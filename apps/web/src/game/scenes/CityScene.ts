@@ -6,6 +6,8 @@ import { Direction } from "../config/outfitRegistry";
 import { NetworkManager, RemotePlayer } from "../multiplayer/NetworkManager";
 import { ChatManager, CHANNEL_CONFIG } from "../chat/ChatManager";
 import { ChatBubble } from "../chat/ChatBubble";
+import { NPCSprite } from "../entities/NPCSprite";
+import { NPC_REGISTRY } from "../config/npcRegistry";
 
 export class CityScene extends Phaser.Scene {
   private avatar!: AvatarSprite;
@@ -21,6 +23,8 @@ export class CityScene extends Phaser.Scene {
   private activeBubbles = new Map<string, ChatBubble>();
   private currentDirection: Direction = "down";
   private chatInputActive = false;
+  private npcSprites: NPCSprite[] = [];
+  private interactionBlocked = false;
 
   constructor() {
     super({ key: "CityScene" });
@@ -121,15 +125,40 @@ export class CityScene extends Phaser.Scene {
       this.chatInputActive = focused;
     });
 
+    // NPCs
+    for (const def of NPC_REGISTRY) {
+      this.npcSprites.push(new NPCSprite(this, def));
+    }
+
+    // NPC interaction listener from React
+    this.game.events.on("npc:close", () => {
+      this.interactionBlocked = false;
+    });
+
+    // E key for NPC interaction (handled here, not in React, to check proximity)
+    this.input.keyboard!.on("keydown-E", () => {
+      if (this.chatInputActive || this.interactionBlocked) return;
+
+      const nearby = this.npcSprites.find((n) => n.isInRange);
+      if (nearby) {
+        this.interactionBlocked = true;
+        this.game.events.emit("npc:interact", nearby.def);
+      }
+    });
+
     // Network
     this.network = new NetworkManager();
     this.setupNetwork();
   }
 
   update(): void {
-    if (this.chatInputActive) {
+    if (this.chatInputActive || this.interactionBlocked) {
       this.playerBody.setVelocity(0);
       this.avatar.idle();
+      // Still check NPC proximity for prompt display even when blocked
+      for (const npc of this.npcSprites) {
+        npc.checkProximity(this.avatar.x, this.avatar.y);
+      }
       return;
     }
 
@@ -159,6 +188,11 @@ export class CityScene extends Phaser.Scene {
     }
 
     this.avatar.updateDepth();
+
+    // NPC proximity checks
+    for (const npc of this.npcSprites) {
+      npc.checkProximity(this.avatar.x, this.avatar.y);
+    }
 
     // Sync position to server
     if (this.network.connected) {
