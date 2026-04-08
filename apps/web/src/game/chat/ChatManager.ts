@@ -1,4 +1,4 @@
-export type ChatChannel = "local" | "global" | "trade" | "system";
+export type ChatChannel = "local" | "global" | `dm:${string}`;
 
 export interface ChatMessage {
   id: string;
@@ -10,23 +10,24 @@ export interface ChatMessage {
   color?: string;
 }
 
+export interface DMChannel {
+  sessionId: string;
+  name: string;
+  unread: number;
+}
+
 const MAX_LOG_SIZE = 200;
 
 /**
- * Manages chat messages across multiple channels.
- * Messages appear as bubbles above avatars AND in a scrollable log.
- * Channels can be toggled on/off in the UI panel.
- *
- * Channel descriptions:
- *   local  - proximity-based, only players within range see it
+ * Chat channels:
+ *   local  - proximity-based, visible to nearby players
  *   global - visible to everyone in the room
- *   trade  - trade requests and offers
- *   system - server announcements, join/leave notifications
+ *   dm:xyz - private messages with player xyz (auto-created)
  */
 export class ChatManager {
   private log: ChatMessage[] = [];
   private activeChannel: ChatChannel = "local";
-  private mutedChannels: Set<ChatChannel> = new Set();
+  private dmChannels = new Map<string, DMChannel>();
   private listeners: Array<(msg: ChatMessage) => void> = [];
   private logListeners: Array<(log: ChatMessage[]) => void> = [];
   private counter = 0;
@@ -37,20 +38,25 @@ export class ChatManager {
 
   setActiveChannel(channel: ChatChannel): void {
     this.activeChannel = channel;
-    this.notifyLogListeners();
-  }
-
-  toggleMute(channel: ChatChannel): void {
-    if (this.mutedChannels.has(channel)) {
-      this.mutedChannels.delete(channel);
-    } else {
-      this.mutedChannels.add(channel);
+    if (channel.startsWith("dm:")) {
+      const dm = this.dmChannels.get(channel);
+      if (dm) dm.unread = 0;
     }
     this.notifyLogListeners();
   }
 
-  isMuted(channel: ChatChannel): boolean {
-    return this.mutedChannels.has(channel);
+  getDMChannels(): DMChannel[] {
+    return Array.from(this.dmChannels.values());
+  }
+
+  openDM(sessionId: string, name: string): ChatChannel {
+    const key: ChatChannel = `dm:${sessionId}`;
+    if (!this.dmChannels.has(key)) {
+      this.dmChannels.set(key, { sessionId, name, unread: 0 });
+    }
+    this.setActiveChannel(key);
+    this.notifyLogListeners();
+    return key;
   }
 
   addMessage(
@@ -75,6 +81,12 @@ export class ChatManager {
       this.log = this.log.slice(-MAX_LOG_SIZE);
     }
 
+    // Track unread for DM channels
+    if (channel.startsWith("dm:") && channel !== this.activeChannel) {
+      const dm = this.dmChannels.get(channel);
+      if (dm) dm.unread += 1;
+    }
+
     for (const cb of this.listeners) cb(msg);
     this.notifyLogListeners();
 
@@ -82,27 +94,22 @@ export class ChatManager {
   }
 
   addSystemMessage(text: string): void {
-    this.addMessage("system", "system", "System", text, "#9945FF");
+    this.addMessage("local", "system", "System", text, "#9945FF");
   }
 
-  /** Returns messages for the active channel, excluding muted channels. */
   getVisibleLog(): ChatMessage[] {
+    if (this.activeChannel.startsWith("dm:")) {
+      return this.log.filter((m) => m.channel === this.activeChannel);
+    }
     return this.log.filter(
-      (m) => !this.mutedChannels.has(m.channel)
+      (m) => m.channel === this.activeChannel || (m.senderSessionId === "system" && this.activeChannel === "local")
     );
   }
 
-  /** Returns messages for a specific channel. */
-  getChannelLog(channel: ChatChannel): ChatMessage[] {
-    return this.log.filter((m) => m.channel === channel);
-  }
-
-  /** Subscribe to new messages (for bubble display). */
   onMessage(cb: (msg: ChatMessage) => void): void {
     this.listeners.push(cb);
   }
 
-  /** Subscribe to log updates (for UI panel re-renders). */
   onLogUpdate(cb: (log: ChatMessage[]) => void): void {
     this.logListeners.push(cb);
   }
@@ -113,12 +120,25 @@ export class ChatManager {
   }
 }
 
-export const CHANNEL_CONFIG: Record<
-  ChatChannel,
-  { label: string; color: string; prefix: string }
-> = {
-  local: { label: "Local", color: "#14F195", prefix: "" },
-  global: { label: "Global", color: "#00D1FF", prefix: "[G] " },
-  trade: { label: "Trade", color: "#FFD700", prefix: "[T] " },
-  system: { label: "System", color: "#9945FF", prefix: "" },
+export const CHANNEL_COLORS: Record<string, string> = {
+  local: "#14F195",
+  global: "#00D1FF",
+  dm: "#FFD700",
+  system: "#9945FF",
 };
+
+export function getChannelColor(channel: ChatChannel): string {
+  if (channel.startsWith("dm:")) return CHANNEL_COLORS.dm;
+  return CHANNEL_COLORS[channel] ?? "#888899";
+}
+
+export function getChannelLabel(channel: ChatChannel, dmChannels: Map<string, DMChannel> | DMChannel[]): string {
+  if (channel === "local") return "Local";
+  if (channel === "global") return "Global";
+  if (channel.startsWith("dm:")) {
+    const arr = Array.isArray(dmChannels) ? dmChannels : Array.from(dmChannels.values());
+    const dm = arr.find((d) => `dm:${d.sessionId}` === channel);
+    return dm?.name ?? channel.slice(3, 9);
+  }
+  return channel;
+}

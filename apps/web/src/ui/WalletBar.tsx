@@ -50,7 +50,7 @@ export default function WalletBar({ onWalletChange }: WalletBarProps) {
 
   return (
     <div
-      className="fixed top-4 right-4 z-20 flex items-center gap-3"
+      className="flex items-center gap-3"
       style={{ fontFamily: '"Fira Code", monospace' }}
     >
       {connected && shortAddr && (

@@ -1,55 +1,56 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import type { ChatManager, ChatMessage, ChatChannel } from "@/game/chat/ChatManager";
-import { CHANNEL_CONFIG } from "@/game/chat/ChatManager";
+import type { ChatManager, ChatMessage, ChatChannel, DMChannel } from "@/game/chat/ChatManager";
+import { getChannelColor, getChannelLabel } from "@/game/chat/ChatManager";
+import { EMOJI_REGISTRY } from "@/game/chat/EmojiSystem";
 
 interface ChatPanelProps {
   gameRef: Phaser.Game | null;
 }
 
-const CHANNELS: ChatChannel[] = ["local", "global", "trade", "system"];
-
 export default function ChatPanel({ gameRef }: ChatPanelProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [activeChannel, setActiveChannel] = useState<ChatChannel>("local");
+  const [dmChannels, setDmChannels] = useState<DMChannel[]>([]);
   const [isExpanded, setIsExpanded] = useState(true);
+  const [showEmojis, setShowEmojis] = useState(false);
   const [chatManager, setChatManager] = useState<ChatManager | null>(null);
   const logRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!gameRef) return;
-
-    const checkRegistry = setInterval(() => {
+    const check = setInterval(() => {
       const scene = gameRef.scene.getScene("CityScene");
       if (scene) {
         const cm = scene.registry.get("chatManager") as ChatManager | undefined;
         if (cm) {
           setChatManager(cm);
           setMessages(cm.getVisibleLog());
-          cm.onLogUpdate((log) => setMessages([...log]));
-          clearInterval(checkRegistry);
+          setDmChannels(cm.getDMChannels());
+          cm.onLogUpdate((log) => {
+            setMessages([...log]);
+            setDmChannels(cm.getDMChannels());
+          });
+          clearInterval(check);
         }
       }
     }, 200);
-
-    return () => clearInterval(checkRegistry);
+    return () => clearInterval(check);
   }, [gameRef]);
 
   useEffect(() => {
-    if (logRef.current) {
-      logRef.current.scrollTop = logRef.current.scrollHeight;
-    }
+    if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
   }, [messages]);
 
   const handleSend = useCallback(() => {
     const text = input.trim();
     if (!text || !gameRef) return;
-
     gameRef.events.emit("chat:send", text);
     setInput("");
+    setShowEmojis(false);
   }, [input, gameRef]);
 
   const handleFocus = useCallback(() => {
@@ -66,16 +67,11 @@ export default function ChatPanel({ gameRef }: ChatPanelProps) {
   }, [chatManager]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-    if (e.key === "Enter") {
-      handleSend();
-    }
-    if (e.key === "Escape") {
-      inputRef.current?.blur();
-    }
+    if (e.key === "Enter") handleSend();
+    if (e.key === "Escape") inputRef.current?.blur();
     e.stopPropagation();
   }, [handleSend]);
 
-  // Global Enter key to focus chat
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === "Enter" && document.activeElement !== inputRef.current) {
@@ -87,9 +83,9 @@ export default function ChatPanel({ gameRef }: ChatPanelProps) {
     return () => window.removeEventListener("keydown", handler);
   }, []);
 
-  const filteredMessages = activeChannel === "local"
-    ? messages
-    : messages.filter((m) => m.channel === activeChannel || m.channel === "system");
+  const channelColor = getChannelColor(activeChannel);
+
+  const fixedTabs: ChatChannel[] = ["local", "global"];
 
   return (
     <div
@@ -97,36 +93,33 @@ export default function ChatPanel({ gameRef }: ChatPanelProps) {
       style={{ width: 340, fontFamily: '"Fira Code", monospace' }}
     >
       {/* Channel tabs */}
-      <div className="flex gap-0.5 mb-0.5">
-        {CHANNELS.map((ch) => {
-          const cfg = CHANNEL_CONFIG[ch];
-          const isActive = activeChannel === ch;
+      <div className="flex gap-0.5 mb-0.5 overflow-x-auto">
+        {fixedTabs.map((ch) => (
+          <TabButton
+            key={ch}
+            label={getChannelLabel(ch, dmChannels)}
+            color={getChannelColor(ch)}
+            active={activeChannel === ch}
+            onClick={() => switchChannel(ch)}
+          />
+        ))}
+        {dmChannels.map((dm) => {
+          const ch: ChatChannel = `dm:${dm.sessionId}`;
           return (
-            <button
+            <TabButton
               key={ch}
+              label={dm.name}
+              color="#FFD700"
+              active={activeChannel === ch}
+              badge={dm.unread > 0 ? dm.unread : undefined}
               onClick={() => switchChannel(ch)}
-              className="px-2 py-1 text-xs rounded-t transition-colors"
-              style={{
-                background: isActive ? "rgba(10,10,30,0.92)" : "rgba(10,10,30,0.5)",
-                color: isActive ? cfg.color : "#555566",
-                border: "none",
-                cursor: "pointer",
-                borderBottom: isActive ? `2px solid ${cfg.color}` : "2px solid transparent",
-              }}
-            >
-              {cfg.label}
-            </button>
+            />
           );
         })}
         <button
           onClick={() => setIsExpanded(!isExpanded)}
           className="ml-auto px-2 py-1 text-xs"
-          style={{
-            background: "transparent",
-            color: "#555566",
-            border: "none",
-            cursor: "pointer",
-          }}
+          style={{ background: "transparent", color: "#555566", border: "none", cursor: "pointer" }}
         >
           {isExpanded ? "\u25BC" : "\u25B2"}
         </button>
@@ -145,45 +138,66 @@ export default function ChatPanel({ gameRef }: ChatPanelProps) {
             borderTop: "none",
           }}
         >
-          {filteredMessages.length === 0 && (
+          {messages.length === 0 && (
             <div className="text-xs" style={{ color: "#333344" }}>
               No messages yet. Press Enter to chat.
             </div>
           )}
-          {filteredMessages.map((msg) => {
-            const cfg = CHANNEL_CONFIG[msg.channel];
-            return (
-              <div key={msg.id} className="text-xs leading-relaxed mb-0.5">
-                {msg.channel !== "local" && msg.channel !== "system" && (
-                  <span style={{ color: cfg.color, opacity: 0.6 }}>
-                    {cfg.prefix}
-                  </span>
-                )}
-                <span style={{ color: msg.color || cfg.color }}>
-                  {msg.senderName}
-                </span>
-                <span style={{ color: "#444455" }}>{": "}</span>
-                <span style={{ color: "#ccccdd" }}>{msg.text}</span>
-              </div>
-            );
-          })}
+          {messages.map((msg) => (
+            <div key={msg.id} className="text-xs leading-relaxed mb-0.5">
+              <span style={{ color: msg.color || channelColor }}>
+                {msg.senderName}
+              </span>
+              <span style={{ color: "#444455" }}>{": "}</span>
+              <span style={{ color: "#ccccdd" }}>{msg.text}</span>
+            </div>
+          ))}
         </div>
       )}
 
-      {/* Input */}
+      {/* Emoji bar */}
+      {showEmojis && (
+        <div
+          className="flex gap-1 p-1.5 rounded mb-0.5"
+          style={{ background: "rgba(10,10,30,0.92)", border: "1px solid rgba(153,69,255,0.15)" }}
+        >
+          {EMOJI_REGISTRY.map((em) => (
+            <button
+              key={em.id}
+              onClick={() => {
+                gameRef?.events.emit("emoji:trigger", em);
+                setShowEmojis(false);
+              }}
+              className="px-2 py-1 rounded text-xs cursor-pointer"
+              style={{
+                background: `${em.color}15`,
+                color: em.color,
+                border: "none",
+                fontFamily: '"Press Start 2P", monospace',
+                fontSize: "7px",
+              }}
+              title={`${em.label} [${em.key}]`}
+            >
+              {em.symbol}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Input row */}
       <div className="flex gap-1">
-        <span
-          className="flex items-center px-2 text-xs rounded-l"
+        <button
+          onClick={() => setShowEmojis(!showEmojis)}
+          className="px-2 rounded text-sm cursor-pointer"
           style={{
             background: "rgba(10,10,30,0.92)",
-            color: CHANNEL_CONFIG[activeChannel].color,
+            color: showEmojis ? "#14F195" : "#555566",
             border: "1px solid rgba(153,69,255,0.15)",
-            borderRight: "none",
-            minWidth: 20,
           }}
+          title="Emojis"
         >
-          {CHANNEL_CONFIG[activeChannel].prefix || ">"}
-        </span>
+          :)
+        </button>
         <input
           ref={inputRef}
           type="text"
@@ -192,9 +206,9 @@ export default function ChatPanel({ gameRef }: ChatPanelProps) {
           onKeyDown={handleKeyDown}
           onFocus={handleFocus}
           onBlur={handleBlur}
-          placeholder={`${CHANNEL_CONFIG[activeChannel].label} chat...`}
+          placeholder={`${getChannelLabel(activeChannel, dmChannels)} chat...`}
           maxLength={140}
-          className="flex-1 px-2 py-1.5 text-xs rounded-r outline-none"
+          className="flex-1 px-2 py-1.5 text-xs rounded outline-none"
           style={{
             background: "rgba(10,10,30,0.92)",
             color: "#ccccdd",
@@ -204,5 +218,50 @@ export default function ChatPanel({ gameRef }: ChatPanelProps) {
         />
       </div>
     </div>
+  );
+}
+
+function TabButton({
+  label,
+  color,
+  active,
+  badge,
+  onClick,
+}: {
+  label: string;
+  color: string;
+  active: boolean;
+  badge?: number;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className="px-2 py-1 text-xs rounded-t transition-colors relative"
+      style={{
+        background: active ? "rgba(10,10,30,0.92)" : "rgba(10,10,30,0.5)",
+        color: active ? color : "#555566",
+        border: "none",
+        cursor: "pointer",
+        borderBottom: active ? `2px solid ${color}` : "2px solid transparent",
+      }}
+    >
+      {label}
+      {badge !== undefined && badge > 0 && (
+        <span
+          className="absolute -top-1 -right-1 px-1 rounded-full text-xs"
+          style={{
+            background: color,
+            color: "#000",
+            fontSize: "8px",
+            fontWeight: "bold",
+            minWidth: "14px",
+            textAlign: "center",
+          }}
+        >
+          {badge}
+        </span>
+      )}
+    </button>
   );
 }

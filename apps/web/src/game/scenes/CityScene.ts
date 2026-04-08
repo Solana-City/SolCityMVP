@@ -4,10 +4,12 @@ import { getMapData, getSpawnPoint } from "../utils/mapGenerator";
 import { AvatarSprite } from "../entities/AvatarSprite";
 import { Direction } from "../config/outfitRegistry";
 import { NetworkManager, RemotePlayer } from "../multiplayer/NetworkManager";
-import { ChatManager, CHANNEL_CONFIG } from "../chat/ChatManager";
+import { ChatManager, getChannelColor } from "../chat/ChatManager";
 import { ChatBubble } from "../chat/ChatBubble";
 import { NPCSprite } from "../entities/NPCSprite";
 import { NPC_REGISTRY } from "../config/npcRegistry";
+import { ProfileManager } from "../config/profileManager";
+import { setupEmojiKeys, showEmoji, EMOJI_REGISTRY, EmojiDef } from "../chat/EmojiSystem";
 
 export class CityScene extends Phaser.Scene {
   private avatar!: AvatarSprite;
@@ -25,6 +27,7 @@ export class CityScene extends Phaser.Scene {
   private chatInputActive = false;
   private npcSprites: NPCSprite[] = [];
   private interactionBlocked = false;
+  private profile!: ProfileManager;
 
   constructor() {
     super({ key: "CityScene" });
@@ -73,7 +76,7 @@ export class CityScene extends Phaser.Scene {
     this.physics.world.setBounds(0, 0, MAP_COLS * TILE_SIZE, MAP_ROWS * TILE_SIZE);
 
     // "YOU" label
-    const youLabel = this.add.text(0, -32, "YOU", {
+    const youLabel = this.add.text(0, -40, "YOU", {
       fontSize: "8px", fontFamily: "monospace",
       color: "#ffffff", align: "center",
     }).setOrigin(0.5, 1);
@@ -94,27 +97,29 @@ export class CityScene extends Phaser.Scene {
       right: this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.D),
     };
 
+    // Profile system
+    this.profile = new ProfileManager();
+    this.registry.set("profileManager", this.profile);
+
     // Chat system
     this.chat = new ChatManager();
     this.chat.addSystemMessage("Welcome to The Solana City");
-
-    // Expose chat manager to React via registry
     this.registry.set("chatManager", this.chat);
 
     // Listen for chat input from React UI
     this.game.events.on("chat:send", (text: string) => {
       const channel = this.chat.getActiveChannel();
-      if (channel === "system") return;
+      const color = getChannelColor(channel);
 
       this.chat.addMessage(
         channel,
         this.network?.sessionId ?? "local",
-        "You",
+        this.profile.get().displayName,
         text,
-        CHANNEL_CONFIG[channel].color
+        color
       );
 
-      this.showBubble(this.avatar.getContainer(), text, CHANNEL_CONFIG[channel].color);
+      this.showBubble(this.avatar.getContainer(), text, color);
 
       if (this.network?.connected) {
         this.network.sendChat(text);
@@ -123,6 +128,31 @@ export class CityScene extends Phaser.Scene {
 
     this.game.events.on("chat:focus", (focused: boolean) => {
       this.chatInputActive = focused;
+      // Disable Phaser keyboard capture so typing in chat doesn't trigger WASD
+      if (this.input.keyboard) {
+        this.input.keyboard.enabled = !focused;
+      }
+    });
+
+    // Emoji system: keys 1-6 trigger emotes
+    setupEmojiKeys(
+      this,
+      () => this.avatar.getContainer(),
+      () => this.chatInputActive,
+      (emoji) => {
+        this.chat.addMessage("local", "local", this.profile.get().displayName, emoji.symbol, emoji.color);
+      }
+    );
+
+    // Emoji trigger from React UI button
+    this.game.events.on("emoji:trigger", (emoji: EmojiDef) => {
+      showEmoji(this, this.avatar.getContainer(), emoji);
+      this.chat.addMessage("local", "local", this.profile.get().displayName, emoji.symbol, emoji.color);
+    });
+
+    // Outfit change from profile panel
+    this.game.events.on("profile:outfit", (outfitId: string) => {
+      this.avatar.setOutfit(outfitId);
     });
 
     // NPCs
@@ -253,7 +283,7 @@ export class CityScene extends Phaser.Scene {
       ? `${player.wallet.slice(0, 4)}...${player.wallet.slice(-4)}`
       : sessionId.slice(0, 6);
 
-    const label = this.add.text(0, -32, name, {
+    const label = this.add.text(0, -40, name, {
       fontSize: "7px", fontFamily: "monospace",
       color: "#aaaacc", align: "center",
     }).setOrigin(0.5, 1);
