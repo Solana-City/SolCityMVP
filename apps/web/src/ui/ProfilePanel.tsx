@@ -87,11 +87,13 @@ export default function ProfilePanel({ gameRef, isOpen, onClose }: ProfilePanelP
         onClick={onClose}
       />
       <div
-        className="relative rounded-2xl p-6 w-full max-w-sm"
+        className="relative rounded-2xl p-6 w-full max-w-md"
         style={{
           background: "rgba(10,10,30,0.97)",
           border: "1px solid rgba(153,69,255,0.25)",
           fontFamily: '"Fira Code", monospace',
+          maxHeight: "85vh",
+          overflowY: "auto",
         }}
       >
         <button
@@ -257,8 +259,55 @@ export default function ProfilePanel({ gameRef, isOpen, onClose }: ProfilePanelP
           </div>
         </div>
 
+        {/* On-chain activity */}
+        <div className="mb-4 mt-4">
+          <div className="text-xs mb-2" style={{ color: "#555566" }}>
+            On-chain activity
+          </div>
+          <div
+            className="rounded-lg p-3"
+            style={{ background: "#12122a", border: "1px solid rgba(255,255,255,0.04)" }}
+          >
+            <div className="flex justify-between mb-2">
+              <span className="text-xs" style={{ color: "#888899" }}>Total interactions</span>
+              <span className="text-xs font-bold" style={{ color: "#14F195" }}>
+                {profile.swapCount + profile.transferCount + profile.bountyCount}
+              </span>
+            </div>
+            <div className="w-full rounded-full h-1.5 mb-3" style={{ background: "#1a1a3a" }}>
+              <div
+                className="rounded-full h-1.5 transition-all"
+                style={{
+                  background: "linear-gradient(90deg, #9945FF, #14F195)",
+                  width: `${Math.min((profile.swapCount + profile.transferCount + profile.bountyCount) * 5, 100)}%`,
+                }}
+              />
+            </div>
+            <div className="grid grid-cols-3 gap-2 text-center">
+              <div>
+                <div className="text-lg font-bold" style={{ color: "#14F195" }}>{profile.swapCount}</div>
+                <div className="text-xs" style={{ color: "#555566" }}>Swaps</div>
+              </div>
+              <div>
+                <div className="text-lg font-bold" style={{ color: "#00D1FF" }}>{profile.transferCount}</div>
+                <div className="text-xs" style={{ color: "#555566" }}>Transfers</div>
+              </div>
+              <div>
+                <div className="text-lg font-bold" style={{ color: "#9945FF" }}>{profile.bountyCount}</div>
+                <div className="text-xs" style={{ color: "#555566" }}>Bounties</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Member info */}
+        <div className="flex justify-between text-xs mb-2" style={{ color: "#444455" }}>
+          <span>Member since {new Date(profile.joinedAt).toLocaleDateString()}</span>
+          <span>Last active {new Date(profile.lastActive).toLocaleDateString()}</span>
+        </div>
+
         <div
-          className="mt-4 text-xs text-center"
+          className="mt-3 text-xs text-center"
           style={{ color: "#333344" }}
         >
           Press 1-6 in-game for quick emotes

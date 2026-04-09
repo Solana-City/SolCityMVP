@@ -23,7 +23,7 @@ export default function SolanaProvider({
 }) {
   const endpoint = useMemo(() => clusterApiUrl(NETWORK), []);
 
-  const wallets = useMemo(git add -A && git commit -m "fix: name labels above heads, NPC exclamation above names"
+  const wallets = useMemo(
     () => [
       new PhantomWalletAdapter(),
       new SolflareWalletAdapter(),

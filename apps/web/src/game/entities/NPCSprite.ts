@@ -1,14 +1,13 @@
 import Phaser from "phaser";
 import { TILE_SIZE } from "../config/constants";
+import { AvatarSprite } from "./AvatarSprite";
 import type { NPCDefinition } from "../config/npcRegistry";
 
 const INTERACT_RANGE = TILE_SIZE * 1.8;
 
 export class NPCSprite {
   private scene: Phaser.Scene;
-  private container: Phaser.GameObjects.Container;
-  private body: Phaser.GameObjects.Rectangle;
-  private head: Phaser.GameObjects.Rectangle;
+  private avatar: AvatarSprite;
   private exclamation: Phaser.GameObjects.Container;
   private nameText: Phaser.GameObjects.Text;
   private promptText: Phaser.GameObjects.Text;
@@ -26,12 +25,13 @@ export class NPCSprite {
     this.originX = x;
     this.originY = y;
 
-    this.body = scene.add.rectangle(0, 2, TILE_SIZE * 0.5, TILE_SIZE * 0.55, def.color);
-    this.head = scene.add.rectangle(0, -10, TILE_SIZE * 0.35, TILE_SIZE * 0.35, def.color);
-    this.head.setStrokeStyle(1, 0xffffff, 0.15);
+    // Same avatar as players (identical size and proportions)
+    this.avatar = new AvatarSprite(scene, x, y, "default");
 
-    const glow = scene.add.circle(0, 0, TILE_SIZE * 0.7, def.color, 0.08);
+    const container = this.avatar.getContainer();
+    const colorHex = `#${def.color.toString(16).padStart(6, "0")}`;
 
+    // Exclamation mark (visual distinction from players)
     const excBg = scene.add.circle(0, 0, 7, def.color);
     const excText = scene.add.text(0, 0, "!", {
       fontSize: "10px", fontFamily: "monospace",
@@ -39,6 +39,7 @@ export class NPCSprite {
     }).setOrigin(0.5, 0.5);
 
     this.exclamation = scene.add.container(0, -50, [excBg, excText]);
+    container.add(this.exclamation);
 
     scene.tweens.add({
       targets: this.exclamation,
@@ -49,27 +50,25 @@ export class NPCSprite {
       ease: "Sine.easeInOut",
     });
 
-    this.nameText = scene.add.text(0, -38, def.name, {
+    // Name label in NPC color (players have white/gray names)
+    this.nameText = scene.add.text(0, -40, def.name, {
       fontSize: "7px", fontFamily: "monospace",
-      color: `#${def.color.toString(16).padStart(6, "0")}`,
+      color: colorHex,
       align: "center",
     }).setOrigin(0.5, 1);
+    container.add(this.nameText);
 
+    // [E] prompt
     this.promptText = scene.add.text(0, -62, `[E] ${def.name}`, {
       fontSize: "8px", fontFamily: "monospace",
       color: "#14F195", align: "center",
       backgroundColor: "#0a0a1eDD",
       padding: { x: 6, y: 3 },
     }).setOrigin(0.5, 1).setVisible(false);
+    container.add(this.promptText);
 
-    this.container = scene.add.container(x, y, [
-      glow, this.body, this.head, this.exclamation,
-      this.nameText, this.promptText,
-    ]);
+    container.setDepth(y);
 
-    this.container.setDepth(y);
-
-    // Natural idle movement: small random wander around origin
     this.startIdleBehavior();
   }
 
@@ -78,8 +77,9 @@ export class NPCSprite {
   }
 
   checkProximity(playerX: number, playerY: number): boolean {
-    const dx = this.container.x - playerX;
-    const dy = this.container.y - playerY;
+    const container = this.avatar.getContainer();
+    const dx = container.x - playerX;
+    const dy = container.y - playerY;
     const dist = Math.sqrt(dx * dx + dy * dy);
     const inRange = dist < INTERACT_RANGE;
 
@@ -92,53 +92,44 @@ export class NPCSprite {
   }
 
   getPosition(): { x: number; y: number } {
-    return { x: this.container.x, y: this.container.y };
+    const c = this.avatar.getContainer();
+    return { x: c.x, y: c.y };
   }
 
   destroy(): void {
-    this.container.destroy();
+    this.avatar.destroy();
   }
 
   private startIdleBehavior(): void {
-    // Breathing animation on body
-    this.scene.tweens.add({
-      targets: this.body,
-      scaleY: 1.03,
-      duration: 1500 + Math.random() * 500,
-      yoyo: true,
-      repeat: -1,
-      ease: "Sine.easeInOut",
-    });
+    const container = this.avatar.getContainer();
 
-    // Random head turns
+    // Random direction changes (NPC looks around)
     this.scene.time.addEvent({
-      delay: 2000 + Math.random() * 3000,
+      delay: 2500 + Math.random() * 3000,
       loop: true,
       callback: () => {
-        const offsetX = (Math.random() - 0.5) * 4;
-        this.scene.tweens.add({
-          targets: this.head,
-          x: offsetX,
-          duration: 400,
-          yoyo: true,
-          ease: "Sine.easeInOut",
+        const dirs = ["down", "left", "right", "up"] as const;
+        const dir = dirs[Math.floor(Math.random() * dirs.length)];
+        this.avatar.walk(dir);
+        this.scene.time.delayedCall(300, () => {
+          this.avatar.idle();
         });
       },
     });
 
-    // Small wander around origin point
+    // Small wander around origin
     this.scene.time.addEvent({
-      delay: 3000 + Math.random() * 4000,
+      delay: 4000 + Math.random() * 4000,
       loop: true,
       callback: () => {
-        if (this._isInRange) return; // Don't wander when player is near
-        const wanderX = this.originX + (Math.random() - 0.5) * TILE_SIZE * 0.6;
-        const wanderY = this.originY + (Math.random() - 0.5) * TILE_SIZE * 0.4;
+        if (this._isInRange) return;
+        const wanderX = this.originX + (Math.random() - 0.5) * TILE_SIZE * 0.5;
+        const wanderY = this.originY + (Math.random() - 0.5) * TILE_SIZE * 0.3;
         this.scene.tweens.add({
-          targets: this.container,
+          targets: container,
           x: wanderX,
           y: wanderY,
-          duration: 800 + Math.random() * 600,
+          duration: 900 + Math.random() * 500,
           ease: "Sine.easeInOut",
         });
       },
