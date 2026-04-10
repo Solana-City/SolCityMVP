@@ -25,20 +25,20 @@ const LAYOUT: number[][] = [
  [D, D, D, D, W, W, W, S, S, G, G, g, G, G, G, g, G, G, G, g, G, G, G, g, G, G, g, S, S, W, W, W, W, D, D, D, D, D, D, D], // 2
  [D, D, D, W, W, S, S, G, G, G, J, J, J, J, g, P, P, P, g, O, O, O, O, G, G, G, G, G, S, S, W, W, W, D, D, D, D, D, D, D], // 3
  [D, D, W, W, S, S, G, G, G, G, J, J, J, J, g, P, g, P, g, O, O, O, O, G, G, F, G, G, G, S, S, W, W, W, D, D, D, D, D, D], // 4
- [D, W, W, S, S, G, G, g, G, G, G, g, G, G, g, P, g, P, g, G, G, g, G, G, G, G, g, G, G, S, K, K, W, W, D, D, D, D, D, D], // 5
- [D, W, S, S, G, G, P, P, P, P, P, P, P, P, P, P, P, P, P, P, P, P, P, P, P, P, G, G, G, S, K, K, W, W, W, D, D, D, D, D], // 6
- [W, W, S, G, G, g, P, G, g, R, R, g, G, Z, Z, Z, Z, Z, Z, Z, Z, G, g, G, G, P, G, g, G, S, K, K, W, W, W, D, D, D, D, D], // 7
- [W, S, S, G, G, G, P, G, R, R, R, R, G, Z, Z, Z, Z, Z, Z, Z, Z, G, g, F, G, P, G, G, G, S, K, K, W, W, D, D, D, D, D, D], // 8
- [W, S, G, G, g, G, P, G, R, R, R, R, G, Z, Z, Z, Z, Z, Z, Z, Z, G, G, G, G, P, g, G, G, S, K, K, W, W, D, D, D, D, D, D], // 9
- [W, S, G, G, G, g, P, G, g, R, R, g, G, Z, Z, Z, Z, Z, Z, Z, Z, g, G, G, G, P, G, G, G, S, K, K, W, D, D, D, D, D, D, D], // 10
+ [D, W, W, S, S, G, G, g, G, G, G, g, G, G, g, P, g, P, g, G, G, g, G, G, G, G, g, G, G, S, S, W, W, W, D, D, D, D, D, D], // 5
+ [D, W, S, S, G, G, P, P, P, P, P, P, P, P, P, P, P, P, P, P, P, P, P, P, P, P, G, G, G, S, S, W, W, W, W, D, D, D, D, D], // 6
+ [W, W, S, G, G, g, P, G, g, R, R, g, G, Z, Z, Z, Z, Z, Z, Z, Z, G, g, G, G, P, G, g, G, S, S, W, W, W, W, D, D, D, D, D], // 7
+ [W, S, S, G, G, G, P, G, R, R, R, R, G, Z, Z, Z, Z, Z, Z, Z, Z, G, g, F, G, P, G, G, G, S, S, W, W, W, D, D, D, D, D, D], // 8
+ [W, S, G, G, g, G, P, G, R, R, R, R, G, Z, Z, Z, Z, Z, Z, Z, Z, G, G, G, G, P, g, G, G, S, W, W, W, W, D, D, D, D, D, D], // 9
+ [W, S, G, G, G, g, P, G, g, R, R, g, G, Z, Z, Z, Z, Z, Z, Z, Z, g, G, G, G, P, G, G, G, S, W, W, W, D, D, D, D, D, D, D], // 10
  [W, S, G, G, G, G, P, G, G, g, G, G, G, Z, Z, Z, Z, Z, Z, Z, Z, G, G, g, G, P, G, G, S, S, W, W, W, D, D, D, D, D, D, D], // 11
  [W, S, G, g, G, G, P, G, g, G, G, g, G, G, A, A, A, A, G, G, g, G, G, G, g, P, G, S, S, W, W, D, D, D, D, D, D, D, D, D], // 12
  [W, S, G, G, G, G, P, P, P, P, P, P, P, P, P, P, P, P, P, P, P, P, P, P, P, P, G, G, S, W, W, D, D, D, D, D, D, D, D, D], // 13
  [W, S, G, G, g, G, P, G, G, g, G, G, G, G, g, P, g, G, G, g, G, G, G, g, G, P, g, G, S, W, W, D, D, D, D, D, D, D, D, D], // 14
  [W, S, G, G, G, g, P, G, G, G, G, g, G, G, G, P, G, G, g, G, G, G, g, G, G, P, G, G, S, S, W, W, D, D, D, D, D, D, D, D], // 15
- [W, S, G, G, E, E, E, E, G, G, g, G, G, g, G, P, G, g, G, G, T, T, T, T, G, P, G, G, G, S, W, W, D, D, D, D, D, D, D, D], // 16
- [W, S, S, G, E, E, E, E, G, g, G, G, G, G, g, P, g, G, G, G, T, T, T, T, G, P, G, g, G, S, S, W, W, D, D, D, D, D, D, D], // 17
- [W, W, S, G, E, E, E, E, G, G, F, G, g, G, G, P, G, G, g, G, T, T, T, T, g, P, G, G, G, S, S, W, W, D, D, D, D, D, D, D], // 18
+ [W, S, G, G, G, g, G, G, G, G, g, G, G, g, G, P, G, g, G, G, T, T, T, T, G, P, G, G, G, S, W, W, D, D, D, D, D, D, D, D], // 16
+ [W, S, S, G, G, g, G, G, G, g, G, G, G, G, g, P, g, G, G, G, T, T, T, T, G, P, G, g, G, S, S, W, W, D, D, D, D, D, D, D], // 17
+ [W, W, S, G, G, G, G, G, G, G, F, G, g, G, G, P, G, G, g, G, T, T, T, T, g, P, G, G, G, S, S, W, W, D, D, D, D, D, D, D], // 18
  [D, W, S, G, G, g, P, G, G, g, G, G, G, g, G, P, G, g, G, G, G, g, G, G, G, P, g, G, G, G, S, W, W, D, D, D, D, D, D, D], // 19
  [D, W, S, S, G, G, P, P, P, P, P, P, P, P, P, P, P, P, P, P, P, P, P, P, P, P, G, G, G, S, S, W, W, D, D, D, D, D, D, D], // 20
  [D, W, W, S, G, G, P, G, G, g, G, B, B, B, g, P, g, B, B, B, G, g, G, G, G, P, G, G, S, S, W, W, D, D, D, D, D, D, D, D], // 21
