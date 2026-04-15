@@ -1,8 +1,7 @@
 import Phaser from "phaser";
 import { TILE_SIZE, MAP_COLS, MAP_ROWS, PLAYER_SPEED } from "../config/constants";
 import { getMapData, getSpawnPoint } from "../utils/mapGenerator";
-import { AvatarSprite } from "../entities/AvatarSprite";
-import { Direction } from "../config/outfitRegistry";
+import { SimpleSprite, Direction } from "../entities/SimpleSprite";
 import { NetworkManager, RemotePlayer } from "../multiplayer/NetworkManager";
 import { ChatManager, getChannelColor } from "../chat/ChatManager";
 import { ChatBubble } from "../chat/ChatBubble";
@@ -12,7 +11,7 @@ import { ProfileManager } from "../config/profileManager";
 import { setupEmojiKeys, showEmoji, EMOJI_REGISTRY, EmojiDef } from "../chat/EmojiSystem";
 
 export class CityScene extends Phaser.Scene {
-  private avatar!: AvatarSprite;
+  private avatar!: SimpleSprite;
   private playerBody!: Phaser.Physics.Arcade.Body;
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
   private wasd!: Record<string, Phaser.Input.Keyboard.Key>;
@@ -20,7 +19,7 @@ export class CityScene extends Phaser.Scene {
 
   private network!: NetworkManager;
   private chat!: ChatManager;
-  private remotePlayers = new Map<string, AvatarSprite>();
+  private remotePlayers = new Map<string, SimpleSprite>();
   private nameLabels = new Map<string, Phaser.GameObjects.Text>();
   private activeBubbles = new Map<string, ChatBubble>();
   private currentDirection: Direction = "down";
@@ -60,11 +59,11 @@ export class CityScene extends Phaser.Scene {
     this.collisionLayer.setVisible(false);
     this.collisionLayer.setCollisionByExclusion([-1]);
 
-    // Local player
+    // Local player using full sprite sheet
     const spawn = getSpawnPoint();
     const spawnX = spawn.x * TILE_SIZE + TILE_SIZE / 2;
     const spawnY = spawn.y * TILE_SIZE + TILE_SIZE / 2;
-    this.avatar = new AvatarSprite(this, spawnX, spawnY, "default");
+    this.avatar = new SimpleSprite(this, spawnX, spawnY, "avatar-chef");
 
     const container = this.avatar.getContainer();
     this.physics.world.enable(container);
@@ -150,9 +149,12 @@ export class CityScene extends Phaser.Scene {
       this.chat.addMessage("local", "local", this.profile.get().displayName, emoji.symbol, emoji.color);
     });
 
-    // Outfit change from profile panel
+    // Outfit change from profile panel (maps outfit ID to sprite sheet key)
     this.game.events.on("profile:outfit", (outfitId: string) => {
-      this.avatar.setOutfit(outfitId);
+      const textureKey = `avatar-${outfitId}`;
+      if (this.textures.exists(textureKey)) {
+        this.avatar.setTexture(textureKey);
+      }
     });
 
     // NPCs
@@ -276,7 +278,7 @@ export class CityScene extends Phaser.Scene {
   }
 
   private addRemotePlayer(sessionId: string, player: RemotePlayer): void {
-    const avatar = new AvatarSprite(this, player.x, player.y, player.outfitId);
+    const avatar = new SimpleSprite(this, player.x, player.y, "avatar-chef");
     this.remotePlayers.set(sessionId, avatar);
 
     const name = player.wallet
@@ -333,10 +335,6 @@ export class CityScene extends Phaser.Scene {
       avatar.walk(player.direction as Direction);
     } else {
       avatar.idle();
-    }
-
-    if (player.outfitId !== "default") {
-      avatar.setOutfit(player.outfitId);
     }
   }
 

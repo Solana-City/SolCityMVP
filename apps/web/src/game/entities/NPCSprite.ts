@@ -1,13 +1,13 @@
 import Phaser from "phaser";
 import { TILE_SIZE } from "../config/constants";
-import { AvatarSprite } from "./AvatarSprite";
+import { SimpleSprite } from "./SimpleSprite";
 import type { NPCDefinition } from "../config/npcRegistry";
 
 const INTERACT_RANGE = TILE_SIZE * 1.8;
 
 export class NPCSprite {
   private scene: Phaser.Scene;
-  private avatar: AvatarSprite;
+  private avatar: SimpleSprite;
   private exclamation: Phaser.GameObjects.Container;
   private nameText: Phaser.GameObjects.Text;
   private promptText: Phaser.GameObjects.Text;
@@ -25,8 +25,8 @@ export class NPCSprite {
     this.originX = x;
     this.originY = y;
 
-    // Same avatar as players (identical size and proportions)
-    this.avatar = new AvatarSprite(scene, x, y, "default");
+    // NPCs use the same sprite sheet as players
+    this.avatar = new SimpleSprite(scene, x, y, "avatar-chef");
 
     const container = this.avatar.getContainer();
     const colorHex = `#${def.color.toString(16).padStart(6, "0")}`;

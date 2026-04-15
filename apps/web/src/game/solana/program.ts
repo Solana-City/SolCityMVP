@@ -1,28 +1,21 @@
 import { PublicKey } from "@solana/web3.js";
 
 /**
- * Sol City on-chain program configuration.
+ * Sol City on-chain program - TypeScript client interface.
  *
- * The program manages player state accounts as PDAs.
- * These PDAs can be delegated to MagicBlock Ephemeral Rollups
- * for real-time position updates and game actions.
+ * Matches the Anchor program in programs/sol-city/src/lib.rs.
+ * The Rust program manages PlayerState PDAs that can be delegated
+ * to MagicBlock Ephemeral Rollups for sub-50ms game state updates.
  *
- * Program lifecycle:
- *   1. Player connects wallet
- *   2. Initialize player PDA on Solana (once)
- *   3. Delegate PDA to ephemeral rollup (on session start)
- *   4. All game transactions route through Magic Router
- *   5. Undelegate PDA on session end (commits state to Solana)
- *
- * NOTE: The actual Anchor program is in a separate Rust crate.
- * This file defines the TypeScript interface for the client.
- * Until the program is deployed, the game runs in "hybrid mode"
- * where Colyseus handles multiplayer and on-chain state is optional.
+ * Deploy flow:
+ *   anchor build
+ *   anchor deploy --provider.cluster devnet
+ *   # Copy the program ID and replace SOL_CITY_PROGRAM_ID below
  */
 
-// Replace with your deployed program ID
+// Replace after: anchor deploy
 export const SOL_CITY_PROGRAM_ID = new PublicKey(
-  "11111111111111111111111111111111" // placeholder until program is deployed
+  "11111111111111111111111111111111"
 );
 
 // MagicBlock delegation program (devnet)
@@ -30,9 +23,7 @@ export const DELEGATION_PROGRAM_ID = new PublicKey(
   "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSS"
 );
 
-// PDA seeds
 export const PLAYER_SEED = "player";
-export const CITY_SEED = "city";
 
 /**
  * Derives the player state PDA for a given wallet.
@@ -49,19 +40,21 @@ export function derivePlayerPDA(
 
 /**
  * On-chain player state structure.
- * This matches the Anchor account layout in the Rust program.
+ * Matches PlayerState in programs/sol-city/src/lib.rs exactly.
  */
 export interface OnChainPlayerState {
   authority: PublicKey;
-  x: number;
-  y: number;
-  direction: number; // 0=down, 1=left, 2=right, 3=up
-  outfitId: string;
-  score: number;
-  swapCount: number;
-  transferCount: number;
-  bountyCount: number;
-  lastActive: number; // unix timestamp
+  displayName: string;
+  x: number;           // u32
+  y: number;           // u32
+  direction: number;   // u8: 0=down, 1=left, 2=right, 3=up
+  outfitId: number;    // u8
+  score: number;       // u32
+  swapCount: number;   // u16
+  transferCount: number; // u16
+  bountyCount: number; // u16
+  lastActive: number;  // i64 unix timestamp
+  createdAt: number;   // i64 unix timestamp
 }
 
 /**
