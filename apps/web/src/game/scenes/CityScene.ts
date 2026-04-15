@@ -2,7 +2,7 @@ import Phaser from "phaser";
 import { TILE_SIZE, MAP_COLS, MAP_ROWS, PLAYER_SPEED } from "../config/constants";
 import { getMapData, getSpawnPoint } from "../utils/mapGenerator";
 import { SimpleSprite, Direction } from "../entities/SimpleSprite";
-import { NetworkManager, RemotePlayer } from "../multiplayer/NetworkManager";
+import { OnChainMultiplayer, OnChainPlayer } from "../multiplayer/OnChainMultiplayer";
 import { ChatManager, getChannelColor } from "../chat/ChatManager";
 import { ChatBubble } from "../chat/ChatBubble";
 import { NPCSprite } from "../entities/NPCSprite";
@@ -17,7 +17,7 @@ export class CityScene extends Phaser.Scene {
   private wasd!: Record<string, Phaser.Input.Keyboard.Key>;
   private collisionLayer!: Phaser.Tilemaps.TilemapLayer;
 
-  private network!: NetworkManager;
+  private network!: OnChainMultiplayer;
   private chat!: ChatManager;
   private remotePlayers = new Map<string, SimpleSprite>();
   private nameLabels = new Map<string, Phaser.GameObjects.Text>();
@@ -178,9 +178,26 @@ export class CityScene extends Phaser.Scene {
       }
     });
 
-    // Network
-    this.network = new NetworkManager();
-    this.setupNetwork();
+    // On-chain multiplayer via MagicBlock Ephemeral Rollups
+    this.network = new OnChainMultiplayer();
+
+    // Listen for wallet connection from React to start on-chain session
+    this.game.events.on("wallet:connected", async (walletAddress: string) => {
+      try {
+        const { PublicKey } = await import("@solana/web3.js");
+        await this.network.connect(new PublicKey(walletAddress));
+        this.profile.setWallet(walletAddress);
+        this.chat.addSystemMessage("Session started (on-chain)");
+        this.setupNetworkCallbacks();
+      } catch {
+        this.chat.addSystemMessage("Failed to start on-chain session");
+      }
+    });
+
+    this.game.events.on("wallet:disconnected", () => {
+      this.network.disconnect();
+      this.chat.addSystemMessage("Session ended");
+    });
   }
 
   update(): void {
@@ -244,84 +261,64 @@ export class CityScene extends Phaser.Scene {
 
   // ── Network setup ──────────────────────────────────
 
-  private async setupNetwork(): Promise<void> {
-    try {
-      await this.network.connect();
-      this.chat.addSystemMessage("Connected to server");
+  private setupNetworkCallbacks(): void {
+    this.network.onPlayerAdd((wallet, player) => {
+      if (wallet === this.network.sessionId) return;
+      this.addRemotePlayer(wallet, player);
+    });
 
-      this.network.onPlayerAdd((sessionId, player) => {
-        if (sessionId === this.network.sessionId) return;
-        this.addRemotePlayer(sessionId, player);
-      });
+    this.network.onPlayerRemove((wallet) => {
+      this.removeRemotePlayer(wallet);
+    });
 
-      this.network.onPlayerRemove((sessionId) => {
-        this.removeRemotePlayer(sessionId);
-      });
-
-      this.network.onPlayerChange((sessionId, player) => {
-        if (sessionId === this.network.sessionId) return;
-        this.updateRemotePlayer(sessionId, player);
-      });
-
-      this.network.onChat((sessionId, msg) => {
-        if (sessionId === this.network.sessionId) return;
-        const remote = this.remotePlayers.get(sessionId);
-        const wallet = msg.slice(0, 8);
-        this.chat.addMessage("local", sessionId, wallet, msg, "#14F195");
-        if (remote) {
-          this.showBubble(remote.getContainer(), msg, "#14F195");
-        }
-      });
-    } catch {
-      this.chat.addSystemMessage("Offline mode (server not running)");
-    }
+    this.network.onPlayerChange((wallet, player) => {
+      if (wallet === this.network.sessionId) return;
+      this.updateRemotePlayer(wallet, player);
+    });
   }
 
-  private addRemotePlayer(sessionId: string, player: RemotePlayer): void {
+  private addRemotePlayer(wallet: string, player: OnChainPlayer): void {
     const avatar = new SimpleSprite(this, player.x, player.y, "avatar-chef");
-    this.remotePlayers.set(sessionId, avatar);
+    this.remotePlayers.set(wallet, avatar);
 
-    const name = player.wallet
-      ? `${player.wallet.slice(0, 4)}...${player.wallet.slice(-4)}`
-      : sessionId.slice(0, 6);
+    const name = `${wallet.slice(0, 4)}...${wallet.slice(-4)}`;
 
     const label = this.add.text(0, -40, name, {
       fontSize: "7px", fontFamily: "monospace",
       color: "#aaaacc", align: "center",
     }).setOrigin(0.5, 1);
     avatar.getContainer().add(label);
-    this.nameLabels.set(sessionId, label);
+    this.nameLabels.set(wallet, label);
 
     this.chat.addSystemMessage(`${name} entered the city`);
   }
 
-  private removeRemotePlayer(sessionId: string): void {
-    const avatar = this.remotePlayers.get(sessionId);
+  private removeRemotePlayer(wallet: string): void {
+    const avatar = this.remotePlayers.get(wallet);
     if (avatar) {
       avatar.destroy();
-      this.remotePlayers.delete(sessionId);
+      this.remotePlayers.delete(wallet);
     }
 
-    const label = this.nameLabels.get(sessionId);
+    const label = this.nameLabels.get(wallet);
     if (label) {
       label.destroy();
-      this.nameLabels.delete(sessionId);
+      this.nameLabels.delete(wallet);
     }
 
-    const bubble = this.activeBubbles.get(sessionId);
+    const bubble = this.activeBubbles.get(wallet);
     if (bubble) {
       bubble.destroy();
-      this.activeBubbles.delete(sessionId);
+      this.activeBubbles.delete(wallet);
     }
 
     this.chat.addSystemMessage(`Player left the city`);
   }
 
-  private updateRemotePlayer(sessionId: string, player: RemotePlayer): void {
-    const avatar = this.remotePlayers.get(sessionId);
+  private updateRemotePlayer(wallet: string, player: OnChainPlayer): void {
+    const avatar = this.remotePlayers.get(wallet);
     if (!avatar) return;
 
-    // Smooth interpolation
     const container = avatar.getContainer();
     this.tweens.add({
       targets: container,
@@ -331,8 +328,9 @@ export class CityScene extends Phaser.Scene {
       ease: "Linear",
     });
 
-    if (player.isWalking) {
-      avatar.walk(player.direction as Direction);
+    const dirs: Direction[] = ["down", "left", "right", "up"];
+    if (player.isWalking && dirs[player.direction]) {
+      avatar.walk(dirs[player.direction]);
     } else {
       avatar.idle();
     }

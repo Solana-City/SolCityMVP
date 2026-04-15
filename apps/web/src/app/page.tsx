@@ -65,7 +65,14 @@ export default function Home() {
         {/* HUD top-right: PFP button + wallet below */}
         <div className="fixed top-4 right-4 z-20 flex flex-col items-end gap-2">
           <PfpButton gameRef={game} onClick={() => setProfileOpen(true)} />
-          <WalletBar />
+          <WalletBar onWalletChange={(wallet) => {
+            if (!game) return;
+            if (wallet) {
+              game.events.emit("wallet:connected", wallet);
+            } else {
+              game.events.emit("wallet:disconnected");
+            }
+          }} />
         </div>
 
         <ChatPanel gameRef={game} />
