@@ -105,31 +105,38 @@ export class NPCSprite {
 
     // Random direction changes (NPC looks around)
     this.scene.time.addEvent({
-      delay: 2500 + Math.random() * 3000,
+      delay: 3000 + Math.random() * 3000,
       loop: true,
       callback: () => {
         const dirs = ["down", "left", "right", "up"] as const;
         const dir = dirs[Math.floor(Math.random() * dirs.length)];
         this.avatar.walk(dir);
-        this.scene.time.delayedCall(300, () => {
+        this.scene.time.delayedCall(250, () => {
           this.avatar.idle();
         });
       },
     });
 
-    // Small wander around origin
+    // Small shuffle around origin (very tight, max 6px from origin)
     this.scene.time.addEvent({
-      delay: 4000 + Math.random() * 4000,
+      delay: 5000 + Math.random() * 4000,
       loop: true,
       callback: () => {
         if (this._isInRange) return;
-        const wanderX = this.originX + (Math.random() - 0.5) * TILE_SIZE * 0.5;
-        const wanderY = this.originY + (Math.random() - 0.5) * TILE_SIZE * 0.3;
+
+        // Kill any active movement tween on this container
+        this.scene.tweens.killTweensOf(container);
+
+        // 50% chance to return to origin, 50% small offset
+        const goHome = Math.random() > 0.5;
+        const targetX = goHome ? this.originX : this.originX + (Math.random() - 0.5) * 12;
+        const targetY = goHome ? this.originY : this.originY + (Math.random() - 0.5) * 8;
+
         this.scene.tweens.add({
           targets: container,
-          x: wanderX,
-          y: wanderY,
-          duration: 900 + Math.random() * 500,
+          x: targetX,
+          y: targetY,
+          duration: 600,
           ease: "Sine.easeInOut",
         });
       },

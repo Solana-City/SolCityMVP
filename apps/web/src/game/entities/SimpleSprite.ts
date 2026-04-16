@@ -2,11 +2,13 @@ import Phaser from "phaser";
 
 export type Direction = "down" | "left" | "right" | "up";
 
+// Sprite sheet row order: down=0, right=1, up=2, left=3
+// This matches the standard output from most sprite generators
 const DIRECTION_ROW: Record<Direction, number> = {
   down: 0,
-  left: 1,
-  right: 2,
-  up: 3,
+  right: 1,
+  up: 2,
+  left: 3,
 };
 
 /**
@@ -37,8 +39,8 @@ export class SimpleSprite {
     this.scene = scene;
     this.textureKey = textureKey;
 
-    this.sprite = scene.add.sprite(0, 0, textureKey);
-    this.sprite.setOrigin(0.5, 0.75);
+    this.sprite = scene.add.sprite(0, -6, textureKey);
+    this.sprite.setOrigin(0.5, 0.8);
 
     this.container = scene.add.container(x, y, [this.sprite]);
 
