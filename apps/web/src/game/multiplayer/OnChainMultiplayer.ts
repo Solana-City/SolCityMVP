@@ -5,7 +5,7 @@ import {
   SystemProgram,
   Keypair,
 } from "@solana/web3.js";
-import { SessionKeyManager } from "./sessionKeys";
+import { SessionKeyManager } from "../solana/sessionKeys";
 
 // MagicBlock endpoints
 const ENDPOINTS = {

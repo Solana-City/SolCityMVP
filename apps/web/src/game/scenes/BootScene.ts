@@ -11,10 +11,7 @@ export class BootScene extends Phaser.Scene {
   preload(): void {
     // Load real sprite sheets (48x48 frames, 4x4 grid)
     SimpleSprite.load(this, "avatar-chef", "assets/sprites/chef.png", 48, 48);
-
-    // Add more characters here as they become available:
-    // SimpleSprite.load(this, "avatar-knight", "assets/sprites/knight.png", 48, 48);
-    // SimpleSprite.load(this, "avatar-mage", "assets/sprites/mage.png", 48, 48);
+    SimpleSprite.load(this, "avatar-orc", "assets/sprites/orc.png", 48, 48);
   }
 
   create(): void {

@@ -63,7 +63,7 @@ export class CityScene extends Phaser.Scene {
     const spawn = getSpawnPoint();
     const spawnX = spawn.x * TILE_SIZE + TILE_SIZE / 2;
     const spawnY = spawn.y * TILE_SIZE + TILE_SIZE / 2;
-    this.avatar = new SimpleSprite(this, spawnX, spawnY, "avatar-chef");
+    this.avatar = new SimpleSprite(this, spawnX, spawnY, "avatar-orc");
 
     const container = this.avatar.getContainer();
     this.physics.world.enable(container);
