@@ -39,8 +39,8 @@ export class SimpleSprite {
     this.scene = scene;
     this.textureKey = textureKey;
 
-    this.sprite = scene.add.sprite(0, -6, textureKey);
-    this.sprite.setOrigin(0.5, 0.8);
+    this.sprite = scene.add.sprite(0, -12, textureKey);
+    this.sprite.setOrigin(0.5, 1.0);
 
     this.container = scene.add.container(x, y, [this.sprite]);
 

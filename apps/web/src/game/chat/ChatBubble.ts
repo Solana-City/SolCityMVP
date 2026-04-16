@@ -43,7 +43,7 @@ export class ChatBubble {
 
     bubbleText.setPosition(0, -BUBBLE_PADDING);
 
-    this.container = scene.add.container(0, -46, [bg, bubbleText]);
+    this.container = scene.add.container(0, -58, [bg, bubbleText]);
     target.add(this.container);
 
     // Fade out and destroy

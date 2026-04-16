@@ -38,12 +38,12 @@ export class NPCSprite {
       color: "#ffffff", fontStyle: "bold",
     }).setOrigin(0.5, 0.5);
 
-    this.exclamation = scene.add.container(0, -50, [excBg, excText]);
+    this.exclamation = scene.add.container(0, -62, [excBg, excText]);
     container.add(this.exclamation);
 
     scene.tweens.add({
       targets: this.exclamation,
-      y: -54,
+      y: -66,
       duration: 800,
       yoyo: true,
       repeat: -1,
@@ -51,7 +51,7 @@ export class NPCSprite {
     });
 
     // Name label in NPC color (players have white/gray names)
-    this.nameText = scene.add.text(0, -40, def.name, {
+    this.nameText = scene.add.text(0, -52, def.name, {
       fontSize: "7px", fontFamily: "monospace",
       color: colorHex,
       align: "center",
@@ -59,7 +59,7 @@ export class NPCSprite {
     container.add(this.nameText);
 
     // [E] prompt
-    this.promptText = scene.add.text(0, -62, `[E] ${def.name}`, {
+    this.promptText = scene.add.text(0, -74, `[E] ${def.name}`, {
       fontSize: "8px", fontFamily: "monospace",
       color: "#14F195", align: "center",
       backgroundColor: "#0a0a1eDD",

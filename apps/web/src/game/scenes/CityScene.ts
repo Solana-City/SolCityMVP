@@ -68,14 +68,14 @@ export class CityScene extends Phaser.Scene {
     const container = this.avatar.getContainer();
     this.physics.world.enable(container);
     this.playerBody = container.body as Phaser.Physics.Arcade.Body;
-    this.playerBody.setSize(TILE_SIZE * 0.6, TILE_SIZE * 0.4);
-    this.playerBody.setOffset(-TILE_SIZE * 0.3, -TILE_SIZE * 0.1);
+    this.playerBody.setSize(TILE_SIZE * 0.5, TILE_SIZE * 0.3);
+    this.playerBody.setOffset(-TILE_SIZE * 0.25, -TILE_SIZE * 0.2);
     this.playerBody.setCollideWorldBounds(true);
     this.physics.add.collider(container, this.collisionLayer);
     this.physics.world.setBounds(0, 0, MAP_COLS * TILE_SIZE, MAP_ROWS * TILE_SIZE);
 
     // "YOU" label
-    const youLabel = this.add.text(0, -40, "YOU", {
+    const youLabel = this.add.text(0, -52, "YOU", {
       fontSize: "8px", fontFamily: "monospace",
       color: "#ffffff", align: "center",
     }).setOrigin(0.5, 1);
@@ -283,7 +283,7 @@ export class CityScene extends Phaser.Scene {
 
     const name = `${wallet.slice(0, 4)}...${wallet.slice(-4)}`;
 
-    const label = this.add.text(0, -40, name, {
+    const label = this.add.text(0, -52, name, {
       fontSize: "7px", fontFamily: "monospace",
       color: "#aaaacc", align: "center",
     }).setOrigin(0.5, 1);
