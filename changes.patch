@@ -1,0 +1,567 @@
+diff --git a/DIAGNOSTICO_MVP_HACKATHON.md b/DIAGNOSTICO_MVP_HACKATHON.md
+new file mode 100644
+index 0000000..b066b44
+--- /dev/null
++++ b/DIAGNOSTICO_MVP_HACKATHON.md
+@@ -0,0 +1,82 @@
++# Diagnóstico do MVP (20/04/2026)
++
++## Status atual
++
++### O que já está sólido
++- Arquitetura-alvo e proposta de valor estão claras: cidade 2D multiplayer com integração Solana e foco em interações on-chain.
++- Frontend base está montado com Next.js + Phaser + Tailwind e estrutura organizada por domínio (`game`, `ui`, `solana`, `multiplayer`).
++- Cena principal (`CityScene`) já tem:
++  - movimento local,
++  - colisão e câmera,
++  - NPCs e interação,
++  - chat local,
++  - gatilho de conexão de carteira.
++- Existe um esqueleto consistente para multiplayer “on-chain” via `OnChainMultiplayer`.
++- O programa Anchor já define as instruções de negócio principais (`initialize_player`, `update_position`, `record_swap`, `record_transfer`, `record_bounty`, `change_outfit`, `delegate`, `undelegate`).
++
++### Gaps críticos hoje (bloqueadores de demo robusta)
++1. **Sessão on-chain ainda em modo mock** no `SessionManager`.
++   - O próprio código explicita que está em “mock mode”.
++   - Commits de estado só fazem log, sem transação real.
++2. **Multiplayer on-chain também em modo simulado**.
++   - `sendPositionTransaction` está comentado/stub.
++   - Descoberta de outros players ainda depende de polling simplificado.
++3. **Build do frontend quebrando** com erro de runtime no `next build` (react-dom-server).
++4. **Lint não está operacional em CI local** porque o projeto pede setup interativo do ESLint no `next lint`.
++5. **Programa Rust não compila** por conflito de versões/tipos no ecossistema Solana (`solana_instruction`/`Address` vs `Pubkey`) via `ephemeral-rollups-sdk`.
++6. **Program ID placeholder** no contrato (`111111...`), indicando que deploy real ainda não está fechado.
++
++## Diagnóstico objetivo para “vencer hackathon”
++
++### Risco principal
++Hoje o projeto demonstra **excelente direção técnica**, mas ainda depende de peças simuladas e builds quebrados. Em hackathon, isso costuma tirar pontos de “entrega funcional ao vivo”.
++
++### O que precisa acontecer (ordem de impacto)
++
++#### Prioridade P0 (obrigatório para demo vencedora)
++1. **Restaurar pipeline de build/lint**
++   - Fazer `next build` passar sem erro.
++   - Fixar configuração de ESLint (sem prompt interativo).
++2. **Fechar compilação do programa Anchor**
++   - Resolver matriz de versões `anchor-lang` / `ephemeral-rollups-sdk` / crates Solana para eliminar erros de tipo incompatível.
++3. **Eliminar mock path na narrativa principal da demo**
++   - Se não der tempo de integração completa, definir claramente um “modo demo estável” com fallback explícito e métricas reais (sem travar).
++
++#### Prioridade P1 (diferencial para pontuação alta)
++4. **Conectar pelo menos 1 fluxo end-to-end on-chain real**
++   - Ex.: `initialize_player + update_position` ou `record_swap` com prova em explorer/log de assinatura.
++5. **Melhorar confiabilidade multiplayer percebida**
++   - Trocar polling por subscription real quando possível, ou deixar a limitação transparente na apresentação.
++
++#### Prioridade P2 (polimento final)
++6. **Storytelling de produto para jurados**
++   - Script de demo em 3 minutos com “before/after” do estado on-chain e impacto do MagicBlock.
++7. **Observabilidade mínima**
++   - Painel/overlay simples com status de sessão, assinatura de tx recente, latência e commit interval.
++
++## Plano de execução sugerido (48h)
++
++### Bloco 1 (0-8h)
++- Corrigir `next build`.
++- Configurar ESLint não interativo.
++- Travar versões de dependências críticas.
++
++### Bloco 2 (8-24h)
++- Corrigir compilação Anchor.
++- Deploy em devnet com `program_id` real.
++- Validar 1 instrução on-chain de ponta a ponta.
++
++### Bloco 3 (24-36h)
++- Integrar frontend ao fluxo real mínimo.
++- Testar sessão com wallet conectando/desconectando sem falhas.
++
++### Bloco 4 (36-48h)
++- Ensaiar demo com checklist (3 execuções seguidas sem erro).
++- Gravar backup video demo (se rede/local falhar no palco).
++
++## Critérios de “pronto para ganhar”
++- `next build` e checagens básicas rodando sem intervenção manual.
++- contrato compilando e deployado em devnet.
++- pelo menos uma ação do jogador gerando transação verificável.
++- demo ao vivo reproduzível em máquina limpa com passos curtos.
++
+diff --git a/apps/web/src/game/chat/EmojiSystem.ts b/apps/web/src/game/chat/EmojiSystem.ts
+index 7085f5c..3fcc1b5 100644
+--- a/apps/web/src/game/chat/EmojiSystem.ts
++++ b/apps/web/src/game/chat/EmojiSystem.ts
+@@ -6,15 +6,17 @@ export interface EmojiDef {
+   key: string; // keyboard key to trigger
+   symbol: string; // text rendered above avatar
+   color: string;
++  artKey: string;
++  uiSymbol: string;
+ }
+ 
+ export const EMOJI_REGISTRY: EmojiDef[] = [
+-  { id: "wave", label: "Wave", key: "1", symbol: "gm!", color: "#14F195" },
+-  { id: "heart", label: "Heart", key: "2", symbol: "<3", color: "#F72585" },
+-  { id: "fire", label: "Fire", key: "3", symbol: "LFG", color: "#FF6B35" },
+-  { id: "laugh", label: "Laugh", key: "4", symbol: "lol", color: "#FFD700" },
+-  { id: "think", label: "Think", key: "5", symbol: "hmm", color: "#00D1FF" },
+-  { id: "gg", label: "GG", key: "6", symbol: "GG", color: "#9945FF" },
++  { id: "wave", label: "Wave", key: "1", symbol: "gm!", color: "#14F195", artKey: "emoji-wave", uiSymbol: "👋" },
++  { id: "heart", label: "Heart", key: "2", symbol: "<3", color: "#F72585", artKey: "emoji-heart", uiSymbol: "💜" },
++  { id: "fire", label: "Fire", key: "3", symbol: "LFG", color: "#FF6B35", artKey: "emoji-fire", uiSymbol: "🔥" },
++  { id: "laugh", label: "Laugh", key: "4", symbol: "lol", color: "#FFD700", artKey: "emoji-laugh", uiSymbol: "😆" },
++  { id: "think", label: "Think", key: "5", symbol: "hmm", color: "#00D1FF", artKey: "emoji-think", uiSymbol: "🤔" },
++  { id: "gg", label: "GG", key: "6", symbol: "GG", color: "#9945FF", artKey: "emoji-gg", uiSymbol: "🏆" },
+ ];
+ 
+ const EMOJI_DURATION = 2500;
+@@ -29,26 +31,32 @@ export function showEmoji(
+   target: Phaser.GameObjects.Container,
+   emoji: EmojiDef
+ ): void {
+-  const text = scene.add.text(0, -30, emoji.symbol, {
++  ensureEmojiArt(scene);
++
++  const bubble = scene.add.container(0, -30);
++  const glow = scene.add.circle(0, -2, 14, 0x0a0a1e, 0.85).setStrokeStyle(2, 0xffffff, 0.08);
++  const icon = scene.add.image(0, -2, emoji.artKey).setScale(1.25);
++  const text = scene.add.text(0, 16, emoji.symbol, {
+     fontSize: "12px",
+     fontFamily: '"Press Start 2P", monospace',
+     color: emoji.color,
+     align: "center",
+     stroke: "#0a0a1e",
+-    strokeThickness: 3,
++    strokeThickness: 4,
+   }).setOrigin(0.5, 1);
++  bubble.add([glow, icon, text]);
+ 
+-  target.add(text);
++  target.add(bubble);
+ 
+   scene.tweens.add({
+-    targets: text,
++    targets: bubble,
+     y: -30 - EMOJI_FLOAT_HEIGHT,
+     alpha: 0,
+     duration: EMOJI_DURATION,
+     ease: "Cubic.easeOut",
+     onComplete: () => {
+-      target.remove(text);
+-      text.destroy();
++      target.remove(bubble);
++      bubble.destroy();
+     },
+   });
+ }
+@@ -71,3 +79,61 @@ export function setupEmojiKeys(
+     });
+   }
+ }
++
++export function ensureEmojiArt(scene: Phaser.Scene): void {
++  for (const emoji of EMOJI_REGISTRY) {
++    if (scene.textures.exists(emoji.artKey)) continue;
++    const g = scene.add.graphics({ x: 0, y: 0 });
++    g.fillStyle(0x0a0a1e, 0.2);
++    g.fillCircle(12, 12, 12);
++
++    switch (emoji.id) {
++      case "wave":
++        g.fillStyle(0x14f195, 1);
++        g.fillRoundedRect(6, 5, 10, 13, 4);
++        g.fillStyle(0x8cf7c8, 1);
++        g.fillRect(9, 2, 2, 5);
++        g.fillRect(12, 2, 2, 5);
++        break;
++      case "heart":
++        g.fillStyle(0xf72585, 1);
++        g.fillCircle(8, 9, 5);
++        g.fillCircle(16, 9, 5);
++        g.fillTriangle(4, 11, 20, 11, 12, 20);
++        break;
++      case "fire":
++        g.fillStyle(0xff6b35, 1);
++        g.fillTriangle(12, 3, 5, 18, 19, 18);
++        g.fillStyle(0xffd166, 1);
++        g.fillTriangle(12, 7, 8, 17, 16, 17);
++        break;
++      case "laugh":
++        g.fillStyle(0xffd700, 1);
++        g.fillCircle(12, 12, 10);
++        g.fillStyle(0x1a1a3e, 1);
++        g.fillRect(8, 9, 2, 2);
++        g.fillRect(14, 9, 2, 2);
++        g.fillRoundedRect(8, 14, 8, 3, 2);
++        break;
++      case "think":
++        g.fillStyle(0x00d1ff, 1);
++        g.fillCircle(11, 11, 8);
++        g.fillStyle(0x061a2c, 1);
++        g.fillRect(8, 9, 2, 2);
++        g.fillRect(12, 9, 2, 2);
++        g.fillRect(10, 14, 4, 2);
++        g.fillCircle(18, 18, 2);
++        break;
++      case "gg":
++        g.fillStyle(0x9945ff, 1);
++        g.fillRoundedRect(5, 5, 14, 14, 3);
++        g.fillStyle(0xffd700, 1);
++        g.fillRect(10, 7, 4, 8);
++        g.fillRect(8, 15, 8, 2);
++        break;
++    }
++
++    g.generateTexture(emoji.artKey, 24, 24);
++    g.destroy();
++  }
++}
+diff --git a/apps/web/src/game/config/constants.ts b/apps/web/src/game/config/constants.ts
+index ae33a7b..a1e263f 100644
+--- a/apps/web/src/game/config/constants.ts
++++ b/apps/web/src/game/config/constants.ts
+@@ -1,10 +1,10 @@
+-export const TILE_SIZE = 32;
++export const TILE_SIZE = 64;
+ export const MAP_COLS = 40;
+ export const MAP_ROWS = 30;
+ export const MAP_WIDTH = MAP_COLS * TILE_SIZE;
+ export const MAP_HEIGHT = MAP_ROWS * TILE_SIZE;
+ 
+-export const PLAYER_SPEED = 160;
++export const PLAYER_SPEED = 220;
+ 
+ export const COLORS = {
+   PURPLE: 0x9945ff,
+diff --git a/apps/web/src/game/scenes/CityScene.ts b/apps/web/src/game/scenes/CityScene.ts
+index 5debeee..ac1484f 100644
+--- a/apps/web/src/game/scenes/CityScene.ts
++++ b/apps/web/src/game/scenes/CityScene.ts
+@@ -84,7 +84,7 @@ export class CityScene extends Phaser.Scene {
+     // Camera
+     this.cameras.main.setBounds(0, 0, MAP_COLS * TILE_SIZE, MAP_ROWS * TILE_SIZE);
+     this.cameras.main.startFollow(container, true, 0.08, 0.08);
+-    this.cameras.main.setZoom(2);
++    this.cameras.main.setZoom(1.45);
+     this.cameras.main.setBackgroundColor(0x061a2c);
+ 
+     // Input
+diff --git a/apps/web/src/game/utils/tilesetGenerator.ts b/apps/web/src/game/utils/tilesetGenerator.ts
+index 867a63f..ccae1b5 100644
+--- a/apps/web/src/game/utils/tilesetGenerator.ts
++++ b/apps/web/src/game/utils/tilesetGenerator.ts
+@@ -22,8 +22,8 @@ const TILE_COLORS: Record<number, number> = {
+ const TILE_COUNT = Object.keys(TILE_COLORS).length;
+ 
+ /**
+- * Generates a tileset texture at runtime.
+- * Each tile is a colored square in a vertical strip.
++ * Generates a runtime pixel-art tileset in a vertical strip.
++ * Visual style: top-down cyber city with Solana neon accents.
+  */
+ export function generateTileset(scene: Phaser.Scene): void {
+   const width = TILE_SIZE;
+@@ -35,25 +35,151 @@ export function generateTileset(scene: Phaser.Scene): void {
+ 
+   for (let i = 0; i < TILE_COUNT; i++) {
+     const color = TILE_COLORS[i] ?? 0x333333;
+-    ctx.fillStyle = `#${color.toString(16).padStart(6, "0")}`;
+-    ctx.fillRect(0, i * TILE_SIZE, TILE_SIZE, TILE_SIZE);
++    const y = i * TILE_SIZE;
++    paintBaseTile(ctx, y, color);
+ 
+-    ctx.fillStyle = "rgba(0,0,0,0.05)";
+-    ctx.fillRect(0, i * TILE_SIZE, TILE_SIZE, 1);
+-    ctx.fillRect(0, i * TILE_SIZE, 1, TILE_SIZE);
+-
+-    // Plaza tiles get a subtle pattern
+-    if (i === Tile.PLAZA) {
+-      ctx.fillStyle = "rgba(255,255,255,0.04)";
+-      ctx.fillRect(2, i * TILE_SIZE + 2, TILE_SIZE - 4, TILE_SIZE - 4);
++    switch (i) {
++      case Tile.GRASS_A:
++      case Tile.GRASS_B:
++        paintGrass(ctx, y, i === Tile.GRASS_B);
++        break;
++      case Tile.PATH:
++      case Tile.PATH_ACCENT:
++        paintNeonRoad(ctx, y, i === Tile.PATH_ACCENT);
++        break;
++      case Tile.PLAZA:
++        paintPlaza(ctx, y);
++        break;
++      case Tile.SAND:
++        paintSand(ctx, y);
++        break;
++      case Tile.WATER:
++      case Tile.WATER_DEEP:
++        paintWater(ctx, y, i === Tile.WATER_DEEP);
++        break;
++      case Tile.DOCK:
++        paintDock(ctx, y);
++        break;
++      case Tile.BLD_JUPITER:
++      case Tile.BLD_POST:
++      case Tile.BLD_GUILD:
++      case Tile.BLD_SUPERTEAM:
++      case Tile.BUILDING:
++        paintBuildingRoof(ctx, y, color);
++        break;
++      case Tile.PARK:
++        paintPark(ctx, y);
++        break;
++      case Tile.FLOWERS:
++        paintFlowers(ctx, y);
++        break;
+     }
+ 
+-    // Path accent gets a Solana purple tint line
+-    if (i === Tile.PATH_ACCENT) {
+-      ctx.fillStyle = "rgba(153,69,255,0.15)";
+-      ctx.fillRect(0, i * TILE_SIZE + TILE_SIZE - 3, TILE_SIZE, 3);
+-    }
++    paintTileBorder(ctx, y);
+   }
+ 
+   scene.textures.addCanvas("tileset", canvas);
+ }
++
++function toHex(color: number): string {
++  return `#${color.toString(16).padStart(6, "0")}`;
++}
++
++function paintBaseTile(ctx: CanvasRenderingContext2D, y: number, baseColor: number): void {
++  ctx.fillStyle = toHex(baseColor);
++  ctx.fillRect(0, y, TILE_SIZE, TILE_SIZE);
++}
++
++function paintTileBorder(ctx: CanvasRenderingContext2D, y: number): void {
++  ctx.fillStyle = "rgba(0, 0, 0, 0.25)";
++  ctx.fillRect(0, y, TILE_SIZE, 2);
++  ctx.fillRect(0, y, 2, TILE_SIZE);
++}
++
++function paintGrass(ctx: CanvasRenderingContext2D, y: number, dense: boolean): void {
++  ctx.fillStyle = dense ? "rgba(20, 241, 149, 0.14)" : "rgba(255,255,255,0.04)";
++  for (let py = 6; py < TILE_SIZE; py += 10) {
++    for (let px = (py / 2) % 8; px < TILE_SIZE; px += 12) {
++      ctx.fillRect(px, y + py, 2, 2);
++    }
++  }
++}
++
++function paintNeonRoad(ctx: CanvasRenderingContext2D, y: number, accent: boolean): void {
++  ctx.fillStyle = "rgba(0,0,0,0.25)";
++  for (let x = 0; x < TILE_SIZE; x += 8) {
++    ctx.fillRect(x, y + 12, 4, 2);
++    ctx.fillRect(x + 2, y + TILE_SIZE - 14, 4, 2);
++  }
++
++  ctx.fillStyle = accent ? "rgba(153,69,255,0.65)" : "rgba(0,209,255,0.45)";
++  ctx.fillRect(0, y + Math.floor(TILE_SIZE / 2) - 1, TILE_SIZE, 2);
++}
++
++function paintPlaza(ctx: CanvasRenderingContext2D, y: number): void {
++  ctx.fillStyle = "rgba(255,255,255,0.07)";
++  for (let p = 0; p < TILE_SIZE; p += 16) {
++    ctx.fillRect(p, y, 1, TILE_SIZE);
++    ctx.fillRect(0, y + p, TILE_SIZE, 1);
++  }
++  ctx.fillStyle = "rgba(20,241,149,0.18)";
++  ctx.fillRect(24, y + 24, 16, 16);
++}
++
++function paintSand(ctx: CanvasRenderingContext2D, y: number): void {
++  ctx.fillStyle = "rgba(255,255,255,0.13)";
++  for (let i = 0; i < 22; i++) {
++    const x = (i * 11) % TILE_SIZE;
++    const yy = y + ((i * 17) % TILE_SIZE);
++    ctx.fillRect(x, yy, 2, 2);
++  }
++}
++
++function paintWater(ctx: CanvasRenderingContext2D, y: number, deep: boolean): void {
++  ctx.fillStyle = deep ? "rgba(153,69,255,0.23)" : "rgba(0,209,255,0.2)";
++  for (let row = 8; row < TILE_SIZE - 6; row += 12) {
++    ctx.fillRect(6, y + row, TILE_SIZE - 12, 2);
++  }
++  ctx.fillStyle = "rgba(255,255,255,0.08)";
++  ctx.fillRect(6, y + 6, TILE_SIZE - 12, 1);
++}
++
++function paintDock(ctx: CanvasRenderingContext2D, y: number): void {
++  ctx.fillStyle = "rgba(0,0,0,0.2)";
++  for (let x = 0; x < TILE_SIZE; x += 10) {
++    ctx.fillRect(x, y, 2, TILE_SIZE);
++  }
++  ctx.fillStyle = "rgba(255,255,255,0.05)";
++  ctx.fillRect(0, y + TILE_SIZE - 6, TILE_SIZE, 2);
++}
++
++function paintBuildingRoof(ctx: CanvasRenderingContext2D, y: number, baseColor: number): void {
++  ctx.fillStyle = "rgba(0,0,0,0.22)";
++  ctx.fillRect(0, y, TILE_SIZE, 10);
++  ctx.fillStyle = "rgba(255,255,255,0.08)";
++  ctx.fillRect(4, y + 14, TILE_SIZE - 8, 6);
++
++  // Neon sign bar inspired by Solana palette.
++  ctx.fillStyle = baseColor === COLORS.BLD_JUPITER ? "#FFD700" : "#9945FF";
++  ctx.fillRect(10, y + TILE_SIZE - 16, TILE_SIZE - 20, 4);
++}
++
++function paintPark(ctx: CanvasRenderingContext2D, y: number): void {
++  ctx.fillStyle = "rgba(255,255,255,0.07)";
++  for (let x = 6; x < TILE_SIZE; x += 12) {
++    ctx.fillRect(x, y + 10, 2, 2);
++    ctx.fillRect(x + 3, y + 26, 2, 2);
++    ctx.fillRect(x + 1, y + 44, 2, 2);
++  }
++}
++
++function paintFlowers(ctx: CanvasRenderingContext2D, y: number): void {
++  paintGrass(ctx, y, true);
++  const tones = ["#F72585", "#FFD700", "#14F195", "#00D1FF"];
++  for (let i = 0; i < 16; i++) {
++    const x = 6 + ((i * 13) % (TILE_SIZE - 12));
++    const yy = y + 8 + ((i * 9) % (TILE_SIZE - 14));
++    ctx.fillStyle = tones[i % tones.length];
++    ctx.fillRect(x, yy, 2, 2);
++  }
++}
+diff --git a/apps/web/src/ui/ChatPanel.tsx b/apps/web/src/ui/ChatPanel.tsx
+index dd4c252..45a3f60 100644
+--- a/apps/web/src/ui/ChatPanel.tsx
++++ b/apps/web/src/ui/ChatPanel.tsx
+@@ -90,8 +90,11 @@ export default function ChatPanel({ gameRef }: ChatPanelProps) {
+   return (
+     <div
+       className="fixed bottom-4 left-4 z-20"
+-      style={{ width: 340, fontFamily: '"Fira Code", monospace' }}
++      style={{ width: 360, fontFamily: '"Fira Code", monospace' }}
+     >
++      <div className="text-[10px] mb-1 px-1" style={{ color: "#7a7a9a" }}>
++        Enter: chat • Esc: close input • 1-6: emotes
++      </div>
+       {/* Channel tabs */}
+       <div className="flex gap-0.5 mb-0.5 overflow-x-auto">
+         {fixedTabs.map((ch) => (
+@@ -131,11 +134,12 @@ export default function ChatPanel({ gameRef }: ChatPanelProps) {
+           ref={logRef}
+           className="overflow-y-auto mb-0.5 p-2 rounded-b"
+           style={{
+-            background: "rgba(10,10,30,0.92)",
+-            maxHeight: 180,
+-            minHeight: 80,
+-            border: "1px solid rgba(153,69,255,0.15)",
++            background: "linear-gradient(180deg, rgba(15,18,40,0.96) 0%, rgba(8,10,24,0.96) 100%)",
++            maxHeight: 210,
++            minHeight: 92,
++            border: "1px solid rgba(153,69,255,0.2)",
+             borderTop: "none",
++            backdropFilter: "blur(3px)",
+           }}
+         >
+           {messages.length === 0 && (
+@@ -148,8 +152,8 @@ export default function ChatPanel({ gameRef }: ChatPanelProps) {
+               <span style={{ color: msg.color || channelColor }}>
+                 {msg.senderName}
+               </span>
+-              <span style={{ color: "#444455" }}>{": "}</span>
+-              <span style={{ color: "#ccccdd" }}>{msg.text}</span>
++              <span style={{ color: "#444455" }}>{"> "}</span>
++              <span style={{ color: "#d6d6e8" }}>{msg.text}</span>
+             </div>
+           ))}
+         </div>
+@@ -159,7 +163,11 @@ export default function ChatPanel({ gameRef }: ChatPanelProps) {
+       {showEmojis && (
+         <div
+           className="flex gap-1 p-1.5 rounded mb-0.5"
+-          style={{ background: "rgba(10,10,30,0.92)", border: "1px solid rgba(153,69,255,0.15)" }}
++          style={{
++            background: "rgba(10,10,30,0.92)",
++            border: "1px solid rgba(153,69,255,0.2)",
++            backdropFilter: "blur(2px)",
++          }}
+         >
+           {EMOJI_REGISTRY.map((em) => (
+             <button
+@@ -172,13 +180,17 @@ export default function ChatPanel({ gameRef }: ChatPanelProps) {
+               style={{
+                 background: `${em.color}15`,
+                 color: em.color,
+-                border: "none",
++                border: `1px solid ${em.color}30`,
+                 fontFamily: '"Press Start 2P", monospace',
+-                fontSize: "7px",
++                fontSize: "8px",
++                display: "flex",
++                alignItems: "center",
++                gap: 4,
+               }}
+               title={`${em.label} [${em.key}]`}
+             >
+-              {em.symbol}
++              <span>{em.uiSymbol}</span>
++              <span>{em.symbol}</span>
+             </button>
+           ))}
+         </div>
+@@ -190,13 +202,13 @@ export default function ChatPanel({ gameRef }: ChatPanelProps) {
+           onClick={() => setShowEmojis(!showEmojis)}
+           className="px-2 rounded text-sm cursor-pointer"
+           style={{
+-            background: "rgba(10,10,30,0.92)",
++            background: "rgba(10,10,30,0.94)",
+             color: showEmojis ? "#14F195" : "#555566",
+-            border: "1px solid rgba(153,69,255,0.15)",
++            border: "1px solid rgba(153,69,255,0.2)",
+           }}
+           title="Emojis"
+         >
+-          :)
++          ✦
+         </button>
+         <input
+           ref={inputRef}
+@@ -210,9 +222,9 @@ export default function ChatPanel({ gameRef }: ChatPanelProps) {
+           maxLength={140}
+           className="flex-1 px-2 py-1.5 text-xs rounded outline-none"
+           style={{
+-            background: "rgba(10,10,30,0.92)",
+-            color: "#ccccdd",
+-            border: "1px solid rgba(153,69,255,0.15)",
++            background: "rgba(10,10,30,0.94)",
++            color: "#d9d9ec",
++            border: "1px solid rgba(153,69,255,0.2)",
+             fontFamily: '"Fira Code", monospace',
+           }}
+         />
+diff --git a/apps/web/src/ui/WalletBar.tsx b/apps/web/src/ui/WalletBar.tsx
+index dbfc929..224f4a4 100644
+--- a/apps/web/src/ui/WalletBar.tsx
++++ b/apps/web/src/ui/WalletBar.tsx
+@@ -53,6 +53,24 @@ export default function WalletBar({ onWalletChange }: WalletBarProps) {
+       className="flex items-center gap-3"
+       style={{ fontFamily: '"Fira Code", monospace' }}
+     >
++      <span
++        className="inline-flex items-center gap-1.5 text-[10px] px-2 py-1 rounded"
++        style={{
++          background: "rgba(10,10,30,0.88)",
++          color: connected ? "#14F195" : "#8a8aa7",
++          border: "1px solid rgba(153,69,255,0.18)",
++        }}
++        title={connected ? "Wallet online" : "Wallet offline"}
++      >
++        <span style={{
++          width: 6,
++          height: 6,
++          borderRadius: "50%",
++          display: "inline-block",
++          background: connected ? "#14F195" : "#555566",
++        }} />
++        {connected ? "ON-CHAIN" : "OFFLINE"}
++      </span>
+       {connected && shortAddr && (
+         <>
+           {balance !== null && (

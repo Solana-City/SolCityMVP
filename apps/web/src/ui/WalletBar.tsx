@@ -53,6 +53,24 @@ export default function WalletBar({ onWalletChange }: WalletBarProps) {
       className="flex items-center gap-3"
       style={{ fontFamily: '"Fira Code", monospace' }}
     >
+      <span
+        className="inline-flex items-center gap-1.5 text-[10px] px-2 py-1 rounded"
+        style={{
+          background: "rgba(10,10,30,0.88)",
+          color: connected ? "#14F195" : "#8a8aa7",
+          border: "1px solid rgba(153,69,255,0.18)",
+        }}
+        title={connected ? "Wallet online" : "Wallet offline"}
+      >
+        <span style={{
+          width: 6,
+          height: 6,
+          borderRadius: "50%",
+          display: "inline-block",
+          background: connected ? "#14F195" : "#555566",
+        }} />
+        {connected ? "ON-CHAIN" : "OFFLINE"}
+      </span>
       {connected && shortAddr && (
         <>
           {balance !== null && (

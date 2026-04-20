@@ -1,10 +1,10 @@
-export const TILE_SIZE = 32;
+export const TILE_SIZE = 64;
 export const MAP_COLS = 40;
 export const MAP_ROWS = 30;
 export const MAP_WIDTH = MAP_COLS * TILE_SIZE;
 export const MAP_HEIGHT = MAP_ROWS * TILE_SIZE;
 
-export const PLAYER_SPEED = 160;
+export const PLAYER_SPEED = 220;
 
 export const COLORS = {
   PURPLE: 0x9945ff,

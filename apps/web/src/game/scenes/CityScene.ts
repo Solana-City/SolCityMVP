@@ -84,7 +84,7 @@ export class CityScene extends Phaser.Scene {
     // Camera
     this.cameras.main.setBounds(0, 0, MAP_COLS * TILE_SIZE, MAP_ROWS * TILE_SIZE);
     this.cameras.main.startFollow(container, true, 0.08, 0.08);
-    this.cameras.main.setZoom(2);
+    this.cameras.main.setZoom(1.45);
     this.cameras.main.setBackgroundColor(0x061a2c);
 
     // Input

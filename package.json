@@ -8,5 +8,8 @@
   "scripts": {
     "dev": "npm run dev --workspace=apps/web",
     "build": "npm run build --workspace=apps/web"
+  },
+  "devDependencies": {
+    "pino-pretty": "^13.1.3"
   }
 }
