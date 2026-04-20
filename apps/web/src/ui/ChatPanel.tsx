@@ -90,8 +90,11 @@ export default function ChatPanel({ gameRef }: ChatPanelProps) {
   return (
     <div
       className="fixed bottom-4 left-4 z-20"
-      style={{ width: 340, fontFamily: '"Fira Code", monospace' }}
+      style={{ width: 360, fontFamily: '"Fira Code", monospace' }}
     >
+      <div className="text-[10px] mb-1 px-1" style={{ color: "#7a7a9a" }}>
+        Enter: chat • Esc: close input • 1-6: emotes
+      </div>
       {/* Channel tabs */}
       <div className="flex gap-0.5 mb-0.5 overflow-x-auto">
         {fixedTabs.map((ch) => (
@@ -131,11 +134,12 @@ export default function ChatPanel({ gameRef }: ChatPanelProps) {
           ref={logRef}
           className="overflow-y-auto mb-0.5 p-2 rounded-b"
           style={{
-            background: "rgba(10,10,30,0.92)",
-            maxHeight: 180,
-            minHeight: 80,
-            border: "1px solid rgba(153,69,255,0.15)",
+            background: "linear-gradient(180deg, rgba(15,18,40,0.96) 0%, rgba(8,10,24,0.96) 100%)",
+            maxHeight: 210,
+            minHeight: 92,
+            border: "1px solid rgba(153,69,255,0.2)",
             borderTop: "none",
+            backdropFilter: "blur(3px)",
           }}
         >
           {messages.length === 0 && (
@@ -148,8 +152,8 @@ export default function ChatPanel({ gameRef }: ChatPanelProps) {
               <span style={{ color: msg.color || channelColor }}>
                 {msg.senderName}
               </span>
-              <span style={{ color: "#444455" }}>{": "}</span>
-              <span style={{ color: "#ccccdd" }}>{msg.text}</span>
+              <span style={{ color: "#444455" }}>{"> "}</span>
+              <span style={{ color: "#d6d6e8" }}>{msg.text}</span>
             </div>
           ))}
         </div>
@@ -159,7 +163,11 @@ export default function ChatPanel({ gameRef }: ChatPanelProps) {
       {showEmojis && (
         <div
           className="flex gap-1 p-1.5 rounded mb-0.5"
-          style={{ background: "rgba(10,10,30,0.92)", border: "1px solid rgba(153,69,255,0.15)" }}
+          style={{
+            background: "rgba(10,10,30,0.92)",
+            border: "1px solid rgba(153,69,255,0.2)",
+            backdropFilter: "blur(2px)",
+          }}
         >
           {EMOJI_REGISTRY.map((em) => (
             <button
@@ -172,13 +180,17 @@ export default function ChatPanel({ gameRef }: ChatPanelProps) {
               style={{
                 background: `${em.color}15`,
                 color: em.color,
-                border: "none",
+                border: `1px solid ${em.color}30`,
                 fontFamily: '"Press Start 2P", monospace',
-                fontSize: "7px",
+                fontSize: "8px",
+                display: "flex",
+                alignItems: "center",
+                gap: 4,
               }}
               title={`${em.label} [${em.key}]`}
             >
-              {em.symbol}
+              <span>{em.uiSymbol}</span>
+              <span>{em.symbol}</span>
             </button>
           ))}
         </div>
@@ -190,13 +202,13 @@ export default function ChatPanel({ gameRef }: ChatPanelProps) {
           onClick={() => setShowEmojis(!showEmojis)}
           className="px-2 rounded text-sm cursor-pointer"
           style={{
-            background: "rgba(10,10,30,0.92)",
+            background: "rgba(10,10,30,0.94)",
             color: showEmojis ? "#14F195" : "#555566",
-            border: "1px solid rgba(153,69,255,0.15)",
+            border: "1px solid rgba(153,69,255,0.2)",
           }}
           title="Emojis"
         >
-          :)
+          ✦
         </button>
         <input
           ref={inputRef}
@@ -210,9 +222,9 @@ export default function ChatPanel({ gameRef }: ChatPanelProps) {
           maxLength={140}
           className="flex-1 px-2 py-1.5 text-xs rounded outline-none"
           style={{
-            background: "rgba(10,10,30,0.92)",
-            color: "#ccccdd",
-            border: "1px solid rgba(153,69,255,0.15)",
+            background: "rgba(10,10,30,0.94)",
+            color: "#d9d9ec",
+            border: "1px solid rgba(153,69,255,0.2)",
             fontFamily: '"Fira Code", monospace',
           }}
         />
