@@ -15,7 +15,7 @@ export class CityScene extends Phaser.Scene {
   private playerBody!: Phaser.Physics.Arcade.Body;
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
   private wasd!: Record<string, Phaser.Input.Keyboard.Key>;
-  private collisionLayer!: Phaser.Tilemaps.TilemapLayer;
+  private collisionGroup!: Phaser.Physics.Arcade.StaticGroup;
 
   private network!: OnChainMultiplayer;
   private chat!: ChatManager;
@@ -45,19 +45,21 @@ export class CityScene extends Phaser.Scene {
     if (!tileset) return;
     map.createLayer(0, tileset, 0, 0);
 
-    const collisionMap = this.make.tilemap({
-      data: this.reshape(
-        collision.map((v) => (v === 0 ? 0 : -1)),
-        width, height
-      ),
-      tileWidth: TILE_SIZE,
-      tileHeight: TILE_SIZE,
-    });
-    const collisionTileset = collisionMap.addTilesetImage("tileset", "tileset", TILE_SIZE, TILE_SIZE, 0, 0);
-    if (!collisionTileset) return;
-    this.collisionLayer = collisionMap.createLayer(0, collisionTileset, 0, 0)!;
-    this.collisionLayer.setVisible(false);
-    this.collisionLayer.setCollisionByExclusion([-1]);
+    // Collision: create static bodies for each blocked tile
+    this.collisionGroup = this.physics.add.staticGroup();
+    for (let r = 0; r < height; r++) {
+      for (let c = 0; c < width; c++) {
+        const idx = r * width + c;
+        if (collision[idx] === 0) {
+          const bx = c * TILE_SIZE + TILE_SIZE / 2;
+          const by = r * TILE_SIZE + TILE_SIZE / 2;
+          const block = this.add.rectangle(bx, by, TILE_SIZE, TILE_SIZE);
+          block.setVisible(false);
+          this.physics.add.existing(block, true);
+          this.collisionGroup.add(block);
+        }
+      }
+    }
 
     // Local player using full sprite sheet
     const spawn = getSpawnPoint();
@@ -71,7 +73,7 @@ export class CityScene extends Phaser.Scene {
     this.playerBody.setSize(TILE_SIZE * 0.5, TILE_SIZE * 0.3);
     this.playerBody.setOffset(-TILE_SIZE * 0.25, -TILE_SIZE * 0.2);
     this.playerBody.setCollideWorldBounds(true);
-    this.physics.add.collider(container, this.collisionLayer);
+    this.physics.add.collider(container, this.collisionGroup);
     this.physics.world.setBounds(0, 0, MAP_COLS * TILE_SIZE, MAP_ROWS * TILE_SIZE);
 
     // "YOU" label
@@ -157,9 +159,19 @@ export class CityScene extends Phaser.Scene {
       }
     });
 
-    // NPCs
+    // NPCs with collision bodies
     for (const def of NPC_REGISTRY) {
-      this.npcSprites.push(new NPCSprite(this, def));
+      const npc = new NPCSprite(this, def);
+      this.npcSprites.push(npc);
+
+      // Add static collision body so player can't walk through NPCs
+      const npcContainer = npc.getContainer();
+      this.physics.world.enable(npcContainer);
+      const npcBody = npcContainer.body as Phaser.Physics.Arcade.Body;
+      npcBody.setSize(TILE_SIZE * 0.6, TILE_SIZE * 0.4);
+      npcBody.setOffset(-TILE_SIZE * 0.3, -TILE_SIZE * 0.2);
+      npcBody.setImmovable(true);
+      this.physics.add.collider(container, npcContainer);
     }
 
     // NPC interaction listener from React

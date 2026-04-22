@@ -96,6 +96,10 @@ export class NPCSprite {
     return { x: c.x, y: c.y };
   }
 
+  getContainer(): Phaser.GameObjects.Container {
+    return this.avatar.getContainer();
+  }
+
   destroy(): void {
     this.avatar.destroy();
   }
