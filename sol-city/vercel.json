@@ -1,0 +1,10 @@
+{
+  "buildCommand": "cd apps/web && npm install && npm run build",
+  "outputDirectory": "apps/web/.next",
+  "installCommand": "npm install",
+  "framework": "nextjs",
+  "env": {
+    "NEXT_PUBLIC_JUPITER_API_KEY": "",
+    "NEXT_PUBLIC_NETWORK": "devnet"
+  }
+}
