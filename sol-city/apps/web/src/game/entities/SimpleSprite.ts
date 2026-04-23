@@ -39,7 +39,20 @@ export class SimpleSprite {
     this.scene = scene;
     this.textureKey = textureKey;
 
-    this.sprite = scene.add.sprite(0, -12, textureKey);
+    // Pixel-perfect foot alignment across sprite sizes.
+    //
+    // The container's (0,0) is where the physics body center lives on the
+    // tile grid. We want the character's *feet* to land on a consistent
+    // world y regardless of whether the frame is 48×48 (chef), 64×64
+    // (old DOM), or 32×64 (new tall format).
+    //
+    // With origin (0.5, 1.0) the sprite's bottom edge is at local y = yOffset.
+    // We pick yOffset so that feet land at FOOT_Y_LOCAL below the origin —
+    // the same value used by the previous 48×48 tuning (~12 px above
+    // container center, so the body's bottom rests near the tile floor).
+    const FOOT_Y_LOCAL = -12;
+
+    this.sprite = scene.add.sprite(0, FOOT_Y_LOCAL, textureKey);
     this.sprite.setOrigin(0.5, 1.0);
 
     this.container = scene.add.container(x, y, [this.sprite]);

@@ -25,25 +25,30 @@ export class NPCSprite {
     this.originX = x;
     this.originY = y;
 
-    // NPCs use the same sprite sheet as players
-    this.avatar = new SimpleSprite(scene, x, y, "avatar-chef");
+    // Choose the NPC's sprite sheet: its declared key if loaded, else chef.
+    const desiredKey = def.spriteKey ?? "avatar-chef";
+    const spriteKey = scene.textures.exists(desiredKey)
+      ? desiredKey
+      : "avatar-chef";
+    this.avatar = new SimpleSprite(scene, x, y, spriteKey);
 
     const container = this.avatar.getContainer();
     const colorHex = `#${def.color.toString(16).padStart(6, "0")}`;
 
     // Exclamation mark (visual distinction from players)
-    const excBg = scene.add.circle(0, 0, 7, def.color);
+    const excBg = scene.add.circle(0, 0, 9, def.color);
     const excText = scene.add.text(0, 0, "!", {
-      fontSize: "10px", fontFamily: "monospace",
+      fontSize: "14px", fontFamily: "monospace",
       color: "#ffffff", fontStyle: "bold",
+      resolution: 2,
     }).setOrigin(0.5, 0.5);
 
-    this.exclamation = scene.add.container(0, -62, [excBg, excText]);
+    this.exclamation = scene.add.container(0, -42, [excBg, excText]);
     container.add(this.exclamation);
 
     scene.tweens.add({
       targets: this.exclamation,
-      y: -66,
+      y: -46,
       duration: 800,
       yoyo: true,
       repeat: -1,
@@ -51,19 +56,23 @@ export class NPCSprite {
     });
 
     // Name label in NPC color (players have white/gray names)
-    this.nameText = scene.add.text(0, -52, def.name, {
-      fontSize: "7px", fontFamily: "monospace",
+    this.nameText = scene.add.text(0, -32, def.name, {
+      fontSize: "12px", fontFamily: "monospace",
       color: colorHex,
       align: "center",
+      resolution: 2,
+      stroke: "#0a0a1e",
+      strokeThickness: 3,
     }).setOrigin(0.5, 1);
     container.add(this.nameText);
 
     // [E] prompt
-    this.promptText = scene.add.text(0, -74, `[E] ${def.name}`, {
-      fontSize: "8px", fontFamily: "monospace",
+    this.promptText = scene.add.text(0, -52, `[E] ${def.name}`, {
+      fontSize: "12px", fontFamily: "monospace",
       color: "#14F195", align: "center",
       backgroundColor: "#0a0a1eDD",
-      padding: { x: 6, y: 3 },
+      padding: { x: 8, y: 4 },
+      resolution: 2,
     }).setOrigin(0.5, 1).setVisible(false);
     container.add(this.promptText);
 

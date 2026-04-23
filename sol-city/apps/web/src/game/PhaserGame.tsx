@@ -17,11 +17,13 @@ export default function PhaserGame({ onGameReady }: PhaserGameProps) {
     if (gameRef.current || !containerRef.current) return;
 
     const config: Phaser.Types.Core.GameConfig = {
-      type: Phaser.AUTO,
+      type: Phaser.WEBGL,
       parent: containerRef.current,
       width: window.innerWidth,
       height: window.innerHeight,
       pixelArt: true,
+      roundPixels: true,
+      antialias: false,
       physics: {
         default: "arcade",
         arcade: {
@@ -35,6 +37,12 @@ export default function PhaserGame({ onGameReady }: PhaserGameProps) {
         autoCenter: Phaser.Scale.CENTER_BOTH,
       },
       backgroundColor: "#061a2c",
+      render: {
+        pixelArt: true,
+        antialias: false,
+        antialiasGL: false,
+        roundPixels: true,
+      },
     };
 
     gameRef.current = new Phaser.Game(config);

@@ -1,5 +1,5 @@
 export interface NPCAction {
-  type: "tutor" | "swap" | "transfer" | "bounties";
+  type: "tutor" | "swap" | "transfer" | "bounties" | "placeholder";
   label: string;
 }
 
@@ -12,6 +12,11 @@ export interface NPCDefinition {
   color: number;
   dialog: string[];
   action: NPCAction;
+  /**
+   * Phaser texture key for this NPC's sprite sheet. Loaded in BootScene.
+   * Falls back to "avatar-chef" if not specified or not loaded.
+   */
+  spriteKey?: string;
   /**
    * Optional path to a portrait PNG (served from /public).
    * Recommended: 256x256 px, transparent background, pixel art.
@@ -39,6 +44,7 @@ export const NPC_REGISTRY: NPCDefinition[] = [
       "Every action you take here is a real interaction. Your progress is yours to keep.",
     ],
     action: { type: "tutor", label: "Got it!" },
+    spriteKey: "avatar-sol-guide",
     portrait: "/assets/portraits/sol-guide.png",
   },
   {
@@ -55,6 +61,7 @@ export const NPC_REGISTRY: NPCDefinition[] = [
       "Just pick your tokens and the amount. I'll handle the rest.",
     ],
     action: { type: "swap", label: "Open swap" },
+    spriteKey: "avatar-swap-npc",
     portrait: "/assets/portraits/swap-npc.png",
   },
   {
@@ -71,6 +78,7 @@ export const NPC_REGISTRY: NPCDefinition[] = [
       "The transfer goes through instantly on Solana.",
     ],
     action: { type: "transfer", label: "Send tokens" },
+    spriteKey: "avatar-send-npc",
     portrait: "/assets/portraits/send-npc.png",
   },
   {
@@ -88,6 +96,53 @@ export const NPC_REGISTRY: NPCDefinition[] = [
       "Complete bounties to earn score and unlock exclusive outfits!",
     ],
     action: { type: "bounties", label: "View bounties" },
+    spriteKey: "avatar-st-maya",
     portrait: "/assets/portraits/st-maya.png",
+  },
+  // ── Placeholder NPCs (expansion district) ──────────────────────────
+  // Parked here with light dialog until we assign them real roles.
+  {
+    id: "norman",
+    name: "Norman",
+    role: "Resident",
+    tileX: 9,
+    tileY: 22,
+    color: 0xcccccc,
+    dialog: [
+      "Just taking a walk through the expansion district.",
+      "This place is growing fast. New storefronts every week.",
+      "Come back later — I'll probably have a role by then.",
+    ],
+    action: { type: "placeholder", label: "See you around" },
+    spriteKey: "avatar-norman",
+  },
+  {
+    id: "liza",
+    name: "Liza",
+    role: "Resident",
+    tileX: 17,
+    tileY: 22,
+    color: 0xcccccc,
+    dialog: [
+      "Hi! I'm new here too.",
+      "They tell me there will be cool stuff to do soon.",
+      "For now, I'm just people-watching.",
+    ],
+    action: { type: "placeholder", label: "Take care" },
+    spriteKey: "avatar-liza",
+  },
+  {
+    id: "juan",
+    name: "Juan",
+    role: "Resident",
+    tileX: 25,
+    tileY: 13,
+    color: 0xcccccc,
+    dialog: [
+      "Nice city, isn't it?",
+      "I hear there's a Superteam Hub south of here — worth checking out.",
+    ],
+    action: { type: "placeholder", label: "Catch you later" },
+    spriteKey: "avatar-juan",
   },
 ];

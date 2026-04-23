@@ -38,8 +38,14 @@ export default function Home() {
 
   const handleAction = useCallback((action: NPCAction) => {
     setActiveNPC(null);
+    // Placeholder NPCs don't open an action panel — the dialog itself is
+    // the whole interaction. Just release the game so the player can move.
+    if (action.type === "placeholder") {
+      game?.events.emit("npc:close");
+      return;
+    }
     setActiveAction(action);
-  }, []);
+  }, [game]);
 
   const handleActionClose = useCallback(() => {
     setActiveAction(null);

@@ -61,11 +61,15 @@ export class CityScene extends Phaser.Scene {
       }
     }
 
-    // Local player using full sprite sheet
+    // Local player sprite. Prefer the placeholder Pokemon sprite when
+    // loaded, fall back to chef during dev if the file's missing.
     const spawn = getSpawnPoint();
     const spawnX = spawn.x * TILE_SIZE + TILE_SIZE / 2;
     const spawnY = spawn.y * TILE_SIZE + TILE_SIZE / 2;
-    this.avatar = new SimpleSprite(this, spawnX, spawnY, "avatar-orc");
+    const playerTextureKey = this.textures.exists("avatar-player")
+      ? "avatar-player"
+      : "avatar-chef";
+    this.avatar = new SimpleSprite(this, spawnX, spawnY, playerTextureKey);
 
     const container = this.avatar.getContainer();
     this.physics.world.enable(container);
@@ -77,17 +81,22 @@ export class CityScene extends Phaser.Scene {
     this.physics.world.setBounds(0, 0, MAP_COLS * TILE_SIZE, MAP_ROWS * TILE_SIZE);
 
     // "YOU" label
-    const youLabel = this.add.text(0, -52, "YOU", {
-      fontSize: "8px", fontFamily: "monospace",
+    const youLabel = this.add.text(0, -32, "YOU", {
+      fontSize: "12px", fontFamily: "monospace",
       color: "#ffffff", align: "center",
+      resolution: 2,
+      stroke: "#0a0a1e",
+      strokeThickness: 3,
     }).setOrigin(0.5, 1);
     container.add(youLabel);
 
-    // Camera
-    this.cameras.main.setBounds(0, 0, MAP_COLS * TILE_SIZE, MAP_ROWS * TILE_SIZE);
-    this.cameras.main.startFollow(container, true, 0.08, 0.08);
+    // Camera — locked to player, no edge clamping so player stays centered
+    // even at the map borders. The lerp values are 1.0 so there's no
+    // smoothing lag between player movement and camera follow.
+    this.cameras.main.startFollow(container, true, 1.0, 1.0);
     this.cameras.main.setZoom(1.45);
     this.cameras.main.setBackgroundColor(0x061a2c);
+    this.cameras.main.roundPixels = true;
 
     // Input
     this.cursors = this.input.keyboard!.createCursorKeys();
@@ -295,9 +304,12 @@ export class CityScene extends Phaser.Scene {
 
     const name = `${wallet.slice(0, 4)}...${wallet.slice(-4)}`;
 
-    const label = this.add.text(0, -52, name, {
-      fontSize: "7px", fontFamily: "monospace",
+    const label = this.add.text(0, -32, name, {
+      fontSize: "11px", fontFamily: "monospace",
       color: "#aaaacc", align: "center",
+      resolution: 2,
+      stroke: "#0a0a1e",
+      strokeThickness: 3,
     }).setOrigin(0.5, 1);
     avatar.getContainer().add(label);
     this.nameLabels.set(wallet, label);

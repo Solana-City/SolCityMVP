@@ -8,3 +8,11 @@ dist/
 .DS_Store
 .turbo
 assets/exported/
+
+# Working directory for tar deliveries — never commit
+*.tar.gz
+anchor-deploy-and-txlog/
+dom-sprite*/
+pokemon-placeholders*/
+pixel-polish/
+sprite-prep-and-portrait-restore/
