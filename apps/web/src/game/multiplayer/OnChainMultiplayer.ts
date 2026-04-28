@@ -25,7 +25,7 @@ const BROADCAST_CHANNEL = "sol-city-v1";
 
 // BroadcastChannel message types
 type BCMsg =
-  | { t: "join";  w: string; x: number; y: number; d: number; m: boolean; name?: string }
+  | { t: "join";  w: string; x: number; y: number; d: number; m: boolean; name?: string; score?: number }
   | { t: "pos";   w: string; x: number; y: number; d: number; m: boolean }
   | { t: "chat";  w: string; text: string }
   | { t: "leave"; w: string };
@@ -43,6 +43,7 @@ export interface OnChainPlayer {
   isWalking: boolean;
   lastUpdate: number;
   displayName?: string;
+  score?: number;
 }
 
 type PlayerCallback  = (wallet: string, player: OnChainPlayer) => void;
@@ -88,6 +89,9 @@ export class OnChainMultiplayer {
   // Throttling
   private lastPosSent = 0;
   private lastPos = { x: 0, y: 0, direction: 0, isWalking: false };
+
+  // Local player score (kept in sync by CityScene via updateScore())
+  private localScore = 0;
 
   // Layer 1: BroadcastChannel
   private bc: BroadcastChannel | null = null;
@@ -232,6 +236,21 @@ export class OnChainMultiplayer {
   onPlayerRemove(cb: RemoveCallback): void { this.removeCallbacks.push(cb); }
   onPlayerChange(cb: PlayerCallback): void { this.changeCallbacks.push(cb); }
 
+  /** Returns all currently known players (self included). */
+  getActivePlayers(): OnChainPlayer[] {
+    return Array.from(this.knownPlayers.values());
+  }
+
+  /** Called by CityScene when the local player's score changes. */
+  updateScore(score: number): void {
+    this.localScore = score;
+    const walletStr = this.wallet?.toBase58();
+    if (walletStr) {
+      const local = this.knownPlayers.get(walletStr);
+      if (local) local.score = score;
+    }
+  }
+
   // ── Layer 1: BroadcastChannel ─────────────────────────────────────────
 
   private startBroadcastChannel(walletStr: string, displayName?: string): void {
@@ -245,7 +264,7 @@ export class OnChainMultiplayer {
 
       switch (msg.t) {
         case "join":
-          this.handlePlayerJoin(msg.w, msg.x, msg.y, msg.d, msg.m, msg.name);
+          this.handlePlayerJoin(msg.w, msg.x, msg.y, msg.d, msg.m, msg.name, msg.score);
           // Reply with our position so the new joiner sees us
           this.bc?.postMessage({
             t: "join",
@@ -255,6 +274,7 @@ export class OnChainMultiplayer {
             d: this.lastPos.direction,
             m: this.lastPos.isWalking,
             name: displayName,
+            score: this.localScore,
           } satisfies BCMsg);
           break;
         case "pos":
@@ -272,6 +292,7 @@ export class OnChainMultiplayer {
       w: walletStr,
       x: 512, y: 288, d: 0, m: false,
       name: displayName,
+      score: this.localScore,
     } satisfies BCMsg);
 
     // Ensure clean broadcast on tab close
@@ -518,28 +539,26 @@ export class OnChainMultiplayer {
   // ── Player state machine ──────────────────────────────────────────────
 
   private handlePlayerJoin(
-    wallet: string, x: number, y: number, d: number, m: boolean, name?: string
+    wallet: string, x: number, y: number, d: number, m: boolean, name?: string, score?: number
   ): void {
     if (this.knownPlayers.has(wallet)) {
-      // Already known — treat as position update
-      this.handlePlayerMove(wallet, x, y, d, m, name);
+      this.handlePlayerMove(wallet, x, y, d, m, name, score);
       return;
     }
     const player: OnChainPlayer = {
       wallet, x, y, direction: d, isWalking: m,
-      lastUpdate: Date.now(), displayName: name,
+      lastUpdate: Date.now(), displayName: name, score,
     };
     this.knownPlayers.set(wallet, player);
     for (const cb of this.addCallbacks) cb(wallet, player);
   }
 
   private handlePlayerMove(
-    wallet: string, x: number, y: number, d: number, m: boolean, name?: string
+    wallet: string, x: number, y: number, d: number, m: boolean, name?: string, score?: number
   ): void {
     let player = this.knownPlayers.get(wallet);
     if (!player) {
-      // First time we hear about this player — add them
-      player = { wallet, x, y, direction: d, isWalking: m, lastUpdate: Date.now(), displayName: name };
+      player = { wallet, x, y, direction: d, isWalking: m, lastUpdate: Date.now(), displayName: name, score };
       this.knownPlayers.set(wallet, player);
       for (const cb of this.addCallbacks) cb(wallet, player);
       return;
@@ -547,6 +566,7 @@ export class OnChainMultiplayer {
     player.x = x; player.y = y; player.direction = d; player.isWalking = m;
     player.lastUpdate = Date.now();
     if (name) player.displayName = name;
+    if (score !== undefined) player.score = score;
     for (const cb of this.changeCallbacks) cb(wallet, player);
   }
 

@@ -214,10 +214,16 @@ export class CityScene extends Phaser.Scene {
 
     // On-chain multiplayer via MagicBlock Ephemeral Rollups
     this.network = new OnChainMultiplayer();
+    this.registry.set("network", this.network);
 
     // Expose game event bus globally so the multiplayer layer can
     // ask React (which owns useWallet) to sign transactions.
     (globalThis as any).__solCityGameEvents = this.game.events;
+
+    // Keep multiplayer score in sync with local profile
+    this.profile.onChange((p) => {
+      this.network?.updateScore(p.score);
+    });
 
     // Listen for wallet connection from React to start on-chain session
     this.game.events.on("wallet:connected", async (walletAddress: string) => {
@@ -225,6 +231,7 @@ export class CityScene extends Phaser.Scene {
         const { PublicKey } = await import("@solana/web3.js");
         this.profile.setWallet(walletAddress);
         const displayName = this.profile.get().displayName;
+        this.network.updateScore(this.profile.get().score);
         await this.network.connect(new PublicKey(walletAddress), displayName);
         this.chat.addSystemMessage("Session started — multiplayer active");
         this.setupNetworkCallbacks();

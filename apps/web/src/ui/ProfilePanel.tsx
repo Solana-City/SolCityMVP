@@ -5,6 +5,7 @@ import { useWallet } from "@solana/wallet-adapter-react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import type { PlayerProfile } from "@/game/config/profileManager";
 import type { ProfileManager } from "@/game/config/profileManager";
+import type { OnChainPlayer } from "@/game/multiplayer/OnChainMultiplayer";
 
 interface ProfilePanelProps {
   gameRef: Phaser.Game | null;
@@ -17,6 +18,7 @@ export default function ProfilePanel({ gameRef, isOpen, onClose }: ProfilePanelP
   const [manager, setManager] = useState<ProfileManager | null>(null);
   const [editingName, setEditingName] = useState(false);
   const [nameInput, setNameInput] = useState("");
+  const [onlinePlayers, setOnlinePlayers] = useState<OnChainPlayer[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { connected } = useWallet();
   const { setVisible: openWalletModal } = useWalletModal();
@@ -37,6 +39,22 @@ export default function ProfilePanel({ gameRef, isOpen, onClose }: ProfilePanelP
     }, 200);
     return () => clearInterval(check);
   }, [gameRef]);
+
+  // Poll online players from the multiplayer network every 2s
+  useEffect(() => {
+    if (!gameRef || !isOpen) return;
+    const poll = setInterval(() => {
+      const scene = gameRef.scene.getScene("CityScene");
+      if (!scene) return;
+      const net = scene.registry.get("network") as { getActivePlayers?: () => OnChainPlayer[] } | undefined;
+      if (net?.getActivePlayers) setOnlinePlayers(net.getActivePlayers());
+    }, 2000);
+    // Initial fetch
+    const scene = gameRef.scene.getScene("CityScene");
+    const net = scene?.registry.get("network") as { getActivePlayers?: () => OnChainPlayer[] } | undefined;
+    if (net?.getActivePlayers) setOnlinePlayers(net.getActivePlayers());
+    return () => clearInterval(poll);
+  }, [gameRef, isOpen]);
 
   const saveName = useCallback(() => {
     if (manager && nameInput.trim()) {
@@ -299,6 +317,49 @@ export default function ProfilePanel({ gameRef, isOpen, onClose }: ProfilePanelP
             </div>
           </div>
         </div>
+
+        {/* Online leaderboard */}
+        {onlinePlayers.length > 0 && (
+          <div className="mb-4">
+            <div className="text-xs mb-2 flex items-center gap-1.5" style={{ color: "#555566" }}>
+              <span
+                className="inline-block rounded-full"
+                style={{ width: 6, height: 6, background: "#14F195", boxShadow: "0 0 4px #14F195" }}
+              />
+              Online ({onlinePlayers.length})
+            </div>
+            <div className="flex flex-col gap-1">
+              {[...onlinePlayers]
+                .sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
+                .map((p, i) => {
+                  const isSelf = p.wallet === profile.wallet;
+                  const name = p.displayName ?? p.wallet.slice(0, 8);
+                  return (
+                    <div
+                      key={p.wallet}
+                      className="flex items-center justify-between px-2 py-1 rounded"
+                      style={{
+                        background: isSelf ? "rgba(20,241,149,0.06)" : "#12122a",
+                        border: isSelf ? "1px solid rgba(20,241,149,0.2)" : "1px solid rgba(255,255,255,0.03)",
+                      }}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs w-4 text-right" style={{ color: "#444455" }}>
+                          {i + 1}
+                        </span>
+                        <span className="text-xs" style={{ color: isSelf ? "#14F195" : "#aaaacc" }}>
+                          {name}{isSelf ? " (you)" : ""}
+                        </span>
+                      </div>
+                      <span className="text-xs font-bold" style={{ color: "#FFD700" }}>
+                        {p.score ?? 0}
+                      </span>
+                    </div>
+                  );
+                })}
+            </div>
+          </div>
+        )}
 
         {/* Member info */}
         <div className="flex justify-between text-xs mb-2" style={{ color: "#444455" }}>

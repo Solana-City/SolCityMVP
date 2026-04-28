@@ -45,7 +45,7 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     ],
     action: { type: "tutor", label: "Got it!" },
     spriteKey: "avatar-sol-guide",
-    portrait: "/assets/portraits/sol-guide.png",
+    portrait: "/assets/sprites/sol-guide.png",
   },
   {
     id: "swap-npc",
@@ -62,7 +62,7 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     ],
     action: { type: "swap", label: "Open swap" },
     spriteKey: "avatar-swap-npc",
-    portrait: "/assets/portraits/swap-npc.png",
+    portrait: "/assets/sprites/swap-npc.png",
   },
   {
     id: "send-npc",
@@ -79,7 +79,7 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     ],
     action: { type: "transfer", label: "Send tokens" },
     spriteKey: "avatar-send-npc",
-    portrait: "/assets/portraits/send-npc.png",
+    portrait: "/assets/sprites/send-npc.png",
   },
   {
     id: "st-maya",
@@ -97,7 +97,7 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     ],
     action: { type: "bounties", label: "View bounties" },
     spriteKey: "avatar-st-maya",
-    portrait: "/assets/portraits/st-maya.png",
+    portrait: "/assets/sprites/st-maya.png",
   },
   // ── Placeholder NPCs (expansion district) ──────────────────────────
   // Parked here with light dialog until we assign them real roles.
