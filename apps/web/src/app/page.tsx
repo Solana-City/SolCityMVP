@@ -2,17 +2,21 @@
 
 import { useState, useEffect, useCallback } from "react";
 import dynamic from "next/dynamic";
-import SolanaProvider from "@/ui/SolanaProvider";
-import WalletBar from "@/ui/WalletBar";
-import ChatPanel from "@/ui/ChatPanel";
-import NPCDialog from "@/ui/NPCDialog";
-import ActionPanel from "@/ui/ActionPanel";
-import ProfilePanel from "@/ui/ProfilePanel";
-import TransactionLogPanel from "@/ui/TransactionLogPanel";
-import ToastStack from "@/ui/ToastStack";
 import type { NPCDefinition, NPCAction } from "@/game/config/npcRegistry";
 
-const PhaserGame = dynamic(() => import("@/game/PhaserGame"), { ssr: false });
+// All Solana/wallet-adapter code must be client-only — these packages
+// access `window`/`navigator` at module-load time and crash the SSR pass.
+const SolanaProvider = dynamic(() => import("@/ui/SolanaProvider"), { ssr: false });
+const PhaserGame    = dynamic(() => import("@/game/PhaserGame"),    { ssr: false });
+const WalletBar           = dynamic(() => import("@/ui/WalletBar"),           { ssr: false });
+const ChatPanel           = dynamic(() => import("@/ui/ChatPanel"),           { ssr: false });
+const NPCDialog           = dynamic(() => import("@/ui/NPCDialog"),           { ssr: false });
+const ActionPanel         = dynamic(() => import("@/ui/ActionPanel"),         { ssr: false });
+const ProfilePanel        = dynamic(() => import("@/ui/ProfilePanel"),        { ssr: false });
+const TransactionLogPanel = dynamic(() => import("@/ui/TransactionLogPanel"), { ssr: false });
+const ToastStack          = dynamic(() => import("@/ui/ToastStack"),          { ssr: false });
+const HUD                 = dynamic(() => import("@/ui/HUD"),                 { ssr: false });
+const WalletSignBridge    = dynamic(() => import("@/ui/WalletSignBridge"),    { ssr: false });
 
 export default function Home() {
   const [game, setGame] = useState<Phaser.Game | null>(null);
@@ -23,13 +27,9 @@ export default function Home() {
 
   useEffect(() => {
     if (!game) return;
-    const handler = (npc: NPCDefinition) => {
-      setActiveNPC(npc);
-    };
+    const handler = (npc: NPCDefinition) => setActiveNPC(npc);
     game.events.on("npc:interact", handler);
-    return () => {
-      game.events.off("npc:interact", handler);
-    };
+    return () => { game.events.off("npc:interact", handler); };
   }, [game]);
 
   const handleDialogClose = useCallback(() => {
@@ -39,8 +39,6 @@ export default function Home() {
 
   const handleAction = useCallback((action: NPCAction) => {
     setActiveNPC(null);
-    // Placeholder NPCs don't open an action panel — the dialog itself is
-    // the whole interaction. Just release the game so the player can move.
     if (action.type === "placeholder") {
       game?.events.emit("npc:close");
       return;
@@ -53,7 +51,6 @@ export default function Home() {
     game?.events.emit("npc:close");
   }, [game]);
 
-  // P key opens profile
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === "p" || e.key === "P") {
@@ -66,22 +63,29 @@ export default function Home() {
     return () => window.removeEventListener("keydown", handler);
   }, []);
 
+  const handleWalletChange = useCallback((wallet: string | null) => {
+    if (!game) return;
+    if (wallet) {
+      game.events.emit("wallet:connected", wallet);
+    } else {
+      game.events.emit("wallet:disconnected");
+    }
+  }, [game]);
+
   return (
     <SolanaProvider>
+      {/* Headless bridge so Phaser can request wallet signatures */}
+      <WalletSignBridge />
       <main className="w-screen h-screen relative">
         <PhaserGame onGameReady={setGame} />
 
-        {/* HUD top-right: PFP button + wallet + on-chain log toggle */}
+        {/* Score HUD — top left */}
+        <HUD />
+
+        {/* Top-right cluster: PFP + wallet + tx log */}
         <div className="fixed top-4 right-4 z-20 flex flex-col items-end gap-2">
           <PfpButton gameRef={game} onClick={() => setProfileOpen(true)} />
-          <WalletBar onWalletChange={(wallet) => {
-            if (!game) return;
-            if (wallet) {
-              game.events.emit("wallet:connected", wallet);
-            } else {
-              game.events.emit("wallet:disconnected");
-            }
-          }} />
+          <WalletBar onWalletChange={handleWalletChange} />
           <TransactionLogPanel
             isOpen={logOpen}
             onToggle={() => setLogOpen((v) => !v)}

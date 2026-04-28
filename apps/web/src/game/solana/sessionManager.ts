@@ -72,15 +72,17 @@ export class SessionManager {
       // For now: initialize mock state
       this.mockState = {
         authority: walletPubkey,
+        displayName: walletPubkey.toBase58().slice(0, 8),
         x: 512,
         y: 288,
         direction: 0,
-        outfitId: "default",
+        outfitId: 0,
         score: 0,
         swapCount: 0,
         transferCount: 0,
         bountyCount: 0,
         lastActive: Math.floor(Date.now() / 1000),
+        createdAt: Math.floor(Date.now() / 1000),
       };
 
       this.setStatus("active");

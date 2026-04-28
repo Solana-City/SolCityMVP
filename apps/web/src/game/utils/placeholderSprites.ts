@@ -1,4 +1,4 @@
-import Phaser from "phaser";
+import * as Phaser from "phaser";
 import {
   SPRITE_FRAME_WIDTH,
   SPRITE_FRAME_HEIGHT,
@@ -48,8 +48,9 @@ export function generatePlaceholderSheet(
 
   const texture = scene.textures.addCanvas(def.key, canvas);
 
-  // Add frame data so Phaser treats it as a spritesheet
-  Phaser.Textures.Parsers.SpriteSheet(
+  // Add frame data so Phaser treats it as a spritesheet.
+  // SpriteSheet is present at runtime but missing from the TS declaration — cast to bypass.
+  (Phaser.Textures.Parsers as any).SpriteSheet(
     texture,
     0,
     0, 0, w, h,

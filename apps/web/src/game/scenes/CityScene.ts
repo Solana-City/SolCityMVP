@@ -1,4 +1,4 @@
-import Phaser from "phaser";
+import * as Phaser from "phaser";
 import { TILE_SIZE, MAP_COLS, MAP_ROWS, PLAYER_SPEED } from "../config/constants";
 import { getMapData, getSpawnPoint } from "../utils/mapGenerator";
 import { SimpleSprite, Direction } from "../entities/SimpleSprite";
@@ -215,16 +215,22 @@ export class CityScene extends Phaser.Scene {
     // On-chain multiplayer via MagicBlock Ephemeral Rollups
     this.network = new OnChainMultiplayer();
 
+    // Expose game event bus globally so the multiplayer layer can
+    // ask React (which owns useWallet) to sign transactions.
+    (globalThis as any).__solCityGameEvents = this.game.events;
+
     // Listen for wallet connection from React to start on-chain session
     this.game.events.on("wallet:connected", async (walletAddress: string) => {
       try {
         const { PublicKey } = await import("@solana/web3.js");
-        await this.network.connect(new PublicKey(walletAddress));
         this.profile.setWallet(walletAddress);
-        this.chat.addSystemMessage("Session started (on-chain)");
+        const displayName = this.profile.get().displayName;
+        await this.network.connect(new PublicKey(walletAddress), displayName);
+        this.chat.addSystemMessage("Session started — multiplayer active");
         this.setupNetworkCallbacks();
-      } catch {
-        this.chat.addSystemMessage("Failed to start on-chain session");
+      } catch (err: any) {
+        console.error("[CityScene] session error:", err);
+        this.chat.addSystemMessage("Session offline (local mode)");
       }
     });
 
@@ -315,9 +321,10 @@ export class CityScene extends Phaser.Scene {
     const avatar = new SimpleSprite(this, player.x, player.y, "avatar-player");
     this.remotePlayers.set(wallet, avatar);
 
-    const name = `${wallet.slice(0, 4)}...${wallet.slice(-4)}`;
+    const shortAddr = `${wallet.slice(0, 4)}…${wallet.slice(-4)}`;
+    const displayName = player.displayName ?? shortAddr;
 
-    const label = this.add.text(0, -38, name, {
+    const label = this.add.text(0, -38, displayName, {
       fontSize: "9px", fontFamily: "monospace",
       color: "#aaaacc", align: "center",
       resolution: 2,
@@ -327,7 +334,7 @@ export class CityScene extends Phaser.Scene {
     avatar.getContainer().add(label);
     this.nameLabels.set(wallet, label);
 
-    this.chat.addSystemMessage(`${name} entered the city`);
+    this.chat.addSystemMessage(`${displayName} entered the city`);
   }
 
   private removeRemotePlayer(wallet: string): void {

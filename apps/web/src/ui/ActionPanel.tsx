@@ -6,6 +6,7 @@ import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import type { NPCAction } from "@/game/config/npcRegistry";
 import { transactionLog } from "@/game/telemetry/transactionLog";
 import { profileManager } from "@/game/config/profileManager";
+import { Connection } from "@solana/web3.js";
 
 interface ActionPanelProps {
   action: NPCAction | null;
@@ -46,8 +47,8 @@ export default function ActionPanel({ action, onClose }: ActionPanelProps) {
           ×
         </button>
 
-        {action.type === "tutor" && <TutorPanel onClose={onClose} />}
-        {action.type === "swap" && <SwapPanel onClose={onClose} />}
+        {action.type === "tutor"    && <TutorPanel    onClose={onClose} />}
+        {action.type === "swap"     && <SwapPanel     onClose={onClose} />}
         {action.type === "transfer" && <TransferPanel onClose={onClose} />}
         {action.type === "bounties" && <BountiesPanel onClose={onClose} />}
       </div>
@@ -55,39 +56,35 @@ export default function ActionPanel({ action, onClose }: ActionPanelProps) {
   );
 }
 
+// ── Swap Panel (Jupiter V6 — no API key required) ─────────────────────
+
 function SwapPanel({ onClose }: { onClose: () => void }) {
   const { connected, publicKey, signTransaction } = useWallet();
-  const [inputToken, setInputToken] = useState("SOL");
+  const [inputToken,  setInputToken]  = useState("SOL");
   const [outputToken, setOutputToken] = useState("USDC");
-  const [amount, setAmount] = useState("0.1");
-  const [quote, setQuote] = useState<any>(null);
+  const [amount,  setAmount]  = useState("0.1");
+  const [quote,   setQuote]   = useState<any>(null);
   const [loading, setLoading] = useState(false);
-  const [status, setStatus] = useState<"idle" | "quoting" | "signing" | "executing" | "done" | "error">("idle");
-  const [result, setResult] = useState<{ signature?: string; outAmount?: string; error?: string } | null>(null);
+  const [status,  setStatus]  = useState<"idle"|"quoting"|"signing"|"submitting"|"done"|"error">("idle");
+  const [result,  setResult]  = useState<{ signature?: string; outAmount?: string; error?: string } | null>(null);
 
-  // Lazy import to avoid SSR issues
   const jupRef = useRef<typeof import("@/game/solana/jupiterSwap") | null>(null);
-
-  useEffect(() => {
-    import("@/game/solana/jupiterSwap").then((mod) => { jupRef.current = mod; });
-  }, []);
+  useEffect(() => { import("@/game/solana/jupiterSwap").then(m => { jupRef.current = m; }); }, []);
 
   const handleQuote = useCallback(async () => {
     const jup = jupRef.current;
     if (!jup || !publicKey || !amount) return;
-
-    const input = jup.getTokenBySymbol(inputToken);
+    const input  = jup.getTokenBySymbol(inputToken);
     const output = jup.getTokenBySymbol(outputToken);
     if (!input || !output) return;
 
     setLoading(true);
     setStatus("quoting");
+    setResult(null);
     try {
-      const smallestAmount = jup.toSmallestUnit(amount, input.decimals);
-      const order = await jup.getSwapOrder(
-        input.mint, output.mint, smallestAmount, publicKey.toBase58()
-      );
-      setQuote(order);
+      const smallest = jup.toSmallestUnit(amount, input.decimals);
+      const q = await jup.getQuote(input.mint, output.mint, smallest);
+      setQuote(q);
       setStatus("idle");
     } catch (err: any) {
       setResult({ error: err.message });
@@ -98,9 +95,8 @@ function SwapPanel({ onClose }: { onClose: () => void }) {
 
   const handleSwap = useCallback(async () => {
     const jup = jupRef.current;
-    if (!jup || !quote?.transaction || !signTransaction) return;
+    if (!jup || !quote || !signTransaction || !publicKey) return;
 
-    // Log entry lifecycle: pending → confirmed|failed.
     const logEntry = transactionLog.record({
       kind: "swap",
       layer: "jupiter",
@@ -110,175 +106,143 @@ function SwapPanel({ onClose }: { onClose: () => void }) {
 
     setStatus("signing");
     try {
-      const tx = jup.deserializeTransaction(quote.transaction);
+      // Build the transaction server-side (Jupiter signs the RFQ parts)
+      const { swapTransaction } = await jup.buildSwapTransaction(quote, publicKey.toBase58());
+      const tx = jup.deserializeTransaction(swapTransaction);
+
+      // User signs with their wallet
       const signed = await signTransaction(tx as any);
-      const serialized = Buffer.from(signed.serialize()).toString("base64");
+      setStatus("submitting");
 
-      setStatus("executing");
-      const execResult = await jup.executeSwap(serialized, quote.requestId);
+      // Submit to mainnet via a public RPC (Jupiter swaps are always mainnet)
+      const mainnetConnection = new Connection("https://api.mainnet-beta.solana.com", "confirmed");
+      const signature = await mainnetConnection.sendRawTransaction(signed.serialize(), {
+        skipPreflight: false,
+        maxRetries: 3,
+      });
+      await mainnetConnection.confirmTransaction(signature, "confirmed");
 
-      if (execResult.status === "Success") {
-        const output = jup.getTokenByMint(quote.outputMint);
-        const outHuman = output
-          ? jup.fromSmallestUnit(execResult.outputAmountResult, output.decimals)
-          : execResult.outputAmountResult;
-        setResult({ signature: execResult.signature, outAmount: outHuman });
-        setStatus("done");
-        transactionLog.markConfirmed(logEntry.id, execResult.signature);
-        // Progression: +score, achievement evaluation, outfit check.
-        profileManager.recordSwap({
-          inputToken,
-          outputToken,
-          amount,
-        });
-      } else {
-        const msg = execResult.error || "Swap failed";
-        setResult({ error: msg });
-        setStatus("error");
-        transactionLog.markFailed(logEntry.id, msg);
-      }
+      const outToken = jup.getTokenByMint(quote.outputMint);
+      const outHuman = outToken
+        ? jup.fromSmallestUnit(quote.outAmount, outToken.decimals)
+        : quote.outAmount;
+
+      setResult({ signature, outAmount: outHuman });
+      setStatus("done");
+      transactionLog.markConfirmed(logEntry.id, signature);
+      profileManager.recordSwap({ inputToken, outputToken, amount });
     } catch (err: any) {
       setResult({ error: err.message });
       setStatus("error");
-      transactionLog.markFailed(logEntry.id, err.message ?? "unknown error");
+      transactionLog.markFailed(logEntry.id, err.message ?? "swap failed");
     }
-  }, [quote, signTransaction, amount, inputToken, outputToken]);
+  }, [quote, signTransaction, publicKey, amount, inputToken, outputToken]);
 
-  const tokens = ["SOL", "USDC", "USDT", "JUP", "BONK"];
+  const tokens = TOKEN_LIST_SYMBOLS;
 
   const getTokenLogo = (symbol: string) => {
     const jup = jupRef.current;
-    return jup?.getTokenBySymbol(symbol)?.logo || "";
+    return jup?.getTokenBySymbol(symbol)?.logo ?? "";
   };
 
-  return (
-    <>
-      <h3 className="text-sm mb-4" style={{
-        fontFamily: '"Press Start 2P", monospace', fontSize: "11px", color: "#FFD700",
-      }}>
-        TOKEN SWAP
-      </h3>
-
-      {status === "done" && result ? (
+  if (status === "done" && result) {
+    return (
+      <>
+        <h3 style={{ fontFamily: '"Press Start 2P", monospace', fontSize: "11px", color: "#FFD700", marginBottom: 16 }}>
+          TOKEN SWAP
+        </h3>
         <div className="text-center py-6">
-          <div className="text-3xl mb-2" style={{ color: "#14F195" }}>OK</div>
-          <div style={{ fontFamily: '"Press Start 2P", monospace', fontSize: "10px", color: "#14F195" }}>
+          <div style={{ fontSize: 32, color: "#14F195" }}>OK</div>
+          <div style={{ fontFamily: '"Press Start 2P", monospace', fontSize: "10px", color: "#14F195", marginTop: 8 }}>
             SWAP COMPLETE
           </div>
-          <div className="text-xs mt-2" style={{ color: "#888899" }}>
+          <div style={{ fontSize: "12px", color: "#888899", marginTop: 8 }}>
             Received: {result.outAmount} {outputToken}
           </div>
           {result.signature && (
-            <a
-              href={`https://solscan.io/tx/${result.signature}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-xs mt-2 inline-block"
-              style={{ color: "#00D1FF" }}
-            >
-              View on Solscan
+            <a href={`https://solscan.io/tx/${result.signature}`} target="_blank" rel="noopener noreferrer"
+              style={{ display: "block", marginTop: 8, fontSize: "12px", color: "#00D1FF" }}>
+              View on Solscan ↗
             </a>
           )}
-          <button onClick={onClose} className="w-full mt-4 py-2 rounded-lg cursor-pointer"
-            style={{ background: "#14F195", color: "#000", border: "none", fontFamily: '"Press Start 2P", monospace', fontSize: "9px" }}>
-            CLOSE
-          </button>
+          <button onClick={onClose} style={btnStyle("#14F195")} className="w-full mt-4">CLOSE</button>
         </div>
-      ) : status === "error" && result ? (
+      </>
+    );
+  }
+
+  if (status === "error" && result) {
+    return (
+      <>
+        <h3 style={{ fontFamily: '"Press Start 2P", monospace', fontSize: "11px", color: "#FFD700", marginBottom: 16 }}>
+          TOKEN SWAP
+        </h3>
         <div className="text-center py-6">
-          <div className="text-xs mb-3" style={{ color: "#ff4444" }}>{result.error}</div>
+          <div style={{ fontSize: "12px", color: "#ff4444", marginBottom: 12 }}>{result.error}</div>
           <button onClick={() => { setStatus("idle"); setResult(null); setQuote(null); }}
-            className="px-4 py-2 rounded-lg cursor-pointer text-xs"
-            style={{ background: "transparent", border: "1px solid #333344", color: "#888899" }}>
-            Try again
-          </button>
+            style={btnStyle("#333344", "#888899")} className="px-4 py-2">Try again</button>
         </div>
-      ) : (
-        <>
-          {/* Input token */}
-          <div className="rounded-lg p-3 mb-2" style={{ background: "#12122a", border: "1px solid rgba(255,255,255,0.04)" }}>
-            <div className="flex justify-between items-center mb-2">
-              <span className="text-xs" style={{ color: "#555566" }}>From</span>
-              <div className="flex items-center gap-1.5">
-                {getTokenLogo(inputToken) && (
-                  <img src={getTokenLogo(inputToken)} alt={inputToken} style={{ width: 18, height: 18, borderRadius: "50%" }} />
-                )}
-                <select value={inputToken} onChange={(e) => { setInputToken(e.target.value); setQuote(null); }}
-                  className="text-xs rounded px-2 py-1 outline-none cursor-pointer"
-                  style={{ background: "#1a1a3a", color: "#9945FF", border: "1px solid rgba(153,69,255,0.2)" }}>
-                  {tokens.filter((t) => t !== outputToken).map((t) => <option key={t} value={t}>{t}</option>)}
-                </select>
-              </div>
-            </div>
-            <input type="text" value={amount} onChange={(e) => { setAmount(e.target.value); setQuote(null); }}
-              placeholder="0.0" className="w-full text-xl font-bold outline-none"
-              style={{ background: "transparent", color: "#fff", border: "none", fontFamily: "monospace" }} />
-          </div>
+      </>
+    );
+  }
 
-          {/* Output token */}
-          <div className="rounded-lg p-3 mb-3" style={{ background: "#12122a", border: "1px solid rgba(255,255,255,0.04)" }}>
-            <div className="flex justify-between items-center mb-2">
-              <span className="text-xs" style={{ color: "#555566" }}>To</span>
-              <div className="flex items-center gap-1.5">
-                {getTokenLogo(outputToken) && (
-                  <img src={getTokenLogo(outputToken)} alt={outputToken} style={{ width: 18, height: 18, borderRadius: "50%" }} />
-                )}
-                <select value={outputToken} onChange={(e) => { setOutputToken(e.target.value); setQuote(null); }}
-                  className="text-xs rounded px-2 py-1 outline-none cursor-pointer"
-                  style={{ background: "#1a1a3a", color: "#9945FF", border: "1px solid rgba(153,69,255,0.2)" }}>
-                  {tokens.filter((t) => t !== inputToken).map((t) => <option key={t} value={t}>{t}</option>)}
-                </select>
-              </div>
-            </div>
-            <div className="text-xl font-bold" style={{ color: quote ? "#fff" : "#333344" }}>
-              {quote ? (() => {
-                const jup = jupRef.current;
-                const out = jup?.getTokenBySymbol(outputToken);
-                return out ? jup?.fromSmallestUnit(quote.outAmount, out.decimals) : quote.outAmount;
-              })() : "..."}
-            </div>
-          </div>
+  return (
+    <>
+      <h3 style={{ fontFamily: '"Press Start 2P", monospace', fontSize: "11px", color: "#FFD700", marginBottom: 16 }}>
+        TOKEN SWAP
+      </h3>
 
-          {/* Quote info */}
-          {quote && (
-            <div className="text-xs mb-3 flex justify-between" style={{ color: "#555566" }}>
-              <span>via Jupiter {quote.gasless ? "· gasless" : ""}</span>
-              <span>slippage: {quote.slippageBps ? `${(quote.slippageBps / 100).toFixed(1)}%` : "auto"}</span>
-            </div>
-          )}
+      {/* ⚠️ mainnet note */}
+      <div style={{ fontSize: "9px", color: "#555566", marginBottom: 12, textAlign: "center" }}>
+        Jupiter operates on mainnet · real SOL required
+      </div>
 
-          {/* Actions */}
-          <div className="flex gap-2">
-            {!quote ? (
-              <button onClick={handleQuote} disabled={!connected || loading || !amount}
-                className="flex-1 py-2.5 rounded-lg text-xs cursor-pointer"
-                style={{
-                  background: connected ? "#FFD700" : "#333344",
-                  color: connected ? "#000" : "#666677",
-                  border: "none", fontFamily: '"Press Start 2P", monospace', fontSize: "9px",
-                }}>
-                {!connected ? "CONNECT WALLET FIRST" : loading ? "GETTING QUOTE..." : "GET QUOTE"}
-              </button>
-            ) : (
-              <button onClick={handleSwap} disabled={status === "signing" || status === "executing"}
-                className="flex-1 py-2.5 rounded-lg text-xs cursor-pointer"
-                style={{
-                  background: "#14F195", color: "#000", border: "none",
-                  fontFamily: '"Press Start 2P", monospace', fontSize: "9px",
-                }}>
-                {status === "signing" ? "SIGN IN WALLET..." : status === "executing" ? "EXECUTING..." : "CONFIRM SWAP"}
-              </button>
-            )}
-            <button onClick={onClose} className="px-4 py-2.5 rounded-lg text-xs cursor-pointer"
-              style={{ background: "transparent", border: "1px solid #333344", color: "#666677" }}>
-              ESC
-            </button>
-          </div>
-        </>
+      {/* Input token */}
+      <TokenBox label="From" token={inputToken} onTokenChange={(t) => { setInputToken(t); setQuote(null); }}
+        excludeToken={outputToken} tokens={tokens} getLogo={getTokenLogo}>
+        <input type="text" value={amount} onChange={(e) => { setAmount(e.target.value); setQuote(null); }}
+          placeholder="0.0" style={{ background: "transparent", color: "#fff", border: "none", fontSize: 20, fontFamily: "monospace", width: "100%", outline: "none" }} />
+      </TokenBox>
+
+      <div style={{ textAlign: "center", color: "#555566", marginBottom: 4 }}>↓</div>
+
+      {/* Output token */}
+      <TokenBox label="To" token={outputToken} onTokenChange={(t) => { setOutputToken(t); setQuote(null); }}
+        excludeToken={inputToken} tokens={tokens} getLogo={getTokenLogo}>
+        <div style={{ fontSize: 20, fontFamily: "monospace", color: quote ? "#fff" : "#333344" }}>
+          {quote
+            ? (() => { const jup = jupRef.current; const out = jup?.getTokenBySymbol(outputToken); return out ? jup?.fromSmallestUnit(quote.outAmount, out.decimals) : "..."; })()
+            : "..."}
+        </div>
+      </TokenBox>
+
+      {quote && (
+        <div style={{ fontSize: "11px", color: "#555566", display: "flex", justifyContent: "space-between", marginTop: 8 }}>
+          <span>via Jupiter V6</span>
+          <span>slippage: {quote.slippageBps ? `${(quote.slippageBps / 100).toFixed(1)}%` : "auto"}</span>
+          <span>impact: {parseFloat(quote.priceImpactPct ?? "0").toFixed(3)}%</span>
+        </div>
       )}
+
+      <div className="flex gap-2 mt-4">
+        {!quote ? (
+          <button onClick={handleQuote} disabled={!connected || loading || !amount}
+            style={btnStyle(connected ? "#FFD700" : "#333344", connected ? "#000" : "#666677")} className="flex-1 py-2.5">
+            {!connected ? "CONNECT WALLET FIRST" : loading ? "GETTING QUOTE..." : "GET QUOTE"}
+          </button>
+        ) : (
+          <button onClick={handleSwap} disabled={status === "signing" || status === "submitting"}
+            style={btnStyle("#14F195", "#000")} className="flex-1 py-2.5">
+            {status === "signing" ? "SIGN IN WALLET..." : status === "submitting" ? "SUBMITTING..." : "CONFIRM SWAP"}
+          </button>
+        )}
+        <button onClick={onClose} style={{ background: "transparent", border: "1px solid #333344", color: "#666677", borderRadius: 8, padding: "0 16px", cursor: "pointer", fontSize: 12 }}>ESC</button>
+      </div>
     </>
   );
 }
+
+// ── Transfer Panel ────────────────────────────────────────────────────
 
 function TransferPanel({ onClose }: { onClose: () => void }) {
   const { connected, publicKey, sendTransaction } = useWallet();
@@ -290,21 +254,12 @@ function TransferPanel({ onClose }: { onClose: () => void }) {
 
   const handleSend = useCallback(async () => {
     if (!publicKey || !recipient || !amount) return;
-
     const { buildSolTransfer, isValidAddress } = await import("@/game/solana/transfer");
+    const { PublicKey } = await import("@solana/web3.js");
 
-    if (!isValidAddress(recipient)) {
-      setResult({ error: "Invalid Solana address" });
-      setStatus("error");
-      return;
-    }
-
-    const parsedAmount = parseFloat(amount);
-    if (isNaN(parsedAmount) || parsedAmount <= 0) {
-      setResult({ error: "Invalid amount" });
-      setStatus("error");
-      return;
-    }
+    if (!isValidAddress(recipient)) { setResult({ error: "Invalid Solana address" }); setStatus("error"); return; }
+    const parsed = parseFloat(amount);
+    if (isNaN(parsed) || parsed <= 0) { setResult({ error: "Invalid amount" }); setStatus("error"); return; }
 
     setStatus("sending");
     const logEntry = transactionLog.record({
@@ -314,181 +269,160 @@ function TransferPanel({ onClose }: { onClose: () => void }) {
       status: "pending",
     });
     try {
-      const { PublicKey } = await import("@solana/web3.js");
-      const tx = await buildSolTransfer(
-        connection,
-        publicKey,
-        new PublicKey(recipient),
-        parsedAmount
-      );
-      const signature = await sendTransaction(tx, connection);
-      await connection.confirmTransaction(signature, "confirmed");
-      setResult({ signature });
+      const tx = await buildSolTransfer(connection, publicKey, new PublicKey(recipient), parsed);
+      const sig = await sendTransaction(tx, connection);
+      await connection.confirmTransaction(sig, "confirmed");
+      setResult({ signature: sig });
       setStatus("done");
-      transactionLog.markConfirmed(logEntry.id, signature);
+      transactionLog.markConfirmed(logEntry.id, sig);
       profileManager.recordTransfer({ recipient, amount });
     } catch (err: any) {
       setResult({ error: err.message });
       setStatus("error");
-      transactionLog.markFailed(logEntry.id, err.message ?? "unknown error");
+      transactionLog.markFailed(logEntry.id, err.message ?? "transfer failed");
     }
   }, [publicKey, recipient, amount, connection, sendTransaction]);
 
+  if (status === "done" && result?.signature) {
+    return (
+      <>
+        <h3 style={{ fontFamily: '"Press Start 2P", monospace', fontSize: "11px", color: "#00D1FF", marginBottom: 16 }}>SEND SOL</h3>
+        <div className="text-center py-6">
+          <div style={{ fontSize: 32, color: "#14F195" }}>OK</div>
+          <div style={{ fontFamily: '"Press Start 2P", monospace', fontSize: "10px", color: "#14F195", marginTop: 8 }}>TRANSFER SENT</div>
+          <div style={{ fontSize: "12px", color: "#888899", marginTop: 8 }}>{amount} SOL sent</div>
+          <a href={`https://explorer.solana.com/tx/${result.signature}?cluster=devnet`} target="_blank" rel="noopener noreferrer"
+            style={{ display: "block", marginTop: 8, fontSize: "12px", color: "#00D1FF" }}>View on Explorer ↗</a>
+          <button onClick={onClose} style={btnStyle("#00D1FF", "#000")} className="w-full mt-4">CLOSE</button>
+        </div>
+      </>
+    );
+  }
+
+  if (status === "error" && result) {
+    return (
+      <>
+        <h3 style={{ fontFamily: '"Press Start 2P", monospace', fontSize: "11px", color: "#00D1FF", marginBottom: 16 }}>SEND SOL</h3>
+        <div className="text-center py-6">
+          <div style={{ fontSize: "12px", color: "#ff4444", marginBottom: 12 }}>{result.error}</div>
+          <button onClick={() => { setStatus("idle"); setResult(null); }} style={btnStyle("#333344", "#888899")} className="px-4 py-2">Try again</button>
+        </div>
+      </>
+    );
+  }
+
   return (
     <>
-      <h3 className="text-sm mb-4" style={{
-        fontFamily: '"Press Start 2P", monospace', fontSize: "11px", color: "#00D1FF",
-      }}>
-        SEND SOL
-      </h3>
-
-      {status === "done" && result?.signature ? (
-        <div className="text-center py-6">
-          <div className="text-3xl mb-2" style={{ color: "#14F195" }}>OK</div>
-          <div style={{ fontFamily: '"Press Start 2P", monospace', fontSize: "10px", color: "#14F195" }}>
-            TRANSFER SENT
-          </div>
-          <div className="text-xs mt-2" style={{ color: "#888899" }}>
-            {amount} SOL sent
-          </div>
-          <a href={`https://solscan.io/tx/${result.signature}`}
-            target="_blank" rel="noopener noreferrer"
-            className="text-xs mt-2 inline-block" style={{ color: "#00D1FF" }}>
-            View on Solscan
-          </a>
-          <button onClick={onClose} className="w-full mt-4 py-2 rounded-lg cursor-pointer"
-            style={{ background: "#00D1FF", color: "#000", border: "none", fontFamily: '"Press Start 2P", monospace', fontSize: "9px" }}>
-            CLOSE
-          </button>
-        </div>
-      ) : status === "error" && result ? (
-        <div className="text-center py-6">
-          <div className="text-xs mb-3" style={{ color: "#ff4444" }}>{result.error}</div>
-          <button onClick={() => { setStatus("idle"); setResult(null); }}
-            className="px-4 py-2 rounded-lg cursor-pointer text-xs"
-            style={{ background: "transparent", border: "1px solid #333344", color: "#888899" }}>
-            Try again
-          </button>
-        </div>
-      ) : (
-        <>
-          <div className="rounded-lg p-3 mb-2" style={{ background: "#12122a", border: "1px solid rgba(255,255,255,0.04)" }}>
-            <div className="text-xs mb-1" style={{ color: "#555566" }}>Recipient address</div>
-            <input type="text" value={recipient}
-              onChange={(e) => setRecipient(e.target.value)}
-              placeholder="Paste Solana address..."
-              className="w-full text-sm outline-none"
-              style={{ background: "transparent", color: "#fff", border: "none", fontFamily: "monospace" }} />
-          </div>
-          <div className="rounded-lg p-3 mb-4" style={{ background: "#12122a", border: "1px solid rgba(255,255,255,0.04)" }}>
-            <div className="text-xs mb-1" style={{ color: "#555566" }}>Amount (SOL)</div>
-            <input type="text" value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              placeholder="0.01"
-              className="w-full text-xl font-bold outline-none"
-              style={{ background: "transparent", color: "#fff", border: "none", fontFamily: "monospace" }} />
-          </div>
-          <div className="flex gap-2">
-            <button onClick={handleSend}
-              disabled={!connected || status === "sending" || !recipient || !amount}
-              className="flex-1 py-2.5 rounded-lg text-xs cursor-pointer"
-              style={{
-                background: connected ? "#00D1FF" : "#333344",
-                color: connected ? "#000" : "#666677",
-                border: "none", fontFamily: '"Press Start 2P", monospace', fontSize: "9px",
-              }}>
-              {!connected ? "CONNECT WALLET FIRST" : status === "sending" ? "SENDING..." : "SEND"}
-            </button>
-            <button onClick={onClose} className="px-4 py-2.5 rounded-lg cursor-pointer"
-              style={{ background: "transparent", border: "1px solid #333344", color: "#666677", fontSize: "12px" }}>
-              ESC
-            </button>
-          </div>
-        </>
-      )}
+      <h3 style={{ fontFamily: '"Press Start 2P", monospace', fontSize: "11px", color: "#00D1FF", marginBottom: 16 }}>SEND SOL</h3>
+      <InputBox label="Recipient address">
+        <input type="text" value={recipient} onChange={(e) => setRecipient(e.target.value)}
+          placeholder="Paste Solana address…"
+          style={{ background: "transparent", color: "#fff", border: "none", fontSize: 12, fontFamily: "monospace", width: "100%", outline: "none" }} />
+      </InputBox>
+      <InputBox label="Amount (SOL)">
+        <input type="text" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.01"
+          style={{ background: "transparent", color: "#fff", border: "none", fontSize: 20, fontFamily: "monospace", width: "100%", outline: "none", fontWeight: "bold" }} />
+      </InputBox>
+      <div style={{ fontSize: "9px", color: "#555566", marginTop: 4, marginBottom: 12, textAlign: "center" }}>
+        Transfers on devnet · requires devnet SOL
+      </div>
+      <div className="flex gap-2">
+        <button onClick={handleSend} disabled={!connected || status === "sending" || !recipient || !amount}
+          style={btnStyle(connected ? "#00D1FF" : "#333344", connected ? "#000" : "#666677")} className="flex-1 py-2.5">
+          {!connected ? "CONNECT WALLET FIRST" : status === "sending" ? "SENDING…" : "SEND"}
+        </button>
+        <button onClick={onClose} style={{ background: "transparent", border: "1px solid #333344", color: "#666677", borderRadius: 8, padding: "0 16px", cursor: "pointer", fontSize: 12 }}>ESC</button>
+      </div>
     </>
   );
 }
 
-function BountiesPanel({ onClose }: { onClose: () => void }) {
-  const [bounties, setBounties] = useState([
-    { title: "Create tutorial video for Solana beginners", reward: "500 USDC", tag: "Content", url: "https://earn.superteam.fun" },
-    { title: "Build open-source analytics dashboard", reward: "800 USDC", tag: "Development", url: "https://earn.superteam.fun" },
-    { title: "Translate Solana docs to Portuguese", reward: "200 USDC", tag: "Translation", url: "https://earn.superteam.fun" },
-    { title: "Design social media templates", reward: "300 USDC", tag: "Design", url: "https://earn.superteam.fun" },
-    { title: "Write thread about Ephemeral Rollups", reward: "150 USDC", tag: "Content", url: "https://earn.superteam.fun" },
-  ]);
+// ── Bounties Panel ────────────────────────────────────────────────────
 
-  const tagColors: Record<string, string> = {
-    Content: "#14F195",
-    Development: "#00D1FF",
-    Translation: "#FFD700",
-    Design: "#F72585",
-  };
+const BOUNTIES = [
+  { id: "b1", title: "Create tutorial video for Solana beginners", reward: "500 USDC", tag: "Content",     url: "https://earn.superteam.fun" },
+  { id: "b2", title: "Build open-source analytics dashboard",       reward: "800 USDC", tag: "Development", url: "https://earn.superteam.fun" },
+  { id: "b3", title: "Translate Solana docs to Portuguese",          reward: "200 USDC", tag: "Translation", url: "https://earn.superteam.fun" },
+  { id: "b4", title: "Design social media templates",                reward: "300 USDC", tag: "Design",      url: "https://earn.superteam.fun" },
+  { id: "b5", title: "Write thread about Ephemeral Rollups",         reward: "150 USDC", tag: "Content",     url: "https://earn.superteam.fun" },
+];
+
+const TAG_COLORS: Record<string, string> = {
+  Content: "#14F195", Development: "#00D1FF", Translation: "#FFD700", Design: "#F72585",
+};
+
+function BountiesPanel({ onClose }: { onClose: () => void }) {
+  const [claimed, setClaimed] = useState<Set<string>>(new Set());
+
+  const handleClaim = useCallback((id: string, title: string) => {
+    if (claimed.has(id)) return;
+    setClaimed((s) => new Set([...s, id]));
+    profileManager.recordBounty({ title });
+  }, [claimed]);
 
   return (
     <>
-      <h3 className="text-sm mb-2" style={{
-        fontFamily: '"Press Start 2P", monospace', fontSize: "11px", color: "#9945FF",
-      }}>
+      <h3 style={{ fontFamily: '"Press Start 2P", monospace', fontSize: "11px", color: "#9945FF", marginBottom: 4 }}>
         BOUNTY BOARD
       </h3>
-      <p className="text-xs mb-3" style={{ color: "#555566" }}>
-        Powered by Superteam Earn
-      </p>
+      <p style={{ fontSize: "11px", color: "#555566", marginBottom: 12 }}>Powered by Superteam Earn</p>
 
-      <div style={{ maxHeight: 260, overflowY: "auto" }}>
-        {bounties.map((b, i) => (
-          <a key={i} href={b.url} target="_blank" rel="noopener noreferrer"
-            className="flex justify-between items-center rounded-lg p-3 mb-2 cursor-pointer transition-colors"
-            style={{
-              background: "#12122a",
-              border: "1px solid rgba(255,255,255,0.04)",
-              textDecoration: "none",
-            }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "rgba(153,69,255,0.3)"; }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "rgba(255,255,255,0.04)"; }}
-          >
-            <div>
-              <div className="text-sm" style={{ color: "#ccccdd" }}>{b.title}</div>
-              <span className="text-xs px-2 py-0.5 rounded mt-1 inline-block"
-                style={{
-                  background: `${tagColors[b.tag] || "#9945FF"}15`,
-                  color: tagColors[b.tag] || "#9945FF",
-                }}>
-                {b.tag}
-              </span>
-            </div>
-            <div className="text-right flex-shrink-0 ml-3">
-              <div style={{ fontFamily: '"Press Start 2P", monospace', fontSize: "9px", color: "#14F195" }}>
-                {b.reward}
+      <div style={{ maxHeight: 280, overflowY: "auto" }}>
+        {BOUNTIES.map((b) => {
+          const done = claimed.has(b.id);
+          return (
+            <div key={b.id} style={{ background: "#12122a", border: "1px solid rgba(255,255,255,0.04)", borderRadius: 8, padding: 12, marginBottom: 8 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+                <div style={{ flex: 1 }}>
+                  <a href={b.url} target="_blank" rel="noopener noreferrer"
+                    style={{ color: done ? "#555566" : "#ccccdd", fontSize: "12px", textDecoration: "none" }}>
+                    {b.title}
+                  </a>
+                  <div style={{ marginTop: 4 }}>
+                    <span style={{ fontSize: "10px", padding: "2px 6px", borderRadius: 4, background: `${TAG_COLORS[b.tag] ?? "#9945FF"}18`, color: TAG_COLORS[b.tag] ?? "#9945FF" }}>
+                      {b.tag}
+                    </span>
+                  </div>
+                </div>
+                <div style={{ textAlign: "right", flexShrink: 0, marginLeft: 8 }}>
+                  <div style={{ fontFamily: '"Press Start 2P", monospace', fontSize: "9px", color: "#14F195", marginBottom: 6 }}>
+                    {b.reward}
+                  </div>
+                  <button
+                    onClick={() => handleClaim(b.id, b.title)}
+                    disabled={done}
+                    style={{
+                      fontSize: "8px",
+                      fontFamily: '"Press Start 2P", monospace',
+                      padding: "4px 8px",
+                      borderRadius: 4,
+                      cursor: done ? "default" : "pointer",
+                      background: done ? "rgba(20,241,149,0.1)" : "rgba(20,241,149,0.85)",
+                      color: done ? "#14F195" : "#000",
+                      border: done ? "1px solid rgba(20,241,149,0.3)" : "none",
+                    }}
+                  >
+                    {done ? "CLAIMED ✓" : "CLAIM"}
+                  </button>
+                </div>
               </div>
-              <div className="text-xs mt-1" style={{ color: "#555566" }}>
-                Apply
-              </div>
             </div>
-          </a>
-        ))}
+          );
+        })}
       </div>
 
       <div className="flex gap-2 mt-3">
         <a href="https://earn.superteam.fun" target="_blank" rel="noopener noreferrer"
-          className="flex-1 py-2.5 rounded-lg text-xs cursor-pointer text-center"
-          style={{
-            background: "#9945FF", color: "#fff", border: "none",
-            fontFamily: '"Press Start 2P", monospace', fontSize: "8px",
-            textDecoration: "none", display: "block", lineHeight: "2.5",
-          }}>
-          VIEW ALL ON SUPERTEAM EARN
+          style={{ flex: 1, background: "#9945FF", color: "#fff", border: "none", borderRadius: 8, padding: "10px 0", textAlign: "center", fontFamily: '"Press Start 2P", monospace', fontSize: "8px", textDecoration: "none", display: "block" }}>
+          VIEW ALL ON SUPERTEAM
         </a>
-        <button onClick={onClose} className="px-4 py-2.5 rounded-lg cursor-pointer"
-          style={{ background: "transparent", border: "1px solid #333344", color: "#666677", fontSize: "12px" }}>
-          ESC
-        </button>
+        <button onClick={onClose} style={{ background: "transparent", border: "1px solid #333344", color: "#666677", borderRadius: 8, padding: "0 16px", cursor: "pointer", fontSize: 12 }}>ESC</button>
       </div>
     </>
   );
 }
+
+// ── Tutor Panel ───────────────────────────────────────────────────────
 
 function TutorPanel({ onClose }: { onClose: () => void }) {
   const { connected } = useWallet();
@@ -496,111 +430,100 @@ function TutorPanel({ onClose }: { onClose: () => void }) {
 
   return (
     <>
-      <h3
-        className="text-sm mb-4"
-        style={{
-          fontFamily: '"Press Start 2P", monospace',
-          fontSize: "11px",
-          color: "#14F195",
-        }}
-      >
+      <h3 style={{ fontFamily: '"Press Start 2P", monospace', fontSize: "11px", color: "#14F195", marginBottom: 16 }}>
         GETTING STARTED
       </h3>
-
-      <div className="space-y-3 mb-4">
-        <StepCard
-          number={1}
-          title="Connect your wallet"
-          description="Your wallet is your identity. It holds your tokens, items, and reputation. Phantom and Solflare are recommended."
-          color="#9945FF"
-          action={
-            !connected ? (
-              <button
-                onClick={() => openWalletModal(true)}
-                className="mt-2 px-3 py-1.5 rounded text-xs cursor-pointer"
-                style={{
-                  background: "rgba(153,69,255,0.8)",
-                  color: "#fff",
-                  border: "none",
-                  fontFamily: '"Press Start 2P", monospace',
-                  fontSize: "7px",
-                }}
-              >
-                CONNECT NOW
-              </button>
-            ) : (
-              <span className="text-xs mt-1 inline-block" style={{ color: "#14F195" }}>
-                Connected
-              </span>
-            )
-          }
+      <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 16 }}>
+        <StepCard number={1} title="Connect your wallet" color="#9945FF"
+          description="Your wallet is your identity here. Phantom and Solflare work great."
+          action={!connected ? (
+            <button onClick={() => openWalletModal(true)}
+              style={{ ...btnStyle("rgba(153,69,255,0.8)"), marginTop: 8, fontSize: "7px", padding: "6px 12px" }}>
+              CONNECT NOW
+            </button>
+          ) : (
+            <span style={{ fontSize: "11px", color: "#14F195", display: "block", marginTop: 4 }}>✓ Connected</span>
+          )}
         />
-        <StepCard
-          number={2}
-          title="Swap tokens"
-          description="Walk to Jupiter Joe (the gold NPC near the top) and press E. You can exchange any Solana token for another."
-          color="#FFD700"
-        />
-        <StepCard
-          number={3}
-          title="Send tokens"
-          description="Visit Postmaster Ana (the blue NPC) to transfer SOL or any token to another address."
-          color="#00D1FF"
-        />
-        <StepCard
-          number={4}
-          title="Explore the city"
-          description="Check the Superteam Hub for bounties and jobs. Walk around to discover new services. Every interaction earns you score and unlocks outfits!"
-          color="#9945FF"
-        />
+        <StepCard number={2} title="Swap tokens" color="#FFD700"
+          description="Walk to Jupiter Joe (gold NPC, north) and press E to exchange tokens via Jupiter." />
+        <StepCard number={3} title="Send SOL" color="#00D1FF"
+          description="Visit Postmaster Ana (blue NPC) to transfer SOL to any wallet on devnet." />
+        <StepCard number={4} title="Explore & earn" color="#9945FF"
+          description="Check the Superteam Hub for bounties. Every interaction earns score and unlocks outfits!" />
       </div>
-
-      <button
-        onClick={onClose}
-        className="w-full py-2.5 rounded-lg cursor-pointer"
-        style={{
-          background: "#14F195",
-          color: "#000",
-          border: "none",
-          fontFamily: '"Press Start 2P", monospace',
-          fontSize: "9px",
-        }}
-      >
-        START EXPLORING
-      </button>
+      <button onClick={onClose} style={btnStyle("#14F195", "#000")} className="w-full py-2.5">START EXPLORING</button>
     </>
   );
 }
 
-function StepCard({
-  number,
-  title,
-  description,
-  color,
-  action,
-}: {
-  number: number;
-  title: string;
-  description: string;
-  color: string;
-  action?: React.ReactNode;
+// ── Shared helpers ────────────────────────────────────────────────────
+
+const TOKEN_LIST_SYMBOLS = ["SOL", "USDC", "USDT", "JUP", "BONK"];
+
+function TokenBox({ label, token, onTokenChange, excludeToken, tokens, getLogo, children }: {
+  label: string;
+  token: string;
+  onTokenChange: (t: string) => void;
+  excludeToken: string;
+  tokens: string[];
+  getLogo: (s: string) => string;
+  children: React.ReactNode;
+}) {
+  const logo = getLogo(token);
+  return (
+    <div style={{ background: "#12122a", border: "1px solid rgba(255,255,255,0.04)", borderRadius: 8, padding: 12, marginBottom: 8 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+        <span style={{ fontSize: "11px", color: "#555566" }}>{label}</span>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          {logo && <img src={logo} alt={token} style={{ width: 18, height: 18, borderRadius: "50%" }} />}
+          <select value={token} onChange={(e) => onTokenChange(e.target.value)}
+            style={{ background: "#1a1a3a", color: "#9945FF", border: "1px solid rgba(153,69,255,0.2)", borderRadius: 4, padding: "2px 6px", fontSize: "12px", cursor: "pointer", outline: "none" }}>
+            {tokens.filter(t => t !== excludeToken).map(t => <option key={t} value={t}>{t}</option>)}
+          </select>
+        </div>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function InputBox({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div style={{ background: "#12122a", border: "1px solid rgba(255,255,255,0.04)", borderRadius: 8, padding: 12, marginBottom: 8 }}>
+      <div style={{ fontSize: "11px", color: "#555566", marginBottom: 6 }}>{label}</div>
+      {children}
+    </div>
+  );
+}
+
+function StepCard({ number, title, description, color, action }: {
+  number: number; title: string; description: string; color: string; action?: React.ReactNode;
 }) {
   return (
-    <div
-      className="flex gap-3 rounded-lg p-3"
-      style={{ background: "#12122a", border: "1px solid rgba(255,255,255,0.04)" }}
-    >
-      <div
-        className="flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold"
-        style={{ background: `${color}22`, color, border: `1px solid ${color}44` }}
-      >
+    <div style={{ display: "flex", gap: 12, background: "#12122a", border: "1px solid rgba(255,255,255,0.04)", borderRadius: 8, padding: 12 }}>
+      <div style={{ flexShrink: 0, width: 28, height: 28, borderRadius: "50%", background: `${color}22`, border: `1px solid ${color}44`, color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "12px", fontWeight: "bold" }}>
         {number}
       </div>
       <div>
-        <div className="text-sm font-bold mb-0.5" style={{ color: "#ccccdd" }}>{title}</div>
-        <div className="text-xs" style={{ color: "#777788", lineHeight: 1.5 }}>{description}</div>
+        <div style={{ color: "#ccccdd", fontWeight: "bold", fontSize: "13px", marginBottom: 3 }}>{title}</div>
+        <div style={{ color: "#777788", fontSize: "11px", lineHeight: 1.5 }}>{description}</div>
         {action}
       </div>
     </div>
   );
+}
+
+function btnStyle(bg: string, color = "#fff"): React.CSSProperties {
+  return {
+    background: bg,
+    color,
+    border: "none",
+    borderRadius: 8,
+    cursor: "pointer",
+    fontFamily: '"Press Start 2P", monospace',
+    fontSize: "9px",
+    display: "block",
+    textAlign: "center",
+  };
 }

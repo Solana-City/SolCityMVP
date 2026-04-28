@@ -1,4 +1,4 @@
-import Phaser from "phaser";
+import * as Phaser from "phaser";
 import { TiledMapDefinition, MapLayerConfig } from "../config/mapRegistry";
 import { TILE_SIZE } from "../config/constants";
 

@@ -1,4 +1,4 @@
-import Phaser from "phaser";
+import * as Phaser from "phaser";
 
 const BUBBLE_DURATION = 4000;
 const BUBBLE_PADDING = 6;

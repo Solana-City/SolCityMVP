@@ -1,4 +1,4 @@
-import Phaser from "phaser";
+import * as Phaser from "phaser";
 import { TILE_SIZE } from "../config/constants";
 import { SimpleSprite } from "./SimpleSprite";
 import type { NPCDefinition } from "../config/npcRegistry";

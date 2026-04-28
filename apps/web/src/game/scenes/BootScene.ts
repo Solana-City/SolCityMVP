@@ -1,4 +1,4 @@
-import Phaser from "phaser";
+import * as Phaser from "phaser";
 import { generateTileset } from "../utils/tilesetGenerator";
 import { SimpleSprite } from "../entities/SimpleSprite";
 import { NPC_REGISTRY } from "../config/npcRegistry";
