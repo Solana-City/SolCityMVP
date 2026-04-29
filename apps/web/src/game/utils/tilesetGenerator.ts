@@ -1,4 +1,5 @@
 import { TILE_SIZE, COLORS, Tile } from "../config/constants";
+import { TILED_PALETTE_COLORS } from "./tiledParser";
 
 const T = TILE_SIZE; // 32
 
@@ -60,6 +61,121 @@ export function generateTileset(scene: Phaser.Scene): void {
   }
 
   scene.textures.addCanvas("tileset", canvas);
+}
+
+/**
+ * Generates a 11-tile colour-coded tileset for the Tiled map parser.
+ * One 24×24 tile per palette entry (indices 0-10).
+ * Stored as "tiled-palette" texture key.
+ */
+export function generateTiledPalette(scene: Phaser.Scene): void {
+  if (scene.textures.exists("tiled-palette")) return;
+
+  const T = 24; // matches Tiled tile size
+  const COUNT = 11;
+
+  const canvas = document.createElement("canvas");
+  canvas.width  = T;
+  canvas.height = T * COUNT;
+  const ctx = canvas.getContext("2d")!;
+  ctx.imageSmoothingEnabled = false;
+
+  for (let i = 0; i < COUNT; i++) {
+    const y   = i * T;
+    const col = TILED_PALETTE_COLORS[i] ?? 0x111111;
+
+    // Base fill
+    ctx.fillStyle = hex(col);
+    ctx.fillRect(0, y, T, T);
+
+    if (i === 0) {
+      // Transparent empty tile — just black
+      ctx.clearRect(0, y, T, T);
+      continue;
+    }
+
+    // Light top edge (gives slight depth)
+    ctx.fillStyle = "rgba(255,255,255,0.08)";
+    ctx.fillRect(0, y, T, 1);
+    ctx.fillRect(0, y, 1, T);
+
+    // Dark bottom-right edge
+    ctx.fillStyle = "rgba(0,0,0,0.18)";
+    ctx.fillRect(0, y + T - 1, T, 1);
+    ctx.fillRect(T - 1, y, 1, T);
+
+    switch (i) {
+      case 1: // Ground base — subtle grid
+        ctx.fillStyle = "rgba(0,209,255,0.06)";
+        for (let g = 0; g < T; g += 8) {
+          ctx.fillRect(g, y, 1, T);
+          ctx.fillRect(0, y + g, T, 1);
+        }
+        break;
+
+      case 2: // Grass — dithered dots
+      case 3:
+        ctx.fillStyle = i === 2 ? "rgba(74,255,136,0.20)" : "rgba(74,255,136,0.28)";
+        for (let d = 0; d < 6; d++) {
+          ctx.fillRect((d * 5 + 2) % T, y + (d * 7 + 1) % T, 1, 1);
+        }
+        break;
+
+      case 4: // Sidewalk — cobblestone
+        ctx.fillStyle = "rgba(0,0,0,0.20)";
+        for (let r = 0; r < 3; r++) {
+          for (let c = 0; c < 3; c++) {
+            ctx.fillRect(c * 8, y + r * 8, 8, 1);
+            ctx.fillRect(c * 8, y + r * 8, 1, 8);
+          }
+        }
+        ctx.fillStyle = "rgba(255,255,255,0.08)";
+        for (let r = 0; r < 3; r++) {
+          for (let c = 0; c < 3; c++) {
+            ctx.fillRect(c * 8 + 1, y + r * 8 + 1, 6, 1);
+          }
+        }
+        break;
+
+      case 5: // Generic building
+      case 6: // STEarn
+      case 7: // STBrazil
+      case 8: // Jupiter
+      case 10: { // MonkeyDAO
+        // Two small windows
+        const winCol = i === 8 ? "#ffe88a" : i === 6 ? "#c888ff" : i === 7 ? "#80ffee" : i === 10 ? "#ffcc80" : "#aaaacc";
+        ctx.fillStyle = "rgba(0,0,0,0.25)";
+        ctx.fillRect(0, y, T, 4); // roof band
+        ctx.fillStyle = winCol;
+        ctx.globalAlpha = 0.70;
+        ctx.fillRect(3, y + 7,  7, 5);
+        ctx.fillRect(14, y + 7, 7, 5);
+        ctx.fillRect(3, y + 15, 7, 5);
+        ctx.fillRect(14, y + 15, 7, 5);
+        ctx.globalAlpha = 1;
+        // Neon bottom strip
+        const accent = i === 8 ? "#FFD700" : i === 6 ? "#9945FF" : i === 7 ? "#14F195" : i === 10 ? "#FF6B35" : "#00D1FF";
+        ctx.fillStyle = accent;
+        ctx.globalAlpha = 0.70;
+        ctx.fillRect(2, y + T - 4, T - 4, 2);
+        ctx.globalAlpha = 1;
+        break;
+      }
+
+      case 9: // Fountain
+        ctx.fillStyle = "rgba(0,209,255,0.35)";
+        ctx.fillRect(4, y + 8, T - 8, T - 12);
+        ctx.fillStyle = "#00d1ff";
+        ctx.globalAlpha = 0.80;
+        ctx.fillRect(T/2, y + 2, 1, 7);
+        ctx.fillRect(T/2 - 3, y + 3, 1, 4);
+        ctx.fillRect(T/2 + 3, y + 3, 1, 4);
+        ctx.globalAlpha = 1;
+        break;
+    }
+  }
+
+  scene.textures.addCanvas("tiled-palette", canvas);
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────────

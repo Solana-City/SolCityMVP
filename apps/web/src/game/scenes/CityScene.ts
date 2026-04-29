@@ -1,6 +1,5 @@
 import * as Phaser from "phaser";
-import { TILE_SIZE, MAP_COLS, MAP_ROWS, PLAYER_SPEED } from "../config/constants";
-import { getMapData, getSpawnPoint } from "../utils/mapGenerator";
+import { TILE_SIZE, PLAYER_SPEED } from "../config/constants";
 import { SimpleSprite, Direction } from "../entities/SimpleSprite";
 import { OnChainMultiplayer, OnChainPlayer } from "../multiplayer/OnChainMultiplayer";
 import { ChatManager, getChannelColor } from "../chat/ChatManager";
@@ -16,7 +15,7 @@ export class CityScene extends Phaser.Scene {
   private playerBody!: Phaser.Physics.Arcade.Body;
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
   private wasd!: Record<string, Phaser.Input.Keyboard.Key>;
-  private collisionGroup!: Phaser.Physics.Arcade.StaticGroup;
+  private collisionLayers: Phaser.Tilemaps.TilemapLayer[] = [];
 
   private network!: OnChainMultiplayer;
   private chat!: ChatManager;
@@ -34,41 +33,45 @@ export class CityScene extends Phaser.Scene {
   }
 
   create(): void {
-    const { ground, collision, width, height } = getMapData();
+    // ── Tiled map with real sprite art ────────────────────────────────────
+    const map = this.make.tilemap({ key: "city-map" });
+    const tileSize  = map.tileWidth;   // 24
+    const mapWidth  = map.width;        // 200
+    const mapHeight = map.height;       // 200
 
-    const map = this.make.tilemap({
-      data: this.reshape(ground, width, height),
-      tileWidth: TILE_SIZE,
-      tileHeight: TILE_SIZE,
-    });
+    // Add all tileset spritesheets loaded in BootScene
+    const allTilesets = [
+      "SCTileGrass", "SCBuildSTEarn", "SCBuildMonkeyDAO",
+      "SCBuildSTBrazil", "SCBuildJupter", "SCTileFountain",
+      "SCTileGround", "SCNPCAlien",
+    ]
+      .map(n => map.addTilesetImage(n, n))
+      .filter((ts): ts is Phaser.Tilemaps.Tileset => ts !== null);
 
-    const tileset = map.addTilesetImage("tileset", "tileset", TILE_SIZE, TILE_SIZE, 0, 0);
-    if (!tileset) return;
-    map.createLayer(0, tileset, 0, 0);
+    // Render layers bottom-to-top; NPC layer is skipped (handled as entities)
+    const RENDER_LAYERS = [
+      "Camada de Blocos 14", "Grass", "GrassCenter",
+      "Sidewalk", "Sidewalk02", "Sidewalk03",
+      "BuildGeneric01", "BuildSTEarn", "Camada de Blocos 12",
+      "BuildSTBrazil", "BuildJupiter", "DecorFountain", "BuildMonkeDAo",
+    ];
+    const COLLISION_LAYER_NAMES = new Set([
+      "BuildGeneric01", "BuildSTEarn", "Camada de Blocos 12",
+      "BuildSTBrazil", "BuildJupiter", "BuildMonkeDAo",
+    ]);
 
-    // Collision: create static bodies for each blocked tile
-    this.collisionGroup = this.physics.add.staticGroup();
-    for (let r = 0; r < height; r++) {
-      for (let c = 0; c < width; c++) {
-        const idx = r * width + c;
-        if (collision[idx] === 0) {
-          const bx = c * TILE_SIZE + TILE_SIZE / 2;
-          const by = r * TILE_SIZE + TILE_SIZE / 2;
-          const block = this.add.rectangle(bx, by, TILE_SIZE, TILE_SIZE);
-          block.setVisible(false);
-          this.physics.add.existing(block, true);
-          this.collisionGroup.add(block);
-        }
+    for (const name of RENDER_LAYERS) {
+      const layer = map.createLayer(name, allTilesets, 0, 0);
+      if (!layer) continue;
+      if (COLLISION_LAYER_NAMES.has(name)) {
+        layer.setCollisionByExclusion([-1]);
+        this.collisionLayers.push(layer);
       }
     }
 
-    // Local player sprite. The "avatar-player" texture should always be
-    // loaded; if somehow missing (network error during boot), we just
-    // ship the first available NPC sprite as a hard fallback. No more
-    // chef placeholder — that's been removed from the pipeline.
-    const spawn = getSpawnPoint();
-    const spawnX = spawn.x * TILE_SIZE + TILE_SIZE / 2;
-    const spawnY = spawn.y * TILE_SIZE + TILE_SIZE / 2;
+    // Spawn at the centre plaza (col 100, row 95 — inside GrassCenter)
+    const spawnX = 100 * tileSize + tileSize / 2;
+    const spawnY = 95  * tileSize + tileSize / 2;
     const playerTextureKey = this.textures.exists("avatar-player")
       ? "avatar-player"
       : "avatar-sol-guide";
@@ -80,8 +83,11 @@ export class CityScene extends Phaser.Scene {
     this.playerBody.setSize(TILE_SIZE * 0.5, TILE_SIZE * 0.3);
     this.playerBody.setOffset(-TILE_SIZE * 0.25, -TILE_SIZE * 0.2);
     this.playerBody.setCollideWorldBounds(true);
-    this.physics.add.collider(container, this.collisionGroup);
-    this.physics.world.setBounds(0, 0, MAP_COLS * TILE_SIZE, MAP_ROWS * TILE_SIZE);
+    for (const cl of this.collisionLayers) {
+      this.physics.add.collider(container, cl);
+    }
+    this.physics.world.setBounds(0, 0, map.widthInPixels, map.heightInPixels);
+    this.cameras.main.setBounds(0, 0, map.widthInPixels, map.heightInPixels);
 
     // "YOU" label — same visual weight as NPC names for consistency.
     const youLabel = this.add.text(0, -38, "YOU", {
@@ -98,7 +104,7 @@ export class CityScene extends Phaser.Scene {
     // pixel maps to exactly N screen pixels — no fractional sampling,
     // which is the industry-standard way to keep pixel art crisp.
     this.cameras.main.startFollow(container, true, 1.0, 1.0);
-    this.cameras.main.setZoom(2);
+    this.cameras.main.setZoom(3);
     this.cameras.main.setBackgroundColor(0x061a2c);
     this.cameras.main.roundPixels = true;
 
@@ -181,8 +187,8 @@ export class CityScene extends Phaser.Scene {
       }
     });
 
-    // Building facades + decorative props layered above the tilemap
-    this.createDecoratives();
+    // Decorative props layered above the tilemap (real Tiled art handles buildings)
+    this.createDecoratives(true);
 
     // NPCs with collision bodies
     for (const def of NPC_REGISTRY) {
@@ -404,39 +410,28 @@ export class CityScene extends Phaser.Scene {
     new ChatBubble(this, target, text, color);
   }
 
-  private reshape(flat: number[], cols: number, rows: number): number[][] {
-    const grid: number[][] = [];
-    for (let r = 0; r < rows; r++) {
-      grid.push(flat.slice(r * cols, (r + 1) * cols));
-    }
-    return grid;
-  }
-
   // ── Decoratives ────────────────────────────────────────────────────────────
 
-  /**
-   * Renders pixel-art building facades and street props above the tilemap.
-   * Everything here is visual-only — physics colliders are already handled
-   * by the tile collision layer created above.
-   */
-  private createDecoratives(): void {
-    this.generateBuildingTextures();
-    this.placeBuildingFacades();
-    this.placeLampPosts();
-    this.placeBenches();
-    this.placeTreeProps();
-    this.placeFountain();
+  private createDecoratives(isTiled: boolean): void {
+    const t = isTiled;
+    this.generateBuildingTextures(t);
+    this.placeBuildingFacades(t);
+    this.placeLampPosts(t);
+    this.placeBenches(t);
+    this.placeTreeProps(t);
+    this.placeFountain(t);
   }
 
   // Pre-render building facade textures into the texture cache
-  private generateBuildingTextures(): void {
+  private generateBuildingTextures(_isTiled: boolean): void {
     const T = TILE_SIZE;
 
     const defs: Array<{ key: string; accentColor: string; label: string; labelColor: string }> = [
       { key: "facade-jupiter",   accentColor: "#FFD700", label: "JUPITER",    labelColor: "#FFD700" },
-      { key: "facade-post",      accentColor: "#00D1FF", label: "POST",        labelColor: "#00D1FF" },
-      { key: "facade-superteam", accentColor: "#9945FF", label: "SUPERTEAM",   labelColor: "#9945FF" },
-      { key: "facade-generic",   accentColor: "#14F195", label: "BUILDING",    labelColor: "#14F195" },
+      { key: "facade-post",      accentColor: "#00D1FF", label: "STBRAZIL",   labelColor: "#00D1FF" },
+      { key: "facade-superteam", accentColor: "#9945FF", label: "SUPERTEAM",  labelColor: "#9945FF" },
+      { key: "facade-monkeydao", accentColor: "#FF6B35", label: "MONKEYDAO",  labelColor: "#FF6B35" },
+      { key: "facade-generic",   accentColor: "#14F195", label: "BUILDING",   labelColor: "#14F195" },
     ];
 
     for (const def of defs) {
@@ -546,17 +541,27 @@ export class CityScene extends Phaser.Scene {
     }
   }
 
-  private placeBuildingFacades(): void {
+  private placeBuildingFacades(isTiled: boolean): void {
     const T = TILE_SIZE;
 
-    // Each entry: [texture key, tile col, tile row (top of facade tiles)]
-    const facades: [string, number, number][] = [
-      ["facade-jupiter",   10, 3],  // Jupiter Exchange: cols 10-12, rows 3-4
-      ["facade-post",      20, 3],  // Post Station: cols 20-22, rows 3-4
-      ["facade-superteam", 20, 17], // Superteam Hub: cols 20-22, rows 17-19
-      ["facade-generic",   10, 21], // Generic building: cols 10-12, rows 21-23
-      ["facade-generic",   18, 21], // Generic building: cols 18-20, rows 21-23
-    ];
+    // Each entry: [texture key, tile col, tile row]
+    // row = (buildingTopRow + 4) so the 4-tile-tall facade top aligns with building top.
+    // col chosen so wx = col*T + T*3/2 lands on the building centre.
+    const facades: [string, number, number][] = isTiled
+      ? [
+          ["facade-jupiter",    128, 80],  // BuildJupiter   cols 124-136, top row 76
+          ["facade-superteam",  114, 103], // BuildSTEarn    cols 114-119, top row 99
+          ["facade-post",        66, 107], // BuildSTBrazil  cols 62-74,   top row 103
+          ["facade-monkeydao",   65,  71], // BuildMonkeyDAO cols 61-74,   top row 67
+          ["facade-generic",     77,  84], // BuildGeneric01 cols 74-84,   top row 80
+        ]
+      : [
+          ["facade-jupiter",   10, 3],
+          ["facade-post",      20, 3],
+          ["facade-superteam", 20, 17],
+          ["facade-generic",   10, 21],
+          ["facade-generic",   18, 21],
+        ];
 
     for (const [key, col, row] of facades) {
       // World-space pixel X = col * T + half facade width (centre)
@@ -569,37 +574,36 @@ export class CityScene extends Phaser.Scene {
     }
   }
 
-  private placeLampPosts(): void {
+  private placeLampPosts(isTiled: boolean): void {
     const T = TILE_SIZE;
-    // Lamp post texture — 6×20px
     if (!this.textures.exists("lamp")) {
       const c = document.createElement("canvas");
       c.width = 6; c.height = 20;
       const ctx = c.getContext("2d")!;
-      // Pole
       ctx.fillStyle = "#888898"; ctx.fillRect(2, 4, 2, 16);
-      // Arm
       ctx.fillStyle = "#aaaabc"; ctx.fillRect(0, 4, 5, 2);
-      // Bulb
       ctx.fillStyle = "#ffffc0"; ctx.fillRect(0, 0, 5, 5);
       ctx.fillStyle = "#ffffff"; ctx.fillRect(1, 0, 3, 2);
       this.textures.addCanvas("lamp", c);
     }
 
-    // Place lamps along col-5 path (N-S) and col-25 path (N-S)
-    // and along row-6 path (E-W) and row-13 / row-20
-    const lampPositions: [number, number][] = [
-      // col 5 N-S path, every 4 tiles
-      [5, 7], [5, 10], [5, 14], [5, 17],
-      // col 25 N-S path
-      [25, 7], [25, 10], [25, 14], [25, 17],
-      // row 6 E-W path, every 4 tiles (avoid NPC zones)
-      [9, 6], [13, 6], [17, 6], [21, 6],
-      // row 13
-      [8, 13], [12, 13], [16, 13], [19, 13], [23, 13],
-      // row 20
-      [9, 20], [13, 20], [17, 20], [21, 20],
-    ];
+    // Tiled: lamp posts line the actual sidewalk tiles in city.json
+    //   Sidewalk   cols 48-88, rows 87-95
+    //   Sidewalk02 cols 48-88, rows 112-118
+    //   Sidewalk03 cols 109-149, rows 88-94
+    const lampPositions: [number, number][] = isTiled
+      ? [
+          [52, 88], [60, 88], [68, 88], [76, 88], [84, 88],
+          [113, 89], [121, 89], [129, 89], [137, 89], [145, 89],
+          [52, 113], [60, 113], [68, 113], [76, 113], [84, 113],
+        ]
+      : [
+          [5, 7], [5, 10], [5, 14], [5, 17],
+          [25, 7], [25, 10], [25, 14], [25, 17],
+          [9, 6], [13, 6], [17, 6], [21, 6],
+          [8, 13], [12, 13], [16, 13], [19, 13], [23, 13],
+          [9, 20], [13, 20], [17, 20], [21, 20],
+        ];
 
     for (const [col, row] of lampPositions) {
       const wx = col * T + T / 2;
@@ -610,29 +614,33 @@ export class CityScene extends Phaser.Scene {
     }
   }
 
-  private placeBenches(): void {
+  private placeBenches(isTiled: boolean): void {
     const T = TILE_SIZE;
     if (!this.textures.exists("bench")) {
       const c = document.createElement("canvas");
       c.width = 14; c.height = 8;
       const ctx = c.getContext("2d")!;
-      // Seat slats
       ctx.fillStyle = "#7a5a30"; ctx.fillRect(0, 2, 14, 3);
       ctx.fillStyle = "#9a7a50"; ctx.fillRect(0, 2, 14, 1);
       ctx.fillStyle = "#5a3a18"; ctx.fillRect(4, 2, 1, 6);
       ctx.fillStyle = "#5a3a18"; ctx.fillRect(9, 2, 1, 6);
-      // Armrests
       ctx.fillStyle = "#9a7a50"; ctx.fillRect(0, 1, 2, 3);
       ctx.fillStyle = "#9a7a50"; ctx.fillRect(12, 1, 2, 3);
       this.textures.addCanvas("bench", c);
     }
 
-    const benches: [number, number][] = [
-      // Around the park area
-      [7, 11], [11, 11], [7, 8], [11, 8],
-      // Plaza benches
-      [14, 9], [19, 9], [14, 11], [19, 11],
-    ];
+    // Tiled: benches around the GrassCenter plaza (cols 89-109, rows 86-107)
+    // and along the main sidewalks
+    const benches: [number, number][] = isTiled
+      ? [
+          [91, 90], [107, 90], [91, 102], [107, 102],
+          [56, 92], [72, 92],
+          [117, 91], [133, 91],
+        ]
+      : [
+          [7, 11], [11, 11], [7, 8], [11, 8],
+          [14, 9], [19, 9], [14, 11], [19, 11],
+        ];
     for (const [col, row] of benches) {
       const wx = col * T + T / 2;
       const wy = row * T + T / 2;
@@ -642,16 +650,14 @@ export class CityScene extends Phaser.Scene {
     }
   }
 
-  private placeTreeProps(): void {
+  private placeTreeProps(isTiled: boolean): void {
     const T = TILE_SIZE;
     if (!this.textures.exists("tree")) {
       const c = document.createElement("canvas");
       c.width = 20; c.height = 28;
       const ctx = c.getContext("2d")!;
-      // Trunk
       ctx.fillStyle = "#5a3a1a"; ctx.fillRect(8, 18, 4, 10);
       ctx.fillStyle = "#7a5a30"; ctx.fillRect(8, 18, 2, 10);
-      // Canopy layers (3 layers, top smaller)
       const layers: [number, number, number, string][] = [
         [2,  12, 16, "#1a8a1a"],
         [1,  7,  18, "#1e9e1e"],
@@ -659,7 +665,6 @@ export class CityScene extends Phaser.Scene {
       ];
       for (const [x, cy, w, col] of layers) {
         ctx.fillStyle = col; ctx.fillRect(x, cy, w, 7);
-        // Top highlight
         ctx.fillStyle = "#30c030"; ctx.globalAlpha = 0.40;
         ctx.fillRect(x+2, cy, w-4, 2);
         ctx.globalAlpha = 1;
@@ -667,11 +672,18 @@ export class CityScene extends Phaser.Scene {
       this.textures.addCanvas("tree", c);
     }
 
-    // Trees around park area (rows 7-10, cols 7-11)
-    const treeTiles: [number, number][] = [
-      [7, 7], [9, 7], [11, 7],
-      [8, 10], [10, 10],
-    ];
+    // Tiled: trees framing the GrassCenter plaza and flanking buildings
+    const treeTiles: [number, number][] = isTiled
+      ? [
+          [90, 87], [94, 86], [104, 86], [108, 87],
+          [90, 103], [94, 105], [104, 105], [108, 103],
+          [78, 79], [82, 78],
+          [120, 75], [126, 75],
+        ]
+      : [
+          [7, 7], [9, 7], [11, 7],
+          [8, 10], [10, 10],
+        ];
     for (const [col, row] of treeTiles) {
       const wx = col * T + T / 2 + (col % 2 === 0 ? 4 : -4);
       const wy = row * T + T - 4;
@@ -681,24 +693,20 @@ export class CityScene extends Phaser.Scene {
     }
   }
 
-  private placeFountain(): void {
+  private placeFountain(isTiled: boolean): void {
     const T = TILE_SIZE;
     if (!this.textures.exists("fountain")) {
       const c = document.createElement("canvas");
       c.width = 24; c.height = 20;
       const ctx = c.getContext("2d")!;
-      // Basin
       ctx.fillStyle = "#404070"; ctx.fillRect(2, 10, 20, 8);
       ctx.fillStyle = "#6060a0"; ctx.fillRect(3, 11, 18, 6);
       ctx.fillStyle = "#0b3b5c"; ctx.fillRect(4, 12, 16, 4);
-      // Water shimmer
       ctx.fillStyle = "#00d1ff"; ctx.globalAlpha = 0.50;
       ctx.fillRect(5, 13, 14, 1);
       ctx.fillRect(7, 15, 10, 1);
       ctx.globalAlpha = 1;
-      // Centre pillar
       ctx.fillStyle = "#8080b0"; ctx.fillRect(11, 4, 2, 8);
-      // Water spray
       ctx.fillStyle = "#00d1ff"; ctx.globalAlpha = 0.70;
       ctx.fillRect(12, 0, 1, 5);
       ctx.fillRect(10, 1, 1, 4);
@@ -709,9 +717,9 @@ export class CityScene extends Phaser.Scene {
       this.textures.addCanvas("fountain", c);
     }
 
-    // Place in the centre of the plaza (around tiles 15-16, 8-10)
-    const wx = 16 * T;
-    const wy = 9 * T;
+    // Tiled: DecorFountain layer occupies cols 93-105, rows 88-100 → centre at (99, 94)
+    const wx = (isTiled ? 99 : 16) * T;
+    const wy = (isTiled ? 94 : 9)  * T;
     const fountain = this.add.image(wx, wy, "fountain");
     fountain.setOrigin(0.5, 0.8);
     fountain.depth = wy;
