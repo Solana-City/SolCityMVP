@@ -1,0 +1,90 @@
+{
+    "activeFile": "Map/SCTileGrass.tsx",
+    "expandedProjectPaths": [
+        "Map",
+        "."
+    ],
+    "fileStates": {
+        "Map/SCBuildIndies.tsx": {
+            "scaleInDock": 2,
+            "scaleInEditor": 1
+        },
+        "Map/SCBuildJupter.tsx": {
+            "scaleInDock": 0.75,
+            "scaleInEditor": 1
+        },
+        "Map/SCBuildMonkeyDAO.tsx": {
+            "scaleInDock": 0.5,
+            "scaleInEditor": 1
+        },
+        "Map/SCBuildSTBrazil.tsx": {
+            "scaleInDock": 0.5,
+            "scaleInEditor": 1
+        },
+        "Map/SCBuildSTEarn.tsx": {
+            "scaleInDock": 1,
+            "scaleInEditor": 1
+        },
+        "Map/SCMap01A.tmx": {
+            "scale": 0.75,
+            "selectedLayer": 7,
+            "viewCenter": {
+                "x": 2026.6666666666667,
+                "y": 2551.333333333333
+            }
+        },
+        "Map/SCNPCAlien.tsx": {
+            "scaleInDock": 1.5,
+            "scaleInEditor": 1
+        },
+        "Map/SCTileFountain.tsx": {
+            "scaleInDock": 5.5,
+            "scaleInEditor": 3
+        },
+        "Map/SCTileGrass.tsx": {
+            "scaleInDock": 0.25,
+            "scaleInEditor": 0.75
+        },
+        "Map/SCTileGround.tsx": {
+            "scaleInDock": 1.5,
+            "scaleInEditor": 1
+        }
+    },
+    "last.exportedFilePath": "C:/Users/Usuario/OneDrive/Desktop/SOL MECH/PROJETOS/Sol City/SCMap01/Exports/Tiles",
+    "last.imagePath": "C:/Users/Usuario/OneDrive/Desktop/SOL MECH/PROJETOS/Sol City/SCMap01/SCAssets/SCNPCs",
+    "map.height": 50,
+    "map.lastUsedExportFilter": "Arquivos de mapa JSON (*.tmj *.json)",
+    "map.lastUsedFormat": "tmx",
+    "map.tileHeight": 24,
+    "map.tileWidth": 24,
+    "map.width": 50,
+    "openFiles": [
+        "Map/SCMap01A.tmx",
+        "Map/SCTileGrass.tsx",
+        "Map/SCTileFountain.tsx",
+        "Map/SCBuildSTEarn.tsx",
+        "Map/SCBuildSTBrazil.tsx",
+        "Map/SCBuildMonkeyDAO.tsx",
+        "Map/SCBuildJupter.tsx",
+        "Map/SCTileGround.tsx"
+    ],
+    "project": "SCMap01.tiled-project",
+    "recentFiles": [
+        "Map/SCMap01A.tmx",
+        "Map/SCTileGround.tsx",
+        "Map/SCBuildJupter.tsx",
+        "Map/SCBuildMonkeyDAO.tsx",
+        "Map/SCBuildSTBrazil.tsx",
+        "Map/SCBuildSTEarn.tsx",
+        "Map/SCTileFountain.tsx",
+        "Map/SCTileGrass.tsx",
+        "Map/SCNPCAlien.tsx",
+        "Map/SCBuildIndies.tsx"
+    ],
+    "tileset.lastUsedExportFilter": "Arquivos de conjunto de tiles JSON (*.tsj *.json)",
+    "tileset.lastUsedFormat": "tsx",
+    "tileset.tileSize": {
+        "height": 24,
+        "width": 24
+    }
+}

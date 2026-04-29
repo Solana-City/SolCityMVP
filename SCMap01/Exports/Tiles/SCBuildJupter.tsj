@@ -1,0 +1,14 @@
+{ "columns":45,
+ "image":"..\/..\/SCAssets\/SCBuild\/SCBuildJupter.png",
+ "imageheight":1080,
+ "imagewidth":1080,
+ "margin":0,
+ "name":"SCBuildJupter",
+ "spacing":0,
+ "tilecount":2025,
+ "tiledversion":"1.12.1",
+ "tileheight":24,
+ "tilewidth":24,
+ "type":"tileset",
+ "version":"1.10"
+}

@@ -1,0 +1,14 @@
+{ "columns":6,
+ "image":"..\/..\/SCAssets\/SCBuild\/SCBuildSTEarn.png",
+ "imageheight":145,
+ "imagewidth":150,
+ "margin":0,
+ "name":"SCBuildSTEarn",
+ "spacing":0,
+ "tilecount":36,
+ "tiledversion":"1.12.1",
+ "tileheight":24,
+ "tilewidth":24,
+ "type":"tileset",
+ "version":"1.10"
+}
