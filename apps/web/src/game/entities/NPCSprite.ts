@@ -21,12 +21,12 @@ export class NPCSprite {
   private unsubBus: (() => void) | null = null;
   readonly def: NPCDefinition;
 
-  constructor(scene: Phaser.Scene, def: NPCDefinition) {
+  constructor(scene: Phaser.Scene, def: NPCDefinition, spawnX?: number, spawnY?: number) {
     this.scene = scene;
     this.def = def;
 
-    const x = def.tileX * TILE_SIZE + TILE_SIZE / 2;
-    const y = def.tileY * TILE_SIZE + TILE_SIZE / 2;
+    const x = spawnX ?? (def.tileX * TILE_SIZE + TILE_SIZE / 2);
+    const y = spawnY ?? (def.tileY * TILE_SIZE + TILE_SIZE / 2);
     this.originX = x;
     this.originY = y;
 

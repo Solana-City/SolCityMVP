@@ -188,12 +188,12 @@ export class CityScene extends Phaser.Scene {
     });
 
 
-    // NPCs with collision bodies
+    // NPCs — position read from Tiled NPC layer, scanned to first walkable row
     for (const def of NPC_REGISTRY) {
-      const npc = new NPCSprite(this, def);
+      const { wx, wy } = this.findNpcSpawn(map, def.tileX, def.tileY, tileSize);
+      const npc = new NPCSprite(this, def, wx, wy);
       this.npcSprites.push(npc);
 
-      // Add static collision body so player can't walk through NPCs
       const npcContainer = npc.getContainer();
       this.physics.world.enable(npcContainer);
       const npcBody = npcContainer.body as Phaser.Physics.Arcade.Body;
@@ -202,6 +202,14 @@ export class CityScene extends Phaser.Scene {
       npcBody.setImmovable(true);
       this.physics.add.collider(container, npcContainer);
     }
+
+    // G key — toggle collision debug overlay
+    this.input.keyboard!.on("keydown-G", () => {
+      this.physics.world.drawDebug = !this.physics.world.drawDebug;
+      if (!this.physics.world.drawDebug) {
+        this.physics.world.debugGraphic?.clear();
+      }
+    });
 
     // NPC interaction listener from React
     this.game.events.on("npc:close", () => {
@@ -408,4 +416,38 @@ export class CityScene extends Phaser.Scene {
     new ChatBubble(this, target, text, color);
   }
 
+  /**
+   * Given the NPC's tile column and the row of its TOP tile in the Tiled NPC
+   * layer, scans downward from the bottom tile (topRow + 1) until it finds a
+   * row that has no collision tile in any building layer. Returns world-pixel
+   * centre coordinates for that clear row.
+   */
+  private findNpcSpawn(
+    map: Phaser.Tilemaps.Tilemap,
+    col: number,
+    topRow: number,
+    tileSize: number
+  ): { wx: number; wy: number } {
+    const COLLISION_LAYERS = [
+      "BuildGeneric01", "BuildSTEarn", "Camada de Blocos 12",
+      "BuildSTBrazil", "BuildJupiter", "BuildMonkeDAo",
+    ];
+
+    const isTileBlocked = (c: number, r: number): boolean =>
+      COLLISION_LAYERS.some(name => {
+        const tile = map.getTileAt(c, r, false, name);
+        return tile !== null && tile.index >= 0;
+      });
+
+    let row = topRow + 1; // start at the bottom tile of the 2-tile NPC sprite
+    const maxScan = topRow + 12;
+    while (row < maxScan && isTileBlocked(col, row)) {
+      row++;
+    }
+
+    return {
+      wx: col * tileSize + tileSize / 2,
+      wy: row * tileSize + tileSize / 2,
+    };
+  }
 }
