@@ -8,6 +8,10 @@ import { transactionLog } from "@/game/telemetry/transactionLog";
 import { profileManager } from "@/game/config/profileManager";
 import { Connection } from "@solana/web3.js";
 
+function emitGameEvent(event: string): void {
+  ((globalThis as any).__solCityGameEvents)?.emit(event);
+}
+
 interface ActionPanelProps {
   action: NPCAction | null;
   onClose: () => void;
@@ -131,6 +135,7 @@ function SwapPanel({ onClose }: { onClose: () => void }) {
       setStatus("done");
       transactionLog.markConfirmed(logEntry.id, signature);
       profileManager.recordSwap({ inputToken, outputToken, amount });
+      emitGameEvent("game:swap");
     } catch (err: any) {
       setResult({ error: err.message });
       setStatus("error");
@@ -276,6 +281,7 @@ function TransferPanel({ onClose }: { onClose: () => void }) {
       setStatus("done");
       transactionLog.markConfirmed(logEntry.id, sig);
       profileManager.recordTransfer({ recipient, amount });
+      emitGameEvent("game:transfer");
     } catch (err: any) {
       setResult({ error: err.message });
       setStatus("error");
@@ -358,6 +364,7 @@ function BountiesPanel({ onClose }: { onClose: () => void }) {
     if (claimed.has(id)) return;
     setClaimed((s) => new Set([...s, id]));
     profileManager.recordBounty({ title });
+    emitGameEvent("game:bounty");
   }, [claimed]);
 
   return (

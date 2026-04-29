@@ -245,6 +245,12 @@ export class CityScene extends Phaser.Scene {
       this.network.disconnect();
       this.chat.addSystemMessage("Session ended");
     });
+
+    // Record on-chain when the player completes a swap/transfer/bounty.
+    // ActionPanel emits these events after a successful transaction.
+    this.game.events.on("game:swap",     () => this.network?.recordAction("swap"));
+    this.game.events.on("game:transfer", () => this.network?.recordAction("transfer"));
+    this.game.events.on("game:bounty",   () => this.network?.recordAction("bounty"));
   }
 
   update(): void {

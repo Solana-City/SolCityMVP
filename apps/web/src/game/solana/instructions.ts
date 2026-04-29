@@ -19,6 +19,12 @@ import {
   TransactionInstruction,
   SystemProgram,
 } from "@solana/web3.js";
+import {
+  DELEGATION_PROGRAM_ID,
+  delegateBufferPdaFromDelegatedAccountAndOwnerProgram,
+  delegationRecordPdaFromDelegatedAccount,
+  delegationMetadataPdaFromDelegatedAccount,
+} from "@magicblock-labs/ephemeral-rollups-sdk";
 import { SOL_CITY_PROGRAM_ID, derivePlayerPDA } from "./program";
 import { sha256 } from "@noble/hashes/sha256";
 
@@ -34,15 +40,18 @@ function ixDiscriminator(name: string): Buffer {
   return Buffer.from(digest.slice(0, 8));
 }
 
-// Cache. These are hot-path for update_position (10 Hz) so we don't
-// re-hash every call.
+// Cache. update_position_session is hot-path (10 Hz), pre-hash everything.
 const DISC = {
-  initializePlayer: ixDiscriminator("initialize_player"),
-  updatePosition: ixDiscriminator("update_position"),
-  recordSwap: ixDiscriminator("record_swap"),
-  recordTransfer: ixDiscriminator("record_transfer"),
-  recordBounty: ixDiscriminator("record_bounty"),
-  changeOutfit: ixDiscriminator("change_outfit"),
+  initializePlayer:      ixDiscriminator("initialize_player"),
+  authorizeSession:      ixDiscriminator("authorize_session"),
+  revokeSession:         ixDiscriminator("revoke_session"),
+  updatePosition:        ixDiscriminator("update_position"),
+  updatePositionSession: ixDiscriminator("update_position_session"),
+  recordSwap:            ixDiscriminator("record_swap"),
+  recordTransfer:        ixDiscriminator("record_transfer"),
+  recordBounty:          ixDiscriminator("record_bounty"),
+  changeOutfit:          ixDiscriminator("change_outfit"),
+  delegate:              ixDiscriminator("delegate"),
 } as const;
 
 // ── Argument packers ────────────────────────────────────────────────────
@@ -95,20 +104,55 @@ export function buildInitializePlayerIx(
 }
 
 /**
- * Builds `update_position`. Hot path — called up to 10 Hz during motion.
+ * Builds `authorize_session`. Called once per session — main wallet signs,
+ * no further popups for position updates after this.
  *
- * The `authority` here is the session key's public key, not the main wallet.
- * Inside the rollup, the PDA was delegated with the session key as signer,
- * so the ephemeral validator accepts these signatures without a popup.
+ * Session key public key is packed as a raw 32-byte Pubkey (Anchor's
+ * Borsh encoding for Pubkey is just the raw bytes, no length prefix).
+ */
+export function buildAuthorizeSessionIx(
+  authority: PublicKey,
+  sessionKey: PublicKey
+): TransactionInstruction {
+  const [playerPda] = derivePlayerPDA(authority);
+  const data = Buffer.concat([DISC.authorizeSession, Buffer.from(sessionKey.toBytes())]);
+
+  return new TransactionInstruction({
+    programId: SOL_CITY_PROGRAM_ID,
+    keys: [
+      { pubkey: playerPda, isSigner: false, isWritable: true },
+      { pubkey: authority, isSigner: true, isWritable: false },
+    ],
+    data,
+  });
+}
+
+/**
+ * Builds `revoke_session`. Called on disconnect — main wallet signs once.
+ */
+export function buildRevokeSessionIx(authority: PublicKey): TransactionInstruction {
+  const [playerPda] = derivePlayerPDA(authority);
+  return new TransactionInstruction({
+    programId: SOL_CITY_PROGRAM_ID,
+    keys: [
+      { pubkey: playerPda, isSigner: false, isWritable: true },
+      { pubkey: authority, isSigner: true, isWritable: false },
+    ],
+    data: DISC.revokeSession,
+  });
+}
+
+/**
+ * Builds `update_position` — main wallet signer (base layer fallback).
+ * Used when the program is deployed but no session key is active.
  */
 export function buildUpdatePositionIx(
-  playerWallet: PublicKey,
-  sessionAuthority: PublicKey,
+  authority: PublicKey,
   x: number,
   y: number,
   direction: number
 ): TransactionInstruction {
-  const [playerPda] = derivePlayerPDA(playerWallet);
+  const [playerPda] = derivePlayerPDA(authority);
   const data = Buffer.concat([
     DISC.updatePosition,
     packU32LE(Math.max(0, Math.round(x))),
@@ -120,7 +164,39 @@ export function buildUpdatePositionIx(
     programId: SOL_CITY_PROGRAM_ID,
     keys: [
       { pubkey: playerPda, isSigner: false, isWritable: true },
-      { pubkey: sessionAuthority, isSigner: true, isWritable: false },
+      { pubkey: authority, isSigner: true, isWritable: false },
+    ],
+    data,
+  });
+}
+
+/**
+ * Builds `update_position_session` — session key signer (ephemeral rollup path).
+ * Hot path: called up to 10 Hz. No wallet popup. The PDA is derived from
+ * playerWallet (the main wallet), but the signer is the session key.
+ *
+ * Requires `authorize_session` to have been called first.
+ */
+export function buildUpdatePositionSessionIx(
+  playerWallet: PublicKey,
+  sessionKey: PublicKey,
+  x: number,
+  y: number,
+  direction: number
+): TransactionInstruction {
+  const [playerPda] = derivePlayerPDA(playerWallet);
+  const data = Buffer.concat([
+    DISC.updatePositionSession,
+    packU32LE(Math.max(0, Math.round(x))),
+    packU32LE(Math.max(0, Math.round(y))),
+    packU8(direction),
+  ]);
+
+  return new TransactionInstruction({
+    programId: SOL_CITY_PROGRAM_ID,
+    keys: [
+      { pubkey: playerPda, isSigner: false, isWritable: true },
+      { pubkey: sessionKey, isSigner: true, isWritable: false },
     ],
     data,
   });
@@ -174,6 +250,36 @@ export function buildChangeOutfitIx(
       { pubkey: authority, isSigner: true, isWritable: false },
     ],
     data: Buffer.concat([DISC.changeOutfit, packU8(outfitId)]),
+  });
+}
+
+/**
+ * Builds the `delegate` instruction for our sol-city program.
+ * This CPIs into the MagicBlock Delegation Program, handing off the player
+ * PDA to the ephemeral rollup. After this call, position updates flow through
+ * the Magic Router at sub-50ms with no gas.
+ *
+ * Accounts mirror DelegatePlayer in lib.rs exactly.
+ */
+export function buildDelegateIx(authority: PublicKey): TransactionInstruction {
+  const [playerPda] = derivePlayerPDA(authority);
+  const buffer = delegateBufferPdaFromDelegatedAccountAndOwnerProgram(playerPda, SOL_CITY_PROGRAM_ID);
+  const delegationRecord = delegationRecordPdaFromDelegatedAccount(playerPda);
+  const delegationMetadata = delegationMetadataPdaFromDelegatedAccount(playerPda);
+
+  return new TransactionInstruction({
+    programId: SOL_CITY_PROGRAM_ID,
+    keys: [
+      { pubkey: playerPda,              isSigner: false, isWritable: true  },
+      { pubkey: authority,              isSigner: true,  isWritable: true  },
+      { pubkey: SOL_CITY_PROGRAM_ID,    isSigner: false, isWritable: false }, // owner_program
+      { pubkey: buffer,                 isSigner: false, isWritable: true  },
+      { pubkey: delegationRecord,       isSigner: false, isWritable: true  },
+      { pubkey: delegationMetadata,     isSigner: false, isWritable: true  },
+      { pubkey: DELEGATION_PROGRAM_ID,  isSigner: false, isWritable: false },
+      { pubkey: SystemProgram.programId,isSigner: false, isWritable: false },
+    ],
+    data: DISC.delegate,
   });
 }
 

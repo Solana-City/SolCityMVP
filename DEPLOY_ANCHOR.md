@@ -2,7 +2,7 @@
 
 ## Por que precisa disso
 
-Enquanto o Program ID for `111111...`, o multiplayer funciona via **BroadcastChannel** (múltiplas abas no mesmo navegador). Para multiplayer **cross-browser e cross-device real** via MagicBlock, o programa precisa estar deployado em devnet.
+Enquanto o Program ID for `111111...`, o multiplayer funciona via **BroadcastChannel** (múltiplas abas no mesmo navegador). Para multiplayer **cross-browser e cross-device real** via MagicBlock ephemeral rollups, o programa precisa estar deployado em devnet.
 
 ## Método: Solana Playground (sem toolchain local)
 
@@ -20,22 +20,35 @@ Crie uma conta ou entre com GitHub.
 2. Selecione **"Anchor (Rust)"**
 3. Nome: `sol-city`
 
-### Passo 3 — Substituir o código
+### Passo 3 — Atualizar Cargo.toml
 
-No editor do Playground, abra `src/lib.rs` e **substitua tudo** pelo conteúdo de:
+No Playground, abra `Cargo.toml` e adicione as dependências:
 
+```toml
+[dependencies]
+anchor-lang = "0.30.1"
+ephemeral-rollups-sdk = "0.4"
 ```
-/workspaces/SolCityMVP/programs/sol-city/src/lib.rs
-```
 
-**Atenção**: remover as linhas que importam `ephemeral_rollups_sdk` por enquanto, pois o Playground pode não ter esse crate. Use esta versão simplificada:
+### Passo 4 — Substituir src/lib.rs
+
+No editor do Playground, abra `src/lib.rs` e **substitua tudo** pelo conteúdo abaixo.
+Este é o programa completo com session keys + delegação MagicBlock:
 
 ```rust
 use anchor_lang::prelude::*;
+use ephemeral_rollups_sdk::cpi::{delegate_account, commit_and_undelegate_accounts};
+use ephemeral_rollups_sdk::consts::DELEGATION_PROGRAM_ID;
 
 declare_id!("SERÁ_GERADO_PELO_PLAYGROUND");
 
 pub const PLAYER_SEED: &[u8] = b"player";
+
+#[error_code]
+pub enum SolCityError {
+    #[msg("Invalid session key — call authorize_session first")]
+    InvalidSessionKey,
+}
 
 #[program]
 pub mod sol_city {
@@ -44,6 +57,7 @@ pub mod sol_city {
     pub fn initialize_player(ctx: Context<InitializePlayer>, display_name: String) -> Result<()> {
         let player = &mut ctx.accounts.player;
         player.authority = ctx.accounts.authority.key();
+        player.session_authority = None;
         player.display_name = display_name;
         player.x = 512;
         player.y = 288;
@@ -58,7 +72,34 @@ pub mod sol_city {
         Ok(())
     }
 
+    /// One-time popup: authorizes an ephemeral session key.
+    /// After this, update_position_session runs with no popup.
+    pub fn authorize_session(ctx: Context<AuthorizeSession>, session_key: Pubkey) -> Result<()> {
+        ctx.accounts.player.session_authority = Some(session_key);
+        Ok(())
+    }
+
+    pub fn revoke_session(ctx: Context<UpdatePlayer>) -> Result<()> {
+        ctx.accounts.player.session_authority = None;
+        Ok(())
+    }
+
     pub fn update_position(ctx: Context<UpdatePlayer>, x: u32, y: u32, direction: u8) -> Result<()> {
+        let player = &mut ctx.accounts.player;
+        player.x = x;
+        player.y = y;
+        player.direction = direction;
+        player.last_active = Clock::get()?.unix_timestamp;
+        Ok(())
+    }
+
+    /// Hot path: signed by session key, zero popups. Sub-50ms in rollup.
+    pub fn update_position_session(
+        ctx: Context<UpdatePlayerSession>,
+        x: u32,
+        y: u32,
+        direction: u8,
+    ) -> Result<()> {
         let player = &mut ctx.accounts.player;
         player.x = x;
         player.y = y;
@@ -97,6 +138,43 @@ pub mod sol_city {
         player.last_active = Clock::get()?.unix_timestamp;
         Ok(())
     }
+
+    /// Delegates the player PDA to a MagicBlock Ephemeral Rollup.
+    /// After delegation, position updates run gasless at sub-50ms via Magic Router.
+    pub fn delegate(ctx: Context<DelegatePlayer>) -> Result<()> {
+        let pda_seeds: &[&[u8]] = &[
+            PLAYER_SEED,
+            ctx.accounts.authority.key.as_ref(),
+            &[ctx.bumps.player],
+        ];
+
+        delegate_account(
+            &ctx.accounts.authority,
+            &ctx.accounts.player.to_account_info(),
+            &ctx.accounts.owner_program,
+            &ctx.accounts.buffer,
+            &ctx.accounts.delegation_record,
+            &ctx.accounts.delegation_metadata,
+            &ctx.accounts.delegation_program,
+            &ctx.accounts.system_program,
+            pda_seeds,
+            0,
+            3_000,
+        )?;
+        Ok(())
+    }
+
+    /// Commits state back to base layer and undelegates.
+    /// Called automatically on disconnect (session key signs, no popup).
+    pub fn undelegate(ctx: Context<UndelegatePlayer>) -> Result<()> {
+        commit_and_undelegate_accounts(
+            &ctx.accounts.authority,
+            vec![&ctx.accounts.player.to_account_info()],
+            &ctx.accounts.magic_context,
+            &ctx.accounts.magic_program,
+        )?;
+        Ok(())
+    }
 }
 
 #[derive(Accounts)]
@@ -115,6 +193,18 @@ pub struct InitializePlayer<'info> {
 }
 
 #[derive(Accounts)]
+pub struct AuthorizeSession<'info> {
+    #[account(
+        mut,
+        seeds = [PLAYER_SEED, authority.key().as_ref()],
+        bump,
+        has_one = authority,
+    )]
+    pub player: Account<'info, PlayerState>,
+    pub authority: Signer<'info>,
+}
+
+#[derive(Accounts)]
 pub struct UpdatePlayer<'info> {
     #[account(
         mut,
@@ -126,10 +216,68 @@ pub struct UpdatePlayer<'info> {
     pub authority: Signer<'info>,
 }
 
+#[derive(Accounts)]
+pub struct UpdatePlayerSession<'info> {
+    #[account(
+        mut,
+        seeds = [PLAYER_SEED, player.authority.as_ref()],
+        bump,
+        constraint = player.session_authority == Some(session_authority.key())
+            @ SolCityError::InvalidSessionKey,
+    )]
+    pub player: Account<'info, PlayerState>,
+    pub session_authority: Signer<'info>,
+}
+
+#[derive(Accounts)]
+pub struct DelegatePlayer<'info> {
+    #[account(
+        mut,
+        seeds = [PLAYER_SEED, authority.key().as_ref()],
+        bump,
+    )]
+    pub player: Account<'info, PlayerState>,
+    #[account(mut)]
+    pub authority: Signer<'info>,
+    /// CHECK: must be this program's own ID
+    #[account(address = crate::ID)]
+    pub owner_program: AccountInfo<'info>,
+    /// CHECK: buffer PDA — validated inside the delegation CPI
+    #[account(mut)]
+    pub buffer: AccountInfo<'info>,
+    /// CHECK: delegation record PDA — validated inside the delegation CPI
+    #[account(mut)]
+    pub delegation_record: AccountInfo<'info>,
+    /// CHECK: delegation metadata PDA — validated inside the delegation CPI
+    #[account(mut)]
+    pub delegation_metadata: AccountInfo<'info>,
+    /// CHECK: MagicBlock delegation program (address enforced)
+    #[account(address = DELEGATION_PROGRAM_ID)]
+    pub delegation_program: AccountInfo<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct UndelegatePlayer<'info> {
+    #[account(
+        mut,
+        seeds = [PLAYER_SEED, authority.key().as_ref()],
+        bump,
+        has_one = authority,
+    )]
+    pub player: Account<'info, PlayerState>,
+    pub authority: Signer<'info>,
+    /// CHECK: MagicBlock context account
+    pub magic_context: AccountInfo<'info>,
+    /// CHECK: MagicBlock program
+    pub magic_program: AccountInfo<'info>,
+}
+
 #[account]
 #[derive(InitSpace)]
 pub struct PlayerState {
     pub authority: Pubkey,
+    pub session_authority: Option<Pubkey>,
     #[max_len(20)]
     pub display_name: String,
     pub x: u32,
@@ -145,53 +293,49 @@ pub struct PlayerState {
 }
 ```
 
-### Passo 4 — Build e Deploy
+### Passo 5 — Build e Deploy
 
-1. Clique em **"Build"** (leva ~30s)
+1. Clique em **"Build"** (leva ~30s — o Playground baixa os crates automaticamente)
 2. Se compilar sem erros, clique em **"Deploy"**
 3. Selecione **Devnet**
 4. O Playground vai mostrar o **Program ID** gerado (algo como `AbCd...xyz`)
 
-### Passo 5 — Atualizar o frontend
+### Passo 6 — Atualizar o frontend
 
-Abra `/workspaces/SolCityMVP/apps/web/src/game/solana/program.ts` e substitua:
+Crie o arquivo `apps/web/.env.local`:
 
-```typescript
-const ENV_PROGRAM_ID =
-  typeof process !== "undefined"
-    ? process.env.NEXT_PUBLIC_SOL_CITY_PROGRAM_ID
-    : undefined;
-
-export const SOL_CITY_PROGRAM_ID = new PublicKey(
-  ENV_PROGRAM_ID && ENV_PROGRAM_ID.length >= 32
-    ? ENV_PROGRAM_ID
-    : "11111111111111111111111111111111"  // ← substituir aqui
-);
-```
-
-**Opção A** — criar `.env.local` em `apps/web/`:
 ```
 NEXT_PUBLIC_SOL_CITY_PROGRAM_ID=SEU_PROGRAM_ID_AQUI
 ```
 
-**Opção B** — editar diretamente o fallback em `program.ts`.
+Reinicie o dev server. O jogo detecta automaticamente que o programa está deployado (`isProgramDeployed()` retorna `true`) e:
 
-Reinicie o dev server. O jogo vai detectar automaticamente que o programa está deployado (`isProgramDeployed()` retorna `true`) e:
-- `initialize_player` será chamado na primeira conexão de wallet
-- Posições serão enviadas via Magic Router para o ephemeral rollup
-- Outros jogadores serão descobertos via `getProgramAccounts`
+1. **Primeira conexão de wallet:**
+   - `initialize_player` — cria PDA na base layer (popup #1)
+   - `authorize_session` — registra session key no PDA (popup #2)
+   - `delegate` — delega PDA para o ephemeral rollup (popup #3)
+
+2. **Reconexões subsequentes:**
+   - PDA já existe + já delegado
+   - `authorize_session` via Magic Router com nova session key (popup #1)
+
+3. **Durante o jogo:**
+   - Posições enviadas via session key → Magic Router → ephemeral validator
+   - Sub-50ms, sem popups, sem gas
+
+4. **Ao desconectar:**
+   - `commitAndUndelegate` via session key → ephemeral RPC (sem popup)
+   - Estado final commitado de volta para devnet
 
 ## Verificação
 
 Após conectar a wallet no jogo, verifique em:
 https://explorer.solana.com/?cluster=devnet
 
-Procure por transações do seu program ID. Você deve ver o `initialize_player` registrado.
+Procure por transações do seu program ID. Você deve ver:
+- `initialize_player`
+- `authorize_session`
+- `delegate`
 
-## MagicBlock — próximo passo
-
-Depois do deploy básico funcionar, adicionar a delegação para o ephemeral rollup:
-- O TypeScript SDK do MagicBlock está em desenvolvimento
-- A instrução `delegate` requer os accounts da delegation program
-- Por enquanto, o position tracking vai via Solana base layer (300ms)
-- Quando o TS SDK estiver disponível: atualizar `startMagicBlockMultiplayer()` em `OnChainMultiplayer.ts`
+Para ver posições em tempo real no rollup:
+https://devnet.magicblock.app (ephemeral RPC explorer)

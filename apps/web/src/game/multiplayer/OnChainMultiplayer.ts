@@ -2,11 +2,21 @@ import {
   Connection,
   PublicKey,
   Transaction,
-  Keypair,
-  LAMPORTS_PER_SOL,
 } from "@solana/web3.js";
+import {
+  ConnectionMagicRouter,
+  createCommitAndUndelegateInstruction,
+} from "@magicblock-labs/ephemeral-rollups-sdk";
 import { SessionKeyManager } from "../solana/sessionKeys";
-import { buildUpdatePositionIx, buildInitializePlayerIx, isProgramDeployed } from "../solana/instructions";
+import {
+  buildInitializePlayerIx,
+  buildDelegateIx,
+  buildUpdatePositionSessionIx,
+  buildRecordSwapIx,
+  buildRecordTransferIx,
+  buildRecordBountyIx,
+  isProgramDeployed,
+} from "../solana/instructions";
 import { derivePlayerPDA, SOL_CITY_PROGRAM_ID } from "../solana/program";
 import { transactionLog } from "../telemetry/transactionLog";
 
@@ -69,9 +79,9 @@ type RemoveCallback  = (wallet: string) => void;
  */
 export class OnChainMultiplayer {
   // Connections
-  private routerConnection:   Connection;
+  private routerConnection:    ConnectionMagicRouter;
   private ephemeralConnection: Connection;
-  private baseConnection:     Connection;
+  private baseConnection:      Connection;
 
   // Session
   private sessionKeys: SessionKeyManager;
@@ -101,7 +111,7 @@ export class OnChainMultiplayer {
   private cleanupInterval: ReturnType<typeof setInterval> | null = null;
 
   constructor() {
-    this.routerConnection    = new Connection(ENDPOINTS.magicRouter,  "confirmed");
+    this.routerConnection    = new ConnectionMagicRouter(ENDPOINTS.magicRouter,  "confirmed");
     this.ephemeralConnection = new Connection(ENDPOINTS.ephemeral,    "confirmed");
     this.baseConnection      = new Connection(ENDPOINTS.solanaDevnet, "confirmed");
     this.sessionKeys         = new SessionKeyManager();
@@ -117,8 +127,8 @@ export class OnChainMultiplayer {
     this.wallet = walletPublicKey;
     const walletStr = walletPublicKey.toBase58();
 
-    // Authorize session key (ephemeral keypair that signs game txs without popup)
-    await this.sessionKeys.authorize(walletPublicKey);
+    // Session key authorization happens inside startMagicBlockMultiplayer (real)
+    // or in the simulation branch below, routed to the correct connection.
 
     this._connected = true;
 
@@ -139,7 +149,6 @@ export class OnChainMultiplayer {
     if (isProgramDeployed()) {
       await this.startMagicBlockMultiplayer(walletPublicKey, displayName);
     } else {
-      // Log simulated session events so the tx panel shows activity
       const initEntry = transactionLog.record({
         kind: "init", layer: "base",
         label: "Initialize player PDA", status: "pending",
@@ -151,6 +160,9 @@ export class OnChainMultiplayer {
         label: "Delegate PDA → Ephemeral Rollup", status: "pending",
       });
       transactionLog.markConfirmed(delEntry.id, "sim:delegate");
+
+      // Session key in sim mode — connect to base layer for authorize
+      await this.sessionKeys.authorize(walletPublicKey, this.baseConnection);
     }
 
     // Stale player cleanup (every 15s)
@@ -175,7 +187,9 @@ export class OnChainMultiplayer {
 
     if (this.cleanupInterval) { clearInterval(this.cleanupInterval); this.cleanupInterval = null; }
 
-    if (isProgramDeployed()) {
+    if (isProgramDeployed() && this.wallet) {
+      this.commitAndUndelegatePlayer(this.wallet).catch(() => {});
+    } else {
       const entry = transactionLog.record({
         kind: "undelegate", layer: "base",
         label: "Commit & undelegate session", status: "pending",
@@ -184,7 +198,7 @@ export class OnChainMultiplayer {
     }
 
     this._connected = false;
-    this.sessionKeys.revoke();
+    this.sessionKeys.revoke(this.routerConnection);
     this.knownPlayers.clear();
   }
 
@@ -230,6 +244,39 @@ export class OnChainMultiplayer {
   sendChat(text: string): void {
     if (!this.wallet) return;
     this.bc?.postMessage({ t: "chat", w: this.wallet.toBase58(), text } satisfies BCMsg);
+  }
+
+  /**
+   * Sends a record_swap / record_transfer / record_bounty transaction
+   * to the base layer when the program is deployed.
+   * Main wallet signs (one popup per action — acceptable since these are rare).
+   * Falls back to a no-op in simulation mode.
+   */
+  async recordAction(kind: "swap" | "transfer" | "bounty"): Promise<void> {
+    if (!this.wallet || !isProgramDeployed()) return;
+
+    const label = kind === "swap" ? "Record swap" : kind === "transfer" ? "Record transfer" : "Record bounty";
+    const logKind = kind === "swap" ? "swap" : kind === "transfer" ? "transfer" : "bounty";
+    const entry = transactionLog.record({ kind: logKind, layer: "base", label, status: "pending" });
+
+    try {
+      const ix =
+        kind === "swap"     ? buildRecordSwapIx(this.wallet) :
+        kind === "transfer" ? buildRecordTransferIx(this.wallet) :
+                              buildRecordBountyIx(this.wallet);
+
+      const { blockhash } = await this.baseConnection.getLatestBlockhash();
+      const tx = new Transaction({
+        recentBlockhash: blockhash,
+        feePayer: this.wallet,
+      }).add(ix);
+
+      const sig = await this.requestWalletSign(tx);
+      await this.baseConnection.confirmTransaction(sig, "confirmed");
+      transactionLog.markConfirmed(entry.id, sig);
+    } catch (err: any) {
+      transactionLog.markFailed(entry.id, err?.message ?? "record failed");
+    }
   }
 
   onPlayerAdd(cb: PlayerCallback):    void { this.addCallbacks.push(cb); }
@@ -305,22 +352,43 @@ export class OnChainMultiplayer {
 
   private async startMagicBlockMultiplayer(wallet: PublicKey, displayName?: string): Promise<void> {
     const walletStr = wallet.toBase58();
+    const [playerPDA] = derivePlayerPDA(wallet);
 
-    // 1. Initialize player PDA (idempotent — init if not exists)
+    // 1. Initialize player PDA on base layer if it doesn't exist yet
     await this.initializePlayerPDA(wallet, displayName ?? walletStr.slice(0, 8));
 
-    // 2. Discover existing players from the ephemeral rollup
+    // 2. Check current delegation status via Magic Router
+    let isDelegated = false;
+    try {
+      const status = await this.routerConnection.getDelegationStatus(playerPDA);
+      isDelegated = status.isDelegated;
+    } catch {
+      // getDelegationStatus may fail on new endpoints — assume not delegated
+    }
+
+    if (!isDelegated) {
+      // 3a. Authorize session key BEFORE delegation (base layer write is open)
+      await this.sessionKeys.authorize(wallet, this.baseConnection);
+
+      // 3b. Delegate the PDA to the ephemeral rollup (base layer, one wallet popup)
+      await this.delegateToEphemeral(wallet);
+    } else {
+      // 3. PDA already delegated — re-authorize session key via Magic Router
+      // (base layer writes are locked while delegated, so route through MR)
+      await this.sessionKeys.authorize(wallet, this.routerConnection);
+      console.log("[Multiplayer] account already delegated, re-authorized session key via MR");
+    }
+
+    // 4. Discover existing players from the ephemeral rollup
     await this.discoverPlayers(wallet);
 
-    // 3. Subscribe to program-wide account changes (new players)
-    // onProgramAccountChange covers all PDAs owned by our program.
-    // When a new player initializes + delegates, their account appears here.
+    // 5. Subscribe to all PDAs owned by our program on the ephemeral validator.
+    //    New players show up here once they delegate their account.
     try {
       this.ephemeralConnection.onProgramAccountChange(
         SOL_CITY_PROGRAM_ID,
-        (keyedInfo, ctx) => {
-          const data = keyedInfo.accountInfo.data;
-          this.decodeAndUpdatePlayer(keyedInfo.accountId.toBase58(), data);
+        (keyedInfo) => {
+          this.decodeAndUpdatePlayer(keyedInfo.accountId.toBase58(), keyedInfo.accountInfo.data);
         },
         "processed",
       );
@@ -331,6 +399,8 @@ export class OnChainMultiplayer {
 
   private async initializePlayerPDA(wallet: PublicKey, displayName: string): Promise<void> {
     const [pda] = derivePlayerPDA(wallet);
+    const existing = await this.baseConnection.getAccountInfo(pda);
+    if (existing) return; // already initialized — nothing to do
 
     const entry = transactionLog.record({
       kind: "init", layer: "base",
@@ -338,34 +408,17 @@ export class OnChainMultiplayer {
     });
 
     try {
-      // Check if PDA already exists
-      const existing = await this.baseConnection.getAccountInfo(pda);
-      if (existing) {
-        // Already initialized — skip
-        transactionLog.markConfirmed(entry.id, "existing");
-
-        // Proceed to delegate to ephemeral rollup
-        await this.delegateToEphemeral(wallet);
-        return;
-      }
-
-      // PDA doesn't exist — need the user's wallet to sign initialize_player.
-      // We emit a game event that React picks up; React calls signTransaction
-      // with the user's wallet adapter and resolves the promise.
       const ix = buildInitializePlayerIx(wallet, displayName.slice(0, 20));
       const { blockhash } = await this.baseConnection.getLatestBlockhash();
       const tx = new Transaction({ recentBlockhash: blockhash, feePayer: wallet }).add(ix);
 
-      // Ask React/wallet to sign
       const sig = await this.requestWalletSign(tx);
       await this.baseConnection.confirmTransaction(sig, "confirmed");
       transactionLog.markConfirmed(entry.id, sig);
-
-      // Now delegate to ephemeral rollup
-      await this.delegateToEphemeral(wallet);
     } catch (err: any) {
       console.error("[Multiplayer] PDA init failed:", err);
       transactionLog.markFailed(entry.id, err?.message ?? "init failed");
+      throw err;
     }
   }
 
@@ -375,14 +428,47 @@ export class OnChainMultiplayer {
       label: "Delegate PDA → Ephemeral Rollup", status: "pending",
     });
     try {
-      // The delegate instruction is more complex (requires delegation program accounts).
-      // For now we mark it confirmed — the full CPI delegate call requires
-      // the ephemeral-rollups-sdk which is Rust-only; the client-side approach
-      // is to send a raw transaction built by the TS SDK when available.
-      // TODO: wire full delegate CPI once @magicblock-labs/sdk is published.
-      transactionLog.markConfirmed(entry.id, "pending-deploy");
+      const ix = buildDelegateIx(wallet);
+      const { blockhash } = await this.baseConnection.getLatestBlockhash();
+      const tx = new Transaction({ recentBlockhash: blockhash, feePayer: wallet }).add(ix);
+
+      const sig = await this.requestWalletSign(tx);
+      await this.baseConnection.confirmTransaction(sig, "confirmed");
+      transactionLog.markConfirmed(entry.id, sig);
+      console.log("[Multiplayer] PDA delegated to ephemeral rollup:", sig.slice(0, 12));
     } catch (err: any) {
+      console.error("[Multiplayer] delegate failed:", err);
       transactionLog.markFailed(entry.id, err?.message ?? "delegate failed");
+      // Non-fatal: fall back to BroadcastChannel layer
+    }
+  }
+
+  /**
+   * Commits the delegated player PDA back to the base layer and undelegates it.
+   * Called on disconnect. Signed by the session key (no wallet popup).
+   */
+  private async commitAndUndelegatePlayer(wallet: PublicKey): Promise<void> {
+    const entry = transactionLog.record({
+      kind: "undelegate", layer: "base",
+      label: "Commit & undelegate session", status: "pending",
+    });
+    try {
+      const [playerPDA] = derivePlayerPDA(wallet);
+      const sessionKey = this.sessionKeys.getSessionPublicKey();
+
+      const ix = createCommitAndUndelegateInstruction(sessionKey, [playerPDA]);
+      const { blockhash } = await this.ephemeralConnection.getLatestBlockhash();
+      const tx = new Transaction({ recentBlockhash: blockhash, feePayer: sessionKey }).add(ix);
+
+      // Session key signs — no wallet popup required
+      this.sessionKeys.signTransaction(tx);
+      const sig = await this.ephemeralConnection.sendRawTransaction(tx.serialize(), {
+        skipPreflight: true,
+      });
+      transactionLog.markConfirmed(entry.id, sig);
+      console.log("[Multiplayer] committed & undelegated:", sig.slice(0, 12));
+    } catch (err: any) {
+      transactionLog.markFailed(entry.id, err?.message ?? "undelegate failed");
     }
   }
 
@@ -429,32 +515,37 @@ export class OnChainMultiplayer {
    * Decodes a raw PlayerState account buffer (without pulling in Anchor).
    *
    * Layout (little-endian) after the 8-byte discriminator:
-   *   [32]  authority   Pubkey
-   *   [4+n] display_name String (4-byte length prefix + n UTF-8 bytes, max 20)
-   *   [4]   x           u32
-   *   [4]   y           u32
-   *   [1]   direction   u8
-   *   [1]   outfit_id   u8
-   *   [4]   score       u32
-   *   [2]   swap_count  u16
-   *   [2]   transfer_count u16
-   *   [2]   bounty_count u16
-   *   [8]   last_active i64
-   *   [8]   created_at  i64
+   *   [32]  authority         Pubkey
+   *   [33]  session_authority Option<Pubkey> (1-byte tag + 32 bytes if Some)
+   *   [4+n] display_name      String (4-byte length prefix + n UTF-8 bytes, max 20)
+   *   [4]   x                 u32
+   *   [4]   y                 u32
+   *   [1]   direction         u8
+   *   [1]   outfit_id         u8
+   *   [4]   score             u32
+   *   [2]   swap_count        u16
+   *   [2]   transfer_count    u16
+   *   [2]   bounty_count      u16
+   *   [8]   last_active       i64
+   *   [8]   created_at        i64
    *
-   * We read only x, y, direction, display_name for the multiplayer view.
+   * We read only authority, x, y, direction, display_name for the multiplayer view.
    */
   private decodeAndUpdatePlayer(pda: string, data: Buffer | Uint8Array): void {
     try {
       const buf = Buffer.from(data);
-      if (buf.length < 50) return; // too short
+      if (buf.length < 83) return; // 8 + 32 + 33 + 4 + 4 + 4 (min)
 
       let offset = 8; // skip 8-byte Anchor discriminator
 
-      // authority (32 bytes) — this is the wallet address
+      // authority (32 bytes) — main wallet address
       const authority = new PublicKey(buf.slice(offset, offset + 32));
       const walletStr = authority.toBase58();
       offset += 32;
+
+      // session_authority: Option<Pubkey> — 1 tag byte + 32 if tag=1
+      const hasSession = buf.readUInt8(offset) === 1;
+      offset += 1 + (hasSession ? 32 : 0);
 
       // display_name: 4-byte length + UTF-8 string (max 20 bytes)
       const nameLen = Math.min(buf.readUInt32LE(offset), 20);
@@ -489,12 +580,18 @@ export class OnChainMultiplayer {
   private async sendPositionTransaction(x: number, y: number, direction: number): Promise<string | null> {
     if (!this.wallet) return null;
 
-    const sessionAuthority = this.sessionKeys.getSessionPublicKey();
-    const ix = buildUpdatePositionIx(this.wallet, sessionAuthority, Math.round(x), Math.round(y), direction);
+    const sessionKey = this.sessionKeys.getSessionPublicKey();
+    const ix = buildUpdatePositionSessionIx(
+      this.wallet, sessionKey,
+      Math.round(x), Math.round(y), direction
+    );
 
     const tx = new Transaction().add(ix);
-    tx.feePayer = sessionAuthority;
-    const { blockhash } = await this.routerConnection.getLatestBlockhash("processed");
+    tx.feePayer = sessionKey;
+
+    // ConnectionMagicRouter.getLatestBlockhashForTransaction returns a blockhash
+    // tied to the tx's writable accounts — required for correct rollup routing.
+    const { blockhash } = await this.routerConnection.getLatestBlockhashForTransaction(tx);
     tx.recentBlockhash = blockhash;
     this.sessionKeys.signTransaction(tx);
 
