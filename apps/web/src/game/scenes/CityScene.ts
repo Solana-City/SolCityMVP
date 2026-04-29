@@ -181,6 +181,9 @@ export class CityScene extends Phaser.Scene {
       }
     });
 
+    // Building facades + decorative props layered above the tilemap
+    this.createDecoratives();
+
     // NPCs with collision bodies
     for (const def of NPC_REGISTRY) {
       const npc = new NPCSprite(this, def);
@@ -407,5 +410,310 @@ export class CityScene extends Phaser.Scene {
       grid.push(flat.slice(r * cols, (r + 1) * cols));
     }
     return grid;
+  }
+
+  // ── Decoratives ────────────────────────────────────────────────────────────
+
+  /**
+   * Renders pixel-art building facades and street props above the tilemap.
+   * Everything here is visual-only — physics colliders are already handled
+   * by the tile collision layer created above.
+   */
+  private createDecoratives(): void {
+    this.generateBuildingTextures();
+    this.placeBuildingFacades();
+    this.placeLampPosts();
+    this.placeBenches();
+    this.placeTreeProps();
+    this.placeFountain();
+  }
+
+  // Pre-render building facade textures into the texture cache
+  private generateBuildingTextures(): void {
+    const T = TILE_SIZE;
+
+    const defs: Array<{ key: string; accentColor: string; label: string; labelColor: string }> = [
+      { key: "facade-jupiter",   accentColor: "#FFD700", label: "JUPITER",    labelColor: "#FFD700" },
+      { key: "facade-post",      accentColor: "#00D1FF", label: "POST",        labelColor: "#00D1FF" },
+      { key: "facade-superteam", accentColor: "#9945FF", label: "SUPERTEAM",   labelColor: "#9945FF" },
+      { key: "facade-generic",   accentColor: "#14F195", label: "BUILDING",    labelColor: "#14F195" },
+    ];
+
+    for (const def of defs) {
+      if (this.textures.exists(def.key)) continue;
+      const W = T * 3; // 96px — 3 tiles wide
+      const H = T * 4; // 128px — 4 tiles tall (extra height above roof)
+
+      const canvas = document.createElement("canvas");
+      canvas.width  = W;
+      canvas.height = H;
+      const ctx = canvas.getContext("2d")!;
+      ctx.imageSmoothingEnabled = false;
+
+      // --- Invisible at bottom (blends with floor tiles) ---
+      // Facade starts from row 1 tile up (the "wall" portion)
+      const wallTop  = T;      // 32px down = 1 tile
+      const wallH    = T * 2;  // 64px of wall
+      const roofTop  = 0;
+      const roofH    = T;      // 32px roof
+
+      // Roof
+      ctx.fillStyle = "#111128";
+      ctx.fillRect(0, roofTop, W, roofH);
+      // Roof edge highlight
+      ctx.fillStyle = def.accentColor;
+      ctx.globalAlpha = 0.50;
+      ctx.fillRect(2, roofTop + roofH - 3, W-4, 2);
+      ctx.globalAlpha = 1;
+      // Roof detail: small antenna/orb
+      ctx.fillStyle = def.accentColor;
+      ctx.globalAlpha = 0.80;
+      ctx.fillRect(W/2 - 2, roofTop+4, 4, 12);  // antenna pole
+      ctx.fillRect(W/2 - 5, roofTop+4, 10, 4);  // crossbar
+      ctx.globalAlpha = 1;
+
+      // Wall
+      ctx.fillStyle = "#1e1e3a";
+      ctx.fillRect(0, wallTop, W, wallH);
+      // Wall left/right edge shadows
+      ctx.fillStyle = "#000000";
+      ctx.globalAlpha = 0.30;
+      ctx.fillRect(0, wallTop, 3, wallH);
+      ctx.fillRect(W-3, wallTop, 3, wallH);
+      ctx.globalAlpha = 1;
+
+      // Window grid — 3 cols × 2 rows
+      const winW = 14; const winH = 10;
+      const winCols = 3; const winRows = 2;
+      const xPad = Math.floor((W - winCols * (winW + 6)) / 2);
+      const yPad = Math.floor(wallH / (winRows + 1));
+
+      for (let wr = 0; wr < winRows; wr++) {
+        for (let wc = 0; wc < winCols; wc++) {
+          const wx = xPad + wc * (winW + 6);
+          const wy = wallTop + yPad * (wr + 0.8);
+          // Recess
+          ctx.fillStyle = "#0a0a20";
+          ctx.fillRect(wx-1, wy-1, winW+2, winH+2);
+          // Glass
+          ctx.fillStyle = "#d0e8ff";
+          ctx.fillRect(wx, wy, winW, winH);
+          // Lit interior
+          ctx.fillStyle = "#ffe88a";
+          ctx.globalAlpha = 0.65;
+          ctx.fillRect(wx+1, wy+1, winW-2, winH-2);
+          // Reflection
+          ctx.fillStyle = "#ffffff";
+          ctx.globalAlpha = 0.70;
+          ctx.fillRect(wx+1, wy+1, 2, 2);
+          ctx.globalAlpha = 1;
+          // Frame bars
+          ctx.fillStyle = "#404060";
+          ctx.fillRect(wx + winW/2, wy, 1, winH);
+          ctx.fillRect(wx, wy + winH/2, winW, 1);
+        }
+      }
+
+      // Neon sign band
+      const signY = wallTop + wallH - 16;
+      ctx.fillStyle = "#0c0c22";
+      ctx.fillRect(4, signY, W-8, 14);
+      ctx.fillStyle = def.accentColor;
+      ctx.globalAlpha = 0.90;
+      ctx.fillRect(4, signY, W-8, 2);
+      ctx.fillRect(4, signY+12, W-8, 2);
+      ctx.globalAlpha = 1;
+      // Label text — rendered at 2× pixel scale for sharpness
+      ctx.save();
+      ctx.scale(1, 1);
+      ctx.fillStyle = def.labelColor;
+      ctx.font      = "bold 7px monospace";
+      ctx.textAlign = "center";
+      ctx.globalAlpha = 1;
+      ctx.fillText(def.label, W/2, signY + 9);
+      ctx.restore();
+
+      // Foundation (bottom, overlaps tile floor)
+      ctx.fillStyle = "#0e0e28";
+      ctx.fillRect(0, wallTop + wallH, W, T);
+      // Neon bottom glow
+      ctx.fillStyle = def.accentColor;
+      ctx.globalAlpha = 0.50;
+      ctx.fillRect(6, wallTop + wallH, W-12, 2);
+      ctx.globalAlpha = 1;
+
+      this.textures.addCanvas(def.key, canvas);
+    }
+  }
+
+  private placeBuildingFacades(): void {
+    const T = TILE_SIZE;
+
+    // Each entry: [texture key, tile col, tile row (top of facade tiles)]
+    const facades: [string, number, number][] = [
+      ["facade-jupiter",   10, 3],  // Jupiter Exchange: cols 10-12, rows 3-4
+      ["facade-post",      20, 3],  // Post Station: cols 20-22, rows 3-4
+      ["facade-superteam", 20, 17], // Superteam Hub: cols 20-22, rows 17-19
+      ["facade-generic",   10, 21], // Generic building: cols 10-12, rows 21-23
+      ["facade-generic",   18, 21], // Generic building: cols 18-20, rows 21-23
+    ];
+
+    for (const [key, col, row] of facades) {
+      // World-space pixel X = col * T + half facade width (centre)
+      const wx = col * T + (T * 3) / 2;
+      // World-space pixel Y = row * T — position facade so roof is above the top tile
+      const wy = row * T; // anchor at bottom of facade canvas = top of building block
+      const img = this.add.image(wx, wy, key);
+      img.setOrigin(0.5, 1.0);    // anchor bottom-centre
+      img.depth = wy - 0.5;       // render just below the NPCs standing in front
+    }
+  }
+
+  private placeLampPosts(): void {
+    const T = TILE_SIZE;
+    // Lamp post texture — 6×20px
+    if (!this.textures.exists("lamp")) {
+      const c = document.createElement("canvas");
+      c.width = 6; c.height = 20;
+      const ctx = c.getContext("2d")!;
+      // Pole
+      ctx.fillStyle = "#888898"; ctx.fillRect(2, 4, 2, 16);
+      // Arm
+      ctx.fillStyle = "#aaaabc"; ctx.fillRect(0, 4, 5, 2);
+      // Bulb
+      ctx.fillStyle = "#ffffc0"; ctx.fillRect(0, 0, 5, 5);
+      ctx.fillStyle = "#ffffff"; ctx.fillRect(1, 0, 3, 2);
+      this.textures.addCanvas("lamp", c);
+    }
+
+    // Place lamps along col-5 path (N-S) and col-25 path (N-S)
+    // and along row-6 path (E-W) and row-13 / row-20
+    const lampPositions: [number, number][] = [
+      // col 5 N-S path, every 4 tiles
+      [5, 7], [5, 10], [5, 14], [5, 17],
+      // col 25 N-S path
+      [25, 7], [25, 10], [25, 14], [25, 17],
+      // row 6 E-W path, every 4 tiles (avoid NPC zones)
+      [9, 6], [13, 6], [17, 6], [21, 6],
+      // row 13
+      [8, 13], [12, 13], [16, 13], [19, 13], [23, 13],
+      // row 20
+      [9, 20], [13, 20], [17, 20], [21, 20],
+    ];
+
+    for (const [col, row] of lampPositions) {
+      const wx = col * T + T / 2;
+      const wy = row * T + T / 2;
+      const lamp = this.add.image(wx, wy, "lamp");
+      lamp.setOrigin(0.5, 1.0);
+      lamp.depth = wy;
+    }
+  }
+
+  private placeBenches(): void {
+    const T = TILE_SIZE;
+    if (!this.textures.exists("bench")) {
+      const c = document.createElement("canvas");
+      c.width = 14; c.height = 8;
+      const ctx = c.getContext("2d")!;
+      // Seat slats
+      ctx.fillStyle = "#7a5a30"; ctx.fillRect(0, 2, 14, 3);
+      ctx.fillStyle = "#9a7a50"; ctx.fillRect(0, 2, 14, 1);
+      ctx.fillStyle = "#5a3a18"; ctx.fillRect(4, 2, 1, 6);
+      ctx.fillStyle = "#5a3a18"; ctx.fillRect(9, 2, 1, 6);
+      // Armrests
+      ctx.fillStyle = "#9a7a50"; ctx.fillRect(0, 1, 2, 3);
+      ctx.fillStyle = "#9a7a50"; ctx.fillRect(12, 1, 2, 3);
+      this.textures.addCanvas("bench", c);
+    }
+
+    const benches: [number, number][] = [
+      // Around the park area
+      [7, 11], [11, 11], [7, 8], [11, 8],
+      // Plaza benches
+      [14, 9], [19, 9], [14, 11], [19, 11],
+    ];
+    for (const [col, row] of benches) {
+      const wx = col * T + T / 2;
+      const wy = row * T + T / 2;
+      const bench = this.add.image(wx, wy, "bench");
+      bench.setOrigin(0.5, 0.5);
+      bench.depth = wy;
+    }
+  }
+
+  private placeTreeProps(): void {
+    const T = TILE_SIZE;
+    if (!this.textures.exists("tree")) {
+      const c = document.createElement("canvas");
+      c.width = 20; c.height = 28;
+      const ctx = c.getContext("2d")!;
+      // Trunk
+      ctx.fillStyle = "#5a3a1a"; ctx.fillRect(8, 18, 4, 10);
+      ctx.fillStyle = "#7a5a30"; ctx.fillRect(8, 18, 2, 10);
+      // Canopy layers (3 layers, top smaller)
+      const layers: [number, number, number, string][] = [
+        [2,  12, 16, "#1a8a1a"],
+        [1,  7,  18, "#1e9e1e"],
+        [0,  2,  20, "#16801a"],
+      ];
+      for (const [x, cy, w, col] of layers) {
+        ctx.fillStyle = col; ctx.fillRect(x, cy, w, 7);
+        // Top highlight
+        ctx.fillStyle = "#30c030"; ctx.globalAlpha = 0.40;
+        ctx.fillRect(x+2, cy, w-4, 2);
+        ctx.globalAlpha = 1;
+      }
+      this.textures.addCanvas("tree", c);
+    }
+
+    // Trees around park area (rows 7-10, cols 7-11)
+    const treeTiles: [number, number][] = [
+      [7, 7], [9, 7], [11, 7],
+      [8, 10], [10, 10],
+    ];
+    for (const [col, row] of treeTiles) {
+      const wx = col * T + T / 2 + (col % 2 === 0 ? 4 : -4);
+      const wy = row * T + T - 4;
+      const tree = this.add.image(wx, wy, "tree");
+      tree.setOrigin(0.5, 1.0);
+      tree.depth = wy;
+    }
+  }
+
+  private placeFountain(): void {
+    const T = TILE_SIZE;
+    if (!this.textures.exists("fountain")) {
+      const c = document.createElement("canvas");
+      c.width = 24; c.height = 20;
+      const ctx = c.getContext("2d")!;
+      // Basin
+      ctx.fillStyle = "#404070"; ctx.fillRect(2, 10, 20, 8);
+      ctx.fillStyle = "#6060a0"; ctx.fillRect(3, 11, 18, 6);
+      ctx.fillStyle = "#0b3b5c"; ctx.fillRect(4, 12, 16, 4);
+      // Water shimmer
+      ctx.fillStyle = "#00d1ff"; ctx.globalAlpha = 0.50;
+      ctx.fillRect(5, 13, 14, 1);
+      ctx.fillRect(7, 15, 10, 1);
+      ctx.globalAlpha = 1;
+      // Centre pillar
+      ctx.fillStyle = "#8080b0"; ctx.fillRect(11, 4, 2, 8);
+      // Water spray
+      ctx.fillStyle = "#00d1ff"; ctx.globalAlpha = 0.70;
+      ctx.fillRect(12, 0, 1, 5);
+      ctx.fillRect(10, 1, 1, 4);
+      ctx.fillRect(14, 1, 1, 4);
+      ctx.fillRect(8, 2, 1, 3);
+      ctx.fillRect(16, 2, 1, 3);
+      ctx.globalAlpha = 1;
+      this.textures.addCanvas("fountain", c);
+    }
+
+    // Place in the centre of the plaza (around tiles 15-16, 8-10)
+    const wx = 16 * T;
+    const wy = 9 * T;
+    const fountain = this.add.image(wx, wy, "fountain");
+    fountain.setOrigin(0.5, 0.8);
+    fountain.depth = wy;
   }
 }
