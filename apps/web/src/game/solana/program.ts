@@ -29,9 +29,9 @@ export const SOL_CITY_PROGRAM_ID = new PublicKey(
     : "11111111111111111111111111111111"
 );
 
-// MagicBlock delegation program (devnet)
+// MagicBlock delegation program (devnet) — matches SDK v0.12 constant
 export const DELEGATION_PROGRAM_ID = new PublicKey(
-  "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSS"
+  "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh"
 );
 
 export const PLAYER_SEED = "player";

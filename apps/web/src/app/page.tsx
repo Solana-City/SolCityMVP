@@ -43,6 +43,11 @@ export default function Home() {
       game?.events.emit("npc:close");
       return;
     }
+    if (action.type === "link") {
+      if (action.url) window.open(action.url, "_blank", "noopener,noreferrer");
+      game?.events.emit("npc:close");
+      return;
+    }
     setActiveAction(action);
   }, [game]);
 

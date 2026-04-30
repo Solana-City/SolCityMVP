@@ -1,51 +1,61 @@
 "use client";
 
-import { useEffect } from "react";
-import { useWallet } from "@solana/wallet-adapter-react";
+import { useEffect, useRef } from "react";
+import { useWallet, useConnection } from "@solana/wallet-adapter-react";
 import type { Transaction } from "@solana/web3.js";
 
 /**
  * Headless bridge between the Phaser game layer and the wallet adapter.
  *
- * The multiplayer manager (OnChainMultiplayer) lives inside Phaser and has
- * no access to React hooks. When it needs the user's wallet to sign a
- * transaction (e.g. initialize_player), it emits `wallet:needSign` on the
- * global game event bus. This component catches that event, signs using the
- * wallet adapter, and replies with `wallet:signedTx` (signature) or
- * `wallet:signError` (error).
+ * OnChainMultiplayer emits `wallet:needSign` with the Transaction to sign.
+ * This component catches it, sends it via the connected wallet, and replies
+ * with `wallet:signedTx` (signature string) or `wallet:signError` (Error).
  *
+ * Refs keep the handler stable so we only register the bus listener once —
+ * prevents duplicate-signing if the wallet adapter re-renders.
  * Renders nothing — pure side-effect.
  */
 export default function WalletSignBridge() {
-  const { signTransaction, sendTransaction, connection } = useWallet() as any;
+  const { sendTransaction } = useWallet() as { sendTransaction?: Function };
+  const { connection } = useConnection();
+
+  const sendRef = useRef(sendTransaction);
+  const connRef = useRef(connection);
+  sendRef.current = sendTransaction;
+  connRef.current = connection;
 
   useEffect(() => {
-    const interval = setInterval(() => {
+    let off: (() => void) | null = null;
+
+    const attach = (): boolean => {
       const bus = (globalThis as any).__solCityGameEvents as
-        | { on: Function; once: Function; off: Function } | undefined;
-      if (!bus) return;
-      clearInterval(interval);
+        | { on: Function; off: Function; emit: Function } | undefined;
+      if (!bus) return false;
 
       const handler = async (tx: Transaction) => {
         try {
-          if (!sendTransaction) throw new Error("No wallet connected");
-          // Use sendTransaction so the wallet handles blockhash + fee payer
-          // We need a connection — pull from the global bus context
-          const { Connection, clusterApiUrl } = await import("@solana/web3.js");
-          const conn = new Connection(clusterApiUrl("devnet"), "confirmed");
-          const sig = await sendTransaction(tx, conn);
-          (bus as any).emit("wallet:signedTx", sig);
+          if (!sendRef.current) throw new Error("Wallet not connected");
+          const sig = await sendRef.current(tx, connRef.current, {
+            skipPreflight: false,
+            preflightCommitment: "confirmed",
+          });
+          bus.emit("wallet:signedTx", sig);
         } catch (err) {
-          (bus as any).emit("wallet:signError", err);
+          bus.emit("wallet:signError", err);
         }
       };
 
       bus.on("wallet:needSign", handler);
-      return () => { bus.off("wallet:needSign", handler); };
-    }, 300);
+      off = () => bus.off("wallet:needSign", handler);
+      return true;
+    };
 
-    return () => clearInterval(interval);
-  }, [sendTransaction]);
+    if (!attach()) {
+      const poll = setInterval(() => { if (attach()) clearInterval(poll); }, 300);
+      return () => { clearInterval(poll); off?.(); };
+    }
+    return () => off?.();
+  }, []);
 
   return null;
 }

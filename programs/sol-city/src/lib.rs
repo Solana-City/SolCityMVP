@@ -1,6 +1,7 @@
 use anchor_lang::prelude::*;
-use ephemeral_rollups_sdk::cpi::{delegate_account, commit_and_undelegate_accounts};
-use ephemeral_rollups_sdk::consts::DELEGATION_PROGRAM_ID;
+use ephemeral_rollups_sdk::cpi::{
+    delegate_account, DelegateAccounts, DelegateConfig, DELEGATION_PROGRAM_ID,
+};
 
 declare_id!("11111111111111111111111111111111"); // Replace after first deploy
 
@@ -16,8 +17,7 @@ pub enum SolCityError {
 pub mod sol_city {
     use super::*;
 
-    /// Initializes a new player state account.
-    /// Called once when a player first connects their wallet.
+    /// Initializes a new player state account. Called once on first wallet connect.
     pub fn initialize_player(ctx: Context<InitializePlayer>, display_name: String) -> Result<()> {
         let player = &mut ctx.accounts.player;
         player.authority = ctx.accounts.authority.key();
@@ -36,22 +36,20 @@ pub mod sol_city {
         Ok(())
     }
 
-    /// Authorizes an ephemeral session key for the current session.
-    /// The main wallet signs this once; subsequent position updates
-    /// use the session key with no further wallet popups.
+    /// Authorizes an ephemeral session key. Main wallet signs once per session;
+    /// position updates use the session key with no further popups.
     pub fn authorize_session(ctx: Context<AuthorizeSession>, session_key: Pubkey) -> Result<()> {
         ctx.accounts.player.session_authority = Some(session_key);
         Ok(())
     }
 
     /// Revokes the active session key. Main wallet signs.
-    /// Called automatically on disconnect.
     pub fn revoke_session(ctx: Context<UpdatePlayer>) -> Result<()> {
         ctx.accounts.player.session_authority = None;
         Ok(())
     }
 
-    /// Updates player position — signed by main wallet (base layer fallback).
+    /// Updates player position — main wallet signer (base layer fallback).
     pub fn update_position(ctx: Context<UpdatePlayer>, x: u32, y: u32, direction: u8) -> Result<()> {
         let player = &mut ctx.accounts.player;
         player.x = x;
@@ -61,7 +59,7 @@ pub mod sol_city {
         Ok(())
     }
 
-    /// Updates player position — signed by session key (ephemeral rollup path).
+    /// Updates player position — session key signer (ephemeral rollup hot path).
     /// Zero popups. Runs at sub-50ms inside the MagicBlock validator.
     pub fn update_position_session(
         ctx: Context<UpdatePlayerSession>,
@@ -77,7 +75,7 @@ pub mod sol_city {
         Ok(())
     }
 
-    /// Records a completed swap. Increments score. Main wallet signs.
+    /// Records a completed swap. Main wallet signs.
     pub fn record_swap(ctx: Context<UpdatePlayer>) -> Result<()> {
         let player = &mut ctx.accounts.player;
         player.swap_count += 1;
@@ -113,7 +111,8 @@ pub mod sol_city {
     }
 
     /// Delegates the player PDA to a MagicBlock Ephemeral Rollup.
-    /// After delegation, position updates run gasless at sub-50ms.
+    /// After delegation, position updates run gasless at sub-50ms via Magic Router.
+    /// Commit+undelegate on disconnect is handled client-side via the TS SDK.
     pub fn delegate(ctx: Context<DelegatePlayer>) -> Result<()> {
         let pda_seeds: &[&[u8]] = &[
             PLAYER_SEED,
@@ -122,28 +121,21 @@ pub mod sol_city {
         ];
 
         delegate_account(
-            &ctx.accounts.authority,
-            &ctx.accounts.player.to_account_info(),
-            &ctx.accounts.owner_program,
-            &ctx.accounts.buffer,
-            &ctx.accounts.delegation_record,
-            &ctx.accounts.delegation_metadata,
-            &ctx.accounts.delegation_program,
-            &ctx.accounts.system_program,
+            DelegateAccounts {
+                payer: &ctx.accounts.authority,
+                pda: &ctx.accounts.player.to_account_info(),
+                owner_program: &ctx.accounts.owner_program,
+                buffer: &ctx.accounts.buffer,
+                delegation_record: &ctx.accounts.delegation_record,
+                delegation_metadata: &ctx.accounts.delegation_metadata,
+                delegation_program: &ctx.accounts.delegation_program,
+                system_program: &ctx.accounts.system_program,
+            },
             pda_seeds,
-            0,
-            3_000,
-        )?;
-        Ok(())
-    }
-
-    /// Undelegates and commits final state back to Solana base layer.
-    pub fn undelegate(ctx: Context<UndelegatePlayer>) -> Result<()> {
-        commit_and_undelegate_accounts(
-            &ctx.accounts.authority,
-            vec![&ctx.accounts.player.to_account_info()],
-            &ctx.accounts.magic_context,
-            &ctx.accounts.magic_program,
+            DelegateConfig {
+                commit_frequency_ms: 3_000,
+                validator: None,
+            },
         )?;
         Ok(())
     }
@@ -166,7 +158,6 @@ pub struct InitializePlayer<'info> {
     pub system_program: Program<'info, System>,
 }
 
-/// Authorizes a session key — main wallet signs once per session.
 #[derive(Accounts)]
 pub struct AuthorizeSession<'info> {
     #[account(
@@ -179,8 +170,6 @@ pub struct AuthorizeSession<'info> {
     pub authority: Signer<'info>,
 }
 
-/// Standard player update — main wallet signs. Used for score events
-/// (record_swap, record_transfer, record_bounty) and outfit changes.
 #[derive(Accounts)]
 pub struct UpdatePlayer<'info> {
     #[account(
@@ -193,8 +182,6 @@ pub struct UpdatePlayer<'info> {
     pub authority: Signer<'info>,
 }
 
-/// Session key update — ephemeral session keypair signs.
-/// Used for high-frequency position updates in the rollup (no popup).
 #[derive(Accounts)]
 pub struct UpdatePlayerSession<'info> {
     #[account(
@@ -218,7 +205,7 @@ pub struct DelegatePlayer<'info> {
     pub player: Account<'info, PlayerState>,
     #[account(mut)]
     pub authority: Signer<'info>,
-    /// CHECK: must be this program's own ID (validated by address constraint)
+    /// CHECK: must be this program's own ID
     #[account(address = crate::ID)]
     pub owner_program: AccountInfo<'info>,
     /// CHECK: buffer PDA — address validated inside the delegation CPI
@@ -236,29 +223,13 @@ pub struct DelegatePlayer<'info> {
     pub system_program: Program<'info, System>,
 }
 
-#[derive(Accounts)]
-pub struct UndelegatePlayer<'info> {
-    #[account(
-        mut,
-        seeds = [PLAYER_SEED, authority.key().as_ref()],
-        bump,
-        has_one = authority,
-    )]
-    pub player: Account<'info, PlayerState>,
-    pub authority: Signer<'info>,
-    /// CHECK: MagicBlock context account
-    pub magic_context: AccountInfo<'info>,
-    /// CHECK: MagicBlock program
-    pub magic_program: AccountInfo<'info>,
-}
-
 // ── State ───────────────────────────────────────────────
 
 #[account]
 #[derive(InitSpace)]
 pub struct PlayerState {
     pub authority: Pubkey,
-    pub session_authority: Option<Pubkey>, // authorized ephemeral session key
+    pub session_authority: Option<Pubkey>,
     #[max_len(20)]
     pub display_name: String,
     pub x: u32,

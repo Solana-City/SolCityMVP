@@ -1,6 +1,7 @@
 export interface NPCAction {
-  type: "tutor" | "swap" | "transfer" | "bounties" | "placeholder";
+  type: "tutor" | "swap" | "transfer" | "bounties" | "link" | "placeholder";
   label: string;
+  url?: string;
 }
 
 export interface NPCDefinition {
@@ -61,7 +62,7 @@ export const NPC_REGISTRY: NPCDefinition[] = [
       "Just pick your tokens and the amount. I'll handle the rest.",
     ],
     action: { type: "swap", label: "Open swap" },
-    spriteKey: "avatar-swap-npc",
+    spriteKey: "avatar-norman",
     portrait: "/assets/sprites/swap-npc.png",
   },
   {
@@ -102,19 +103,20 @@ export const NPC_REGISTRY: NPCDefinition[] = [
   // ── Placeholder NPCs (expansion district) ──────────────────────────
   // Parked here with light dialog until we assign them real roles.
   {
-    id: "norman",
-    name: "Norman",
-    role: "Resident",
+    id: "kuka",
+    name: "Kuka",
+    role: "Superteam Brazil Lead",
     tileX: 58,
     tileY: 114,
-    color: 0xcccccc,
+    color: 0x009c3b,
     dialog: [
-      "Just taking a walk through the expansion district.",
-      "This place is growing fast. New storefronts every week.",
-      "Come back later — I'll probably have a role by then.",
+      "Hello, I'm Kuka. The Lead of Superteam Brazil.",
+      "Past year Brazil won 2 prizes on the Cypherpunk Hackathon. We are making our part to get even more Brazilians on Solana.",
+      "We are now hosting iRL and online sessions for Brazilian builders at The Garage — our Build Station with workshops and prep activities. Join us!",
     ],
-    action: { type: "placeholder", label: "See you around" },
-    spriteKey: "avatar-norman",
+    action: { type: "link", label: "Follow @superteamBR", url: "https://x.com/superteamBR" },
+    spriteKey: "avatar-swap-npc",
+    portrait: "/assets/sprites/kuka.png",
   },
   {
     id: "liza",
