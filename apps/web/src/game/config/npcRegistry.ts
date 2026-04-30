@@ -112,7 +112,7 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     dialog: [
       "Hello, I'm Kuka. The Lead of Superteam Brazil.",
       "Past year Brazil won 2 prizes on the Cypherpunk Hackathon. We are making our part to get even more Brazilians on Solana.",
-      "We are now hosting iRL and online sessions for Brazilian builders at The Garage — our Build Station with workshops and prep activities. Join us!",
+      "We are now hosting iRL and online sessions for Brazilian builders at The Garage, our Build Station with workshops and prep activities. Join us!",
     ],
     action: { type: "link", label: "Follow @superteamBR", url: "https://x.com/superteamBR" },
     spriteKey: "avatar-swap-npc",
@@ -142,7 +142,7 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     color: 0xcccccc,
     dialog: [
       "Nice city, isn't it?",
-      "I hear there's a Superteam Hub south of here — worth checking out.",
+      "I hear there's a Superteam Hub south of here. Worth checking out.",
     ],
     action: { type: "placeholder", label: "Catch you later" },
     spriteKey: "avatar-juan",
