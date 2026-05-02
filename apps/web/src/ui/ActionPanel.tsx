@@ -346,11 +346,31 @@ function TransferPanel({ onClose }: { onClose: () => void }) {
 // ── Bounties Panel ────────────────────────────────────────────────────
 
 const BOUNTIES = [
-  { id: "b1", title: "Create tutorial video for Solana beginners", reward: "500 USDC", tag: "Content",     url: "https://earn.superteam.fun" },
-  { id: "b2", title: "Build open-source analytics dashboard",       reward: "800 USDC", tag: "Development", url: "https://earn.superteam.fun" },
-  { id: "b3", title: "Translate Solana docs to Portuguese",          reward: "200 USDC", tag: "Translation", url: "https://earn.superteam.fun" },
-  { id: "b4", title: "Design social media templates",                reward: "300 USDC", tag: "Design",      url: "https://earn.superteam.fun" },
-  { id: "b5", title: "Write thread about Ephemeral Rollups",         reward: "150 USDC", tag: "Content",     url: "https://earn.superteam.fun" },
+  {
+    id: "b1", title: "Create tutorial video for Solana beginners", reward: "500 USDC", tag: "Content",
+    description: "Produce a beginner-friendly video explaining how to set up a Solana wallet and make your first transaction. Must be under 10 minutes and include subtitles.",
+    url: "https://earn.superteam.fun",
+  },
+  {
+    id: "b2", title: "Build open-source analytics dashboard", reward: "800 USDC", tag: "Development",
+    description: "Build a public dashboard showing on-chain metrics for Solana DeFi protocols — TVL, active wallets, transaction volume. Stack is open, must be MIT licensed.",
+    url: "https://earn.superteam.fun",
+  },
+  {
+    id: "b3", title: "Translate Solana docs to Portuguese", reward: "200 USDC", tag: "Translation",
+    description: "Translate the Solana developer docs (getting started + programs sections) into Brazilian Portuguese. Native fluency required; reviewed by Superteam Brazil.",
+    url: "https://earn.superteam.fun",
+  },
+  {
+    id: "b4", title: "Design social media templates", reward: "300 USDC", tag: "Design",
+    description: "Create a set of 10 reusable social media post templates for Superteam Brazil. Figma source required, must follow Superteam brand guidelines.",
+    url: "https://earn.superteam.fun",
+  },
+  {
+    id: "b5", title: "Write thread about Ephemeral Rollups", reward: "150 USDC", tag: "Content",
+    description: "Write an X/Twitter thread (12–18 posts) explaining how MagicBlock Ephemeral Rollups work and why they matter for on-chain gaming. Must include a real example.",
+    url: "https://earn.superteam.fun",
+  },
 ];
 
 const TAG_COLORS: Record<string, string> = {
@@ -358,14 +378,7 @@ const TAG_COLORS: Record<string, string> = {
 };
 
 function BountiesPanel({ onClose }: { onClose: () => void }) {
-  const [claimed, setClaimed] = useState<Set<string>>(new Set());
-
-  const handleClaim = useCallback((id: string, title: string) => {
-    if (claimed.has(id)) return;
-    setClaimed((s) => new Set([...s, id]));
-    profileManager.recordBounty({ title });
-    emitGameEvent("game:bounty");
-  }, [claimed]);
+  const [expanded, setExpanded] = useState<string | null>(null);
 
   return (
     <>
@@ -374,45 +387,63 @@ function BountiesPanel({ onClose }: { onClose: () => void }) {
       </h3>
       <p style={{ fontSize: "11px", color: "#555566", marginBottom: 12 }}>Powered by Superteam Earn</p>
 
-      <div style={{ maxHeight: 280, overflowY: "auto" }}>
+      <div style={{ maxHeight: 300, overflowY: "auto" }}>
         {BOUNTIES.map((b) => {
-          const done = claimed.has(b.id);
+          const open = expanded === b.id;
           return (
-            <div key={b.id} style={{ background: "#12122a", border: "1px solid rgba(255,255,255,0.04)", borderRadius: 8, padding: 12, marginBottom: 8 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+            <div
+              key={b.id}
+              onClick={() => setExpanded(open ? null : b.id)}
+              style={{
+                background: open ? "#1a1a3a" : "#12122a",
+                border: `1px solid ${open ? "rgba(153,69,255,0.3)" : "rgba(255,255,255,0.04)"}`,
+                borderRadius: 8,
+                padding: 12,
+                marginBottom: 8,
+                cursor: "pointer",
+                transition: "background 0.15s",
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
                 <div style={{ flex: 1 }}>
-                  <a href={b.url} target="_blank" rel="noopener noreferrer"
-                    style={{ color: done ? "#555566" : "#ccccdd", fontSize: "12px", textDecoration: "none" }}>
-                    {b.title}
-                  </a>
-                  <div style={{ marginTop: 4 }}>
-                    <span style={{ fontSize: "10px", padding: "2px 6px", borderRadius: 4, background: `${TAG_COLORS[b.tag] ?? "#9945FF"}18`, color: TAG_COLORS[b.tag] ?? "#9945FF" }}>
-                      {b.tag}
-                    </span>
-                  </div>
+                  <div style={{ color: "#ccccdd", fontSize: "12px", marginBottom: 4 }}>{b.title}</div>
+                  <span style={{ fontSize: "10px", padding: "2px 6px", borderRadius: 4, background: `${TAG_COLORS[b.tag] ?? "#9945FF"}18`, color: TAG_COLORS[b.tag] ?? "#9945FF" }}>
+                    {b.tag}
+                  </span>
                 </div>
-                <div style={{ textAlign: "right", flexShrink: 0, marginLeft: 8 }}>
-                  <div style={{ fontFamily: '"Press Start 2P", monospace', fontSize: "9px", color: "#14F195", marginBottom: 6 }}>
+                <div style={{ textAlign: "right", flexShrink: 0 }}>
+                  <div style={{ fontFamily: '"Press Start 2P", monospace', fontSize: "9px", color: "#14F195" }}>
                     {b.reward}
                   </div>
-                  <button
-                    onClick={() => handleClaim(b.id, b.title)}
-                    disabled={done}
-                    style={{
-                      fontSize: "8px",
-                      fontFamily: '"Press Start 2P", monospace',
-                      padding: "4px 8px",
-                      borderRadius: 4,
-                      cursor: done ? "default" : "pointer",
-                      background: done ? "rgba(20,241,149,0.1)" : "rgba(20,241,149,0.85)",
-                      color: done ? "#14F195" : "#000",
-                      border: done ? "1px solid rgba(20,241,149,0.3)" : "none",
-                    }}
-                  >
-                    {done ? "CLAIMED ✓" : "CLAIM"}
-                  </button>
+                  <div style={{ fontSize: "10px", color: "#555566", marginTop: 4 }}>{open ? "▲" : "▼"}</div>
                 </div>
               </div>
+
+              {open && (
+                <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+                  <p style={{ fontSize: "11px", color: "#888899", marginBottom: 10, lineHeight: 1.5 }}>
+                    {b.description}
+                  </p>
+                  <a
+                    href={b.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={e => e.stopPropagation()}
+                    style={{
+                      display: "inline-block",
+                      background: "#9945FF",
+                      color: "#fff",
+                      borderRadius: 6,
+                      padding: "6px 14px",
+                      fontFamily: '"Press Start 2P", monospace',
+                      fontSize: "8px",
+                      textDecoration: "none",
+                    }}
+                  >
+                    VIEW ON SUPERTEAM ↗
+                  </a>
+                </div>
+              )}
             </div>
           );
         })}
@@ -420,8 +451,8 @@ function BountiesPanel({ onClose }: { onClose: () => void }) {
 
       <div className="flex gap-2 mt-3">
         <a href="https://earn.superteam.fun" target="_blank" rel="noopener noreferrer"
-          style={{ flex: 1, background: "#9945FF", color: "#fff", border: "none", borderRadius: 8, padding: "10px 0", textAlign: "center", fontFamily: '"Press Start 2P", monospace', fontSize: "8px", textDecoration: "none", display: "block" }}>
-          VIEW ALL ON SUPERTEAM
+          style={{ flex: 1, background: "rgba(153,69,255,0.15)", color: "#9945FF", border: "1px solid rgba(153,69,255,0.3)", borderRadius: 8, padding: "10px 0", textAlign: "center", fontFamily: '"Press Start 2P", monospace', fontSize: "8px", textDecoration: "none", display: "block" }}>
+          BROWSE ALL BOUNTIES ↗
         </a>
         <button onClick={onClose} style={{ background: "transparent", border: "1px solid #333344", color: "#666677", borderRadius: 8, padding: "0 16px", cursor: "pointer", fontSize: 12 }}>ESC</button>
       </div>
