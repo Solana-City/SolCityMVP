@@ -62,7 +62,7 @@ export const NPC_REGISTRY: NPCDefinition[] = [
       "Just pick your tokens and the amount. I'll handle the rest.",
     ],
     action: { type: "swap", label: "Open swap" },
-    spriteKey: "avatar-norman",
+    spriteKey: "avatar-brawly",
     portrait: "/assets/sprites/swap-npc.png",
   },
   {
@@ -131,7 +131,7 @@ export const NPC_REGISTRY: NPCDefinition[] = [
       "On Indies on Solana, Season 2 will start soon. Registrations are open!",
     ],
     action: { type: "link", label: "Visit Indies on Solana", url: "https://indiesonsolana.com/" },
-    spriteKey: "avatar-sol-guide",
+    spriteKey: "avatar-norman",
   },
   {
     id: "mr-bananas",

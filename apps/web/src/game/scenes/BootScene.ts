@@ -42,7 +42,7 @@ export class BootScene extends Phaser.Scene {
     }
 
     // Player sprite
-    SimpleSprite.load(this, "avatar-player", "assets/sprites/player.png", 64, 64);
+    SimpleSprite.load(this, "avatar-player", "assets/sprites/main_char.png", 64, 64);
 
     // NPC sprites
     for (const npc of NPC_REGISTRY) {
