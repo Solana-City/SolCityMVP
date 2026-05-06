@@ -17,13 +17,9 @@
 import {
   PublicKey,
   TransactionInstruction,
-  SystemProgram,
 } from "@solana/web3.js";
 import {
-  DELEGATION_PROGRAM_ID,
-  delegateBufferPdaFromDelegatedAccountAndOwnerProgram,
-  delegationRecordPdaFromDelegatedAccount,
-  delegationMetadataPdaFromDelegatedAccount,
+  createDelegateInstruction,
 } from "@magicblock-labs/ephemeral-rollups-sdk";
 import { SOL_CITY_PROGRAM_ID, derivePlayerPDA } from "./program";
 import { sha256 } from "@noble/hashes/sha256";
@@ -51,7 +47,6 @@ const DISC = {
   recordTransfer:        ixDiscriminator("record_transfer"),
   recordBounty:          ixDiscriminator("record_bounty"),
   changeOutfit:          ixDiscriminator("change_outfit"),
-  delegate:              ixDiscriminator("delegate"),
 } as const;
 
 // ── Argument packers ────────────────────────────────────────────────────
@@ -255,32 +250,20 @@ export function buildChangeOutfitIx(
 
 /**
  * Builds the `delegate` instruction for our sol-city program.
- * This CPIs into the MagicBlock Delegation Program, handing off the player
- * PDA to the ephemeral rollup. After this call, position updates flow through
- * the Magic Router at sub-50ms with no gas.
- *
- * Accounts mirror DelegatePlayer in lib.rs exactly.
+ * Delegates the player PDA to MagicBlock Ephemeral Rollup via direct call to
+ * the delegation program. After this call, position updates flow through the
+ * Magic Router at sub-50ms with no gas.
  */
 export function buildDelegateIx(authority: PublicKey): TransactionInstruction {
   const [playerPda] = derivePlayerPDA(authority);
-  const buffer = delegateBufferPdaFromDelegatedAccountAndOwnerProgram(playerPda, SOL_CITY_PROGRAM_ID);
-  const delegationRecord = delegationRecordPdaFromDelegatedAccount(playerPda);
-  const delegationMetadata = delegationMetadataPdaFromDelegatedAccount(playerPda);
-
-  return new TransactionInstruction({
-    programId: SOL_CITY_PROGRAM_ID,
-    keys: [
-      { pubkey: playerPda,              isSigner: false, isWritable: true  },
-      { pubkey: authority,              isSigner: true,  isWritable: true  },
-      { pubkey: SOL_CITY_PROGRAM_ID,    isSigner: false, isWritable: false }, // owner_program
-      { pubkey: buffer,                 isSigner: false, isWritable: true  },
-      { pubkey: delegationRecord,       isSigner: false, isWritable: true  },
-      { pubkey: delegationMetadata,     isSigner: false, isWritable: true  },
-      { pubkey: DELEGATION_PROGRAM_ID,  isSigner: false, isWritable: false },
-      { pubkey: SystemProgram.programId,isSigner: false, isWritable: false },
-    ],
-    data: DISC.delegate,
-  });
+  return createDelegateInstruction(
+    {
+      payer: authority,
+      delegatedAccount: playerPda,
+      ownerProgram: SOL_CITY_PROGRAM_ID,
+    },
+    { commitFrequencyMs: 3_000 },
+  );
 }
 
 /**

@@ -20,27 +20,34 @@ Create an account or sign in with GitHub.
 2. Select **"Anchor (Rust)"**
 3. Name: `sol-city`
 
-### Step 3 — Update Cargo.toml
+### Step 3 — Find your Program ID
 
-In the Playground, open `Cargo.toml` and add the dependencies:
+Before editing any code, look at the **Build & Deploy** panel on the right side of Playground. There is a "Program ID" field showing the address that will be used when you deploy (derived from Playground's stored keypair).
+
+Copy that address — you will need it in the next step.
+
+### Step 4 — Update Cargo.toml
+
+In the Playground editor, open `Cargo.toml` and replace the `[dependencies]` section:
 
 ```toml
 [dependencies]
-anchor-lang = "0.30.1"
-ephemeral-rollups-sdk = "0.4"
+anchor-lang = "0.31"
+ephemeral-rollups-sdk = { version = "0.12", features = ["anchor"] }
 ```
 
-### Step 4 — Replace src/lib.rs
+### Step 5 — Replace src/lib.rs
 
-In the Playground editor, open `src/lib.rs` and **replace everything** with the content below.
-This is the full program with session keys + MagicBlock delegation:
+Open `src/lib.rs` and **replace everything** with the content below.
+Replace `YOUR_PROGRAM_ID_FROM_STEP_3` with the address you copied in Step 3.
 
 ```rust
 use anchor_lang::prelude::*;
-use ephemeral_rollups_sdk::cpi::{delegate_account, commit_and_undelegate_accounts};
-use ephemeral_rollups_sdk::consts::DELEGATION_PROGRAM_ID;
+use ephemeral_rollups_sdk::cpi::{
+    delegate_account, DelegateAccounts, DelegateConfig, DELEGATION_PROGRAM_ID,
+};
 
-declare_id!("WILL_BE_GENERATED_BY_PLAYGROUND");
+declare_id!("YOUR_PROGRAM_ID_FROM_STEP_3");
 
 pub const PLAYER_SEED: &[u8] = b"player";
 
@@ -72,8 +79,6 @@ pub mod sol_city {
         Ok(())
     }
 
-    /// One-time popup: authorizes an ephemeral session key.
-    /// After this, update_position_session runs with no popup.
     pub fn authorize_session(ctx: Context<AuthorizeSession>, session_key: Pubkey) -> Result<()> {
         ctx.accounts.player.session_authority = Some(session_key);
         Ok(())
@@ -149,29 +154,21 @@ pub mod sol_city {
         ];
 
         delegate_account(
-            &ctx.accounts.authority,
-            &ctx.accounts.player.to_account_info(),
-            &ctx.accounts.owner_program,
-            &ctx.accounts.buffer,
-            &ctx.accounts.delegation_record,
-            &ctx.accounts.delegation_metadata,
-            &ctx.accounts.delegation_program,
-            &ctx.accounts.system_program,
+            DelegateAccounts {
+                payer: &ctx.accounts.authority,
+                pda: &ctx.accounts.player.to_account_info(),
+                owner_program: &ctx.accounts.owner_program,
+                buffer: &ctx.accounts.buffer,
+                delegation_record: &ctx.accounts.delegation_record,
+                delegation_metadata: &ctx.accounts.delegation_metadata,
+                delegation_program: &ctx.accounts.delegation_program,
+                system_program: &ctx.accounts.system_program,
+            },
             pda_seeds,
-            0,
-            3_000,
-        )?;
-        Ok(())
-    }
-
-    /// Commits state back to base layer and undelegates.
-    /// Called automatically on disconnect (session key signs, no popup).
-    pub fn undelegate(ctx: Context<UndelegatePlayer>) -> Result<()> {
-        commit_and_undelegate_accounts(
-            &ctx.accounts.authority,
-            vec![&ctx.accounts.player.to_account_info()],
-            &ctx.accounts.magic_context,
-            &ctx.accounts.magic_program,
+            DelegateConfig {
+                commit_frequency_ms: 3_000,
+                validator: None,
+            },
         )?;
         Ok(())
     }
@@ -257,22 +254,6 @@ pub struct DelegatePlayer<'info> {
     pub system_program: Program<'info, System>,
 }
 
-#[derive(Accounts)]
-pub struct UndelegatePlayer<'info> {
-    #[account(
-        mut,
-        seeds = [PLAYER_SEED, authority.key().as_ref()],
-        bump,
-        has_one = authority,
-    )]
-    pub player: Account<'info, PlayerState>,
-    pub authority: Signer<'info>,
-    /// CHECK: MagicBlock context account
-    pub magic_context: AccountInfo<'info>,
-    /// CHECK: MagicBlock program
-    pub magic_program: AccountInfo<'info>,
-}
-
 #[account]
 #[derive(InitSpace)]
 pub struct PlayerState {
@@ -293,19 +274,24 @@ pub struct PlayerState {
 }
 ```
 
-### Step 5 — Build and Deploy
+> **Note:** There is no `undelegate` instruction on-chain. Commit + undelegate is handled
+> client-side by the TypeScript SDK (`@magicblock-labs/ephemeral-rollups-sdk`) when the
+> player disconnects. This avoids requiring a wallet popup on exit.
 
-1. Click **"Build"** (~30s — the Playground downloads crates automatically)
+### Step 6 — Build and Deploy
+
+1. Click **"Build"** (~60s — the Playground downloads crates automatically)
 2. If it compiles without errors, click **"Deploy"**
 3. Select **Devnet**
-4. The Playground will show the generated **Program ID** (e.g. `AbCd...xyz`)
+4. Confirm the transaction in your wallet (needs ~0.01 SOL on devnet — use the faucet at https://faucet.solana.com if needed)
+5. The Playground will confirm the program is live
 
-### Step 6 — Update the frontend
+### Step 7 — Update the frontend
 
 Create the file `apps/web/.env.local`:
 
 ```
-NEXT_PUBLIC_SOL_CITY_PROGRAM_ID=YOUR_PROGRAM_ID_HERE
+NEXT_PUBLIC_SOL_CITY_PROGRAM_ID=YOUR_PROGRAM_ID_FROM_STEP_3
 ```
 
 Restart the dev server. The game automatically detects the deployed program (`isProgramDeployed()` returns `true`) and:
@@ -324,8 +310,28 @@ Restart the dev server. The game automatically detects the deployed program (`is
    - Sub-50ms, no popups, no gas
 
 4. **On disconnect:**
-   - `commitAndUndelegate` via session key → ephemeral RPC (no popup)
+   - `commitAndUndelegate` via TypeScript SDK + session key (no popup)
    - Final state committed back to devnet
+
+## Troubleshooting
+
+### Build error: `use of undeclared crate or module`
+Make sure `Cargo.toml` has exactly:
+```toml
+[dependencies]
+anchor-lang = "0.31"
+ephemeral-rollups-sdk = { version = "0.12", features = ["anchor"] }
+```
+The old API (`ephemeral-rollups-sdk = "0.4"`) used different imports and will not compile with this code.
+
+### Build error: `declare_id! mismatch`
+Replace `YOUR_PROGRAM_ID_FROM_STEP_3` in `declare_id!` with the exact address shown in Playground's Build & Deploy panel before building.
+
+### Deploy fails: insufficient funds
+Get devnet SOL from https://faucet.solana.com — paste your wallet address and request 1 SOL.
+
+### `isProgramDeployed()` returns false after setting env var
+Restart the Next.js dev server after editing `.env.local`. Environment variables are baked at startup.
 
 ## Verification
 

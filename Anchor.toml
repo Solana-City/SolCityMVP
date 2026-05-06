@@ -1,15 +1,17 @@
+[toolchain]
+
 [features]
-seeds = false
+resolution = true
 skip-lint = false
 
 [programs.devnet]
-sol_city = "11111111111111111111111111111111"
+sol_city = "HPvDFVnruSXHwKKP44eUvRh8oYqBaHCeQbK1sKWT1aU2"
 
 [registry]
 url = "https://api.apr.dev"
 
 [provider]
-cluster = "devnet"
+cluster = "Devnet"
 wallet = "~/.config/solana/id.json"
 
 [scripts]
