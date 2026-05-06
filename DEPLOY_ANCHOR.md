@@ -1,28 +1,28 @@
-# Deploy do Anchor Program — Solana Playground
+# Anchor Program Deploy — Solana Playground
 
-## Por que precisa disso
+## Why this is needed
 
-Enquanto o Program ID for `111111...`, o multiplayer funciona via **BroadcastChannel** (múltiplas abas no mesmo navegador). Para multiplayer **cross-browser e cross-device real** via MagicBlock ephemeral rollups, o programa precisa estar deployado em devnet.
+While the Program ID is `111111...`, multiplayer runs via **BroadcastChannel** (multiple tabs in the same browser). For real **cross-browser and cross-device** multiplayer via MagicBlock ephemeral rollups, the program must be deployed to devnet.
 
-## Método: Solana Playground (sem toolchain local)
+## Method: Solana Playground (no local toolchain required)
 
-Leva ~10 minutos no navegador. Nenhuma instalação necessária.
+Takes ~10 minutes in the browser. No installation needed.
 
-### Passo 1 — Abrir o Playground
+### Step 1 — Open the Playground
 
-Acesse: https://beta.solpg.io
+Go to: https://beta.solpg.io
 
-Crie uma conta ou entre com GitHub.
+Create an account or sign in with GitHub.
 
-### Passo 2 — Criar projeto Anchor
+### Step 2 — Create an Anchor project
 
-1. Clique em **"Create a new project"**
-2. Selecione **"Anchor (Rust)"**
-3. Nome: `sol-city`
+1. Click **"Create a new project"**
+2. Select **"Anchor (Rust)"**
+3. Name: `sol-city`
 
-### Passo 3 — Atualizar Cargo.toml
+### Step 3 — Update Cargo.toml
 
-No Playground, abra `Cargo.toml` e adicione as dependências:
+In the Playground, open `Cargo.toml` and add the dependencies:
 
 ```toml
 [dependencies]
@@ -30,17 +30,17 @@ anchor-lang = "0.30.1"
 ephemeral-rollups-sdk = "0.4"
 ```
 
-### Passo 4 — Substituir src/lib.rs
+### Step 4 — Replace src/lib.rs
 
-No editor do Playground, abra `src/lib.rs` e **substitua tudo** pelo conteúdo abaixo.
-Este é o programa completo com session keys + delegação MagicBlock:
+In the Playground editor, open `src/lib.rs` and **replace everything** with the content below.
+This is the full program with session keys + MagicBlock delegation:
 
 ```rust
 use anchor_lang::prelude::*;
 use ephemeral_rollups_sdk::cpi::{delegate_account, commit_and_undelegate_accounts};
 use ephemeral_rollups_sdk::consts::DELEGATION_PROGRAM_ID;
 
-declare_id!("SERÁ_GERADO_PELO_PLAYGROUND");
+declare_id!("WILL_BE_GENERATED_BY_PLAYGROUND");
 
 pub const PLAYER_SEED: &[u8] = b"player";
 
@@ -293,49 +293,49 @@ pub struct PlayerState {
 }
 ```
 
-### Passo 5 — Build e Deploy
+### Step 5 — Build and Deploy
 
-1. Clique em **"Build"** (leva ~30s — o Playground baixa os crates automaticamente)
-2. Se compilar sem erros, clique em **"Deploy"**
-3. Selecione **Devnet**
-4. O Playground vai mostrar o **Program ID** gerado (algo como `AbCd...xyz`)
+1. Click **"Build"** (~30s — the Playground downloads crates automatically)
+2. If it compiles without errors, click **"Deploy"**
+3. Select **Devnet**
+4. The Playground will show the generated **Program ID** (e.g. `AbCd...xyz`)
 
-### Passo 6 — Atualizar o frontend
+### Step 6 — Update the frontend
 
-Crie o arquivo `apps/web/.env.local`:
+Create the file `apps/web/.env.local`:
 
 ```
-NEXT_PUBLIC_SOL_CITY_PROGRAM_ID=SEU_PROGRAM_ID_AQUI
+NEXT_PUBLIC_SOL_CITY_PROGRAM_ID=YOUR_PROGRAM_ID_HERE
 ```
 
-Reinicie o dev server. O jogo detecta automaticamente que o programa está deployado (`isProgramDeployed()` retorna `true`) e:
+Restart the dev server. The game automatically detects the deployed program (`isProgramDeployed()` returns `true`) and:
 
-1. **Primeira conexão de wallet:**
-   - `initialize_player` — cria PDA na base layer (popup #1)
-   - `authorize_session` — registra session key no PDA (popup #2)
-   - `delegate` — delega PDA para o ephemeral rollup (popup #3)
+1. **First wallet connection:**
+   - `initialize_player` — creates PDA on base layer (popup #1)
+   - `authorize_session` — registers session key in the PDA (popup #2)
+   - `delegate` — delegates PDA to the ephemeral rollup (popup #3)
 
-2. **Reconexões subsequentes:**
-   - PDA já existe + já delegado
-   - `authorize_session` via Magic Router com nova session key (popup #1)
+2. **Subsequent reconnections:**
+   - PDA already exists + already delegated
+   - `authorize_session` via Magic Router with new session key (popup #1)
 
-3. **Durante o jogo:**
-   - Posições enviadas via session key → Magic Router → ephemeral validator
-   - Sub-50ms, sem popups, sem gas
+3. **During gameplay:**
+   - Positions sent via session key → Magic Router → ephemeral validator
+   - Sub-50ms, no popups, no gas
 
-4. **Ao desconectar:**
-   - `commitAndUndelegate` via session key → ephemeral RPC (sem popup)
-   - Estado final commitado de volta para devnet
+4. **On disconnect:**
+   - `commitAndUndelegate` via session key → ephemeral RPC (no popup)
+   - Final state committed back to devnet
 
-## Verificação
+## Verification
 
-Após conectar a wallet no jogo, verifique em:
+After connecting your wallet in the game, check:
 https://explorer.solana.com/?cluster=devnet
 
-Procure por transações do seu program ID. Você deve ver:
+Search for transactions from your program ID. You should see:
 - `initialize_player`
 - `authorize_session`
 - `delegate`
 
-Para ver posições em tempo real no rollup:
+To watch positions in real time on the rollup:
 https://devnet.magicblock.app (ephemeral RPC explorer)
