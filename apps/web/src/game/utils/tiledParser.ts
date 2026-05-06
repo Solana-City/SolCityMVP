@@ -35,31 +35,42 @@ export interface TiledParseResult {
 // ── Layer name → palette index ─────────────────────────────────────────────
 
 const LAYER_PALETTE: Record<string, number> = {
-  "Camada de Blocos 15": 1,  // base ground (bottom layer)
-  "Camada de Blocos 14": 1,
+  "Camada de Blocos 15": 1,
+  "Street":              1,
   "Grass":               2,
   "GrassCenter":         3,
+  "SidewalkCenter":      4,
   "Sidewalk":            4,
   "Sidewalk02":          4,
   "Sidewalk03":          4,
-  "Camada de Blocos 12": 7,   // STBrazil variant
+  "Sidewalk04":          4,
+  "Camada de Blocos 30": 4,
   "BuildGeneric01":      5,
+  "BuildGeneric02":      5,
+  "BuildGeneric03":      5,
+  "BuildGeneric04":      5,
+  "BuildGeneric05":      5,
+  "BuildGeneric06":      5,
   "BuildSTEarn":         6,
   "BuildSTBrazil":       7,
   "BuildJupiter":        8,
   "DecorFountain":       9,
   "BuildMonkeDAo":      10,
-  "NPC":                11,
+  "VegetationPalmBack":  2,
+  "VegetationPalmFront": 2,
+  "VegetationPalmCenter":2,
+  "VegetationTree":      2,
+  "BuildIndies":        11,
 };
 
 // Layers that block the player
 const COLLISION_LAYERS = new Set([
-  "BuildGeneric01",
   "BuildSTEarn",
-  "Camada de Blocos 12",
+  "BuildGeneric01", "BuildGeneric02", "BuildGeneric03",
   "BuildSTBrazil",
   "BuildJupiter",
   "BuildMonkeDAo",
+  "BuildIndies",
 ]);
 
 // NPC tile GIDs — 14530 = top tile, 14551 = bottom tile (2-tile NPC sprite)
@@ -126,8 +137,8 @@ export function parseTiledJSON(json: any): TiledParseResult {
 /** Palette colour definitions — used by tilesetGenerator to draw tiles */
 export const TILED_PALETTE_COLORS: Record<number, number> = {
   0:  0x000000,  // empty
-  1:  0x0e1f2e,  // ground base
-  2:  0x1e5a2e,  // grass
+  1:  0x0e1f2e,  // ground base / street
+  2:  0x1e5a2e,  // grass / vegetation
   3:  0x27703a,  // grass centre
   4:  0x7a6e58,  // sidewalk
   5:  0x2a2a45,  // generic building
@@ -136,4 +147,5 @@ export const TILED_PALETTE_COLORS: Record<number, number> = {
   8:  0xc89010,  // Jupiter gold
   9:  0x108090,  // Fountain cyan
   10: 0xc06020,  // MonkeyDAO orange
+  11: 0x803060,  // Indies magenta
 };

@@ -43,21 +43,27 @@ export class CityScene extends Phaser.Scene {
     const allTilesets = [
       "SCTileGrass", "SCBuildSTEarn", "SCBuildMonkeyDAO",
       "SCBuildSTBrazil", "SCBuildJupter", "SCTileFountain",
-      "SCTileGround", "SCNPCAlien",
+      "SCTileGround", "SCVegetationSet", "SCPalm", "SCBuildIndies",
+      "SCUrbanEquipament",
     ]
       .map(n => map.addTilesetImage(n, n))
       .filter((ts): ts is Phaser.Tilemaps.Tileset => ts !== null);
 
-    // Render layers bottom-to-top; NPC layer is skipped (handled as entities)
+    // Render layers bottom-to-top (matching new map layer order)
     const RENDER_LAYERS = [
-      "Camada de Blocos 14", "Grass", "GrassCenter",
-      "Sidewalk", "Sidewalk02", "Sidewalk03",
-      "BuildGeneric01", "BuildSTEarn", "Camada de Blocos 12",
-      "BuildSTBrazil", "BuildJupiter", "DecorFountain", "BuildMonkeDAo",
+      "Camada de Blocos 15", "Street", "Grass", "GrassCenter", "Camada de Blocos 30",
+      "SidewalkCenter", "Sidewalk", "Sidewalk02", "Sidewalk03", "Sidewalk04",
+      "VegetationTree",
+      "BuildSTEarn", "VegetationPalmBack", "DecorLightBack",
+      "BuildGeneric02", "BuildGeneric04", "BuildGeneric01", "BuildGeneric03", "BuildGeneric05",
+      "BuildSTBrazil", "BuildJupiter", "BuildGeneric06",
+      "DecorBench", "BuildMonkeDAo",
+      "DecorLightFront", "VegetationPalmFront", "VegetationPalmCenter",
+      "DecorFountain", "DecorLightCenter", "BuildIndies",
     ];
     const COLLISION_LAYER_NAMES = new Set([
-      "BuildGeneric01", "BuildSTEarn", "Camada de Blocos 12",
-      "BuildSTBrazil", "BuildJupiter", "BuildMonkeDAo",
+      "BuildSTEarn", "BuildGeneric01", "BuildGeneric02", "BuildGeneric03",
+      "BuildSTBrazil", "BuildJupiter", "BuildMonkeDAo", "BuildIndies",
     ]);
 
     for (const name of RENDER_LAYERS) {
@@ -69,9 +75,9 @@ export class CityScene extends Phaser.Scene {
       }
     }
 
-    // Spawn at the centre plaza (col 100, row 95 — inside GrassCenter)
-    const spawnX = 100 * tileSize + tileSize / 2;
-    const spawnY = 95  * tileSize + tileSize / 2;
+    // Spawn at the centre plaza (col 99, row 97 — inside GrassCenter)
+    const spawnX = 99  * tileSize + tileSize / 2;
+    const spawnY = 97  * tileSize + tileSize / 2;
     const playerTextureKey = this.textures.exists("avatar-player")
       ? "avatar-player"
       : "avatar-sol-guide";
@@ -104,7 +110,7 @@ export class CityScene extends Phaser.Scene {
     // pixel maps to exactly N screen pixels — no fractional sampling,
     // which is the industry-standard way to keep pixel art crisp.
     this.cameras.main.startFollow(container, true, 1.0, 1.0);
-    this.cameras.main.setZoom(3);
+    this.cameras.main.setZoom(2);
     this.cameras.main.setBackgroundColor(0x061a2c);
     this.cameras.main.roundPixels = true;
 
@@ -429,8 +435,8 @@ export class CityScene extends Phaser.Scene {
     tileSize: number
   ): { wx: number; wy: number } {
     const COLLISION_LAYERS = [
-      "BuildGeneric01", "BuildSTEarn", "Camada de Blocos 12",
-      "BuildSTBrazil", "BuildJupiter", "BuildMonkeDAo",
+      "BuildSTEarn", "BuildGeneric01", "BuildGeneric02", "BuildGeneric03",
+      "BuildSTBrazil", "BuildJupiter", "BuildMonkeDAo", "BuildIndies",
     ];
 
     const isTileBlocked = (c: number, r: number): boolean =>

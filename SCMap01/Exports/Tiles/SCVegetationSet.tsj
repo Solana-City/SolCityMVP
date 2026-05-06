@@ -1,0 +1,14 @@
+{ "columns":75,
+ "image":"..\/..\/SCAssets\/SCVegetation\/SCVegetationSet.png",
+ "imageheight":1800,
+ "imagewidth":1800,
+ "margin":0,
+ "name":"SCVegetationSet",
+ "spacing":0,
+ "tilecount":5625,
+ "tiledversion":"1.12.1",
+ "tileheight":24,
+ "tilewidth":24,
+ "type":"tileset",
+ "version":"1.10"
+}

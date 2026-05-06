@@ -1,0 +1,14 @@
+{ "columns":42,
+ "image":"..\/..\/SCAssets\/SCDecoration\/SCUrbanEquipament.png",
+ "imageheight":1024,
+ "imagewidth":1024,
+ "margin":0,
+ "name":"SCUrbanEquipament",
+ "spacing":0,
+ "tilecount":1764,
+ "tiledversion":"1.12.1",
+ "tileheight":24,
+ "tilewidth":24,
+ "type":"tileset",
+ "version":"1.10"
+}

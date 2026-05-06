@@ -11,7 +11,10 @@ const TILESET_KEYS = [
   "SCBuildJupter",
   "SCTileFountain",
   "SCTileGround",
-  "SCNPCAlien",
+  "SCVegetationSet",
+  "SCPalm",
+  "SCBuildIndies",
+  "SCUrbanEquipament",
 ];
 
 export class BootScene extends Phaser.Scene {

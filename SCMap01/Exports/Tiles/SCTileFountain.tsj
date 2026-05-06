@@ -1,16 +1,16 @@
-{ "columns":45,
+{ "columns":75,
  "image":"..\/..\/SCAssets\/SCDecoration\/SCTileFountain.png",
- "imageheight":1080,
- "imagewidth":1080,
+ "imageheight":1800,
+ "imagewidth":1800,
  "margin":0,
  "name":"SCTileFountain",
  "spacing":0,
- "tilecount":2025,
+ "tilecount":5625,
  "tiledversion":"1.12.1",
  "tileheight":24,
  "tiles":[
         {
-         "id":872,
+         "id":1442,
          "objectgroup":
             {
              "draworder":"index",
@@ -40,12 +40,12 @@
                              "y":-10.25
                             }, 
                             {
-                             "x":-12.8637670475488,
-                             "y":10.9011288241799
+                             "x":-12.8638,
+                             "y":10.9011
                             }, 
                             {
-                             "x":-0.304610506842446,
-                             "y":10.6342506666471
+                             "x":-0.304611,
+                             "y":10.6343
                             }],
                      "rotation":0,
                      "type":"",

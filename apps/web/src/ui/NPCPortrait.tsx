@@ -30,12 +30,14 @@ export default function NPCPortrait({
   const [imageFailed, setImageFailed] = useState(false);
   const color = `#${npc.color.toString(16).padStart(6, "0")}`;
 
-  // Reset failure state when NPC changes (in case of retry on re-open)
   useEffect(() => {
     setImageFailed(false);
   }, [npc.id]);
 
-  const showImage = Boolean(npc.portrait) && !imageFailed;
+  // No portrait defined — render nothing; callers should not show the area at all.
+  if (!npc.portrait) return null;
+
+  const showImage = !imageFailed;
 
   if (variant === "avatar") {
     return (

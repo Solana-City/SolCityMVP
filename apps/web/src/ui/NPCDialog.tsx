@@ -58,11 +58,13 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
       className="fixed bottom-24 left-1/2 -translate-x-1/2 z-30 w-full max-w-2xl px-4"
       style={{ fontFamily: '"Fira Code", monospace' }}
     >
-      <div className="flex items-end gap-4">
-        {/* VN-style portrait — hidden on narrow screens, shown on sm+ */}
-        <div className="hidden sm:block mb-2">
-          <NPCPortrait npc={npc} size={128} variant="frame" />
-        </div>
+      <div className={`flex items-end ${npc.portrait ? "gap-4" : ""}`}>
+        {/* VN-style portrait — only when portrait image is defined */}
+        {npc.portrait && (
+          <div className="hidden sm:block mb-2">
+            <NPCPortrait npc={npc} size={128} variant="frame" />
+          </div>
+        )}
 
         {/* Speech bubble */}
         <div
@@ -73,42 +75,45 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
             backdropFilter: "blur(4px)",
           }}
         >
-          {/* Speech tail pointing toward the portrait (visible on sm+ only).
-              Two-layer triangle: outer in NPC color acts as border, inner in
-              bubble background color "hides" the overlap — crisp beveled tail. */}
-          <div
-            className="hidden sm:block absolute"
-            style={{
-              left: -10,
-              bottom: 28,
-              width: 0,
-              height: 0,
-              borderTop: "8px solid transparent",
-              borderBottom: "8px solid transparent",
-              borderRight: `10px solid ${color}`,
-            }}
-            aria-hidden
-          />
-          <div
-            className="hidden sm:block absolute"
-            style={{
-              left: -7,
-              bottom: 28,
-              width: 0,
-              height: 0,
-              borderTop: "8px solid transparent",
-              borderBottom: "8px solid transparent",
-              borderRight: "10px solid rgba(10,10,30,0.95)",
-            }}
-            aria-hidden
-          />
+          {/* Speech tail — only when portrait is visible */}
+          {npc.portrait && (
+            <>
+              <div
+                className="hidden sm:block absolute"
+                style={{
+                  left: -10,
+                  bottom: 28,
+                  width: 0,
+                  height: 0,
+                  borderTop: "8px solid transparent",
+                  borderBottom: "8px solid transparent",
+                  borderRight: `10px solid ${color}`,
+                }}
+                aria-hidden
+              />
+              <div
+                className="hidden sm:block absolute"
+                style={{
+                  left: -7,
+                  bottom: 28,
+                  width: 0,
+                  height: 0,
+                  borderTop: "8px solid transparent",
+                  borderBottom: "8px solid transparent",
+                  borderRight: "10px solid rgba(10,10,30,0.95)",
+                }}
+                aria-hidden
+              />
+            </>
+          )}
 
-          {/* Compact header: avatar (mobile fallback) + name/role + close */}
+          {/* Compact header: avatar (mobile only, only when portrait defined) + name/role + close */}
           <div className="flex items-center gap-3 mb-3">
-            {/* On mobile, show the compact avatar here since the frame is hidden */}
-            <div className="sm:hidden">
-              <NPCPortrait npc={npc} size={40} variant="avatar" />
-            </div>
+            {npc.portrait && (
+              <div className="sm:hidden">
+                <NPCPortrait npc={npc} size={40} variant="avatar" />
+              </div>
+            )}
             <div className="flex-1 min-w-0">
               <div
                 className="font-bold truncate"
