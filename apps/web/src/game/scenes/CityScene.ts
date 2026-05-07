@@ -49,21 +49,21 @@ export class CityScene extends Phaser.Scene {
       .map(n => map.addTilesetImage(n, n))
       .filter((ts): ts is Phaser.Tilemaps.Tileset => ts !== null);
 
-    // Build a set of tileset names whose PNG loaded successfully.
-    // If a tileset is missing we must not enable collision on its tiles —
-    // invisible-but-collidable tiles create ghost walls.
-    const loadedTilesetNames = new Set(allTilesets.map(ts => ts.name));
-
-    // Layers whose tops should always render in front of the player.
-    // Player depth = container.y (0–4800 for a 200×24px map).
-    // Giving these a depth of 10000 guarantees they stay above the player.
-    const FOREGROUND_PREFIXES = [
-      "VegetationTree",
-      "VegetationPalm",
-      "DecorLightFront",
-      "DecorLightCenter",
-    ];
+    // Pure-canopy layers (no collidable tiles) — always above the player.
+    const FOREGROUND_PREFIXES = ["VegetationTree"];
     const FOREGROUND_DEPTH = 10000;
+
+    // Isolated vertical objects: trees, palms, lamp posts.
+    // These y-sort with the player: depth = bottom-Y of their southernmost
+    // collidable tile, so the player renders in front when approaching from
+    // the south and behind when approaching from the north.
+    //
+    // Buildings, fountains, and other large floor-level structures must NOT
+    // y-sort — the player can be inside their walkable area (e.g. fountain
+    // outer ring) at a lower Y than the collidable zone, which would wrongly
+    // put the whole structure in front of the player. They stay at layer_index
+    // depth (always rendered behind the player, like floor tiles).
+    const Y_SORT_PREFIXES = ["Vegetation", "DecorLight"];
 
     // Create all tile layers in order from the JSON.
     // Do NOT pass x/y — Phaser defaults to layerData.x/y which already
@@ -73,24 +73,33 @@ export class CityScene extends Phaser.Scene {
       const layerName = map.layers[i].name;
       const layer = map.createLayer(i, allTilesets);
       if (!layer) continue;
-      const isForeground = FOREGROUND_PREFIXES.some(p => layerName.startsWith(p));
-      layer.setDepth(isForeground ? FOREGROUND_DEPTH : i);
 
-      // Use the artist's per-tile collision shapes from the TSJ objectgroups.
       layer.setCollisionFromCollisionGroup();
+      const collidingTiles = layer.filterTiles((t: Phaser.Tilemaps.Tile) => t.collides);
 
-      const hasCollision = layer.filterTiles((t: Phaser.Tilemaps.Tile) => t.collides).length > 0;
-      const usesLoadedTilesets = layer.layer.data.flat().every(
-        (t: Phaser.Tilemaps.Tile) => t.index <= 0 || loadedTilesetNames.has(
-          map.tilesets.find(ts =>
-            t.index >= ts.firstgid &&
-            t.index < ts.firstgid + (ts as any).total
-          )?.name ?? ""
-        )
-      );
-
-      if (hasCollision && usesLoadedTilesets) {
+      if (collidingTiles.length > 0) {
+        if (Y_SORT_PREFIXES.some(p => layerName.startsWith(p))) {
+          // Isolated vertical object (trunk, palm, lamp post) → y-sort.
+          // depth = bottom-world-Y of the southernmost collidable tile.
+          let maxBottomY = 0;
+          for (const tile of collidingTiles) {
+            const worldY = layer.tileToWorldY(tile.y)!;
+            if (worldY + map.tileHeight > maxBottomY) {
+              maxBottomY = worldY + map.tileHeight;
+            }
+          }
+          layer.setDepth(maxBottomY);
+        } else {
+          // Building / fountain / large structure → always behind the player.
+          layer.setDepth(i);
+        }
         this.collisionLayers.push(layer);
+      } else if (FOREGROUND_PREFIXES.some(p => layerName.startsWith(p))) {
+        // Pure-canopy layer (no collision) → always above the player.
+        layer.setDepth(FOREGROUND_DEPTH);
+      } else {
+        // Ground / background layer → always below the player.
+        layer.setDepth(i);
       }
     }
 
