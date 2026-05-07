@@ -44,32 +44,48 @@ export class CityScene extends Phaser.Scene {
       "SCTileGrass", "SCBuildSTEarn", "SCBuildMonkeyDAO",
       "SCBuildSTBrazil", "SCBuildJupter", "SCTileFountain",
       "SCTileGround", "SCVegetationSet", "SCPalm", "SCBuildIndies",
-      "SCUrbanEquipament",
+      "SCUrbanEquipament", "SCBuildGenericBuild", "SCBuildKeepGreen",
     ]
       .map(n => map.addTilesetImage(n, n))
       .filter((ts): ts is Phaser.Tilemaps.Tileset => ts !== null);
 
-    // Render layers bottom-to-top (matching new map layer order)
-    const RENDER_LAYERS = [
-      "Camada de Blocos 15", "Street", "Grass", "GrassCenter", "Camada de Blocos 30",
-      "SidewalkCenter", "Sidewalk", "Sidewalk02", "Sidewalk03", "Sidewalk04",
-      "VegetationTree",
-      "BuildSTEarn", "VegetationPalmBack", "DecorLightBack",
-      "BuildGeneric02", "BuildGeneric04", "BuildGeneric01", "BuildGeneric03", "BuildGeneric05",
-      "BuildSTBrazil", "BuildJupiter", "BuildGeneric06",
-      "DecorBench", "BuildMonkeDAo",
-      "DecorLightFront", "VegetationPalmFront", "VegetationPalmCenter",
-      "DecorFountain", "DecorLightCenter", "BuildIndies",
-    ];
-    const COLLISION_LAYER_NAMES = new Set([
-      "BuildSTEarn", "BuildGeneric01", "BuildGeneric02", "BuildGeneric03",
-      "BuildSTBrazil", "BuildJupiter", "BuildMonkeDAo", "BuildIndies",
-    ]);
+    // Determine which tilesets loaded successfully, and their GID ranges.
+    // Layers whose tiles reference a missing tileset would be invisible;
+    // enabling collision on them creates ghost walls, so we skip those.
+    const loadedTilesetNames = new Set(allTilesets.map(ts => ts.name));
+    const missingGidRanges: { min: number; max: number }[] = [];
+    for (let ti = 0; ti < map.tilesets.length; ti++) {
+      const ts = map.tilesets[ti];
+      if (!loadedTilesetNames.has(ts.name)) {
+        const nextGid = ti + 1 < map.tilesets.length
+          ? map.tilesets[ti + 1].firstgid
+          : Number.MAX_SAFE_INTEGER;
+        missingGidRanges.push({ min: ts.firstgid, max: nextGid });
+      }
+    }
 
-    for (const name of RENDER_LAYERS) {
-      const layer = map.createLayer(name, allTilesets, 0, 0);
+    const layerUsesMissingTileset = (layerIndex: number): boolean => {
+      if (missingGidRanges.length === 0) return false;
+      for (const row of map.layers[layerIndex].data as Phaser.Tilemaps.Tile[][]) {
+        for (const tile of row) {
+          if (tile.index > 0 && missingGidRanges.some(r => tile.index >= r.min && tile.index < r.max)) {
+            return true;
+          }
+        }
+      }
+      return false;
+    };
+
+    // Create all tile layers in order from the JSON.
+    // Do NOT pass x/y — Phaser defaults to layerData.x/y which already
+    // incorporates the Tiled offsetx/offsety for each layer. Passing 0,0
+    // would override those offsets and shift every layer to the origin.
+    for (let i = 0; i < map.layers.length; i++) {
+      const layerName = map.layers[i].name;
+      const layer = map.createLayer(i, allTilesets);
       if (!layer) continue;
-      if (COLLISION_LAYER_NAMES.has(name)) {
+      layer.setDepth(i);
+      if (layerName.startsWith("Build") && !layerUsesMissingTileset(i)) {
         layer.setCollisionByExclusion([-1]);
         this.collisionLayers.push(layer);
       }
@@ -434,10 +450,9 @@ export class CityScene extends Phaser.Scene {
     topRow: number,
     tileSize: number
   ): { wx: number; wy: number } {
-    const COLLISION_LAYERS = [
-      "BuildSTEarn", "BuildGeneric01", "BuildGeneric02", "BuildGeneric03",
-      "BuildSTBrazil", "BuildJupiter", "BuildMonkeDAo", "BuildIndies",
-    ];
+    const COLLISION_LAYERS = map.layers
+      .filter(l => l.name.startsWith("Build"))
+      .map(l => l.name);
 
     const isTileBlocked = (c: number, r: number): boolean =>
       COLLISION_LAYERS.some(name => {

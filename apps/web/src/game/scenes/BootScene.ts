@@ -15,6 +15,8 @@ const TILESET_KEYS = [
   "SCPalm",
   "SCBuildIndies",
   "SCUrbanEquipament",
+  "SCBuildGenericBuild",
+  "SCBuildKeepGreen",
 ];
 
 export class BootScene extends Phaser.Scene {
@@ -30,6 +32,9 @@ export class BootScene extends Phaser.Scene {
       }
       if (file.key === "city-map") {
         console.error("[BootScene] city.json failed to load");
+      }
+      if (["SCBuildGenericBuild", "SCBuildKeepGreen"].includes(file.key)) {
+        console.warn(`[BootScene] ${file.key}.png missing — add to SCMap01/SCAssets/SCBuild/`);
       }
     });
 
