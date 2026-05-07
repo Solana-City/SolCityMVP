@@ -54,22 +54,31 @@ export class CityScene extends Phaser.Scene {
     // invisible-but-collidable tiles create ghost walls.
     const loadedTilesetNames = new Set(allTilesets.map(ts => ts.name));
 
+    // Layers whose tops should always render in front of the player.
+    // Player depth = container.y (0–4800 for a 200×24px map).
+    // Giving these a depth of 10000 guarantees they stay above the player.
+    const FOREGROUND_PREFIXES = [
+      "VegetationTree",
+      "VegetationPalm",
+      "DecorLightFront",
+      "DecorLightCenter",
+    ];
+    const FOREGROUND_DEPTH = 10000;
+
     // Create all tile layers in order from the JSON.
     // Do NOT pass x/y — Phaser defaults to layerData.x/y which already
     // incorporates the Tiled offsetx/offsety for each layer. Passing 0,0
     // would override those offsets and shift every layer to the origin.
     for (let i = 0; i < map.layers.length; i++) {
+      const layerName = map.layers[i].name;
       const layer = map.createLayer(i, allTilesets);
       if (!layer) continue;
-      layer.setDepth(i);
+      const isForeground = FOREGROUND_PREFIXES.some(p => layerName.startsWith(p));
+      layer.setDepth(isForeground ? FOREGROUND_DEPTH : i);
 
       // Use the artist's per-tile collision shapes from the TSJ objectgroups.
-      // setCollisionFromCollisionGroup() marks only tiles the artist explicitly
-      // flagged — no heuristics, no layer-name guessing.
       layer.setCollisionFromCollisionGroup();
 
-      // Skip adding to physics if the layer has no collidable tiles, or if
-      // it uses a tileset whose PNG didn't load (would produce ghost walls).
       const hasCollision = layer.filterTiles((t: Phaser.Tilemaps.Tile) => t.collides).length > 0;
       const usesLoadedTilesets = layer.layer.data.flat().every(
         (t: Phaser.Tilemaps.Tile) => t.index <= 0 || loadedTilesetNames.has(
