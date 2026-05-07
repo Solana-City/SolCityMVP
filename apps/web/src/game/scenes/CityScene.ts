@@ -63,7 +63,7 @@ export class CityScene extends Phaser.Scene {
     // outer ring) at a lower Y than the collidable zone, which would wrongly
     // put the whole structure in front of the player. They stay at layer_index
     // depth (always rendered behind the player, like floor tiles).
-    const Y_SORT_PREFIXES = ["Vegetation", "DecorLight"];
+    const Y_SORT_PREFIXES = ["Vegetation", "DecorLight", "Build"];
 
     // Create all tile layers in order from the JSON.
     // Do NOT pass x/y — Phaser defaults to layerData.x/y which already
