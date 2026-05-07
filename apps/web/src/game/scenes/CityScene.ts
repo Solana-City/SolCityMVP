@@ -49,44 +49,38 @@ export class CityScene extends Phaser.Scene {
       .map(n => map.addTilesetImage(n, n))
       .filter((ts): ts is Phaser.Tilemaps.Tileset => ts !== null);
 
-    // Determine which tilesets loaded successfully, and their GID ranges.
-    // Layers whose tiles reference a missing tileset would be invisible;
-    // enabling collision on them creates ghost walls, so we skip those.
+    // Build a set of tileset names whose PNG loaded successfully.
+    // If a tileset is missing we must not enable collision on its tiles —
+    // invisible-but-collidable tiles create ghost walls.
     const loadedTilesetNames = new Set(allTilesets.map(ts => ts.name));
-    const missingGidRanges: { min: number; max: number }[] = [];
-    for (let ti = 0; ti < map.tilesets.length; ti++) {
-      const ts = map.tilesets[ti];
-      if (!loadedTilesetNames.has(ts.name)) {
-        const nextGid = ti + 1 < map.tilesets.length
-          ? map.tilesets[ti + 1].firstgid
-          : Number.MAX_SAFE_INTEGER;
-        missingGidRanges.push({ min: ts.firstgid, max: nextGid });
-      }
-    }
-
-    const layerUsesMissingTileset = (layerIndex: number): boolean => {
-      if (missingGidRanges.length === 0) return false;
-      for (const row of map.layers[layerIndex].data as Phaser.Tilemaps.Tile[][]) {
-        for (const tile of row) {
-          if (tile.index > 0 && missingGidRanges.some(r => tile.index >= r.min && tile.index < r.max)) {
-            return true;
-          }
-        }
-      }
-      return false;
-    };
 
     // Create all tile layers in order from the JSON.
     // Do NOT pass x/y — Phaser defaults to layerData.x/y which already
     // incorporates the Tiled offsetx/offsety for each layer. Passing 0,0
     // would override those offsets and shift every layer to the origin.
     for (let i = 0; i < map.layers.length; i++) {
-      const layerName = map.layers[i].name;
       const layer = map.createLayer(i, allTilesets);
       if (!layer) continue;
       layer.setDepth(i);
-      if (layerName.startsWith("Build") && !layerUsesMissingTileset(i)) {
-        layer.setCollisionByExclusion([-1]);
+
+      // Use the artist's per-tile collision shapes from the TSJ objectgroups.
+      // setCollisionFromCollisionGroup() marks only tiles the artist explicitly
+      // flagged — no heuristics, no layer-name guessing.
+      layer.setCollisionFromCollisionGroup();
+
+      // Skip adding to physics if the layer has no collidable tiles, or if
+      // it uses a tileset whose PNG didn't load (would produce ghost walls).
+      const hasCollision = layer.filterTiles((t: Phaser.Tilemaps.Tile) => t.collides).length > 0;
+      const usesLoadedTilesets = layer.layer.data.flat().every(
+        (t: Phaser.Tilemaps.Tile) => t.index <= 0 || loadedTilesetNames.has(
+          map.tilesets.find(ts =>
+            t.index >= ts.firstgid &&
+            t.index < ts.firstgid + (ts as any).total
+          )?.name ?? ""
+        )
+      );
+
+      if (hasCollision && usesLoadedTilesets) {
         this.collisionLayers.push(layer);
       }
     }
@@ -450,17 +444,15 @@ export class CityScene extends Phaser.Scene {
     topRow: number,
     tileSize: number
   ): { wx: number; wy: number } {
-    const COLLISION_LAYERS = map.layers
-      .filter(l => l.name.startsWith("Build"))
-      .map(l => l.name);
-
+    // A tile position is blocked if ANY layer has a collidable tile there.
+    // Uses Phaser's tile.collides flag set by setCollisionFromCollisionGroup().
     const isTileBlocked = (c: number, r: number): boolean =>
-      COLLISION_LAYERS.some(name => {
-        const tile = map.getTileAt(c, r, false, name);
-        return tile !== null && tile.index >= 0;
+      map.layers.some(layerData => {
+        const tile = map.getTileAt(c, r, false, layerData.name);
+        return tile !== null && tile.collides;
       });
 
-    let row = topRow + 1; // start at the bottom tile of the 2-tile NPC sprite
+    let row = topRow + 1;
     const maxScan = topRow + 12;
     while (row < maxScan && isTileBlocked(col, row)) {
       row++;
