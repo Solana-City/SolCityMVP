@@ -9,6 +9,12 @@ dist/
 .turbo
 assets/exported/
 
+# Rust/Anchor build artifacts
+target/
+
+# TypeScript build cache
+*.tsbuildinfo
+
 # Working directory for tar deliveries — never commit
 *.tar.gz
 anchor-deploy-and-txlog/
