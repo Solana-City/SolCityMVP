@@ -207,18 +207,29 @@ export class OnChainMultiplayer {
   sendInput(x: number, y: number, direction: string, isWalking: boolean): void {
     if (!this._connected || !this.wallet) return;
 
+    const roundX = Math.round(x);
+    const roundY = Math.round(y);
+    const dirNum = ({ down: 0, left: 1, right: 2, up: 3 } as Record<string, number>)[direction] ?? 0;
+
+    // Skip if nothing actually changed — avoids flooding with idle updates
+    if (
+      roundX === this.lastPos.x &&
+      roundY === this.lastPos.y &&
+      dirNum === this.lastPos.direction &&
+      isWalking === this.lastPos.isWalking
+    ) return;
+
     const now = Date.now();
     if (now - this.lastPosSent < POS_THROTTLE_MS) return;
     this.lastPosSent = now;
 
-    const dirNum = ({ down: 0, left: 1, right: 2, up: 3 } as Record<string, number>)[direction] ?? 0;
-    this.lastPos = { x: Math.round(x), y: Math.round(y), direction: dirNum, isWalking };
+    this.lastPos = { x: roundX, y: roundY, direction: dirNum, isWalking };
 
     // Update local registry immediately
     const walletStr = this.wallet.toBase58();
     const local = this.knownPlayers.get(walletStr);
     if (local) {
-      local.x = Math.round(x); local.y = Math.round(y);
+      local.x = roundX; local.y = roundY;
       local.direction = dirNum; local.isWalking = isWalking;
       local.lastUpdate = now;
     }
@@ -226,7 +237,7 @@ export class OnChainMultiplayer {
     // Layer 1: BroadcastChannel
     this.bc?.postMessage({
       t: "pos", w: walletStr,
-      x: Math.round(x), y: Math.round(y),
+      x: roundX, y: roundY,
       d: dirNum, m: isWalking,
     } satisfies BCMsg);
 

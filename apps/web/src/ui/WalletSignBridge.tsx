@@ -36,8 +36,7 @@ export default function WalletSignBridge() {
         try {
           if (!sendRef.current) throw new Error("Wallet not connected");
           const sig = await sendRef.current(tx, connRef.current, {
-            skipPreflight: false,
-            preflightCommitment: "confirmed",
+            skipPreflight: true,
           });
           bus.emit("wallet:signedTx", sig);
         } catch (err) {
