@@ -20,9 +20,11 @@ import {
   TransactionInstruction,
 } from "@solana/web3.js";
 import {
-  createDelegateInstruction,
+  delegateBufferPdaFromDelegatedAccountAndOwnerProgram,
+  delegationRecordPdaFromDelegatedAccount,
+  delegationMetadataPdaFromDelegatedAccount,
 } from "@magicblock-labs/ephemeral-rollups-sdk";
-import { SOL_CITY_PROGRAM_ID, derivePlayerPDA } from "./program";
+import { SOL_CITY_PROGRAM_ID, DELEGATION_PROGRAM_ID, derivePlayerPDA } from "./program";
 import { sha256 } from "@noble/hashes/sha256";
 
 // ── Discriminator helper ────────────────────────────────────────────────
@@ -48,6 +50,7 @@ const DISC = {
   recordTransfer:        ixDiscriminator("record_transfer"),
   recordBounty:          ixDiscriminator("record_bounty"),
   changeOutfit:          ixDiscriminator("change_outfit"),
+  delegate:              ixDiscriminator("delegate"),
 } as const;
 
 // ── Argument packers ────────────────────────────────────────────────────
@@ -251,20 +254,36 @@ export function buildChangeOutfitIx(
 
 /**
  * Builds the `delegate` instruction for our sol-city program.
- * Delegates the player PDA to MagicBlock Ephemeral Rollup via direct call to
- * the delegation program. After this call, position updates flow through the
- * Magic Router at sub-50ms with no gas.
+ *
+ * Calls OUR program's `delegate` instruction (not the delegation program
+ * directly). Our program uses invoke_signed with the PDA seeds, so only the
+ * wallet needs to sign as fee payer — the PDA signing happens inside the
+ * program via CPI. This is the correct approach for PDAs that cannot sign
+ * a browser wallet transaction directly.
  */
 export function buildDelegateIx(authority: PublicKey): TransactionInstruction {
   const [playerPda] = derivePlayerPDA(authority);
-  return createDelegateInstruction(
-    {
-      payer: authority,
-      delegatedAccount: playerPda,
-      ownerProgram: SOL_CITY_PROGRAM_ID,
-    },
-    { commitFrequencyMs: 3_000 },
+
+  const delegateBuffer = delegateBufferPdaFromDelegatedAccountAndOwnerProgram(
+    playerPda, SOL_CITY_PROGRAM_ID
   );
+  const delegationRecord   = delegationRecordPdaFromDelegatedAccount(playerPda);
+  const delegationMetadata = delegationMetadataPdaFromDelegatedAccount(playerPda);
+
+  return new TransactionInstruction({
+    programId: SOL_CITY_PROGRAM_ID,
+    keys: [
+      { pubkey: authority,            isSigner: true,  isWritable: true  }, // authority (payer)
+      { pubkey: playerPda,            isSigner: false, isWritable: true  }, // player PDA
+      { pubkey: SOL_CITY_PROGRAM_ID,  isSigner: false, isWritable: false }, // owner_program
+      { pubkey: delegateBuffer,       isSigner: false, isWritable: true  }, // delegate_buffer
+      { pubkey: delegationRecord,     isSigner: false, isWritable: true  }, // delegation_record
+      { pubkey: delegationMetadata,   isSigner: false, isWritable: true  }, // delegation_metadata
+      { pubkey: DELEGATION_PROGRAM_ID, isSigner: false, isWritable: false }, // delegation_program
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false }, // system_program
+    ],
+    data: DISC.delegate,
+  });
 }
 
 /**
