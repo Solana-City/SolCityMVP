@@ -17,6 +17,8 @@ export interface DMChannel {
 }
 
 const MAX_LOG_SIZE = 200;
+const MESSAGE_TTL_MS = 30_000; // messages disappear after 30 seconds
+const CLEANUP_INTERVAL_MS = 5_000;
 
 /**
  * Chat channels:
@@ -31,6 +33,22 @@ export class ChatManager {
   private listeners: Array<(msg: ChatMessage) => void> = [];
   private logListeners: Array<(log: ChatMessage[]) => void> = [];
   private counter = 0;
+  private cleanupTimer: ReturnType<typeof setInterval>;
+
+  constructor() {
+    this.cleanupTimer = setInterval(() => this.purgeExpired(), CLEANUP_INTERVAL_MS);
+  }
+
+  destroy(): void {
+    clearInterval(this.cleanupTimer);
+  }
+
+  private purgeExpired(): void {
+    const cutoff = Date.now() - MESSAGE_TTL_MS;
+    const before = this.log.length;
+    this.log = this.log.filter((m) => m.senderSessionId === "system" || m.timestamp >= cutoff);
+    if (this.log.length !== before) this.notifyLogListeners();
+  }
 
   getActiveChannel(): ChatChannel {
     return this.activeChannel;

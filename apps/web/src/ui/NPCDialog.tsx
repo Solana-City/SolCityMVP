@@ -13,11 +13,12 @@ interface NPCDialogProps {
 
 export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
   const [lineIndex, setLineIndex] = useState(0);
+  const [portraitVisible, setPortraitVisible] = useState(false);
 
-  // Reset dialog line when NPC changes, and mark the NPC as visited
-  // (first-time vs. return is surfaced via the progression bus).
+  // Reset dialog state when NPC changes
   useEffect(() => {
     setLineIndex(0);
+    setPortraitVisible(!!npc?.portrait);
     if (npc) {
       profileManager.visitNPC(npc.id, npc.name);
     }
@@ -58,11 +59,11 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
       className="fixed bottom-24 left-1/2 -translate-x-1/2 z-30 w-full max-w-2xl px-4"
       style={{ fontFamily: '"Fira Code", monospace' }}
     >
-      <div className={`flex items-end ${npc.portrait ? "gap-4" : ""}`}>
-        {/* VN-style portrait — only when portrait image is defined */}
-        {npc.portrait && (
+      <div className={`flex items-end ${portraitVisible ? "gap-4" : ""}`}>
+        {/* VN-style portrait — only when portrait image is defined and loaded */}
+        {portraitVisible && (
           <div className="hidden sm:block mb-2">
-            <NPCPortrait npc={npc} size={128} variant="frame" />
+            <NPCPortrait npc={npc} size={128} variant="frame" onError={() => setPortraitVisible(false)} />
           </div>
         )}
 
@@ -76,7 +77,7 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
           }}
         >
           {/* Speech tail — only when portrait is visible */}
-          {npc.portrait && (
+          {portraitVisible && (
             <>
               <div
                 className="hidden sm:block absolute"
@@ -109,9 +110,9 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
 
           {/* Compact header: avatar (mobile only, only when portrait defined) + name/role + close */}
           <div className="flex items-center gap-3 mb-3">
-            {npc.portrait && (
+            {portraitVisible && (
               <div className="sm:hidden">
-                <NPCPortrait npc={npc} size={40} variant="avatar" />
+                <NPCPortrait npc={npc} size={40} variant="avatar" onError={() => setPortraitVisible(false)} />
               </div>
             )}
             <div className="flex-1 min-w-0">
