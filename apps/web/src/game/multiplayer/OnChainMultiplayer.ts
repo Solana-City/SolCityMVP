@@ -406,6 +406,11 @@ export class OnChainMultiplayer {
     } catch (err) {
       console.warn("[Multiplayer] program subscription failed:", err);
     }
+
+    // 6. Force a presence broadcast on the next sendInput tick so other clients
+    //    discover this player even if getProgramAccounts is disabled on the
+    //    ephemeral RPC. The impossible sentinel triggers the dedup check.
+    this.lastPos = { x: -1, y: -1, direction: -1, isWalking: false };
   }
 
   private async initializePlayerPDA(wallet: PublicKey, displayName: string): Promise<void> {
@@ -580,7 +585,10 @@ export class OnChainMultiplayer {
 
       if (walletStr === this.wallet?.toBase58()) return; // skip self
 
-      this.handlePlayerMove(walletStr, x, y, direction, false, displayName);
+      // Infer walking from position delta vs last known state
+      const existing = this.knownPlayers.get(walletStr);
+      const isWalking = existing !== undefined && (x !== existing.x || y !== existing.y);
+      this.handlePlayerMove(walletStr, x, y, direction, isWalking, displayName);
     } catch {
       // Corrupt or unrecognized account — skip silently
     }
