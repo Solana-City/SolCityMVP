@@ -1,0 +1,9 @@
+{
+  "buildCommand": "npm run build",
+  "installCommand": "npm install",
+  "framework": "nextjs",
+  "env": {
+    "NEXT_PUBLIC_NETWORK": "devnet",
+    "NEXT_PUBLIC_SOL_CITY_PROGRAM_ID": "HPvDFVnruSXHwKKP44eUvRh8oYqBaHCeQbK1sKWT1aU2"
+  }
+}
