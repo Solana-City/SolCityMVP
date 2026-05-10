@@ -2,8 +2,8 @@ import * as Phaser from "phaser";
 
 const BUBBLE_DURATION = 4000;
 const BUBBLE_PADDING = 6;
-const BUBBLE_FONT_SIZE = 9;
-const BUBBLE_MAX_WIDTH = 120;
+const BUBBLE_FONT_SIZE = 10;
+const BUBBLE_MAX_WIDTH = 140;
 
 /**
  * A temporary text bubble that appears above a game object.
@@ -25,6 +25,7 @@ export class ChatBubble {
       color: "#ffffff",
       wordWrap: { width: BUBBLE_MAX_WIDTH },
       align: "center",
+      resolution: 2,
     });
     bubbleText.setOrigin(0.5, 1);
 
@@ -43,7 +44,7 @@ export class ChatBubble {
 
     bubbleText.setPosition(0, -BUBBLE_PADDING);
 
-    this.container = scene.add.container(0, -58, [bg, bubbleText]);
+    this.container = scene.add.container(0, -72, [bg, bubbleText]);
     target.add(this.container);
 
     // Fade out and destroy
