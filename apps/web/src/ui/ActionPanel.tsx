@@ -51,10 +51,11 @@ export default function ActionPanel({ action, onClose }: ActionPanelProps) {
           ×
         </button>
 
-        {action.type === "tutor"    && <TutorPanel    onClose={onClose} />}
-        {action.type === "swap"     && <SwapPanel     onClose={onClose} />}
-        {action.type === "transfer" && <TransferPanel onClose={onClose} />}
-        {action.type === "bounties" && <BountiesPanel onClose={onClose} />}
+        {action.type === "tutor"           && <TutorPanel           onClose={onClose} />}
+        {action.type === "swap"            && <SwapPanel            onClose={onClose} />}
+        {action.type === "transfer"        && <TransferPanel        onClose={onClose} />}
+        {action.type === "bounties"        && <BountiesPanel        onClose={onClose} />}
+        {action.type === "private-payment" && <PrivatePaymentPanel  onClose={onClose} />}
       </div>
     </div>
   );
@@ -492,6 +493,282 @@ function TutorPanel({ onClose }: { onClose: () => void }) {
       </div>
       <button onClick={onClose} style={btnStyle("#14F195", "#000")} className="w-full py-2.5">START EXPLORING</button>
     </>
+  );
+}
+
+// ── Private Payment Panel (MagicBlock PER) ───────────────────────────
+
+type PayStatus =
+  | "idle"
+  | "authenticating"
+  | "ready"
+  | "depositing"
+  | "transferring"
+  | "done"
+  | "error";
+
+function PrivatePaymentPanel({ onClose }: { onClose: () => void }) {
+  const { connected, publicKey, signTransaction, signMessage } = useWallet();
+  const [status, setStatus]             = useState<PayStatus>("idle");
+  const [authToken, setAuthToken]       = useState<string | null>(null);
+  const [balance, setBalance]           = useState<number | null>(null);
+  const [showBalance, setShowBalance]   = useState(false);
+  const [recipient, setRecipient]       = useState("");
+  const [amount, setAmount]             = useState("1");
+  const [showAmount, setShowAmount]     = useState(false);
+  const [depositAmt, setDepositAmt]     = useState("5");
+  const [error, setError]               = useState<string | null>(null);
+  const [activeTab, setActiveTab]       = useState<"deposit" | "send">("send");
+
+  // Auto-authenticate when panel opens
+  useEffect(() => {
+    if (!connected || !publicKey || !signMessage) return;
+    setStatus("authenticating");
+
+    import("@/game/solana/magicblockPayments").then(async (mb) => {
+      try {
+        const { token } = await mb.authenticate(publicKey, signMessage);
+        setAuthToken(token);
+        const bal = await mb.getPrivateBalance(publicKey.toBase58(), token);
+        setBalance(bal);
+        setStatus("ready");
+      } catch (e: any) {
+        setError(e.message ?? "Authentication failed");
+        setStatus("error");
+      }
+    });
+  }, [connected, publicKey, signMessage]);
+
+  const refreshBalance = async () => {
+    if (!authToken || !publicKey) return;
+    const mb = await import("@/game/solana/magicblockPayments");
+    const bal = await mb.getPrivateBalance(publicKey.toBase58(), authToken);
+    setBalance(bal);
+  };
+
+  const handleDeposit = async () => {
+    if (!publicKey || !signTransaction || !authToken) return;
+    const parsed = parseFloat(depositAmt);
+    if (isNaN(parsed) || parsed <= 0) { setError("Invalid amount"); return; }
+
+    setStatus("depositing");
+    setError(null);
+    try {
+      const mb = await import("@/game/solana/magicblockPayments");
+      const txData = await mb.buildDeposit(publicKey.toBase58(), parsed);
+      await mb.signAndSubmit(txData, signTransaction as any, authToken);
+      await refreshBalance();
+      setStatus("ready");
+    } catch (e: any) {
+      setError(e.message ?? "Deposit failed");
+      setStatus("ready");
+    }
+  };
+
+  const handleTransfer = async () => {
+    if (!publicKey || !signTransaction || !authToken) return;
+    const parsed = parseFloat(amount);
+    if (isNaN(parsed) || parsed <= 0) { setError("Invalid amount"); return; }
+    if (!recipient || recipient.length < 32) { setError("Invalid recipient address"); return; }
+    if (balance !== null && parsed > balance) { setError("Insufficient private balance"); return; }
+
+    setStatus("transferring");
+    setError(null);
+    try {
+      const mb = await import("@/game/solana/magicblockPayments");
+      await mb.buildPrivateTransfer(publicKey.toBase58(), recipient, parsed, authToken);
+      // Success — don't show a transaction link (that's the whole point)
+      setStatus("done");
+      emitGameEvent("game:transfer");
+      transactionLog.record({
+        kind: "transfer",
+        layer: "ephemeral",
+        label: `Private ${parsed} USDC (shielded)`,
+        status: "confirmed",
+      });
+    } catch (e: any) {
+      setError(e.message ?? "Transfer failed");
+      setStatus("ready");
+    }
+  };
+
+  const FUCHSIA = "#c026d3";
+
+  if (!connected) {
+    return (
+      <>
+        <PanelHeader color={FUCHSIA} title="PRIVATE TRANSFER" />
+        <div style={{ textAlign: "center", padding: "24px 0", color: "#888899", fontSize: 12 }}>
+          Connect your wallet to access private payments.
+        </div>
+        <button onClick={onClose} style={btnStyle(FUCHSIA, "#fff")} className="w-full py-2.5 mt-2">CLOSE</button>
+      </>
+    );
+  }
+
+  if (status === "authenticating") {
+    return (
+      <>
+        <PanelHeader color={FUCHSIA} title="PRIVATE TRANSFER" />
+        <div style={{ textAlign: "center", padding: "32px 0" }}>
+          <div style={{ fontSize: 11, color: "#888899", marginBottom: 8 }}>Authenticating with wallet…</div>
+          <div style={{ fontSize: 9, color: "#555566" }}>Sign the message in your wallet to verify identity</div>
+        </div>
+      </>
+    );
+  }
+
+  if (status === "done") {
+    return (
+      <>
+        <PanelHeader color={FUCHSIA} title="PRIVATE TRANSFER" />
+        <div style={{ textAlign: "center", padding: "24px 0" }}>
+          <div style={{ fontSize: 28, color: FUCHSIA, marginBottom: 8 }}>◈</div>
+          <div style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 9, color: FUCHSIA, marginBottom: 12 }}>
+            TRANSFER SHIELDED
+          </div>
+          <div style={{ fontSize: 11, color: "#888899", lineHeight: 1.6, marginBottom: 4 }}>
+            Settled privately via MagicBlock PER.
+          </div>
+          <div style={{ fontSize: 10, color: "#555566" }}>No on-chain trace. No explorer link.</div>
+        </div>
+        <button onClick={onClose} style={btnStyle(FUCHSIA, "#fff")} className="w-full py-2.5 mt-2">CLOSE</button>
+      </>
+    );
+  }
+
+  return (
+    <>
+      <PanelHeader color={FUCHSIA} title="PRIVATE TRANSFER" />
+
+      {/* Private balance */}
+      <div style={{ background: "#0d0d22", border: `1px solid ${FUCHSIA}33`, borderRadius: 8, padding: "10px 14px", marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <span style={{ fontSize: 10, color: "#777788" }}>Private USDC balance</span>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 10, color: FUCHSIA }}>
+            {balance === null ? "…" : showBalance ? `${balance.toFixed(2)} USDC` : "●●●●"}
+          </span>
+          <button
+            onClick={() => setShowBalance(v => !v)}
+            style={{ background: "none", border: "none", cursor: "pointer", color: "#555566", fontSize: 14, padding: 0, lineHeight: 1 }}
+            title={showBalance ? "Hide balance" : "Show balance"}
+          >
+            {showBalance ? "◉" : "◎"}
+          </button>
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div style={{ display: "flex", gap: 4, marginBottom: 12 }}>
+        {(["send", "deposit"] as const).map(tab => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            style={{
+              flex: 1, padding: "6px 0", borderRadius: 6, border: "none", cursor: "pointer",
+              fontFamily: '"Press Start 2P", monospace', fontSize: 8,
+              background: activeTab === tab ? `${FUCHSIA}22` : "#0d0d22",
+              color: activeTab === tab ? FUCHSIA : "#444455",
+              borderBottom: activeTab === tab ? `2px solid ${FUCHSIA}` : "2px solid transparent",
+            }}
+          >
+            {tab === "send" ? "SEND" : "DEPOSIT"}
+          </button>
+        ))}
+      </div>
+
+      {/* Send tab */}
+      {activeTab === "send" && (
+        <>
+          <InputBox label="Recipient address">
+            <input
+              type="text"
+              value={recipient}
+              onChange={e => setRecipient(e.target.value)}
+              placeholder="Paste Solana address…"
+              style={{ background: "transparent", color: "#fff", border: "none", fontSize: 11, fontFamily: "monospace", width: "100%", outline: "none" }}
+            />
+          </InputBox>
+          <div style={{ background: "#12122a", border: "1px solid rgba(255,255,255,0.04)", borderRadius: 8, padding: 12, marginBottom: 8 }}>
+            <div style={{ fontSize: 11, color: "#555566", marginBottom: 6, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span>Amount (USDC)</span>
+              <button
+                onClick={() => setShowAmount(v => !v)}
+                style={{ background: "none", border: "none", cursor: "pointer", color: "#555566", fontSize: 13, padding: 0 }}
+                title={showAmount ? "Hide amount" : "Show amount"}
+              >
+                {showAmount ? "◉" : "◎"}
+              </button>
+            </div>
+            {showAmount ? (
+              <input
+                type="text"
+                value={amount}
+                onChange={e => setAmount(e.target.value)}
+                placeholder="0.00"
+                style={{ background: "transparent", color: "#fff", border: "none", fontSize: 20, fontFamily: "monospace", width: "100%", outline: "none", fontWeight: "bold" }}
+              />
+            ) : (
+              <div style={{ fontSize: 20, fontFamily: "monospace", color: "#777788", letterSpacing: 4 }}>●●●●</div>
+            )}
+          </div>
+          <div style={{ fontSize: 9, color: "#555566", textAlign: "center", marginBottom: 12 }}>
+            Shielded via MagicBlock Private Ephemeral Rollup · Intel TDX
+          </div>
+          {error && <div style={{ fontSize: 11, color: "#ff4444", marginBottom: 8, textAlign: "center" }}>{error}</div>}
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
+              onClick={handleTransfer}
+              disabled={status === "transferring" || !balance || balance <= 0}
+              style={btnStyle(balance && balance > 0 ? FUCHSIA : "#333344", "#fff")}
+              className="flex-1 py-2.5"
+            >
+              {status === "transferring" ? "SIGNING…" : "SEND PRIVATELY"}
+            </button>
+            <button onClick={onClose} style={{ background: "transparent", border: "1px solid #333344", color: "#666677", borderRadius: 8, padding: "0 14px", cursor: "pointer", fontSize: 12 }}>ESC</button>
+          </div>
+        </>
+      )}
+
+      {/* Deposit tab */}
+      {activeTab === "deposit" && (
+        <>
+          <div style={{ fontSize: 11, color: "#777788", marginBottom: 12, lineHeight: 1.6 }}>
+            Deposit USDC from your wallet into the Private Ephemeral Rollup to enable shielded transfers.
+          </div>
+          <InputBox label="Amount to deposit (USDC)">
+            <input
+              type="text"
+              value={depositAmt}
+              onChange={e => setDepositAmt(e.target.value)}
+              placeholder="5.00"
+              style={{ background: "transparent", color: "#fff", border: "none", fontSize: 20, fontFamily: "monospace", width: "100%", outline: "none", fontWeight: "bold" }}
+            />
+          </InputBox>
+          {error && <div style={{ fontSize: 11, color: "#ff4444", marginBottom: 8, textAlign: "center" }}>{error}</div>}
+          <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+            <button
+              onClick={handleDeposit}
+              disabled={status === "depositing"}
+              style={btnStyle(FUCHSIA, "#fff")}
+              className="flex-1 py-2.5"
+            >
+              {status === "depositing" ? "SIGNING…" : "DEPOSIT"}
+            </button>
+            <button onClick={onClose} style={{ background: "transparent", border: "1px solid #333344", color: "#666677", borderRadius: 8, padding: "0 14px", cursor: "pointer", fontSize: 12 }}>ESC</button>
+          </div>
+        </>
+      )}
+    </>
+  );
+}
+
+function PanelHeader({ title, color }: { title: string; color: string }) {
+  return (
+    <div style={{ marginBottom: 16 }}>
+      <h3 style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 11, color, margin: 0 }}>{title}</h3>
+      <div style={{ fontSize: 9, color: "#444455", marginTop: 4 }}>⚡ MagicBlock Private Ephemeral Rollup</div>
+    </div>
   );
 }
 

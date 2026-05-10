@@ -1,5 +1,5 @@
 export interface NPCAction {
-  type: "tutor" | "swap" | "transfer" | "bounties" | "link" | "placeholder";
+  type: "tutor" | "swap" | "transfer" | "bounties" | "link" | "placeholder" | "private-payment";
   label: string;
   url?: string;
 }
@@ -95,6 +95,24 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     ],
     action: { type: "bounties", label: "View bounties" },
     spriteKey: "avatar-st-maya",
+  },
+  {
+    id: "magic-man",
+    name: "Magic Man",
+    role: "Privacy Operator",
+    tileX: 105,
+    tileY: 85,
+    color: 0xc026d3,
+    dialog: [
+      "In this city, every transaction is a public confession.",
+      "Everyone can see who sent what, to whom, and when.",
+      "But privacy is not a feature — it's a primitive.",
+      "Through MagicBlock's Private Ephemeral Rollup, your transfers disappear. Shielded inside Intel TDX. No trace on-chain.",
+      "Only you and the recipient will know what moved. Not the validators. Not the mempool. Not the curious.",
+      "Let me handle the rest.",
+    ],
+    action: { type: "private-payment", label: "Send privately" },
+    spriteKey: "avatar-brawly",
   },
   // ── Placeholder NPCs (expansion district) ──────────────────────────
   // Parked here with light dialog until we assign them real roles.
