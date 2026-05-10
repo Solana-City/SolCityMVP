@@ -25,6 +25,10 @@ export default function ZoomControl() {
 
   useEffect(() => {
     setZoom(loadZoom());
+    // Sync display when pinch gesture changes zoom
+    const handler = (e: Event) => setZoom((e as CustomEvent<number>).detail);
+    window.addEventListener("solcity:zoom", handler);
+    return () => window.removeEventListener("solcity:zoom", handler);
   }, []);
 
   if (zoom === null) return null;
@@ -34,6 +38,7 @@ export default function ZoomControl() {
     setZoom(clamped);
     localStorage.setItem(STORAGE_KEY, String(clamped));
     emitGame("camera:zoom", clamped);
+    window.dispatchEvent(new CustomEvent("solcity:zoom", { detail: clamped }));
   }
 
   const canDec = zoom > MIN;

@@ -5,6 +5,8 @@ import { EMOJI_REGISTRY } from "@/game/chat/EmojiSystem";
 
 interface MobileControlsProps {
   gameRef: Phaser.Game | null;
+  chatOpen: boolean;
+  onChatToggle: () => void;
 }
 
 const JOYSTICK_RADIUS = 52; // px — max thumb travel from center
@@ -125,7 +127,7 @@ function ActionButton({
 
 // ── Root ─────────────────────────────────────────────────────────────────────
 
-export default function MobileControls({ gameRef }: MobileControlsProps) {
+export default function MobileControls({ gameRef, chatOpen, onChatToggle }: MobileControlsProps) {
   const [isTouch, setIsTouch] = useState(false);
   const [showEmojis, setShowEmojis] = useState(false);
 
@@ -204,6 +206,11 @@ export default function MobileControls({ gameRef }: MobileControlsProps) {
             label={showEmojis ? "✕" : "☺"}
             color="#9945FF"
             onPress={() => setShowEmojis((v) => !v)}
+          />
+          <ActionButton
+            label={chatOpen ? "✕" : "💬"}
+            color="#00D1FF"
+            onPress={onChatToggle}
           />
         </div>
       </div>

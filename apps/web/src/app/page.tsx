@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import dynamic from "next/dynamic";
 import type { NPCDefinition, NPCAction } from "@/game/config/npcRegistry";
+import { usePinchZoom } from "@/ui/usePinchZoom";
 
 // All Solana/wallet-adapter code must be client-only — these packages
 // access `window`/`navigator` at module-load time and crash the SSR pass.
@@ -26,6 +27,14 @@ export default function Home() {
   const [activeAction, setActiveAction] = useState<NPCAction | null>(null);
   const [profileOpen, setProfileOpen] = useState(false);
   const [logOpen, setLogOpen] = useState(false);
+  // Chat hidden by default on touch devices, visible on desktop
+  const [chatOpen, setChatOpen] = useState(() =>
+    typeof window === "undefined"
+      ? true
+      : !window.matchMedia("(pointer: coarse)").matches
+  );
+
+  usePinchZoom();
 
   useEffect(() => {
     if (!game) return;
@@ -101,8 +110,8 @@ export default function Home() {
         </div>
 
         <ToastStack />
-        <MobileControls gameRef={game} />
-        <ChatPanel gameRef={game} />
+        <MobileControls gameRef={game} chatOpen={chatOpen} onChatToggle={() => setChatOpen((v) => !v)} />
+        <ChatPanel gameRef={game} visible={chatOpen} />
         <NPCDialog npc={activeNPC} onClose={handleDialogClose} onAction={handleAction} />
         <ActionPanel action={activeAction} onClose={handleActionClose} />
         <ProfilePanel gameRef={game} isOpen={profileOpen} onClose={() => setProfileOpen(false)} />

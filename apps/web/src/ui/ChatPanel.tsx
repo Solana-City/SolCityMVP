@@ -7,9 +7,10 @@ import { EMOJI_REGISTRY } from "@/game/chat/EmojiSystem";
 
 interface ChatPanelProps {
   gameRef: Phaser.Game | null;
+  visible?: boolean;
 }
 
-export default function ChatPanel({ gameRef }: ChatPanelProps) {
+export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [activeChannel, setActiveChannel] = useState<ChatChannel>("local");
@@ -92,6 +93,9 @@ export default function ChatPanel({ gameRef }: ChatPanelProps) {
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, []);
+
+  // On mobile the parent controls visibility; on desktop always show
+  if (isTouch && !visible) return null;
 
   const channelColor = getChannelColor(activeChannel);
 
