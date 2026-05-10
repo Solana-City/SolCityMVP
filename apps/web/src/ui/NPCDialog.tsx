@@ -5,6 +5,18 @@ import type { NPCDefinition, NPCAction } from "@/game/config/npcRegistry";
 import NPCPortrait from "./NPCPortrait";
 import { profileManager } from "@/game/config/profileManager";
 
+function useIsTouch() {
+  const [isTouch, setIsTouch] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(pointer: coarse)");
+    setIsTouch(mq.matches);
+    const onChange = (e: MediaQueryListEvent) => setIsTouch(e.matches);
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
+  return isTouch;
+}
+
 interface NPCDialogProps {
   npc: NPCDefinition | null;
   onClose: () => void;
@@ -14,6 +26,7 @@ interface NPCDialogProps {
 export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
   const [lineIndex, setLineIndex] = useState(0);
   const [portraitVisible, setPortraitVisible] = useState(false);
+  const isTouch = useIsTouch();
 
   // Reset dialog state when NPC changes
   useEffect(() => {
@@ -54,10 +67,15 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
   const isLastLine = lineIndex >= npc.dialog.length - 1;
   const color = `#${npc.color.toString(16).padStart(6, "0")}`;
 
+  // On touch devices, sit above the joystick/action cluster
+  const bottomOffset = isTouch
+    ? "calc(env(safe-area-inset-bottom, 0px) + 160px)"
+    : "96px";
+
   return (
     <div
-      className="fixed bottom-24 left-1/2 -translate-x-1/2 z-30 w-full max-w-2xl px-4"
-      style={{ fontFamily: '"Fira Code", monospace' }}
+      className="fixed left-1/2 -translate-x-1/2 z-30 w-full max-w-2xl px-4"
+      style={{ fontFamily: '"Fira Code", monospace', bottom: bottomOffset }}
     >
       <div className={`flex items-end ${portraitVisible ? "gap-4" : ""}`}>
         {/* VN-style portrait — only when portrait image is defined and loaded */}
@@ -67,13 +85,15 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
           </div>
         )}
 
-        {/* Speech bubble */}
+        {/* Speech bubble — tappable anywhere to advance */}
         <div
           className="relative rounded-xl p-4 flex-1"
+          onClick={handleAdvance}
           style={{
             background: "rgba(10,10,30,0.95)",
             border: `2px solid ${color}`,
             backdropFilter: "blur(4px)",
+            cursor: "pointer",
           }}
         >
           {/* Speech tail — only when portrait is visible */}
@@ -131,7 +151,7 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
               </div>
             </div>
             <button
-              onClick={onClose}
+              onClick={(e) => { e.stopPropagation(); onClose(); }}
               className="text-lg cursor-pointer"
               style={{
                 background: "none",
@@ -154,12 +174,21 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
 
           {/* Action hint */}
           <div className="flex justify-between items-center gap-2">
-            <span className="text-xs" style={{ color: "#444455" }}>
-              {isLastLine ? "[E] Action" : "[E] Continue"} · [ESC] Close
-            </span>
+            {isTouch ? (
+              <span
+                className="text-xs"
+                style={{ color: "#444455", animation: "tapPulse 1.5s ease-in-out infinite" }}
+              >
+                {isLastLine ? "tap to continue ▶" : "tap to continue ▶"}
+              </span>
+            ) : (
+              <span className="text-xs" style={{ color: "#444455" }}>
+                {isLastLine ? "[E] Action" : "[E] Continue"} · [ESC] Close
+              </span>
+            )}
             {isLastLine && (
               <button
-                onClick={() => onAction(npc.action)}
+                onClick={(e) => { e.stopPropagation(); onAction(npc.action); }}
                 className="px-4 py-2 rounded-lg cursor-pointer transition-colors"
                 style={{
                   background: color,
@@ -173,6 +202,12 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
               </button>
             )}
           </div>
+          <style jsx>{`
+            @keyframes tapPulse {
+              0%, 100% { opacity: 0.4; }
+              50% { opacity: 1; }
+            }
+          `}</style>
         </div>
       </div>
     </div>
