@@ -207,12 +207,19 @@ export default function MobileControls({ gameRef, chatOpen, onChatToggle }: Mobi
             color="#9945FF"
             onPress={() => setShowEmojis((v) => !v)}
           />
-          <ActionButton
-            label={chatOpen ? "✕" : "💬"}
-            color="#00D1FF"
-            onPress={onChatToggle}
-          />
         </div>
+      </div>
+
+      {/* Chat toggle — top-left, below the score HUD */}
+      <div
+        className="fixed pointer-events-auto z-30"
+        style={{ top: 96, left: 16 }}
+      >
+        <ActionButton
+          label={chatOpen ? "✕" : "💬"}
+          color="#00D1FF"
+          onPress={onChatToggle}
+        />
       </div>
     </>
   );
