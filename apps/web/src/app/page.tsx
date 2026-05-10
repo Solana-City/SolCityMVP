@@ -18,6 +18,7 @@ const ToastStack          = dynamic(() => import("@/ui/ToastStack"),          { 
 const HUD                 = dynamic(() => import("@/ui/HUD"),                 { ssr: false });
 const WalletSignBridge    = dynamic(() => import("@/ui/WalletSignBridge"),    { ssr: false });
 const MobileControls      = dynamic(() => import("@/ui/MobileControls"),      { ssr: false });
+const ZoomControl         = dynamic(() => import("@/ui/ZoomControl"),         { ssr: false });
 
 export default function Home() {
   const [game, setGame] = useState<Phaser.Game | null>(null);
@@ -88,7 +89,7 @@ export default function Home() {
         {/* Score HUD — top left */}
         <HUD />
 
-        {/* Top-right cluster: PFP + wallet + tx log */}
+        {/* Top-right cluster: PFP + wallet + tx log + zoom */}
         <div className="fixed top-4 right-4 z-20 flex flex-col items-end gap-2">
           <PfpButton gameRef={game} onClick={() => setProfileOpen(true)} />
           <WalletBar onWalletChange={handleWalletChange} />
@@ -96,6 +97,7 @@ export default function Home() {
             isOpen={logOpen}
             onToggle={() => setLogOpen((v) => !v)}
           />
+          <ZoomControl />
         </div>
 
         <ToastStack />

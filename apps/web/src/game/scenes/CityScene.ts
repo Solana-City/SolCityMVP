@@ -140,7 +140,9 @@ export class CityScene extends Phaser.Scene {
     // pixel maps to exactly N screen pixels — no fractional sampling,
     // which is the industry-standard way to keep pixel art crisp.
     this.cameras.main.startFollow(container, true, 1.0, 1.0);
-    this.cameras.main.setZoom(2);
+    const storedZoom = parseFloat(localStorage.getItem("solcity:zoom") ?? "");
+    const isTouchDevice = window.matchMedia("(pointer: coarse)").matches;
+    this.cameras.main.setZoom(isNaN(storedZoom) ? (isTouchDevice ? 1.5 : 2) : storedZoom);
     this.cameras.main.setBackgroundColor(0x061a2c);
     this.cameras.main.roundPixels = true;
 
@@ -250,6 +252,11 @@ export class CityScene extends Phaser.Scene {
     // NPC interaction listener from React
     this.game.events.on("npc:close", () => {
       this.interactionBlocked = false;
+    });
+
+    // Camera zoom from UI control
+    this.game.events.on("camera:zoom", (zoom: number) => {
+      this.cameras.main.setZoom(zoom);
     });
 
     // Mobile touch input
