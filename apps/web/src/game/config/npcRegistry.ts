@@ -46,7 +46,6 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     ],
     action: { type: "tutor", label: "Got it!" },
     spriteKey: "avatar-sol-guide",
-    portrait: "/assets/sprites/sol-guide.png",
   },
   {
     id: "swap-npc",
@@ -63,7 +62,6 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     ],
     action: { type: "swap", label: "Open swap" },
     spriteKey: "avatar-brawly",
-    portrait: "/assets/sprites/swap-npc.png",
   },
   {
     id: "send-npc",
@@ -80,7 +78,6 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     ],
     action: { type: "transfer", label: "Send tokens" },
     spriteKey: "avatar-send-npc",
-    portrait: "/assets/sprites/send-npc.png",
   },
   {
     id: "st-maya",
@@ -98,7 +95,6 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     ],
     action: { type: "bounties", label: "View bounties" },
     spriteKey: "avatar-st-maya",
-    portrait: "/assets/sprites/st-maya.png",
   },
   // ── Placeholder NPCs (expansion district) ──────────────────────────
   // Parked here with light dialog until we assign them real roles.
@@ -116,7 +112,6 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     ],
     action: { type: "link", label: "Follow @superteamBR", url: "https://x.com/superteamBR" },
     spriteKey: "avatar-swap-npc",
-    portrait: "/assets/sprites/kuka.png",
   },
   {
     id: "bk-indies",
