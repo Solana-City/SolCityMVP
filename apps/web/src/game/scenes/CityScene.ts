@@ -27,6 +27,8 @@ export class CityScene extends Phaser.Scene {
   private npcSprites: NPCSprite[] = [];
   private interactionBlocked = false;
   private profile!: ProfileManager;
+  private touchDx = 0;
+  private touchDy = 0;
 
   constructor() {
     super({ key: "CityScene" });
@@ -250,6 +252,24 @@ export class CityScene extends Phaser.Scene {
       this.interactionBlocked = false;
     });
 
+    // Mobile touch input
+    this.game.events.on("touch:joystick", ({ dx, dy }: { dx: number; dy: number }) => {
+      this.touchDx = dx;
+      this.touchDy = dy;
+    });
+    this.game.events.on("touch:stop", () => {
+      this.touchDx = 0;
+      this.touchDy = 0;
+    });
+    this.game.events.on("touch:interact", () => {
+      if (this.chatInputActive || this.interactionBlocked) return;
+      const nearby = this.npcSprites.find((n) => n.isInRange);
+      if (nearby) {
+        this.interactionBlocked = true;
+        this.game.events.emit("npc:interact", nearby.def);
+      }
+    });
+
     // E key for NPC interaction (handled here, not in React, to check proximity)
     this.input.keyboard!.on("keydown-E", () => {
       if (this.chatInputActive || this.interactionBlocked) return;
@@ -315,21 +335,37 @@ export class CityScene extends Phaser.Scene {
 
     this.playerBody.setVelocity(0);
 
-    const up = this.cursors.up.isDown || this.wasd.up.isDown;
-    const down = this.cursors.down.isDown || this.wasd.down.isDown;
-    const left = this.cursors.left.isDown || this.wasd.left.isDown;
-    const right = this.cursors.right.isDown || this.wasd.right.isDown;
+    const kbUp    = this.cursors.up.isDown    || this.wasd.up.isDown;
+    const kbDown  = this.cursors.down.isDown  || this.wasd.down.isDown;
+    const kbLeft  = this.cursors.left.isDown  || this.wasd.left.isDown;
+    const kbRight = this.cursors.right.isDown || this.wasd.right.isDown;
 
     let direction: Direction | null = null;
+    let vx = 0, vy = 0;
 
-    if (left) { this.playerBody.setVelocityX(-PLAYER_SPEED); direction = "left"; }
-    else if (right) { this.playerBody.setVelocityX(PLAYER_SPEED); direction = "right"; }
-    if (up) { this.playerBody.setVelocityY(-PLAYER_SPEED); direction = direction ?? "up"; }
-    else if (down) { this.playerBody.setVelocityY(PLAYER_SPEED); direction = direction ?? "down"; }
-
-    if ((left || right) && (up || down)) {
-      this.playerBody.velocity.normalize().scale(PLAYER_SPEED);
+    // Keyboard (digital)
+    if (kbLeft)       { vx = -PLAYER_SPEED; direction = "left"; }
+    else if (kbRight) { vx =  PLAYER_SPEED; direction = "right"; }
+    if (kbUp)         { vy = -PLAYER_SPEED; direction = direction ?? "up"; }
+    else if (kbDown)  { vy =  PLAYER_SPEED; direction = direction ?? "down"; }
+    if (vx !== 0 && vy !== 0) {
+      vx *= 0.7071;
+      vy *= 0.7071;
     }
+
+    // Touch joystick (analog) — overrides keyboard when active
+    const touchActive = Math.abs(this.touchDx) > 0.1 || Math.abs(this.touchDy) > 0.1;
+    if (touchActive) {
+      vx = this.touchDx * PLAYER_SPEED;
+      vy = this.touchDy * PLAYER_SPEED;
+      if (Math.abs(this.touchDx) >= Math.abs(this.touchDy)) {
+        direction = this.touchDx < 0 ? "left" : "right";
+      } else {
+        direction = this.touchDy < 0 ? "up" : "down";
+      }
+    }
+
+    this.playerBody.setVelocity(vx, vy);
 
     if (direction) {
       this.avatar.walk(direction);

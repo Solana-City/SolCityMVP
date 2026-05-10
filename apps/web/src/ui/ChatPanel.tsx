@@ -14,8 +14,18 @@ export default function ChatPanel({ gameRef }: ChatPanelProps) {
   const [input, setInput] = useState("");
   const [activeChannel, setActiveChannel] = useState<ChatChannel>("local");
   const [dmChannels, setDmChannels] = useState<DMChannel[]>([]);
+  const [isTouch, setIsTouch] = useState(false);
   const [isExpanded, setIsExpanded] = useState(true);
   const [showEmojis, setShowEmojis] = useState(false);
+
+  useEffect(() => {
+    const mq = window.matchMedia("(pointer: coarse)");
+    setIsTouch(mq.matches);
+    if (mq.matches) setIsExpanded(false);
+    const onChange = (e: MediaQueryListEvent) => setIsTouch(e.matches);
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
   const [chatManager, setChatManager] = useState<ChatManager | null>(null);
   const logRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -89,12 +99,21 @@ export default function ChatPanel({ gameRef }: ChatPanelProps) {
 
   return (
     <div
-      className="fixed bottom-4 left-4 z-20"
-      style={{ width: 360, fontFamily: '"Fira Code", monospace' }}
+      className="fixed z-20"
+      style={{
+        left: "max(env(safe-area-inset-left, 0px), 16px)",
+        bottom: isTouch
+          ? "calc(env(safe-area-inset-bottom, 0px) + 156px)"
+          : "16px",
+        width: isTouch ? "min(280px, calc(100vw - 180px))" : "360px",
+        fontFamily: '"Fira Code", monospace',
+      }}
     >
-      <div className="text-[10px] mb-1 px-1" style={{ color: "#7a7a9a" }}>
-        Enter: chat • Esc: close input • 1-6: emotes
-      </div>
+      {!isTouch && (
+        <div className="text-[10px] mb-1 px-1" style={{ color: "#7a7a9a" }}>
+          Enter: chat • Esc: close input • 1-6: emotes
+        </div>
+      )}
       {/* Channel tabs */}
       <div className="flex gap-0.5 mb-0.5 overflow-x-auto">
         {fixedTabs.map((ch) => (

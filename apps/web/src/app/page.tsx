@@ -17,6 +17,7 @@ const TransactionLogPanel = dynamic(() => import("@/ui/TransactionLogPanel"), { 
 const ToastStack          = dynamic(() => import("@/ui/ToastStack"),          { ssr: false });
 const HUD                 = dynamic(() => import("@/ui/HUD"),                 { ssr: false });
 const WalletSignBridge    = dynamic(() => import("@/ui/WalletSignBridge"),    { ssr: false });
+const MobileControls      = dynamic(() => import("@/ui/MobileControls"),      { ssr: false });
 
 export default function Home() {
   const [game, setGame] = useState<Phaser.Game | null>(null);
@@ -98,6 +99,7 @@ export default function Home() {
         </div>
 
         <ToastStack />
+        <MobileControls gameRef={game} />
         <ChatPanel gameRef={game} />
         <NPCDialog npc={activeNPC} onClose={handleDialogClose} onAction={handleAction} />
         <ActionPanel action={activeAction} onClose={handleActionClose} />
