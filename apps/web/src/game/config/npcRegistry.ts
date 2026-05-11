@@ -112,7 +112,7 @@ export const NPC_REGISTRY: NPCDefinition[] = [
       "Let me handle the rest.",
     ],
     action: { type: "private-payment", label: "Send privately" },
-    spriteKey: "avatar-brawly",
+    spriteKey: "avatar-juan",
   },
   // ── Placeholder NPCs (expansion district) ──────────────────────────
   // Parked here with light dialog until we assign them real roles.
