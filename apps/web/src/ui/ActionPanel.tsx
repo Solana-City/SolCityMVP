@@ -509,6 +509,7 @@ type PayStatus =
 
 function PrivatePaymentPanel({ onClose }: { onClose: () => void }) {
   const { connected, publicKey, signTransaction, signMessage } = useWallet();
+  const [cluster, setCluster]           = useState<"mainnet" | "devnet">("devnet");
   const [status, setStatus]             = useState<PayStatus>("idle");
   const [authToken, setAuthToken]       = useState<string | null>(null);
   const [balance, setBalance]           = useState<number | null>(null);
@@ -520,16 +521,19 @@ function PrivatePaymentPanel({ onClose }: { onClose: () => void }) {
   const [error, setError]               = useState<string | null>(null);
   const [activeTab, setActiveTab]       = useState<"deposit" | "send">("send");
 
-  // Auto-authenticate when panel opens
+  // Re-authenticate whenever cluster changes
   useEffect(() => {
     if (!connected || !publicKey || !signMessage) return;
     setStatus("authenticating");
+    setAuthToken(null);
+    setBalance(null);
+    setError(null);
 
     import("@/game/solana/magicblockPayments").then(async (mb) => {
       try {
-        const { token } = await mb.authenticate(publicKey, signMessage);
+        const { token } = await mb.authenticate(publicKey, signMessage, cluster);
         setAuthToken(token);
-        const bal = await mb.getPrivateBalance(publicKey.toBase58(), token);
+        const bal = await mb.getPrivateBalance(publicKey.toBase58(), token, cluster);
         setBalance(bal);
         setStatus("ready");
       } catch (e: any) {
@@ -537,12 +541,12 @@ function PrivatePaymentPanel({ onClose }: { onClose: () => void }) {
         setStatus("error");
       }
     });
-  }, [connected, publicKey, signMessage]);
+  }, [connected, publicKey, signMessage, cluster]);
 
   const refreshBalance = async () => {
     if (!authToken || !publicKey) return;
     const mb = await import("@/game/solana/magicblockPayments");
-    const bal = await mb.getPrivateBalance(publicKey.toBase58(), authToken);
+    const bal = await mb.getPrivateBalance(publicKey.toBase58(), authToken, cluster);
     setBalance(bal);
   };
 
@@ -555,7 +559,7 @@ function PrivatePaymentPanel({ onClose }: { onClose: () => void }) {
     setError(null);
     try {
       const mb = await import("@/game/solana/magicblockPayments");
-      const txData = await mb.buildDeposit(publicKey.toBase58(), parsed);
+      const txData = await mb.buildDeposit(publicKey.toBase58(), parsed, cluster);
       await mb.signAndSubmit(txData, signTransaction as any, authToken);
       await refreshBalance();
       setStatus("ready");
@@ -576,7 +580,7 @@ function PrivatePaymentPanel({ onClose }: { onClose: () => void }) {
     setError(null);
     try {
       const mb = await import("@/game/solana/magicblockPayments");
-      await mb.buildPrivateTransfer(publicKey.toBase58(), recipient, parsed, authToken);
+      await mb.buildPrivateTransfer(publicKey.toBase58(), recipient, parsed, authToken, cluster);
       // Success — don't show a transaction link (that's the whole point)
       setStatus("done");
       emitGameEvent("game:transfer");
@@ -597,7 +601,7 @@ function PrivatePaymentPanel({ onClose }: { onClose: () => void }) {
   if (!connected) {
     return (
       <>
-        <PanelHeader color={FUCHSIA} title="PRIVATE TRANSFER" />
+        <PanelHeader color={FUCHSIA} title="PRIVATE TRANSFER" cluster={cluster} onClusterChange={setCluster} />
         <div style={{ textAlign: "center", padding: "24px 0", color: "#888899", fontSize: 12 }}>
           Connect your wallet to access private payments.
         </div>
@@ -609,7 +613,7 @@ function PrivatePaymentPanel({ onClose }: { onClose: () => void }) {
   if (status === "authenticating") {
     return (
       <>
-        <PanelHeader color={FUCHSIA} title="PRIVATE TRANSFER" />
+        <PanelHeader color={FUCHSIA} title="PRIVATE TRANSFER" cluster={cluster} onClusterChange={setCluster} />
         <div style={{ textAlign: "center", padding: "32px 0" }}>
           <div style={{ fontSize: 11, color: "#888899", marginBottom: 8 }}>Authenticating with wallet…</div>
           <div style={{ fontSize: 9, color: "#555566" }}>Sign the message in your wallet to verify identity</div>
@@ -621,7 +625,7 @@ function PrivatePaymentPanel({ onClose }: { onClose: () => void }) {
   if (status === "done") {
     return (
       <>
-        <PanelHeader color={FUCHSIA} title="PRIVATE TRANSFER" />
+        <PanelHeader color={FUCHSIA} title="PRIVATE TRANSFER" cluster={cluster} onClusterChange={setCluster} />
         <div style={{ textAlign: "center", padding: "24px 0" }}>
           <div style={{ fontSize: 28, color: FUCHSIA, marginBottom: 8 }}>◈</div>
           <div style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 9, color: FUCHSIA, marginBottom: 12 }}>
@@ -639,7 +643,7 @@ function PrivatePaymentPanel({ onClose }: { onClose: () => void }) {
 
   return (
     <>
-      <PanelHeader color={FUCHSIA} title="PRIVATE TRANSFER" />
+      <PanelHeader color={FUCHSIA} title="PRIVATE TRANSFER" cluster={cluster} onClusterChange={setCluster} />
 
       {/* Private balance */}
       <div style={{ background: "#0d0d22", border: `1px solid ${FUCHSIA}33`, borderRadius: 8, padding: "10px 14px", marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -763,11 +767,41 @@ function PrivatePaymentPanel({ onClose }: { onClose: () => void }) {
   );
 }
 
-function PanelHeader({ title, color }: { title: string; color: string }) {
+function PanelHeader({ title, color, cluster, onClusterChange }: {
+  title: string;
+  color: string;
+  cluster?: "mainnet" | "devnet";
+  onClusterChange?: (c: "mainnet" | "devnet") => void;
+}) {
   return (
     <div style={{ marginBottom: 16 }}>
-      <h3 style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 11, color, margin: 0 }}>{title}</h3>
-      <div style={{ fontSize: 9, color: "#444455", marginTop: 4 }}>⚡ MagicBlock Private Ephemeral Rollup</div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <h3 style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 11, color, margin: 0 }}>{title}</h3>
+        {cluster !== undefined && onClusterChange && (
+          <div style={{ display: "flex", gap: 2, background: "#0d0d22", border: "1px solid #1a1a3a", borderRadius: 6, padding: 2 }}>
+            {(["devnet", "mainnet"] as const).map(c => (
+              <button
+                key={c}
+                onClick={() => onClusterChange(c)}
+                style={{
+                  background: cluster === c ? `${color}22` : "transparent",
+                  color: cluster === c ? color : "#444455",
+                  border: "none",
+                  borderRadius: 4,
+                  padding: "3px 7px",
+                  fontFamily: '"Press Start 2P", monospace',
+                  fontSize: 7,
+                  cursor: "pointer",
+                  textTransform: "uppercase",
+                }}
+              >
+                {c}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+      <div style={{ fontSize: 9, color: "#444455", marginTop: 4 }}>MagicBlock Private Ephemeral Rollup</div>
     </div>
   );
 }
