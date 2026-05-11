@@ -106,7 +106,7 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     dialog: [
       "In this city, every transaction is a public confession.",
       "Everyone can see who sent what, to whom, and when.",
-      "But privacy is not a feature — it's a primitive.",
+      "But privacy is not a feature. It is a primitive.",
       "Through MagicBlock's Private Ephemeral Rollup, your transfers disappear. Shielded inside Intel TDX. No trace on-chain.",
       "Only you and the recipient will know what moved. Not the validators. Not the mempool. Not the curious.",
       "Let me handle the rest.",

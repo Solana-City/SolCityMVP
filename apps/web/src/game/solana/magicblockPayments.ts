@@ -1,9 +1,28 @@
 import { Connection, Transaction, VersionedTransaction } from "@solana/web3.js";
 
 export const PAYMENTS_API   = "https://payments.magicblock.app";
-export const EPHEMERAL_RPC  = "https://tee.magicblock.app";
-export const MAINNET_RPC    = "https://api.mainnet-beta.solana.com";
-export const USDC_MINT      = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+
+export const CLUSTERS = {
+  mainnet: {
+    cluster:      "mainnet",
+    ephemeralRpc: "https://tee.magicblock.app",
+    solanaRpc:    "https://api.mainnet-beta.solana.com",
+    usdcMint:     "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+  },
+  devnet: {
+    cluster:      "devnet",
+    ephemeralRpc: "https://devnet.magicblock.app",
+    solanaRpc:    "https://api.devnet.solana.com",
+    usdcMint:     "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+  },
+} as const;
+
+export type ClusterKey = keyof typeof CLUSTERS;
+
+// Keep legacy exports for backwards compat
+export const EPHEMERAL_RPC  = CLUSTERS.mainnet.ephemeralRpc;
+export const MAINNET_RPC    = CLUSTERS.mainnet.solanaRpc;
+export const USDC_MINT      = CLUSTERS.mainnet.usdcMint;
 export const USDC_DECIMALS  = 6;
 
 export interface TxData {
@@ -22,11 +41,11 @@ export interface TxData {
 
 export async function authenticate(
   pubkey: import("@solana/web3.js").PublicKey,
-  signMessage: (msg: Uint8Array) => Promise<Uint8Array>
+  signMessage: (msg: Uint8Array) => Promise<Uint8Array>,
+  clusterKey: ClusterKey = "mainnet"
 ): Promise<{ token: string; expiresAt: number }> {
   const { getAuthToken } = await import("@magicblock-labs/ephemeral-rollups-sdk");
-  // SDK calls ${EPHEMERAL_RPC}/auth/challenge and /auth/login internally
-  return getAuthToken(EPHEMERAL_RPC, pubkey, signMessage);
+  return getAuthToken(CLUSTERS[clusterKey].ephemeralRpc, pubkey, signMessage);
 }
 
 // ── Payments REST API helpers ─────────────────────────────────────────────────
@@ -45,7 +64,7 @@ async function post(path: string, body: unknown, token?: string): Promise<any> {
 }
 
 async function get(path: string, params: Record<string, string>, token?: string): Promise<any> {
-  const qs = new URLSearchParams({ ...params, cluster: "mainnet" }).toString();
+  const qs = new URLSearchParams(params).toString();
   const headers: Record<string, string> = {};
   if (token) headers["Authorization"] = `Bearer ${token}`;
   const res = await fetch(`${PAYMENTS_API}${path}?${qs}`, { headers });
@@ -56,19 +75,29 @@ async function get(path: string, params: Record<string, string>, token?: string)
 
 // ── Balance ───────────────────────────────────────────────────────────────────
 
-export async function getPrivateBalance(address: string, token: string): Promise<number> {
-  const data = await get("/v1/spl/private-balance", { address, mint: USDC_MINT }, token);
+export async function getPrivateBalance(
+  address: string,
+  token: string,
+  clusterKey: ClusterKey = "mainnet"
+): Promise<number> {
+  const c = CLUSTERS[clusterKey];
+  const data = await get("/v1/spl/private-balance", { address, mint: c.usdcMint, cluster: c.cluster }, token);
   return parseInt(data.balance ?? "0", 10) / 10 ** USDC_DECIMALS;
 }
 
 // ── Build transactions ────────────────────────────────────────────────────────
 
-export async function buildDeposit(owner: string, amountUsdc: number): Promise<TxData> {
+export async function buildDeposit(
+  owner: string,
+  amountUsdc: number,
+  clusterKey: ClusterKey = "mainnet"
+): Promise<TxData> {
+  const c = CLUSTERS[clusterKey];
   return post("/v1/spl/deposit", {
     owner,
     amount: Math.round(amountUsdc * 10 ** USDC_DECIMALS),
-    mint: USDC_MINT,
-    cluster: "mainnet",
+    mint: c.usdcMint,
+    cluster: c.cluster,
     initIfMissing: true,
     initVaultIfMissing: true,
     initAtasIfMissing: true,
@@ -79,19 +108,21 @@ export async function buildPrivateTransfer(
   from: string,
   to: string,
   amountUsdc: number,
-  token: string
+  token: string,
+  clusterKey: ClusterKey = "mainnet"
 ): Promise<TxData> {
+  const c = CLUSTERS[clusterKey];
   return post(
     "/v1/spl/transfer",
     {
       from,
       to,
-      mint: USDC_MINT,
+      mint: c.usdcMint,
       amount: Math.round(amountUsdc * 10 ** USDC_DECIMALS),
       visibility: "private",
       fromBalance: "ephemeral",
       toBalance: "base",
-      cluster: "mainnet",
+      cluster: c.cluster,
       initAtasIfMissing: true,
       legacy: true,
     },
@@ -104,8 +135,10 @@ export async function buildPrivateTransfer(
 export async function signAndSubmit(
   txData: TxData,
   signTransaction: (tx: Transaction | VersionedTransaction) => Promise<Transaction | VersionedTransaction>,
-  token: string
+  token: string,
+  clusterKey: ClusterKey = "mainnet"
 ): Promise<string> {
+  const c = CLUSTERS[clusterKey];
   const buffer = Buffer.from(txData.transactionBase64, "base64");
   const tx =
     txData.version === "v0"
@@ -116,8 +149,8 @@ export async function signAndSubmit(
 
   const rpcUrl =
     txData.sendTo === "ephemeral"
-      ? `${EPHEMERAL_RPC}?token=${token}`
-      : MAINNET_RPC;
+      ? `${c.ephemeralRpc}?token=${token}`
+      : c.solanaRpc;
 
   const conn = new Connection(rpcUrl, "confirmed");
   const sig = await conn.sendRawTransaction((signed as Transaction).serialize(), {
