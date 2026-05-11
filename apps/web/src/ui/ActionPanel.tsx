@@ -580,7 +580,8 @@ function PrivatePaymentPanel({ onClose }: { onClose: () => void }) {
     setError(null);
     try {
       const mb = await import("@/game/solana/magicblockPayments");
-      await mb.buildPrivateTransfer(publicKey.toBase58(), recipient, parsed, authToken, cluster);
+      const txData = await mb.buildPrivateTransfer(publicKey.toBase58(), recipient, parsed, authToken, cluster);
+      await mb.signAndSubmit(txData, signTransaction as any, authToken, cluster);
       // Success — don't show a transaction link (that's the whole point)
       setStatus("done");
       emitGameEvent("game:transfer");
