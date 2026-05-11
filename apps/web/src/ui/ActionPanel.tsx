@@ -560,7 +560,7 @@ function PrivatePaymentPanel({ onClose }: { onClose: () => void }) {
     try {
       const mb = await import("@/game/solana/magicblockPayments");
       const txData = await mb.buildDeposit(publicKey.toBase58(), parsed, cluster);
-      await mb.signAndSubmit(txData, signTransaction as any, authToken);
+      await mb.signAndSubmit(txData, signTransaction as any, authToken, cluster);
       await refreshBalance();
       setStatus("ready");
     } catch (e: any) {
@@ -601,7 +601,8 @@ function PrivatePaymentPanel({ onClose }: { onClose: () => void }) {
   if (!connected) {
     return (
       <>
-        <PanelHeader color={FUCHSIA} title="PRIVATE TRANSFER" cluster={cluster} onClusterChange={setCluster} />
+        <PanelHeader color={FUCHSIA} title="PRIVATE TRANSFER" />
+        <ClusterToggle cluster={cluster} onChange={setCluster} />
         <div style={{ textAlign: "center", padding: "24px 0", color: "#888899", fontSize: 12 }}>
           Connect your wallet to access private payments.
         </div>
@@ -613,7 +614,8 @@ function PrivatePaymentPanel({ onClose }: { onClose: () => void }) {
   if (status === "authenticating") {
     return (
       <>
-        <PanelHeader color={FUCHSIA} title="PRIVATE TRANSFER" cluster={cluster} onClusterChange={setCluster} />
+        <PanelHeader color={FUCHSIA} title="PRIVATE TRANSFER" />
+        <ClusterToggle cluster={cluster} onChange={setCluster} disabled />
         <div style={{ textAlign: "center", padding: "32px 0" }}>
           <div style={{ fontSize: 11, color: "#888899", marginBottom: 8 }}>Authenticating with wallet…</div>
           <div style={{ fontSize: 9, color: "#555566" }}>Sign the message in your wallet to verify identity</div>
@@ -625,7 +627,7 @@ function PrivatePaymentPanel({ onClose }: { onClose: () => void }) {
   if (status === "done") {
     return (
       <>
-        <PanelHeader color={FUCHSIA} title="PRIVATE TRANSFER" cluster={cluster} onClusterChange={setCluster} />
+        <PanelHeader color={FUCHSIA} title="PRIVATE TRANSFER" />
         <div style={{ textAlign: "center", padding: "24px 0" }}>
           <div style={{ fontSize: 28, color: FUCHSIA, marginBottom: 8 }}>◈</div>
           <div style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 9, color: FUCHSIA, marginBottom: 12 }}>
@@ -643,7 +645,8 @@ function PrivatePaymentPanel({ onClose }: { onClose: () => void }) {
 
   return (
     <>
-      <PanelHeader color={FUCHSIA} title="PRIVATE TRANSFER" cluster={cluster} onClusterChange={setCluster} />
+      <PanelHeader color={FUCHSIA} title="PRIVATE TRANSFER" />
+      <ClusterToggle cluster={cluster} onChange={setCluster} />
 
       {/* Private balance */}
       <div style={{ background: "#0d0d22", border: `1px solid ${FUCHSIA}33`, borderRadius: 8, padding: "10px 14px", marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -767,41 +770,45 @@ function PrivatePaymentPanel({ onClose }: { onClose: () => void }) {
   );
 }
 
-function PanelHeader({ title, color, cluster, onClusterChange }: {
-  title: string;
-  color: string;
-  cluster?: "mainnet" | "devnet";
-  onClusterChange?: (c: "mainnet" | "devnet") => void;
+function PanelHeader({ title, color }: { title: string; color: string }) {
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <h3 style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 11, color, margin: 0 }}>{title}</h3>
+      <div style={{ fontSize: 9, color: "#444455", marginTop: 4 }}>MagicBlock Private Ephemeral Rollup</div>
+    </div>
+  );
+}
+
+function ClusterToggle({ cluster, onChange, disabled }: {
+  cluster: "mainnet" | "devnet";
+  onChange: (c: "mainnet" | "devnet") => void;
+  disabled?: boolean;
 }) {
   return (
-    <div style={{ marginBottom: 16 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <h3 style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 11, color, margin: 0 }}>{title}</h3>
-        {cluster !== undefined && onClusterChange && (
-          <div style={{ display: "flex", gap: 2, background: "#0d0d22", border: "1px solid #1a1a3a", borderRadius: 6, padding: 2 }}>
-            {(["devnet", "mainnet"] as const).map(c => (
-              <button
-                key={c}
-                onClick={() => onClusterChange(c)}
-                style={{
-                  background: cluster === c ? `${color}22` : "transparent",
-                  color: cluster === c ? color : "#444455",
-                  border: "none",
-                  borderRadius: 4,
-                  padding: "3px 7px",
-                  fontFamily: '"Press Start 2P", monospace',
-                  fontSize: 7,
-                  cursor: "pointer",
-                  textTransform: "uppercase",
-                }}
-              >
-                {c}
-              </button>
-            ))}
-          </div>
-        )}
+    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
+      <span style={{ fontSize: 9, color: "#555566", fontFamily: '"Press Start 2P", monospace', flexShrink: 0 }}>NETWORK</span>
+      <div style={{ display: "flex", gap: 0, background: "#0d0d22", border: "1px solid #1a1a3a", borderRadius: 6, overflow: "hidden", opacity: disabled ? 0.45 : 1 }}>
+        {(["devnet", "mainnet"] as const).map(c => (
+          <button
+            key={c}
+            onClick={() => !disabled && onChange(c)}
+            style={{
+              background: cluster === c ? "#c026d322" : "transparent",
+              color: cluster === c ? "#c026d3" : "#444455",
+              border: "none",
+              borderRight: c === "devnet" ? "1px solid #1a1a3a" : "none",
+              padding: "6px 12px",
+              fontFamily: '"Press Start 2P", monospace',
+              fontSize: 8,
+              cursor: disabled ? "not-allowed" : "pointer",
+              textTransform: "uppercase",
+              fontWeight: cluster === c ? "bold" : "normal",
+            }}
+          >
+            {c}
+          </button>
+        ))}
       </div>
-      <div style={{ fontSize: 9, color: "#444455", marginTop: 4 }}>MagicBlock Private Ephemeral Rollup</div>
     </div>
   );
 }
