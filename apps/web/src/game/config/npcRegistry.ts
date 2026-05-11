@@ -100,8 +100,8 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     id: "magic-man",
     name: "Magic Man",
     role: "Privacy Operator",
-    tileX: 93,
-    tileY: 120,
+    tileX: 115,
+    tileY: 115,
     color: 0xc026d3,
     dialog: [
       "In this city, every transaction is a public confession.",
