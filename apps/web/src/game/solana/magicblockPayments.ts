@@ -37,15 +37,42 @@ export interface TxData {
   validator?: string;
 }
 
-// ── Auth via SDK (challenge-sign-login handled internally) ────────────────────
+// ── Auth (challenge → sign → login against the payments API) ─────────────────
 
 export async function authenticate(
   pubkey: import("@solana/web3.js").PublicKey,
   signMessage: (msg: Uint8Array) => Promise<Uint8Array>,
   clusterKey: ClusterKey = "mainnet"
 ): Promise<{ token: string; expiresAt: number }> {
-  const { getAuthToken } = await import("@magicblock-labs/ephemeral-rollups-sdk");
-  return getAuthToken(CLUSTERS[clusterKey].ephemeralRpc, pubkey, signMessage);
+  const c = CLUSTERS[clusterKey];
+  const bs58 = (await import("bs58")).default;
+
+  // 1. Challenge
+  const cr = await fetch(
+    `${PAYMENTS_API}/v1/auth/challenge?pubkey=${pubkey.toBase58()}&cluster=${c.cluster}`
+  );
+  const cj = await cr.json();
+  if (!cr.ok) throw new Error(cj?.error ?? cj?.message ?? `Challenge failed: ${cr.status}`);
+  if (!cj.challenge) throw new Error("No challenge received from payments API");
+
+  // 2. Sign
+  const sig = await signMessage(new Uint8Array(Buffer.from(cj.challenge, "utf-8")));
+
+  // 3. Login
+  const lr = await fetch(`${PAYMENTS_API}/v1/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      pubkey: pubkey.toBase58(),
+      challenge: cj.challenge,
+      signature: bs58.encode(sig),
+      cluster: c.cluster,
+    }),
+  });
+  const lj = await lr.json();
+  if (!lr.ok) throw new Error(lj?.error ?? lj?.message ?? `Login failed: ${lr.status}`);
+  if (!lj.token) throw new Error("No token received");
+  return { token: lj.token, expiresAt: lj.expiresAt ?? Date.now() + 86_400_000 };
 }
 
 // ── Payments REST API helpers ─────────────────────────────────────────────────
