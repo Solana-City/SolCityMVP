@@ -92,7 +92,7 @@ export const NPC_REGISTRY: NPCDefinition[] = [
       "Pick what fits your time and skills. Rewards are paid in USDC.",
     ],
     action: { type: "bounties", label: "Explore Earn" },
-    spriteKey: "avatar-st-maya",
+    spriteKey: "avatar-pratik",
   },
   {
     id: "magic-man",
