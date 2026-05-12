@@ -18,6 +18,7 @@ const TILESET_KEYS = [
   "SCBuildGenericBuild",
   "SCBuildKeepGreen",
   "SCBuildMagicBlock",
+  "SCLogoIcon",
 ];
 
 export class BootScene extends Phaser.Scene {
