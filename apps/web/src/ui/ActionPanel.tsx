@@ -392,7 +392,7 @@ function BountiesPanel({ onClose }: { onClose: () => void }) {
 
       <div style={{ marginBottom: 14 }}>
         <p style={{ fontSize: "12px", color: "#ccccdd", marginBottom: 6, lineHeight: 1.5 }}>
-          Get paid to work on Solana — tasks for designers, devs, and writers.
+          Get paid to work on Solana. Tasks for designers, devs, and writers.
         </p>
         <p style={{ fontSize: "10px", color: "#14F195", marginBottom: 5 }}>
           Rewards from $50 to $5,000+ · Paid in USDC · Open to everyone
@@ -515,14 +515,14 @@ function EarnListingsStage({
         {isGrants && (
           <div style={{ marginBottom: 14 }}>
             <p style={{ fontSize: "11px", color: "#888899", marginBottom: 10, lineHeight: 1.6 }}>
-              Equity-free funding to build something real on Solana — no pitch deck, no investor meetings.
+              Equity-free funding to build something real on Solana. No pitch deck, no investor meetings.
             </p>
             <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 10 }}>
               <StepCard
                 number={1}
                 title="What is a grant?"
                 color="#9945FF"
-                description="Non-dilutive support — no equity taken. You keep 100% of your project and ship on your own terms."
+                description="No equity taken. You keep 100% of your project and ship on your own terms."
               />
               <StepCard
                 number={2}
@@ -564,7 +564,7 @@ function EarnListingsStage({
               {failed
                 ? "Couldn't load listings right now."
                 : isGrants
-                  ? "No open grants at the moment. New rounds open regularly — check back soon."
+                  ? "No open grants at the moment. New rounds open regularly, check back soon."
                   : "No open listings right now. Check back soon!"}
             </div>
             <a

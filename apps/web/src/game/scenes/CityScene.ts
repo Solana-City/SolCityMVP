@@ -310,7 +310,7 @@ export class CityScene extends Phaser.Scene {
         const displayName = this.profile.get().displayName;
         this.network.updateScore(this.profile.get().score);
         await this.network.connect(new PublicKey(walletAddress), displayName);
-        this.chat.addSystemMessage("Session started — multiplayer active");
+        this.chat.addSystemMessage("Multiplayer session started.");
         this.setupNetworkCallbacks();
       } catch (err: any) {
         console.error("[CityScene] session error:", err);

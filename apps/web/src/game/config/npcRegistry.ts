@@ -87,8 +87,8 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     tileY: 104,
     color: 0x9945ff,
     dialog: [
-      "Hey! I run the Superteam Earn hub — where builders get paid to work on Solana.",
-      "Tasks range from quick $50 bounties to $5,000+ projects — for designers, developers, and writers.",
+      "Hey! I run the Superteam Earn hub, where builders get paid to work on Solana.",
+      "Tasks range from quick $50 bounties to $5,000+ projects, for designers, developers, and writers.",
       "Pick what fits your time and skills. Rewards are paid in USDC.",
     ],
     action: { type: "bounties", label: "Explore Earn" },
