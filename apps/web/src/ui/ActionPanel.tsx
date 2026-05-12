@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import { useWallet, useConnection } from "@solana/wallet-adapter-react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import type { NPCAction } from "@/game/config/npcRegistry";
+import type { EarnListing, EarnListingType } from "@/game/solana/superteamEarn";
 import { transactionLog } from "@/game/telemetry/transactionLog";
 import { profileManager } from "@/game/config/profileManager";
 import { Connection } from "@solana/web3.js";
@@ -344,118 +345,276 @@ function TransferPanel({ onClose }: { onClose: () => void }) {
   );
 }
 
-// ── Bounties Panel ────────────────────────────────────────────────────
+// ── Bounties Panel (Superteam Earn) ──────────────────────────────────
 
-const BOUNTIES = [
-  {
-    id: "b1", title: "Create tutorial video for Solana beginners", reward: "500 USDC", tag: "Content",
-    description: "Produce a beginner-friendly video explaining how to set up a Solana wallet and make your first transaction. Must be under 10 minutes and include subtitles.",
-    url: "https://earn.superteam.fun",
-  },
-  {
-    id: "b2", title: "Build open-source analytics dashboard", reward: "800 USDC", tag: "Development",
-    description: "Build a public dashboard showing on-chain metrics for Solana DeFi protocols — TVL, active wallets, transaction volume. Stack is open, must be MIT licensed.",
-    url: "https://earn.superteam.fun",
-  },
-  {
-    id: "b3", title: "Translate Solana docs to Portuguese", reward: "200 USDC", tag: "Translation",
-    description: "Translate the Solana developer docs (getting started + programs sections) into Brazilian Portuguese. Native fluency required; reviewed by Superteam Brazil.",
-    url: "https://earn.superteam.fun",
-  },
-  {
-    id: "b4", title: "Design social media templates", reward: "300 USDC", tag: "Design",
-    description: "Create a set of 10 reusable social media post templates for Superteam Brazil. Figma source required, must follow Superteam brand guidelines.",
-    url: "https://earn.superteam.fun",
-  },
-  {
-    id: "b5", title: "Write thread about Ephemeral Rollups", reward: "150 USDC", tag: "Content",
-    description: "Write an X/Twitter thread (12–18 posts) explaining how MagicBlock Ephemeral Rollups work and why they matter for on-chain gaming. Must include a real example.",
-    url: "https://earn.superteam.fun",
-  },
-];
-
-const TAG_COLORS: Record<string, string> = {
-  Content: "#14F195", Development: "#00D1FF", Translation: "#FFD700", Design: "#F72585",
+type EarnCategory = {
+  type: EarnListingType;
+  label: string;
+  sublabel: string;
+  color: string;
+  viewAllUrl: string;
 };
 
+const EARN_CATEGORIES: EarnCategory[] = [
+  { type: "bounty",    label: "Bounties",         sublabel: "Quick tasks, fast pay",  color: "#14F195", viewAllUrl: "https://superteam.fun/earn/all?tab=bounties"    },
+  { type: "project",   label: "Projects",          sublabel: "Longer engagements",     color: "#00D1FF", viewAllUrl: "https://superteam.fun/earn/all?tab=projects"    },
+  { type: "grant",     label: "Grants",            sublabel: "Build something bigger", color: "#9945FF", viewAllUrl: "https://superteam.fun/earn/grants"              },
+  { type: "hackathon", label: "Hackathon Tracks",  sublabel: "Compete and win",        color: "#FFD700", viewAllUrl: "https://superteam.fun/earn/hackathon/frontier"  },
+];
+
 function BountiesPanel({ onClose }: { onClose: () => void }) {
-  const [expanded, setExpanded] = useState<string | null>(null);
+  const [selected, setSelected] = useState<EarnCategory | null>(null);
+
+  if (selected) {
+    return <EarnListingsStage category={selected} onBack={() => setSelected(null)} onClose={onClose} />;
+  }
 
   return (
     <>
-      <h3 style={{ fontFamily: '"Press Start 2P", monospace', fontSize: "11px", color: "#9945FF", marginBottom: 4 }}>
-        BOUNTY BOARD
+      <h3 style={{ fontFamily: '"Press Start 2P", monospace', fontSize: "11px", color: "#9945FF", marginBottom: 10 }}>
+        SUPERTEAM EARN
       </h3>
-      <p style={{ fontSize: "11px", color: "#555566", marginBottom: 12 }}>Powered by Superteam Earn</p>
 
-      <div style={{ maxHeight: 300, overflowY: "auto" }}>
-        {BOUNTIES.map((b) => {
-          const open = expanded === b.id;
-          return (
-            <div
-              key={b.id}
-              onClick={() => setExpanded(open ? null : b.id)}
-              style={{
-                background: open ? "#1a1a3a" : "#12122a",
-                border: `1px solid ${open ? "rgba(153,69,255,0.3)" : "rgba(255,255,255,0.04)"}`,
-                borderRadius: 8,
-                padding: 12,
-                marginBottom: 8,
-                cursor: "pointer",
-                transition: "background 0.15s",
-              }}
-            >
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-                <div style={{ flex: 1 }}>
-                  <div style={{ color: "#ccccdd", fontSize: "12px", marginBottom: 4 }}>{b.title}</div>
-                  <span style={{ fontSize: "10px", padding: "2px 6px", borderRadius: 4, background: `${TAG_COLORS[b.tag] ?? "#9945FF"}18`, color: TAG_COLORS[b.tag] ?? "#9945FF" }}>
-                    {b.tag}
-                  </span>
-                </div>
-                <div style={{ textAlign: "right", flexShrink: 0 }}>
-                  <div style={{ fontFamily: '"Press Start 2P", monospace', fontSize: "9px", color: "#14F195" }}>
-                    {b.reward}
-                  </div>
-                  <div style={{ fontSize: "10px", color: "#555566", marginTop: 4 }}>{open ? "▲" : "▼"}</div>
-                </div>
-              </div>
-
-              {open && (
-                <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid rgba(255,255,255,0.06)" }}>
-                  <p style={{ fontSize: "11px", color: "#888899", marginBottom: 10, lineHeight: 1.5 }}>
-                    {b.description}
-                  </p>
-                  <a
-                    href={b.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={e => e.stopPropagation()}
-                    style={{
-                      display: "inline-block",
-                      background: "#9945FF",
-                      color: "#fff",
-                      borderRadius: 6,
-                      padding: "6px 14px",
-                      fontFamily: '"Press Start 2P", monospace',
-                      fontSize: "8px",
-                      textDecoration: "none",
-                    }}
-                  >
-                    VIEW ON SUPERTEAM ↗
-                  </a>
-                </div>
-              )}
-            </div>
-          );
-        })}
+      <div style={{ marginBottom: 14 }}>
+        <p style={{ fontSize: "12px", color: "#ccccdd", marginBottom: 6, lineHeight: 1.5 }}>
+          Get paid to work on Solana — tasks for designers, devs, and writers.
+        </p>
+        <p style={{ fontSize: "10px", color: "#14F195", marginBottom: 5 }}>
+          Rewards from $50 to $5,000+ · Paid in USDC · Open to everyone
+        </p>
+        <p style={{ fontSize: "10px", color: "#777788", lineHeight: 1.5 }}>
+          Whether you have 2 hours or 2 weeks, there's something here for you.
+        </p>
       </div>
 
-      <div className="flex gap-2 mt-3">
-        <a href="https://earn.superteam.fun" target="_blank" rel="noopener noreferrer"
-          style={{ flex: 1, background: "rgba(153,69,255,0.15)", color: "#9945FF", border: "1px solid rgba(153,69,255,0.3)", borderRadius: 8, padding: "10px 0", textAlign: "center", fontFamily: '"Press Start 2P", monospace', fontSize: "8px", textDecoration: "none", display: "block" }}>
-          BROWSE ALL BOUNTIES ↗
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 12 }}>
+        {EARN_CATEGORIES.map((cat) => (
+          <div
+            key={cat.type}
+            onClick={() => setSelected(cat)}
+            style={{
+              background: "#12122a",
+              border: `1px solid ${cat.color}33`,
+              borderRadius: 8,
+              padding: 12,
+              cursor: "pointer",
+              transition: "border-color 0.15s",
+            }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.borderColor = `${cat.color}66`; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.borderColor = `${cat.color}33`; }}
+          >
+            <div style={{ fontSize: "11px", color: cat.color, fontWeight: "bold", marginBottom: 4 }}>
+              {cat.label}
+            </div>
+            <div style={{ fontSize: "10px", color: "#777788", marginBottom: 10 }}>
+              {cat.sublabel}
+            </div>
+            <a
+              href={cat.viewAllUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              style={{ fontSize: "9px", color: cat.color, textDecoration: "none", borderBottom: `1px solid ${cat.color}44`, paddingBottom: 1 }}
+            >
+              View All →
+            </a>
+          </div>
+        ))}
+      </div>
+
+      <button
+        onClick={onClose}
+        style={{ background: "transparent", border: "1px solid #333344", color: "#666677", borderRadius: 8, padding: "8px 0", cursor: "pointer", fontSize: 12, width: "100%" }}
+      >
+        ESC
+      </button>
+    </>
+  );
+}
+
+function EarnListingsStage({
+  category,
+  onBack,
+  onClose,
+}: {
+  category: EarnCategory;
+  onBack: () => void;
+  onClose: () => void;
+}) {
+  const [listings, setListings] = useState<EarnListing[]>([]);
+  const [loading, setLoading]   = useState(true);
+  const [failed, setFailed]     = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setFailed(false);
+
+    import("@/game/solana/superteamEarn").then(({ fetchEarnListings }) => {
+      fetchEarnListings(category.type, 5)
+        .then((items) => {
+          if (!cancelled) { setListings(items); setLoading(false); }
+        })
+        .catch(() => {
+          if (!cancelled) { setFailed(true); setLoading(false); }
+        });
+    });
+
+    return () => { cancelled = true; };
+  }, [category.type]);
+
+  const formatDeadline = (deadline: string | null) => {
+    if (!deadline) return "Open";
+    try {
+      const d = new Date(deadline);
+      return `Due ${d.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`;
+    } catch {
+      return "Open";
+    }
+  };
+
+  const truncate = (s: string, n: number) => (s.length > n ? s.slice(0, n) + "…" : s);
+
+  const isGrants = category.type === "grant";
+
+  return (
+    <>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+        <button
+          onClick={onBack}
+          style={{ background: "transparent", border: `1px solid ${category.color}44`, color: category.color, borderRadius: 6, padding: "4px 10px", cursor: "pointer", fontFamily: '"Press Start 2P", monospace', fontSize: "8px" }}
+        >
+          ← BACK
+        </button>
+        <h3 style={{ fontFamily: '"Press Start 2P", monospace', fontSize: "10px", color: category.color, margin: 0 }}>
+          {category.label.toUpperCase()}
+        </h3>
+      </div>
+
+      <div style={{ maxHeight: isGrants ? 360 : 280, overflowY: "auto" }}>
+
+        {/* ── Grants: informational panel (always shown) ── */}
+        {isGrants && (
+          <div style={{ marginBottom: 14 }}>
+            <p style={{ fontSize: "11px", color: "#888899", marginBottom: 10, lineHeight: 1.6 }}>
+              Equity-free funding to build something real on Solana — no pitch deck, no investor meetings.
+            </p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 10 }}>
+              <StepCard
+                number={1}
+                title="What is a grant?"
+                color="#9945FF"
+                description="Non-dilutive support — no equity taken. You keep 100% of your project and ship on your own terms."
+              />
+              <StepCard
+                number={2}
+                title="Who can apply?"
+                color="#00D1FF"
+                description="Developers, designers, researchers, and community builders with a clear idea and the skills to ship it."
+              />
+              <StepCard
+                number={3}
+                title="How much can I get?"
+                color="#14F195"
+                description="Community grants start at a few hundred USDC. Larger ecosystem grants can reach $50,000+. Always paid in USDC."
+              />
+              <StepCard
+                number={4}
+                title="How do I apply?"
+                color="#FFD700"
+                description="Browse open grants, write a short proposal. Most decisions take 1–3 weeks. No VC meetings required."
+              />
+            </div>
+            {/* Divider before live listings */}
+            <div style={{ fontSize: "9px", color: "#333344", textAlign: "center", marginBottom: 10, letterSpacing: 2 }}>
+              ── CURRENT OPEN GRANTS ──
+            </div>
+          </div>
+        )}
+
+        {/* ── Loading state ── */}
+        {loading && (
+          <div style={{ textAlign: "center", padding: "24px 0", color: "#555566", fontSize: "11px" }}>
+            Loading listings…
+          </div>
+        )}
+
+        {/* ── Empty / error state ── */}
+        {!loading && (failed || listings.length === 0) && (
+          <div style={{ textAlign: "center", padding: isGrants ? "12px 0" : "20px 0" }}>
+            <div style={{ fontSize: "11px", color: "#777788", marginBottom: 12, lineHeight: 1.6 }}>
+              {failed
+                ? "Couldn't load listings right now."
+                : isGrants
+                  ? "No open grants at the moment. New rounds open regularly — check back soon."
+                  : "No open listings right now. Check back soon!"}
+            </div>
+            <a
+              href={category.viewAllUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ fontSize: "10px", color: category.color, textDecoration: "none" }}
+            >
+              Browse all {category.label.toLowerCase()} →
+            </a>
+          </div>
+        )}
+
+        {/* ── Live listings ── */}
+        {!loading && !failed && listings.map((listing, i) => (
+          <a
+            key={i}
+            href={`https://superteam.fun/earn/listings/${listing.slug}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              display: "block",
+              background: "#12122a",
+              border: "1px solid rgba(255,255,255,0.04)",
+              borderRadius: 8,
+              padding: 12,
+              marginBottom: 8,
+              textDecoration: "none",
+              transition: "border-color 0.15s",
+            }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLAnchorElement).style.borderColor = `${category.color}33`; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLAnchorElement).style.borderColor = "rgba(255,255,255,0.04)"; }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ color: "#ccccdd", fontSize: "12px", marginBottom: 3 }}>
+                  {truncate(listing.title, 40)}
+                </div>
+                <div style={{ fontSize: "10px", color: "#555566" }}>{listing.sponsorName}</div>
+              </div>
+              <div style={{ textAlign: "right", flexShrink: 0 }}>
+                <div style={{ fontFamily: '"Press Start 2P", monospace', fontSize: "9px", color: category.color }}>
+                  {listing.rewardAmount ? `$${listing.rewardAmount} ${listing.token}` : "Variable"}
+                </div>
+                <div style={{ fontSize: "9px", color: "#555566", marginTop: 3 }}>
+                  {formatDeadline(listing.deadline)}
+                </div>
+              </div>
+            </div>
+          </a>
+        ))}
+      </div>
+
+      <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+        <a
+          href={category.viewAllUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{ flex: 1, background: `${category.color}18`, color: category.color, border: `1px solid ${category.color}33`, borderRadius: 8, padding: "10px 0", textAlign: "center", fontFamily: '"Press Start 2P", monospace', fontSize: "8px", textDecoration: "none", display: "block" }}
+        >
+          SEE ALL {category.label.toUpperCase()} →
         </a>
-        <button onClick={onClose} style={{ background: "transparent", border: "1px solid #333344", color: "#666677", borderRadius: 8, padding: "0 16px", cursor: "pointer", fontSize: 12 }}>ESC</button>
+        <button
+          onClick={onClose}
+          style={{ background: "transparent", border: "1px solid #333344", color: "#666677", borderRadius: 8, padding: "0 16px", cursor: "pointer", fontSize: 12 }}
+        >
+          ESC
+        </button>
       </div>
     </>
   );
