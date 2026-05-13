@@ -105,6 +105,25 @@ pub mod sol_city {
         Ok(())
     }
 
+    /// Records a mini-game result via session key — no wallet popup, routes
+    /// through the Magic Router to the ephemeral rollup if the PDA is delegated.
+    ///
+    /// success=true  → score += score_delta, bounty_count += 1
+    /// success=false → last_active updated only (loss is recorded, no penalty)
+    pub fn record_mini_game_session(
+        ctx: Context<UpdatePlayerSession>,
+        success: bool,
+        score_delta: u32,
+    ) -> Result<()> {
+        let player = &mut ctx.accounts.player;
+        if success {
+            player.score = player.score.saturating_add(score_delta);
+            player.bounty_count = player.bounty_count.saturating_add(1);
+        }
+        player.last_active = Clock::get()?.unix_timestamp;
+        Ok(())
+    }
+
     pub fn change_outfit(ctx: Context<UpdatePlayer>, outfit_id: u8) -> Result<()> {
         let player = &mut ctx.accounts.player;
         player.outfit_id = outfit_id;

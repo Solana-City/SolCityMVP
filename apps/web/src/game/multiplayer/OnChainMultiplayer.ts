@@ -15,6 +15,7 @@ import {
   buildRecordSwapIx,
   buildRecordTransferIx,
   buildRecordBountyIx,
+  buildRecordMiniGameSessionIx,
   isProgramDeployed,
 } from "../solana/instructions";
 import { derivePlayerPDA, SOL_CITY_PROGRAM_ID } from "../solana/program";
@@ -287,6 +288,47 @@ export class OnChainMultiplayer {
       transactionLog.markConfirmed(entry.id, sig);
     } catch (err: any) {
       transactionLog.markFailed(entry.id, err?.message ?? "record failed");
+    }
+  }
+
+  /**
+   * Records a mini-game result via session key — no wallet popup.
+   * Sends to the ephemeral rollup through the Magic Router.
+   * Win: score += 100, bounty_count += 1. Loss: last_active only.
+   * Falls back to transactionLog simulation when program is not deployed.
+   */
+  async recordMiniGame(success: boolean): Promise<void> {
+    const label = success ? "Mini-game win" : "Mini-game loss";
+    const entry = transactionLog.record({
+      kind: "bounty", layer: "ephemeral", label, status: "pending",
+    });
+
+    if (!this.wallet || !isProgramDeployed()) {
+      transactionLog.markConfirmed(entry.id, "sim:minigame");
+      return;
+    }
+
+    try {
+      const sessionKey = this.sessionKeys.getSessionPublicKey();
+      const ix = buildRecordMiniGameSessionIx(
+        this.wallet, sessionKey, success, success ? 100 : 0
+      );
+
+      const tx = new Transaction().add(ix);
+      tx.feePayer = sessionKey;
+
+      const { blockhash } = await this.routerConnection.getLatestBlockhashForTransaction(tx);
+      tx.recentBlockhash = blockhash;
+      this.sessionKeys.signTransaction(tx);
+
+      const sig = await this.routerConnection.sendRawTransaction(tx.serialize(), {
+        skipPreflight: true,
+        preflightCommitment: "processed",
+      });
+      transactionLog.markConfirmed(entry.id, sig);
+      console.log(`[Multiplayer] mini-game ${success ? "win" : "loss"} recorded:`, sig.slice(0, 12));
+    } catch (err: any) {
+      transactionLog.markFailed(entry.id, err?.message ?? "mini-game record failed");
     }
   }
 

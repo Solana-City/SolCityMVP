@@ -46,11 +46,12 @@ const DISC = {
   revokeSession:         ixDiscriminator("revoke_session"),
   updatePosition:        ixDiscriminator("update_position"),
   updatePositionSession: ixDiscriminator("update_position_session"),
-  recordSwap:            ixDiscriminator("record_swap"),
-  recordTransfer:        ixDiscriminator("record_transfer"),
-  recordBounty:          ixDiscriminator("record_bounty"),
-  changeOutfit:          ixDiscriminator("change_outfit"),
-  delegate:              ixDiscriminator("delegate"),
+  recordSwap:              ixDiscriminator("record_swap"),
+  recordTransfer:          ixDiscriminator("record_transfer"),
+  recordBounty:            ixDiscriminator("record_bounty"),
+  recordMiniGameSession:   ixDiscriminator("record_mini_game_session"),
+  changeOutfit:            ixDiscriminator("change_outfit"),
+  delegate:                ixDiscriminator("delegate"),
 } as const;
 
 // ── Argument packers ────────────────────────────────────────────────────
@@ -234,6 +235,35 @@ export function buildRecordBountyIx(authority: PublicKey): TransactionInstructio
       { pubkey: authority, isSigner: true, isWritable: false },
     ],
     data: DISC.recordBounty,
+  });
+}
+
+/**
+ * Builds `record_mini_game_session` — signed by session key, zero wallet popups.
+ * Routes to the ephemeral rollup via Magic Router when the PDA is delegated.
+ *
+ * success=true  → score += scoreDelta, bounty_count += 1 (mini-game wins tracked here)
+ * success=false → only last_active is updated
+ */
+export function buildRecordMiniGameSessionIx(
+  playerWallet: PublicKey,
+  sessionKey: PublicKey,
+  success: boolean,
+  scoreDelta: number,
+): TransactionInstruction {
+  const [playerPda] = derivePlayerPDA(playerWallet);
+  const data = Buffer.concat([
+    DISC.recordMiniGameSession,
+    Buffer.from([success ? 1 : 0]),  // bool as u8
+    packU32LE(Math.max(0, scoreDelta)),
+  ]);
+  return new TransactionInstruction({
+    programId: SOL_CITY_PROGRAM_ID,
+    keys: [
+      { pubkey: playerPda, isSigner: false, isWritable: true },
+      { pubkey: sessionKey, isSigner: true, isWritable: false },
+    ],
+    data,
   });
 }
 

@@ -358,6 +358,10 @@ export class CityScene extends Phaser.Scene {
       this.scene.resume();
       this.interactionBlocked = false;
     });
+    // Record result to ephemeral rollup via session key — no wallet popup.
+    this.game.events.on("minigame:result", ({ success }: { success: boolean }) => {
+      this.network?.recordMiniGame(success);
+    });
   }
 
   update(): void {

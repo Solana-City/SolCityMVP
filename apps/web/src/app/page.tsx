@@ -99,11 +99,11 @@ export default function Home() {
     game?.events.emit("minigame:close");
   }, [game]);
 
-  // On-chain settlement hook: add Anchor calls here before the overlay closes.
-  // e.g. if (activeMiniGame?.id === "food-cart") { await settleOrder(result); }
-  const handleMiniGameResult = useCallback(async (_result: MiniGameResult) => {
+  // Records result to the ephemeral rollup (session key, no popup), then closes.
+  const handleMiniGameResult = useCallback(async (result: MiniGameResult) => {
+    game?.events.emit("minigame:result", { success: result.success });
     handleMiniGameClose();
-  }, [handleMiniGameClose]);
+  }, [game, handleMiniGameClose]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
