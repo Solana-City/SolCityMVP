@@ -123,6 +123,23 @@ export class CityScene extends Phaser.Scene {
     for (const cl of this.collisionLayers) {
       this.physics.add.collider(container, cl);
     }
+
+    // Invisible walls — MagicBlock building sides (rows 103-111 lack tile-level
+    // collision on the outer columns, so the player can slip inside from the sides).
+    const T = tileSize;
+    const mbWalls = this.physics.add.staticGroup();
+    const addWall = (wx: number, wy: number, w: number, h: number) => {
+      const r = this.add.rectangle(wx, wy, w, h).setVisible(false);
+      this.physics.add.existing(r, true);
+      mbWalls.add(r);
+    };
+    // Left outer wall: col 111, rows 103-111
+    addWall(111 * T + T / 2, 103 * T + (9 * T) / 2, T, 9 * T);
+    // Right outer wall: col 120, rows 103-111
+    addWall(120 * T + T / 2, 103 * T + (9 * T) / 2, T, 9 * T);
+    // Top cap: cols 111-120, rows 103-108 (no tile collision above the inner wall at row 109)
+    addWall(111 * T + (10 * T) / 2, 103 * T + (6 * T) / 2, 10 * T, 6 * T);
+    this.physics.add.collider(container, mbWalls);
     this.physics.world.setBounds(0, 0, map.widthInPixels, map.heightInPixels);
     this.cameras.main.setBounds(0, 0, map.widthInPixels, map.heightInPixels);
 
