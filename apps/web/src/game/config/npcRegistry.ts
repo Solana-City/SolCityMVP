@@ -1,7 +1,9 @@
 export interface NPCAction {
-  type: "tutor" | "swap" | "transfer" | "bounties" | "link" | "placeholder" | "private-payment";
+  type: "tutor" | "swap" | "transfer" | "bounties" | "link" | "placeholder" | "private-payment" | "minigame";
   label: string;
   url?: string;
+  miniGameId?: string;
+  orderType?: "burger" | "sushi";
 }
 
 export interface NPCDefinition {
@@ -46,6 +48,22 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     ],
     action: { type: "tutor", label: "Got it!" },
     spriteKey: "avatar-sol-guide",
+  },
+  {
+    id: "sushi-man",
+    name: "Sushi Man",
+    role: "Food Cart",
+    tileX: 105,
+    tileY: 45,
+    color: 0xff6b35,
+    dialog: [
+      "Irasshaimase! Welcome to my cart.",
+      "Orders are piling up — burger or sushi, it doesn't matter.",
+      "I just need someone who can assemble them in the right order, fast.",
+      "Think you've got the hands for it?",
+    ],
+    action: { type: "minigame", label: "Start cooking!", miniGameId: "food-cart", orderType: "sushi" },
+    spriteKey: "avatar-brawly",
   },
   {
     id: "swap-npc",

@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback } from "react";
 import dynamic from "next/dynamic";
 import type { NPCDefinition, NPCAction } from "@/game/config/npcRegistry";
+import type { MiniGameContext, MiniGameResult } from "@/game/minigames/types";
+import { launch as launchMiniGame } from "@/game/minigames";
 import { usePinchZoom } from "@/ui/usePinchZoom";
 
 // All Solana/wallet-adapter code must be client-only — these packages
@@ -20,11 +22,13 @@ const HUD                 = dynamic(() => import("@/ui/HUD"),                 { 
 const WalletSignBridge    = dynamic(() => import("@/ui/WalletSignBridge"),    { ssr: false });
 const MobileControls      = dynamic(() => import("@/ui/MobileControls"),      { ssr: false });
 const ZoomControl         = dynamic(() => import("@/ui/ZoomControl"),         { ssr: false });
+const MiniGameOverlay     = dynamic(() => import("@/ui/MiniGameOverlay"),     { ssr: false });
 
 export default function Home() {
   const [game, setGame] = useState<Phaser.Game | null>(null);
   const [activeNPC, setActiveNPC] = useState<NPCDefinition | null>(null);
   const [activeAction, setActiveAction] = useState<NPCAction | null>(null);
+  const [activeMiniGame, setActiveMiniGame] = useState<{ id: string; context: MiniGameContext } | null>(null);
   const [profileOpen, setProfileOpen] = useState(false);
   const [logOpen, setLogOpen] = useState(false);
   // Chat hidden by default on touch devices, visible on desktop
@@ -43,6 +47,13 @@ export default function Home() {
     return () => { game.events.off("npc:interact", handler); };
   }, [game]);
 
+  useEffect(() => {
+    if (!game) return;
+    const handler = (data: { id: string; context: MiniGameContext }) => setActiveMiniGame(data);
+    game.events.on("minigame:launch", handler);
+    return () => { game.events.off("minigame:launch", handler); };
+  }, [game]);
+
   const handleDialogClose = useCallback(() => {
     setActiveNPC(null);
     game?.events.emit("npc:close");
@@ -59,6 +70,22 @@ export default function Home() {
       game?.events.emit("npc:close");
       return;
     }
+    if (action.type === "minigame") {
+      if (action.miniGameId) {
+        // Build a stub context — replace null PDAs with real on-chain data when wiring production
+        launchMiniGame(action.miniGameId, {
+          wallet: null,
+          cartPda:       null as any, // eslint-disable-line @typescript-eslint/no-explicit-any
+          orderPda:      null as any, // eslint-disable-line @typescript-eslint/no-explicit-any
+          orderType:     action.orderType ?? "sushi",
+          expiresAt:     Math.floor(Date.now() / 1000) + 60,
+          amountLamports: 10_000_000,
+        });
+        // Don't emit npc:close — CityScene is paused by minigame:launch;
+        // minigame:close will resume it when the game ends.
+      }
+      return;
+    }
     setActiveAction(action);
   }, [game]);
 
@@ -66,6 +93,17 @@ export default function Home() {
     setActiveAction(null);
     game?.events.emit("npc:close");
   }, [game]);
+
+  const handleMiniGameClose = useCallback(() => {
+    setActiveMiniGame(null);
+    game?.events.emit("minigame:close");
+  }, [game]);
+
+  // On-chain settlement hook: add Anchor calls here before the overlay closes.
+  // e.g. if (activeMiniGame?.id === "food-cart") { await settleOrder(result); }
+  const handleMiniGameResult = useCallback(async (_result: MiniGameResult) => {
+    handleMiniGameClose();
+  }, [handleMiniGameClose]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -115,6 +153,14 @@ export default function Home() {
         <NPCDialog npc={activeNPC} onClose={handleDialogClose} onAction={handleAction} />
         <ActionPanel action={activeAction} onClose={handleActionClose} />
         <ProfilePanel gameRef={game} isOpen={profileOpen} onClose={() => setProfileOpen(false)} />
+        {activeMiniGame && (
+          <MiniGameOverlay
+            id={activeMiniGame.id}
+            context={activeMiniGame.context}
+            onResult={handleMiniGameResult}
+            onClose={handleMiniGameClose}
+          />
+        )}
       </main>
     </SolanaProvider>
   );

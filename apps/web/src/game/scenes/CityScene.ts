@@ -345,6 +345,19 @@ export class CityScene extends Phaser.Scene {
     this.game.events.on("game:swap",     () => this.network?.recordAction("swap"));
     this.game.events.on("game:transfer", () => this.network?.recordAction("transfer"));
     this.game.events.on("game:bounty",   () => this.network?.recordAction("bounty"));
+
+    // Mini-game lifecycle — pause/resume the scene around fullscreen overlays.
+    // game.events (not scene.events) keeps the listener alive while paused.
+    this.game.events.on("minigame:launch", () => {
+      this.interactionBlocked = true;
+      this.playerBody.setVelocity(0);
+      this.avatar.idle();
+      this.scene.pause();
+    });
+    this.game.events.on("minigame:close", () => {
+      this.scene.resume();
+      this.interactionBlocked = false;
+    });
   }
 
   update(): void {
