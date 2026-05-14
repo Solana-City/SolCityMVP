@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { profileManager, type PlayerProfile } from "@/game/config/profileManager";
 import { progressionBus } from "@/game/progression/progressionBus";
 
@@ -19,6 +19,10 @@ export default function HUD() {
     typeof window === "undefined" ? null : profileManager.get()
   );
   const [pulse, setPulse] = useState(0);
+  const isTouch = useMemo(
+    () => typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches,
+    []
+  );
 
   useEffect(() => {
     // Sync on mount.
@@ -42,6 +46,40 @@ export default function HUD() {
 
   if (!profile) return null;
 
+  // ── Mobile: minimal score pill ───────────────────────────────────────────
+  if (isTouch) {
+    return (
+      <div
+        className="fixed z-20 rounded-lg px-3 py-1.5"
+        style={{
+          top: "max(env(safe-area-inset-top, 0px), 12px)",
+          left: "max(env(safe-area-inset-left, 0px), 12px)",
+          background: "rgba(10,10,30,0.80)",
+          border: "1px solid rgba(153,69,255,0.2)",
+          fontFamily: '"Press Start 2P", monospace',
+          backdropFilter: "blur(4px)",
+        }}
+      >
+        <span
+          key={pulse}
+          className="score-value"
+          style={{ fontSize: "10px", color: "#14F195" }}
+        >
+          {profile.score.toLocaleString()}
+        </span>
+        <style jsx>{`
+          .score-value { display: inline-block; animation: scorePulse 0.6s ease-out; }
+          @keyframes scorePulse {
+            0%   { transform: scale(1);    color: #14F195; }
+            40%  { transform: scale(1.3);  color: #FFFFFF; }
+            100% { transform: scale(1);    color: #14F195; }
+          }
+        `}</style>
+      </div>
+    );
+  }
+
+  // ── Desktop: full score + counters ───────────────────────────────────────
   return (
     <div
       className="fixed top-4 left-4 z-20 rounded-lg px-4 py-3"

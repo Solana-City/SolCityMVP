@@ -6,6 +6,18 @@ import { LAMPORTS_PER_SOL } from "@solana/web3.js";
 import { useState, useEffect, useCallback } from "react";
 import { useSeekerDevice } from "@/ui/useSeekerDevice";
 
+function useIsTouch() {
+  const [isTouch, setIsTouch] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(pointer: coarse)");
+    setIsTouch(mq.matches);
+    const onChange = (e: MediaQueryListEvent) => setIsTouch(e.matches);
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
+  return isTouch;
+}
+
 interface WalletBarProps {
   onWalletChange?: (wallet: string | null) => void;
 }
@@ -16,6 +28,7 @@ export default function WalletBar({ onWalletChange }: WalletBarProps) {
   const { setVisible } = useWalletModal();
   const [balance, setBalance] = useState<number | null>(null);
   const { isAndroid, hasSGT } = useSeekerDevice();
+  const isTouch = useIsTouch();
 
   const address = publicKey?.toBase58() ?? null;
   const shortAddr = address
@@ -116,20 +129,20 @@ export default function WalletBar({ onWalletChange }: WalletBarProps) {
       )}
       <button
         onClick={handleClick}
-        className="text-xs px-4 py-2 rounded cursor-pointer transition-colors"
+        className="rounded cursor-pointer transition-colors"
         style={{
-          background: connected
-            ? "rgba(20,241,149,0.12)"
-            : "rgba(153,69,255,0.8)",
+          background: connected ? "rgba(20,241,149,0.12)" : "rgba(153,69,255,0.8)",
           color: connected ? "#14F195" : "#ffffff",
-          border: connected
-            ? "1px solid rgba(20,241,149,0.3)"
-            : "1px solid rgba(153,69,255,0.5)",
+          border: connected ? "1px solid rgba(20,241,149,0.3)" : "1px solid rgba(153,69,255,0.5)",
           fontFamily: '"Press Start 2P", monospace',
           fontSize: "9px",
+          padding: isTouch ? "10px 14px" : "6px 16px",
+          minHeight: 44,
+          display: "flex",
+          alignItems: "center",
         }}
       >
-        {connected ? "CONNECTED" : "CONNECT WALLET"}
+        {connected ? (isTouch ? "●" : "CONNECTED") : (isTouch ? "CONNECT" : "CONNECT WALLET")}
       </button>
     </div>
   );

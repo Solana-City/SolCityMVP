@@ -25,8 +25,21 @@ const ZoomControl         = dynamic(() => import("@/ui/ZoomControl"),         { 
 const MiniGameOverlay     = dynamic(() => import("@/ui/MiniGameOverlay"),     { ssr: false });
 const MwaRegistration     = dynamic(() => import("@/ui/MwaRegistration"),     { ssr: false });
 
+function useIsTouch() {
+  const [isTouch, setIsTouch] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(pointer: coarse)");
+    setIsTouch(mq.matches);
+    const onChange = (e: MediaQueryListEvent) => setIsTouch(e.matches);
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
+  return isTouch;
+}
+
 export default function Home() {
   const [game, setGame] = useState<Phaser.Game | null>(null);
+  const isTouch = useIsTouch();
   const [activeNPC, setActiveNPC] = useState<NPCDefinition | null>(null);
   const [activeAction, setActiveAction] = useState<NPCAction | null>(null);
   const [activeMiniGame, setActiveMiniGame] = useState<{ id: string; context: MiniGameContext } | null>(null);
@@ -140,14 +153,25 @@ export default function Home() {
         <HUD />
 
         {/* Top-right cluster: PFP + wallet + tx log + zoom */}
-        <div className="fixed top-4 right-4 z-20 flex flex-col items-end gap-2">
+        <div
+          className="fixed z-20 flex flex-col items-end gap-2"
+          style={{
+            top: "max(env(safe-area-inset-top, 0px), 12px)",
+            right: "max(env(safe-area-inset-right, 0px), 12px)",
+          }}
+        >
           <PfpButton gameRef={game} onClick={() => setProfileOpen(true)} />
           <WalletBar onWalletChange={handleWalletChange} />
-          <TransactionLogPanel
-            isOpen={logOpen}
-            onToggle={() => setLogOpen((v) => !v)}
-          />
-          <ZoomControl />
+          {/* Desktop only — too much chrome on mobile */}
+          {!isTouch && (
+            <>
+              <TransactionLogPanel
+                isOpen={logOpen}
+                onToggle={() => setLogOpen((v) => !v)}
+              />
+              <ZoomControl />
+            </>
+          )}
         </div>
 
         <ToastStack />
