@@ -137,8 +137,9 @@ export class CityScene extends Phaser.Scene {
     addWall(111 * T + T / 2, 103 * T + (9 * T) / 2, T, 9 * T);
     // Right outer wall: col 120, rows 103-111
     addWall(120 * T + T / 2, 103 * T + (9 * T) / 2, T, 9 * T);
-    // Top cap: cols 111-120, rows 103-108 (no tile collision above the inner wall at row 109)
-    addWall(111 * T + (10 * T) / 2, 103 * T + (6 * T) / 2, 10 * T, 6 * T);
+    // Top cap removed — the 6-row cap (rows 103-108) was blocking the back
+    // street that runs north of the building. The tile-level collision on the
+    // MagicBlock roof tiles already stops top entry; side walls above suffice.
     this.physics.add.collider(container, mbWalls);
     this.physics.world.setBounds(0, 0, map.widthInPixels, map.heightInPixels);
     this.cameras.main.setBounds(0, 0, map.widthInPixels, map.heightInPixels);
