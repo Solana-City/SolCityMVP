@@ -16,6 +16,8 @@ export class CityScene extends Phaser.Scene {
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
   private wasd!: Record<string, Phaser.Input.Keyboard.Key>;
   private collisionLayers: Phaser.Tilemaps.TilemapLayer[] = [];
+  /** Layers that can render above the player — faded when they occlude the player. */
+  private overheadLayers: Phaser.Tilemaps.TilemapLayer[] = [];
 
   private network!: OnChainMultiplayer;
   private chat!: ChatManager;
@@ -92,6 +94,8 @@ export class CityScene extends Phaser.Scene {
             }
           }
           layer.setDepth(maxBottomY);
+          // Y-sorted layers can render above the player → candidate for fade.
+          this.overheadLayers.push(layer);
         } else {
           // Building / fountain / large structure → always behind the player.
           layer.setDepth(i);
@@ -100,6 +104,8 @@ export class CityScene extends Phaser.Scene {
       } else if (FOREGROUND_PREFIXES.some(p => layerName.startsWith(p))) {
         // Pure-canopy layer (no collision) → always above the player.
         layer.setDepth(FOREGROUND_DEPTH);
+        // Always above the player → always a fade candidate.
+        this.overheadLayers.push(layer);
       } else {
         // Ground / background layer → always below the player.
         layer.setDepth(i);
@@ -422,6 +428,26 @@ export class CityScene extends Phaser.Scene {
     }
 
     this.avatar.updateDepth();
+
+    // ── Overhead fade ─────────────────────────────────────────────────────
+    // When a y-sorted or foreground layer renders above the player AND has a
+    // tile at the player's world position, smoothly fade it to 0.25 so the
+    // player (and NPCs / remote players) remain visible through rooftops and
+    // tree canopies. Lerp ensures a smooth transition both ways.
+    {
+      const px = this.avatar.x;
+      const py = this.avatar.y;
+      for (const layer of this.overheadLayers) {
+        // Layer is "overhead" only when it draws above the player's depth.
+        const isAbove = layer.depth > py;
+        const target = isAbove && layer.getTileAtWorldXY(px, py) !== null
+          ? 0.25
+          : 1.0;
+        if (Math.abs(layer.alpha - target) > 0.004) {
+          layer.alpha = Phaser.Math.Linear(layer.alpha, target, 0.12);
+        }
+      }
+    }
 
     // NPC proximity checks
     for (const npc of this.npcSprites) {
