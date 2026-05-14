@@ -124,8 +124,15 @@ export class CityScene extends Phaser.Scene {
       this.physics.add.collider(container, cl);
     }
 
-    // Invisible walls — MagicBlock building sides (rows 103-111 lack tile-level
-    // collision on the outer columns, so the player can slip inside from the sides).
+    // Invisible walls — MagicBlock building outer columns patch.
+    //
+    // Tileset analysis (cols 111-120):
+    //   rows 103-108 → all overhead/decorative tiles (no collision) — this is
+    //                   the back street; players must walk through freely.
+    //   rows 109-111 → col 111 and col 120 have no collision tile; cols 112-119 do.
+    //   row  112+    → full collision on all columns; no patch needed.
+    //
+    // Therefore: only patch the two outer columns for the 3-row gap (109-111).
     const T = tileSize;
     const mbWalls = this.physics.add.staticGroup();
     const addWall = (wx: number, wy: number, w: number, h: number) => {
@@ -133,13 +140,10 @@ export class CityScene extends Phaser.Scene {
       this.physics.add.existing(r, true);
       mbWalls.add(r);
     };
-    // Left outer wall: col 111, rows 103-111
-    addWall(111 * T + T / 2, 103 * T + (9 * T) / 2, T, 9 * T);
-    // Right outer wall: col 120, rows 103-111
-    addWall(120 * T + T / 2, 103 * T + (9 * T) / 2, T, 9 * T);
-    // Top cap removed — the 6-row cap (rows 103-108) was blocking the back
-    // street that runs north of the building. The tile-level collision on the
-    // MagicBlock roof tiles already stops top entry; side walls above suffice.
+    // Left outer wall: col 111, rows 109-111 (3 rows)
+    addWall(111 * T + T / 2, 109 * T + (3 * T) / 2, T, 3 * T);
+    // Right outer wall: col 120, rows 109-111 (3 rows)
+    addWall(120 * T + T / 2, 109 * T + (3 * T) / 2, T, 3 * T);
     this.physics.add.collider(container, mbWalls);
     this.physics.world.setBounds(0, 0, map.widthInPixels, map.heightInPixels);
     this.cameras.main.setBounds(0, 0, map.widthInPixels, map.heightInPixels);
