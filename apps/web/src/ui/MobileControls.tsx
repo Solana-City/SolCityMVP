@@ -94,22 +94,32 @@ function ActionButton({
   label,
   color,
   onPress,
+  size = 64,
 }: {
   label: string;
   color: string;
   onPress: () => void;
+  size?: number;
 }) {
+  const [pressed, setPressed] = useState(false);
+
   return (
     <button
-      onPointerDown={(e) => { e.preventDefault(); onPress(); }}
+      onPointerDown={(e) => {
+        e.preventDefault();
+        setPressed(true);
+        onPress();
+      }}
+      onPointerUp={() => setPressed(false)}
+      onPointerCancel={() => setPressed(false)}
       style={{
-        width: 60,
-        height: 60,
+        width: size,
+        height: size,
         borderRadius: "50%",
-        background: `${color}1a`,
-        border: `2px solid ${color}88`,
+        background: pressed ? `${color}40` : `${color}1a`,
+        border: `2px solid ${pressed ? color : `${color}88`}`,
         color,
-        fontSize: "11px",
+        fontSize: "10px",
         fontFamily: '"Press Start 2P", monospace',
         cursor: "pointer",
         touchAction: "none",
@@ -118,6 +128,9 @@ function ActionButton({
         alignItems: "center",
         justifyContent: "center",
         flexShrink: 0,
+        transform: pressed ? "scale(0.92)" : "scale(1)",
+        transition: "transform 0.08s, background 0.08s, border-color 0.08s",
+        WebkitTapHighlightColor: "transparent",
       }}
     >
       {label}
@@ -141,7 +154,10 @@ export default function MobileControls({ gameRef, chatOpen, onChatToggle }: Mobi
 
   if (!isTouch) return null;
 
-  const handleInteract = () => emitGame("touch:interact");
+  const handleInteract = () => {
+    emitGame("touch:interact");
+    if ("vibrate" in navigator) navigator.vibrate(18); // haptic nudge
+  };
   const handleEmoji = (emoji: (typeof EMOJI_REGISTRY)[number]) => {
     emitGame("emoji:trigger", emoji);
     setShowEmojis(false);
@@ -201,11 +217,12 @@ export default function MobileControls({ gameRef, chatOpen, onChatToggle }: Mobi
 
         {/* Right — action buttons */}
         <div className="pointer-events-auto flex flex-col items-center gap-3">
-          <ActionButton label="[E]" color="#14F195" onPress={handleInteract} />
+          <ActionButton label="ACT" color="#14F195" onPress={handleInteract} size={72} />
           <ActionButton
             label={showEmojis ? "✕" : "☺"}
             color="#9945FF"
             onPress={() => setShowEmojis((v) => !v)}
+            size={56}
           />
         </div>
       </div>

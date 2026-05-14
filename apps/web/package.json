@@ -11,6 +11,7 @@
   "dependencies": {
     "@magicblock-labs/ephemeral-rollups-sdk": "^0.12.0",
     "@noble/hashes": "^1.8.0",
+    "@solana-mobile/wallet-standard-mobile": "^0.5.2",
     "@solana/spl-token": "^0.4.6",
     "@solana/wallet-adapter-base": "^0.9.23",
     "@solana/wallet-adapter-react": "^0.15.35",

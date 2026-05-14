@@ -19,6 +19,15 @@ interface ActionPanelProps {
 }
 
 export default function ActionPanel({ action, onClose }: ActionPanelProps) {
+  const [isTouch, setIsTouch] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(pointer: coarse)");
+    setIsTouch(mq.matches);
+    const onChange = (e: MediaQueryListEvent) => setIsTouch(e.matches);
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
+
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === "Escape") { e.preventDefault(); onClose(); }
@@ -29,6 +38,46 @@ export default function ActionPanel({ action, onClose }: ActionPanelProps) {
 
   if (!action) return null;
 
+  // ── Mobile: bottom-sheet ────────────────────────────────────────────────
+  if (isTouch) {
+    return (
+      <div className="fixed inset-0 z-40 flex items-end justify-center">
+        <div
+          className="absolute inset-0"
+          style={{ background: "rgba(6,10,20,0.55)" }}
+          onClick={onClose}
+        />
+        <div
+          className="relative w-full rounded-t-2xl p-5"
+          style={{
+            background: "rgba(10,10,30,0.98)",
+            border: "1px solid rgba(153,69,255,0.25)",
+            borderBottom: "none",
+            fontFamily: '"Fira Code", monospace',
+            maxHeight: "85dvh",
+            overflowY: "auto",
+            paddingBottom: "max(env(safe-area-inset-bottom, 16px), 24px)",
+          }}
+        >
+          {/* Drag handle */}
+          <div style={{ width: 40, height: 4, borderRadius: 2, background: "rgba(153,69,255,0.35)", margin: "0 auto 16px" }} />
+          <button
+            onClick={onClose}
+            className="absolute top-4 right-4 text-lg cursor-pointer"
+            style={{ background: "none", border: "none", color: "#555566" }}
+          >×</button>
+
+          {action.type === "tutor"           && <TutorPanel           onClose={onClose} />}
+          {action.type === "swap"            && <SwapPanel            onClose={onClose} />}
+          {action.type === "transfer"        && <TransferPanel        onClose={onClose} />}
+          {action.type === "bounties"        && <BountiesPanel        onClose={onClose} />}
+          {action.type === "private-payment" && <PrivatePaymentPanel  onClose={onClose} />}
+        </div>
+      </div>
+    );
+  }
+
+  // ── Desktop: centered modal ─────────────────────────────────────────────
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center">
       <div
@@ -42,6 +91,8 @@ export default function ActionPanel({ action, onClose }: ActionPanelProps) {
           background: "rgba(10,10,30,0.97)",
           border: "1px solid rgba(153,69,255,0.25)",
           fontFamily: '"Fira Code", monospace',
+          maxHeight: "90dvh",
+          overflowY: "auto",
         }}
       >
         <button
@@ -458,7 +509,10 @@ function EarnListingsStage({
 }) {
   const isBounty = category.type === "bounty";
 
-  const [listings, setListings] = useState<EarnListing[]>(isBounty ? CURATED_BOUNTIES : []);
+  const activeBounties = CURATED_BOUNTIES.filter(
+    (b) => !b.deadline || new Date(b.deadline) > new Date()
+  );
+  const [listings, setListings] = useState<EarnListing[]>(isBounty ? activeBounties : []);
   const [loading, setLoading]   = useState(!isBounty);
   const [failed, setFailed]     = useState(false);
 
@@ -750,7 +804,8 @@ function PrivatePaymentPanel({ onClose }: { onClose: () => void }) {
     if (!publicKey || !signTransaction || !authToken) return;
     const parsed = parseFloat(amount);
     if (isNaN(parsed) || parsed <= 0) { setError("Invalid amount"); return; }
-    if (!recipient || recipient.length < 32) { setError("Invalid recipient address"); return; }
+    const { isValidAddress } = await import("@/game/solana/transfer");
+    if (!isValidAddress(recipient)) { setError("Invalid recipient address"); return; }
     if (balance !== null && parsed > balance) { setError("Insufficient private balance"); return; }
 
     setStatus("transferring");
