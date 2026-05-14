@@ -4,6 +4,7 @@ import { useWallet, useConnection } from "@solana/wallet-adapter-react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import { LAMPORTS_PER_SOL } from "@solana/web3.js";
 import { useState, useEffect, useCallback } from "react";
+import { useSeekerDevice } from "@/ui/useSeekerDevice";
 
 interface WalletBarProps {
   onWalletChange?: (wallet: string | null) => void;
@@ -14,6 +15,7 @@ export default function WalletBar({ onWalletChange }: WalletBarProps) {
   const { connection } = useConnection();
   const { setVisible } = useWalletModal();
   const [balance, setBalance] = useState<number | null>(null);
+  const { isAndroid, hasSGT } = useSeekerDevice();
 
   const address = publicKey?.toBase58() ?? null;
   const shortAddr = address
@@ -50,9 +52,24 @@ export default function WalletBar({ onWalletChange }: WalletBarProps) {
 
   return (
     <div
-      className="flex items-center gap-3"
+      className="flex items-center gap-3 flex-wrap justify-end"
       style={{ fontFamily: '"Fira Code", monospace' }}
     >
+      {/* Seeker device badge — shown on Android Chrome, gold if SGT confirmed */}
+      {isAndroid && (
+        <span
+          className="inline-flex items-center gap-1 text-[9px] px-2 py-1 rounded"
+          style={{
+            background: hasSGT ? "rgba(255,215,0,0.15)" : "rgba(153,69,255,0.12)",
+            color: hasSGT ? "#FFD700" : "#9945FF",
+            border: `1px solid ${hasSGT ? "rgba(255,215,0,0.4)" : "rgba(153,69,255,0.3)"}`,
+            fontFamily: '"Press Start 2P", monospace',
+          }}
+          title={hasSGT ? "Seeker Genesis Token holder" : "Android / Seeker device detected"}
+        >
+          {hasSGT ? "⬡ SEEKER" : "📱 MOBILE"}
+        </span>
+      )}
       <span
         className="inline-flex items-center gap-1.5 text-[10px] px-2 py-1 rounded"
         style={{

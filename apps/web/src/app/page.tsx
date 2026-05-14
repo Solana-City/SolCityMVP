@@ -23,6 +23,7 @@ const WalletSignBridge    = dynamic(() => import("@/ui/WalletSignBridge"),    { 
 const MobileControls      = dynamic(() => import("@/ui/MobileControls"),      { ssr: false });
 const ZoomControl         = dynamic(() => import("@/ui/ZoomControl"),         { ssr: false });
 const MiniGameOverlay     = dynamic(() => import("@/ui/MiniGameOverlay"),     { ssr: false });
+const MwaRegistration     = dynamic(() => import("@/ui/MwaRegistration"),     { ssr: false });
 
 export default function Home() {
   const [game, setGame] = useState<Phaser.Game | null>(null);
@@ -128,6 +129,8 @@ export default function Home() {
 
   return (
     <SolanaProvider>
+      {/* Registers Mobile Wallet Adapter on Android/Seeker — no-op elsewhere */}
+      <MwaRegistration />
       {/* Headless bridge so Phaser can request wallet signatures */}
       <WalletSignBridge />
       <main className="w-screen h-screen relative">
