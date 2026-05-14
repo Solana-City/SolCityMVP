@@ -130,8 +130,7 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     action: { type: "private-payment", label: "Send privately" },
     spriteKey: "avatar-juan",
   },
-  // ── Placeholder NPCs (expansion district) ──────────────────────────
-  // Parked here with light dialog until we assign them real roles.
+  // ── Expansion district NPCs ──────────────────────────────────────
   {
     id: "kuka",
     name: "Kuka",
@@ -180,30 +179,33 @@ export const NPC_REGISTRY: NPCDefinition[] = [
   {
     id: "liza",
     name: "Michele",
-    role: "Resident",
+    role: "DRiP Collector",
     tileX: 168,
     tileY: 155,
-    color: 0xcccccc,
+    color: 0x00d1ff,
     dialog: [
-      "Hi! I'm new here too.",
-      "They tell me there will be cool stuff to do soon.",
-      "For now, I'm just people-watching.",
+      "I collect NFTs the way some people collect trading cards — but these ones are free.",
+      "DRiP drops original art from independent creators straight into your Solana wallet. No minting fees, no gas wars.",
+      "Every week I get something new. Some pieces are 1-of-1 gems, others are open editions. All on-chain.",
+      "Subscribe to a creator you like and the drop just arrives. It's the most relaxed way to own art on Solana.",
     ],
-    action: { type: "placeholder", label: "Take care" },
+    action: { type: "link", label: "Open DRiP", url: "https://drip.haus/" },
     spriteKey: "avatar-liza",
   },
   {
     id: "juan",
     name: "Dom",
-    role: "Resident",
+    role: "Solana Mobile",
     tileX: 28,
     tileY: 48,
-    color: 0xcccccc,
+    color: 0x9945ff,
     dialog: [
-      "Nice city, isn't it?",
-      "I hear there's a Superteam Hub south of here. Worth checking out.",
+      "Out here on the frontier — best place to test the Seeker.",
+      "Solana Mobile built a phone for people who actually use crypto. Hardware seed vault, one-tap signing, no extension drama.",
+      "The dApp Store is growing fast. Games, DeFi, wallets — all optimised for mobile-first.",
+      "If you're building on Solana, submitting your PWA to the dApp Store is low-hanging fruit. I'd do it.",
     ],
-    action: { type: "placeholder", label: "Catch you later" },
+    action: { type: "link", label: "Solana Mobile", url: "https://solanamobile.com/" },
     spriteKey: "avatar-juan",
   },
 ];

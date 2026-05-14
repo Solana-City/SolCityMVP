@@ -1,0 +1,30 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cd /c/Users/mazza/Dev/GitHub/SolCityMVP && find . -type f \\\\\\( -name \"*.ts\" -o -name \"*.tsx\" -o -name \"*.rs\" \\\\\\) | head -50)",
+      "Bash(awk '/id:.*/{id=$2} /portrait:/{portrait=$2; print id \" -> \" portrait}' apps/web/src/game/config/npcRegistry.ts)",
+      "Bash(xargs grep -l \"console\\\\.\")",
+      "Bash(grep -rn \"import.*from.*\\\\\"\\\\$\\\\|require.*\\\\$\" apps/web/src --include=\"*.ts\" --include=\"*.tsx\")",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)",
+      "PowerShell(Get-Command gh -ErrorAction SilentlyContinue; Get-Item \"C:\\\\Program Files\\\\GitHub CLI\\\\gh.exe\" -ErrorAction SilentlyContinue; Get-Item \"$env:LOCALAPPDATA\\\\Programs\\\\gh\\\\gh.exe\" -ErrorAction SilentlyContinue)",
+      "Bash(winget --version)",
+      "Bash(export PATH=\"$PATH:/c/Program Files/GitHub CLI\")",
+      "Bash(gh auth *)",
+      "Skill(update-config)",
+      "Skill(update-config:*)",
+      "WebFetch(domain:solanamobile.com)",
+      "WebFetch(domain:docs.solanamobile.com)",
+      "WebFetch(domain:airtable.com)",
+      "Bash(npm install *)",
+      "Bash(python3 -c ' *)",
+      "Bash(node -e ' *)",
+      "Bash(gh run *)",
+      "Bash(dir apps/web/src/ui/)",
+      "Bash(python -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\(json.dumps\\(d.get\\('scripts',{}\\), indent=2\\)\\)\")",
+      "Bash(rm apps/web/scripts/generate-icons.mjs)",
+      "Bash(rmdir apps/web/scripts)"
+    ]
+  }
+}

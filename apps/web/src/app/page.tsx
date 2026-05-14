@@ -86,11 +86,11 @@ export default function Home() {
     }
     if (action.type === "minigame") {
       if (action.miniGameId) {
-        // Build a stub context — replace null PDAs with real on-chain data when wiring production
+        // Build a stub context — PDAs are null until on-chain order accounts are wired in
         launchMiniGame(action.miniGameId, {
           wallet: null,
-          cartPda:       null as any, // eslint-disable-line @typescript-eslint/no-explicit-any
-          orderPda:      null as any, // eslint-disable-line @typescript-eslint/no-explicit-any
+          cartPda:       null,
+          orderPda:      null,
           orderType:     action.orderType ?? "sushi",
           expiresAt:     Math.floor(Date.now() / 1000) + 60,
           amountLamports: 10_000_000,

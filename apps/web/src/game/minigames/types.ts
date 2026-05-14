@@ -5,8 +5,10 @@ export interface MiniGameBaseContext {
 }
 
 export interface FoodCartContext extends MiniGameBaseContext {
-  cartPda: PublicKey;
-  orderPda: PublicKey;
+  /** null until real on-chain order accounts are wired in */
+  cartPda: PublicKey | null;
+  /** null until real on-chain order accounts are wired in */
+  orderPda: PublicKey | null;
   orderType: "burger" | "sushi";
   /** Unix timestamp */
   expiresAt: number;
