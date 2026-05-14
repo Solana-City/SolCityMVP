@@ -18,18 +18,6 @@ export class CityScene extends Phaser.Scene {
   private collisionLayers: Phaser.Tilemaps.TilemapLayer[] = [];
   /** Layers that can render above the player — faded when they occlude the player. */
   private overheadLayers: Phaser.Tilemaps.TilemapLayer[] = [];
-  /** Pure-canopy layers (VegetationTree) — always above, no collision tiles. */
-  private canopyLayers = new Set<Phaser.Tilemaps.TilemapLayer>();
-  /**
-   * Pre-computed target alpha per overhead tile.
-   * Key: non-collision tile; Value: how transparent it should be when the
-   * player is underneath — gradient from 0.82 (just above the solid wall)
-   * to 0.12 (deepest overhead tile). Collision tiles are never stored here.
-   */
-  private overheadGradientAlpha = new Map<Phaser.Tilemaps.TilemapLayer, Map<Phaser.Tilemaps.Tile, number>>();
-  /** Overhead tiles currently being faded (tracked for smooth restoration). */
-  private fadingTiles = new Set<Phaser.Tilemaps.Tile>();
-  private tiledMap!: Phaser.Tilemaps.Tilemap;
 
   private network!: OnChainMultiplayer;
   private chat!: ChatManager;
@@ -51,7 +39,6 @@ export class CityScene extends Phaser.Scene {
   create(): void {
     // ── Tiled map with real sprite art ────────────────────────────────────
     const map = this.make.tilemap({ key: "city-map" });
-    this.tiledMap = map;
     const tileSize  = map.tileWidth;   // 24
     const mapWidth  = map.width;        // 200
     const mapHeight = map.height;       // 200
@@ -117,17 +104,13 @@ export class CityScene extends Phaser.Scene {
       } else if (FOREGROUND_PREFIXES.some(p => layerName.startsWith(p))) {
         // Pure-canopy layer (no collision) → always above the player.
         layer.setDepth(FOREGROUND_DEPTH);
+        // Always above the player → always a fade candidate.
         this.overheadLayers.push(layer);
-        this.canopyLayers.add(layer); // whole-layer fade (no collision reference)
       } else {
         // Ground / background layer → always below the player.
         layer.setDepth(i);
       }
     }
-
-    // Pre-compute per-tile gradient alphas for overhead sections of y-sorted layers.
-    // Must run after all layers are registered in this.overheadLayers.
-    this.precomputeOverheadGradients();
 
     // Spawn at the centre plaza (col 99, row 97 — inside GrassCenter)
     const spawnX = 99  * tileSize + tileSize / 2;
@@ -392,49 +375,6 @@ export class CityScene extends Phaser.Scene {
     });
   }
 
-  // ── Overhead gradient pre-computation ────────────────────────────────────
-  /**
-   * For every y-sorted overhead layer, walks all non-empty, non-collision tiles
-   * and assigns a target alpha based on how many rows above the nearest
-   * collision tile they sit:
-   *   distance 1 (just above the solid wall)  → 0.82  (nearly opaque)
-   *   distance 8+ (deepest overhead tile)     → 0.12  (nearly transparent)
-   *
-   * Pure-canopy layers (VegetationTree) are skipped — they use a simpler
-   * whole-layer fade because they have no collision reference tiles.
-   *
-   * Called once at the end of create() after all layers are registered.
-   */
-  private precomputeOverheadGradients(): void {
-    const map = this.tiledMap;
-    for (const layer of this.overheadLayers) {
-      if (this.canopyLayers.has(layer)) continue;
-
-      const alphaMap = new Map<Phaser.Tilemaps.Tile, number>();
-
-      for (let row = 0; row < map.height; row++) {
-        for (let col = 0; col < map.width; col++) {
-          const tile = layer.getTileAt(col, row);
-          if (!tile || tile.index === -1 || tile.collides) continue;
-
-          // Walk downward to find the nearest collision tile in the same column.
-          let distToCollision = 0;
-          for (let cy = row + 1; cy <= row + 14; cy++) {
-            const below = layer.getTileAt(col, cy);
-            if (below && below.collides) { distToCollision = cy - row; break; }
-          }
-          if (distToCollision === 0) continue; // no solid wall below → skip
-
-          // Normalise distance: 0 = at wall edge, 1 = 8+ rows deep.
-          const t = Math.min((distToCollision - 1) / 7, 1.0);
-          alphaMap.set(tile, Phaser.Math.Linear(0.82, 0.12, t));
-        }
-      }
-
-      if (alphaMap.size > 0) this.overheadGradientAlpha.set(layer, alphaMap);
-    }
-  }
-
   update(): void {
     if (this.chatInputActive || this.interactionBlocked) {
       this.playerBody.setVelocity(0);
@@ -490,57 +430,21 @@ export class CityScene extends Phaser.Scene {
     this.avatar.updateDepth();
 
     // ── Overhead fade ─────────────────────────────────────────────────────
-    // Per-tile gradient: only non-collision (overhead) tiles are faded.
-    // Alpha goes from ~0.82 just above the solid wall → ~0.12 deep inside.
-    // Canopy layers (VegetationTree, no collision reference) use a simpler
-    // whole-layer fade. All transitions lerp smoothly in both directions.
+    // When a y-sorted or foreground layer renders above the player AND has a
+    // tile at the player's world position, smoothly fade it to 0.25 so the
+    // player (and NPCs / remote players) remain visible through rooftops and
+    // tree canopies. Lerp ensures a smooth transition both ways.
     {
       const px = this.avatar.x;
       const py = this.avatar.y;
-      const tx = Math.floor(px / TILE_SIZE);
-      const ty = Math.floor(py / TILE_SIZE);
-      const LERP = 0.14;
-      const R    = 8; // tile radius to scan around player
-
-      // Track which overhead tiles are active THIS frame (for restoration).
-      const activeTiles = new Set<Phaser.Tilemaps.Tile>();
-
       for (const layer of this.overheadLayers) {
-        if (layer.depth <= py) continue; // layer renders below player → nothing to do
-
-        if (this.canopyLayers.has(layer)) {
-          // Whole-layer fade for pure-canopy layers (trees, palms).
-          const hasTile = layer.getTileAtWorldXY(px, py) !== null;
-          const target  = hasTile ? 0.3 : 1.0;
-          if (Math.abs(layer.alpha - target) > 0.004)
-            layer.alpha = Phaser.Math.Linear(layer.alpha, target, LERP);
-          continue;
-        }
-
-        // Y-sorted building layer — per-tile gradient.
-        const alphaMap = this.overheadGradientAlpha.get(layer);
-        if (!alphaMap) continue;
-
-        const nearby = layer.getTilesWithin(tx - R, ty - R, R * 2 + 1, R * 2 + 1);
-        for (const tile of nearby) {
-          if (tile.index === -1) continue;
-          const target = alphaMap.get(tile);
-          if (target === undefined) continue; // collision tile — leave untouched
-          activeTiles.add(tile);
-          this.fadingTiles.add(tile);
-          if (Math.abs(tile.alpha - target) > 0.004)
-            tile.alpha = Phaser.Math.Linear(tile.alpha, target, LERP);
-        }
-      }
-
-      // Restore tiles that fell outside the active zone this frame.
-      for (const tile of this.fadingTiles) {
-        if (!activeTiles.has(tile)) {
-          tile.alpha = Phaser.Math.Linear(tile.alpha, 1.0, LERP);
-          if (tile.alpha > 0.995) {
-            tile.alpha = 1.0;
-            this.fadingTiles.delete(tile);
-          }
+        // Layer is "overhead" only when it draws above the player's depth.
+        const isAbove = layer.depth > py;
+        const target = isAbove && layer.getTileAtWorldXY(px, py) !== null
+          ? 0.25
+          : 1.0;
+        if (Math.abs(layer.alpha - target) > 0.004) {
+          layer.alpha = Phaser.Math.Linear(layer.alpha, target, 0.12);
         }
       }
     }
