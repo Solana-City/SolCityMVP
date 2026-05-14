@@ -458,7 +458,10 @@ function EarnListingsStage({
 }) {
   const isBounty = category.type === "bounty";
 
-  const [listings, setListings] = useState<EarnListing[]>(isBounty ? CURATED_BOUNTIES : []);
+  const activeBounties = CURATED_BOUNTIES.filter(
+    (b) => !b.deadline || new Date(b.deadline) > new Date()
+  );
+  const [listings, setListings] = useState<EarnListing[]>(isBounty ? activeBounties : []);
   const [loading, setLoading]   = useState(!isBounty);
   const [failed, setFailed]     = useState(false);
 
@@ -750,7 +753,8 @@ function PrivatePaymentPanel({ onClose }: { onClose: () => void }) {
     if (!publicKey || !signTransaction || !authToken) return;
     const parsed = parseFloat(amount);
     if (isNaN(parsed) || parsed <= 0) { setError("Invalid amount"); return; }
-    if (!recipient || recipient.length < 32) { setError("Invalid recipient address"); return; }
+    const { isValidAddress } = await import("@/game/solana/transfer");
+    if (!isValidAddress(recipient)) { setError("Invalid recipient address"); return; }
     if (balance !== null && parsed > balance) { setError("Insufficient private balance"); return; }
 
     setStatus("transferring");
