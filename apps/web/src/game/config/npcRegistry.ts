@@ -53,8 +53,8 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     id: "sushi-man",
     name: "Sushi Man",
     role: "Food Cart",
-    tileX: 105,
-    tileY: 78,
+    tileX: 145,
+    tileY: 104,
     color: 0xff6b35,
     dialog: [
       "Irasshaimase! Welcome to my cart.",

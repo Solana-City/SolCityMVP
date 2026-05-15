@@ -49,7 +49,7 @@ export class CityScene extends Phaser.Scene {
       "SCBuildSTBrazil", "SCBuildJupter", "SCTileFountain",
       "SCTileGround", "SCVegetationSet", "SCPalm", "SCBuildIndies",
       "SCUrbanEquipament", "SCBuildGenericBuild", "SCBuildKeepGreen",
-      "SCBuildMagicBlock", "SCLogoIcon",
+      "SCBuildMagicBlock", "SCLogoIcon", "SCGameAssets",
     ]
       .map(n => map.addTilesetImage(n, n))
       .filter((ts): ts is Phaser.Tilemaps.Tileset => ts !== null);
@@ -68,7 +68,7 @@ export class CityScene extends Phaser.Scene {
     // outer ring) at a lower Y than the collidable zone, which would wrongly
     // put the whole structure in front of the player. They stay at layer_index
     // depth (always rendered behind the player, like floor tiles).
-    const Y_SORT_PREFIXES = ["Vegetation", "DecorLight", "Build"];
+    const Y_SORT_PREFIXES = ["Vegetation", "DecorLight", "Build", "GameAsset"];
 
     // Create all tile layers in order from the JSON.
     // Do NOT pass x/y — Phaser defaults to layerData.x/y which already
