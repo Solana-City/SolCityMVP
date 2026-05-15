@@ -49,6 +49,8 @@ const STYLES = `
   40%  { box-shadow: 0 0 28px 8px rgba(20,241,149,0.35); border-color: rgba(20,241,149,0.8); }
   100% { box-shadow: 0 0 0   0  rgba(20,241,149,0); border-color: rgba(20,241,149,0.25); }
 }
+.sc-panel { scrollbar-width: none; -ms-overflow-style: none; }
+.sc-panel::-webkit-scrollbar { display: none; }
 .sc-correct   { animation: sc-bounce   0.34s ease-out; }
 .sc-wrong     { animation: sc-shake    0.46s ease-in-out; }
 .sc-urgent    { animation: sc-urgent   0.65s ease-in-out infinite; }
@@ -296,10 +298,10 @@ export default function FoodCartGame({
       )}
 
       <div
-        className="relative flex flex-col rounded-2xl overflow-hidden sc-slide"
+        className="relative flex flex-col rounded-2xl overflow-hidden sc-slide sc-panel"
         style={{
-          width: "min(700px, 96vw)",
-          maxHeight: "92vh",
+          width: "min(720px, 96vw)",
+          maxHeight: "94vh",
           overflowY: "auto",
           background: "rgba(8,8,22,0.99)",
           border: "1px solid rgba(153,69,255,0.3)",
@@ -367,7 +369,7 @@ export default function FoodCartGame({
         >
           {/* Order queue (left) */}
           <div
-            className="flex flex-col gap-2 p-4 shrink-0"
+            className="flex flex-col gap-2 p-3 shrink-0"
             style={{
               width: 210,
               borderRight: "1px solid rgba(153,69,255,0.12)",
@@ -428,7 +430,7 @@ export default function FoodCartGame({
           </div>
 
           {/* Right: hero + recipe strip */}
-          <div className="flex-1 p-4 flex flex-col gap-3 min-w-0">
+          <div className="flex-1 p-3 flex flex-col gap-2 min-w-0">
             {/* "Serve Next" hero panel */}
             {nextIngId && phase === "playing" && (
               <div
@@ -552,7 +554,7 @@ export default function FoodCartGame({
         </div>
 
         {/* ── Ingredient grid ───────────────────────────────────────────── */}
-        <div className="p-4 shrink-0">
+        <div className="p-3 shrink-0">
           <div style={{ color: "#444466", fontSize: 9, letterSpacing: 2.5, textTransform: "uppercase", marginBottom: 10 }}>
             Ingredients
             <span style={{ color: "#222244", marginLeft: 8 }}>(keys 1–9)</span>
@@ -575,6 +577,7 @@ export default function FoodCartGame({
                   key={ing.id}
                   onClick={() => handlePick(ing.id)}
                   disabled={isDisabled}
+                  spellCheck={false}
                   className={`rounded-xl flex flex-col items-center py-2.5 px-2 ${isCorrect ? "sc-correct" : isWrong ? "sc-wrong" : ""}`}
                   style={{
                     gap: 5,
