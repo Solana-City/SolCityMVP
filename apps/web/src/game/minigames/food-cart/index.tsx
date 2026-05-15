@@ -369,7 +369,7 @@ export default function FoodCartGame({
           <div
             className="flex flex-col gap-2 p-4 shrink-0"
             style={{
-              width: 175,
+              width: 210,
               borderRight: "1px solid rgba(153,69,255,0.12)",
               background: "rgba(0,0,0,0.18)",
             }}
@@ -404,20 +404,20 @@ export default function FoodCartGame({
                   <div style={{ color: isDone ? "#14F195" : "#ccccee", fontSize: 10, fontWeight: "bold" }}>
                     {ord.recipe.emoji} {ord.recipe.name}
                   </div>
-                  <div style={{ display: "flex", gap: 3, marginTop: 6, flexWrap: "wrap" }}>
+                  <div style={{ display: "flex", gap: 4, marginTop: 6, flexWrap: "wrap" }}>
                     {ord.recipe.steps.map((sid, si) => {
                       const placed = si < ord.step;
                       return (
                         <div
                           key={si}
                           style={{
-                            width: 22, height: 22, borderRadius: 5,
+                            width: 30, height: 30, borderRadius: 6,
                             background: placed ? "rgba(20,241,149,0.12)" : "rgba(255,255,255,0.04)",
                             border: `1px solid ${placed ? "rgba(20,241,149,0.35)" : isActive && si === ord.step ? "rgba(153,69,255,0.5)" : "rgba(255,255,255,0.08)"}`,
                             display: "flex", alignItems: "center", justifyContent: "center",
                           }}
                         >
-                          <Sprite id={sid} size={16} />
+                          <Sprite id={sid} size={22} />
                         </div>
                       );
                     })}
@@ -514,16 +514,16 @@ export default function FoodCartGame({
                       key={si}
                       style={{
                         display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
-                        borderRadius: 10, padding: "8px 6px",
+                        borderRadius: 10, padding: "10px 8px",
                         background: done ? "rgba(20,241,149,0.06)" : active ? "rgba(153,69,255,0.1)" : "rgba(255,255,255,0.02)",
                         border: `1px solid ${done ? "rgba(20,241,149,0.25)" : active ? "rgba(153,69,255,0.5)" : "rgba(255,255,255,0.05)"}`,
                         opacity: si > currentStep ? 0.45 : 1,
                         transition: "all 0.25s",
-                        minWidth: 58,
+                        minWidth: 72,
                       }}
                     >
-                      <Sprite id={sid} size={32} />
-                      <span style={{ color: done ? "#14F195" : active ? "#ccaaff" : "#444466", fontSize: 10 }}>
+                      <Sprite id={sid} size={42} />
+                      <span style={{ color: done ? "#14F195" : active ? "#ccaaff" : "#444466", fontSize: 11 }}>
                         {done ? "✓" : active ? "→" : `${si + 1}`}
                       </span>
                     </div>
