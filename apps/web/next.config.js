@@ -1,3 +1,5 @@
+const withPWA = require("@ducanh2912/next-pwa").default;
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: false,
@@ -42,4 +44,69 @@ const nextConfig = {
   },
 };
 
-module.exports = nextConfig;
+// ─── PWA / Service Worker ─────────────────────────────────────────────────────
+//
+// next-pwa generates sw.js + workbox chunks into /public at build time.
+// Disabled in development to avoid stale-cache confusion during iteration.
+//
+// Caching strategy:
+//   • Game assets (/assets/**) → CacheFirst  — tilesets/sprites never change mid-session
+//   • Solana RPC / Jupiter / MagicBlock → NetworkOnly  — NEVER cache blockchain calls
+//   • Everything else → next-pwa defaults (stale-while-revalidate for JS/CSS chunks)
+//
+// POST requests are never cached by Workbox by default, so all JSON-RPC calls
+// (which are POST) are safe even without explicit NetworkOnly rules.
+
+module.exports = withPWA({
+  dest: "public",
+  disable: process.env.NODE_ENV === "development",
+  reloadOnOnline: true,
+  cacheOnFrontEndNav: true,
+
+  workboxOptions: {
+    skipWaiting: true,
+    clientsClaim: true,
+    // Explicit NetworkOnly for any GET calls to blockchain infra
+    runtimeCaching: [
+      // Solana RPC endpoints — never cache
+      {
+        urlPattern: /^https:\/\/api\.(mainnet-beta|devnet)\.solana\.com/,
+        handler: "NetworkOnly",
+      },
+      // Jupiter Aggregator API — never cache
+      {
+        urlPattern: /^https:\/\/quote-api\.jup\.ag/,
+        handler: "NetworkOnly",
+      },
+      // MagicBlock ephemeral rollup — never cache
+      {
+        urlPattern: /magicblock/,
+        handler: "NetworkOnly",
+      },
+      // Game static assets — cache aggressively (served from same origin /public)
+      {
+        urlPattern: /\/assets\/(tilesets|sprites|maps|minigames|icons)\//,
+        handler: "CacheFirst",
+        options: {
+          cacheName: "sc-game-assets",
+          expiration: {
+            maxEntries: 200,
+            maxAgeSeconds: 30 * 24 * 60 * 60, // 30 days
+          },
+        },
+      },
+      // Icons / manifest
+      {
+        urlPattern: /\/(icons|manifest\.json)/,
+        handler: "CacheFirst",
+        options: {
+          cacheName: "sc-shell",
+          expiration: {
+            maxEntries: 20,
+            maxAgeSeconds: 365 * 24 * 60 * 60, // 1 year
+          },
+        },
+      },
+    ],
+  },
+})(nextConfig);

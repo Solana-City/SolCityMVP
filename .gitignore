@@ -1,6 +1,15 @@
 node_modules/
 .next/
 out/
+
+# PWA / Service Worker — generated at build time by next-pwa, not committed
+apps/web/public/sw.js
+apps/web/public/sw.js.map
+apps/web/public/workbox-*.js
+apps/web/public/workbox-*.js.map
+apps/web/public/worker-*.js
+apps/web/public/worker-*.js.map
+apps/web/public/fallback-*.js
 dist/
 .env
 .env.local
