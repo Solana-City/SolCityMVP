@@ -7,5 +7,21 @@
     "NEXT_PUBLIC_NETWORK": "devnet",
     "NEXT_PUBLIC_SOL_CITY_PROGRAM_ID": "HPvDFVnruSXHwKKP44eUvRh8oYqBaHCeQbK1sKWT1aU2",
     "NEXT_PUBLIC_APP_URL": "https://solanacity.io"
-  }
+  },
+  "headers": [
+    {
+      "source": "/.well-known/assetlinks.json",
+      "headers": [
+        { "key": "Content-Type", "value": "application/json" },
+        { "key": "Access-Control-Allow-Origin", "value": "*" }
+      ]
+    },
+    {
+      "source": "/.well-known/wallet-adapter.json",
+      "headers": [
+        { "key": "Content-Type", "value": "application/json" },
+        { "key": "Access-Control-Allow-Origin", "value": "*" }
+      ]
+    }
+  ]
 }
