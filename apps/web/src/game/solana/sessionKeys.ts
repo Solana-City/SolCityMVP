@@ -30,7 +30,7 @@ export class SessionKeyManager {
   private authorized = false;
 
   constructor() {
-    const stored = sessionStorage.getItem(STORAGE_KEY);
+    const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) {
       try {
         const bytes = Uint8Array.from(JSON.parse(stored));
@@ -120,7 +120,7 @@ export class SessionKeyManager {
     }
 
     this.mainWallet = null;
-    sessionStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(STORAGE_KEY);
     this.sessionKey = Keypair.generate();
     this.persist();
   }
@@ -161,7 +161,7 @@ export class SessionKeyManager {
 
   private persist(): void {
     try {
-      sessionStorage.setItem(
+      localStorage.setItem(
         STORAGE_KEY,
         JSON.stringify(Array.from(this.sessionKey.secretKey))
       );

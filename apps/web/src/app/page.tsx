@@ -24,6 +24,9 @@ const MobileControls      = dynamic(() => import("@/ui/MobileControls"),      { 
 const ZoomControl         = dynamic(() => import("@/ui/ZoomControl"),         { ssr: false });
 const MiniGameOverlay     = dynamic(() => import("@/ui/MiniGameOverlay"),     { ssr: false });
 const MwaRegistration     = dynamic(() => import("@/ui/MwaRegistration"),     { ssr: false });
+const RotatePrompt        = dynamic(() => import("@/ui/RotatePrompt"),        { ssr: false });
+
+import ErrorBoundary from "@/ui/ErrorBoundary";
 
 function useIsTouch() {
   const [isTouch, setIsTouch] = useState(false);
@@ -141,55 +144,59 @@ export default function Home() {
   }, [game]);
 
   return (
-    <SolanaProvider>
-      {/* Registers Mobile Wallet Adapter on Android/Seeker — no-op elsewhere */}
-      <MwaRegistration />
-      {/* Headless bridge so Phaser can request wallet signatures */}
-      <WalletSignBridge />
-      <main className="w-screen h-screen relative">
-        <PhaserGame onGameReady={setGame} />
+    <ErrorBoundary>
+      <SolanaProvider>
+        {/* Blocks the game canvas while the device is in portrait — Seeker/mobile */}
+        <RotatePrompt />
+        {/* Registers Mobile Wallet Adapter on Android/Seeker — no-op elsewhere */}
+        <MwaRegistration />
+        {/* Headless bridge so Phaser can request wallet signatures */}
+        <WalletSignBridge />
+        <main className="w-screen h-screen relative">
+          <PhaserGame onGameReady={setGame} />
 
-        {/* Score HUD — top left */}
-        <HUD />
+          {/* Score HUD — top left */}
+          <HUD />
 
-        {/* Top-right cluster: PFP + wallet + tx log + zoom */}
-        <div
-          className="fixed z-20 flex flex-col items-end gap-2"
-          style={{
-            top: "max(env(safe-area-inset-top, 0px), 12px)",
-            right: "max(env(safe-area-inset-right, 0px), 12px)",
-          }}
-        >
-          <PfpButton gameRef={game} onClick={() => setProfileOpen(true)} />
-          <WalletBar onWalletChange={handleWalletChange} />
-          {/* Desktop only — too much chrome on mobile */}
-          {!isTouch && (
-            <>
-              <TransactionLogPanel
-                isOpen={logOpen}
-                onToggle={() => setLogOpen((v) => !v)}
-              />
-              <ZoomControl />
-            </>
+          {/* Top-right cluster: PFP + wallet + tx log + zoom */}
+          <div
+            className="fixed z-20 flex flex-col items-end gap-2"
+            style={{
+              top: "max(env(safe-area-inset-top, 0px), 12px)",
+              right: "max(env(safe-area-inset-right, 0px), 12px)",
+            }}
+          >
+            <PfpButton gameRef={game} onClick={() => setProfileOpen(true)} />
+            <WalletBar onWalletChange={handleWalletChange} />
+            {/* Desktop only — too much chrome on mobile */}
+            {!isTouch && (
+              <>
+                <TransactionLogPanel
+                  isOpen={logOpen}
+                  onToggle={() => setLogOpen((v) => !v)}
+                />
+                <ZoomControl />
+              </>
+            )}
+          </div>
+
+          <ToastStack />
+          <MobileControls gameRef={game} chatOpen={chatOpen} onChatToggle={() => setChatOpen((v) => !v)} />
+          <ChatPanel gameRef={game} visible={chatOpen} />
+          <NPCDialog npc={activeNPC} onClose={handleDialogClose} onAction={handleAction} />
+          <ActionPanel action={activeAction} onClose={handleActionClose} />
+          <ProfilePanel gameRef={game} isOpen={profileOpen} onClose={() => setProfileOpen(false)} />
+          {activeMiniGame && (
+            <MiniGameOverlay
+              id={activeMiniGame.id}
+              context={activeMiniGame.context}
+              onResult={handleMiniGameResult}
+              onClose={handleMiniGameClose}
+            />
           )}
-        </div>
-
-        <ToastStack />
-        <MobileControls gameRef={game} chatOpen={chatOpen} onChatToggle={() => setChatOpen((v) => !v)} />
-        <ChatPanel gameRef={game} visible={chatOpen} />
-        <NPCDialog npc={activeNPC} onClose={handleDialogClose} onAction={handleAction} />
-        <ActionPanel action={activeAction} onClose={handleActionClose} />
-        <ProfilePanel gameRef={game} isOpen={profileOpen} onClose={() => setProfileOpen(false)} />
-        {activeMiniGame && (
-          <MiniGameOverlay
-            id={activeMiniGame.id}
-            context={activeMiniGame.context}
-            onResult={handleMiniGameResult}
-            onClose={handleMiniGameClose}
-          />
-        )}
-      </main>
-    </SolanaProvider>
+        </main>
+      </SolanaProvider>
+    </ErrorBoundary>
   );
 }
 
