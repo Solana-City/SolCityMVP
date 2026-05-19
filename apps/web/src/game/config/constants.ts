@@ -13,7 +13,7 @@ export const PLAYER_SPEED = 160;
 export const PLAYABLE_ZONE = {
   col1: 42,   // west  — moved left until no building is clipped
   col2: 162,  // east  (Sushi Man at col 145, ~17 col margin)
-  row1: 79,   // north (Jupiter Joe at row 92, ~13 row margin)
+  row1: 68,   // north (Jupiter Joe at row 92, ~24 row margin)
   row2: 130,  // south (Magic Man at row 115, ~15 row margin)
 } as const;
 
