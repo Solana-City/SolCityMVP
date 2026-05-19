@@ -156,7 +156,7 @@ export class CityScene extends Phaser.Scene {
     // Invisible strips that stop players leaving the built area.
     // ZONE_DEBUG=true renders them red so you can verify placement in-game.
     // Flip to false (and redeploy) once positions are confirmed.
-    const ZONE_DEBUG = true;
+    const ZONE_DEBUG = false;
     const WALL_THICKNESS = 3; // tiles
     const PZ = PLAYABLE_ZONE;
     const zoneX1    = PZ.col1 * T;
