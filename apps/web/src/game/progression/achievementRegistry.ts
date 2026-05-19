@@ -66,7 +66,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     icon: "🦋",
     tier: "rare",
     check: (p) =>
-      ["sol-guide", "swap-npc", "send-npc", "st-maya"].every((id) =>
+      ["sol-guide", "swap-npc", "send-npc", "pratik", "magic-man", "kuka", "bk-indies", "mr-bananas", "sushi-man"].every((id) =>
         p.visitedNPCs.includes(id)
       ),
     outfitReward: "explorer-cloak",

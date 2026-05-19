@@ -3,8 +3,9 @@
 import { useWallet, useConnection } from "@solana/wallet-adapter-react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import { LAMPORTS_PER_SOL } from "@solana/web3.js";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useSeekerDevice } from "@/ui/useSeekerDevice";
+import { progressionBus } from "@/game/progression/progressionBus";
 
 function useIsTouch() {
   const [isTouch, setIsTouch] = useState(false);
@@ -29,6 +30,7 @@ export default function WalletBar({ onWalletChange }: WalletBarProps) {
   const [balance, setBalance] = useState<number | null>(null);
   const { isAndroid, hasSGT } = useSeekerDevice();
   const isTouch = useIsTouch();
+  const cancelRef = useRef(false);
 
   const address = publicKey?.toBase58() ?? null;
   const shortAddr = address
@@ -39,21 +41,37 @@ export default function WalletBar({ onWalletChange }: WalletBarProps) {
     onWalletChange?.(address);
   }, [address, onWalletChange]);
 
+  const fetchBalance = useCallback(() => {
+    if (!publicKey || !connection) return;
+    cancelRef.current = false;
+    connection.getBalance(publicKey).then((lamports) => {
+      if (!cancelRef.current) {
+        setBalance(Math.round((lamports / LAMPORTS_PER_SOL) * 100) / 100);
+      }
+    });
+  }, [publicKey, connection]);
+
   useEffect(() => {
     if (!publicKey || !connection) {
       setBalance(null);
       return;
     }
 
-    let cancelled = false;
-    connection.getBalance(publicKey).then((lamports) => {
-      if (!cancelled) {
-        setBalance(Math.round((lamports / LAMPORTS_PER_SOL) * 100) / 100);
-      }
-    });
+    // Fetch immediately on connect / wallet change
+    fetchBalance();
 
-    return () => { cancelled = true; };
-  }, [publicKey, connection]);
+    // Re-fetch after every confirmed on-chain action (swap, transfer, bounty)
+    const unsub = progressionBus.on("score-gained", fetchBalance);
+
+    // Fallback poll every 30s to catch external balance changes
+    const interval = setInterval(fetchBalance, 30_000);
+
+    return () => {
+      cancelRef.current = true;
+      unsub();
+      clearInterval(interval);
+    };
+  }, [publicKey, connection, fetchBalance]);
 
   const handleClick = useCallback(() => {
     if (connected) {
