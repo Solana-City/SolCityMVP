@@ -31,21 +31,31 @@ export function showEmoji(
   target: Phaser.GameObjects.Container,
   emoji: EmojiDef
 ): void {
-  ensureEmojiArt(scene);
-
   const bubble = scene.add.container(0, -30);
-  const glow = scene.add.circle(0, -2, 14, 0x0a0a1e, 0.85).setStrokeStyle(2, 0xffffff, 0.08);
-  const icon = scene.add.image(0, -2, emoji.artKey).setScale(1.25);
-  const text = scene.add.text(0, 16, emoji.symbol, {
-    fontSize: "12px",
+
+  // Soft dark pill background
+  const bg = scene.add.graphics();
+  bg.fillStyle(0x0a0a1e, 0.78);
+  bg.fillRoundedRect(-18, -26, 36, 32, 8);
+  bg.lineStyle(1.5, parseInt(emoji.color.replace("#", ""), 16), 0.35);
+  bg.strokeRoundedRect(-18, -26, 36, 32, 8);
+
+  // Native OS emoji — looks great on all platforms, no pixel artifacts
+  const icon = scene.add.text(0, -12, emoji.uiSymbol, {
+    fontSize: "20px",
+    fontFamily: "Apple Color Emoji, Segoe UI Emoji, Noto Color Emoji, sans-serif",
+  }).setOrigin(0.5);
+
+  // Coloured label below
+  const label = scene.add.text(0, 8, emoji.symbol, {
+    fontSize: "9px",
     fontFamily: '"Press Start 2P", monospace',
     color: emoji.color,
-    align: "center",
     stroke: "#0a0a1e",
-    strokeThickness: 4,
-  }).setOrigin(0.5, 1);
-  bubble.add([glow, icon, text]);
+    strokeThickness: 3,
+  }).setOrigin(0.5);
 
+  bubble.add([bg, icon, label]);
   target.add(bubble);
 
   scene.tweens.add({
@@ -80,60 +90,3 @@ export function setupEmojiKeys(
   }
 }
 
-export function ensureEmojiArt(scene: Phaser.Scene): void {
-  for (const emoji of EMOJI_REGISTRY) {
-    if (scene.textures.exists(emoji.artKey)) continue;
-    const g = scene.add.graphics({ x: 0, y: 0 });
-    g.fillStyle(0x0a0a1e, 0.2);
-    g.fillCircle(12, 12, 12);
-
-    switch (emoji.id) {
-      case "wave":
-        g.fillStyle(0x14f195, 1);
-        g.fillRoundedRect(6, 5, 10, 13, 4);
-        g.fillStyle(0x8cf7c8, 1);
-        g.fillRect(9, 2, 2, 5);
-        g.fillRect(12, 2, 2, 5);
-        break;
-      case "heart":
-        g.fillStyle(0xf72585, 1);
-        g.fillCircle(8, 9, 5);
-        g.fillCircle(16, 9, 5);
-        g.fillTriangle(4, 11, 20, 11, 12, 20);
-        break;
-      case "fire":
-        g.fillStyle(0xff6b35, 1);
-        g.fillTriangle(12, 3, 5, 18, 19, 18);
-        g.fillStyle(0xffd166, 1);
-        g.fillTriangle(12, 7, 8, 17, 16, 17);
-        break;
-      case "laugh":
-        g.fillStyle(0xffd700, 1);
-        g.fillCircle(12, 12, 10);
-        g.fillStyle(0x1a1a3e, 1);
-        g.fillRect(8, 9, 2, 2);
-        g.fillRect(14, 9, 2, 2);
-        g.fillRoundedRect(8, 14, 8, 3, 2);
-        break;
-      case "think":
-        g.fillStyle(0x00d1ff, 1);
-        g.fillCircle(11, 11, 8);
-        g.fillStyle(0x061a2c, 1);
-        g.fillRect(8, 9, 2, 2);
-        g.fillRect(12, 9, 2, 2);
-        g.fillRect(10, 14, 4, 2);
-        g.fillCircle(18, 18, 2);
-        break;
-      case "gg":
-        g.fillStyle(0x9945ff, 1);
-        g.fillRoundedRect(5, 5, 14, 14, 3);
-        g.fillStyle(0xffd700, 1);
-        g.fillRect(10, 7, 4, 8);
-        g.fillRect(8, 15, 8, 2);
-        break;
-    }
-
-    g.generateTexture(emoji.artKey, 24, 24);
-    g.destroy();
-  }
-}

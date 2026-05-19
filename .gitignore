@@ -10,6 +10,11 @@ apps/web/public/workbox-*.js.map
 apps/web/public/worker-*.js
 apps/web/public/worker-*.js.map
 apps/web/public/fallback-*.js
+apps/web/public/swe-worker-*.js
+apps/web/public/swe-worker-*.js.map
+
+# Reports
+lighthouse-report.json
 dist/
 .env
 .env.local

@@ -231,7 +231,7 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
           }}
           title="Emojis"
         >
-          ✦
+          🎭
         </button>
         <input
           ref={inputRef}
