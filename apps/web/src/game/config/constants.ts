@@ -6,6 +6,17 @@ export const MAP_HEIGHT = MAP_ROWS * TILE_SIZE;
 
 export const PLAYER_SPEED = 160;
 
+/**
+ * Hard boundary of the playable / built area (in tile coordinates).
+ * Adjust as the city expands. Set ZONE_DEBUG=true in CityScene to see walls.
+ */
+export const PLAYABLE_ZONE = {
+  col1: 42,   // west  — moved left until no building is clipped
+  col2: 162,  // east  (Sushi Man at col 145, ~17 col margin)
+  row1: 79,   // north (Jupiter Joe at row 92, ~13 row margin)
+  row2: 130,  // south (Magic Man at row 115, ~15 row margin)
+} as const;
+
 export const COLORS = {
   PURPLE: 0x9945ff,
   GREEN: 0x14f195,

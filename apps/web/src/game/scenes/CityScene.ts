@@ -1,5 +1,5 @@
 import * as Phaser from "phaser";
-import { PLAYER_SPEED, TILE_SIZE } from "../config/constants";
+import { PLAYER_SPEED, TILE_SIZE, PLAYABLE_ZONE } from "../config/constants";
 import { SimpleSprite, Direction } from "../entities/SimpleSprite";
 import { OnChainMultiplayer, OnChainPlayer } from "../multiplayer/OnChainMultiplayer";
 import { ChatManager, getChannelColor } from "../chat/ChatManager";
@@ -151,6 +151,32 @@ export class CityScene extends Phaser.Scene {
     // Right outer wall: col 120, rows 109-111 (3 rows)
     addWall(120 * T + T / 2, 109 * T + (3 * T) / 2, T, 3 * T);
     this.physics.add.collider(container, mbWalls);
+
+    // ── Playable-zone boundary walls ──────────────────────────────────────────
+    // Invisible strips that stop players leaving the built area.
+    // ZONE_DEBUG=true renders them red so you can verify placement in-game.
+    // Flip to false (and redeploy) once positions are confirmed.
+    const ZONE_DEBUG = true;
+    const WALL_THICKNESS = 3; // tiles
+    const PZ = PLAYABLE_ZONE;
+    const zoneX1    = PZ.col1 * T;
+    const zoneY1    = PZ.row1 * T;
+    const zoneW     = (PZ.col2 - PZ.col1) * T;
+    const zoneH     = (PZ.row2 - PZ.row1) * T;
+    const wallThick = WALL_THICKNESS * T;
+    const zoneWalls = this.physics.add.staticGroup();
+    const addZoneWall = (wx: number, wy: number, w: number, h: number) => {
+      const r = this.add.rectangle(wx, wy, w, h, 0xff0000, ZONE_DEBUG ? 0.4 : 0);
+      if (!ZONE_DEBUG) r.setVisible(false);
+      this.physics.add.existing(r, true);
+      zoneWalls.add(r);
+    };
+    addZoneWall(zoneX1 + zoneW / 2,            zoneY1 - wallThick / 2,            zoneW,              wallThick); // north
+    addZoneWall(zoneX1 + zoneW / 2,            zoneY1 + zoneH + wallThick / 2,    zoneW,              wallThick); // south
+    addZoneWall(zoneX1 - wallThick / 2,         zoneY1 + zoneH / 2,                wallThick, zoneH + wallThick * 2); // west
+    addZoneWall(zoneX1 + zoneW + wallThick / 2, zoneY1 + zoneH / 2,                wallThick, zoneH + wallThick * 2); // east
+    this.physics.add.collider(container, zoneWalls);
+
     this.physics.world.setBounds(0, 0, map.widthInPixels, map.heightInPixels);
     this.cameras.main.setBounds(0, 0, map.widthInPixels, map.heightInPixels);
 
