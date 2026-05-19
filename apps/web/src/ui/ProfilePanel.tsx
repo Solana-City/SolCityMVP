@@ -6,6 +6,7 @@ import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import type { PlayerProfile } from "@/game/config/profileManager";
 import type { ProfileManager } from "@/game/config/profileManager";
 import type { OnChainPlayer } from "@/game/multiplayer/OnChainMultiplayer";
+import { ACHIEVEMENTS, TIER_COLORS } from "@/game/progression/achievementRegistry";
 
 interface ProfilePanelProps {
   gameRef: Phaser.Game | null;
@@ -361,42 +362,69 @@ export default function ProfilePanel({ gameRef, isOpen, onClose }: ProfilePanelP
           </div>
         )}
 
+        {/* Achievements */}
+        <div className="mb-4">
+          <div className="text-xs mb-2 flex items-center justify-between" style={{ color: "#555566" }}>
+            <span>Achievements</span>
+            <span style={{ color: "#444455" }}>
+              {profile.unlockedAchievements.length}/{ACHIEVEMENTS.length}
+            </span>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            {ACHIEVEMENTS.map((ach) => {
+              const unlocked = profile.unlockedAchievements.includes(ach.id);
+              const color = TIER_COLORS[ach.tier];
+              return (
+                <div
+                  key={ach.id}
+                  className="flex items-center gap-3 px-3 py-2 rounded-lg"
+                  style={{
+                    background: unlocked ? `${color}10` : "rgba(255,255,255,0.02)",
+                    border: `1px solid ${unlocked ? `${color}30` : "rgba(255,255,255,0.04)"}`,
+                    opacity: unlocked ? 1 : 0.45,
+                  }}
+                >
+                  <span style={{ fontSize: 20, filter: unlocked ? "none" : "grayscale(1)" }}>
+                    {unlocked ? ach.icon : "🔒"}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div
+                      style={{
+                        fontSize: 11,
+                        fontFamily: '"Press Start 2P", monospace',
+                        color: unlocked ? color : "#555566",
+                        marginBottom: 2,
+                      }}
+                    >
+                      {ach.title}
+                    </div>
+                    <div style={{ fontSize: 10, color: "#666677", lineHeight: 1.4 }}>
+                      {ach.description}
+                    </div>
+                  </div>
+                  {unlocked && (
+                    <span
+                      style={{
+                        fontSize: 8,
+                        fontFamily: '"Press Start 2P", monospace',
+                        color,
+                        textTransform: "uppercase",
+                        flexShrink: 0,
+                      }}
+                    >
+                      {ach.tier}
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
         {/* Member info */}
-        <div className="flex justify-between text-xs mb-2" style={{ color: "#444455" }}>
+        <div className="flex justify-between text-xs mt-2" style={{ color: "#333344" }}>
           <span>Member since {new Date(profile.joinedAt).toLocaleDateString()}</span>
           <span>Last active {new Date(profile.lastActive).toLocaleDateString()}</span>
-        </div>
-
-        <div
-          className="mt-3 text-xs text-center"
-          style={{ color: "#333344" }}
-        >
-          Press 1-6 in-game for quick emotes
-        </div>
-
-        {/* Dev-only: reset all progression. Keeps wallet/name/PFP intact. */}
-        <div className="mt-3 flex justify-center">
-          <button
-            onClick={() => {
-              if (!manager) return;
-              const ok = window.confirm(
-                "Reset all progress?\n\nThis clears score, achievements, outfits, and visited NPCs. Your wallet, display name, and PFP stay.\n\nUseful for re-testing the onboarding flow."
-              );
-              if (ok) manager.resetProgress();
-            }}
-            className="text-xs cursor-pointer"
-            style={{
-              background: "transparent",
-              border: "1px solid #333344",
-              color: "#555566",
-              padding: "4px 10px",
-              borderRadius: 4,
-              fontFamily: '"Fira Code", monospace',
-            }}
-            title="Clear achievements, score, counters, outfits, visited NPCs"
-          >
-            reset progress (dev)
-          </button>
         </div>
       </div>
     </div>
