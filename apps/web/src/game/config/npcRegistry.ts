@@ -16,10 +16,17 @@ export interface NPCDefinition {
   dialog: string[];
   action: NPCAction;
   /**
-   * Phaser texture key for this NPC's sprite sheet. Loaded in BootScene.
-   * Falls back to "avatar-chef" if not specified or not loaded.
+   * Phaser texture key for this NPC's sprite.
+   * Falls back to "avatar-player" if not specified or not loaded.
    */
   spriteKey?: string;
+  /**
+   * When true, spriteKey points to a static PNG (not a spritesheet).
+   * BootScene loads it with load.image(); NPCSprite renders it facing
+   * south with no animation. Switch back to false when a full
+   * spritesheet is ready.
+   */
+  staticSprite?: boolean;
   /**
    * Optional path to a portrait PNG (served from /public).
    * Recommended: 256x256 px, transparent background, pixel art.

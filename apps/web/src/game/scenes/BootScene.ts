@@ -52,11 +52,20 @@ export class BootScene extends Phaser.Scene {
     // Player sprite
     SimpleSprite.load(this, "avatar-player", "assets/sprites/main_char.png", 64, 64);
 
-    // NPC sprites
+    // NPC sprites — two modes:
+    //   staticSprite: true  → single south-facing PNG, load.image()
+    //   staticSprite: false → spritesheet, load.spritesheet() via SimpleSprite.load()
+    const loadedKeys = new Set<string>();
     for (const npc of NPC_REGISTRY) {
-      if (!npc.spriteKey) continue;
-      const filename = npc.spriteKey.replace(/^avatar-/, "");
-      SimpleSprite.load(this, npc.spriteKey, `assets/sprites/${filename}.png`, 64, 64);
+      if (!npc.spriteKey || loadedKeys.has(npc.spriteKey)) continue;
+      loadedKeys.add(npc.spriteKey);
+      if (npc.staticSprite) {
+        // Convention: spriteKey "npc-pratik" → file "assets/sprites/npc-pratik.png"
+        this.load.image(npc.spriteKey, `assets/sprites/${npc.spriteKey}.png`);
+      } else {
+        const filename = npc.spriteKey.replace(/^avatar-/, "");
+        SimpleSprite.load(this, npc.spriteKey, `assets/sprites/${filename}.png`, 64, 64);
+      }
     }
   }
 
