@@ -54,7 +54,8 @@ export const NPC_REGISTRY: NPCDefinition[] = [
       "Every action you take here is a real interaction. Your progress is yours to keep.",
     ],
     action: { type: "tutor", label: "Got it!" },
-    spriteKey: "avatar-sol-guide",
+    spriteKey: "Sol",
+    staticSprite: true,
   },
   {
     id: "sushi-man",
@@ -70,7 +71,8 @@ export const NPC_REGISTRY: NPCDefinition[] = [
       "Think you've got the hands for it?",
     ],
     action: { type: "minigame", label: "Start cooking!", miniGameId: "food-cart", orderType: "sushi" },
-    spriteKey: "avatar-brawly",
+    spriteKey: "Sushi Man",
+    staticSprite: true,
   },
   {
     id: "swap-npc",
@@ -86,7 +88,8 @@ export const NPC_REGISTRY: NPCDefinition[] = [
       "Just pick your tokens and the amount. I'll handle the rest.",
     ],
     action: { type: "swap", label: "Open swap" },
-    spriteKey: "avatar-brawly",
+    spriteKey: "Jupiter Joe",
+    staticSprite: true,
   },
   {
     id: "send-npc",
@@ -117,7 +120,8 @@ export const NPC_REGISTRY: NPCDefinition[] = [
       "Pick what fits your time and skills. Rewards are paid in USDC.",
     ],
     action: { type: "bounties", label: "Explore Earn" },
-    spriteKey: "avatar-pratik",
+    spriteKey: "Pratik",
+    staticSprite: true,
   },
   {
     id: "magic-man",
@@ -135,7 +139,8 @@ export const NPC_REGISTRY: NPCDefinition[] = [
       "Let me handle the rest.",
     ],
     action: { type: "private-payment", label: "Send privately" },
-    spriteKey: "avatar-juan",
+    spriteKey: "Magic Man",
+    staticSprite: true,
   },
   // ── Expansion district NPCs ──────────────────────────────────────
   {
@@ -151,7 +156,8 @@ export const NPC_REGISTRY: NPCDefinition[] = [
       "We are now hosting iRL and online sessions for Brazilian builders at The Garage, our Build Station with workshops and prep activities. Join us!",
     ],
     action: { type: "link", label: "Follow @superteamBR", url: "https://x.com/superteamBR" },
-    spriteKey: "avatar-swap-npc",
+    spriteKey: "Kuka",
+    staticSprite: true,
   },
   {
     id: "bk-indies",
@@ -166,7 +172,8 @@ export const NPC_REGISTRY: NPCDefinition[] = [
       "On Indies on Solana, Season 2 will start soon. Registrations are open!",
     ],
     action: { type: "link", label: "Visit Indies on Solana", url: "https://indiesonsolana.com/" },
-    spriteKey: "avatar-norman",
+    spriteKey: "BK",
+    staticSprite: true,
   },
   {
     id: "mr-bananas",
@@ -181,7 +188,8 @@ export const NPC_REGISTRY: NPCDefinition[] = [
       "If you're passionate about shaping the future of social organizations, we want you to be part of our journey!",
     ],
     action: { type: "link", label: "Visit MonkeDAO", url: "https://monkedao.io/" },
-    spriteKey: "avatar-norman",
+    spriteKey: "Mr. Bananas",
+    staticSprite: true,
   },
   {
     id: "liza",

@@ -60,8 +60,10 @@ export class BootScene extends Phaser.Scene {
       if (!npc.spriteKey || loadedKeys.has(npc.spriteKey)) continue;
       loadedKeys.add(npc.spriteKey);
       if (npc.staticSprite) {
-        // Convention: spriteKey "npc-pratik" → file "assets/sprites/npc-pratik.png"
-        this.load.image(npc.spriteKey, `assets/sprites/${npc.spriteKey}.png`);
+        // spriteKey is the character's display name (e.g. "Sushi Man")
+        // File on disk: assets/sprites/<name>.png — spaces encoded for the URL
+        const filename = npc.spriteKey.replace(/ /g, "%20");
+        this.load.image(npc.spriteKey, `assets/sprites/${filename}.png`);
       } else {
         const filename = npc.spriteKey.replace(/^avatar-/, "");
         SimpleSprite.load(this, npc.spriteKey, `assets/sprites/${filename}.png`, 64, 64);
