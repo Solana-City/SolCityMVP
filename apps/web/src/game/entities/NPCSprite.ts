@@ -1,6 +1,6 @@
 import * as Phaser from "phaser";
 import { TILE_SIZE } from "../config/constants";
-import { SimpleSprite, type Direction } from "./SimpleSprite";
+import { SimpleSprite, NPC_DIRECTION_ROW, type Direction } from "./SimpleSprite";
 import type { NPCDefinition } from "../config/npcRegistry";
 import { profileManager } from "../config/profileManager";
 import { progressionBus } from "../progression/progressionBus";
@@ -34,7 +34,7 @@ export class NPCSprite {
     const desiredKey = def.spriteKey ?? "avatar-player";
     const spriteKey = scene.textures.exists(desiredKey) ? desiredKey : "avatar-player";
 
-    this.avatar = new SimpleSprite(scene, x, y, spriteKey);
+    this.avatar = new SimpleSprite(scene, x, y, spriteKey, NPC_DIRECTION_ROW);
 
     const container = this.getContainer();
     const colorHex = `#${def.color.toString(16).padStart(6, "0")}`;

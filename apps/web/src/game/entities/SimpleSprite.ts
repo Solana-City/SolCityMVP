@@ -1,14 +1,22 @@
 import * as Phaser from "phaser";
 
 export type Direction = "down" | "left" | "right" | "up";
+export type DirectionRow = Record<Direction, number>;
 
-// Sprite sheet row order: down=0, right=1, up=2, left=3
-// This matches the standard output from most sprite generators
-const DIRECTION_ROW: Record<Direction, number> = {
+// Player spritesheet row order: down=0, right=1, up=2, left=3
+export const PLAYER_DIRECTION_ROW: DirectionRow = {
   down: 0,
   right: 1,
   up: 2,
   left: 3,
+};
+
+// NPC spritesheets (exported by DOM) have left/right swapped vs the player sheet
+export const NPC_DIRECTION_ROW: DirectionRow = {
+  down: 0,
+  left: 1,
+  up: 2,
+  right: 3,
 };
 
 /**
@@ -29,15 +37,18 @@ export class SimpleSprite {
   private currentDirection: Direction = "down";
   private isWalking = false;
   private textureKey: string;
+  private directionRow: DirectionRow;
 
   constructor(
     scene: Phaser.Scene,
     x: number,
     y: number,
-    textureKey: string
+    textureKey: string,
+    directionRow: DirectionRow = PLAYER_DIRECTION_ROW
   ) {
     this.scene = scene;
     this.textureKey = textureKey;
+    this.directionRow = directionRow;
 
     // Pixel-perfect anchoring with integer pixel mapping.
     //
@@ -94,7 +105,7 @@ export class SimpleSprite {
     if (!this.isWalking) return;
     this.isWalking = false;
     this.sprite.anims.stop();
-    const row = DIRECTION_ROW[this.currentDirection];
+    const row = this.directionRow[this.currentDirection];
     this.sprite.setFrame(row * 4);
   }
 
@@ -102,9 +113,10 @@ export class SimpleSprite {
     this.container.depth = this.container.y;
   }
 
-  setTexture(textureKey: string): void {
+  setTexture(textureKey: string, directionRow?: DirectionRow): void {
     if (textureKey === this.textureKey) return;
     this.textureKey = textureKey;
+    if (directionRow) this.directionRow = directionRow;
     this.sprite.setTexture(textureKey);
     this.registerAnimations();
     this.idle();
@@ -119,7 +131,7 @@ export class SimpleSprite {
     const cols = 4;
 
     for (const dir of directions) {
-      const row = DIRECTION_ROW[dir];
+      const row = this.directionRow[dir];
       const key = `${this.textureKey}-walk-${dir}`;
 
       if (!this.scene.anims.exists(key)) {
