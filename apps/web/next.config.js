@@ -84,11 +84,12 @@ module.exports = withPWA({
         handler: "NetworkOnly",
       },
       // Game static assets — cache aggressively (served from same origin /public)
+      // v2: bumped to bust stale pink-background sprite cache from previous deploy
       {
         urlPattern: /\/assets\/(tilesets|sprites|maps|minigames|icons)\//,
         handler: "CacheFirst",
         options: {
-          cacheName: "sc-game-assets",
+          cacheName: "sc-game-assets-v2",
           expiration: {
             maxEntries: 200,
             maxAgeSeconds: 30 * 24 * 60 * 60, // 30 days
