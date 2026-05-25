@@ -84,7 +84,7 @@ export const NPC_REGISTRY: NPCDefinition[] = [
   },
   {
     id: "send-npc",
-    name: "Postmaster Ana",
+    name: "Steve Sends",
     role: "Send Tokens",
     tileX: 98,
     tileY: 104,

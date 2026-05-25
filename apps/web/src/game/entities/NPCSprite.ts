@@ -7,14 +7,6 @@ import { progressionBus } from "../progression/progressionBus";
 
 const INTERACT_RANGE = TILE_SIZE * 1.8;
 
-/** Convert a movement angle (atan2, y-down) to the closest sprite direction. */
-function angleToDirection(angle: number): Direction {
-  const deg = ((angle * 180) / Math.PI + 360) % 360;
-  if (deg >= 315 || deg < 45)  return "right";
-  if (deg >= 45  && deg < 135) return "down";
-  if (deg >= 135 && deg < 225) return "left";
-  return "up";
-}
 
 export class NPCSprite {
   private scene: Phaser.Scene;
@@ -186,24 +178,33 @@ export class NPCSprite {
 
       const container = this.getContainer();
 
-      // Pick a random point within WANDER_RADIUS of origin
-      const angle = Math.random() * Math.PI * 2;
-      const dist = (0.3 + Math.random() * 0.7) * WANDER_RADIUS; // min 30% radius
-      const targetX = this.originX + Math.cos(angle) * dist;
-      const targetY = this.originY + Math.sin(angle) * dist;
+      // Pick one of the 4 cardinal directions — sprites only have
+      // up/down/left/right frames, so diagonal movement breaks animation.
+      const dirs: Direction[] = ["up", "down", "left", "right"];
+      const dir = dirs[Math.floor(Math.random() * dirs.length)];
 
-      const dx = targetX - container.x;
-      const dy = targetY - container.y;
-      const distance = Math.sqrt(dx * dx + dy * dy);
+      // Step distance along that single axis only, clamped to WANDER_RADIUS
+      const step = (0.4 + Math.random() * 0.6) * WANDER_RADIUS;
+      let targetX = container.x;
+      let targetY = container.y;
+      if (dir === "left")  targetX = container.x - step;
+      if (dir === "right") targetX = container.x + step;
+      if (dir === "up")    targetY = container.y - step;
+      if (dir === "down")  targetY = container.y + step;
+
+      // Clamp to wander radius from origin so NPCs don't drift away
+      const clampedX = Math.max(this.originX - WANDER_RADIUS, Math.min(this.originX + WANDER_RADIUS, targetX));
+      const clampedY = Math.max(this.originY - WANDER_RADIUS, Math.min(this.originY + WANDER_RADIUS, targetY));
+
+      const dx = clampedX - container.x;
+      const dy = clampedY - container.y;
+      const distance = Math.abs(dx) + Math.abs(dy);
 
       if (distance < 3) {
-        // Already close enough — just pause
         this.scene.time.delayedCall(PAUSE_MIN + Math.random() * (PAUSE_MAX - PAUSE_MIN), wander);
         return;
       }
 
-      // Choose animation direction matching actual movement
-      const dir = angleToDirection(Math.atan2(dy, dx));
       this.avatar.walk(dir);
 
       const duration = (distance / WALK_SPEED) * 1000;
@@ -211,8 +212,8 @@ export class NPCSprite {
       this.scene.tweens.killTweensOf(container);
       this.scene.tweens.add({
         targets: container,
-        x: targetX,
-        y: targetY,
+        x: clampedX,
+        y: clampedY,
         duration,
         ease: "Linear",
         onUpdate: () => container.setDepth(container.y),
