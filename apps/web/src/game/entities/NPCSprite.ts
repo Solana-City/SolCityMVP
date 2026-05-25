@@ -20,9 +20,16 @@ export class NPCSprite {
   private originX: number;
   private originY: number;
   private unsubBus: (() => void) | null = null;
+  private collisionLayers: Phaser.Tilemaps.TilemapLayer[] = [];
   readonly def: NPCDefinition;
 
-  constructor(scene: Phaser.Scene, def: NPCDefinition, spawnX?: number, spawnY?: number) {
+  constructor(
+    scene: Phaser.Scene,
+    def: NPCDefinition,
+    spawnX?: number,
+    spawnY?: number,
+    collisionLayers?: Phaser.Tilemaps.TilemapLayer[],
+  ) {
     this.scene = scene;
     this.def = def;
 
@@ -34,6 +41,7 @@ export class NPCSprite {
     const desiredKey = def.spriteKey ?? "avatar-player";
     const spriteKey = scene.textures.exists(desiredKey) ? desiredKey : "avatar-player";
 
+    this.collisionLayers = collisionLayers ?? [];
     this.avatar = new SimpleSprite(scene, x, y, spriteKey, NPC_DIRECTION_ROW);
 
     const container = this.getContainer();
@@ -200,7 +208,8 @@ export class NPCSprite {
       const dy = clampedY - container.y;
       const distance = Math.abs(dx) + Math.abs(dy);
 
-      if (distance < 3) {
+      if (distance < 3 || this.isTileBlocked(clampedX, clampedY)) {
+        // Too close or destination blocked by a building tile — skip, try again
         this.scene.time.delayedCall(PAUSE_MIN + Math.random() * (PAUSE_MAX - PAUSE_MIN), wander);
         return;
       }
@@ -227,6 +236,15 @@ export class NPCSprite {
 
     // Stagger startup so all NPCs don't move at the same tick
     this.scene.time.delayedCall(Math.random() * 2000, wander);
+  }
+
+  /** Returns true if the world-pixel point (x, y) sits on a collidable tile. */
+  private isTileBlocked(x: number, y: number): boolean {
+    for (const layer of this.collisionLayers) {
+      const tile = layer.getTileAtWorldXY(x, y);
+      if (tile && tile.collides) return true;
+    }
+    return false;
   }
 
   /**

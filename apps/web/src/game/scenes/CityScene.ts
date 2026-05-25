@@ -284,7 +284,7 @@ export class CityScene extends Phaser.Scene {
     // NPCs — position read from Tiled NPC layer, scanned to first walkable row
     for (const def of NPC_REGISTRY) {
       const { wx, wy } = this.findNpcSpawn(map, def.tileX, def.tileY, tileSize);
-      const npc = new NPCSprite(this, def, wx, wy);
+      const npc = new NPCSprite(this, def, wx, wy, this.collisionLayers);
       this.npcSprites.push(npc);
 
       const npcContainer = npc.getContainer();
