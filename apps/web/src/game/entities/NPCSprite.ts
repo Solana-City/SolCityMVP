@@ -1,11 +1,20 @@
 import * as Phaser from "phaser";
 import { TILE_SIZE } from "../config/constants";
-import { SimpleSprite } from "./SimpleSprite";
+import { SimpleSprite, type Direction } from "./SimpleSprite";
 import type { NPCDefinition } from "../config/npcRegistry";
 import { profileManager } from "../config/profileManager";
 import { progressionBus } from "../progression/progressionBus";
 
 const INTERACT_RANGE = TILE_SIZE * 1.8;
+
+/** Convert a movement angle (atan2, y-down) to the closest sprite direction. */
+function angleToDirection(angle: number): Direction {
+  const deg = ((angle * 180) / Math.PI + 360) % 360;
+  if (deg >= 315 || deg < 45)  return "right";
+  if (deg >= 45  && deg < 135) return "down";
+  if (deg >= 135 && deg < 225) return "left";
+  return "up";
+}
 
 export class NPCSprite {
   private scene: Phaser.Scene;
@@ -159,41 +168,64 @@ export class NPCSprite {
   }
 
   private startIdleBehavior(): void {
-    // Random direction changes — NPC looks around
-    this.scene.time.addEvent({
-      delay: 3000 + Math.random() * 3000,
-      loop: true,
-      callback: () => {
-        const dirs = ["down", "left", "right", "up"] as const;
-        const dir = dirs[Math.floor(Math.random() * dirs.length)];
-        this.avatar.walk(dir);
-        this.scene.time.delayedCall(250, () => this.avatar.idle());
-      },
-    });
+    // Max wander distance from spawn point (world units, ~1.5 tiles)
+    const WANDER_RADIUS = 28;
+    // Walk speed in world-units/second
+    const WALK_SPEED = 18;
+    // Pause between walks (ms)
+    const PAUSE_MIN = 1200;
+    const PAUSE_MAX = 3800;
 
-    // Small shuffle around origin (very tight, max 6px from origin)
-    this.scene.time.addEvent({
-      delay: 5000 + Math.random() * 4000,
-      loop: true,
-      callback: () => {
-        if (this._isInRange) return;
-        const container = this.getContainer();
-        this.scene.tweens.killTweensOf(container);
+    const wander = () => {
+      if (this._isInRange) {
+        // Player nearby — face south, stay still, retry later
+        this.avatar.idle();
+        this.scene.time.delayedCall(800, wander);
+        return;
+      }
 
-        // 50% chance to return to origin, 50% small offset
-        const goHome = Math.random() > 0.5;
-        const targetX = goHome ? this.originX : this.originX + (Math.random() - 0.5) * 12;
-        const targetY = goHome ? this.originY : this.originY + (Math.random() - 0.5) * 8;
+      const container = this.getContainer();
 
-        this.scene.tweens.add({
-          targets: container,
-          x: targetX,
-          y: targetY,
-          duration: 600,
-          ease: "Sine.easeInOut",
-        });
-      },
-    });
+      // Pick a random point within WANDER_RADIUS of origin
+      const angle = Math.random() * Math.PI * 2;
+      const dist = (0.3 + Math.random() * 0.7) * WANDER_RADIUS; // min 30% radius
+      const targetX = this.originX + Math.cos(angle) * dist;
+      const targetY = this.originY + Math.sin(angle) * dist;
+
+      const dx = targetX - container.x;
+      const dy = targetY - container.y;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+
+      if (distance < 3) {
+        // Already close enough — just pause
+        this.scene.time.delayedCall(PAUSE_MIN + Math.random() * (PAUSE_MAX - PAUSE_MIN), wander);
+        return;
+      }
+
+      // Choose animation direction matching actual movement
+      const dir = angleToDirection(Math.atan2(dy, dx));
+      this.avatar.walk(dir);
+
+      const duration = (distance / WALK_SPEED) * 1000;
+
+      this.scene.tweens.killTweensOf(container);
+      this.scene.tweens.add({
+        targets: container,
+        x: targetX,
+        y: targetY,
+        duration,
+        ease: "Linear",
+        onUpdate: () => container.setDepth(container.y),
+        onComplete: () => {
+          this.avatar.idle();
+          const pause = PAUSE_MIN + Math.random() * (PAUSE_MAX - PAUSE_MIN);
+          this.scene.time.delayedCall(pause, wander);
+        },
+      });
+    };
+
+    // Stagger startup so all NPCs don't move at the same tick
+    this.scene.time.delayedCall(Math.random() * 2000, wander);
   }
 
   /**
