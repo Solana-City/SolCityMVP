@@ -18,15 +18,9 @@ export interface NPCDefinition {
   /**
    * Phaser texture key for this NPC's sprite.
    * Falls back to "avatar-player" if not specified or not loaded.
+   * Points to a spritesheet (same format as the player: 64×64 frames).
    */
   spriteKey?: string;
-  /**
-   * When true, spriteKey points to a static PNG (not a spritesheet).
-   * BootScene loads it with load.image(); NPCSprite renders it facing
-   * south with no animation. Switch back to false when a full
-   * spritesheet is ready.
-   */
-  staticSprite?: boolean;
   /**
    * Optional path to a portrait PNG (served from /public).
    * Recommended: 256x256 px, transparent background, pixel art.
@@ -55,7 +49,6 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     ],
     action: { type: "tutor", label: "Got it!" },
     spriteKey: "Sol",
-    staticSprite: true,
   },
   {
     id: "sushi-man",
@@ -72,7 +65,6 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     ],
     action: { type: "minigame", label: "Start cooking!", miniGameId: "food-cart", orderType: "sushi" },
     spriteKey: "Sushi Man",
-    staticSprite: true,
   },
   {
     id: "swap-npc",
@@ -89,7 +81,6 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     ],
     action: { type: "swap", label: "Open swap" },
     spriteKey: "Jupiter Joe",
-    staticSprite: true,
   },
   {
     id: "send-npc",
@@ -121,7 +112,6 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     ],
     action: { type: "bounties", label: "Explore Earn" },
     spriteKey: "Pratik",
-    staticSprite: true,
   },
   {
     id: "magic-man",
@@ -140,7 +130,6 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     ],
     action: { type: "private-payment", label: "Send privately" },
     spriteKey: "Magic Man",
-    staticSprite: true,
   },
   // ── Expansion district NPCs ──────────────────────────────────────
   {
@@ -157,7 +146,6 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     ],
     action: { type: "link", label: "Follow @superteamBR", url: "https://x.com/superteamBR" },
     spriteKey: "Kuka",
-    staticSprite: true,
   },
   {
     id: "bk-indies",
@@ -173,7 +161,6 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     ],
     action: { type: "link", label: "Visit Indies on Solana", url: "https://indiesonsolana.com/" },
     spriteKey: "BK",
-    staticSprite: true,
   },
   {
     id: "mr-bananas",
@@ -189,7 +176,6 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     ],
     action: { type: "link", label: "Visit MonkeDAO", url: "https://monkedao.io/" },
     spriteKey: "Mr. Bananas",
-    staticSprite: true,
   },
   {
     id: "liza",

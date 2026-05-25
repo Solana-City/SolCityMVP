@@ -29,7 +29,7 @@ export class BootScene extends Phaser.Scene {
 
   preload(): void {
     this.load.on("loaderror", (file: Phaser.Loader.File) => {
-      if (file.key.startsWith("avatar-")) {
+      if (file.key.startsWith("avatar-") || NPC_REGISTRY.some(n => n.spriteKey === file.key)) {
         console.info(`[BootScene] ${file.key} not present — fallback active`);
         this.textures.remove(file.key);
       }
@@ -52,22 +52,17 @@ export class BootScene extends Phaser.Scene {
     // Player sprite
     SimpleSprite.load(this, "avatar-player", "assets/sprites/main_char.png", 64, 64);
 
-    // NPC sprites — two modes:
-    //   staticSprite: true  → single south-facing PNG, load.image()
-    //   staticSprite: false → spritesheet, load.spritesheet() via SimpleSprite.load()
+    // NPC sprites — all use spritesheets (same 64×64 frame format as the player).
+    // spriteKey is either the character's display name (e.g. "Sushi Man")
+    // or a legacy "avatar-*" key for older NPCs.
     const loadedKeys = new Set<string>();
     for (const npc of NPC_REGISTRY) {
       if (!npc.spriteKey || loadedKeys.has(npc.spriteKey)) continue;
       loadedKeys.add(npc.spriteKey);
-      if (npc.staticSprite) {
-        // spriteKey is the character's display name (e.g. "Sushi Man")
-        // File on disk: assets/sprites/<name>.png — spaces encoded for the URL
-        const filename = npc.spriteKey.replace(/ /g, "%20");
-        this.load.image(npc.spriteKey, `assets/sprites/${filename}.png`);
-      } else {
-        const filename = npc.spriteKey.replace(/^avatar-/, "");
-        SimpleSprite.load(this, npc.spriteKey, `assets/sprites/${filename}.png`, 64, 64);
-      }
+      const filename = npc.spriteKey.startsWith("avatar-")
+        ? npc.spriteKey.replace(/^avatar-/, "")
+        : npc.spriteKey.replace(/ /g, "%20");
+      SimpleSprite.load(this, npc.spriteKey, `assets/sprites/${filename}.png`, 64, 64);
     }
   }
 

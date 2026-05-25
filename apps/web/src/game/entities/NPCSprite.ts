@@ -7,16 +7,9 @@ import { progressionBus } from "../progression/progressionBus";
 
 const INTERACT_RANGE = TILE_SIZE * 1.8;
 
-// Target world-unit height for ALL NPC sprites — matches the player sprite
-// (player: 64 px source × 0.5 scale = 32 world units).
-const NPC_TARGET_WORLD_H = 32;
-
 export class NPCSprite {
   private scene: Phaser.Scene;
-  // Animated path: SimpleSprite owns its container
-  private avatar: SimpleSprite | null = null;
-  // Static path: we own the container directly
-  private _container: Phaser.GameObjects.Container | null = null;
+  private avatar: SimpleSprite;
   private exclamation: Phaser.GameObjects.Container;
   private exclamationBg: Phaser.GameObjects.Arc;
   private exclamationText: Phaser.GameObjects.Text;
@@ -40,19 +33,7 @@ export class NPCSprite {
     const desiredKey = def.spriteKey ?? "avatar-player";
     const spriteKey = scene.textures.exists(desiredKey) ? desiredKey : "avatar-player";
 
-    if (def.staticSprite && scene.textures.exists(desiredKey)) {
-      // ── Static PNG path ──────────────────────────────────────────────────
-      const FOOT_Y = -2;
-      const img = scene.add.image(0, FOOT_Y, spriteKey);
-      img.setOrigin(0.5, 1.0);
-      // Scale to NPC_TARGET_WORLD_H so static sprites match the player size
-      const srcH = (scene.textures.get(spriteKey).getSourceImage() as HTMLImageElement).height;
-      if (srcH > 0) img.setScale(NPC_TARGET_WORLD_H / srcH);
-      this._container = scene.add.container(x, y, [img]);
-    } else {
-      // ── Animated spritesheet path ─────────────────────────────────────────
-      this.avatar = new SimpleSprite(scene, x, y, spriteKey);
-    }
+    this.avatar = new SimpleSprite(scene, x, y, spriteKey);
 
     const container = this.getContainer();
     const colorHex = `#${def.color.toString(16).padStart(6, "0")}`;
@@ -162,11 +143,11 @@ export class NPCSprite {
   }
 
   getContainer(): Phaser.GameObjects.Container {
-    return this._container ?? this.avatar!.getContainer();
+    return this.avatar.getContainer();
   }
 
   /**
-   * Cleanup — releases both the avatar's resources and the
+   * Cleanup — releases the avatar's resources and the
    * progression-bus subscription so repeated hot-reloads don't leak.
    */
   destroy(): void {
@@ -174,31 +155,23 @@ export class NPCSprite {
       this.unsubBus();
       this.unsubBus = null;
     }
-    if (this.avatar) {
-      this.avatar.destroy();
-    } else {
-      this._container?.destroy();
-    }
+    this.avatar.destroy();
   }
 
   private startIdleBehavior(): void {
-    const container = this.getContainer();
+    // Random direction changes — NPC looks around
+    this.scene.time.addEvent({
+      delay: 3000 + Math.random() * 3000,
+      loop: true,
+      callback: () => {
+        const dirs = ["down", "left", "right", "up"] as const;
+        const dir = dirs[Math.floor(Math.random() * dirs.length)];
+        this.avatar.walk(dir);
+        this.scene.time.delayedCall(250, () => this.avatar.idle());
+      },
+    });
 
-    // Animated NPCs only: random direction changes (NPC looks around)
-    if (this.avatar) {
-      this.scene.time.addEvent({
-        delay: 3000 + Math.random() * 3000,
-        loop: true,
-        callback: () => {
-          const dirs = ["down", "left", "right", "up"] as const;
-          const dir = dirs[Math.floor(Math.random() * dirs.length)];
-          this.avatar!.walk(dir);
-          this.scene.time.delayedCall(250, () => this.avatar!.idle());
-        },
-      });
-    }
-
-    // Small shuffle around origin (very tight, max 6px from origin) — all NPCs
+    // Small shuffle around origin (very tight, max 6px from origin)
     this.scene.time.addEvent({
       delay: 5000 + Math.random() * 4000,
       loop: true,
