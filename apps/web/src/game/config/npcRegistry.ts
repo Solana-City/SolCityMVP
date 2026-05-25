@@ -68,7 +68,7 @@ export const NPC_REGISTRY: NPCDefinition[] = [
   },
   {
     id: "swap-npc",
-    name: "Jupiter Joe",
+    name: "Jupiter Cat",
     role: "Token Swap",
     tileX: 119,
     tileY: 92,
@@ -102,8 +102,8 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     id: "pratik",
     name: "Pratik",
     role: "Superteam Earn",
-    tileX: 116,
-    tileY: 102,
+    tileX: 113,
+    tileY: 99,
     color: 0x9945ff,
     dialog: [
       "Hey! I run the Superteam Earn hub, where builders get paid to work on Solana.",
