@@ -101,11 +101,21 @@ export class SimpleSprite {
     }
   }
 
+  /** Stop walking and show the idle frame for the current direction. */
   idle(): void {
     if (!this.isWalking) return;
     this.isWalking = false;
     this.sprite.anims.stop();
     const row = this.directionRow[this.currentDirection];
+    this.sprite.setFrame(row * 4);
+  }
+
+  /** Change facing direction instantly, no walk animation. */
+  face(direction: Direction): void {
+    this.currentDirection = direction;
+    this.isWalking = false;
+    this.sprite.anims.stop();
+    const row = this.directionRow[direction];
     this.sprite.setFrame(row * 4);
   }
 

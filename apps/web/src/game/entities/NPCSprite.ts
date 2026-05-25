@@ -168,74 +168,65 @@ export class NPCSprite {
   }
 
   private startIdleBehavior(): void {
-    // Max wander distance from spawn point (world units, ~1.5 tiles)
-    const WANDER_RADIUS = 28;
-    // Walk speed in world-units/second
+    const WANDER_RADIUS = 20;
     const WALK_SPEED = 18;
-    // Pause between walks (ms)
-    const PAUSE_MIN = 1200;
-    const PAUSE_MAX = 3800;
+    const dirs: Direction[] = ["up", "down", "left", "right"];
 
-    const wander = () => {
+    const tick = () => {
       if (this._isInRange) {
-        // Player nearby — face south, stay still, retry later
-        this.avatar.idle();
-        this.scene.time.delayedCall(800, wander);
+        this.scene.time.delayedCall(600, tick);
         return;
       }
 
-      const container = this.getContainer();
-
-      // Pick one of the 4 cardinal directions — sprites only have
-      // up/down/left/right frames, so diagonal movement breaks animation.
-      const dirs: Direction[] = ["up", "down", "left", "right"];
       const dir = dirs[Math.floor(Math.random() * dirs.length)];
 
-      // Step distance along that single axis only, clamped to WANDER_RADIUS
-      const step = (0.4 + Math.random() * 0.6) * WANDER_RADIUS;
-      let targetX = container.x;
-      let targetY = container.y;
-      if (dir === "left")  targetX = container.x - step;
-      if (dir === "right") targetX = container.x + step;
-      if (dir === "up")    targetY = container.y - step;
-      if (dir === "down")  targetY = container.y + step;
-
-      // Clamp to wander radius from origin so NPCs don't drift away
-      const clampedX = Math.max(this.originX - WANDER_RADIUS, Math.min(this.originX + WANDER_RADIUS, targetX));
-      const clampedY = Math.max(this.originY - WANDER_RADIUS, Math.min(this.originY + WANDER_RADIUS, targetY));
-
-      const dx = clampedX - container.x;
-      const dy = clampedY - container.y;
-      const distance = Math.abs(dx) + Math.abs(dy);
-
-      if (distance < 3 || this.isTileBlocked(clampedX, clampedY)) {
-        // Too close or destination blocked by a building tile — skip, try again
-        this.scene.time.delayedCall(PAUSE_MIN + Math.random() * (PAUSE_MAX - PAUSE_MIN), wander);
+      // 65 % of the time: just turn to face a direction — no movement
+      if (Math.random() < 0.65) {
+        this.avatar.face(dir);
+        this.scene.time.delayedCall(1800 + Math.random() * 2400, tick);
         return;
       }
 
+      // 35 %: attempt a small step — but only if the path is clear
+      const container = this.getContainer();
+      const step = (0.3 + Math.random() * 0.4) * WANDER_RADIUS;
+      let targetX = container.x;
+      let targetY = container.y;
+      if (dir === "left")  targetX -= step;
+      if (dir === "right") targetX += step;
+      if (dir === "up")    targetY -= step;
+      if (dir === "down")  targetY += step;
+
+      const clampedX = Math.max(this.originX - WANDER_RADIUS, Math.min(this.originX + WANDER_RADIUS, targetX));
+      const clampedY = Math.max(this.originY - WANDER_RADIUS, Math.min(this.originY + WANDER_RADIUS, targetY));
+      const distance  = Math.abs(clampedX - container.x) + Math.abs(clampedY - container.y);
+
+      if (distance < 3 || this.isTileBlocked(clampedX, clampedY)) {
+        // Blocked or no room — just face that way, don't animate walking
+        this.avatar.face(dir);
+        this.scene.time.delayedCall(1200 + Math.random() * 1600, tick);
+        return;
+      }
+
+      // Path clear — walk
       this.avatar.walk(dir);
-
-      const duration = (distance / WALK_SPEED) * 1000;
-
       this.scene.tweens.killTweensOf(container);
       this.scene.tweens.add({
         targets: container,
         x: clampedX,
         y: clampedY,
-        duration,
+        duration: (distance / WALK_SPEED) * 1000,
         ease: "Linear",
         onUpdate: () => container.setDepth(container.y),
         onComplete: () => {
           this.avatar.idle();
-          const pause = PAUSE_MIN + Math.random() * (PAUSE_MAX - PAUSE_MIN);
-          this.scene.time.delayedCall(pause, wander);
+          this.scene.time.delayedCall(1800 + Math.random() * 2400, tick);
         },
       });
     };
 
-    // Stagger startup so all NPCs don't move at the same tick
-    this.scene.time.delayedCall(Math.random() * 2000, wander);
+    // Stagger startup so all NPCs don't tick at the same time
+    this.scene.time.delayedCall(Math.random() * 2000, tick);
   }
 
   /** Returns true if the world-pixel point (x, y) sits on a collidable tile. */

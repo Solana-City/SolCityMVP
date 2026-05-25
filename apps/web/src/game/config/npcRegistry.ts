@@ -55,7 +55,7 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     name: "Sushi Man",
     role: "Food Cart",
     tileX: 145,
-    tileY: 104,
+    tileY: 101,
     color: 0xff6b35,
     dialog: [
       "Irasshaimase! Welcome to my cart.",
@@ -102,8 +102,8 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     id: "pratik",
     name: "Pratik",
     role: "Superteam Earn",
-    tileX: 113,
-    tileY: 99,
+    tileX: 116,
+    tileY: 104,
     color: 0x9945ff,
     dialog: [
       "Hey! I run the Superteam Earn hub, where builders get paid to work on Solana.",
