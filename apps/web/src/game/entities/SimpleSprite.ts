@@ -11,12 +11,12 @@ export const PLAYER_DIRECTION_ROW: DirectionRow = {
   left: 3,
 };
 
-// NPC spritesheets (exported by DOM) have left/right swapped vs the player sheet
+// NPC spritesheets (exported by DOM): down, up, right, left
 export const NPC_DIRECTION_ROW: DirectionRow = {
   down: 0,
-  left: 1,
-  up: 2,
-  right: 3,
+  up: 1,
+  right: 2,
+  left: 3,
 };
 
 /**
