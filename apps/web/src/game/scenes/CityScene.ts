@@ -58,17 +58,14 @@ export class CityScene extends Phaser.Scene {
     const FOREGROUND_PREFIXES = ["VegetationTree"];
     const FOREGROUND_DEPTH = 10000;
 
-    // Isolated vertical objects: trees, palms, lamp posts.
+    // Isolated vertical objects: trees, palms, lamp posts, fountains.
     // These y-sort with the player: depth = bottom-Y of their southernmost
     // collidable tile, so the player renders in front when approaching from
     // the south and behind when approaching from the north.
-    //
-    // Buildings, fountains, and other large floor-level structures must NOT
-    // y-sort — the player can be inside their walkable area (e.g. fountain
-    // outer ring) at a lower Y than the collidable zone, which would wrongly
-    // put the whole structure in front of the player. They stay at layer_index
-    // depth (always rendered behind the player, like floor tiles).
-    const Y_SORT_PREFIXES = ["Vegetation", "DecorLight", "Build", "GameAsset"];
+    // "Decor" layers (e.g. DecorFountain) are included here so the overhead
+    // sculpture/logo part fades when the player walks behind it, matching the
+    // same treatment as palms and trees.
+    const Y_SORT_PREFIXES = ["Vegetation", "DecorLight", "Decor", "Build", "GameAsset"];
 
     // Create all tile layers in order from the JSON.
     // Do NOT pass x/y — Phaser defaults to layerData.x/y which already
@@ -151,6 +148,50 @@ export class CityScene extends Phaser.Scene {
     // Right outer wall: col 120, rows 109-111 (3 rows)
     addWall(120 * T + T / 2, 109 * T + (3 * T) / 2, T, 3 * T);
     this.physics.add.collider(container, mbWalls);
+
+    // ── Fountain collision patches ────────────────────────────────────────────
+    //
+    // SCTileFountain tileset analysis (fountain at cols 93-104, rows 88-100):
+    //   The tileset defines collision objects only on the water-rim tiles (the
+    //   outer ring at col 96, col 103, row 93, row 99). Interior water tiles
+    //   AND the top decorative arch tiles (rows 88-90) have NO collision object,
+    //   so setCollisionFromCollisionGroup() ignores them entirely.
+    //
+    //   Gaps that allow the player to enter and get trapped:
+    //     • rows 88-90 (decorative arch) — no collision at all
+    //     • rows 91-92 (water surface, north approach) — no collision
+    //     • col 95 (leftmost water column) — no collision for rows 91-99
+    //     • interior tiles at cols 97, 101-102, rows 94-99 — no collision
+    //
+    //   Intended walkable centre path: col 99, rows 91-100 (Sol NPC stands at
+    //   99,99 and player spawns at 99,97 — that column must remain open).
+    //
+    //   Fix: four invisible static walls seal every gap while the 1-tile gap at
+    //   col 99 is preserved between the left and right basin walls.
+    //
+    //   Wall geometry (tile-coord → world-px with tileSize=24):
+    //     top arch   : cols 93-104 (12 T wide), rows 88-90 (3 T tall)
+    //     left basin : cols 95-98  (4 T wide),  rows 91-99 (9 T tall)
+    //     right basin: cols 100-103(4 T wide),  rows 91-99 (9 T tall)
+    //     bottom base: cols 93-101 (9 T wide),  row 100    (1 T tall)
+    const fountainWalls = this.physics.add.staticGroup();
+    const addFW = (wx: number, wy: number, w: number, h: number) => {
+      const r = this.add.rectangle(wx, wy, w, h).setVisible(false);
+      this.physics.add.existing(r, true);
+      fountainWalls.add(r);
+    };
+    // Rectangle centre formula: first_col*T + (num_cols/2)*T, same for rows.
+    // Top decorative arch — cols 93-104 (12 wide), rows 88-90 (3 tall)
+    addFW( 99   * T,  89.5 * T, 12 * T, 3 * T);
+    // Left water basin  — cols 95-98  (4 wide),  rows 91-99 (9 tall)
+    // Right edge = 99*T → exactly the left edge of the col-99 centre path.
+    addFW( 97   * T,  95.5 * T,  4 * T, 9 * T);
+    // Right water basin — cols 100-103 (4 wide), rows 91-99 (9 tall)
+    // Left edge = 100*T → exactly the right edge of the col-99 centre path.
+    addFW(102   * T,  95.5 * T,  4 * T, 9 * T);
+    // Bottom base stones — cols 93-101 (9 wide), row 100 (1 tall)
+    addFW( 97.5 * T, 100.5 * T,  9 * T,     T);
+    this.physics.add.collider(container, fountainWalls);
 
     // ── Playable-zone boundary walls ──────────────────────────────────────────
     // Invisible strips that stop players leaving the built area.
