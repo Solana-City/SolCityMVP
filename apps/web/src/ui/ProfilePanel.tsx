@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import type { PlayerProfile } from "@/game/config/profileManager";
 import type { ProfileManager } from "@/game/config/profileManager";
 import type { OnChainPlayer } from "@/game/multiplayer/OnChainMultiplayer";
 import { ACHIEVEMENTS, TIER_COLORS } from "@/game/progression/achievementRegistry";
+import { fetchLeaderboard, type LeaderboardEntry } from "@/game/solana/leaderboard";
 
 interface ProfilePanelProps {
   gameRef: Phaser.Game | null;
@@ -20,6 +21,10 @@ export default function ProfilePanel({ gameRef, isOpen, onClose }: ProfilePanelP
   const [editingName, setEditingName] = useState(false);
   const [nameInput, setNameInput] = useState("");
   const [onlinePlayers, setOnlinePlayers] = useState<OnChainPlayer[]>([]);
+  const [lbTab, setLbTab] = useState<"online" | "alltime">("online");
+  const [allTimeEntries, setAllTimeEntries] = useState<LeaderboardEntry[]>([]);
+  const [allTimeLoading, setAllTimeLoading] = useState(false);
+  const [allTimeError, setAllTimeError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { connected } = useWallet();
   const { setVisible: openWalletModal } = useWalletModal();
@@ -56,6 +61,28 @@ export default function ProfilePanel({ gameRef, isOpen, onClose }: ProfilePanelP
     if (net?.getActivePlayers) setOnlinePlayers(net.getActivePlayers());
     return () => clearInterval(poll);
   }, [gameRef, isOpen]);
+
+  // Fetch all-time leaderboard when the "All Time" tab is selected
+  useEffect(() => {
+    if (!isOpen || lbTab !== "alltime") return;
+    let cancelled = false;
+    setAllTimeLoading(true);
+    setAllTimeError(null);
+    fetchLeaderboard()
+      .then((entries) => { if (!cancelled) setAllTimeEntries(entries); })
+      .catch((err) => { if (!cancelled) setAllTimeError(err?.message ?? "Failed to load"); })
+      .finally(() => { if (!cancelled) setAllTimeLoading(false); });
+    return () => { cancelled = true; };
+  }, [isOpen, lbTab]);
+
+  const refreshAllTime = useCallback(() => {
+    setAllTimeLoading(true);
+    setAllTimeError(null);
+    fetchLeaderboard(true)
+      .then(setAllTimeEntries)
+      .catch((err) => setAllTimeError(err?.message ?? "Failed to load"))
+      .finally(() => setAllTimeLoading(false));
+  }, []);
 
   const saveName = useCallback(() => {
     if (manager && nameInput.trim()) {
@@ -319,48 +346,133 @@ export default function ProfilePanel({ gameRef, isOpen, onClose }: ProfilePanelP
           </div>
         </div>
 
-        {/* Online leaderboard */}
-        {onlinePlayers.length > 0 && (
-          <div className="mb-4">
-            <div className="text-xs mb-2 flex items-center gap-1.5" style={{ color: "#555566" }}>
+        {/* Leaderboard */}
+        <div className="mb-4">
+          {/* Tab bar */}
+          <div className="flex items-center gap-0 mb-2" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+            <button
+              onClick={() => setLbTab("online")}
+              className="text-xs px-3 py-1.5 cursor-pointer"
+              style={{
+                background: "none",
+                border: "none",
+                borderBottom: lbTab === "online" ? "2px solid #14F195" : "2px solid transparent",
+                color: lbTab === "online" ? "#14F195" : "#555566",
+                fontFamily: '"Fira Code", monospace',
+                marginBottom: -1,
+              }}
+            >
               <span
-                className="inline-block rounded-full"
-                style={{ width: 6, height: 6, background: "#14F195", boxShadow: "0 0 4px #14F195" }}
+                className="inline-block rounded-full mr-1.5"
+                style={{ width: 5, height: 5, background: "#14F195", boxShadow: "0 0 4px #14F195", verticalAlign: "middle" }}
               />
-              Online ({onlinePlayers.length})
-            </div>
-            <div className="flex flex-col gap-1">
-              {[...onlinePlayers]
-                .sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
-                .map((p, i) => {
-                  const isSelf = p.wallet === profile.wallet;
-                  const name = p.displayName ?? p.wallet.slice(0, 8);
+              Online {onlinePlayers.length > 0 && `(${onlinePlayers.length})`}
+            </button>
+            <button
+              onClick={() => setLbTab("alltime")}
+              className="text-xs px-3 py-1.5 cursor-pointer"
+              style={{
+                background: "none",
+                border: "none",
+                borderBottom: lbTab === "alltime" ? "2px solid #FFD700" : "2px solid transparent",
+                color: lbTab === "alltime" ? "#FFD700" : "#555566",
+                fontFamily: '"Fira Code", monospace',
+                marginBottom: -1,
+              }}
+            >
+              All Time
+            </button>
+            {lbTab === "alltime" && (
+              <button
+                onClick={refreshAllTime}
+                disabled={allTimeLoading}
+                title="Refresh"
+                className="ml-auto text-xs cursor-pointer"
+                style={{
+                  background: "none",
+                  border: "none",
+                  color: allTimeLoading ? "#333344" : "#555566",
+                  padding: "4px 8px",
+                  fontFamily: "monospace",
+                }}
+              >
+                ↻
+              </button>
+            )}
+          </div>
+
+          {/* Online tab */}
+          {lbTab === "online" && (
+            onlinePlayers.length === 0 ? (
+              <div className="text-xs py-3 text-center" style={{ color: "#333344" }}>
+                No other players online right now
+              </div>
+            ) : (
+              <div className="flex flex-col gap-1">
+                {[...onlinePlayers]
+                  .sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
+                  .map((p, i) => {
+                    const isSelf = p.wallet === profile.wallet;
+                    const name = p.displayName ?? p.wallet.slice(0, 8);
+                    return (
+                      <LeaderboardRow
+                        key={p.wallet}
+                        rank={i + 1}
+                        name={name}
+                        score={p.score ?? 0}
+                        isSelf={isSelf}
+                        wallet={p.wallet}
+                      />
+                    );
+                  })}
+              </div>
+            )
+          )}
+
+          {/* All Time tab */}
+          {lbTab === "alltime" && (
+            allTimeLoading ? (
+              <div className="text-xs py-4 text-center" style={{ color: "#555566" }}>
+                Fetching from devnet…
+              </div>
+            ) : allTimeError ? (
+              <div className="text-xs py-3 text-center" style={{ color: "#ff4444" }}>
+                {allTimeError}
+              </div>
+            ) : allTimeEntries.length === 0 ? (
+              <div className="text-xs py-3 text-center" style={{ color: "#333344" }}>
+                No on-chain records found
+              </div>
+            ) : (
+              <div className="flex flex-col gap-1">
+                {allTimeEntries.slice(0, 50).map((entry, i) => {
+                  const isSelf = entry.wallet === profile.wallet;
+                  const name = entry.displayName || entry.wallet.slice(0, 8);
                   return (
-                    <div
-                      key={p.wallet}
-                      className="flex items-center justify-between px-2 py-1 rounded"
-                      style={{
-                        background: isSelf ? "rgba(20,241,149,0.06)" : "#12122a",
-                        border: isSelf ? "1px solid rgba(20,241,149,0.2)" : "1px solid rgba(255,255,255,0.03)",
-                      }}
-                    >
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs w-4 text-right" style={{ color: "#444455" }}>
-                          {i + 1}
+                    <LeaderboardRow
+                      key={entry.wallet}
+                      rank={i + 1}
+                      name={name}
+                      score={entry.score}
+                      isSelf={isSelf}
+                      wallet={entry.wallet}
+                      extra={
+                        <span className="text-xs" style={{ color: "#444455", fontSize: 9 }}>
+                          {entry.swapCount}s·{entry.transferCount}t·{entry.bountyCount}b
                         </span>
-                        <span className="text-xs" style={{ color: isSelf ? "#14F195" : "#aaaacc" }}>
-                          {name}{isSelf ? " (you)" : ""}
-                        </span>
-                      </div>
-                      <span className="text-xs font-bold" style={{ color: "#FFD700" }}>
-                        {p.score ?? 0}
-                      </span>
-                    </div>
+                      }
+                    />
                   );
                 })}
-            </div>
-          </div>
-        )}
+                {allTimeEntries.length > 50 && (
+                  <div className="text-xs text-center pt-1" style={{ color: "#333344" }}>
+                    +{allTimeEntries.length - 50} more
+                  </div>
+                )}
+              </div>
+            )
+          )}
+        </div>
 
         {/* Achievements */}
         <div className="mb-4">
@@ -427,6 +539,58 @@ export default function ProfilePanel({ gameRef, isOpen, onClose }: ProfilePanelP
           <span>Last active {new Date(profile.lastActive).toLocaleDateString()}</span>
         </div>
       </div>
+    </div>
+  );
+}
+
+function LeaderboardRow({
+  rank,
+  name,
+  score,
+  isSelf,
+  wallet,
+  extra,
+}: {
+  rank: number;
+  name: string;
+  score: number;
+  isSelf: boolean;
+  wallet: string;
+  extra?: React.ReactNode;
+}) {
+  const rankColor =
+    rank === 1 ? "#FFD700" :
+    rank === 2 ? "#C0C0C0" :
+    rank === 3 ? "#CD7F32" :
+    "#444455";
+
+  return (
+    <div
+      className="flex items-center justify-between px-2 py-1 rounded"
+      style={{
+        background: isSelf ? "rgba(20,241,149,0.06)" : "#12122a",
+        border: isSelf ? "1px solid rgba(20,241,149,0.2)" : "1px solid rgba(255,255,255,0.03)",
+      }}
+    >
+      <div className="flex items-center gap-2 min-w-0">
+        <span
+          className="text-xs flex-shrink-0"
+          style={{ color: rankColor, width: 18, textAlign: "right", fontWeight: rank <= 3 ? "bold" : "normal" }}
+        >
+          {rank <= 3 ? ["🥇","🥈","🥉"][rank - 1] : rank}
+        </span>
+        <span
+          className="text-xs truncate"
+          style={{ color: isSelf ? "#14F195" : "#aaaacc", maxWidth: 150 }}
+          title={wallet}
+        >
+          {name}{isSelf ? " (you)" : ""}
+        </span>
+        {extra && <span className="flex-shrink-0">{extra}</span>}
+      </div>
+      <span className="text-xs font-bold flex-shrink-0" style={{ color: "#FFD700" }}>
+        {score}
+      </span>
     </div>
   );
 }
