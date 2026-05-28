@@ -27,6 +27,31 @@ export default class ErrorBoundary extends React.Component<Props, State> {
     return { error };
   }
 
+  componentDidMount() {
+    // Catch errors that escape React's lifecycle (useEffect uncaught throws,
+    // WebGL context-loss events, Phaser internal exceptions) so the user sees
+    // a recovery screen instead of a blank/frozen page.
+    this._onError = (event: ErrorEvent) => {
+      this.setState({ error: event.error ?? new Error(event.message) });
+    };
+    this._onUnhandledRejection = (event: PromiseRejectionEvent) => {
+      const err = event.reason instanceof Error
+        ? event.reason
+        : new Error(String(event.reason));
+      this.setState({ error: err });
+    };
+    window.addEventListener("error", this._onError);
+    window.addEventListener("unhandledrejection", this._onUnhandledRejection);
+  }
+
+  componentWillUnmount() {
+    window.removeEventListener("error", this._onError!);
+    window.removeEventListener("unhandledrejection", this._onUnhandledRejection!);
+  }
+
+  private _onError?: (e: ErrorEvent) => void;
+  private _onUnhandledRejection?: (e: PromiseRejectionEvent) => void;
+
   componentDidCatch(error: Error, info: React.ErrorInfo) {
     console.error("[SolCity] Uncaught error:", error, info.componentStack);
   }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import * as Phaser from "phaser";
 import { BootScene } from "./scenes/BootScene";
 import { CityScene } from "./scenes/CityScene";
@@ -12,12 +12,19 @@ interface PhaserGameProps {
 export default function PhaserGame({ onGameReady }: PhaserGameProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const gameRef = useRef<Phaser.Game | null>(null);
+  // Throwing during render propagates the error to the nearest ErrorBoundary —
+  // the only way to surface useEffect errors (which React doesn't auto-catch).
+  const [fatalError, setFatalError] = useState<Error | null>(null);
+  if (fatalError) throw fatalError;
 
   useEffect(() => {
     if (gameRef.current || !containerRef.current) return;
 
     const config: Phaser.Types.Core.GameConfig = {
-      type: Phaser.WEBGL,
+      // AUTO lets Phaser fall back to Canvas if WebGL context creation fails
+      // (e.g. GPU memory exhausted, too many WebGL contexts, restricted WebView).
+      // Forcing WEBGL on mobile causes a hard crash with no error boundary catch.
+      type: Phaser.AUTO,
       parent: containerRef.current,
       width: window.innerWidth,
       height: window.innerHeight,
@@ -42,11 +49,19 @@ export default function PhaserGame({ onGameReady }: PhaserGameProps) {
         antialias: false,
         antialiasGL: false,
         roundPixels: true,
+        // Hint to the GPU driver to prefer battery-saving mode on mobile.
+        // Reduces heat and GPU memory pressure, helping avoid context loss.
+        powerPreference: "low-power",
       },
     };
 
-    gameRef.current = new Phaser.Game(config);
-    onGameReady?.(gameRef.current);
+    try {
+      gameRef.current = new Phaser.Game(config);
+      onGameReady?.(gameRef.current);
+    } catch (err) {
+      console.error("[PhaserGame] Failed to initialize:", err);
+      setFatalError(err instanceof Error ? err : new Error(String(err)));
+    }
 
     return () => {
       gameRef.current?.destroy(true);
