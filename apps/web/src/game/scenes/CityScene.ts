@@ -95,9 +95,14 @@ export class CityScene extends Phaser.Scene {
 
       // DecorFountain: partial Tiled objectgroup shapes leave many faces open,
       // so the player's small body slips through even "collidable" rim tiles.
-      // Fix: force full 4-face collision on every fountain tile EXCEPT the
-      // staircase corridor (cols 99-100, rows 97+) which must stay walkable.
-      // Corridor tiles get collision cleared so they don't block the player.
+      //
+      // Fix: force full 4-face collision on the inner water basin only.
+      // Bounds: cols 95-103, rows 91-99 (the water + rim area).
+      // Rows 88-90 (decorative arch) and outer corner tiles are intentionally
+      // EXCLUDED — they sit in walkable areas around the fountain perimeter
+      // and must not block the player.
+      // Corridor tiles (cols 99-100, rows 97+) get resetCollision() so the
+      // player can walk in/out through the staircase freely.
       if (layerName === "DecorFountain") {
         layer.forEachTile((tile: Phaser.Tilemaps.Tile) => {
           if (tile.index <= 0) return;
@@ -107,7 +112,7 @@ export class CityScene extends Phaser.Scene {
           } else {
             tile.setCollision(true, true, true, true);
           }
-        });
+        }, this, 95, 91, 9, 9); // startX=95, startY=91, width=9 cols, height=9 rows
       }
 
       const collidingTiles = layer.filterTiles((t: Phaser.Tilemaps.Tile) => t.collides);
