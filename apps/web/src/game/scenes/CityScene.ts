@@ -125,11 +125,9 @@ export class CityScene extends Phaser.Scene {
       }
     }
 
-    // Spawn south of the fountain plaza (col 99, row 103).
-    // Row 97 is inside the fountain basin which now has collision — spawning
-    // there would trap the player inside the blocked water area.
-    const spawnX = 99  * tileSize + tileSize / 2;
-    const spawnY = 103 * tileSize + tileSize / 2;
+    // Spawn inside the fountain plaza center (col 99, row 97).
+    const spawnX = 99 * tileSize + tileSize / 2;
+    const spawnY = 97 * tileSize + tileSize / 2;
     const playerTextureKey = this.textures.exists("avatar-player")
       ? "avatar-player"
       : "avatar-sol-guide";
