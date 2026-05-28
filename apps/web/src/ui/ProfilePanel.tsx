@@ -133,19 +133,36 @@ export default function ProfilePanel({ gameRef, isOpen, onClose }: ProfilePanelP
         onClick={onClose}
       />
       <div
-        className="relative rounded-2xl p-6 w-full max-w-md"
+        className="relative rounded-2xl p-4 sm:p-6 w-full max-w-md mx-4"
         style={{
           background: "rgba(10,10,30,0.97)",
           border: "1px solid rgba(153,69,255,0.25)",
           fontFamily: '"Fira Code", monospace',
-          maxHeight: "85vh",
+          // dvh falls back to vh; on landscape phones dvh tracks the actual
+          // viewport height after browser chrome collapses, giving ~10% more room.
+          maxHeight: "min(92dvh, 640px)",
           overflowY: "auto",
+          overscrollBehavior: "contain",
+          WebkitOverflowScrolling: "touch",
         }}
       >
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 text-lg cursor-pointer"
-          style={{ background: "none", border: "none", color: "#555566" }}
+          className="absolute top-3 right-3 cursor-pointer"
+          style={{
+            background: "none",
+            border: "none",
+            color: "#555566",
+            fontSize: "20px",
+            // Ensure 44×44px touch target on mobile
+            minWidth: 44,
+            minHeight: 44,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            WebkitTapHighlightColor: "transparent",
+          }}
+          aria-label="Close"
         >
           ×
         </button>

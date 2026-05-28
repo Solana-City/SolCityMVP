@@ -66,7 +66,12 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
 
   const handleFocus = useCallback(() => {
     gameRef?.events.emit("chat:focus", true);
-  }, [gameRef]);
+    // On mobile, scroll the input into view after the virtual keyboard rises.
+    // Small delay lets the keyboard animate before measuring layout.
+    if (isTouch) {
+      setTimeout(() => inputRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" }), 320);
+    }
+  }, [gameRef, isTouch]);
 
   const handleBlur = useCallback(() => {
     gameRef?.events.emit("chat:focus", false);

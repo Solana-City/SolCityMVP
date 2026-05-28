@@ -81,6 +81,62 @@ export default function WalletBar({ onWalletChange }: WalletBarProps) {
     }
   }, [connected, disconnect, setVisible]);
 
+  // ── Mobile layout: compact row (status dot + address + button) ───────────────
+  if (isTouch) {
+    return (
+      <div className="flex items-center gap-2" style={{ fontFamily: '"Fira Code", monospace' }}>
+        {/* Seeker badge — only when SGT is confirmed to keep it meaningful */}
+        {hasSGT && (
+          <span
+            className="text-[8px] px-1.5 py-1 rounded"
+            style={{
+              background: "rgba(255,215,0,0.15)",
+              color: "#FFD700",
+              border: "1px solid rgba(255,215,0,0.4)",
+              fontFamily: '"Press Start 2P", monospace',
+            }}
+            title="Seeker Genesis Token holder"
+          >
+            ⬡
+          </span>
+        )}
+        {/* Status dot + short address (or balance) in one pill */}
+        {connected && shortAddr && (
+          <span
+            className="inline-flex items-center gap-1.5 text-[10px] px-2 py-1 rounded"
+            style={{
+              background: "rgba(10,10,30,0.88)",
+              color: "#00D1FF",
+              border: "1px solid rgba(0,209,255,0.2)",
+            }}
+          >
+            <span style={{ width: 6, height: 6, borderRadius: "50%", display: "inline-block", background: "#14F195", flexShrink: 0 }} />
+            {balance !== null ? `${balance} ◎` : shortAddr}
+          </span>
+        )}
+        <button
+          onClick={handleClick}
+          className="rounded cursor-pointer"
+          style={{
+            background: connected ? "rgba(20,241,149,0.12)" : "rgba(153,69,255,0.8)",
+            color: connected ? "#14F195" : "#ffffff",
+            border: connected ? "1px solid rgba(20,241,149,0.3)" : "1px solid rgba(153,69,255,0.5)",
+            fontFamily: '"Press Start 2P", monospace',
+            fontSize: "8px",
+            padding: "10px 12px",
+            minHeight: 44,
+            display: "flex",
+            alignItems: "center",
+            WebkitTapHighlightColor: "transparent",
+          }}
+        >
+          {connected ? "●" : "CONNECT"}
+        </button>
+      </div>
+    );
+  }
+
+  // ── Desktop layout: full row ──────────────────────────────────────────────
   return (
     <div
       className="flex items-center gap-3 flex-wrap justify-end"
@@ -154,13 +210,13 @@ export default function WalletBar({ onWalletChange }: WalletBarProps) {
           border: connected ? "1px solid rgba(20,241,149,0.3)" : "1px solid rgba(153,69,255,0.5)",
           fontFamily: '"Press Start 2P", monospace',
           fontSize: "9px",
-          padding: isTouch ? "10px 14px" : "6px 16px",
+          padding: "6px 16px",
           minHeight: 44,
           display: "flex",
           alignItems: "center",
         }}
       >
-        {connected ? (isTouch ? "●" : "CONNECTED") : (isTouch ? "CONNECT" : "CONNECT WALLET")}
+        {connected ? "CONNECTED" : "CONNECT WALLET"}
       </button>
     </div>
   );
