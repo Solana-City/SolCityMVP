@@ -164,6 +164,35 @@ export class CityScene extends Phaser.Scene {
     addWall(120 * T + T / 2, 109 * T + (3 * T) / 2, T, 3 * T);
     this.physics.add.collider(container, mbWalls);
 
+    // ── Fountain invisible walls ──────────────────────────────────────────────
+    //
+    // The fountain rim tiles use partial/polygon collision shapes from Tiled.
+    // The player's small physics body (12×7 px) can slip through the gaps.
+    // Three invisible walls seal every water zone while keeping the centre
+    // staircase corridor (cols 99-100, rows 97-100) fully open.
+    //
+    // Fountain region: cols 93-104, rows 88-100  (tileSize = 24 px)
+    //
+    //   Wall 1 – north arch + upper basin: cols 93-104 (12 T), rows 88-96 (9 T)
+    //            centre: x = (93+6)*T = 99 T,  y = (88+4.5)*T = 92.5 T
+    //   Wall 2 – left water:              cols 93-98  (6 T), rows 97-99 (3 T)
+    //            centre: x = (93+3)*T = 96 T,  y = (97+1.5)*T = 98.5 T
+    //   Wall 3 – right water:             cols 101-104 (4 T), rows 97-99 (3 T)
+    //            centre: x = (101+2)*T = 103 T, y = 98.5 T
+    //
+    //   Open corridor: cols 99-100, rows 97-100 (48 px wide — player body 12 px)
+    //   Player spawns at (99, 97) = centre of the corridor.
+    const fountainWalls = this.physics.add.staticGroup();
+    const addFW = (wx: number, wy: number, w: number, h: number) => {
+      const r = this.add.rectangle(wx, wy, w, h).setVisible(false);
+      this.physics.add.existing(r, true);
+      fountainWalls.add(r);
+    };
+    addFW( 99 * T, 92.5 * T, 12 * T, 9 * T); // north arch + upper basin
+    addFW( 96 * T, 98.5 * T,  6 * T, 3 * T); // left water
+    addFW(103 * T, 98.5 * T,  4 * T, 3 * T); // right water
+    this.physics.add.collider(container, fountainWalls);
+
     // ── Playable-zone boundary walls ──────────────────────────────────────────
     // Invisible strips that stop players leaving the built area.
     // ZONE_DEBUG=true renders them red so you can verify placement in-game.
