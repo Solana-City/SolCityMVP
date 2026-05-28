@@ -78,14 +78,9 @@ export class CityScene extends Phaser.Scene {
     // These y-sort with the player: depth = bottom-Y of their southernmost
     // collidable tile, so the player renders in front when approaching from
     // the south and behind when approaching from the north.
-    const Y_SORT_PREFIXES = ["Vegetation", "DecorLight", "Decor", "Build", "GameAsset"];
-
-    // Flat ground-level decorations that match a Y_SORT_PREFIX but must NOT
-    // be Y-sorted. DecorFountain is a wide plaza structure — giving it a
-    // Y-sort depth of ~2400 causes the player and NPCs (worldY < 2400) to
-    // render behind the fountain layer when inside the basin. Fixed depth
-    // (= layer index, < 100) keeps it permanently below all sprites.
-    const FLAT_LAYERS = new Set(["DecorFountain"]);
+    // NOTE: "Decor" is intentionally excluded — DecorFountain is a flat
+    // plaza structure and must use fixed depth, not Y-sort.
+    const Y_SORT_PREFIXES = ["Vegetation", "DecorLight", "Build", "GameAsset"];
 
     // Create all tile layers in order from the JSON.
     // Do NOT pass x/y — Phaser defaults to layerData.x/y which already
@@ -100,7 +95,7 @@ export class CityScene extends Phaser.Scene {
       const collidingTiles = layer.filterTiles((t: Phaser.Tilemaps.Tile) => t.collides);
 
       if (collidingTiles.length > 0) {
-        if (Y_SORT_PREFIXES.some(p => layerName.startsWith(p)) && !FLAT_LAYERS.has(layerName)) {
+        if (Y_SORT_PREFIXES.some(p => layerName.startsWith(p))) {
           // Isolated vertical object (trunk, palm, lamp post) → y-sort.
           // depth = bottom-world-Y of the southernmost collidable tile.
           let maxBottomY = 0;
