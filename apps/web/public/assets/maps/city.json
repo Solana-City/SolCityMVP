@@ -334638,6 +334638,30 @@
           }
         },
         {
+          "id": 524,
+          "objectgroup": {
+            "draworder": "index",
+            "name": "",
+            "opacity": 1,
+            "type": "objectgroup",
+            "visible": true,
+            "x": 0,
+            "y": 0,
+            "objects": [
+              {
+                "height": 24,
+                "id": 1,
+                "rotation": 0,
+                "type": "",
+                "visible": true,
+                "width": 24,
+                "x": 0,
+                "y": 0
+              }
+            ]
+          }
+        },
+        {
           "id": 525,
           "objectgroup": {
             "draworder": "index",
@@ -334851,6 +334875,30 @@
             "visible": true,
             "x": 0,
             "y": 0
+          }
+        },
+        {
+          "id": 576,
+          "objectgroup": {
+            "draworder": "index",
+            "name": "",
+            "opacity": 1,
+            "type": "objectgroup",
+            "visible": true,
+            "x": 0,
+            "y": 0,
+            "objects": [
+              {
+                "height": 24,
+                "id": 1,
+                "rotation": 0,
+                "type": "",
+                "visible": true,
+                "width": 24,
+                "x": 0,
+                "y": 0
+              }
+            ]
           }
         },
         {
