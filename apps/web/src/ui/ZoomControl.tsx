@@ -3,46 +3,49 @@
 import { useEffect, useState } from "react";
 
 const STORAGE_KEY = "solcity:zoom";
-const MIN = 1;
-const MAX = 3;
-const STEP = 0.25;
+// Valid zooms: only multiples of 2 so that sprite_scale(0.5) × zoom = integer.
+// Any other zoom causes fractional screen pixels → irregular pixel sizes.
+const VALID_ZOOMS = [2, 4] as const;
+type ValidZoom = (typeof VALID_ZOOMS)[number];
 
 function emitGame(event: string, data?: unknown) {
   (globalThis as any).__solCityGameEvents?.emit(event, data);
 }
 
-function defaultZoom(): number {
-  return window.matchMedia("(pointer: coarse)").matches ? 1.5 : 2;
+function snapZoom(z: number): ValidZoom {
+  return VALID_ZOOMS.reduce((best, v) =>
+    Math.abs(v - z) < Math.abs(best - z) ? v : best
+  ) as ValidZoom;
 }
 
-function loadZoom(): number {
+function loadZoom(): ValidZoom {
   const stored = parseFloat(localStorage.getItem(STORAGE_KEY) ?? "");
-  return isNaN(stored) ? defaultZoom() : stored;
+  return isNaN(stored) ? 2 : snapZoom(stored);
 }
 
 export default function ZoomControl() {
-  const [zoom, setZoom] = useState<number | null>(null);
+  const [zoom, setZoom] = useState<ValidZoom | null>(null);
 
   useEffect(() => {
     setZoom(loadZoom());
-    // Sync display when pinch gesture changes zoom
-    const handler = (e: Event) => setZoom((e as CustomEvent<number>).detail);
+    // Sync display when pinch gesture changes zoom (pinch snaps to nearest valid)
+    const handler = (e: Event) => setZoom(snapZoom((e as CustomEvent<number>).detail));
     window.addEventListener("solcity:zoom", handler);
     return () => window.removeEventListener("solcity:zoom", handler);
   }, []);
 
   if (zoom === null) return null;
 
-  function change(next: number) {
-    const clamped = Math.round(next * 100) / 100;
-    setZoom(clamped);
-    localStorage.setItem(STORAGE_KEY, String(clamped));
-    emitGame("camera:zoom", clamped);
-    window.dispatchEvent(new CustomEvent("solcity:zoom", { detail: clamped }));
-  }
+  const idx = VALID_ZOOMS.indexOf(zoom);
+  const canDec = idx > 0;
+  const canInc = idx < VALID_ZOOMS.length - 1;
 
-  const canDec = zoom > MIN;
-  const canInc = zoom < MAX;
+  function change(next: ValidZoom) {
+    setZoom(next);
+    localStorage.setItem(STORAGE_KEY, String(next));
+    emitGame("camera:zoom", next);
+    window.dispatchEvent(new CustomEvent("solcity:zoom", { detail: next }));
+  }
 
   return (
     <div
@@ -54,7 +57,7 @@ export default function ZoomControl() {
         fontFamily: '"Fira Code", monospace',
       }}
     >
-      <ZBtn disabled={!canDec} onClick={() => change(zoom - STEP)}>−</ZBtn>
+      <ZBtn disabled={!canDec} onClick={() => change(VALID_ZOOMS[idx - 1])}>−</ZBtn>
 
       <span
         style={{
@@ -66,10 +69,10 @@ export default function ZoomControl() {
           userSelect: "none",
         }}
       >
-        {zoom.toFixed(zoom % 1 === 0 ? 0 : 2)}×
+        {zoom}×
       </span>
 
-      <ZBtn disabled={!canInc} onClick={() => change(zoom + STEP)}>+</ZBtn>
+      <ZBtn disabled={!canInc} onClick={() => change(VALID_ZOOMS[idx + 1])}>+</ZBtn>
     </div>
   );
 }

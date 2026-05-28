@@ -3,19 +3,19 @@
 import { useEffect } from "react";
 
 const STORAGE_KEY = "solcity:zoom";
-const MIN = 1;
-const MAX = 3;
-const SNAP = 0.25;
+// Must match CityScene / ZoomControl: only multiples of 2 are pixel-perfect
+// with the current sprite_scale=0.5 setting.
+const VALID_ZOOMS = [2, 4] as const;
 
-function snapZoom(z: number) {
-  return Math.round(Math.min(MAX, Math.max(MIN, z)) / SNAP) * SNAP;
+function snapZoom(z: number): number {
+  return VALID_ZOOMS.reduce((best, v) =>
+    Math.abs(v - z) < Math.abs(best - z) ? v : best
+  );
 }
 
 function currentZoom(): number {
   const stored = parseFloat(localStorage.getItem(STORAGE_KEY) ?? "");
-  return isNaN(stored)
-    ? window.matchMedia("(pointer: coarse)").matches ? 1.5 : 2
-    : stored;
+  return isNaN(stored) ? 2 : snapZoom(stored);
 }
 
 function broadcastZoom(zoom: number) {
@@ -51,11 +51,12 @@ export function usePinchZoom() {
       pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
       const ratio = dist() / startDist;
-      const raw = Math.min(MAX, Math.max(MIN, startZoom * ratio));
+      const raw = Math.min(VALID_ZOOMS[VALID_ZOOMS.length - 1],
+                           Math.max(VALID_ZOOMS[0], startZoom * ratio));
       // Only emit when raw value shifts enough to avoid noise
-      if (Math.abs(raw - lastRaw) < 0.04) return;
+      if (Math.abs(raw - lastRaw) < 0.5) return;
       lastRaw = raw;
-      broadcastZoom(raw);
+      broadcastZoom(snapZoom(raw)); // emit snapped value immediately
     }
 
     function onUp(e: PointerEvent) {

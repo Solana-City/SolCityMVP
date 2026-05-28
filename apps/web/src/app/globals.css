@@ -52,6 +52,16 @@ button:focus-visible {
   50%      { opacity: 0.5; transform: scale(1.3); }
 }
 
+/* ── Canvas: pixel-art nearest-neighbor scaling ───────────────────────────── */
+/* Forces nearest-neighbor interpolation when the browser CSS-scales the
+ * canvas (e.g. on DPR > 1 screens like Retina / high-density Android).
+ * Without this the OS compositor uses bilinear, which blurs pixel art even
+ * when Phaser's internal WebGL sampling is already set to pixelArt mode.    */
+canvas {
+  image-rendering: pixelated;   /* Chrome, Edge, Opera, Android */
+  image-rendering: crisp-edges; /* Firefox fallback              */
+}
+
 /* ── Wallet adapter modal: mobile-friendly overrides ──────────────────────── */
 /* Ensure the wallet selection modal is touch-accessible on Seeker / small screens */
 .wallet-adapter-modal-wrapper {
