@@ -146,8 +146,9 @@ export class SessionKeyManager {
 
       if (!bus) {
         clearTimeout(timeout);
-        // No bus yet — fall back to local sim
-        resolve("sim:no-bus");
+        // Reject — do NOT resolve with a fake signature. Passing non-base58
+        // strings to confirmTransaction crashes via tweetnacl assertion.
+        reject(new Error("wallet bus not available — session offline"));
         return;
       }
 

@@ -42,7 +42,10 @@ export default class ErrorBoundary extends React.Component<Props, State> {
         msg.includes("User rejected") ||
         msg.includes("WalletSendTransactionError") ||
         msg.includes("Transaction simulation failed") ||
-        msg.includes("Blockhash not found")
+        msg.includes("Blockhash not found") ||
+        msg.includes("session offline") ||
+        // Tweetnacl assertion from web3.js getSignatureStatus with invalid sig
+        (msg === "Assertion failed")
       ) {
         console.warn("[ErrorBoundary] suppressed wallet error:", msg);
         return;
@@ -64,7 +67,9 @@ export default class ErrorBoundary extends React.Component<Props, State> {
         msg.includes("Transaction simulation failed") ||
         msg.includes("Blockhash not found") ||
         msg.includes("wallet sign timeout") ||
-        msg.includes("Wallet not connected")
+        msg.includes("Wallet not connected") ||
+        msg.includes("session offline") ||
+        msg === "Assertion failed"
       ) {
         console.warn("[ErrorBoundary] suppressed wallet rejection:", msg);
         return;

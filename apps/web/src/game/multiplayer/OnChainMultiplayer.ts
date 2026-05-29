@@ -690,11 +690,14 @@ export class OnChainMultiplayer {
       const timeout = setTimeout(() => reject(new Error("wallet sign timeout")), 60_000);
 
       // Access the global game event bus — set by CityScene on connect.
-      // If unavailable fall back to sim.
+      // IMPORTANT: do NOT resolve with a fake signature — passing non-base58
+      // strings to confirmTransaction / getSignatureStatus triggers a tweetnacl
+      // "Assertion failed" that escapes try/catch.  Reject instead so callers
+      // fall through to their catch blocks and gracefully enter offline mode.
       const bus = (globalThis as any).__solCityGameEvents as Phaser.Events.EventEmitter | undefined;
       if (!bus) {
         clearTimeout(timeout);
-        resolve("sim:no-bus");
+        reject(new Error("wallet bus not available — session offline"));
         return;
       }
 
