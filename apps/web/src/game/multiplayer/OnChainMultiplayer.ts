@@ -513,10 +513,14 @@ export class OnChainMultiplayer {
       console.warn("[Multiplayer] base subscription failed:", err);
     }
 
-    // 6. Periodic base-layer polling (every 4s) — fallback for when
-    //    WebSocket onProgramAccountChange doesn't fire on the RPC node.
-    //    4s gives near-realtime feel while staying below devnet rate limits.
-    setInterval(() => this.discoverPlayersFromBase(wallet), 4_000);
+    // 6. Periodic polling (every 2s) for BOTH layers.
+    //    Ephemeral: live data when PDA is delegated (writes go there)
+    //    Base:      live data when PDA is NOT delegated
+    //    We always poll both because delegation can change between sessions.
+    setInterval(() => {
+      this.discoverPlayers(wallet);      // ephemeral rollup
+      this.discoverPlayersFromBase(wallet); // base devnet
+    }, 2_000);
 
     // 7. Force a presence broadcast on the next sendInput tick.
     this.lastPos = { x: -1, y: -1, direction: -1, isWalking: false };
@@ -730,10 +734,22 @@ export class OnChainMultiplayer {
 
       if (walletStr === this.wallet?.toBase58()) return; // skip self
 
-      // Infer walking from position delta vs last known state
+      // Only update if this data is newer than what we have.
+      // Both layers (ephemeral + base) may report stale data — ephemeral
+      // rollup data has the live position; base layer is locked while delegated.
       const existing = this.knownPlayers.get(walletStr);
+      const onChainTs = lastActiveLo; // u32 unix seconds
+      if (existing && (existing as any)._onChainTs !== undefined) {
+        if (onChainTs < (existing as any)._onChainTs) return; // stale — skip
+      }
+      (existing as any)?._onChainTs !== undefined || true; // no-op, field tracked below
+
       const isWalking = existing !== undefined && (x !== existing.x || y !== existing.y);
       this.handlePlayerMove(walletStr, x, y, direction, isWalking, displayName);
+      // Tag the known player with the on-chain timestamp so future stale
+      // data from the other layer doesn't overwrite a more recent update.
+      const updated = this.knownPlayers.get(walletStr);
+      if (updated) (updated as any)._onChainTs = onChainTs;
     } catch {
       // Corrupt or unrecognized account — skip silently
     }
