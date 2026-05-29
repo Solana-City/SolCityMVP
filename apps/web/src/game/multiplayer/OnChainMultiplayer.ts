@@ -792,31 +792,44 @@ export class OnChainMultiplayer {
     if (!this.wallet) return null;
 
     const sessionKey = this.sessionKeys.getSessionPublicKey();
-    const ix = buildUpdatePositionSessionIx(
-      this.wallet, sessionKey,
-      Math.round(x), Math.round(y), direction
-    );
-    const tx = new Transaction().add(ix);
-    tx.feePayer = sessionKey;
+    const rx = Math.round(x);
+    const ry = Math.round(y);
 
-    if (this.useEphemeral) {
-      // Fast path: Magic Router → ephemeral rollup (sub-50ms)
-      const { blockhash } = await this.routerConnection.getLatestBlockhashForTransaction(tx);
-      tx.recentBlockhash = blockhash;
-      this.sessionKeys.signTransaction(tx);
-      return this.routerConnection.sendRawTransaction(tx.serialize(), {
-        skipPreflight: true,
-        preflightCommitment: "processed",
-      });
-    } else {
-      // Fallback path: base layer devnet (writes to the undelegated PDA directly)
-      const { blockhash } = await this.baseConnection.getLatestBlockhash();
-      tx.recentBlockhash = blockhash;
-      this.sessionKeys.signTransaction(tx);
-      return this.baseConnection.sendRawTransaction(tx.serialize(), {
-        skipPreflight: true,
-      });
-    }
+    // Send to BOTH layers concurrently.
+    // We cannot reliably know which layer holds the live PDA:
+    //   - If delegated   → ephemeral rollup accepts, base layer rejects (locked)
+    //   - If undelegated → base layer accepts, ephemeral rollup rejects (no PDA)
+    // sendRawTransaction returns a signature regardless of on-chain success/failure,
+    // so checking the return value doesn't help. Broadcasting to both ensures the
+    // correct layer receives the update without requiring us to know delegation state.
+    const buildTx = async (
+      getBlockhash: () => Promise<{ blockhash: string }>,
+    ): Promise<Uint8Array | null> => {
+      try {
+        const ix = buildUpdatePositionSessionIx(this.wallet!, sessionKey, rx, ry, direction);
+        const tx = new Transaction().add(ix);
+        tx.feePayer = sessionKey;
+        const { blockhash } = await getBlockhash();
+        tx.recentBlockhash = blockhash;
+        this.sessionKeys.signTransaction(tx);
+        return tx.serialize();
+      } catch { return null; }
+    };
+
+    const [ephBytes, baseBytes] = await Promise.all([
+      buildTx(() => this.routerConnection.getLatestBlockhashForTransaction(
+        new Transaction().add(buildUpdatePositionSessionIx(this.wallet, sessionKey, rx, ry, direction))
+      )),
+      buildTx(() => this.baseConnection.getLatestBlockhash()),
+    ]);
+
+    const [ephSig, baseSig] = await Promise.allSettled([
+      ephBytes  ? this.routerConnection.sendRawTransaction(ephBytes,  { skipPreflight: true }) : Promise.reject(),
+      baseBytes ? this.baseConnection.sendRawTransaction(baseBytes, { skipPreflight: true }) : Promise.reject(),
+    ]);
+
+    return (ephSig.status  === "fulfilled" ? ephSig.value  : null)
+        ?? (baseSig.status === "fulfilled" ? baseSig.value : null);
   }
 
   // ── Wallet signing bridge ─────────────────────────────────────────────
