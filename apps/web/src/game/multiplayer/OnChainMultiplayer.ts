@@ -10,6 +10,7 @@ import {
 import { SessionKeyManager } from "../solana/sessionKeys";
 import {
   buildInitializePlayerIx,
+  buildAuthorizeSessionIx,
   buildDelegateIx,
   buildUpdatePositionSessionIx,
   buildRecordSwapIx,
@@ -420,51 +421,61 @@ export class OnChainMultiplayer {
 
     console.group(`[Multiplayer] setup for ${walletStr.slice(0,8)}…`);
 
-    // 1. Initialize player PDA on base layer if it doesn't exist yet.
+    // 1 + 2. Initialize PDA + authorize session key in one step.
+    //   - If PDA doesn't exist: single tx with initialize_player + authorize_session = 1 sign prompt
+    //   - If PDA exists but session not authorized: authorize_session alone = 1 sign prompt
+    //   - If already authorized (stored in sessionKeys): no prompt
     try {
       const existing = await this.baseConnection.getAccountInfo(playerPDA);
-      if (existing) {
-        console.log("✓ PDA exists on base layer");
+      const sessionKey = this.sessionKeys.getSessionPublicKey();
+      const name = displayName ?? walletStr.slice(0, 8);
+
+      if (!existing) {
+        // Brand new player — init + authorize in one transaction (1 sign prompt)
+        console.log("… new player — initialize + authorize session (1 sign prompt)");
+        const { blockhash } = await this.baseConnection.getLatestBlockhash();
+        const tx = new Transaction({ recentBlockhash: blockhash, feePayer: wallet })
+          .add(buildInitializePlayerIx(wallet, name))
+          .add(buildAuthorizeSessionIx(wallet, sessionKey));
+        const sig = await this.requestWalletSign(tx);
+        await this.confirmReal(this.baseConnection, sig);
+        this.sessionKeys["authorized"] = true;
+        console.log("✓ initialized + session authorized:", sig.slice(0, 12));
       } else {
-        console.log("… PDA not found — initializing (wallet sign prompt)");
-        await this.initializePlayerPDA(wallet, displayName ?? walletStr.slice(0, 8));
-        console.log("✓ PDA initialized");
+        console.log("✓ PDA exists — checking session auth");
+        // PDA exists — just authorize the session key (or skip if already done)
+        await this.sessionKeys.authorize(wallet, this.baseConnection);
+        console.log("✓ session authorized");
       }
     } catch (err: any) {
-      console.warn("✗ PDA init failed:", err?.message);
+      console.warn("✗ init/auth failed:", err?.message);
     }
 
-    // 2. Check current delegation status
+    // 3. Check delegation + delegate if needed
     let isDelegated = false;
     try {
       const status = await this.routerConnection.getDelegationStatus(playerPDA);
       isDelegated = status.isDelegated;
-      console.log(`${isDelegated ? "✓" : "○"} delegation status: ${isDelegated ? "delegated" : "not delegated"}`);
+      console.log(`${isDelegated ? "✓ delegated" : "○ not delegated"} (ephemeral rollup)`);
     } catch (e: any) {
-      console.log("○ delegation status unknown:", e?.message);
+      console.log("○ delegation status unknown");
     }
 
-    // 3. Authorize session key + delegate
     try {
       if (!isDelegated) {
-        console.log("… authorizing session key (wallet sign prompt)");
-        await this.sessionKeys.authorize(wallet, this.baseConnection);
-        console.log("✓ session key authorized");
-        console.log("… delegating PDA to ephemeral rollup (wallet sign prompt)");
+        console.log("… delegating PDA to ephemeral rollup (sign prompt)");
         await this.delegateToEphemeral(wallet);
         try {
-          const status2 = await this.routerConnection.getDelegationStatus(playerPDA);
-          this.useEphemeral = status2.isDelegated;
-          console.log(`${this.useEphemeral ? "✓" : "✗"} delegation re-check: ${this.useEphemeral}`);
+          const s2 = await this.routerConnection.getDelegationStatus(playerPDA);
+          this.useEphemeral = s2.isDelegated;
         } catch { this.useEphemeral = false; }
       } else {
-        console.log("… re-authorizing session key via Magic Router");
         await this.sessionKeys.authorize(wallet, this.routerConnection);
         this.useEphemeral = true;
-        console.log("✓ session re-authorized, using ephemeral rollup");
+        console.log("✓ re-authorized via Magic Router");
       }
     } catch (err: any) {
-      console.warn("✗ session setup failed:", err?.message);
+      console.warn("✗ delegation skipped:", err?.message);
       this.useEphemeral = false;
     }
     console.log(`→ position layer: ${this.useEphemeral ? "🚀 EPHEMERAL ROLLUP" : "📡 BASE DEVNET"}`);
@@ -502,9 +513,10 @@ export class OnChainMultiplayer {
       console.warn("[Multiplayer] base subscription failed:", err);
     }
 
-    // 6. Periodic base-layer polling (every 10s) — fallback for when
+    // 6. Periodic base-layer polling (every 4s) — fallback for when
     //    WebSocket onProgramAccountChange doesn't fire on the RPC node.
-    setInterval(() => this.discoverPlayersFromBase(wallet), 10_000);
+    //    4s gives near-realtime feel while staying below devnet rate limits.
+    setInterval(() => this.discoverPlayersFromBase(wallet), 4_000);
 
     // 7. Force a presence broadcast on the next sendInput tick.
     this.lastPos = { x: -1, y: -1, direction: -1, isWalking: false };
@@ -836,7 +848,7 @@ export class OnChainMultiplayer {
   }
 
   private pruneStale(): void {
-    const cutoff = Date.now() - 20_000; // 20s without update = offline
+    const cutoff = Date.now() - 60_000; // 60s without update = offline (was 20s)
     for (const [wallet, player] of this.knownPlayers) {
       if (wallet === this.wallet?.toBase58()) continue;
       if (player.lastUpdate < cutoff) this.handlePlayerLeave(wallet);
