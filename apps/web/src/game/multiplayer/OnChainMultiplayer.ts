@@ -284,7 +284,7 @@ export class OnChainMultiplayer {
       }).add(ix);
 
       const sig = await this.requestWalletSign(tx);
-      await this.baseConnection.confirmTransaction(sig, "confirmed");
+      await this.confirmReal(this.baseConnection, sig);
       transactionLog.markConfirmed(entry.id, sig);
     } catch (err: any) {
       transactionLog.markFailed(entry.id, err?.message ?? "record failed");
@@ -455,6 +455,22 @@ export class OnChainMultiplayer {
     this.lastPos = { x: -1, y: -1, direction: -1, isWalking: false };
   }
 
+  /**
+   * Calls connection.confirmTransaction only when `sig` is a real base58
+   * transaction signature.  Simulation placeholders ("sim:*") are not valid
+   * base58 — passing them to getSignatureStatus triggers a tweetnacl assert
+   * ("Assertion failed") that escapes the surrounding try/catch and crashes
+   * the ErrorBoundary.
+   */
+  private async confirmReal(
+    connection: Connection,
+    sig: string,
+    commitment: "confirmed" | "finalized" = "confirmed",
+  ): Promise<void> {
+    if (sig.startsWith("sim:")) return;
+    await connection.confirmTransaction(sig, commitment);
+  }
+
   private async initializePlayerPDA(wallet: PublicKey, displayName: string): Promise<void> {
     const [pda] = derivePlayerPDA(wallet);
     const existing = await this.baseConnection.getAccountInfo(pda);
@@ -471,7 +487,7 @@ export class OnChainMultiplayer {
       const tx = new Transaction({ recentBlockhash: blockhash, feePayer: wallet }).add(ix);
 
       const sig = await this.requestWalletSign(tx);
-      await this.baseConnection.confirmTransaction(sig, "confirmed");
+      await this.confirmReal(this.baseConnection, sig);
       transactionLog.markConfirmed(entry.id, sig);
     } catch (err: any) {
       console.error("[Multiplayer] PDA init failed:", err);
@@ -491,7 +507,7 @@ export class OnChainMultiplayer {
       const tx = new Transaction({ recentBlockhash: blockhash, feePayer: wallet }).add(ix);
 
       const sig = await this.requestWalletSign(tx);
-      await this.baseConnection.confirmTransaction(sig, "confirmed");
+      await this.confirmReal(this.baseConnection, sig);
       transactionLog.markConfirmed(entry.id, sig);
       console.log("[Multiplayer] PDA delegated to ephemeral rollup:", sig.slice(0, 12));
     } catch (err: any) {

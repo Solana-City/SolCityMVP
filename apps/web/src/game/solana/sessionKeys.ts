@@ -78,7 +78,11 @@ export class SessionKeyManager {
       }).add(ix);
 
       const sig = await this.requestWalletSign(tx);
-      await connection.confirmTransaction(sig, "confirmed");
+      // Skip confirmation for simulation placeholders — "sim:*" strings are
+      // not valid base58 and would crash confirmTransaction → getSignatureStatus.
+      if (!sig.startsWith("sim:")) {
+        await connection.confirmTransaction(sig, "confirmed");
+      }
 
       this.authorized = true;
       console.log(
