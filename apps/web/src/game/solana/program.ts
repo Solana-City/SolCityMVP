@@ -23,10 +23,14 @@ const ENV_PROGRAM_ID =
     ? process.env.NEXT_PUBLIC_SOL_CITY_PROGRAM_ID
     : undefined;
 
+// Deployed program ID on devnet (from Anchor.toml [programs.devnet]).
+// The env var overrides this at build time (e.g., for a different deploy).
+const DEPLOYED_PROGRAM_ID = "HPvDFVnruSXHwKKP44eUvRh8oYqBaHCeQbK1sKWT1aU2";
+
 export const SOL_CITY_PROGRAM_ID = new PublicKey(
   ENV_PROGRAM_ID && ENV_PROGRAM_ID.length >= 32
     ? ENV_PROGRAM_ID
-    : "11111111111111111111111111111111"
+    : DEPLOYED_PROGRAM_ID
 );
 
 // MagicBlock delegation program (devnet) — matches SDK v0.12 constant

@@ -407,8 +407,13 @@ export class OnChainMultiplayer {
     const walletStr = wallet.toBase58();
     const [playerPDA] = derivePlayerPDA(wallet);
 
-    // 1. Initialize player PDA on base layer if it doesn't exist yet
-    await this.initializePlayerPDA(wallet, displayName ?? walletStr.slice(0, 8));
+    // 1. Initialize player PDA on base layer if it doesn't exist yet.
+    //    Non-fatal: PDA may already exist, or wallet bus may not be ready yet.
+    try {
+      await this.initializePlayerPDA(wallet, displayName ?? walletStr.slice(0, 8));
+    } catch (err: any) {
+      console.warn("[Multiplayer] PDA init skipped:", err?.message);
+    }
 
     // 2. Check current delegation status via Magic Router
     let isDelegated = false;
@@ -419,17 +424,18 @@ export class OnChainMultiplayer {
       // getDelegationStatus may fail on new endpoints — assume not delegated
     }
 
-    if (!isDelegated) {
-      // 3a. Authorize session key BEFORE delegation (base layer write is open)
-      await this.sessionKeys.authorize(wallet, this.baseConnection);
-
-      // 3b. Delegate the PDA to the ephemeral rollup (base layer, one wallet popup)
-      await this.delegateToEphemeral(wallet);
-    } else {
-      // 3. PDA already delegated — re-authorize session key via Magic Router
-      // (base layer writes are locked while delegated, so route through MR)
-      await this.sessionKeys.authorize(wallet, this.routerConnection);
-      console.log("[Multiplayer] account already delegated, re-authorized session key via MR");
+    // 3. Authorize session key + delegate (non-fatal — position updates degrade
+    //    gracefully if this fails; discovery/subscription still work).
+    try {
+      if (!isDelegated) {
+        await this.sessionKeys.authorize(wallet, this.baseConnection);
+        await this.delegateToEphemeral(wallet);
+      } else {
+        await this.sessionKeys.authorize(wallet, this.routerConnection);
+        console.log("[Multiplayer] account already delegated, re-authorized session key via MR");
+      }
+    } catch (err: any) {
+      console.warn("[Multiplayer] session setup skipped:", err?.message);
     }
 
     // 4. Discover existing players from the ephemeral rollup
