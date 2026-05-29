@@ -1,6 +1,7 @@
 import {
   Connection,
   PublicKey,
+  SystemProgram,
   Transaction,
 } from "@solana/web3.js";
 import {
@@ -430,29 +431,47 @@ export class OnChainMultiplayer {
       const sessionKey = this.sessionKeys.getSessionPublicKey();
       const name = displayName ?? walletStr.slice(0, 8);
 
+      // Fund session key if it has insufficient SOL for position update fees.
+      // Session key is a local browser keypair (0 SOL initially). On base layer
+      // devnet, tx.feePayer = sessionKey → tx ALWAYS fails unless funded.
+      // On MagicBlock ephemeral rollup, fees are subsidised — no funding needed.
+      // 0.005 SOL = ~1000 position update transactions at ~5000 lamports each.
+      const SESSION_FUND_LAMPORTS = 5_000_000; // 0.005 SOL
+      const sessionBalance = await this.baseConnection.getBalance(sessionKey).catch(() => 0);
+      const needsFunding = sessionBalance < SESSION_FUND_LAMPORTS;
+
       if (!existing) {
-        // Brand new player — init + authorize in one transaction (1 sign prompt)
-        console.log("… new player — initialize + authorize session (1 sign prompt)");
+        // Brand new player — init + authorize + fund session key (1 sign prompt)
+        console.log(`… new player — init + auth + fund session key (${needsFunding ? "funding" : "already funded"})`);
         const { blockhash } = await this.baseConnection.getLatestBlockhash();
         const tx = new Transaction({ recentBlockhash: blockhash, feePayer: wallet })
           .add(buildInitializePlayerIx(wallet, name))
           .add(buildAuthorizeSessionIx(wallet, sessionKey));
+        if (needsFunding) {
+          tx.add(SystemProgram.transfer({ fromPubkey: wallet, toPubkey: sessionKey, lamports: SESSION_FUND_LAMPORTS }));
+        }
         const sig = await this.requestWalletSign(tx);
-        // Broadcast init+auth to both layers — one will succeed regardless of delegation state
         const raw = tx.serialize();
         await Promise.allSettled([
           this.confirmReal(this.baseConnection, sig),
           this.routerConnection.sendRawTransaction(raw, { skipPreflight: true }),
         ]);
         this.sessionKeys["authorized"] = true;
-        console.log("✓ initialized + session authorized:", sig.slice(0, 12));
+        console.log("✓ initialized + session authorized + funded:", sig.slice(0, 12));
       } else {
-        console.log("✓ PDA exists — authorizing session on both layers");
-        // PDA exists — authorize on BOTH connections (base + router).
-        // getDelegationStatus often fails → we can't know which layer has the live PDA.
-        // Broadcasting to both ensures one succeeds regardless of delegation state.
+        console.log(`✓ PDA exists — authorizing session (${needsFunding ? "funding session key" : "already funded"})`);
+        if (needsFunding) {
+          // Fund session key via a separate tx (existing player, session key empty)
+          const { blockhash } = await this.baseConnection.getLatestBlockhash();
+          const fundTx = new Transaction({ recentBlockhash: blockhash, feePayer: wallet })
+            .add(SystemProgram.transfer({ fromPubkey: wallet, toPubkey: sessionKey, lamports: SESSION_FUND_LAMPORTS }));
+          const fundSig = await this.requestWalletSign(fundTx);
+          await this.confirmReal(this.baseConnection, fundSig);
+          console.log("✓ session key funded:", fundSig.slice(0, 12));
+        }
+        // Authorize on BOTH connections — one will succeed regardless of delegation state
         await this.sessionKeys.authorize(wallet, this.baseConnection, this.routerConnection);
-        console.log("✓ session authorized (broadcast to both layers)");
+        console.log("✓ session authorized");
       }
     } catch (err: any) {
       console.warn("✗ init/auth failed:", err?.message);
