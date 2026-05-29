@@ -31,13 +31,44 @@ export default class ErrorBoundary extends React.Component<Props, State> {
     // Catch errors that escape React's lifecycle (useEffect uncaught throws,
     // WebGL context-loss events, Phaser internal exceptions) so the user sees
     // a recovery screen instead of a blank/frozen page.
+    //
+    // IMPORTANT: wallet adapter errors (network mismatch, user rejection) are
+    // caught by WalletSignBridge's try/catch and should NOT reach here. Only
+    // escalate errors that originate from Phaser or core game logic.
     this._onError = (event: ErrorEvent) => {
-      this.setState({ error: event.error ?? new Error(event.message) });
+      // Ignore wallet adapter / RPC errors — these are handled in-game.
+      const msg = event.message ?? "";
+      if (
+        msg.includes("User rejected") ||
+        msg.includes("WalletSendTransactionError") ||
+        msg.includes("Transaction simulation failed") ||
+        msg.includes("Blockhash not found")
+      ) {
+        console.warn("[ErrorBoundary] suppressed wallet error:", msg);
+        return;
+      }
+      const err = event.error ?? new Error(msg);
+      // Attach source for debugging
+      (err as any)._source = `${event.filename}:${event.lineno}`;
+      this.setState({ error: err });
     };
     this._onUnhandledRejection = (event: PromiseRejectionEvent) => {
       const err = event.reason instanceof Error
         ? event.reason
         : new Error(String(event.reason));
+      const msg = err.message ?? "";
+      // Ignore known wallet / RPC rejections that are recoverable.
+      if (
+        msg.includes("User rejected") ||
+        msg.includes("WalletSendTransactionError") ||
+        msg.includes("Transaction simulation failed") ||
+        msg.includes("Blockhash not found") ||
+        msg.includes("wallet sign timeout") ||
+        msg.includes("Wallet not connected")
+      ) {
+        console.warn("[ErrorBoundary] suppressed wallet rejection:", msg);
+        return;
+      }
       this.setState({ error: err });
     };
     window.addEventListener("error", this._onError);
@@ -95,9 +126,19 @@ export default class ErrorBoundary extends React.Component<Props, State> {
           >
             Something went wrong
           </div>
-          <div style={{ color: "#444466", fontSize: 12, maxWidth: 320, lineHeight: 1.6 }}>
+          <div style={{ color: "#444466", fontSize: 12, maxWidth: 360, lineHeight: 1.6 }}>
             {error.message || "An unexpected error occurred."}
           </div>
+          {error.stack && (
+            <pre style={{
+              color: "#333355", fontSize: 9, maxWidth: 420, maxHeight: 120,
+              overflow: "auto", textAlign: "left", whiteSpace: "pre-wrap",
+              background: "rgba(255,255,255,0.03)", borderRadius: 6,
+              padding: "6px 8px", margin: 0, lineHeight: 1.5,
+            }}>
+              {error.stack.slice(0, 600)}
+            </pre>
+          )}
         </div>
 
         <button
