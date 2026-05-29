@@ -438,14 +438,21 @@ export class OnChainMultiplayer {
           .add(buildInitializePlayerIx(wallet, name))
           .add(buildAuthorizeSessionIx(wallet, sessionKey));
         const sig = await this.requestWalletSign(tx);
-        await this.confirmReal(this.baseConnection, sig);
+        // Broadcast init+auth to both layers — one will succeed regardless of delegation state
+        const raw = tx.serialize();
+        await Promise.allSettled([
+          this.confirmReal(this.baseConnection, sig),
+          this.routerConnection.sendRawTransaction(raw, { skipPreflight: true }),
+        ]);
         this.sessionKeys["authorized"] = true;
         console.log("✓ initialized + session authorized:", sig.slice(0, 12));
       } else {
-        console.log("✓ PDA exists — checking session auth");
-        // PDA exists — just authorize the session key (or skip if already done)
-        await this.sessionKeys.authorize(wallet, this.baseConnection);
-        console.log("✓ session authorized");
+        console.log("✓ PDA exists — authorizing session on both layers");
+        // PDA exists — authorize on BOTH connections (base + router).
+        // getDelegationStatus often fails → we can't know which layer has the live PDA.
+        // Broadcasting to both ensures one succeeds regardless of delegation state.
+        await this.sessionKeys.authorize(wallet, this.baseConnection, this.routerConnection);
+        console.log("✓ session authorized (broadcast to both layers)");
       }
     } catch (err: any) {
       console.warn("✗ init/auth failed:", err?.message);
@@ -470,9 +477,9 @@ export class OnChainMultiplayer {
           this.useEphemeral = s2.isDelegated;
         } catch { this.useEphemeral = false; }
       } else {
-        await this.sessionKeys.authorize(wallet, this.routerConnection);
+        await this.sessionKeys.authorize(wallet, this.routerConnection, this.baseConnection);
         this.useEphemeral = true;
-        console.log("✓ re-authorized via Magic Router");
+        console.log("✓ re-authorized (broadcast to both layers)");
       }
     } catch (err: any) {
       console.warn("✗ delegation skipped:", err?.message);

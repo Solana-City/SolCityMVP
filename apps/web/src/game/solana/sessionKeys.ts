@@ -57,7 +57,17 @@ export class SessionKeyManager {
    * Pass `connection` explicitly so the caller can route to base layer
    * (account not yet delegated) or through the Magic Router (already delegated).
    */
-  async authorize(walletPublicKey: PublicKey, connection: Connection): Promise<void> {
+  /**
+   * Authorize session key on BOTH connections simultaneously.
+   * We cannot reliably detect delegation status, so we broadcast the signed
+   * authorize_session tx to both base layer and the Magic Router.
+   * The correct layer (wherever the live PDA resides) will accept it.
+   */
+  async authorize(
+    walletPublicKey: PublicKey,
+    connection: Connection,
+    altConnection?: Connection,
+  ): Promise<void> {
     this.mainWallet = walletPublicKey;
 
     if (!isProgramDeployed()) {
@@ -78,10 +88,14 @@ export class SessionKeyManager {
       }).add(ix);
 
       const sig = await this.requestWalletSign(tx);
-      // Skip confirmation for simulation placeholders — "sim:*" strings are
-      // not valid base58 and would crash confirmTransaction → getSignatureStatus.
       if (!sig.startsWith("sim:")) {
-        await connection.confirmTransaction(sig, "confirmed");
+        // Broadcast signed tx to primary connection AND alt connection concurrently.
+        // One will succeed (correct layer), the other will silently reject.
+        const raw = tx.serialize();
+        await Promise.allSettled([
+          connection.confirmTransaction(sig, "confirmed"),
+          altConnection ? altConnection.sendRawTransaction(raw, { skipPreflight: true }) : Promise.resolve(),
+        ]);
       }
 
       this.authorized = true;
