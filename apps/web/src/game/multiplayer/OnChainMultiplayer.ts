@@ -513,12 +513,14 @@ export class OnChainMultiplayer {
       console.warn("[Multiplayer] base subscription failed:", err);
     }
 
-    // 6. Reliable per-player polling via getAccountInfo (not getProgramAccounts).
-    //    getProgramAccounts may be disabled on the ephemeral RPC node. Instead,
-    //    derive each known player's PDA and call getAccountInfo on BOTH layers.
-    //    The layer with the more recent last_active timestamp wins (tracked by
-    //    _onChainTs). Runs every 2s for smooth updates.
+    // 6a. Per-player polling via getAccountInfo every 2s (fast, always supported).
+    //     Updates positions for already-known players on both layers.
     setInterval(() => this.pollKnownPlayerPDAs(wallet), 2_000);
+
+    // 6b. Full base-layer discovery every 8s to catch players who joined AFTER
+    //     the initial connect. pollKnownPlayerPDAs only fetches known players —
+    //     new arrivals are invisible until a full getProgramAccounts scan runs.
+    setInterval(() => this.discoverPlayersFromBase(wallet), 8_000);
 
     // 7. Force a presence broadcast on the next sendInput tick.
     this.lastPos = { x: -1, y: -1, direction: -1, isWalking: false };

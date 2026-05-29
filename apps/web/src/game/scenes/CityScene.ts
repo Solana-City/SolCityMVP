@@ -618,13 +618,26 @@ export class CityScene extends Phaser.Scene {
     if (!avatar) return;
 
     const container = avatar.getContainer();
-    this.tweens.add({
-      targets: container,
-      x: player.x,
-      y: player.y,
-      duration: 100,
-      ease: "Linear",
-    });
+    const dx = player.x - container.x;
+    const dy = player.y - container.y;
+    const dist = Math.hypot(dx, dy);
+
+    if (dist > 400) {
+      // Large jump (initial placement or reconnect) — teleport immediately
+      this.tweens.killTweensOf(container);
+      container.setPosition(player.x, player.y);
+    } else if (dist > 2) {
+      // Smooth interpolation over 1.8s so movement between 2s polls looks
+      // continuous rather than jumping. Kill any in-progress tween first.
+      this.tweens.killTweensOf(container);
+      this.tweens.add({
+        targets: container,
+        x: player.x,
+        y: player.y,
+        duration: 1800,
+        ease: "Linear",
+      });
+    }
 
     const dirs: Direction[] = ["down", "left", "right", "up"];
     if (player.isWalking && dirs[player.direction]) {
