@@ -386,6 +386,13 @@ export class CityScene extends Phaser.Scene {
     this.network = new OnChainMultiplayer();
     this.registry.set("network", this.network);
 
+    // Register callbacks immediately so they are active during discovery.
+    // CRITICAL: setupNetworkCallbacks must be called BEFORE network.connect()
+    // because discoverPlayers/discoverPlayersFromBase fire addCallbacks during
+    // connect(). If callbacks are registered after connect(), discovered players
+    // never get sprites in the scene.
+    this.setupNetworkCallbacks();
+
     // Expose game event bus globally so the multiplayer layer can
     // ask React (which owns useWallet) to sign transactions.
     (globalThis as any).__solCityGameEvents = this.game.events;
@@ -416,7 +423,6 @@ export class CityScene extends Phaser.Scene {
 
         await this.network.connect(new PublicKey(walletAddress), displayName);
         this.chat.addSystemMessage("Multiplayer session started.");
-        this.setupNetworkCallbacks();
       } catch (err: any) {
         console.error("[CityScene] session error:", err);
         this.chat.addSystemMessage("Session offline (local mode)");
