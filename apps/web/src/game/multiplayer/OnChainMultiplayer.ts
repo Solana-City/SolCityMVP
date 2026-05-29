@@ -513,14 +513,12 @@ export class OnChainMultiplayer {
       console.warn("[Multiplayer] base subscription failed:", err);
     }
 
-    // 6. Periodic polling (every 2s) for BOTH layers.
-    //    Ephemeral: live data when PDA is delegated (writes go there)
-    //    Base:      live data when PDA is NOT delegated
-    //    We always poll both because delegation can change between sessions.
-    setInterval(() => {
-      this.discoverPlayers(wallet);      // ephemeral rollup
-      this.discoverPlayersFromBase(wallet); // base devnet
-    }, 2_000);
+    // 6. Reliable per-player polling via getAccountInfo (not getProgramAccounts).
+    //    getProgramAccounts may be disabled on the ephemeral RPC node. Instead,
+    //    derive each known player's PDA and call getAccountInfo on BOTH layers.
+    //    The layer with the more recent last_active timestamp wins (tracked by
+    //    _onChainTs). Runs every 2s for smooth updates.
+    setInterval(() => this.pollKnownPlayerPDAs(wallet), 2_000);
 
     // 7. Force a presence broadcast on the next sendInput tick.
     this.lastPos = { x: -1, y: -1, direction: -1, isWalking: false };
@@ -531,19 +529,50 @@ export class OnChainMultiplayer {
     try {
       const accounts = await this.baseConnection.getProgramAccounts(
         SOL_CITY_PROGRAM_ID,
-        { commitment: "confirmed", encoding: "base64" }
+        { commitment: "confirmed" }
       );
       let found = 0;
       for (const { pubkey, account } of accounts) {
-        const walletStr = pubkey.toBase58();
-        if (walletStr === self.toBase58()) continue;
-        this.decodeAndUpdatePlayer(walletStr, account.data as Buffer);
+        this.decodeAndUpdatePlayer(pubkey.toBase58(), account.data);
         found++;
       }
       if (found > 0) console.log(`[Multiplayer] base discovery: ${found} player(s)`);
     } catch (err) {
       console.info("[Multiplayer] base discovery unavailable:", err);
     }
+  }
+
+  /**
+   * For each player we already know, fetch their PDA directly via getAccountInfo
+   * on BOTH the base layer and the ephemeral rollup.  getAccountInfo is always
+   * supported, unlike getProgramAccounts which may be disabled on some nodes.
+   * The data with the higher last_active timestamp takes effect.
+   */
+  private async pollKnownPlayerPDAs(self: PublicKey): Promise<void> {
+    const selfStr = self.toBase58();
+    const wallets = [...this.knownPlayers.keys()].filter(w => w !== selfStr);
+    if (wallets.length === 0) return;
+
+    await Promise.allSettled(wallets.map(async (walletStr) => {
+      try {
+        const walletPub = new PublicKey(walletStr);
+        const [pda] = derivePlayerPDA(walletPub);
+
+        // Fetch from both layers concurrently
+        const [baseInfo, ephInfo] = await Promise.allSettled([
+          this.baseConnection.getAccountInfo(pda, "confirmed"),
+          this.ephemeralConnection.getAccountInfo(pda, "processed"),
+        ]);
+
+        // Process both; _onChainTs guard in decodeAndUpdatePlayer keeps the newest
+        if (baseInfo.status === "fulfilled" && baseInfo.value) {
+          this.decodeAndUpdatePlayer(pda.toBase58(), baseInfo.value.data);
+        }
+        if (ephInfo.status === "fulfilled" && ephInfo.value) {
+          this.decodeAndUpdatePlayer(pda.toBase58(), ephInfo.value.data);
+        }
+      } catch { /* ignore per-player errors */ }
+    }));
   }
 
   /**
