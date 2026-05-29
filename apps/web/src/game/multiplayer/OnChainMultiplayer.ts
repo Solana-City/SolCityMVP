@@ -109,6 +109,8 @@ export class OnChainMultiplayer {
 
   // Layer 2: MagicBlock subscriptions
   private accountSubs = new Map<string, number>(); // wallet → subscriptionId
+  /** true = use ephemeral rollup; false = fall back to base layer devnet */
+  private useEphemeral = false;
   private cleanupInterval: ReturnType<typeof setInterval> | null = null;
 
   constructor() {
@@ -424,25 +426,33 @@ export class OnChainMultiplayer {
       // getDelegationStatus may fail on new endpoints — assume not delegated
     }
 
-    // 3. Authorize session key + delegate (non-fatal — position updates degrade
-    //    gracefully if this fails; discovery/subscription still work).
+    // 3. Authorize session key + delegate (non-fatal — falls back to base layer).
     try {
       if (!isDelegated) {
         await this.sessionKeys.authorize(wallet, this.baseConnection);
         await this.delegateToEphemeral(wallet);
+        // Re-check after delegation attempt
+        try {
+          const status2 = await this.routerConnection.getDelegationStatus(playerPDA);
+          this.useEphemeral = status2.isDelegated;
+        } catch { this.useEphemeral = false; }
       } else {
         await this.sessionKeys.authorize(wallet, this.routerConnection);
-        console.log("[Multiplayer] account already delegated, re-authorized session key via MR");
+        this.useEphemeral = true;
+        console.log("[Multiplayer] account already delegated — using ephemeral rollup");
       }
     } catch (err: any) {
-      console.warn("[Multiplayer] session setup skipped:", err?.message);
+      console.warn("[Multiplayer] session setup skipped — using base layer:", err?.message);
+      this.useEphemeral = false;
     }
+    console.log(`[Multiplayer] position layer: ${this.useEphemeral ? "ephemeral rollup" : "base devnet"}`);
 
-    // 4. Discover existing players from the ephemeral rollup
+    // 4. Discover existing players — ephemeral rollup first, then base layer fallback.
+    //    Base layer finds players whose PDAs exist on devnet but aren't delegated yet.
     await this.discoverPlayers(wallet);
+    await this.discoverPlayersFromBase(wallet);
 
-    // 5. Subscribe to all PDAs owned by our program on the ephemeral validator.
-    //    New players show up here once they delegate their account.
+    // 5a. Subscribe to ephemeral rollup program account changes.
     try {
       this.ephemeralConnection.onProgramAccountChange(
         SOL_CITY_PROGRAM_ID,
@@ -452,13 +462,45 @@ export class OnChainMultiplayer {
         "processed",
       );
     } catch (err) {
-      console.warn("[Multiplayer] program subscription failed:", err);
+      console.warn("[Multiplayer] ephemeral subscription failed:", err);
     }
 
-    // 6. Force a presence broadcast on the next sendInput tick so other clients
-    //    discover this player even if getProgramAccounts is disabled on the
-    //    ephemeral RPC. The impossible sentinel triggers the dedup check.
+    // 5b. Subscribe to base layer (devnet) program account changes.
+    //     Catches players whose PDAs are NOT delegated to the ephemeral rollup.
+    try {
+      this.baseConnection.onProgramAccountChange(
+        SOL_CITY_PROGRAM_ID,
+        (keyedInfo) => {
+          this.decodeAndUpdatePlayer(keyedInfo.accountId.toBase58(), keyedInfo.accountInfo.data);
+        },
+        "confirmed",
+      );
+    } catch (err) {
+      console.warn("[Multiplayer] base subscription failed:", err);
+    }
+
+    // 6. Force a presence broadcast on the next sendInput tick.
     this.lastPos = { x: -1, y: -1, direction: -1, isWalking: false };
+  }
+
+  /** Discover players whose PDAs exist on devnet base layer (not delegated). */
+  private async discoverPlayersFromBase(self: PublicKey): Promise<void> {
+    try {
+      const accounts = await this.baseConnection.getProgramAccounts(
+        SOL_CITY_PROGRAM_ID,
+        { commitment: "confirmed", encoding: "base64" }
+      );
+      let found = 0;
+      for (const { pubkey, account } of accounts) {
+        const walletStr = pubkey.toBase58();
+        if (walletStr === self.toBase58()) continue;
+        this.decodeAndUpdatePlayer(walletStr, account.data as Buffer);
+        found++;
+      }
+      if (found > 0) console.log(`[Multiplayer] base discovery: ${found} player(s)`);
+    } catch (err) {
+      console.info("[Multiplayer] base discovery unavailable:", err);
+    }
   }
 
   /**
@@ -668,20 +710,27 @@ export class OnChainMultiplayer {
       this.wallet, sessionKey,
       Math.round(x), Math.round(y), direction
     );
-
     const tx = new Transaction().add(ix);
     tx.feePayer = sessionKey;
 
-    // ConnectionMagicRouter.getLatestBlockhashForTransaction returns a blockhash
-    // tied to the tx's writable accounts — required for correct rollup routing.
-    const { blockhash } = await this.routerConnection.getLatestBlockhashForTransaction(tx);
-    tx.recentBlockhash = blockhash;
-    this.sessionKeys.signTransaction(tx);
-
-    return this.routerConnection.sendRawTransaction(tx.serialize(), {
-      skipPreflight: true,
-      preflightCommitment: "processed",
-    });
+    if (this.useEphemeral) {
+      // Fast path: Magic Router → ephemeral rollup (sub-50ms)
+      const { blockhash } = await this.routerConnection.getLatestBlockhashForTransaction(tx);
+      tx.recentBlockhash = blockhash;
+      this.sessionKeys.signTransaction(tx);
+      return this.routerConnection.sendRawTransaction(tx.serialize(), {
+        skipPreflight: true,
+        preflightCommitment: "processed",
+      });
+    } else {
+      // Fallback path: base layer devnet (writes to the undelegated PDA directly)
+      const { blockhash } = await this.baseConnection.getLatestBlockhash();
+      tx.recentBlockhash = blockhash;
+      this.sessionKeys.signTransaction(tx);
+      return this.baseConnection.sendRawTransaction(tx.serialize(), {
+        skipPreflight: true,
+      });
+    }
   }
 
   // ── Wallet signing bridge ─────────────────────────────────────────────
