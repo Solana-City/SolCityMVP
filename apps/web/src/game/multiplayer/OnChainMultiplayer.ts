@@ -244,12 +244,21 @@ export class OnChainMultiplayer {
       d: dirNum, m: isWalking,
     } satisfies BCMsg);
 
-    // Layer 2: MagicBlock (real on-chain position update)
+    // Layer 2: on-chain position update
     if (isProgramDeployed()) {
       const entry = transactionLog.recordMove({ status: "pending" });
       this.sendPositionTransaction(x, y, dirNum)
-        .then(sig => { if (sig) transactionLog.markConfirmed(entry.id, sig); })
-        .catch(err => transactionLog.markFailed(entry.id, err?.message ?? "tx failed"));
+        .then(sig => {
+          if (sig) transactionLog.markConfirmed(entry.id, sig);
+        })
+        .catch(err => {
+          transactionLog.markFailed(entry.id, err?.message ?? "tx failed");
+          // Log first few failures to help diagnose setup issues
+          if ((this as any)._posErrCount === undefined) (this as any)._posErrCount = 0;
+          if (++(this as any)._posErrCount <= 3) {
+            console.warn("[Multiplayer] position tx failed:", err?.message, "| layer:", this.useEphemeral ? "ephemeral" : "base");
+          }
+        });
     } else {
       transactionLog.recordMove({ signature: "sim:move", status: "confirmed" });
     }
@@ -409,43 +418,57 @@ export class OnChainMultiplayer {
     const walletStr = wallet.toBase58();
     const [playerPDA] = derivePlayerPDA(wallet);
 
+    console.group(`[Multiplayer] setup for ${walletStr.slice(0,8)}…`);
+
     // 1. Initialize player PDA on base layer if it doesn't exist yet.
-    //    Non-fatal: PDA may already exist, or wallet bus may not be ready yet.
     try {
-      await this.initializePlayerPDA(wallet, displayName ?? walletStr.slice(0, 8));
+      const existing = await this.baseConnection.getAccountInfo(playerPDA);
+      if (existing) {
+        console.log("✓ PDA exists on base layer");
+      } else {
+        console.log("… PDA not found — initializing (wallet sign prompt)");
+        await this.initializePlayerPDA(wallet, displayName ?? walletStr.slice(0, 8));
+        console.log("✓ PDA initialized");
+      }
     } catch (err: any) {
-      console.warn("[Multiplayer] PDA init skipped:", err?.message);
+      console.warn("✗ PDA init failed:", err?.message);
     }
 
-    // 2. Check current delegation status via Magic Router
+    // 2. Check current delegation status
     let isDelegated = false;
     try {
       const status = await this.routerConnection.getDelegationStatus(playerPDA);
       isDelegated = status.isDelegated;
-    } catch {
-      // getDelegationStatus may fail on new endpoints — assume not delegated
+      console.log(`${isDelegated ? "✓" : "○"} delegation status: ${isDelegated ? "delegated" : "not delegated"}`);
+    } catch (e: any) {
+      console.log("○ delegation status unknown:", e?.message);
     }
 
-    // 3. Authorize session key + delegate (non-fatal — falls back to base layer).
+    // 3. Authorize session key + delegate
     try {
       if (!isDelegated) {
+        console.log("… authorizing session key (wallet sign prompt)");
         await this.sessionKeys.authorize(wallet, this.baseConnection);
+        console.log("✓ session key authorized");
+        console.log("… delegating PDA to ephemeral rollup (wallet sign prompt)");
         await this.delegateToEphemeral(wallet);
-        // Re-check after delegation attempt
         try {
           const status2 = await this.routerConnection.getDelegationStatus(playerPDA);
           this.useEphemeral = status2.isDelegated;
+          console.log(`${this.useEphemeral ? "✓" : "✗"} delegation re-check: ${this.useEphemeral}`);
         } catch { this.useEphemeral = false; }
       } else {
+        console.log("… re-authorizing session key via Magic Router");
         await this.sessionKeys.authorize(wallet, this.routerConnection);
         this.useEphemeral = true;
-        console.log("[Multiplayer] account already delegated — using ephemeral rollup");
+        console.log("✓ session re-authorized, using ephemeral rollup");
       }
     } catch (err: any) {
-      console.warn("[Multiplayer] session setup skipped — using base layer:", err?.message);
+      console.warn("✗ session setup failed:", err?.message);
       this.useEphemeral = false;
     }
-    console.log(`[Multiplayer] position layer: ${this.useEphemeral ? "ephemeral rollup" : "base devnet"}`);
+    console.log(`→ position layer: ${this.useEphemeral ? "🚀 EPHEMERAL ROLLUP" : "📡 BASE DEVNET"}`);
+    console.groupEnd();
 
     // 4. Discover existing players — ephemeral rollup first, then base layer fallback.
     //    Base layer finds players whose PDAs exist on devnet but aren't delegated yet.
@@ -479,7 +502,11 @@ export class OnChainMultiplayer {
       console.warn("[Multiplayer] base subscription failed:", err);
     }
 
-    // 6. Force a presence broadcast on the next sendInput tick.
+    // 6. Periodic base-layer polling (every 10s) — fallback for when
+    //    WebSocket onProgramAccountChange doesn't fire on the RPC node.
+    setInterval(() => this.discoverPlayersFromBase(wallet), 10_000);
+
+    // 7. Force a presence broadcast on the next sendInput tick.
     this.lastPos = { x: -1, y: -1, direction: -1, isWalking: false };
   }
 
