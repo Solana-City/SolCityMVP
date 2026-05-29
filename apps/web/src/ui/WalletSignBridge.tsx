@@ -46,6 +46,9 @@ export default function WalletSignBridge() {
 
       bus.on("wallet:needSign", handler);
       off = () => bus.off("wallet:needSign", handler);
+      // Signal readiness so CityScene can detect WalletSignBridge is live
+      // and skip the fixed 700ms delay on the next wallet connect.
+      bus.emit("walletBridge:ready");
       return true;
     };
 

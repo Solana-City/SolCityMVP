@@ -402,6 +402,18 @@ export class CityScene extends Phaser.Scene {
         this.profile.setWallet(walletAddress);
         const displayName = this.profile.get().displayName;
         this.network.updateScore(this.profile.get().score);
+
+        // WalletSignBridge polls every 300ms to register on __solCityGameEvents.
+        // On auto-reconnect the wallet:connected event fires before it registers,
+        // causing all requestWalletSign calls to time out (60s) and fail.
+        // Wait up to 1s for "walletBridge:ready"; fall through immediately if
+        // already registered (normal case after user manually clicks Connect).
+        await new Promise<void>(resolve => {
+          const bus = (globalThis as any).__solCityGameEvents;
+          const fallback = setTimeout(resolve, 1000);
+          bus?.once("walletBridge:ready", () => { clearTimeout(fallback); resolve(); });
+        });
+
         await this.network.connect(new PublicKey(walletAddress), displayName);
         this.chat.addSystemMessage("Multiplayer session started.");
         this.setupNetworkCallbacks();
