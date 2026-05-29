@@ -869,6 +869,7 @@ export class OnChainMultiplayer {
     };
     this.knownPlayers.set(wallet, player);
     for (const cb of this.addCallbacks) cb(wallet, player);
+    this.subscribeToPlayerWallet(wallet);
   }
 
   private handlePlayerMove(
@@ -879,6 +880,12 @@ export class OnChainMultiplayer {
       player = { wallet, x, y, direction: d, isWalking: m, lastUpdate: Date.now(), displayName: name, score };
       this.knownPlayers.set(wallet, player);
       for (const cb of this.addCallbacks) cb(wallet, player);
+      // Set up realtime subscription on BOTH layers for this newly discovered player.
+      // Critical: subscribeToPlayer was previously only called during ephemeral
+      // getProgramAccounts discovery (which often fails). Calling it here ensures
+      // every player gets onAccountChange subscriptions regardless of how they
+      // were found (base-layer polling, initial scan, BroadcastChannel, etc.).
+      this.subscribeToPlayerWallet(wallet);
       return;
     }
     player.x = x; player.y = y; player.direction = d; player.isWalking = m;
@@ -886,6 +893,26 @@ export class OnChainMultiplayer {
     if (name) player.displayName = name;
     if (score !== undefined) player.score = score;
     for (const cb of this.changeCallbacks) cb(wallet, player);
+  }
+
+  /** Derive PDA from wallet address and subscribe to onAccountChange on both layers. */
+  private subscribeToPlayerWallet(wallet: string): void {
+    try {
+      const walletPub = new PublicKey(wallet);
+      const [pda] = derivePlayerPDA(walletPub);
+      this.subscribeToPlayer(pda);
+
+      // Also subscribe on base layer — catches updates from non-delegated PDAs
+      const baseKey = `base:${pda.toBase58()}`;
+      if (!this.accountSubs.has(baseKey)) {
+        const subId = this.baseConnection.onAccountChange(
+          pda,
+          (info) => this.decodeAndUpdatePlayer(pda.toBase58(), info.data),
+          "confirmed",
+        );
+        this.accountSubs.set(baseKey, subId);
+      }
+    } catch { /* ignore invalid wallet */ }
   }
 
   private handlePlayerLeave(wallet: string): void {
