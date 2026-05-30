@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import {
   ConnectionProvider,
   WalletProvider,
@@ -16,10 +16,16 @@ import "@solana/wallet-adapter-react-ui/styles.css";
 
 const NETWORK = "devnet";
 
-// Wallet names that are safe to auto-connect to (Solana native only).
-// MetaMask and other EVM wallets may register via Wallet Standard and crash
-// when the Solana app tries to auto-connect to them.
-const ALLOWED_AUTO_CONNECT = ["Phantom", "Solflare", "Backpack"];
+// Only Solana-native wallets are supported.
+const SOLANA_WALLET_NAMES = ["Phantom", "Solflare", "Backpack"];
+
+// Auto-connect function — returns true only for known Solana wallets.
+// EVM wallets that self-register via Wallet Standard are excluded so they
+// cannot crash the app during auto-connect.
+const autoConnectFilter = (adapter: { name: string }) =>
+  SOLANA_WALLET_NAMES.some(name =>
+    adapter.name.toLowerCase().includes(name.toLowerCase())
+  );
 
 export default function SolanaProvider({
   children,
@@ -36,21 +42,26 @@ export default function SolanaProvider({
     []
   );
 
-  // Custom autoConnect: only reconnect to known-safe Solana wallets.
-  // Prevents MetaMask (EVM, auto-detected via Wallet Standard) from crashing
-  // the game when it fails to connect to a Solana app.
-  const autoConnect = (adapter: { name: string }) =>
-    ALLOWED_AUTO_CONNECT.some(name =>
-      adapter.name.toLowerCase().includes(name.toLowerCase())
-    );
+  // Clear any non-Solana wallet stored in localStorage so it is never
+  // auto-connected on the next page load.
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem("walletName");
+      if (stored && !SOLANA_WALLET_NAMES.some(n => stored.includes(n))) {
+        localStorage.removeItem("walletName");
+      }
+    } catch { /* ignore */ }
+  }, []);
 
   return (
     <ConnectionProvider endpoint={endpoint}>
       <WalletProvider
         wallets={wallets}
-        autoConnect={autoConnect}
+        autoConnect={autoConnectFilter}
         onError={(error) => {
-          // Swallow all wallet adapter errors so they never reach ErrorBoundary.
+          // Suppress all wallet adapter errors — connection failures, network
+          // mismatches, and EVM extension interference are handled gracefully
+          // via the in-game chat and offline mode fallback.
           console.warn("[WalletProvider] suppressed:", error.name, error.message);
         }}
       >

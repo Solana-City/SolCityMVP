@@ -10,6 +10,20 @@ interface State {
   error: Error | null;
 }
 
+/** Messages that indicate a wallet / EVM extension error (non-fatal). */
+function isWalletError(msg: string): boolean {
+  const lower = msg.toLowerCase();
+  return (
+    lower.includes("failed to connect") ||
+    lower.includes("wallet") ||
+    lower.includes("user rejected") ||
+    lower.includes("transaction simulation failed") ||
+    lower.includes("blockhash not found") ||
+    lower.includes("session offline") ||
+    msg === "Assertion failed"
+  );
+}
+
 /**
  * ErrorBoundary
  *
@@ -25,13 +39,9 @@ export default class ErrorBoundary extends React.Component<Props, State> {
 
   static getDerivedStateFromError(error: Error): State {
     const msg = error.message ?? "";
-    // Wallet adapter / EVM extension errors (MetaMask, network mismatch) are not
-    // game-breaking — suppress them so the user can still play offline.
-    if (
-      msg.includes("MetaMask") ||
-      msg.includes("Failed to connect") ||
-      msg.toLowerCase().includes("wallet")
-    ) {
+    // Wallet adapter / EVM extension errors are not game-breaking — suppress
+    // them so the user can still play offline.
+    if (isWalletError(msg)) {
       console.warn("[ErrorBoundary] suppressed render wallet error:", msg);
       return { error: null };
     }
@@ -47,25 +57,12 @@ export default class ErrorBoundary extends React.Component<Props, State> {
     // caught by WalletSignBridge's try/catch and should NOT reach here. Only
     // escalate errors that originate from Phaser or core game logic.
     this._onError = (event: ErrorEvent) => {
-      // Ignore wallet adapter / RPC errors — these are handled in-game.
       const msg = event.message ?? "";
-      if (
-        msg.includes("User rejected") ||
-        msg.includes("WalletSendTransactionError") ||
-        msg.includes("Transaction simulation failed") ||
-        msg.includes("Blockhash not found") ||
-        msg.includes("session offline") ||
-        msg.includes("MetaMask") ||
-        msg.includes("Failed to connect") ||
-        msg.includes("wallet") ||
-        // Tweetnacl assertion from web3.js getSignatureStatus with invalid sig
-        (msg === "Assertion failed")
-      ) {
-        console.warn("[ErrorBoundary] suppressed wallet error:", msg);
+      if (isWalletError(msg)) {
+        console.warn("[ErrorBoundary] suppressed error:", msg);
         return;
       }
       const err = event.error ?? new Error(msg);
-      // Attach source for debugging
       (err as any)._source = `${event.filename}:${event.lineno}`;
       this.setState({ error: err });
     };
@@ -73,22 +70,8 @@ export default class ErrorBoundary extends React.Component<Props, State> {
       const err = event.reason instanceof Error
         ? event.reason
         : new Error(String(event.reason));
-      const msg = err.message ?? "";
-      // Ignore known wallet / RPC rejections that are recoverable.
-      if (
-        msg.includes("User rejected") ||
-        msg.includes("WalletSendTransactionError") ||
-        msg.includes("Transaction simulation failed") ||
-        msg.includes("Blockhash not found") ||
-        msg.includes("wallet sign timeout") ||
-        msg.includes("Wallet not connected") ||
-        msg.includes("session offline") ||
-        msg.includes("MetaMask") ||
-        msg.includes("Failed to connect") ||
-        msg.includes("wallet") ||
-        msg === "Assertion failed"
-      ) {
-        console.warn("[ErrorBoundary] suppressed wallet rejection:", msg);
+      if (isWalletError(err.message ?? "")) {
+        console.warn("[ErrorBoundary] suppressed rejection:", err.message);
         return;
       }
       this.setState({ error: err });
