@@ -806,7 +806,9 @@ export class OnChainMultiplayer {
       (existing as any)?._onChainTs !== undefined || true; // no-op, field tracked below
 
       const isWalking = existing !== undefined && (x !== existing.x || y !== existing.y);
-      this.handlePlayerMove(walletStr, x, y, direction, isWalking, displayName);
+      // Pass lastActive (on-chain Unix seconds → ms) so pruneStale can detect
+      // ghost players: if last_active hasn't changed in 60s the player is offline.
+      this.handlePlayerMove(walletStr, x, y, direction, isWalking, displayName, undefined, lastActiveLo * 1000);
       // Tag the known player with the on-chain timestamp so future stale
       // data from the other layer doesn't overwrite a more recent update.
       const updated = this.knownPlayers.get(walletStr);
@@ -916,23 +918,27 @@ export class OnChainMultiplayer {
   }
 
   private handlePlayerMove(
-    wallet: string, x: number, y: number, d: number, m: boolean, name?: string, score?: number
+    wallet: string, x: number, y: number, d: number, m: boolean,
+    name?: string, score?: number,
+    /** On-chain last_active in ms — used for prune detection. Falls back to
+     *  Date.now() for BroadcastChannel messages that have no on-chain timestamp. */
+    onChainLastActiveMs?: number,
   ): void {
+    // Use on-chain last_active so pruneStale can detect crashed/offline players.
+    // If we always use Date.now(), polling keeps refreshing lastUpdate and ghost
+    // players (crashed browsers) are never removed.
+    const lastUpdate = onChainLastActiveMs ?? Date.now();
+
     let player = this.knownPlayers.get(wallet);
     if (!player) {
-      player = { wallet, x, y, direction: d, isWalking: m, lastUpdate: Date.now(), displayName: name, score };
+      player = { wallet, x, y, direction: d, isWalking: m, lastUpdate, displayName: name, score };
       this.knownPlayers.set(wallet, player);
       for (const cb of this.addCallbacks) cb(wallet, player);
-      // Set up realtime subscription on BOTH layers for this newly discovered player.
-      // Critical: subscribeToPlayer was previously only called during ephemeral
-      // getProgramAccounts discovery (which often fails). Calling it here ensures
-      // every player gets onAccountChange subscriptions regardless of how they
-      // were found (base-layer polling, initial scan, BroadcastChannel, etc.).
       this.subscribeToPlayerWallet(wallet);
       return;
     }
     player.x = x; player.y = y; player.direction = d; player.isWalking = m;
-    player.lastUpdate = Date.now();
+    player.lastUpdate = lastUpdate;
     if (name) player.displayName = name;
     if (score !== undefined) player.score = score;
     for (const cb of this.changeCallbacks) cb(wallet, player);
