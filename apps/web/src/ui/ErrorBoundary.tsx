@@ -24,6 +24,17 @@ export default class ErrorBoundary extends React.Component<Props, State> {
   }
 
   static getDerivedStateFromError(error: Error): State {
+    const msg = error.message ?? "";
+    // Wallet adapter / EVM extension errors (MetaMask, network mismatch) are not
+    // game-breaking — suppress them so the user can still play offline.
+    if (
+      msg.includes("MetaMask") ||
+      msg.includes("Failed to connect") ||
+      msg.toLowerCase().includes("wallet")
+    ) {
+      console.warn("[ErrorBoundary] suppressed render wallet error:", msg);
+      return { error: null };
+    }
     return { error };
   }
 

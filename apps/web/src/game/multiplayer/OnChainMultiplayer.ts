@@ -431,18 +431,18 @@ export class OnChainMultiplayer {
       const sessionKey = this.sessionKeys.getSessionPublicKey();
       const name = displayName ?? walletStr.slice(0, 8);
 
-      // Fund session key if it has insufficient SOL for position update fees.
-      // Session key is a local browser keypair (0 SOL initially). On base layer
-      // devnet, tx.feePayer = sessionKey → tx ALWAYS fails unless funded.
-      // On MagicBlock ephemeral rollup, fees are subsidised — no funding needed.
-      // 0.005 SOL = ~1000 position update transactions at ~5000 lamports each.
+      // Fund session key WITHIN the same sign prompt — never a separate tx.
+      // Session key = local browser keypair with 0 SOL. On base layer devnet,
+      // tx.feePayer = sessionKey → tx FAILS unless funded.
+      // Fix: bundle the SOL transfer into the same tx that the user already signs.
+      // 0.005 SOL covers ~1000 position updates at ~5000 lamports each.
       const SESSION_FUND_LAMPORTS = 5_000_000; // 0.005 SOL
       const sessionBalance = await this.baseConnection.getBalance(sessionKey).catch(() => 0);
-      const needsFunding = sessionBalance < SESSION_FUND_LAMPORTS;
+      const needsFunding = sessionBalance < 500_000; // re-fund when < 0.0005 SOL
 
       if (!existing) {
-        // Brand new player — init + authorize + fund session key (1 sign prompt)
-        console.log(`… new player — init + auth + fund session key (${needsFunding ? "funding" : "already funded"})`);
+        // Brand new player — init + auth + fund in ONE tx (1 sign prompt total)
+        console.log("… new player — init + auth" + (needsFunding ? " + fund session key" : "") + " (1 sign prompt)");
         const { blockhash } = await this.baseConnection.getLatestBlockhash();
         const tx = new Transaction({ recentBlockhash: blockhash, feePayer: wallet })
           .add(buildInitializePlayerIx(wallet, name))
@@ -457,21 +457,17 @@ export class OnChainMultiplayer {
           this.routerConnection.sendRawTransaction(raw, { skipPreflight: true }),
         ]);
         this.sessionKeys["authorized"] = true;
-        console.log("✓ initialized + session authorized + funded:", sig.slice(0, 12));
+        console.log("✓ init + auth" + (needsFunding ? " + funded" : "") + ":", sig.slice(0, 12));
       } else {
-        console.log(`✓ PDA exists — authorizing session (${needsFunding ? "funding session key" : "already funded"})`);
-        if (needsFunding) {
-          // Fund session key via a separate tx (existing player, session key empty)
-          const { blockhash } = await this.baseConnection.getLatestBlockhash();
-          const fundTx = new Transaction({ recentBlockhash: blockhash, feePayer: wallet })
-            .add(SystemProgram.transfer({ fromPubkey: wallet, toPubkey: sessionKey, lamports: SESSION_FUND_LAMPORTS }));
-          const fundSig = await this.requestWalletSign(fundTx);
-          await this.confirmReal(this.baseConnection, fundSig);
-          console.log("✓ session key funded:", fundSig.slice(0, 12));
-        }
-        // Authorize on BOTH connections — one will succeed regardless of delegation state
-        await this.sessionKeys.authorize(wallet, this.baseConnection, this.routerConnection);
-        console.log("✓ session authorized");
+        // PDA exists — auth + optional fund BUNDLED in ONE tx (1 sign prompt)
+        console.log("✓ PDA exists — auth" + (needsFunding ? " + fund session key" : "") + " (1 sign prompt)");
+        // sessionKeys.authorize builds the auth tx; we pass the funding lamports
+        // so it can add the transfer instruction to the SAME transaction.
+        await this.sessionKeys.authorize(
+          wallet, this.baseConnection, this.routerConnection,
+          needsFunding ? SESSION_FUND_LAMPORTS : 0
+        );
+        console.log("✓ session authorized" + (needsFunding ? " + funded" : ""));
       }
     } catch (err: any) {
       console.warn("✗ init/auth failed:", err?.message);

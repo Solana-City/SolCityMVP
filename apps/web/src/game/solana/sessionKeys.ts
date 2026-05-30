@@ -1,6 +1,7 @@
 import {
   Keypair,
   PublicKey,
+  SystemProgram,
   Transaction,
   Connection,
 } from "@solana/web3.js";
@@ -67,6 +68,7 @@ export class SessionKeyManager {
     walletPublicKey: PublicKey,
     connection: Connection,
     altConnection?: Connection,
+    fundLamports = 0,
   ): Promise<void> {
     this.mainWallet = walletPublicKey;
 
@@ -86,6 +88,14 @@ export class SessionKeyManager {
         recentBlockhash: blockhash,
         feePayer: walletPublicKey,
       }).add(ix);
+      // Bundle SOL transfer into this tx so no extra sign prompt is needed.
+      if (fundLamports > 0) {
+        tx.add(SystemProgram.transfer({
+          fromPubkey: walletPublicKey,
+          toPubkey: this.sessionKey.publicKey,
+          lamports: fundLamports,
+        }));
+      }
 
       const sig = await this.requestWalletSign(tx);
       if (!sig.startsWith("sim:")) {
