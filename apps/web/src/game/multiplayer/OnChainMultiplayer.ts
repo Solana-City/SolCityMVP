@@ -7,6 +7,7 @@ import {
 import {
   ConnectionMagicRouter,
   createCommitAndUndelegateInstruction,
+  delegationRecordPdaFromDelegatedAccount,
 } from "@magicblock-labs/ephemeral-rollups-sdk";
 import { SessionKeyManager } from "../solana/sessionKeys";
 import {
@@ -473,40 +474,39 @@ export class OnChainMultiplayer {
       console.warn("✗ init/auth failed:", err?.message);
     }
 
-    // 3. Check delegation + delegate if needed
+    // 3. Check delegation status directly on-chain (reliable).
+    //    getDelegationStatus() from the router SDK is unreliable — it often
+    //    returns false even when the PDA IS delegated, causing unnecessary
+    //    wallet sign prompts that the user has to reject.
+    //    Instead: check if the delegation record account exists on devnet.
+    //    If it does, the PDA is delegated to the ephemeral rollup.
     let isDelegated = false;
     try {
-      const status = await this.routerConnection.getDelegationStatus(playerPDA);
-      isDelegated = status.isDelegated;
-      console.log(`${isDelegated ? "✓ delegated" : "○ not delegated"} (ephemeral rollup)`);
+      const delegationRecord = delegationRecordPdaFromDelegatedAccount(playerPDA);
+      const recordInfo = await this.baseConnection.getAccountInfo(delegationRecord);
+      isDelegated = recordInfo !== null;
+      console.log(`${isDelegated ? "✓ delegated" : "○ not delegated"} (on-chain check)`);
     } catch (e: any) {
-      console.log("○ delegation status unknown");
+      console.log("○ delegation check failed:", e?.message);
     }
 
     try {
       if (!isDelegated) {
         console.log("… delegating PDA to ephemeral rollup (sign prompt)");
         await this.delegateToEphemeral(wallet);
+        // Verify delegation succeeded
         try {
-          const s2 = await this.routerConnection.getDelegationStatus(playerPDA);
-          this.useEphemeral = s2.isDelegated;
+          const delegationRecord = delegationRecordPdaFromDelegatedAccount(playerPDA);
+          const info = await this.baseConnection.getAccountInfo(delegationRecord);
+          this.useEphemeral = info !== null;
         } catch { this.useEphemeral = false; }
       } else {
-        await this.sessionKeys.authorize(wallet, this.routerConnection, this.baseConnection);
         this.useEphemeral = true;
-        console.log("✓ re-authorized (broadcast to both layers)");
+        console.log("✓ already delegated — using ephemeral rollup");
       }
     } catch (err: any) {
-      // Re-delegation often fails when the PDA is already delegated.
-      // Do a final check — if it's actually delegated, use ephemeral.
-      try {
-        const finalStatus = await this.routerConnection.getDelegationStatus(playerPDA);
-        this.useEphemeral = finalStatus.isDelegated;
-        if (this.useEphemeral) console.log("✓ already delegated — using ephemeral rollup");
-      } catch {
-        this.useEphemeral = false;
-      }
-      if (!this.useEphemeral) console.warn("○ delegation skipped — using base layer");
+      console.warn("○ delegation skipped:", err?.message);
+      this.useEphemeral = false;
     }
     console.log(`→ position layer: ${this.useEphemeral ? "🚀 EPHEMERAL ROLLUP" : "📡 BASE DEVNET"}`);
     console.groupEnd();
