@@ -8,6 +8,7 @@ interface Props {
 
 interface State {
   error: Error | null;
+  suppressedCount: number;
 }
 
 /** Messages that indicate a wallet / EVM extension error (non-fatal). */
@@ -15,12 +16,14 @@ function isWalletError(msg: string): boolean {
   const lower = msg.toLowerCase();
   return (
     lower.includes("failed to connect") ||
-    lower.includes("wallet") ||
     lower.includes("user rejected") ||
     lower.includes("transaction simulation failed") ||
     lower.includes("blockhash not found") ||
     lower.includes("session offline") ||
+    lower.includes("metamask") ||
+    lower.includes("walletconnect") ||
     msg === "Assertion failed"
+    // NOTE: do NOT add generic "wallet" — too broad, masks real game errors
   );
 }
 
@@ -34,28 +37,19 @@ function isWalletError(msg: string): boolean {
 export default class ErrorBoundary extends React.Component<Props, State> {
   constructor(props: Props) {
     super(props);
-    this.state = { error: null };
+    this.state = { error: null, suppressedCount: 0 };
   }
 
   static getDerivedStateFromError(error: Error): State {
-    const msg = error.message ?? "";
-    // Wallet adapter / EVM extension errors are not game-breaking — suppress
-    // them so the user can still play offline.
-    if (isWalletError(msg)) {
-      console.warn("[ErrorBoundary] suppressed render wallet error:", msg);
-      return { error: null };
-    }
-    return { error };
+    // IMPORTANT: never return { error: null } here — React would re-render
+    // children, they'd throw again, causing an infinite loop. Always store
+    // the error; the render method decides whether to show it.
+    return { error, suppressedCount: 0 };
   }
 
   componentDidMount() {
     // Catch errors that escape React's lifecycle (useEffect uncaught throws,
-    // WebGL context-loss events, Phaser internal exceptions) so the user sees
-    // a recovery screen instead of a blank/frozen page.
-    //
-    // IMPORTANT: wallet adapter errors (network mismatch, user rejection) are
-    // caught by WalletSignBridge's try/catch and should NOT reach here. Only
-    // escalate errors that originate from Phaser or core game logic.
+    // WebGL context-loss events, Phaser internal exceptions).
     this._onError = (event: ErrorEvent) => {
       const msg = event.message ?? "";
       if (isWalletError(msg)) {
@@ -64,7 +58,7 @@ export default class ErrorBoundary extends React.Component<Props, State> {
       }
       const err = event.error ?? new Error(msg);
       (err as any)._source = `${event.filename}:${event.lineno}`;
-      this.setState({ error: err });
+      this.setState({ error: err, suppressedCount: 0 });
     };
     this._onUnhandledRejection = (event: PromiseRejectionEvent) => {
       const err = event.reason instanceof Error
@@ -74,7 +68,7 @@ export default class ErrorBoundary extends React.Component<Props, State> {
         console.warn("[ErrorBoundary] suppressed rejection:", err.message);
         return;
       }
-      this.setState({ error: err });
+      this.setState({ error: err, suppressedCount: 0 });
     };
     window.addEventListener("error", this._onError);
     window.addEventListener("unhandledrejection", this._onUnhandledRejection);
@@ -93,13 +87,22 @@ export default class ErrorBoundary extends React.Component<Props, State> {
   }
 
   handleReload = () => {
-    // Clear any stale state that might cause a reload loop
     try { sessionStorage.clear(); } catch {}
     window.location.reload();
   };
 
   render() {
     const { error } = this.state;
+
+    // Wallet / EVM errors caught by getDerivedStateFromError: show a softer
+    // message that auto-reloads instead of blocking the game.
+    if (error && isWalletError(error.message ?? "")) {
+      console.warn("[ErrorBoundary] wallet render error — auto-reloading:", error.message);
+      // Reload after a brief delay so the user sees something happened
+      setTimeout(() => { try { window.location.reload(); } catch {} }, 1500);
+      return null; // blank screen for 1.5s then reload
+    }
+
     if (!error) return this.props.children;
 
     return (

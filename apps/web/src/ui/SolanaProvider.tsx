@@ -16,8 +16,12 @@ import "@solana/wallet-adapter-react-ui/styles.css";
 
 const NETWORK = "devnet";
 
-// Only Solana-native wallets are supported.
-const SOLANA_WALLET_NAMES = ["Phantom", "Solflare", "Backpack"];
+// Solana-native wallets allowed to auto-connect.
+// Includes MWA names used by Android/Seeker mobile wallets.
+const SOLANA_WALLET_NAMES = [
+  "Phantom", "Solflare", "Backpack",
+  "Seeker", "Mobile Wallet Adapter", "MWA", "Seed Vault",
+];
 
 // Auto-connect function — returns true only for known Solana wallets.
 // EVM wallets that self-register via Wallet Standard are excluded so they
