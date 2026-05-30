@@ -824,44 +824,51 @@ export class OnChainMultiplayer {
     if (!this.wallet) return null;
 
     const sessionKey = this.sessionKeys.getSessionPublicKey();
-    const rx = Math.round(x);
-    const ry = Math.round(y);
+    const ix = buildUpdatePositionSessionIx(
+      this.wallet, sessionKey,
+      Math.round(x), Math.round(y), direction,
+    );
+    const tx = new Transaction().add(ix);
+    tx.feePayer = sessionKey;
 
-    // Send to BOTH layers concurrently.
-    // We cannot reliably know which layer holds the live PDA:
-    //   - If delegated   → ephemeral rollup accepts, base layer rejects (locked)
-    //   - If undelegated → base layer accepts, ephemeral rollup rejects (no PDA)
-    // sendRawTransaction returns a signature regardless of on-chain success/failure,
-    // so checking the return value doesn't help. Broadcasting to both ensures the
-    // correct layer receives the update without requiring us to know delegation state.
-    const buildTx = async (
-      getBlockhash: () => Promise<{ blockhash: string }>,
-    ): Promise<Uint8Array | null> => {
-      try {
-        const ix = buildUpdatePositionSessionIx(this.wallet!, sessionKey, rx, ry, direction);
-        const tx = new Transaction().add(ix);
-        tx.feePayer = sessionKey;
-        const { blockhash } = await getBlockhash();
-        tx.recentBlockhash = blockhash;
-        this.sessionKeys.signTransaction(tx);
-        return tx.serialize();
-      } catch { return null; }
+    // Helper: race a promise against a timeout so a hanging RPC call never
+    // blocks position updates indefinitely (was causing "pending forever" bug).
+    const withTimeout = <T>(p: Promise<T>, ms: number): Promise<T> => {
+      return Promise.race([
+        p,
+        new Promise<T>((_, reject) =>
+          setTimeout(() => reject(new Error("rpc timeout")), ms)
+        ),
+      ]);
     };
 
-    const [ephBytes, baseBytes] = await Promise.all([
-      buildTx(() => this.routerConnection.getLatestBlockhashForTransaction(
-        new Transaction().add(buildUpdatePositionSessionIx(this.wallet!, sessionKey, rx, ry, direction))
-      )),
-      buildTx(() => this.baseConnection.getLatestBlockhash()),
-    ]);
+    if (this.useEphemeral) {
+      // Fast path: Magic Router → ephemeral rollup (sub-50ms when healthy).
+      // useEphemeral is set only after a confirmed on-chain delegation check.
+      try {
+        const { blockhash } = await withTimeout(
+          this.routerConnection.getLatestBlockhashForTransaction(
+            new Transaction().add(ix)
+          ),
+          3_000, // 3s timeout — fall through to base layer on ephemeral RPC issues
+        );
+        tx.recentBlockhash = blockhash;
+        this.sessionKeys.signTransaction(tx);
+        return await withTimeout(
+          this.routerConnection.sendRawTransaction(tx.serialize(), { skipPreflight: true }),
+          3_000,
+        );
+      } catch (err: any) {
+        console.warn("[Multiplayer] ephemeral tx failed, falling back to base layer:", err?.message);
+        this.useEphemeral = false; // temporary degradation — resets on next connect
+      }
+    }
 
-    const [ephSig, baseSig] = await Promise.allSettled([
-      ephBytes  ? this.routerConnection.sendRawTransaction(ephBytes,  { skipPreflight: true }) : Promise.reject(),
-      baseBytes ? this.baseConnection.sendRawTransaction(baseBytes, { skipPreflight: true }) : Promise.reject(),
-    ]);
-
-    return (ephSig.status  === "fulfilled" ? ephSig.value  : null)
-        ?? (baseSig.status === "fulfilled" ? baseSig.value : null);
+    // Base layer path (undelegated PDAs or ephemeral fallback).
+    const { blockhash } = await withTimeout(this.baseConnection.getLatestBlockhash(), 5_000);
+    tx.recentBlockhash = blockhash;
+    this.sessionKeys.signTransaction(tx);
+    return this.baseConnection.sendRawTransaction(tx.serialize(), { skipPreflight: true });
   }
 
   // ── Wallet signing bridge ─────────────────────────────────────────────
