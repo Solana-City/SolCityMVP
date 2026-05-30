@@ -22,9 +22,12 @@ const SOLANA_WALLET_NAMES = ["Phantom", "Solflare", "Backpack"];
 // Auto-connect function — returns true only for known Solana wallets.
 // EVM wallets that self-register via Wallet Standard are excluded so they
 // cannot crash the app during auto-connect.
-const autoConnectFilter = (adapter: { name: string }) =>
-  SOLANA_WALLET_NAMES.some(name =>
-    adapter.name.toLowerCase().includes(name.toLowerCase())
+// Must return Promise<boolean> to match the WalletProvider prop type.
+const autoConnectFilter = (adapter: { name: string }): Promise<boolean> =>
+  Promise.resolve(
+    SOLANA_WALLET_NAMES.some(name =>
+      adapter.name.toLowerCase().includes(name.toLowerCase())
+    )
   );
 
 export default function SolanaProvider({

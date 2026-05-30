@@ -848,7 +848,7 @@ export class OnChainMultiplayer {
 
     const [ephBytes, baseBytes] = await Promise.all([
       buildTx(() => this.routerConnection.getLatestBlockhashForTransaction(
-        new Transaction().add(buildUpdatePositionSessionIx(this.wallet, sessionKey, rx, ry, direction))
+        new Transaction().add(buildUpdatePositionSessionIx(this.wallet!, sessionKey, rx, ry, direction))
       )),
       buildTx(() => this.baseConnection.getLatestBlockhash()),
     ]);
