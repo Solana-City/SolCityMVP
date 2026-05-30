@@ -497,8 +497,16 @@ export class OnChainMultiplayer {
         console.log("✓ re-authorized (broadcast to both layers)");
       }
     } catch (err: any) {
-      console.warn("✗ delegation skipped:", err?.message);
-      this.useEphemeral = false;
+      // Re-delegation often fails when the PDA is already delegated.
+      // Do a final check — if it's actually delegated, use ephemeral.
+      try {
+        const finalStatus = await this.routerConnection.getDelegationStatus(playerPDA);
+        this.useEphemeral = finalStatus.isDelegated;
+        if (this.useEphemeral) console.log("✓ already delegated — using ephemeral rollup");
+      } catch {
+        this.useEphemeral = false;
+      }
+      if (!this.useEphemeral) console.warn("○ delegation skipped — using base layer");
     }
     console.log(`→ position layer: ${this.useEphemeral ? "🚀 EPHEMERAL ROLLUP" : "📡 BASE DEVNET"}`);
     console.groupEnd();
