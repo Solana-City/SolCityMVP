@@ -33,7 +33,16 @@ export default function SolanaProvider({
 
   return (
     <ConnectionProvider endpoint={endpoint}>
-      <WalletProvider wallets={wallets} autoConnect>
+      <WalletProvider
+        wallets={wallets}
+        autoConnect
+        onError={(error) => {
+          // Swallow wallet adapter errors (MetaMask interference, network
+          // mismatches, user rejections) — the game handles these gracefully
+          // via the in-game chat and offline mode fallback.
+          console.warn("[WalletProvider] error suppressed:", error.message);
+        }}
+      >
         <WalletModalProvider>{children}</WalletModalProvider>
       </WalletProvider>
     </ConnectionProvider>
