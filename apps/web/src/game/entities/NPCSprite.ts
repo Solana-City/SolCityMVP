@@ -7,7 +7,6 @@ import { progressionBus } from "../progression/progressionBus";
 
 const INTERACT_RANGE = TILE_SIZE * 1.8;
 
-
 export class NPCSprite {
   private scene: Phaser.Scene;
   private avatar: SimpleSprite;
@@ -47,80 +46,93 @@ export class NPCSprite {
     const container = this.getContainer();
     const colorHex = `#${def.color.toString(16).padStart(6, "0")}`;
 
-    // Label stack above head. Tight layout optimized for 32-world-px-tall
-    // characters (64×64 native sheets rendered at 0.5× sprite scale).
-    //
-    // Stack from top to bottom:
-    //   [! marker]  — smallest, softest, just a visual breadcrumb
-    //   [ Name   ]  — primary identifier, crisp and compact
-    //   [head]
-    //
-    // When the player enters interaction range, the "!" is replaced by
-    // the "[E] Name" prompt in the same slot so they never stack.
+    // Detect touch device for prompt wording
+    const isTouch = scene.sys.game.device.input.touch;
 
-    // Status marker — small dot with "!". Tight (radius 6 vs 9 before)
-    // so it recedes visually and the name takes primary focus.
-    this.exclamationBg = scene.add.circle(0, 0, 6, def.color);
+    // ── Label stack (bottom → top) ──────────────────────────────────────────
+    //
+    //   y = -70 … -64  →  [! bubble] or [interact prompt]
+    //   y = -46         →  [ Name ]
+    //   y =   0         →  [head]
+    //
+    // The "!" and the prompt share the same slot (toggle visibility).
+
+    // ── Name label ───────────────────────────────────────────────────────────
+    this.nameText = scene.add.text(0, -46, def.name, {
+      fontSize: "12px",
+      fontFamily: '"Press Start 2P", monospace',
+      color: colorHex,
+      align: "center",
+      resolution: 2,
+      stroke: "#0a0a1e",
+      strokeThickness: 3,
+    }).setOrigin(0.5, 1);
+    container.add(this.nameText);
+
+    // ── Exclamation bubble ───────────────────────────────────────────────────
+    this.exclamationBg = scene.add.circle(0, 0, 8, def.color);
     this.exclamationText = scene.add.text(0, 0, "!", {
-      fontSize: "10px", fontFamily: "monospace",
+      fontSize: "12px", fontFamily: "monospace",
       color: "#ffffff", fontStyle: "bold",
       resolution: 2,
     }).setOrigin(0.5, 0.5);
 
-    this.exclamation = scene.add.container(0, -52, [this.exclamationBg, this.exclamationText]);
+    this.exclamation = scene.add.container(0, -64, [this.exclamationBg, this.exclamationText]);
     container.add(this.exclamation);
 
     scene.tweens.add({
       targets: this.exclamation,
-      y: -55,
-      duration: 800,
+      y: -69,
+      duration: 900,
       yoyo: true,
       repeat: -1,
       ease: "Sine.easeInOut",
     });
 
-    // Apply initial visited state (for profiles that already know this NPC).
+    // Apply initial visited state
     this.applyVisitedState(profileManager.get().visitedNPCs.includes(def.id));
 
-    // Live updates: react to first visits AND to any profile mutation
-    // (e.g. resetProgress wipes visitedNPCs; the marker should flip back).
     const unsubVisit = progressionBus.on("npc-visited", (e) => {
-      if (e.npcId === def.id && e.firstTime) {
-        this.applyVisitedState(true);
-      }
+      if (e.npcId === def.id && e.firstTime) this.applyVisitedState(true);
     });
     const unsubProfile = progressionBus.on("profile-updated", (e) => {
       this.applyVisitedState(e.profile.visitedNPCs.includes(def.id));
     });
-    this.unsubBus = () => {
-      unsubVisit();
-      unsubProfile();
-    };
+    this.unsubBus = () => { unsubVisit(); unsubProfile(); };
 
-    // Name label — compact, right above the head (sprite top ≈ -34 local).
-    this.nameText = scene.add.text(0, -38, def.name, {
-      fontSize: "10px", fontFamily: "monospace",
-      color: colorHex,
+    // ── Interaction prompt ───────────────────────────────────────────────────
+    // Shown instead of the "!" when the player is in range.
+    // Desktop: "[E] Talk"   Mobile/touch: "Tap to talk"
+    const promptLabel = isTouch ? "Tap to talk" : "[E] Talk";
+    this.promptText = scene.add.text(0, -64, promptLabel, {
+      fontSize: "9px",
+      fontFamily: '"Press Start 2P", monospace',
+      color: "#14F195",
       align: "center",
+      backgroundColor: "#0a0a1eEE",
+      padding: { x: 7, y: 4 },
       resolution: 2,
       stroke: "#0a0a1e",
       strokeThickness: 2,
-    }).setOrigin(0.5, 1);
-    container.add(this.nameText);
-
-    // [E] prompt — shown ONLY when player is in range. Replaces the "!"
-    // in the same screen slot (y=-52, matching the marker's hover baseline).
-    this.promptText = scene.add.text(0, -52, `[E]`, {
-      fontSize: "10px", fontFamily: "monospace",
-      color: "#14F195", align: "center",
-      backgroundColor: "#0a0a1eDD",
-      padding: { x: 5, y: 2 },
-      resolution: 2,
     }).setOrigin(0.5, 0.5).setVisible(false);
     container.add(this.promptText);
 
-    container.setDepth(y);
+    // ── Touch hit zone ───────────────────────────────────────────────────────
+    // Transparent rectangle covering the NPC sprite + name area.
+    // On touch devices, tapping the NPC while in range triggers interaction.
+    if (isTouch) {
+      const hitZone = scene.add.rectangle(0, -24, 48, 72, 0x000000, 0);
+      hitZone.setInteractive({ useHandCursor: false });
+      hitZone.on("pointerdown", () => {
+        if (this._isInRange) {
+          // Emit touch:interact so CityScene applies its interactionBlocked guard
+          scene.game.events.emit("touch:interact");
+        }
+      });
+      container.add(hitZone);
+    }
 
+    container.setDepth(y);
     this.startIdleBehavior();
   }
 
@@ -137,8 +149,6 @@ export class NPCSprite {
 
     if (inRange !== this._isInRange) {
       this._isInRange = inRange;
-      // The prompt and the "!" marker share the same overhead slot,
-      // so we flip their visibility together for a clean swap.
       this.promptText.setVisible(inRange);
       this.exclamation.setVisible(!inRange);
     }
@@ -155,15 +165,8 @@ export class NPCSprite {
     return this.avatar.getContainer();
   }
 
-  /**
-   * Cleanup — releases the avatar's resources and the
-   * progression-bus subscription so repeated hot-reloads don't leak.
-   */
   destroy(): void {
-    if (this.unsubBus) {
-      this.unsubBus();
-      this.unsubBus = null;
-    }
+    if (this.unsubBus) { this.unsubBus(); this.unsubBus = null; }
     this.avatar.destroy();
   }
 
@@ -180,14 +183,12 @@ export class NPCSprite {
 
       const dir = dirs[Math.floor(Math.random() * dirs.length)];
 
-      // 65 % of the time: just turn to face a direction — no movement
       if (Math.random() < 0.65) {
         this.avatar.face(dir);
         this.scene.time.delayedCall(1800 + Math.random() * 2400, tick);
         return;
       }
 
-      // 35 %: attempt a small step — but only if the path is clear
       const container = this.getContainer();
       const step = (0.3 + Math.random() * 0.4) * WANDER_RADIUS;
       let targetX = container.x;
@@ -202,19 +203,16 @@ export class NPCSprite {
       const distance  = Math.abs(clampedX - container.x) + Math.abs(clampedY - container.y);
 
       if (distance < 3 || this.isTileBlocked(clampedX, clampedY)) {
-        // Blocked or no room — just face that way, don't animate walking
         this.avatar.face(dir);
         this.scene.time.delayedCall(1200 + Math.random() * 1600, tick);
         return;
       }
 
-      // Path clear — walk
       this.avatar.walk(dir);
       this.scene.tweens.killTweensOf(container);
       this.scene.tweens.add({
         targets: container,
-        x: clampedX,
-        y: clampedY,
+        x: clampedX, y: clampedY,
         duration: (distance / WALK_SPEED) * 1000,
         ease: "Linear",
         onUpdate: () => container.setDepth(container.y),
@@ -225,11 +223,9 @@ export class NPCSprite {
       });
     };
 
-    // Stagger startup so all NPCs don't tick at the same time
     this.scene.time.delayedCall(Math.random() * 2000, tick);
   }
 
-  /** Returns true if the world-pixel point (x, y) sits on a collidable tile. */
   private isTileBlocked(x: number, y: number): boolean {
     for (const layer of this.collisionLayers) {
       const tile = layer.getTileAtWorldXY(x, y);
@@ -238,11 +234,6 @@ export class NPCSprite {
     return false;
   }
 
-  /**
-   * Updates the status marker above the NPC's head.
-   *   not-visited: bright "!" in NPC's accent color (the "come talk to me" cue)
-   *   visited:     muted "·" in a softer gray — still present, but recedes
-   */
   private applyVisitedState(visited: boolean): void {
     if (visited) {
       this.exclamationBg.setFillStyle(0x555577);
