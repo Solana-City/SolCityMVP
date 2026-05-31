@@ -58,8 +58,8 @@ export class NPCSprite {
     // The "!" and the prompt share the same slot (toggle visibility).
 
     // ── Name label ───────────────────────────────────────────────────────────
-    this.nameText = scene.add.text(0, -46, def.name, {
-      fontSize: "12px",
+    this.nameText = scene.add.text(0, -38, def.name, {
+      fontSize: "11px",
       fontFamily: '"Press Start 2P", monospace',
       color: colorHex,
       align: "center",
@@ -77,12 +77,12 @@ export class NPCSprite {
       resolution: 2,
     }).setOrigin(0.5, 0.5);
 
-    this.exclamation = scene.add.container(0, -64, [this.exclamationBg, this.exclamationText]);
+    this.exclamation = scene.add.container(0, -56, [this.exclamationBg, this.exclamationText]);
     container.add(this.exclamation);
 
     scene.tweens.add({
       targets: this.exclamation,
-      y: -69,
+      y: -61,
       duration: 900,
       yoyo: true,
       repeat: -1,
@@ -104,16 +104,14 @@ export class NPCSprite {
     // Shown instead of the "!" when the player is in range.
     // Desktop: "[E] Talk"   Mobile/touch: "Tap to talk"
     const promptLabel = isTouch ? "Tap to talk" : "[E] Talk";
-    this.promptText = scene.add.text(0, -64, promptLabel, {
+    this.promptText = scene.add.text(0, -56, promptLabel, {
       fontSize: "9px",
       fontFamily: '"Press Start 2P", monospace',
       color: "#14F195",
       align: "center",
-      backgroundColor: "#0a0a1eEE",
-      padding: { x: 7, y: 4 },
       resolution: 2,
-      stroke: "#0a0a1e",
-      strokeThickness: 2,
+      stroke: "#000000",
+      strokeThickness: 4,
     }).setOrigin(0.5, 0.5).setVisible(false);
     container.add(this.promptText);
 
