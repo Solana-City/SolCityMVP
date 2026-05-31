@@ -795,22 +795,31 @@ export class OnChainMultiplayer {
 
       if (walletStr === this.wallet?.toBase58()) return; // skip self
 
+      const lastActiveMs = lastActiveLo * 1000; // on-chain timestamp → ms
+      const now = Date.now();
+
+      // Immediately remove ghost players: if last_active on-chain is older than
+      // 90s the player is offline (crashed/disconnected without clean logout).
+      // This is more reliable than waiting for pruneStale() which only runs
+      // every 15s and requires lastUpdate to have been set correctly first.
+      const GHOST_THRESHOLD_MS = 90_000;
+      if (now - lastActiveMs > GHOST_THRESHOLD_MS) {
+        if (this.knownPlayers.has(walletStr)) {
+          console.log(`[Multiplayer] pruning ghost player ${walletStr.slice(0,8)} (inactive ${Math.round((now - lastActiveMs) / 1000)}s)`);
+          this.handlePlayerLeave(walletStr);
+        }
+        return;
+      }
+
       // Only update if this data is newer than what we have.
-      // Both layers (ephemeral + base) may report stale data — ephemeral
-      // rollup data has the live position; base layer is locked while delegated.
       const existing = this.knownPlayers.get(walletStr);
       const onChainTs = lastActiveLo; // u32 unix seconds
       if (existing && (existing as any)._onChainTs !== undefined) {
         if (onChainTs < (existing as any)._onChainTs) return; // stale — skip
       }
-      (existing as any)?._onChainTs !== undefined || true; // no-op, field tracked below
 
       const isWalking = existing !== undefined && (x !== existing.x || y !== existing.y);
-      // Pass lastActive (on-chain Unix seconds → ms) so pruneStale can detect
-      // ghost players: if last_active hasn't changed in 60s the player is offline.
-      this.handlePlayerMove(walletStr, x, y, direction, isWalking, displayName, undefined, lastActiveLo * 1000);
-      // Tag the known player with the on-chain timestamp so future stale
-      // data from the other layer doesn't overwrite a more recent update.
+      this.handlePlayerMove(walletStr, x, y, direction, isWalking, displayName, undefined, lastActiveMs);
       const updated = this.knownPlayers.get(walletStr);
       if (updated) (updated as any)._onChainTs = onChainTs;
     } catch {
