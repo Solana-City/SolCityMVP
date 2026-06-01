@@ -252,14 +252,23 @@ export class OnChainMultiplayer {
       const entry = transactionLog.recordMove({ status: "pending" });
       this.sendPositionTransaction(x, y, dirNum)
         .then(sig => {
-          if (sig) transactionLog.markConfirmed(entry.id, sig);
+          if (sig) {
+            transactionLog.markConfirmed(entry.id, sig);
+            // Log first confirmed tx so we know writes are working
+            if (!(this as any)._firstConfirmed) {
+              (this as any)._firstConfirmed = true;
+              console.log("[Multiplayer] ✓ first position tx confirmed:", sig.slice(0,12));
+            }
+          } else {
+            transactionLog.markFailed(entry.id, "null signature");
+            console.warn("[Multiplayer] position tx returned null sig");
+          }
         })
         .catch(err => {
           transactionLog.markFailed(entry.id, err?.message ?? "tx failed");
-          // Log first few failures to help diagnose setup issues
           if ((this as any)._posErrCount === undefined) (this as any)._posErrCount = 0;
           if (++(this as any)._posErrCount <= 3) {
-            console.warn("[Multiplayer] position tx failed:", err?.message, "| layer:", this.useEphemeral ? "ephemeral" : "base");
+            console.warn("[Multiplayer] position tx failed:", err?.message);
           }
         });
     } else {
@@ -511,21 +520,23 @@ export class OnChainMultiplayer {
     this.lastPos = { x: -1, y: -1, direction: -1, isWalking: false };
   }
 
-  /** Discover players whose PDAs exist on devnet base layer (not delegated). */
+  /** Discover players whose PDAs exist on devnet base layer. */
   private async discoverPlayersFromBase(self: PublicKey): Promise<void> {
     try {
       const accounts = await this.baseConnection.getProgramAccounts(
         SOL_CITY_PROGRAM_ID,
         { commitment: "confirmed" }
       );
-      let found = 0;
+      console.log(`[Multiplayer] getProgramAccounts: ${accounts.length} account(s) on base layer`);
+      let added = 0;
       for (const { pubkey, account } of accounts) {
+        const before = this.knownPlayers.size;
         this.decodeAndUpdatePlayer(pubkey.toBase58(), account.data);
-        found++;
+        if (this.knownPlayers.size > before) added++;
       }
-      if (found > 0) console.log(`[Multiplayer] base discovery: ${found} player(s)`);
-    } catch (err) {
-      console.info("[Multiplayer] base discovery unavailable:", err);
+      if (added > 0) console.log(`[Multiplayer] discovery: ${added} new player(s) added`);
+    } catch (err: any) {
+      console.warn("[Multiplayer] base discovery FAILED:", err?.message);
     }
   }
 
