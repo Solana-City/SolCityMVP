@@ -423,6 +423,11 @@ export class CityScene extends Phaser.Scene {
 
         await this.network.connect(new PublicKey(walletAddress), displayName);
         this.chat.addSystemMessage("Multiplayer session started.");
+
+        // Listen for warnings from the multiplayer layer (e.g. delegated PDAs)
+        this.game.events.once("multiplayer:warning", (msg: string) => {
+          this.chat.addSystemMessage(msg);
+        });
       } catch (err: any) {
         console.error("[CityScene] session error:", err);
         this.chat.addSystemMessage("Session offline (local mode)");

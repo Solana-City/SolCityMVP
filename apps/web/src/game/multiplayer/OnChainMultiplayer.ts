@@ -475,16 +475,34 @@ export class OnChainMultiplayer {
 
     // If PDA is still delegated from a previous session, commit state back to
     // base layer so writes work. Uses session key — no wallet popup needed.
+    // If this fails (e.g. wrong session key or unreliable ephemeral endpoint),
+    // position writes will silently fail. Discovery still works; player appears
+    // but position is stale. User should clear browser storage and reconnect.
     try {
       const delegationRecord = delegationRecordPdaFromDelegatedAccount(playerPDA);
       const recordInfo = await this.baseConnection.getAccountInfo(delegationRecord);
       if (recordInfo !== null) {
         console.log("… PDA delegated from previous session — undelegating (no popup)");
         await this.commitAndUndelegatePlayer(wallet);
-        console.log("✓ undelegated — base layer writes now work");
+        // Verify undelegation succeeded
+        const verify = await this.baseConnection.getAccountInfo(
+          delegationRecordPdaFromDelegatedAccount(playerPDA)
+        );
+        if (verify !== null) {
+          // Still delegated — undelegation failed
+          console.warn("⚠ PDA still delegated after undelegation attempt.");
+          console.warn("⚠ Position updates will fail. Clear browser storage and reconnect.");
+          // Notify the game via the global event bus
+          const bus = (globalThis as any).__solCityGameEvents;
+          bus?.emit("multiplayer:warning",
+            "⚠ Old session detected. Clear browser storage and reconnect."
+          );
+        } else {
+          console.log("✓ undelegated — base layer writes now work");
+        }
       }
     } catch (e: any) {
-      console.warn("○ undelegation skipped:", e?.message);
+      console.warn("○ undelegation check skipped:", e?.message);
     }
 
     // Always use base layer — no delegation on devnet
@@ -770,7 +788,7 @@ export class OnChainMultiplayer {
       }
 
       const isWalking = existing !== undefined && (x !== existing.x || y !== existing.y);
-      this.handlePlayerMove(walletStr, x, y, direction, isWalking, displayName, undefined, lastActiveMs);
+      this.handlePlayerMove(walletStr, x, y, direction, isWalking, displayName);
       const updated = this.knownPlayers.get(walletStr);
       if (updated) (updated as any)._onChainTs = onChainTs;
     } catch {
@@ -887,14 +905,11 @@ export class OnChainMultiplayer {
   private handlePlayerMove(
     wallet: string, x: number, y: number, d: number, m: boolean,
     name?: string, score?: number,
-    /** On-chain last_active in ms — used for prune detection. Falls back to
-     *  Date.now() for BroadcastChannel messages that have no on-chain timestamp. */
-    onChainLastActiveMs?: number,
   ): void {
-    // Use on-chain last_active so pruneStale can detect crashed/offline players.
-    // If we always use Date.now(), polling keeps refreshing lastUpdate and ghost
-    // players (crashed browsers) are never removed.
-    const lastUpdate = onChainLastActiveMs ?? Date.now();
+    // Always use Date.now() for lastUpdate so polling keeps players visible
+    // even when on-chain writes are temporarily failing (e.g. delegated PDAs).
+    // Ghost removal is handled by the 2-min threshold in decodeAndUpdatePlayer.
+    const lastUpdate = Date.now();
 
     let player = this.knownPlayers.get(wallet);
     if (!player) {
@@ -935,7 +950,7 @@ export class OnChainMultiplayer {
   }
 
   private pruneStale(): void {
-    const cutoff = Date.now() - 60_000; // 60s without update = offline (was 20s)
+    const cutoff = Date.now() - 300_000; // 5 min — generous window for unreliable writes
     for (const [wallet, player] of this.knownPlayers) {
       if (wallet === this.wallet?.toBase58()) continue;
       if (player.lastUpdate < cutoff) this.handlePlayerLeave(wallet);
