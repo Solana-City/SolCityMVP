@@ -464,6 +464,20 @@ export class OnChainMultiplayer {
       console.warn("✗ init/auth failed:", err?.message);
     }
 
+    // If PDA is still delegated from a previous session, commit state back to
+    // base layer so writes work. Uses session key — no wallet popup needed.
+    try {
+      const delegationRecord = delegationRecordPdaFromDelegatedAccount(playerPDA);
+      const recordInfo = await this.baseConnection.getAccountInfo(delegationRecord);
+      if (recordInfo !== null) {
+        console.log("… PDA delegated from previous session — undelegating (no popup)");
+        await this.commitAndUndelegatePlayer(wallet);
+        console.log("✓ undelegated — base layer writes now work");
+      }
+    } catch (e: any) {
+      console.warn("○ undelegation skipped:", e?.message);
+    }
+
     // Always use base layer — no delegation on devnet
     this.useEphemeral = false;
     console.log("→ position layer: 📡 BASE DEVNET");
@@ -718,25 +732,22 @@ export class OnChainMultiplayer {
       // Skip outfit_id, score, swap_count, transfer_count, bounty_count
       offset += 1 + 4 + 2 + 2 + 2;
 
-      // last_active (i64 — just read lower 4 bytes for recent-enough check)
+      // last_active (i64 — read lower 4 bytes; fits in u32 until year 2106)
       const lastActiveLo = buf.readUInt32LE(offset);
-      const lastActive = lastActiveLo * 1000; // rough ms
+      const lastActiveMs = lastActiveLo * 1000; // on-chain Unix seconds → ms
 
       if (walletStr === this.wallet?.toBase58()) return; // skip self
-
-      const lastActiveMs = lastActiveLo * 1000; // on-chain timestamp → ms
       const now = Date.now();
 
-      // Immediately remove ghost players: if last_active on-chain is older than
-      // 90s the player is offline (crashed/disconnected without clean logout).
-      // This is more reliable than waiting for pruneStale() which only runs
-      // every 15s and requires lastUpdate to have been set correctly first.
-      const GHOST_THRESHOLD_MS = 90_000;
-      if (now - lastActiveMs > GHOST_THRESHOLD_MS) {
-        if (this.knownPlayers.has(walletStr)) {
-          console.log(`[Multiplayer] pruning ghost player ${walletStr.slice(0,8)} (inactive ${Math.round((now - lastActiveMs) / 1000)}s)`);
-          this.handlePlayerLeave(walletStr);
-        }
+      // Ghost pruning: only remove players already in the scene.
+      // Do NOT block NEW discoveries — players with stale last_active (e.g. from
+      // a previously delegated PDA) would never appear if we return early here.
+      // pruneStale() handles removal via lastUpdate after they're added.
+      const GHOST_THRESHOLD_MS = 120_000; // 2 minutes
+      const isKnown = this.knownPlayers.has(walletStr);
+      if (isKnown && now - lastActiveMs > GHOST_THRESHOLD_MS) {
+        console.log(`[Multiplayer] pruning ghost ${walletStr.slice(0,8)} (inactive ${Math.round((now - lastActiveMs) / 1000)}s)`);
+        this.handlePlayerLeave(walletStr);
         return;
       }
 
