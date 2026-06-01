@@ -415,7 +415,13 @@ export class OnChainMultiplayer {
     });
   }
 
-  // ── Layer 2: MagicBlock Ephemeral Rollup ──────────────────────────────
+  // ── Layer 2: Devnet base layer (no ephemeral rollup delegation) ──────────
+  // MagicBlock ephemeral rollup devnet endpoints are unreliable for reads
+  // (getAccountInfo / WebSocket subscriptions return stale/null data).
+  // Using the standard Solana devnet base layer gives reliable reads with
+  // ~500ms-1s latency — good enough for cross-browser multiplayer on devnet.
+  // Delegation will be re-enabled when launching on mainnet where MagicBlock
+  // infrastructure is production-grade.
 
   private async startMagicBlockMultiplayer(wallet: PublicKey, displayName?: string): Promise<void> {
     const walletStr = wallet.toBase58();
@@ -423,27 +429,21 @@ export class OnChainMultiplayer {
 
     console.group(`[Multiplayer] setup for ${walletStr.slice(0,8)}…`);
 
-    // 1 + 2. Initialize PDA + authorize session key in one step.
-    //   - If PDA doesn't exist: single tx with initialize_player + authorize_session = 1 sign prompt
-    //   - If PDA exists but session not authorized: authorize_session alone = 1 sign prompt
-    //   - If already authorized (stored in sessionKeys): no prompt
+    // 1. Initialize PDA + authorize session key + fund session key.
+    //    New player: init + auth + fund = 1 sign prompt.
+    //    Existing player: auth + fund (if needed) = 1 sign prompt.
+    //    Already authorized + funded: no prompt at all.
     try {
       const existing = await this.baseConnection.getAccountInfo(playerPDA);
       const sessionKey = this.sessionKeys.getSessionPublicKey();
       const name = displayName ?? walletStr.slice(0, 8);
 
-      // Fund session key WITHIN the same sign prompt — never a separate tx.
-      // Session key = local browser keypair with 0 SOL. On base layer devnet,
-      // tx.feePayer = sessionKey → tx FAILS unless funded.
-      // Fix: bundle the SOL transfer into the same tx that the user already signs.
-      // 0.005 SOL covers ~1000 position updates at ~5000 lamports each.
-      const SESSION_FUND_LAMPORTS = 5_000_000; // 0.005 SOL
+      const SESSION_FUND_LAMPORTS = 5_000_000; // 0.005 SOL — covers ~1000 position updates
       const sessionBalance = await this.baseConnection.getBalance(sessionKey).catch(() => 0);
-      const needsFunding = sessionBalance < 500_000; // re-fund when < 0.0005 SOL
+      const needsFunding = sessionBalance < 500_000;
 
       if (!existing) {
-        // Brand new player — init + auth + fund in ONE tx (1 sign prompt total)
-        console.log("… new player — init + auth" + (needsFunding ? " + fund session key" : "") + " (1 sign prompt)");
+        console.log("… new player — init + auth" + (needsFunding ? " + fund" : "") + " (1 sign prompt)");
         const { blockhash } = await this.baseConnection.getLatestBlockhash();
         const tx = new Transaction({ recentBlockhash: blockhash, feePayer: wallet })
           .add(buildInitializePlayerIx(wallet, name))
@@ -452,85 +452,27 @@ export class OnChainMultiplayer {
           tx.add(SystemProgram.transfer({ fromPubkey: wallet, toPubkey: sessionKey, lamports: SESSION_FUND_LAMPORTS }));
         }
         const sig = await this.requestWalletSign(tx);
-        const raw = tx.serialize();
-        await Promise.allSettled([
-          this.confirmReal(this.baseConnection, sig),
-          this.routerConnection.sendRawTransaction(raw, { skipPreflight: true }),
-        ]);
+        await this.confirmReal(this.baseConnection, sig);
         this.sessionKeys["authorized"] = true;
-        console.log("✓ init + auth" + (needsFunding ? " + funded" : "") + ":", sig.slice(0, 12));
+        console.log("✓ initialized + authorized:", sig.slice(0, 12));
       } else {
-        // PDA exists — auth + optional fund BUNDLED in ONE tx (1 sign prompt)
-        console.log("✓ PDA exists — auth" + (needsFunding ? " + fund session key" : "") + " (1 sign prompt)");
-        // sessionKeys.authorize builds the auth tx; we pass the funding lamports
-        // so it can add the transfer instruction to the SAME transaction.
-        await this.sessionKeys.authorize(
-          wallet, this.baseConnection, this.routerConnection,
-          needsFunding ? SESSION_FUND_LAMPORTS : 0
-        );
-        console.log("✓ session authorized" + (needsFunding ? " + funded" : ""));
+        console.log("✓ PDA exists — auth" + (needsFunding ? " + fund" : "") + (needsFunding ? " (1 sign prompt)" : " (may skip if cached)"));
+        await this.sessionKeys.authorize(wallet, this.baseConnection, undefined, needsFunding ? SESSION_FUND_LAMPORTS : 0);
+        console.log("✓ session authorized");
       }
     } catch (err: any) {
       console.warn("✗ init/auth failed:", err?.message);
     }
 
-    // 3. Check delegation status directly on-chain (reliable).
-    //    getDelegationStatus() from the router SDK is unreliable — it often
-    //    returns false even when the PDA IS delegated, causing unnecessary
-    //    wallet sign prompts that the user has to reject.
-    //    Instead: check if the delegation record account exists on devnet.
-    //    If it does, the PDA is delegated to the ephemeral rollup.
-    let isDelegated = false;
-    try {
-      const delegationRecord = delegationRecordPdaFromDelegatedAccount(playerPDA);
-      const recordInfo = await this.baseConnection.getAccountInfo(delegationRecord);
-      isDelegated = recordInfo !== null;
-      console.log(`${isDelegated ? "✓ delegated" : "○ not delegated"} (on-chain check)`);
-    } catch (e: any) {
-      console.log("○ delegation check failed:", e?.message);
-    }
-
-    try {
-      if (!isDelegated) {
-        console.log("… delegating PDA to ephemeral rollup (sign prompt)");
-        await this.delegateToEphemeral(wallet);
-        // Verify delegation succeeded
-        try {
-          const delegationRecord = delegationRecordPdaFromDelegatedAccount(playerPDA);
-          const info = await this.baseConnection.getAccountInfo(delegationRecord);
-          this.useEphemeral = info !== null;
-        } catch { this.useEphemeral = false; }
-      } else {
-        this.useEphemeral = true;
-        console.log("✓ already delegated — using ephemeral rollup");
-      }
-    } catch (err: any) {
-      console.warn("○ delegation skipped:", err?.message);
-      this.useEphemeral = false;
-    }
-    console.log(`→ position layer: ${this.useEphemeral ? "🚀 EPHEMERAL ROLLUP" : "📡 BASE DEVNET"}`);
+    // Always use base layer — no delegation on devnet
+    this.useEphemeral = false;
+    console.log("→ position layer: 📡 BASE DEVNET");
     console.groupEnd();
 
-    // 4. Discover existing players — ephemeral rollup first, then base layer fallback.
-    //    Base layer finds players whose PDAs exist on devnet but aren't delegated yet.
-    await this.discoverPlayers(wallet);
+    // 2. Discover existing players via base layer getProgramAccounts
     await this.discoverPlayersFromBase(wallet);
 
-    // 5a. Subscribe to ephemeral rollup program account changes.
-    try {
-      this.ephemeralConnection.onProgramAccountChange(
-        SOL_CITY_PROGRAM_ID,
-        (keyedInfo) => {
-          this.decodeAndUpdatePlayer(keyedInfo.accountId.toBase58(), keyedInfo.accountInfo.data);
-        },
-        "processed",
-      );
-    } catch (err) {
-      console.warn("[Multiplayer] ephemeral subscription failed:", err);
-    }
-
-    // 5b. Subscribe to base layer (devnet) program account changes.
-    //     Catches players whose PDAs are NOT delegated to the ephemeral rollup.
+    // 3. Subscribe to base layer program account changes (standard Solana devnet WebSocket)
     try {
       this.baseConnection.onProgramAccountChange(
         SOL_CITY_PROGRAM_ID,
@@ -539,20 +481,19 @@ export class OnChainMultiplayer {
         },
         "confirmed",
       );
+      console.log("[Multiplayer] base layer subscription active");
     } catch (err) {
-      console.warn("[Multiplayer] base subscription failed:", err);
+      console.warn("[Multiplayer] subscription failed:", err);
     }
 
-    // 6a. Per-player polling via getAccountInfo every 2s (fast, always supported).
-    //     Updates positions for already-known players on both layers.
+    // 4. Per-player getAccountInfo polling every 2s — fallback for when
+    //    onProgramAccountChange doesn't fire on the RPC node
     setInterval(() => this.pollKnownPlayerPDAs(wallet), 2_000);
 
-    // 6b. Full base-layer discovery every 8s to catch players who joined AFTER
-    //     the initial connect. pollKnownPlayerPDAs only fetches known players —
-    //     new arrivals are invisible until a full getProgramAccounts scan runs.
+    // 5. Full discovery every 8s to catch players who joined after initial connect
     setInterval(() => this.discoverPlayersFromBase(wallet), 8_000);
 
-    // 7. Force a presence broadcast on the next sendInput tick.
+    // 6. Force a presence broadcast on next sendInput tick
     this.lastPos = { x: -1, y: -1, direction: -1, isWalking: false };
   }
 
@@ -589,20 +530,8 @@ export class OnChainMultiplayer {
       try {
         const walletPub = new PublicKey(walletStr);
         const [pda] = derivePlayerPDA(walletPub);
-
-        // Fetch from both layers concurrently
-        const [baseInfo, ephInfo] = await Promise.allSettled([
-          this.baseConnection.getAccountInfo(pda, "confirmed"),
-          this.ephemeralConnection.getAccountInfo(pda, "processed"),
-        ]);
-
-        // Process both; _onChainTs guard in decodeAndUpdatePlayer keeps the newest
-        if (baseInfo.status === "fulfilled" && baseInfo.value) {
-          this.decodeAndUpdatePlayer(pda.toBase58(), baseInfo.value.data);
-        }
-        if (ephInfo.status === "fulfilled" && ephInfo.value) {
-          this.decodeAndUpdatePlayer(pda.toBase58(), ephInfo.value.data);
-        }
+        const info = await this.baseConnection.getAccountInfo(pda, "confirmed");
+        if (info) this.decodeAndUpdatePlayer(pda.toBase58(), info.data);
       } catch { /* ignore per-player errors */ }
     }));
   }
@@ -960,22 +889,19 @@ export class OnChainMultiplayer {
     for (const cb of this.changeCallbacks) cb(wallet, player);
   }
 
-  /** Derive PDA from wallet address and subscribe to onAccountChange on both layers. */
+  /** Subscribe to base layer onAccountChange for a specific player's PDA. */
   private subscribeToPlayerWallet(wallet: string): void {
     try {
       const walletPub = new PublicKey(wallet);
       const [pda] = derivePlayerPDA(walletPub);
-      this.subscribeToPlayer(pda);
-
-      // Also subscribe on base layer — catches updates from non-delegated PDAs
-      const baseKey = `base:${pda.toBase58()}`;
-      if (!this.accountSubs.has(baseKey)) {
+      const key = pda.toBase58();
+      if (!this.accountSubs.has(key)) {
         const subId = this.baseConnection.onAccountChange(
           pda,
-          (info) => this.decodeAndUpdatePlayer(pda.toBase58(), info.data),
+          (info) => this.decodeAndUpdatePlayer(key, info.data),
           "confirmed",
         );
-        this.accountSubs.set(baseKey, subId);
+        this.accountSubs.set(key, subId);
       }
     } catch { /* ignore invalid wallet */ }
   }
