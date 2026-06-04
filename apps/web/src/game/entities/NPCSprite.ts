@@ -131,9 +131,7 @@ export class NPCSprite {
     }
 
     container.setDepth(y);
-    // NPCs are stationary — no wandering so all players see the same world.
-    // They still animate (face towards player on proximity).
-    this.avatar.idle();
+    this.startDeterministicBehavior();
   }
 
   get isInRange(): boolean {
@@ -170,60 +168,112 @@ export class NPCSprite {
     this.avatar.destroy();
   }
 
-  private startIdleBehavior(): void {
-    const WANDER_RADIUS = 20;
-    const WALK_SPEED = 18;
-    const dirs: Direction[] = ["up", "down", "left", "right"];
+  /**
+   * Deterministic NPC behavior — all clients produce the same movements.
+   *
+   * Every STEP_MS (4 s) a seeded PRNG derived from (npc.id + stepIndex)
+   * decides the NPC's next action. Because the seed depends only on the
+   * NPC's identity and the global Unix-time step, every browser calculates
+   * the same sequence of moves in perfect sync — like a server-authoritative
+   * world, but without a server.
+   *
+   * On first call the NPC is snapped to the position it *should* be at for
+   * the current time step (catches up if the player logged in mid-move).
+   */
+  private startDeterministicBehavior(): void {
+    const STEP_MS    = 4_000;  // one "tick" every 4 s — all clients in sync
+    const WANDER_R   = 18;     // max wander radius in world-px
+    const WALK_SPEED = 18;     // px/s
 
-    const tick = () => {
-      if (this._isInRange) {
-        this.scene.time.delayedCall(600, tick);
-        return;
-      }
-
-      const dir = dirs[Math.floor(Math.random() * dirs.length)];
-
-      if (Math.random() < 0.65) {
-        this.avatar.face(dir);
-        this.scene.time.delayedCall(1800 + Math.random() * 2400, tick);
-        return;
-      }
-
-      const container = this.getContainer();
-      const step = (0.3 + Math.random() * 0.4) * WANDER_RADIUS;
-      let targetX = container.x;
-      let targetY = container.y;
-      if (dir === "left")  targetX -= step;
-      if (dir === "right") targetX += step;
-      if (dir === "up")    targetY -= step;
-      if (dir === "down")  targetY += step;
-
-      const clampedX = Math.max(this.originX - WANDER_RADIUS, Math.min(this.originX + WANDER_RADIUS, targetX));
-      const clampedY = Math.max(this.originY - WANDER_RADIUS, Math.min(this.originY + WANDER_RADIUS, targetY));
-      const distance  = Math.abs(clampedX - container.x) + Math.abs(clampedY - container.y);
-
-      if (distance < 3 || this.isTileBlocked(clampedX, clampedY)) {
-        this.avatar.face(dir);
-        this.scene.time.delayedCall(1200 + Math.random() * 1600, tick);
-        return;
-      }
-
-      this.avatar.walk(dir);
-      this.scene.tweens.killTweensOf(container);
-      this.scene.tweens.add({
-        targets: container,
-        x: clampedX, y: clampedY,
-        duration: (distance / WALK_SPEED) * 1000,
-        ease: "Linear",
-        onUpdate: () => container.setDepth(container.y),
-        onComplete: () => {
-          this.avatar.idle();
-          this.scene.time.delayedCall(1800 + Math.random() * 2400, tick);
-        },
-      });
+    /** Fast 32-bit seeded PRNG (mulberry32). */
+    const rng = (seed: number) => {
+      let s = seed >>> 0;
+      return (): number => {
+        s += 0x6D2B79F5;
+        let t = Math.imul(s ^ (s >>> 15), 1 | s);
+        t ^= t + Math.imul(t ^ (t >>> 7), 61 | t);
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      };
     };
 
-    this.scene.time.delayedCall(Math.random() * 2000, tick);
+    /** Deterministic seed for this NPC at a given step index. */
+    const stepSeed = (step: number): number => {
+      let h = step ^ 0xdeadbeef;
+      for (let i = 0; i < this.def.id.length; i++) {
+        h = Math.imul(h ^ this.def.id.charCodeAt(i), 0x9e3779b9);
+      }
+      return h >>> 0;
+    };
+
+    /** Compute the target (x, y) the NPC moves to at a given step. */
+    const targetForStep = (step: number): { x: number; y: number; dir: Direction } => {
+      const r    = rng(stepSeed(step));
+      const dirs: Direction[] = ["up", "down", "left", "right"];
+      const dir  = dirs[Math.floor(r() * 4)];
+      const move = r() < 0.55 ? 0 : (0.25 + r() * 0.45) * WANDER_R;
+      let tx = this.originX, ty = this.originY;
+      if (dir === "left")  tx -= move;
+      if (dir === "right") tx += move;
+      if (dir === "up")    ty -= move;
+      if (dir === "down")  ty += move;
+      return {
+        x: Math.max(this.originX - WANDER_R, Math.min(this.originX + WANDER_R, tx)),
+        y: Math.max(this.originY - WANDER_R, Math.min(this.originY + WANDER_R, ty)),
+        dir,
+      };
+    };
+
+    const container = this.getContainer();
+
+    /** Snap the NPC to its correct mid-step position on first load. */
+    const now     = Date.now();
+    const step0   = Math.floor(now / STEP_MS);
+    const elapsed = now - step0 * STEP_MS;
+    const prev    = targetForStep(step0 - 1);
+    const cur     = targetForStep(step0);
+    const progress = elapsed / STEP_MS;
+    container.setPosition(
+      prev.x + (cur.x - prev.x) * progress,
+      prev.y + (cur.y - prev.y) * progress,
+    );
+    container.setDepth(container.y);
+
+    /** Called at every step boundary — same wall-clock time for all clients. */
+    const tick = () => {
+      if (this._isInRange) {
+        scheduleNext();
+        return;
+      }
+
+      const stepNow = Math.floor(Date.now() / STEP_MS);
+      const { x, y, dir } = targetForStep(stepNow);
+      const dist = Math.abs(x - container.x) + Math.abs(y - container.y);
+
+      if (dist < 2 || this.isTileBlocked(x, y)) {
+        this.avatar.face(dir);
+      } else {
+        this.avatar.walk(dir);
+        this.scene.tweens.killTweensOf(container);
+        this.scene.tweens.add({
+          targets: container,
+          x, y,
+          duration: (dist / WALK_SPEED) * 1000,
+          ease: "Linear",
+          onUpdate: () => container.setDepth(container.y),
+          onComplete: () => this.avatar.idle(),
+        });
+      }
+
+      scheduleNext();
+    };
+
+    /** Schedule next tick at the START of the next step boundary. */
+    const scheduleNext = () => {
+      const msUntilNext = STEP_MS - (Date.now() % STEP_MS);
+      this.scene.time.delayedCall(msUntilNext, tick);
+    };
+
+    scheduleNext();
   }
 
   private isTileBlocked(x: number, y: number): boolean {
