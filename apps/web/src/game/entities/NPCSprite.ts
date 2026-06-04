@@ -131,7 +131,9 @@ export class NPCSprite {
     }
 
     container.setDepth(y);
-    this.startIdleBehavior();
+    // NPCs are stationary — no wandering so all players see the same world.
+    // They still animate (face towards player on proximity).
+    this.avatar.idle();
   }
 
   get isInRange(): boolean {

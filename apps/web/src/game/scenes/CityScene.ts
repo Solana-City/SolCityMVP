@@ -424,9 +424,15 @@ export class CityScene extends Phaser.Scene {
         await this.network.connect(new PublicKey(walletAddress), displayName);
         this.chat.addSystemMessage("Multiplayer session started.");
 
-        // Listen for warnings from the multiplayer layer (e.g. delegated PDAs)
+        // Warnings from multiplayer (e.g. delegated PDA detected)
         this.game.events.once("multiplayer:warning", (msg: string) => {
           this.chat.addSystemMessage(msg);
+        });
+
+        // Cross-browser chat messages received via Solana Memo / onLogs
+        this.game.events.on("chat:network", ({ name, text }: { name: string; text: string }) => {
+          const color = getChannelColor("global");
+          this.chat.addMessage("global", name, name, text, color);
         });
       } catch (err: any) {
         console.error("[CityScene] session error:", err);
@@ -627,19 +633,20 @@ export class CityScene extends Phaser.Scene {
     const dy = player.y - container.y;
     const dist = Math.hypot(dx, dy);
 
-    if (dist > 400) {
-      // Large jump (initial placement or reconnect) — teleport immediately
+    if (dist > 300) {
+      // Large gap (initial placement or reconnect) — teleport immediately
       this.tweens.killTweensOf(container);
       container.setPosition(player.x, player.y);
     } else if (dist > 2) {
-      // Smooth interpolation over 1.8s so movement between 2s polls looks
-      // continuous rather than jumping. Kill any in-progress tween first.
+      // Interpolate over 600ms — covers ~500ms devnet write-to-read latency.
+      // onAccountChange fires ~100-200ms after tx confirms (~400ms slot).
+      // Result: movement looks smooth and near-realtime.
       this.tweens.killTweensOf(container);
       this.tweens.add({
         targets: container,
         x: player.x,
         y: player.y,
-        duration: 1800,
+        duration: 600,
         ease: "Linear",
       });
     }

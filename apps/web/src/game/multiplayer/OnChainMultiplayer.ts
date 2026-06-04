@@ -3,7 +3,13 @@ import {
   PublicKey,
   SystemProgram,
   Transaction,
+  TransactionInstruction,
 } from "@solana/web3.js";
+
+// Solana Memo program — same address on mainnet and devnet
+const MEMO_PROGRAM_ID = new PublicKey("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr");
+// Chat message prefix in memo data
+const CHAT_PREFIX = "solcity-chat:";
 import {
   ConnectionMagicRouter,
   createCommitAndUndelegateInstruction,
@@ -278,7 +284,76 @@ export class OnChainMultiplayer {
 
   sendChat(text: string): void {
     if (!this.wallet) return;
+    // Layer 1: BroadcastChannel (same browser, instant)
     this.bc?.postMessage({ t: "chat", w: this.wallet.toBase58(), text } satisfies BCMsg);
+    // Layer 2: Solana Memo (cross-browser, ~500ms latency)
+    if (isProgramDeployed()) {
+      this.sendChatMemo(text).catch(() => {}); // fire-and-forget
+    }
+  }
+
+  /**
+   * Sends a Solana Memo transaction so other browsers receive the chat.
+   * The memo text is: "solcity-chat:DISPLAY_NAME:MESSAGE"
+   * The player PDA is included as a readonly account so getSignaturesForAddress
+   * on the PDA returns this tx — used for polling fallback.
+   * Primary channel: onLogs subscription fires in near real-time.
+   */
+  private async sendChatMemo(text: string): Promise<void> {
+    if (!this.wallet) return;
+    const sessionKey = this.sessionKeys.getSessionPublicKey();
+    const [pda] = derivePlayerPDA(this.wallet);
+    const displayName = this.knownPlayers.get(this.wallet.toBase58())?.displayName
+      ?? this.wallet.toBase58().slice(0, 8);
+
+    const memoText = `${CHAT_PREFIX}${displayName}:${text.slice(0, 200)}`;
+    const ix = new TransactionInstruction({
+      keys: [
+        { pubkey: sessionKey, isSigner: true,  isWritable: false },
+        { pubkey: pda,        isSigner: false, isWritable: false }, // for signature lookup
+      ],
+      programId: MEMO_PROGRAM_ID,
+      data: Buffer.from(memoText, "utf-8"),
+    });
+    const tx = new Transaction().add(ix);
+    tx.feePayer = sessionKey;
+    const { blockhash } = await this.baseConnection.getLatestBlockhash();
+    tx.recentBlockhash = blockhash;
+    this.sessionKeys.signTransaction(tx);
+    await this.baseConnection.sendRawTransaction(tx.serialize(), { skipPreflight: true });
+  }
+
+  /** Subscribe to Memo program logs for real-time cross-browser chat. */
+  private subscribeCrossNetworkChat(): void {
+    try {
+      this.baseConnection.onLogs(
+        MEMO_PROGRAM_ID,
+        (logs) => {
+          if (logs.err) return;
+          for (const log of logs.logs) {
+            // Memo program emits: 'Program log: Memo (len N): "TEXT"'
+            const match = log.match(/Memo \(\d+ bytes\):\s*"(.+)"/);
+            if (!match) continue;
+            const raw = match[1];
+            if (!raw.startsWith(CHAT_PREFIX)) continue;
+
+            const withoutPrefix = raw.slice(CHAT_PREFIX.length);
+            const colon = withoutPrefix.indexOf(":");
+            if (colon === -1) continue;
+            const senderName = withoutPrefix.slice(0, colon);
+            const message    = withoutPrefix.slice(colon + 1);
+
+            // Emit as a chat event so CityScene handles it
+            const bus = (globalThis as any).__solCityGameEvents;
+            bus?.emit("chat:network", { name: senderName, text: message });
+          }
+        },
+        "confirmed",
+      );
+      console.log("[Multiplayer] cross-browser chat subscription active");
+    } catch (err) {
+      console.warn("[Multiplayer] chat subscription failed:", err);
+    }
   }
 
   /**
@@ -534,7 +609,10 @@ export class OnChainMultiplayer {
     // 5. Full discovery every 8s to catch players who joined after initial connect
     setInterval(() => this.discoverPlayersFromBase(wallet), 8_000);
 
-    // 6. Force a presence broadcast on next sendInput tick
+    // 6. Cross-browser chat via Solana Memo + onLogs
+    this.subscribeCrossNetworkChat();
+
+    // 7. Force a presence broadcast on next sendInput tick
     this.lastPos = { x: -1, y: -1, direction: -1, isWalking: false };
   }
 
