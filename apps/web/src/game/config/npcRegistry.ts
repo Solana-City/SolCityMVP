@@ -22,6 +22,12 @@ export interface NPCDefinition {
    */
   spriteKey?: string;
   /**
+   * Set to false to hide this NPC from the city without removing its
+   * definition (e.g. temporarily disabled while content is reworked).
+   * Defaults to true.
+   */
+  enabled?: boolean;
+  /**
    * Optional path to a portrait PNG (served from /public).
    * Recommended: 256x256 px, transparent background, pixel art.
    * If missing or fails to load, the dialog falls back to a
@@ -181,6 +187,7 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     id: "liza",
     name: "Michele",
     role: "DRiP Collector",
+    enabled: false,
     tileX: 168,
     tileY: 155,
     color: 0x00d1ff,
@@ -197,6 +204,7 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     id: "juan",
     name: "Dom",
     role: "Solana Mobile",
+    enabled: false,
     tileX: 28,
     tileY: 48,
     color: 0x9945ff,
