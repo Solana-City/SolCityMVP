@@ -50,6 +50,9 @@ export default function WalletBar({ onWalletChange, layout = "default" }: Wallet
       if (!cancelRef.current) {
         setBalance(Math.round((lamports / LAMPORTS_PER_SOL) * 100) / 100);
       }
+    }).catch(() => {
+      // Silently ignore RPC errors (429 rate limit, network blip) —
+      // stale balance shown is better than crashing the ErrorBoundary.
     });
   }, [publicKey, connection]);
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   transactionLog,
   getExplorerUrl,
@@ -93,25 +93,36 @@ export default function TransactionLogPanel({ isOpen, onToggle }: Props) {
     });
   }, [entries, kindFilter, statusFilter]);
 
+  const triggerRef = useRef<HTMLDivElement>(null);
+
+  // Compute panel top dynamically so it always opens just below the HUD card,
+  // regardless of how tall the card grows.
+  const panelTop = (() => {
+    if (!triggerRef.current) return 130;
+    const rect = triggerRef.current.getBoundingClientRect();
+    return rect.bottom + 6;
+  })();
+
   return (
     <>
-      <ToggleButton
-        isOpen={isOpen}
-        onClick={onToggle}
-        entryCount={entries.length}
-        pendingCount={pendingCount}
-        failedCount={failedCount}
-      />
+      <div ref={triggerRef} style={{ display: "contents" }}>
+        <ToggleButton
+          isOpen={isOpen}
+          onClick={onToggle}
+          entryCount={entries.length}
+          pendingCount={pendingCount}
+          failedCount={failedCount}
+        />
+      </div>
       {isOpen && (
         <div
           className="fixed z-30 rounded-xl overflow-hidden flex flex-col"
           style={{
-            // Anchored under the HUD column: PFP + wallet occupy ~120px.
-            top: 130,
+            top: panelTop,
             right: 16,
             width: 420,
             maxWidth: "calc(100vw - 32px)",
-            height: "min(560px, calc(100vh - 160px))",
+            height: `min(560px, calc(100vh - ${panelTop + 8}px))`,
             background: "rgba(10,10,30,0.97)",
             border: "1px solid rgba(153,69,255,0.35)",
             backdropFilter: "blur(4px)",
