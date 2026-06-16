@@ -1,6 +1,8 @@
 import * as Phaser from "phaser";
 import { PLAYER_SPEED, TILE_SIZE, PLAYABLE_ZONE } from "../config/constants";
 import { SimpleSprite, Direction } from "../entities/SimpleSprite";
+import { AvatarSprite } from "../entities/AvatarSprite";
+import { loadSavedLoadout, type Loadout } from "../config/paperDoll";
 import { OnChainMultiplayer, OnChainPlayer } from "../multiplayer/OnChainMultiplayer";
 import { ChatManager, getChannelColor } from "../chat/ChatManager";
 import { ChatBubble } from "../chat/ChatBubble";
@@ -27,7 +29,7 @@ function snapToPixelPerfect(z: number): number {
 }
 
 export class CityScene extends Phaser.Scene {
-  private avatar!: SimpleSprite;
+  private avatar!: AvatarSprite;
   private playerBody!: Phaser.Physics.Arcade.Body;
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
   private wasd!: Record<string, Phaser.Input.Keyboard.Key>;
@@ -150,10 +152,7 @@ export class CityScene extends Phaser.Scene {
     // Spawn inside the fountain plaza center (col 99, row 97).
     const spawnX = 99 * tileSize + tileSize / 2;
     const spawnY = 97 * tileSize + tileSize / 2;
-    const playerTextureKey = this.textures.exists("avatar-player")
-      ? "avatar-player"
-      : "avatar-sol-guide";
-    this.avatar = new SimpleSprite(this, spawnX, spawnY, playerTextureKey);
+    this.avatar = new AvatarSprite(this, spawnX, spawnY, loadSavedLoadout());
 
     const container = this.avatar.getContainer();
     this.physics.world.enable(container);
@@ -311,14 +310,10 @@ export class CityScene extends Phaser.Scene {
       this.chat.addMessage("local", "local", this.profile.get().displayName, emoji.symbol, emoji.color);
     });
 
-    // Outfit change from profile panel (maps outfit ID to sprite sheet key)
-    this.game.events.on("profile:outfit", (outfitId: string) => {
-      const textureKey = `avatar-${outfitId}`;
-      if (this.textures.exists(textureKey)) {
-        this.avatar.setTexture(textureKey);
-      }
+    // Wardrobe panel — live preview while panel is open, persisted on Save.
+    this.game.events.on("wardrobe:loadout", (loadout: Loadout) => {
+      this.avatar.setLoadout(loadout);
     });
-
 
     // NPCs — position read from Tiled NPC layer, scanned to first walkable row
     for (const def of NPC_REGISTRY) {

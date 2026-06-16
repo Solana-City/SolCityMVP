@@ -1,7 +1,9 @@
 import * as Phaser from "phaser";
 import { generateTileset } from "../utils/tilesetGenerator";
 import { SimpleSprite } from "../entities/SimpleSprite";
+import { AvatarSprite } from "../entities/AvatarSprite";
 import { NPC_REGISTRY } from "../config/npcRegistry";
+import { getAllLayerVariants } from "../config/paperDoll";
 
 const TILESET_KEYS = [
   "SCTileGrass",
@@ -29,7 +31,11 @@ export class BootScene extends Phaser.Scene {
 
   preload(): void {
     this.load.on("loaderror", (file: Phaser.Loader.File) => {
-      if (file.key.startsWith("avatar-") || NPC_REGISTRY.some(n => n.spriteKey === file.key)) {
+      if (
+        file.key.startsWith("avatar-") ||
+        file.key.startsWith("pd-") ||
+        NPC_REGISTRY.some(n => n.spriteKey === file.key)
+      ) {
         console.info(`[BootScene] ${file.key} not present — fallback active`);
         this.textures.remove(file.key);
       }
@@ -63,6 +69,13 @@ export class BootScene extends Phaser.Scene {
         ? npc.spriteKey.replace(/^avatar-/, "")
         : npc.spriteKey.replace(/ /g, "%20");
       SimpleSprite.load(this, npc.spriteKey, `assets/sprites/${filename}.png`, 64, 64);
+    }
+
+    // Paper doll layers — each category/variant is its own 64x64 spritesheet.
+    // Drop the spriter's files into public/assets/sprites/paperdoll/ matching
+    // each variant's `file` path; missing layers are skipped at render time.
+    for (const { variant } of getAllLayerVariants()) {
+      AvatarSprite.loadSpriteSheet(this, variant.textureKey, `assets/sprites/paperdoll/${variant.file}`);
     }
   }
 

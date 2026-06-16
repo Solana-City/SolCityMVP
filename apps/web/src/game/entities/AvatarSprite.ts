@@ -5,36 +5,37 @@ import {
   SPRITE_FRAME_WIDTH,
   SPRITE_FRAME_HEIGHT,
   SPRITE_COLS,
-  OutfitLayer,
-  getOutfit,
-} from "../config/outfitRegistry";
+  LAYER_ORDER,
+  LayerCategory,
+  Loadout,
+  DEFAULT_LOADOUT,
+  getVariant,
+} from "../config/paperDoll";
 
 /**
- * A composite avatar made of stacked sprite layers.
- *
- * Each layer is a separate Phaser.GameObjects.Sprite sharing the same
- * position and animation frame. Swapping an outfit means destroying
- * the old layer sprites and creating new ones from different textures.
+ * A paper doll avatar made of stacked sprite layers (skin, eyes/face, hair,
+ * t-shirt, pants, backpack, hat, ...). Each layer is its own
+ * Phaser.GameObjects.Sprite sharing position and animation frame.
  *
  * Usage:
- *   const avatar = new AvatarSprite(scene, x, y, "default");
+ *   const avatar = new AvatarSprite(scene, x, y);
  *   avatar.walk("left");
  *   avatar.idle();
- *   avatar.setOutfit("trader-cloak");
+ *   avatar.setLayer("hat", "cap");
  */
 export class AvatarSprite {
   private scene: Phaser.Scene;
   private container: Phaser.GameObjects.Container;
-  private layerSprites: Phaser.GameObjects.Sprite[] = [];
+  private layerSprites: Map<LayerCategory, Phaser.GameObjects.Sprite> = new Map();
   private currentDirection: Direction = "down";
-  private currentOutfitId: string;
+  private currentLoadout: Loadout;
   private isWalking = false;
 
-  constructor(scene: Phaser.Scene, x: number, y: number, outfitId: string) {
+  constructor(scene: Phaser.Scene, x: number, y: number, loadout: Loadout = DEFAULT_LOADOUT) {
     this.scene = scene;
-    this.currentOutfitId = outfitId;
+    this.currentLoadout = { ...loadout };
     this.container = scene.add.container(x, y);
-    this.buildLayers(outfitId);
+    this.buildLayers();
   }
 
   get x(): number { return this.container.x; }
@@ -50,15 +51,23 @@ export class AvatarSprite {
     return this.container;
   }
 
-  /**
-   * Replaces the current outfit with a new one.
-   * Destroys old layer sprites and creates new ones.
-   */
-  setOutfit(outfitId: string): void {
-    if (outfitId === this.currentOutfitId) return;
+  /** Replaces a single layer category (e.g. swap hats). Pass undefined to remove the layer. */
+  setLayer(category: LayerCategory, variantId: string | undefined): void {
+    if (this.currentLoadout[category] === variantId) return;
+    this.currentLoadout = { ...this.currentLoadout, [category]: variantId };
     this.destroyLayers();
-    this.currentOutfitId = outfitId;
-    this.buildLayers(outfitId);
+    this.buildLayers();
+  }
+
+  /** Replaces the entire loadout at once. */
+  setLoadout(loadout: Loadout): void {
+    this.currentLoadout = { ...loadout };
+    this.destroyLayers();
+    this.buildLayers();
+  }
+
+  getLoadout(): Loadout {
+    return { ...this.currentLoadout };
   }
 
   /**
@@ -67,9 +76,8 @@ export class AvatarSprite {
   walk(direction: Direction): void {
     this.currentDirection = direction;
     this.isWalking = true;
-    const animKey = this.getAnimKey(direction, true);
-    for (const sprite of this.layerSprites) {
-      const key = `${sprite.texture.key}-${animKey}`;
+    for (const sprite of this.layerSprites.values()) {
+      const key = `${sprite.texture.key}-walk-${direction}`;
       if (sprite.anims.animationManager.exists(key)) {
         sprite.anims.play(key, true);
       }
@@ -82,9 +90,9 @@ export class AvatarSprite {
   idle(): void {
     if (!this.isWalking) return;
     this.isWalking = false;
-    for (const sprite of this.layerSprites) {
+    const row = DIRECTION_ROW[this.currentDirection];
+    for (const sprite of this.layerSprites.values()) {
       sprite.anims.stop();
-      const row = DIRECTION_ROW[this.currentDirection];
       sprite.setFrame(row * SPRITE_COLS);
     }
   }
@@ -103,34 +111,41 @@ export class AvatarSprite {
 
   // ── Internal ──────────────────────────────────────────
 
-  private buildLayers(outfitId: string): void {
-    const outfit = getOutfit(outfitId);
-    const sorted = [...outfit.layers].sort((a, b) => a.zIndex - b.zIndex);
+  private buildLayers(): void {
+    const FOOT_Y_LOCAL = -2;
 
-    for (const layer of sorted) {
-      if (!this.scene.textures.exists(layer.key)) continue;
+    for (const category of LAYER_ORDER) {
+      const variant = getVariant(category, this.currentLoadout[category]);
+      if (!variant || !this.scene.textures.exists(variant.textureKey)) continue;
 
-      const sprite = this.scene.add.sprite(0, 0, layer.key);
-      sprite.setOrigin(0.5, 0.75);
+      const sprite = this.scene.add.sprite(0, FOOT_Y_LOCAL, variant.textureKey);
+      sprite.setOrigin(0.5, 1.0);
+
+      // Native 64x64 sheets render at 0.5x world scale (2x camera zoom cancels to 1:1),
+      // matching SimpleSprite's pixel-perfect convention.
+      const frame = this.scene.textures.get(variant.textureKey).get(0);
+      if ((frame.height || SPRITE_FRAME_HEIGHT) >= 56) {
+        sprite.setScale(0.5);
+      }
+
       this.container.add(sprite);
-      this.layerSprites.push(sprite);
-
-      this.registerAnimations(layer.key);
+      this.layerSprites.set(category, sprite);
+      this.registerAnimations(variant.textureKey);
     }
 
     // Set initial idle frame
     const row = DIRECTION_ROW[this.currentDirection];
-    for (const sprite of this.layerSprites) {
+    for (const sprite of this.layerSprites.values()) {
       sprite.setFrame(row * SPRITE_COLS);
     }
   }
 
   private destroyLayers(): void {
-    for (const sprite of this.layerSprites) {
+    for (const sprite of this.layerSprites.values()) {
       this.container.remove(sprite);
       sprite.destroy();
     }
-    this.layerSprites = [];
+    this.layerSprites.clear();
   }
 
   private registerAnimations(textureKey: string): void {
@@ -154,13 +169,9 @@ export class AvatarSprite {
     }
   }
 
-  private getAnimKey(direction: Direction, walking: boolean): string {
-    return walking ? `walk-${direction}` : `idle-${direction}`;
-  }
-
   /**
-   * Registers a sprite sheet in Phaser's texture manager.
-   * Call this from BootScene for each layer key.
+   * Registers a paper doll layer sprite sheet in Phaser's texture manager.
+   * Call this from BootScene for each layer variant.
    */
   static loadSpriteSheet(scene: Phaser.Scene, key: string, path: string): void {
     scene.load.spritesheet(key, path, {

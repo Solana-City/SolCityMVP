@@ -25,6 +25,7 @@ const ZoomControl         = dynamic(() => import("@/ui/ZoomControl"),         { 
 const MiniGameOverlay     = dynamic(() => import("@/ui/MiniGameOverlay"),     { ssr: false });
 const MwaRegistration     = dynamic(() => import("@/ui/MwaRegistration"),     { ssr: false });
 const RotatePrompt        = dynamic(() => import("@/ui/RotatePrompt"),        { ssr: false });
+const WardrobePanel       = dynamic(() => import("@/ui/WardrobePanel"),       { ssr: false });
 
 import ErrorBoundary from "@/ui/ErrorBoundary";
 
@@ -47,6 +48,7 @@ export default function Home() {
   const [activeAction, setActiveAction] = useState<NPCAction | null>(null);
   const [activeMiniGame, setActiveMiniGame] = useState<{ id: string; context: MiniGameContext } | null>(null);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [wardrobeOpen, setWardrobeOpen] = useState(false);
   const [logOpen, setLogOpen] = useState(false);
   // Chat hidden by default on touch devices, visible on desktop
   const [chatOpen, setChatOpen] = useState(() =>
@@ -167,6 +169,7 @@ export default function Home() {
             }}
           >
             <PfpButton gameRef={game} onClick={() => setProfileOpen(true)} />
+            <WardrobeButton onClick={() => setWardrobeOpen(true)} />
             <WalletBar onWalletChange={handleWalletChange} />
             {/* Desktop only — too much chrome on mobile */}
             {!isTouch && (
@@ -186,6 +189,9 @@ export default function Home() {
           <NPCDialog npc={activeNPC} onClose={handleDialogClose} onAction={handleAction} />
           <ActionPanel action={activeAction} onClose={handleActionClose} />
           <ProfilePanel gameRef={game} isOpen={profileOpen} onClose={() => setProfileOpen(false)} />
+          {wardrobeOpen && (
+            <WardrobePanel gameRef={game} onClose={() => setWardrobeOpen(false)} />
+          )}
           {activeMiniGame && (
             <MiniGameOverlay
               id={activeMiniGame.id}
@@ -197,6 +203,32 @@ export default function Home() {
         </main>
       </SolanaProvider>
     </ErrorBoundary>
+  );
+}
+
+function WardrobeButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      title="Wardrobe"
+      style={{
+        width: 44,
+        height: 44,
+        borderRadius: 10,
+        border: "1px solid #14F19566",
+        background: "rgba(20,241,149,0.08)",
+        cursor: "pointer",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        fontSize: 22,
+        transition: "background 0.15s",
+      }}
+      onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(20,241,149,0.18)")}
+      onMouseLeave={(e) => (e.currentTarget.style.background = "rgba(20,241,149,0.08)")}
+    >
+      👕
+    </button>
   );
 }
 
