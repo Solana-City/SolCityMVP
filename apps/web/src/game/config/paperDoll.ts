@@ -45,10 +45,11 @@ export const SPRITE_FRAME_HEIGHT = 64;
 export const SPRITE_COLS = 4;
 export const SPRITE_ROWS = 4;
 
+// Row order used in the spriter's paperdoll sheets (matches NPC_DIRECTION_ROW).
 export const DIRECTION_ROW: Record<Direction, number> = {
   down: 0,
-  right: 1,
-  up: 2,
+  up: 1,
+  right: 2,
   left: 3,
 };
 
