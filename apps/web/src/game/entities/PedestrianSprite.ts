@@ -28,15 +28,16 @@ export function makePedestrianLoadout(seed: number): Loadout {
     : pick(LAYER_VARIANTS.skin.filter(v => v.id !== "Human"), rng).id;
 
   const eyesFace = rng() < 0.95 ? "Happy" : "Terminator";
-  const hair     = pick(LAYER_VARIANTS.hair,   rng).id;
+  // Avatar hair (blue arrow) is very rare — 2% of hair picks
+  const commonHair = LAYER_VARIANTS.hair.filter(h => h.id !== "Avatar");
+  const hair = rng() < 0.02 ? "Avatar" : pick(commonHair, rng).id;
   const tshirt   = pick(LAYER_VARIANTS.tshirt, rng).id;
   const pants    = pick(LAYER_VARIANTS.pants,  rng).id;
 
   // 50% chance of a hat; within hats, Cap_blue (blue arrow) is very rare (3%)
   const hat = (() => {
     if (rng() >= 0.50) return undefined;
-    const commonHats = LAYER_VARIANTS.hat.filter(h => h.id !== "Cap_blue");
-    return rng() < 0.03 ? "Cap_blue" : pick(commonHats, rng).id;
+    return pick(LAYER_VARIANTS.hat, rng).id;
   })();
 
   const accessory = rng() < 0.08 ? pick(LAYER_VARIANTS.accessory, rng).id : undefined;
