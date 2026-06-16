@@ -26,6 +26,7 @@ const MiniGameOverlay     = dynamic(() => import("@/ui/MiniGameOverlay"),     { 
 const MwaRegistration     = dynamic(() => import("@/ui/MwaRegistration"),     { ssr: false });
 const RotatePrompt        = dynamic(() => import("@/ui/RotatePrompt"),        { ssr: false });
 const WardrobePanel       = dynamic(() => import("@/ui/WardrobePanel"),       { ssr: false });
+const ConnectScreen       = dynamic(() => import("@/ui/ConnectScreen"),       { ssr: false });
 
 import ErrorBoundary from "@/ui/ErrorBoundary";
 
@@ -154,6 +155,7 @@ export default function Home() {
         <MwaRegistration />
         {/* Headless bridge so Phaser can request wallet signatures */}
         <WalletSignBridge />
+        <ConnectScreen />
         <main className="w-screen h-screen relative">
           <PhaserGame onGameReady={setGame} />
 
@@ -178,39 +180,41 @@ export default function Home() {
             ) : (
               /* ── Desktop: unified card panel ── */
               <div style={{
-                background: "rgba(8,10,22,0.94)",
-                border: "1px solid rgba(153,69,255,0.28)",
+                background: "rgba(8,10,22,0.52)",
+                border: "1px solid rgba(153,69,255,0.22)",
                 borderRadius: 12,
                 overflow: "hidden",
-                minWidth: 220,
-                backdropFilter: "blur(8px)",
+                minWidth: 230,
+                backdropFilter: "blur(14px)",
+                boxShadow: "0 4px 32px rgba(0,0,0,0.35)",
               }}>
-                {/* Header row: avatar + action icons */}
+                {/* Header: icon + PFP + wardrobe */}
                 <div style={{
                   display: "flex", alignItems: "center", gap: 8,
-                  padding: "10px 12px",
-                  borderBottom: "1px solid rgba(153,69,255,0.12)",
+                  padding: "9px 11px",
+                  borderBottom: "1px solid rgba(153,69,255,0.1)",
                 }}>
-                  <PfpButton gameRef={game} onClick={() => setProfileOpen(true)} />
-                  <WardrobeButton onClick={() => setWardrobeOpen(true)} />
+                  <img
+                    src="/assets/branding/icon.png"
+                    alt=""
+                    style={{ width: 28, height: 28, imageRendering: "pixelated", opacity: 0.9 }}
+                    onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                  />
                   <div style={{ flex: 1 }} />
-                  <div style={{
-                    fontSize: 9, color: "#9945FF", letterSpacing: 1,
-                    fontFamily: '"Press Start 2P", monospace',
-                    opacity: 0.7,
-                  }}>SOL CITY</div>
+                  <WardrobeButton onClick={() => setWardrobeOpen(true)} />
+                  <PfpButton gameRef={game} onClick={() => setProfileOpen(true)} />
                 </div>
 
-                {/* Wallet section */}
-                <div style={{ padding: "10px 14px" }}>
+                {/* Wallet inline — status dot + address/balance + button in one row */}
+                <div style={{ padding: "8px 11px" }}>
                   <WalletBar layout="panel" onWalletChange={handleWalletChange} />
                 </div>
 
-                {/* Footer row: tx log + zoom */}
+                {/* Footer: tx log + zoom */}
                 <div style={{
                   display: "flex", alignItems: "center",
-                  borderTop: "1px solid rgba(153,69,255,0.12)",
-                  padding: "6px 10px",
+                  borderTop: "1px solid rgba(153,69,255,0.1)",
+                  padding: "5px 8px",
                   gap: 6,
                 }}>
                   <div style={{ flex: 1 }}>

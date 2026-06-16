@@ -83,42 +83,39 @@ export default function WalletBar({ onWalletChange, layout = "default" }: Wallet
     }
   }, [connected, disconnect, setVisible]);
 
-  // ── Panel layout: compact vertical for the unified HUD card ─────────────────
+  // ── Panel layout: single compact row for the unified HUD card ───────────────
   if (layout === "panel") {
     return (
-      <div style={{ display: "flex", flexDirection: "column", gap: 6, fontFamily: '"Fira Code", monospace' }}>
-        {/* Status row */}
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <span style={{
-            width: 7, height: 7, borderRadius: "50%", flexShrink: 0,
-            background: connected ? "#14F195" : "#444",
-            boxShadow: connected ? "0 0 6px #14F19588" : "none",
-          }} />
-          <span style={{ fontSize: 10, color: connected ? "#14F195" : "#555", letterSpacing: 1 }}>
-            {connected ? "ON-CHAIN" : "OFFLINE"}
-          </span>
-          {isAndroid && hasSGT && (
-            <span style={{
-              fontSize: 8, color: "#FFD700", marginLeft: "auto",
-              fontFamily: '"Press Start 2P", monospace',
-            }} title="Seeker Genesis Token">⬡</span>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, fontFamily: '"Fira Code", monospace' }}>
+        {/* Status dot */}
+        <span style={{
+          width: 7, height: 7, borderRadius: "50%", flexShrink: 0,
+          background: connected ? "#14F195" : "#444",
+          boxShadow: connected ? "0 0 6px #14F19588" : "none",
+        }} />
+
+        {/* Wallet info — balance + short address stacked */}
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 1, minWidth: 0 }}>
+          {connected ? (
+            <>
+              {balance !== null && (
+                <span style={{ fontSize: 11, color: "#e0e0ff", lineHeight: 1 }}>
+                  {balance} <span style={{ color: "#14F195" }}>SOL</span>
+                </span>
+              )}
+              {shortAddr && (
+                <span style={{ fontSize: 9, color: "#00D1FF", letterSpacing: 0.3, opacity: 0.8 }}>
+                  {shortAddr}
+                  {isAndroid && hasSGT && <span style={{ color: "#FFD700", marginLeft: 4 }}>⬡</span>}
+                </span>
+              )}
+            </>
+          ) : (
+            <span style={{ fontSize: 9, color: "#555", letterSpacing: 1,
+              fontFamily: '"Press Start 2P", monospace' }}>OFFLINE</span>
           )}
         </div>
-        {/* Balance + address */}
-        {connected && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-            {balance !== null && (
-              <span style={{ fontSize: 12, color: "#e0e0ff", fontWeight: 600 }}>
-                {balance} <span style={{ color: "#14F195" }}>SOL</span>
-              </span>
-            )}
-            {shortAddr && (
-              <span style={{ fontSize: 10, color: "#00D1FF", letterSpacing: 0.5 }}>
-                {shortAddr}
-              </span>
-            )}
-          </div>
-        )}
+
         {/* Action button */}
         <button
           onClick={handleClick}
@@ -128,14 +125,14 @@ export default function WalletBar({ onWalletChange, layout = "default" }: Wallet
             border: connected ? "1px solid rgba(20,241,149,0.3)" : "1px solid rgba(153,69,255,0.5)",
             borderRadius: 6,
             fontFamily: '"Press Start 2P", monospace',
-            fontSize: 8,
-            padding: "7px 10px",
+            fontSize: 7,
+            padding: "6px 9px",
             cursor: "pointer",
-            width: "100%",
-            textAlign: "center",
+            whiteSpace: "nowrap",
+            flexShrink: 0,
           }}
         >
-          {connected ? "CONNECTED" : "CONNECT WALLET"}
+          {connected ? "●" : "CONNECT"}
         </button>
       </div>
     );
