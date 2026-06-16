@@ -5,10 +5,9 @@ import { getTargetPedIndex, ROTATION_BATCH_MS } from "../minigames/whereIsNPC/Wh
 
 export const PEDESTRIAN_COUNT = 96;
 const SPEED_BANDS = [18, 24, 24, 30, 30, 38, 44];
-const ROTATION_BATCH_SIZE = Math.ceil(PEDESTRIAN_COUNT / 4); // rotate 1/4 at a time
+const ROTATION_BATCH_SIZE = Math.ceil(PEDESTRIAN_COUNT / 4);
 
 // 32 zones covering the full PLAYABLE_ZONE (col1:42 col2:162 row1:68 row2:130)
-// Format: [centerCol, centerRow, halfRangeCol, halfRangeRow]
 const SPAWN_ZONES: [number, number, number, number][] = [
   // North strip (row ~72-80)
   [ 55, 74, 8, 4], [ 75, 74, 8, 4], [ 95, 74, 8, 4], [115, 74, 8, 4],
@@ -35,18 +34,19 @@ export class PedestrianManager {
   private scene!: Phaser.Scene;
   private collisionLayers: Phaser.Tilemaps.TilemapLayer[] = [];
   private rotationBatch = 0;
-  private playerContainer: Phaser.GameObjects.Container | null = null;
+  /** Arcade group — lets us do pedGroup vs pedGroup in one collider call */
+  private pedGroup!: Phaser.Physics.Arcade.Group;
 
   spawn(scene: Phaser.Scene, collisionLayers: Phaser.Tilemaps.TilemapLayer[]): void {
     this.scene = scene;
     this.collisionLayers = collisionLayers;
+    this.pedGroup = scene.physics.add.group();
 
     for (let i = 0; i < PEDESTRIAN_COUNT; i++) {
       scene.time.delayedCall(i * 80, () => {
         const ped = this.spawnOne(i);
-        if (this.playerContainer) this.enablePedCollider(ped);
+        this.pedGroup.add(ped.getContainer());
         this.pedestrians.push(ped);
-        // Update target marker once all are spawned
         if (this.pedestrians.length === PEDESTRIAN_COUNT) this.refreshTarget();
       });
     }
@@ -59,21 +59,31 @@ export class PedestrianManager {
     });
   }
 
-  /** Call after spawn() — enables collision between the player and all pedestrians. */
-  setupPlayerCollider(playerContainer: Phaser.GameObjects.Container): void {
-    this.playerContainer = playerContainer;
-    for (const ped of this.pedestrians) this.enablePedCollider(ped);
-  }
+  /**
+   * Call once after spawn() — wires all physics colliders:
+   * peds vs tile layers, peds vs player, peds vs each other.
+   */
+  setupColliders(
+    playerContainer: Phaser.GameObjects.Container,
+    npcContainers: Phaser.GameObjects.Container[],
+  ): void {
+    const scene = this.scene;
 
-  private enablePedCollider(ped: PedestrianSprite): void {
-    if (!this.playerContainer) return;
-    const c = ped.getContainer();
-    this.scene.physics.world.enable(c);
-    const body = c.body as Phaser.Physics.Arcade.Body;
-    body.setSize(TILE_SIZE * 0.5, TILE_SIZE * 0.3);
-    body.setOffset(-TILE_SIZE * 0.25, -TILE_SIZE * 0.15);
-    body.setImmovable(true);
-    this.scene.physics.add.collider(this.playerContainer, c);
+    // Peds blocked by the same tile layers the player is blocked by
+    for (const cl of this.collisionLayers) {
+      scene.physics.add.collider(this.pedGroup, cl);
+    }
+
+    // Peds can't walk through the player
+    scene.physics.add.collider(this.pedGroup, playerContainer);
+
+    // Peds can't walk through fixed NPCs
+    for (const nc of npcContainers) {
+      scene.physics.add.collider(this.pedGroup, nc);
+    }
+
+    // Peds can't walk through each other
+    scene.physics.add.collider(this.pedGroup, this.pedGroup);
   }
 
   private spawnOne(i: number): PedestrianSprite {
@@ -85,7 +95,12 @@ export class PedestrianManager {
     const clampedCol = Math.max(PZ.col1 + 2, Math.min(PZ.col2 - 2, col));
     const clampedRow = Math.max(PZ.row1 + 2, Math.min(PZ.row2 - 2, row));
 
-    const wx = clampedCol * TILE_SIZE + TILE_SIZE / 2;
+    // Keep fountain basin clear for spawn
+    const safeCol = (clampedCol >= 95 && clampedCol <= 103 && clampedRow >= 91 && clampedRow <= 99)
+      ? clampedCol + 6
+      : clampedCol;
+
+    const wx = safeCol * TILE_SIZE + TILE_SIZE / 2;
     const wy = clampedRow * TILE_SIZE + TILE_SIZE / 2;
     const loadout = makePedestrianLoadout(i * 31337 + 17);
     const speed   = SPEED_BANDS[Math.floor(Math.random() * SPEED_BANDS.length)];
@@ -93,7 +108,6 @@ export class PedestrianManager {
     return new PedestrianSprite(this.scene, wx, wy, loadout, speed, this.collisionLayers, i);
   }
 
-  /** Recycle one batch (1/4 of crowd) in place — gives gradual visual refresh. */
   private rotateBatch(): void {
     const start = this.rotationBatch * ROTATION_BATCH_SIZE;
     const end   = Math.min(start + ROTATION_BATCH_SIZE, this.pedestrians.length);
@@ -101,10 +115,11 @@ export class PedestrianManager {
 
     for (let i = start; i < end; i++) {
       const isTarget = i === this.currentTargetIndex;
-      if (isTarget) continue; // never recycle the hunt target
+      if (isTarget) continue;
 
+      this.pedGroup.remove(this.pedestrians[i].getContainer());
       this.pedestrians[i].destroy();
-      // Use a fresh seed for new appearance
+
       const newSeed = i * 31337 + Date.now() % 9999;
       const loadout = makePedestrianLoadout(newSeed);
       const speed   = SPEED_BANDS[Math.floor(Math.random() * SPEED_BANDS.length)];
@@ -122,12 +137,11 @@ export class PedestrianManager {
         row * TILE_SIZE + TILE_SIZE / 2,
         loadout, speed, this.collisionLayers, i,
       );
-      this.enablePedCollider(newPed);
+      this.pedGroup.add(newPed.getContainer());
       this.pedestrians[i] = newPed;
     }
   }
 
-  /** Called when a new game round begins — update target marker. */
   refreshTarget(): void {
     const newIndex = getTargetPedIndex(
       Math.floor(Date.now() / (5 * 60 * 1000)),
@@ -135,7 +149,6 @@ export class PedestrianManager {
     );
     if (newIndex === this.currentTargetIndex) return;
 
-    // Clear old marker
     if (this.currentTargetIndex >= 0 && this.pedestrians[this.currentTargetIndex]) {
       this.pedestrians[this.currentTargetIndex].setAsTarget(false);
     }
@@ -153,10 +166,8 @@ export class PedestrianManager {
     return this.pedestrians[this.currentTargetIndex]?.loadout ?? null;
   }
 
-  /** Called when player finds the target — celebrate then pick new target. */
   onTargetFound(): void {
     this.pedestrians[this.currentTargetIndex]?.celebrateFound();
-    // Force a new target next frame
     this.currentTargetIndex = -1;
     this.scene.time.delayedCall(800, () => this.refreshTarget());
   }

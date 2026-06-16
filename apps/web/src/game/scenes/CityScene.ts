@@ -337,7 +337,10 @@ export class CityScene extends Phaser.Scene {
     // Pedestrians + "Where Is NPC?" hunt game
     this.pedestrians = new PedestrianManager();
     this.pedestrians.spawn(this, this.collisionLayers);
-    this.pedestrians.setupPlayerCollider(container);
+    this.pedestrians.setupColliders(
+      container,
+      this.npcSprites.map(n => n.getContainer()),
+    );
 
     // Sync target when round changes (check every 10 s)
     this.time.addEvent({

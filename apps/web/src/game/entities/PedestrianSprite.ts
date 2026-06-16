@@ -48,9 +48,9 @@ export class PedestrianSprite {
 
   private avatar: AvatarSprite;
   private scene: Phaser.Scene;
-  private collisionLayers: Phaser.Tilemaps.TilemapLayer[];
   private speed: number;
-
+  private moveTimer: Phaser.Time.TimerEvent | null = null;
+  private isMoving = false;
 
   constructor(
     scene: Phaser.Scene,
@@ -58,16 +58,25 @@ export class PedestrianSprite {
     y: number,
     loadout: Loadout,
     speed: number,
-    collisionLayers: Phaser.Tilemaps.TilemapLayer[],
+    _collisionLayers: Phaser.Tilemaps.TilemapLayer[], // colliders set up externally via PedestrianManager
     pedId: number,
   ) {
     this.scene = scene;
-    this.collisionLayers = collisionLayers;
     this.speed = speed;
     this.pedId = pedId;
     this.loadout = loadout;
 
     this.avatar = new AvatarSprite(scene, x, y, loadout);
+
+    // Enable physics — body NOT immovable so physics resolves collisions
+    const container = this.avatar.getContainer();
+    scene.physics.world.enable(container);
+    const body = container.body as Phaser.Physics.Arcade.Body;
+    body.setSize(TILE_SIZE * 0.5, TILE_SIZE * 0.3);
+    body.setOffset(-TILE_SIZE * 0.25, -TILE_SIZE * 0.2);
+    body.setCollideWorldBounds(true);
+    body.setMaxVelocity(80, 80);
+
     this.showIdleFrame();
     this.scheduleNextMove();
   }
@@ -82,12 +91,10 @@ export class PedestrianSprite {
     return Math.sqrt(dx * dx + dy * dy) <= INTERACT_RANGE;
   }
 
-  /** Mark/unmark this pedestrian as the hunt target (no visible indicator — player must find by appearance). */
-  setAsTarget(_isTarget: boolean): void {
-    // Intentionally no visual marker — the challenge is finding them by face
-  }
+  /** No visual marker — player must find target by appearance only. */
+  setAsTarget(_isTarget: boolean): void {}
 
-  /** Brief flash animation when found by a player. */
+  /** Brief scale pulse when found by a player. */
   celebrateFound(): void {
     const container = this.avatar.getContainer();
     this.scene.tweens.add({
@@ -111,71 +118,49 @@ export class PedestrianSprite {
     }
   }
 
-  private isTileBlocked(wx: number, wy: number): boolean {
-    const col = Math.floor(wx / TILE_SIZE);
-    const row = Math.floor(wy / TILE_SIZE);
-    const PZ = PLAYABLE_ZONE;
-    if (col < PZ.col1 || col > PZ.col2 || row < PZ.row1 || row > PZ.row2) return true;
-    // Hard-block fountain basin (matches CityScene's DecorFountain collision zone)
-    if (col >= 95 && col <= 103 && row >= 91 && row <= 99) {
-      const inCorridor = col >= 99 && col <= 100 && row >= 97;
-      if (!inCorridor) return true;
-    }
-    for (const layer of this.collisionLayers) {
-      const tile = layer.getTileAtWorldXY(wx, wy);
-      if (tile && tile.collides) return true;
-    }
-    return false;
-  }
-
   private scheduleNextMove() {
-    // Short pause: 200–900ms so pedestrians feel lively
-    const pause = 200 + Math.random() * 700;
-    this.scene.time.delayedCall(pause, () => this.doMove());
+    // Pause 600ms–2s between moves
+    const pause = 600 + Math.random() * 1400;
+    this.moveTimer = this.scene.time.delayedCall(pause, () => this.startMove());
   }
 
-  private doMove() {
+  private startMove() {
     if (!this.scene?.sys?.isActive()) return;
     const container = this.avatar.getContainer();
     if (!container?.scene) return;
 
-    const shuffled = [...DIRS].sort(() => Math.random() - 0.5);
-    // Bigger steps (3–8 tiles) so they cover more ground
-    const dist = (3 + Math.floor(Math.random() * 6)) * TILE_SIZE;
-    let chosen: { dir: Direction; tx: number; ty: number } | null = null;
+    const body = container.body as Phaser.Physics.Arcade.Body;
+    const dir = DIRS[Math.floor(Math.random() * DIRS.length)];
 
-    for (const dir of shuffled) {
-      let tx = container.x, ty = container.y;
-      if (dir === "left")  tx -= dist;
-      if (dir === "right") tx += dist;
-      if (dir === "up")    ty -= dist;
-      if (dir === "down")  ty += dist;
+    const spd = this.speed;
+    const vx = dir === "left" ? -spd : dir === "right" ? spd : 0;
+    const vy = dir === "up"   ? -spd : dir === "down"  ? spd : 0;
 
-      const mx = container.x + (tx - container.x) * 0.5;
-      const my = container.y + (ty - container.y) * 0.5;
-      if (!this.isTileBlocked(tx, ty) && !this.isTileBlocked(mx, my)) {
-        chosen = { dir, tx, ty };
-        break;
-      }
-    }
-
-    if (!chosen) { this.showIdleFrame(); this.scheduleNextMove(); return; }
-
-    const { dir, tx, ty } = chosen;
+    body.setVelocity(vx, vy);
     this.avatar.walk(dir);
-    this.scene.tweens.killTweensOf(container);
-    this.scene.tweens.add({
-      targets: container, x: tx, y: ty,
-      duration: (dist / this.speed) * 1000,
-      ease: "Linear",
-      onUpdate: () => container.setDepth(container.y),
-      onComplete: () => { this.avatar.idle(); this.scheduleNextMove(); },
-    });
+    this.isMoving = true;
+
+    // Walk for 600ms–2s, then stop and rest
+    const moveDuration = 600 + Math.random() * 1400;
+    this.moveTimer = this.scene.time.delayedCall(moveDuration, () => this.stopMove());
+  }
+
+  private stopMove() {
+    if (!this.scene?.sys?.isActive()) return;
+    const container = this.avatar.getContainer();
+    if (!container?.scene) return;
+
+    const body = container.body as Phaser.Physics.Arcade.Body;
+    body.setVelocity(0, 0);
+    this.isMoving = false;
+    this.showIdleFrame();
+    this.scheduleNextMove();
   }
 
   updateDepth() { this.avatar.updateDepth(); }
 
   destroy() {
+    this.moveTimer?.remove(false);
     this.avatar.destroy();
   }
 }
