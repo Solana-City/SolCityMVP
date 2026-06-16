@@ -22,13 +22,24 @@ function pick<T>(arr: T[], rng: () => number): T {
 export function makePedestrianLoadout(seed: number): Loadout {
   const rng = mulberry32(seed);
 
-  const skin      = rng() < 0.98 ? "Human" : pick(LAYER_VARIANTS.skin.filter(v => v.id !== "Human"), rng).id;
-  const eyesFace  = rng() < 0.95 ? "Happy" : "Terminator";
-  const hair      = pick(LAYER_VARIANTS.hair,   rng).id;
-  const tshirt    = pick(LAYER_VARIANTS.tshirt,  rng).id;
-  const pants     = pick(LAYER_VARIANTS.pants,   rng).id;
-  const hat       = rng() < 0.25 ? pick(LAYER_VARIANTS.hat,       rng).id : undefined;
-  const accessory = rng() < 0.08 ? pick(LAYER_VARIANTS.accessory,  rng).id : undefined;
+  // 90% Human, 10% spread equally across other skins
+  const skin = rng() < 0.90
+    ? "Human"
+    : pick(LAYER_VARIANTS.skin.filter(v => v.id !== "Human"), rng).id;
+
+  const eyesFace = rng() < 0.95 ? "Happy" : "Terminator";
+  const hair     = pick(LAYER_VARIANTS.hair,   rng).id;
+  const tshirt   = pick(LAYER_VARIANTS.tshirt, rng).id;
+  const pants    = pick(LAYER_VARIANTS.pants,  rng).id;
+
+  // 50% chance of a hat; within hats, Cap_blue (blue arrow) is very rare (3%)
+  const hat = (() => {
+    if (rng() >= 0.50) return undefined;
+    const commonHats = LAYER_VARIANTS.hat.filter(h => h.id !== "Cap_blue");
+    return rng() < 0.03 ? "Cap_blue" : pick(commonHats, rng).id;
+  })();
+
+  const accessory = rng() < 0.08 ? pick(LAYER_VARIANTS.accessory, rng).id : undefined;
 
   return { skin, eyesFace, hair, tshirt, pants, hat, accessory };
 }
