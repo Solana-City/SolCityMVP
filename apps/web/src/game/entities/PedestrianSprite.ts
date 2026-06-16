@@ -2,6 +2,7 @@ import * as Phaser from "phaser";
 import { AvatarSprite } from "./AvatarSprite";
 import { TILE_SIZE } from "../config/constants";
 import { LAYER_VARIANTS, type Loadout, DIRECTION_ROW, SPRITE_COLS } from "../config/paperDoll";
+import { PLAYABLE_ZONE } from "../config/constants";
 
 // Fast seeded PRNG (mulberry32)
 function mulberry32(seed: number) {
@@ -41,16 +42,8 @@ export function makePedestrianLoadout(seed: number): Loadout {
     skin = pick(others, rng).id;
   }
 
-  // Face: mostly Happy, occasional none, very rare Terminator
-  const faceRoll = rng();
-  let eyesFace: string | undefined;
-  if (faceRoll < 0.75) {
-    eyesFace = "Happy";
-  } else if (faceRoll < 0.95) {
-    eyesFace = undefined;           // no face overlay — shows raw skin
-  } else {
-    eyesFace = "Terminator";
-  }
+  // Face: almost always Happy, very rare Terminator
+  const eyesFace = rng() < 0.95 ? "Happy" : "Terminator";
 
   // Base clothing — always present, full variety
   const hair      = pick(LAYER_VARIANTS.hair,   rng).id;
@@ -108,10 +101,15 @@ export class PedestrianSprite {
   }
 
   private isTileBlocked(wx: number, wy: number): boolean {
+    // Keep pedestrians inside the playable zone
     const col = Math.floor(wx / TILE_SIZE);
     const row = Math.floor(wy / TILE_SIZE);
+    const PZ = PLAYABLE_ZONE;
+    if (col < PZ.col1 || col > PZ.col2 || row < PZ.row1 || row > PZ.row2) return true;
+
+    // Use world-coordinate tile lookup (same as NPCSprite)
     for (const layer of this.collisionLayers) {
-      const tile = layer.getTileAt(col, row);
+      const tile = layer.getTileAtWorldXY(wx, wy);
       if (tile && tile.collides) return true;
     }
     return false;
@@ -142,7 +140,10 @@ export class PedestrianSprite {
       if (dir === "up")    ty -= dist;
       if (dir === "down")  ty += dist;
 
-      if (!this.isTileBlocked(tx, ty)) {
+      // Check destination AND one tile past halfway to catch walls mid-path
+      const mx = container.x + (tx - container.x) * 0.5;
+      const my = container.y + (ty - container.y) * 0.5;
+      if (!this.isTileBlocked(tx, ty) && !this.isTileBlocked(mx, my)) {
         chosen = { dir, tx, ty };
         break;
       }
