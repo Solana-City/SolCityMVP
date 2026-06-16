@@ -203,11 +203,35 @@ export default function WhereIsNPCCard({ gameRef, wallet }: Props) {
     <>
       {showLeaderboard && <LeaderboardModal onClose={() => setShowLeaderboard(false)} />}
 
+      {/* Info tooltip — rendered outside the card so it's never clipped */}
+      {showInfo && (
+        <div
+          style={{
+            position: "fixed",
+            top: 12, left: 224, zIndex: 200,
+            background: "#0b0e1c", border: "1px solid rgba(153,69,255,0.35)",
+            borderRadius: 10, padding: "12px 14px", width: 240,
+            fontSize: 11, color: "#aaaacc", lineHeight: 1.7,
+            boxShadow: "0 4px 24px rgba(0,0,0,0.6)",
+            fontFamily: '"Fira Code", monospace',
+          }}
+          onClick={() => setShowInfo(false)}
+        >
+          <div style={{ color: "#c084fc", marginBottom: 8, fontFamily: '"Press Start 2P", monospace', fontSize: 7, letterSpacing: 1 }}>
+            HOW TO PLAY
+          </div>
+          Find the NPC shown in the card. Get close and press{" "}
+          <b style={{ color: "#14F195" }}>E</b> to catch them.
+          <br /><br />
+          Target changes every <b style={{ color: "#FFD700" }}>5 minutes</b>.
+          First to find wins the round!
+        </div>
+      )}
+
       <div style={{
         background: "rgba(8,10,22,0.52)",
         border: "1px solid rgba(153,69,255,0.22)",
         borderRadius: 12,
-        overflow: "hidden",
         minWidth: 200,
         backdropFilter: "blur(14px)",
         boxShadow: "0 4px 32px rgba(0,0,0,0.35)",
@@ -225,34 +249,18 @@ export default function WhereIsNPCCard({ gameRef, wallet }: Props) {
           <span style={{
             fontFamily: '"Press Start 2P", monospace', fontSize: 8,
             color: "#c084fc", letterSpacing: 1, flex: 1,
-          }}>WHERE'S THE NPC?
-
-          {/* Info button */}
-          <div style={{ position: "relative" }}
-            onClick={e => { e.stopPropagation(); setShowInfo(v => !v); }}>
-            <button style={{
+          }}>WHERE'S THE NPC?</span>
+          <button
+            style={{
               background: "none", border: "1px solid rgba(153,69,255,0.3)",
               borderRadius: 4, color: "#9945FF", fontSize: 10,
               width: 18, height: 18, cursor: "pointer",
               display: "flex", alignItems: "center", justifyContent: "center",
               flexShrink: 0,
-            }}>ℹ</button>
-            {showInfo && (
-              <div style={{
-                position: "absolute", right: 0, top: 24, zIndex: 50,
-                background: "#0b0e1c", border: "1px solid rgba(153,69,255,0.3)",
-                borderRadius: 8, padding: "10px 12px", width: 220,
-                fontSize: 10, color: "#aaaacc", lineHeight: 1.6,
-                boxShadow: "0 4px 20px rgba(0,0,0,0.5)",
-              }}>
-                <div style={{ color: "#c084fc", marginBottom: 6, fontFamily: '"Press Start 2P", monospace', fontSize: 7 }}>HOW TO PLAY</div>
-                Find the NPC shown in the card. Get close and press <b style={{ color: "#14F195" }}>E</b> to catch them.
-                <br /><br />
-                Target changes every <b style={{ color: "#FFD700" }}>5 minutes</b>. First to find wins the round!
-              </div>
-            )}
-          </div>
-
+            }}
+            onClick={e => { e.stopPropagation(); setShowInfo(v => !v); }}
+            title="How to play"
+          >ℹ</button>
           <span style={{ color: "#444466", fontSize: 12 }}>{collapsed ? "▲" : "▼"}</span>
         </div>
 
