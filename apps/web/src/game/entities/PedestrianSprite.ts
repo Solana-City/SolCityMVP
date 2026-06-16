@@ -74,6 +74,7 @@ export class PedestrianSprite {
 
   get x() { return this.avatar.x; }
   get y() { return this.avatar.y; }
+  getContainer() { return this.avatar.getContainer(); }
 
   isNearPlayer(px: number, py: number): boolean {
     const dx = this.avatar.x - px;

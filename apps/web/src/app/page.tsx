@@ -28,6 +28,7 @@ const RotatePrompt        = dynamic(() => import("@/ui/RotatePrompt"),        { 
 const WardrobePanel       = dynamic(() => import("@/ui/WardrobePanel"),       { ssr: false });
 const ConnectScreen       = dynamic(() => import("@/ui/ConnectScreen"),       { ssr: false });
 const WhereIsNPCCard      = dynamic(() => import("@/ui/WhereIsNPCCard"),      { ssr: false });
+const QuestPanel          = dynamic(() => import("@/ui/QuestPanel"),          { ssr: false });
 
 import ErrorBoundary from "@/ui/ErrorBoundary";
 
@@ -165,14 +166,16 @@ export default function Home() {
           {/* Score HUD — top left */}
           <HUD />
 
-          {/* "Onde está o NPC?" hunt card — left side, below HUD */}
+          {/* Left-side panel stack — hunt card + daily quests */}
           {!isTouch && (
             <div style={{
               position: "fixed", zIndex: 20,
               top: "max(env(safe-area-inset-top, 0px), 12px)",
               left: "max(env(safe-area-inset-left, 0px), 12px)",
+              display: "flex", flexDirection: "column", gap: 8,
             }}>
               <WhereIsNPCCard gameRef={game} wallet={walletAddress} />
+              <QuestPanel wallet={walletAddress} />
             </div>
           )}
 

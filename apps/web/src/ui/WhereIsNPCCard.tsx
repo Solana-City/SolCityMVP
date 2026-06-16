@@ -3,9 +3,10 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import {
   getRoundIndex, getMsRemaining, recordFind, getMyScore,
-  getLeaderboard, recordRoundWinner, getRoundWinner,
+  getLeaderboard, recordRoundWinner,
   type ScoreEntry,
 } from "@/game/minigames/whereIsNPC/WhereIsNPCGame";
+import { incrementQuest } from "@/game/quests/QuestManager";
 import {
   LAYER_ORDER, getVariant,
   SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT, type Loadout,
@@ -162,6 +163,7 @@ export default function WhereIsNPCCard({ gameRef, wallet }: Props) {
     const onFound = ({ wallet: w, loadout }: { wallet: string; loadout: Loadout }) => {
       const newScore = recordFind(w);
       recordRoundWinner(getRoundIndex(), w);
+      if (w === wallet) incrementQuest(w, "hunt_3_npcs");
       const short = `${w.slice(0, 4)}…${w.slice(-4)}`;
       setFoundMsg(w === wallet ? `You found them! ★ Total: ${newScore}` : `${short} found them!`);
       setMyScore(getMyScore(wallet ?? ""));

@@ -35,6 +35,7 @@ export class PedestrianManager {
   private scene!: Phaser.Scene;
   private collisionLayers: Phaser.Tilemaps.TilemapLayer[] = [];
   private rotationBatch = 0;
+  private playerContainer: Phaser.GameObjects.Container | null = null;
 
   spawn(scene: Phaser.Scene, collisionLayers: Phaser.Tilemaps.TilemapLayer[]): void {
     this.scene = scene;
@@ -43,6 +44,7 @@ export class PedestrianManager {
     for (let i = 0; i < PEDESTRIAN_COUNT; i++) {
       scene.time.delayedCall(i * 80, () => {
         const ped = this.spawnOne(i);
+        if (this.playerContainer) this.enablePedCollider(ped);
         this.pedestrians.push(ped);
         // Update target marker once all are spawned
         if (this.pedestrians.length === PEDESTRIAN_COUNT) this.refreshTarget();
@@ -55,6 +57,23 @@ export class PedestrianManager {
       loop: true,
       callback: () => this.rotateBatch(),
     });
+  }
+
+  /** Call after spawn() — enables collision between the player and all pedestrians. */
+  setupPlayerCollider(playerContainer: Phaser.GameObjects.Container): void {
+    this.playerContainer = playerContainer;
+    for (const ped of this.pedestrians) this.enablePedCollider(ped);
+  }
+
+  private enablePedCollider(ped: PedestrianSprite): void {
+    if (!this.playerContainer) return;
+    const c = ped.getContainer();
+    this.scene.physics.world.enable(c);
+    const body = c.body as Phaser.Physics.Arcade.Body;
+    body.setSize(TILE_SIZE * 0.5, TILE_SIZE * 0.3);
+    body.setOffset(-TILE_SIZE * 0.25, -TILE_SIZE * 0.15);
+    body.setImmovable(true);
+    this.scene.physics.add.collider(this.playerContainer, c);
   }
 
   private spawnOne(i: number): PedestrianSprite {
@@ -97,12 +116,14 @@ export class PedestrianManager {
       const row = Math.max(PZ.row1 + 2, Math.min(PZ.row2 - 2,
         Math.round(zRow + (Math.random() * 2 - 1) * rRow)));
 
-      this.pedestrians[i] = new PedestrianSprite(
+      const newPed = new PedestrianSprite(
         this.scene,
         col * TILE_SIZE + TILE_SIZE / 2,
         row * TILE_SIZE + TILE_SIZE / 2,
         loadout, speed, this.collisionLayers, i,
       );
+      this.enablePedCollider(newPed);
+      this.pedestrians[i] = newPed;
     }
   }
 
