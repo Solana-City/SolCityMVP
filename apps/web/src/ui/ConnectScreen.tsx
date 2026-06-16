@@ -30,53 +30,55 @@ export default function ConnectScreen() {
         overflow: "hidden",
       }}
     >
-      {/* Background banner */}
+      {/* Background banner — full visible, slight dim only at edges */}
       <div
         style={{
           position: "absolute",
           inset: 0,
           backgroundImage: "url(/assets/branding/banner.png)",
           backgroundSize: "cover",
-          backgroundPosition: "center",
-          filter: "brightness(0.45)",
+          backgroundPosition: "top center",
+          filter: "brightness(0.72) saturate(1.1)",
         }}
       />
 
-      {/* Vignette overlay */}
+      {/* Bottom-heavy vignette so banner reads clearly at top */}
       <div
         style={{
           position: "absolute",
           inset: 0,
           background:
-            "radial-gradient(ellipse at center, transparent 30%, rgba(0,0,0,0.72) 100%)",
+            "linear-gradient(to bottom, rgba(0,0,0,0.15) 0%, rgba(0,0,0,0.55) 100%)",
         }}
       />
 
-      {/* Card */}
+      {/* Card — solid dark base matching icon background, no blur clash */}
       <div
         style={{
           position: "relative",
           display: "flex",
           flexDirection: "column",
           alignItems: "center",
-          gap: 24,
-          background: "rgba(8,10,22,0.72)",
-          border: "1px solid rgba(153,69,255,0.35)",
+          gap: 20,
+          background: "#0a0d18",
+          border: "1px solid rgba(153,69,255,0.4)",
           borderRadius: 18,
-          padding: "36px 44px",
-          backdropFilter: "blur(18px)",
+          overflow: "hidden",
           maxWidth: 360,
           width: "90vw",
-          boxShadow: "0 0 48px rgba(153,69,255,0.18), 0 0 120px rgba(20,241,149,0.06)",
+          boxShadow: "0 0 56px rgba(153,69,255,0.22), 0 8px 48px rgba(0,0,0,0.6)",
         }}
       >
-        {/* Icon */}
+        {/* Icon — fills top of card edge-to-edge, no padding gap */}
         <img
           src="/assets/branding/icon.png"
           alt="Solana City"
-          style={{ width: 80, height: 80, imageRendering: "pixelated" }}
+          style={{ width: "100%", display: "block", maxHeight: 200, objectFit: "cover", objectPosition: "center top" }}
           onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
         />
+
+        {/* Content below icon */}
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 20, padding: "0 40px 32px" }}>
 
         {/* Title */}
         <div style={{ textAlign: "center" }}>
@@ -174,7 +176,8 @@ export default function ConnectScreen() {
           <span style={{ fontSize: 12 }}>⚠</span>
           DEVNET
         </div>
-      </div>
+        </div>{/* end inner content */}
+      </div>{/* end card */}
     </div>
   );
 }
