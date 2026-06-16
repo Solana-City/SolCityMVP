@@ -109,7 +109,7 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     name: "Pratik",
     role: "Superteam Earn",
     tileX: 116,
-    tileY: 105,
+    tileY: 101,
     color: 0x9945ff,
     dialog: [
       "Hey! I run the Superteam Earn hub, where builders get paid to work on Solana.",
