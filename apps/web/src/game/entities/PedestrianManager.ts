@@ -2,7 +2,7 @@ import * as Phaser from "phaser";
 import { TILE_SIZE, PLAYABLE_ZONE } from "../config/constants";
 import { PedestrianSprite, makePedestrianLoadout } from "./PedestrianSprite";
 
-const PEDESTRIAN_COUNT = 18;
+const PEDESTRIAN_COUNT = 24;
 
 // Speed bands: slow / medium / fast (px/s)
 const SPEED_BANDS = [14, 20, 28, 36];
