@@ -222,11 +222,11 @@ export default function WhereIsNPCCard({ gameRef, wallet }: Props) {
           <div style={{ color: "#c084fc", marginBottom: 8, fontFamily: '"Press Start 2P", monospace', fontSize: 7, letterSpacing: 1 }}>
             HOW TO PLAY
           </div>
-          Find the NPC shown in the card. Get close and press{" "}
-          <b style={{ color: "#14F195" }}>E</b> to catch them.
+          Find the person shown in the card. Get close and press{" "}
+          <b style={{ color: "#14F195" }}>E</b> to greet them.
           <br /><br />
-          Target changes every <b style={{ color: "#FFD700" }}>5 minutes</b>.
-          First to find wins the round!
+          A new citizen appears every <b style={{ color: "#FFD700" }}>5 minutes</b>.
+          First to find them wins the round!
         </div>
       )}
 
@@ -251,7 +251,7 @@ export default function WhereIsNPCCard({ gameRef, wallet }: Props) {
           <span style={{
             fontFamily: '"Press Start 2P", monospace', fontSize: 8,
             color: "#c084fc", letterSpacing: 1, flex: 1,
-          }}>WHERE'S THE NPC?</span>
+          }}>FIND SOMEONE</span>
           <button
             style={{
               background: "none", border: "1px solid rgba(153,69,255,0.3)",

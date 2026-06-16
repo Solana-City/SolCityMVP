@@ -606,11 +606,11 @@ export class CityScene extends Phaser.Scene {
     if (hasAlreadyFoundCurrent(wallet)) {
       this.game.events.emit("npc:interact", {
         id: "hunt-already-found",
-        name: "Mystery NPC",
+        name: "Citizen",
         role: "Already found!",
         tileX: 0, tileY: 0,
         color: 0x9945FF,
-        dialog: ["You already found me this round! Wait for a new target."],
+        dialog: ["You already found me this round! Wait for someone new to appear."],
         action: { type: "placeholder", label: "Got it!" },
       });
       return true;
@@ -621,18 +621,18 @@ export class CityScene extends Phaser.Scene {
     this.game.events.emit("whereIsNPC:found", { wallet, loadout: target.loadout });
 
     const FOUND_LINES = [
-      "You found me! Looks like you are good with faces.",
-      "Wow, you spotted me! I wasn't even trying to hide… much.",
-      "Caught me! You've got sharp eyes, stranger.",
-      "How did you find me so fast? You must do this a lot.",
-      "Alright, alright — you got me. Nice work.",
-      "I can't believe it! Nobody ever finds me this quickly.",
-      "You again?! You really have a talent for this.",
+      "Oh! You recognized me. Sharp eyes, citizen.",
+      "Wow, you actually found me. I wasn't making it easy!",
+      "Hey, how did you spot me so fast?",
+      "Alright, alright — you got me. Well done.",
+      "I can't believe it! Nobody finds me this quickly.",
+      "You have a talent for this. Have we met before?",
+      "Caught! You must walk these streets a lot.",
     ];
     const line = FOUND_LINES[Math.floor(Math.random() * FOUND_LINES.length)];
     this.game.events.emit("npc:interact", {
       id: "hunt-target",
-      name: "Mystery NPC",
+      name: "Citizen",
       role: "Found!",
       tileX: 0, tileY: 0,
       color: 0xFFD700,

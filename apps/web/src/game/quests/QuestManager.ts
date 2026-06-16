@@ -24,7 +24,7 @@ export const DAILY_QUESTS: QuestDefinition[] = [
   {
     id: "hunt_3_npcs",
     title: "People Watcher",
-    description: 'Find 3 NPCs in "Where\'s the NPC?"',
+    description: 'Find 3 citizens in "Find Someone"',
     target: 3,
     points: 300,
     rewardLabel: "300 pts",
