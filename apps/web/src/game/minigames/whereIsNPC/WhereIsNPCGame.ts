@@ -97,3 +97,50 @@ export function recordRoundWinner(round: number, wallet: string) {
 export function getRoundWinner(round: number): string | null {
   return roundWinners.get(round) ?? null;
 }
+
+// ── Per-wallet "already found this NPC" guard ─────────────────────────────
+// Tracks which (round, findIndex) combos each wallet has claimed.
+// Within a single round the target can change multiple times (each find
+// spawns a new target), so we track a monotonic find counter per round.
+
+const FIND_LOG_KEY = "solcity:whereIsNPC:findLog"; // { wallet: { roundStr: count } }
+
+function loadFindLog(): Record<string, Record<string, number>> {
+  try { return JSON.parse(localStorage.getItem(FIND_LOG_KEY) ?? "{}"); } catch { return {}; }
+}
+function saveFindLog(log: Record<string, Record<string, number>>) {
+  try { localStorage.setItem(FIND_LOG_KEY, JSON.stringify(log)); } catch {}
+}
+
+// Internal find counter per round (how many targets have been found this round globally)
+const roundFindCounts = new Map<number, number>();
+
+/**
+ * Returns true if this wallet has already found the CURRENT target in the
+ * current round (i.e. the same find-sequence slot).
+ */
+export function hasAlreadyFoundCurrent(wallet: string): boolean {
+  const round = getRoundIndex();
+  const slot = roundFindCounts.get(round) ?? 0;
+  const log = loadFindLog();
+  return (log[wallet]?.[`${round}:${slot}`] ?? 0) > 0;
+}
+
+/**
+ * Record that this wallet found the current target. Must be called BEFORE
+ * advanceFindSlot() so the slot number matches hasAlreadyFoundCurrent().
+ */
+export function markCurrentFound(wallet: string): void {
+  const round = getRoundIndex();
+  const slot = roundFindCounts.get(round) ?? 0;
+  const log = loadFindLog();
+  if (!log[wallet]) log[wallet] = {};
+  log[wallet][`${round}:${slot}`] = 1;
+  saveFindLog(log);
+}
+
+/** Advance the find slot when a new target is selected after a find. */
+export function advanceFindSlot(): void {
+  const round = getRoundIndex();
+  roundFindCounts.set(round, (roundFindCounts.get(round) ?? 0) + 1);
+}

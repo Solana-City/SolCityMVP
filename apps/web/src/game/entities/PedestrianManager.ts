@@ -1,7 +1,7 @@
 import * as Phaser from "phaser";
 import { TILE_SIZE, PLAYABLE_ZONE } from "../config/constants";
 import { PedestrianSprite, makePedestrianLoadout } from "./PedestrianSprite";
-import { getTargetPedIndex, ROTATION_BATCH_MS } from "../minigames/whereIsNPC/WhereIsNPCGame";
+import { getTargetPedIndex, advanceFindSlot, ROTATION_BATCH_MS } from "../minigames/whereIsNPC/WhereIsNPCGame";
 
 export const PEDESTRIAN_COUNT = 96;
 const SPEED_BANDS = [18, 24, 24, 30, 30, 38, 44];
@@ -169,6 +169,7 @@ export class PedestrianManager {
   onTargetFound(): void {
     this.pedestrians[this.currentTargetIndex]?.celebrateFound();
     this.currentTargetIndex = -1;
+    advanceFindSlot(); // advance slot so other wallets can still find the next target
     this.scene.time.delayedCall(800, () => this.refreshTarget());
   }
 

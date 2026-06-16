@@ -9,6 +9,7 @@ import { ChatBubble } from "../chat/ChatBubble";
 import { NPCSprite } from "../entities/NPCSprite";
 import { NPC_REGISTRY } from "../config/npcRegistry";
 import { PedestrianManager } from "../entities/PedestrianManager";
+import { hasAlreadyFoundCurrent, markCurrentFound } from "../minigames/whereIsNPC/WhereIsNPCGame";
 import { ProfileManager, profileManager } from "../config/profileManager";
 import { AchievementEngine } from "../progression/achievementEngine";
 import { setupEmojiKeys, showEmoji, EMOJI_REGISTRY, EmojiDef } from "../chat/EmojiSystem";
@@ -600,6 +601,22 @@ export class CityScene extends Phaser.Scene {
     if (!target.isNearPlayer(this.avatar.x, this.avatar.y)) return false;
 
     const wallet = this.walletAddress ?? "guest";
+
+    // Each wallet can only find the same target NPC once
+    if (hasAlreadyFoundCurrent(wallet)) {
+      this.game.events.emit("npc:interact", {
+        id: "hunt-already-found",
+        name: "Mystery NPC",
+        role: "Already found!",
+        tileX: 0, tileY: 0,
+        color: 0x9945FF,
+        dialog: ["You already found me this round! Wait for a new target."],
+        action: { type: "placeholder", label: "Got it!" },
+      });
+      return true;
+    }
+
+    markCurrentFound(wallet);
     this.pedestrians.onTargetFound();
     this.game.events.emit("whereIsNPC:found", { wallet, loadout: target.loadout });
 
