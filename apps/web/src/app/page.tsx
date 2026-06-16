@@ -6,6 +6,7 @@ import type { NPCDefinition, NPCAction } from "@/game/config/npcRegistry";
 import type { MiniGameContext, MiniGameResult } from "@/game/minigames/types";
 import { launch as launchMiniGame } from "@/game/minigames";
 import { usePinchZoom } from "@/ui/usePinchZoom";
+import { incrementQuest } from "@/game/quests/QuestManager";
 
 // All Solana/wallet-adapter code must be client-only — these packages
 // access `window`/`navigator` at module-load time and crash the SSR pass.
@@ -82,8 +83,13 @@ export default function Home() {
     game?.events.emit("npc:close");
   }, [game]);
 
-  const handleAction = useCallback((action: NPCAction) => {
+  const handleAction = useCallback((action: NPCAction, npc?: NPCDefinition) => {
     setActiveNPC(null);
+    // Daily quest hooks — triggered when player initiates the action
+    if (walletAddress) {
+      if (action.type === "swap")     incrementQuest(walletAddress, "swap_jupiter");
+      if (action.type === "transfer") incrementQuest(walletAddress, "send_steve");
+    }
     if (action.type === "placeholder") {
       game?.events.emit("npc:close");
       return;
