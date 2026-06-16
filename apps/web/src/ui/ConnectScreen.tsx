@@ -90,7 +90,7 @@ export default function ConnectScreen() {
               lineHeight: 1.4,
             }}
           >
-            SOL CITY
+            SOLANA CITY
           </div>
           <div
             style={{
@@ -172,7 +172,7 @@ export default function ConnectScreen() {
           }}
         >
           <span style={{ fontSize: 12 }}>⚠</span>
-          DEVNET — testnet only. No real funds.
+          DEVNET
         </div>
       </div>
     </div>
