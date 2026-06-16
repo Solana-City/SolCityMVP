@@ -8,6 +8,7 @@ import { ChatManager, getChannelColor } from "../chat/ChatManager";
 import { ChatBubble } from "../chat/ChatBubble";
 import { NPCSprite } from "../entities/NPCSprite";
 import { NPC_REGISTRY } from "../config/npcRegistry";
+import { PedestrianManager } from "../entities/PedestrianManager";
 import { ProfileManager, profileManager } from "../config/profileManager";
 import { AchievementEngine } from "../progression/achievementEngine";
 import { setupEmojiKeys, showEmoji, EMOJI_REGISTRY, EmojiDef } from "../chat/EmojiSystem";
@@ -45,6 +46,7 @@ export class CityScene extends Phaser.Scene {
   private currentDirection: Direction = "down";
   private chatInputActive = false;
   private npcSprites: NPCSprite[] = [];
+  private pedestrians!: PedestrianManager;
   private interactionBlocked = false;
   private profile!: ProfileManager;
   private touchDx = 0;
@@ -331,6 +333,10 @@ export class CityScene extends Phaser.Scene {
       this.physics.add.collider(container, npcContainer);
     }
 
+    // Pedestrians — cosmetic wandering crowd, no interaction
+    this.pedestrians = new PedestrianManager();
+    this.pedestrians.spawn(this, this.collisionLayers);
+
     // G key — toggle collision debug overlay
     this.input.keyboard!.on("keydown-G", () => {
       this.physics.world.drawDebug = !this.physics.world.drawDebug;
@@ -553,6 +559,9 @@ export class CityScene extends Phaser.Scene {
         direction !== null
       );
     }
+
+    // Pedestrian depth sorting
+    this.pedestrians.updateDepths();
 
     // Interpolate remote players
     this.remotePlayers.forEach((remote, sessionId) => {
