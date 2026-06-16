@@ -597,9 +597,26 @@ export class CityScene extends Phaser.Scene {
 
     const wallet = this.walletAddress ?? "guest";
     this.pedestrians.onTargetFound();
-    this.game.events.emit("whereIsNPC:found", {
-      wallet,
-      loadout: target.loadout,
+    this.game.events.emit("whereIsNPC:found", { wallet, loadout: target.loadout });
+
+    const FOUND_LINES = [
+      "You found me! Looks like you are good with faces.",
+      "Wow, you spotted me! I wasn't even trying to hide… much.",
+      "Caught me! You've got sharp eyes, stranger.",
+      "How did you find me so fast? You must do this a lot.",
+      "Alright, alright — you got me. Nice work.",
+      "I can't believe it! Nobody ever finds me this quickly.",
+      "You again?! You really have a talent for this.",
+    ];
+    const line = FOUND_LINES[Math.floor(Math.random() * FOUND_LINES.length)];
+    this.game.events.emit("npc:interact", {
+      id: "hunt-target",
+      name: "Mystery NPC",
+      role: "Found!",
+      tileX: 0, tileY: 0,
+      color: 0xFFD700,
+      dialog: [line],
+      action: { type: "placeholder", label: "Nice!" },
     });
     return true;
   }

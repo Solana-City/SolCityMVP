@@ -51,9 +51,6 @@ export class PedestrianSprite {
   private collisionLayers: Phaser.Tilemaps.TilemapLayer[];
   private speed: number;
 
-  // Target marker — floating ★ above head when this ped is the hunt target
-  private targetMarker: Phaser.GameObjects.Text | null = null;
-  private markerTween: Phaser.Tweens.Tween | null = null;
 
   constructor(
     scene: Phaser.Scene,
@@ -84,36 +81,9 @@ export class PedestrianSprite {
     return Math.sqrt(dx * dx + dy * dy) <= INTERACT_RANGE;
   }
 
-  /** Show/hide the floating ★ hunt marker above this pedestrian. */
-  setAsTarget(isTarget: boolean): void {
-    if (isTarget && !this.targetMarker) {
-      const container = this.avatar.getContainer();
-      this.targetMarker = this.scene.add.text(0, -52, "★", {
-        fontSize: "14px",
-        color: "#FFD700",
-        stroke: "#000",
-        strokeThickness: 3,
-        resolution: 2,
-      }).setOrigin(0.5, 1).setDepth(container.depth + 1);
-
-      // Attach to container so it follows the pedestrian
-      container.add(this.targetMarker);
-
-      this.markerTween = this.scene.tweens.add({
-        targets: this.targetMarker,
-        y: -58,
-        duration: 800,
-        yoyo: true,
-        repeat: -1,
-        ease: "Sine.easeInOut",
-      });
-    } else if (!isTarget && this.targetMarker) {
-      this.markerTween?.stop();
-      this.markerTween = null;
-      this.avatar.getContainer().remove(this.targetMarker);
-      this.targetMarker.destroy();
-      this.targetMarker = null;
-    }
+  /** Mark/unmark this pedestrian as the hunt target (no visible indicator — player must find by appearance). */
+  setAsTarget(_isTarget: boolean): void {
+    // Intentionally no visual marker — the challenge is finding them by face
   }
 
   /** Brief flash animation when found by a player. */
@@ -145,6 +115,11 @@ export class PedestrianSprite {
     const row = Math.floor(wy / TILE_SIZE);
     const PZ = PLAYABLE_ZONE;
     if (col < PZ.col1 || col > PZ.col2 || row < PZ.row1 || row > PZ.row2) return true;
+    // Hard-block fountain basin (matches CityScene's DecorFountain collision zone)
+    if (col >= 95 && col <= 103 && row >= 91 && row <= 99) {
+      const inCorridor = col >= 99 && col <= 100 && row >= 97;
+      if (!inCorridor) return true;
+    }
     for (const layer of this.collisionLayers) {
       const tile = layer.getTileAtWorldXY(wx, wy);
       if (tile && tile.collides) return true;
@@ -200,8 +175,6 @@ export class PedestrianSprite {
   updateDepth() { this.avatar.updateDepth(); }
 
   destroy() {
-    this.markerTween?.stop();
-    this.targetMarker?.destroy();
     this.avatar.destroy();
   }
 }
