@@ -27,8 +27,8 @@ export function makePedestrianLoadout(seed: number): Loadout {
   const hair      = pick(LAYER_VARIANTS.hair,   rng).id;
   const tshirt    = pick(LAYER_VARIANTS.tshirt,  rng).id;
   const pants     = pick(LAYER_VARIANTS.pants,   rng).id;
-  const hat       = rng() < 0.04 ? pick(LAYER_VARIANTS.hat,       rng).id : undefined;
-  const accessory = rng() < 0.04 ? pick(LAYER_VARIANTS.accessory,  rng).id : undefined;
+  const hat       = rng() < 0.25 ? pick(LAYER_VARIANTS.hat,       rng).id : undefined;
+  const accessory = rng() < 0.08 ? pick(LAYER_VARIANTS.accessory,  rng).id : undefined;
 
   return { skin, eyesFace, hair, tshirt, pants, hat, accessory };
 }
