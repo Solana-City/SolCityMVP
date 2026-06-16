@@ -7,7 +7,7 @@ import {
   type ScoreEntry,
 } from "@/game/minigames/whereIsNPC/WhereIsNPCGame";
 import {
-  LAYER_ORDER, LAYER_VARIANTS, getVariant,
+  LAYER_ORDER, getVariant,
   SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT, type Loadout,
 } from "@/game/config/paperDoll";
 
@@ -71,23 +71,6 @@ function MiniAvatar({ loadout, size = 64 }: { loadout: Loadout; size?: number })
   );
 }
 
-// ── Trait description for "who to look for" ───────────────────────────────────
-function describeLoadout(loadout: Loadout): string[] {
-  const lines: string[] = [];
-  const v = (cat: keyof Loadout) => {
-    const id = loadout[cat];
-    if (!id) return null;
-    return LAYER_VARIANTS[cat as keyof typeof LAYER_VARIANTS]
-      ?.find((x: { id: string }) => x.id === id)?.name ?? id;
-  };
-  if (v("skin"))      lines.push(`Skin: ${v("skin")}`);
-  if (v("hair"))      lines.push(`Hair: ${v("hair")}`);
-  if (v("tshirt"))    lines.push(`Shirt: ${v("tshirt")}`);
-  if (v("pants"))     lines.push(`Pants: ${v("pants")}`);
-  if (v("hat"))       lines.push(`Hat: ${v("hat")}`);
-  if (v("accessory")) lines.push(`Accessory: ${v("accessory")}`);
-  return lines;
-}
 
 // ── Leaderboard modal ─────────────────────────────────────────────────────────
 function LeaderboardModal({ onClose }: { onClose: () => void }) {
@@ -215,7 +198,6 @@ export default function WhereIsNPCCard({ gameRef, wallet }: Props) {
 
   const mm = Math.floor(msLeft / 60000);
   const ss = String(Math.floor((msLeft % 60000) / 1000)).padStart(2, "0");
-  const traits = targetLoadout ? describeLoadout(targetLoadout) : [];
 
   return (
     <>
@@ -243,7 +225,7 @@ export default function WhereIsNPCCard({ gameRef, wallet }: Props) {
           <span style={{
             fontFamily: '"Press Start 2P", monospace', fontSize: 8,
             color: "#c084fc", letterSpacing: 1, flex: 1,
-          }}>ONDE ESTÁ O NPC?</span>
+          }}>WHERE'S THE NPC?
 
           {/* Info button */}
           <div style={{ position: "relative" }}
@@ -263,10 +245,10 @@ export default function WhereIsNPCCard({ gameRef, wallet }: Props) {
                 fontSize: 10, color: "#aaaacc", lineHeight: 1.6,
                 boxShadow: "0 4px 20px rgba(0,0,0,0.5)",
               }}>
-                <div style={{ color: "#c084fc", marginBottom: 6, fontFamily: '"Press Start 2P", monospace', fontSize: 7 }}>COMO JOGAR</div>
-                Procure o NPC com as características mostradas no card. Chegue perto dele e pressione <b style={{ color: "#14F195" }}>E</b> para encontrá-lo.
+                <div style={{ color: "#c084fc", marginBottom: 6, fontFamily: '"Press Start 2P", monospace', fontSize: 7 }}>HOW TO PLAY</div>
+                Find the NPC shown in the card. Get close and press <b style={{ color: "#14F195" }}>E</b> to catch them.
                 <br /><br />
-                O alvo troca a cada <b style={{ color: "#FFD700" }}>5 minutos</b>. Quem achar primeiro ganha o round!
+                Target changes every <b style={{ color: "#FFD700" }}>5 minutes</b>. First to find wins the round!
               </div>
             )}
           </div>
@@ -289,26 +271,20 @@ export default function WhereIsNPCCard({ gameRef, wallet }: Props) {
               </div>
             )}
 
-            {/* Target */}
+            {/* Target — avatar only, no trait list */}
             {targetLoadout ? (
-              <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+              <div style={{ display: "flex", justifyContent: "center" }}>
                 <div style={{
                   background: "rgba(153,69,255,0.08)",
                   border: "1px solid rgba(153,69,255,0.2)",
-                  borderRadius: 8, padding: 4, flexShrink: 0,
+                  borderRadius: 8, padding: 6,
                 }}>
-                  <MiniAvatar loadout={targetLoadout} size={64} />
-                </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
-                  <span style={{ fontSize: 8, color: "#666688" }}>PROCURE POR:</span>
-                  {traits.map(t => (
-                    <span key={t} style={{ fontSize: 9, color: "#aaaacc" }}>· {t}</span>
-                  ))}
+                  <MiniAvatar loadout={targetLoadout} size={80} />
                 </div>
               </div>
             ) : (
               <div style={{ fontSize: 9, color: "#444466", textAlign: "center", padding: "8px 0" }}>
-                {foundMsg ? "Novo alvo a caminho…" : "Carregando alvo…"}
+                {foundMsg ? "New target incoming…" : "Loading target…"}
               </div>
             )}
 
