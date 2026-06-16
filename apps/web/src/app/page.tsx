@@ -160,26 +160,68 @@ export default function Home() {
           {/* Score HUD — top left */}
           <HUD />
 
-          {/* Top-right cluster: PFP + wallet + tx log + zoom */}
+          {/* Top-right HUD panel */}
           <div
-            className="fixed z-20 flex flex-col items-end gap-2"
+            className="fixed z-20"
             style={{
               top: "max(env(safe-area-inset-top, 0px), 12px)",
               right: "max(env(safe-area-inset-right, 0px), 12px)",
             }}
           >
-            <PfpButton gameRef={game} onClick={() => setProfileOpen(true)} />
-            <WardrobeButton onClick={() => setWardrobeOpen(true)} />
-            <WalletBar onWalletChange={handleWalletChange} />
-            {/* Desktop only — too much chrome on mobile */}
-            {!isTouch && (
-              <>
-                <TransactionLogPanel
-                  isOpen={logOpen}
-                  onToggle={() => setLogOpen((v) => !v)}
-                />
-                <ZoomControl />
-              </>
+            {isTouch ? (
+              /* ── Mobile: compact horizontal strip ── */
+              <div className="flex items-center gap-2">
+                <PfpButton gameRef={game} onClick={() => setProfileOpen(true)} />
+                <WardrobeButton onClick={() => setWardrobeOpen(true)} />
+                <WalletBar onWalletChange={handleWalletChange} />
+              </div>
+            ) : (
+              /* ── Desktop: unified card panel ── */
+              <div style={{
+                background: "rgba(8,10,22,0.94)",
+                border: "1px solid rgba(153,69,255,0.28)",
+                borderRadius: 12,
+                overflow: "hidden",
+                minWidth: 220,
+                backdropFilter: "blur(8px)",
+              }}>
+                {/* Header row: avatar + action icons */}
+                <div style={{
+                  display: "flex", alignItems: "center", gap: 8,
+                  padding: "10px 12px",
+                  borderBottom: "1px solid rgba(153,69,255,0.12)",
+                }}>
+                  <PfpButton gameRef={game} onClick={() => setProfileOpen(true)} />
+                  <WardrobeButton onClick={() => setWardrobeOpen(true)} />
+                  <div style={{ flex: 1 }} />
+                  <div style={{
+                    fontSize: 9, color: "#9945FF", letterSpacing: 1,
+                    fontFamily: '"Press Start 2P", monospace',
+                    opacity: 0.7,
+                  }}>SOL CITY</div>
+                </div>
+
+                {/* Wallet section */}
+                <div style={{ padding: "10px 14px" }}>
+                  <WalletBar layout="panel" onWalletChange={handleWalletChange} />
+                </div>
+
+                {/* Footer row: tx log + zoom */}
+                <div style={{
+                  display: "flex", alignItems: "center",
+                  borderTop: "1px solid rgba(153,69,255,0.12)",
+                  padding: "6px 10px",
+                  gap: 6,
+                }}>
+                  <div style={{ flex: 1 }}>
+                    <TransactionLogPanel
+                      isOpen={logOpen}
+                      onToggle={() => setLogOpen((v) => !v)}
+                    />
+                  </div>
+                  <ZoomControl />
+                </div>
+              </div>
             )}
           </div>
 
@@ -212,20 +254,21 @@ function WardrobeButton({ onClick }: { onClick: () => void }) {
       onClick={onClick}
       title="Wardrobe"
       style={{
-        width: 44,
-        height: 44,
-        borderRadius: 10,
-        border: "1px solid #14F19566",
-        background: "rgba(20,241,149,0.08)",
+        width: 36,
+        height: 36,
+        borderRadius: 8,
+        border: "1px solid rgba(20,241,149,0.35)",
+        background: "rgba(20,241,149,0.07)",
         cursor: "pointer",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        fontSize: 22,
+        fontSize: 18,
         transition: "background 0.15s",
+        flexShrink: 0,
       }}
       onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(20,241,149,0.18)")}
-      onMouseLeave={(e) => (e.currentTarget.style.background = "rgba(20,241,149,0.08)")}
+      onMouseLeave={(e) => (e.currentTarget.style.background = "rgba(20,241,149,0.07)")}
     >
       👕
     </button>
@@ -262,8 +305,8 @@ function PfpButton({ gameRef, onClick }: { gameRef: Phaser.Game | null; onClick:
       onClick={onClick}
       className="rounded-full cursor-pointer transition-transform hover:scale-105"
       style={{
-        width: 48,
-        height: 48,
+        width: 40,
+        height: 40,
         border: "2px solid #9945FF",
         background: pfp ? "transparent" : "rgba(153,69,255,0.15)",
         padding: 0,
