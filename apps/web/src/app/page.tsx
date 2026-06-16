@@ -27,6 +27,7 @@ const MwaRegistration     = dynamic(() => import("@/ui/MwaRegistration"),     { 
 const RotatePrompt        = dynamic(() => import("@/ui/RotatePrompt"),        { ssr: false });
 const WardrobePanel       = dynamic(() => import("@/ui/WardrobePanel"),       { ssr: false });
 const ConnectScreen       = dynamic(() => import("@/ui/ConnectScreen"),       { ssr: false });
+const WhereIsNPCCard      = dynamic(() => import("@/ui/WhereIsNPCCard"),      { ssr: false });
 
 import ErrorBoundary from "@/ui/ErrorBoundary";
 
@@ -50,6 +51,7 @@ export default function Home() {
   const [activeMiniGame, setActiveMiniGame] = useState<{ id: string; context: MiniGameContext } | null>(null);
   const [profileOpen, setProfileOpen] = useState(false);
   const [wardrobeOpen, setWardrobeOpen] = useState(false);
+  const [walletAddress, setWalletAddress] = useState<string | null>(null);
   const [logOpen, setLogOpen] = useState(false);
   // Chat hidden by default on touch devices, visible on desktop
   const [chatOpen, setChatOpen] = useState(() =>
@@ -138,6 +140,7 @@ export default function Home() {
   }, []);
 
   const handleWalletChange = useCallback((wallet: string | null) => {
+    setWalletAddress(wallet);
     if (!game) return;
     if (wallet) {
       game.events.emit("wallet:connected", wallet);
@@ -161,6 +164,17 @@ export default function Home() {
 
           {/* Score HUD — top left */}
           <HUD />
+
+          {/* "Onde está o NPC?" hunt card — left side, below HUD */}
+          {!isTouch && (
+            <div style={{
+              position: "fixed", zIndex: 20,
+              top: "max(env(safe-area-inset-top, 0px), 12px)",
+              left: "max(env(safe-area-inset-left, 0px), 12px)",
+            }}>
+              <WhereIsNPCCard gameRef={game} wallet={walletAddress} />
+            </div>
+          )}
 
           {/* Top-right HUD panel */}
           <div

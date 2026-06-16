@@ -48,6 +48,7 @@ export class CityScene extends Phaser.Scene {
   private npcSprites: NPCSprite[] = [];
   private pedestrians!: PedestrianManager;
   private interactionBlocked = false;
+  private walletAddress: string | null = null;
   private profile!: ProfileManager;
   private touchDx = 0;
   private touchDy = 0;
@@ -333,9 +334,25 @@ export class CityScene extends Phaser.Scene {
       this.physics.add.collider(container, npcContainer);
     }
 
-    // Pedestrians — cosmetic wandering crowd, no interaction
+    // Pedestrians + "Where Is NPC?" hunt game
     this.pedestrians = new PedestrianManager();
     this.pedestrians.spawn(this, this.collisionLayers);
+
+    // Sync target when round changes (check every 10 s)
+    this.time.addEvent({
+      delay: 10_000,
+      loop: true,
+      callback: () => {
+        this.pedestrians.refreshTarget();
+        this.game.events.emit("whereIsNPC:roundCheck");
+      },
+    });
+
+    // React UI requests current target info (on mount or round change)
+    this.game.events.on("whereIsNPC:requestTarget", () => {
+      const loadout = this.pedestrians.getTargetLoadout();
+      if (loadout) this.game.events.emit("whereIsNPC:targetInfo", loadout);
+    });
 
     // G key — toggle collision debug overlay
     this.input.keyboard!.on("keydown-G", () => {
@@ -366,6 +383,7 @@ export class CityScene extends Phaser.Scene {
     });
     this.game.events.on("touch:interact", () => {
       if (this.chatInputActive || this.interactionBlocked) return;
+      if (this.tryHuntInteraction()) return;
       const nearby = this.npcSprites.find((n) => n.isInRange);
       if (nearby) {
         this.interactionBlocked = true;
@@ -376,7 +394,7 @@ export class CityScene extends Phaser.Scene {
     // E key for NPC interaction (handled here, not in React, to check proximity)
     this.input.keyboard!.on("keydown-E", () => {
       if (this.chatInputActive || this.interactionBlocked) return;
-
+      if (this.tryHuntInteraction()) return;
       const nearby = this.npcSprites.find((n) => n.isInRange);
       if (nearby) {
         this.interactionBlocked = true;
@@ -407,6 +425,7 @@ export class CityScene extends Phaser.Scene {
     // Listen for wallet connection from React to start on-chain session
     this.game.events.on("wallet:connected", async (walletAddress: string) => {
       try {
+        this.walletAddress = walletAddress;
         const { PublicKey } = await import("@solana/web3.js");
         this.profile.setWallet(walletAddress);
         const displayName = this.profile.get().displayName;
@@ -567,6 +586,22 @@ export class CityScene extends Phaser.Scene {
     this.remotePlayers.forEach((remote, sessionId) => {
       remote.updateDepth();
     });
+  }
+
+  // ── "Where Is NPC?" hunt ──────────────────────────
+
+  private tryHuntInteraction(): boolean {
+    const target = this.pedestrians.getTargetPedestrian();
+    if (!target) return false;
+    if (!target.isNearPlayer(this.avatar.x, this.avatar.y)) return false;
+
+    const wallet = this.walletAddress ?? "guest";
+    this.pedestrians.onTargetFound();
+    this.game.events.emit("whereIsNPC:found", {
+      wallet,
+      loadout: target.loadout,
+    });
+    return true;
   }
 
   // ── Network setup ──────────────────────────────────

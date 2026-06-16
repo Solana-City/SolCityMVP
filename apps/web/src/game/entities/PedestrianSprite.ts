@@ -19,38 +19,18 @@ function pick<T>(arr: T[], rng: () => number): T {
   return arr[Math.floor(rng() * arr.length)];
 }
 
-/**
- * Generates a pedestrian loadout using all available traits from the repository.
- *
- * Distribution intent:
- *   - Skin: ~55% Human, rest spread across Feyan/Laovai/Pinki/Radio
- *   - Face: 75% Happy, 20% none, 5% Terminator
- *   - Hair/Tshirt/Pants: uniformly random from all variants
- *   - Hat: 25% chance — all hat types equally likely
- *   - Accessory: 8% chance
- */
 export function makePedestrianLoadout(seed: number): Loadout {
   const rng = mulberry32(seed);
 
-  // Skin: weighted toward Human but other species appear
   const skinRoll = rng();
-  let skin: string;
-  if (skinRoll < 0.55) {
-    skin = "Human";
-  } else {
-    const others = LAYER_VARIANTS.skin.filter(v => v.id !== "Human");
-    skin = pick(others, rng).id;
-  }
+  const skin = skinRoll < 0.55
+    ? "Human"
+    : pick(LAYER_VARIANTS.skin.filter(v => v.id !== "Human"), rng).id;
 
-  // Face: almost always Happy, very rare Terminator
   const eyesFace = rng() < 0.95 ? "Happy" : "Terminator";
-
-  // Base clothing — always present, full variety
   const hair      = pick(LAYER_VARIANTS.hair,   rng).id;
   const tshirt    = pick(LAYER_VARIANTS.tshirt,  rng).id;
   const pants     = pick(LAYER_VARIANTS.pants,   rng).id;
-
-  // Optional — show up in the crowd but not overwhelming
   const hat       = rng() < 0.25 ? pick(LAYER_VARIANTS.hat,       rng).id : undefined;
   const accessory = rng() < 0.08 ? pick(LAYER_VARIANTS.accessory,  rng).id : undefined;
 
@@ -60,11 +40,20 @@ export function makePedestrianLoadout(seed: number): Loadout {
 type Direction = "up" | "down" | "left" | "right";
 const DIRS: Direction[] = ["up", "down", "left", "right"];
 
+const INTERACT_RANGE = TILE_SIZE * 2;
+
 export class PedestrianSprite {
+  readonly pedId: number;
+  readonly loadout: Loadout;
+
   private avatar: AvatarSprite;
   private scene: Phaser.Scene;
   private collisionLayers: Phaser.Tilemaps.TilemapLayer[];
   private speed: number;
+
+  // Target marker — floating ★ above head when this ped is the hunt target
+  private targetMarker: Phaser.GameObjects.Text | null = null;
+  private markerTween: Phaser.Tweens.Tween | null = null;
 
   constructor(
     scene: Phaser.Scene,
@@ -73,10 +62,14 @@ export class PedestrianSprite {
     loadout: Loadout,
     speed: number,
     collisionLayers: Phaser.Tilemaps.TilemapLayer[],
+    pedId: number,
   ) {
     this.scene = scene;
     this.collisionLayers = collisionLayers;
     this.speed = speed;
+    this.pedId = pedId;
+    this.loadout = loadout;
+
     this.avatar = new AvatarSprite(scene, x, y, loadout);
     this.showIdleFrame();
     this.scheduleNextMove();
@@ -85,10 +78,57 @@ export class PedestrianSprite {
   get x() { return this.avatar.x; }
   get y() { return this.avatar.y; }
 
-  /**
-   * Force idle frame directly on sprites, bypassing the isWalking guard.
-   * Used at construction and when movement is cancelled (tile blocked).
-   */
+  isNearPlayer(px: number, py: number): boolean {
+    const dx = this.avatar.x - px;
+    const dy = this.avatar.y - py;
+    return Math.sqrt(dx * dx + dy * dy) <= INTERACT_RANGE;
+  }
+
+  /** Show/hide the floating ★ hunt marker above this pedestrian. */
+  setAsTarget(isTarget: boolean): void {
+    if (isTarget && !this.targetMarker) {
+      const container = this.avatar.getContainer();
+      this.targetMarker = this.scene.add.text(0, -52, "★", {
+        fontSize: "14px",
+        color: "#FFD700",
+        stroke: "#000",
+        strokeThickness: 3,
+        resolution: 2,
+      }).setOrigin(0.5, 1).setDepth(container.depth + 1);
+
+      // Attach to container so it follows the pedestrian
+      container.add(this.targetMarker);
+
+      this.markerTween = this.scene.tweens.add({
+        targets: this.targetMarker,
+        y: -58,
+        duration: 800,
+        yoyo: true,
+        repeat: -1,
+        ease: "Sine.easeInOut",
+      });
+    } else if (!isTarget && this.targetMarker) {
+      this.markerTween?.stop();
+      this.markerTween = null;
+      this.avatar.getContainer().remove(this.targetMarker);
+      this.targetMarker.destroy();
+      this.targetMarker = null;
+    }
+  }
+
+  /** Brief flash animation when found by a player. */
+  celebrateFound(): void {
+    const container = this.avatar.getContainer();
+    this.scene.tweens.add({
+      targets: container,
+      scaleX: 1.3, scaleY: 1.3,
+      duration: 150,
+      yoyo: true,
+      repeat: 2,
+      ease: "Sine.easeInOut",
+    });
+  }
+
   private showIdleFrame() {
     const container = this.avatar.getContainer();
     const row = DIRECTION_ROW["down"];
@@ -101,13 +141,10 @@ export class PedestrianSprite {
   }
 
   private isTileBlocked(wx: number, wy: number): boolean {
-    // Keep pedestrians inside the playable zone
     const col = Math.floor(wx / TILE_SIZE);
     const row = Math.floor(wy / TILE_SIZE);
     const PZ = PLAYABLE_ZONE;
     if (col < PZ.col1 || col > PZ.col2 || row < PZ.row1 || row > PZ.row2) return true;
-
-    // Use world-coordinate tile lookup (same as NPCSprite)
     for (const layer of this.collisionLayers) {
       const tile = layer.getTileAtWorldXY(wx, wy);
       if (tile && tile.collides) return true;
@@ -122,25 +159,20 @@ export class PedestrianSprite {
 
   private doMove() {
     if (!this.scene?.sys?.isActive()) return;
-
     const container = this.avatar.getContainer();
     if (!container?.scene) return;
 
-    // Try up to 4 random directions; pick the first unblocked one
     const shuffled = [...DIRS].sort(() => Math.random() - 0.5);
     const dist = (2 + Math.floor(Math.random() * 4)) * TILE_SIZE;
-
     let chosen: { dir: Direction; tx: number; ty: number } | null = null;
 
     for (const dir of shuffled) {
-      let tx = container.x;
-      let ty = container.y;
+      let tx = container.x, ty = container.y;
       if (dir === "left")  tx -= dist;
       if (dir === "right") tx += dist;
       if (dir === "up")    ty -= dist;
       if (dir === "down")  ty += dist;
 
-      // Check destination AND one tile past halfway to catch walls mid-path
       const mx = container.x + (tx - container.x) * 0.5;
       const my = container.y + (ty - container.y) * 0.5;
       if (!this.isTileBlocked(tx, ty) && !this.isTileBlocked(mx, my)) {
@@ -149,35 +181,25 @@ export class PedestrianSprite {
       }
     }
 
-    if (!chosen) {
-      this.showIdleFrame();
-      this.scheduleNextMove();
-      return;
-    }
+    if (!chosen) { this.showIdleFrame(); this.scheduleNextMove(); return; }
 
     const { dir, tx, ty } = chosen;
     this.avatar.walk(dir);
-
     this.scene.tweens.killTweensOf(container);
     this.scene.tweens.add({
-      targets: container,
-      x: tx,
-      y: ty,
+      targets: container, x: tx, y: ty,
       duration: (dist / this.speed) * 1000,
       ease: "Linear",
       onUpdate: () => container.setDepth(container.y),
-      onComplete: () => {
-        this.avatar.idle();
-        this.scheduleNextMove();
-      },
+      onComplete: () => { this.avatar.idle(); this.scheduleNextMove(); },
     });
   }
 
-  updateDepth() {
-    this.avatar.updateDepth();
-  }
+  updateDepth() { this.avatar.updateDepth(); }
 
   destroy() {
+    this.markerTween?.stop();
+    this.targetMarker?.destroy();
     this.avatar.destroy();
   }
 }
