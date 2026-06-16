@@ -3,19 +3,30 @@ import { TILE_SIZE, PLAYABLE_ZONE } from "../config/constants";
 import { PedestrianSprite, makePedestrianLoadout } from "./PedestrianSprite";
 import { getTargetPedIndex, ROTATION_BATCH_MS } from "../minigames/whereIsNPC/WhereIsNPCGame";
 
-export const PEDESTRIAN_COUNT = 48;
-const SPEED_BANDS = [14, 20, 20, 28, 28, 36];
+export const PEDESTRIAN_COUNT = 96;
+const SPEED_BANDS = [18, 24, 24, 30, 30, 38, 44];
 const ROTATION_BATCH_SIZE = Math.ceil(PEDESTRIAN_COUNT / 4); // rotate 1/4 at a time
 
+// 32 zones covering the full PLAYABLE_ZONE (col1:42 col2:162 row1:68 row2:130)
+// Format: [centerCol, centerRow, halfRangeCol, halfRangeRow]
 const SPAWN_ZONES: [number, number, number, number][] = [
-  [100, 100,  8,  8],
-  [ 80,  76,  8,  4], [100,  76,  8,  4], [120,  76,  8,  4], [140,  76,  8,  4],
-  [ 80, 122,  8,  4], [100, 120,  8,  4], [120, 122,  8,  4], [140, 120,  8,  4],
-  [ 55,  90,  6,  8], [ 55, 108,  6,  8],
-  [150,  90,  6,  8], [150, 108,  6,  8],
-  [ 72,  98,  6,  8], [ 72, 112,  6,  8],
-  [130,  98,  6,  8], [130, 112,  6,  8],
-  [ 88, 104,  5,  5], [113, 104,  5,  5],
+  // North strip (row ~72-80)
+  [ 55, 74, 8, 4], [ 75, 74, 8, 4], [ 95, 74, 8, 4], [115, 74, 8, 4],
+  [135, 74, 8, 4], [155, 74, 6, 4],
+  // Upper-mid strip (row ~85-95)
+  [ 50, 90, 5, 6], [ 68, 90, 7, 6], [ 88, 90, 8, 6], [108, 90, 8, 6],
+  [128, 90, 7, 6], [148, 90, 7, 6],
+  // Center (row ~98-108)
+  [ 50,102, 5, 6], [ 70,102, 8, 6], [ 90,102, 8, 6], [110,102, 8, 6],
+  [130,102, 8, 6], [150,102, 6, 6],
+  // Lower-mid strip (row ~112-120)
+  [ 55,116, 8, 5], [ 75,116, 8, 5], [ 95,116, 8, 5], [115,116, 8, 5],
+  [135,116, 8, 5], [155,116, 5, 5],
+  // South strip (row ~123-128)
+  [ 60,126, 8, 3], [ 80,126, 8, 3], [100,126, 8, 3], [120,126, 8, 3],
+  [140,126, 8, 3],
+  // Interior pockets (plazas / crossroads)
+  [100, 99, 5, 5], [ 80,109, 5, 5], [120,109, 5, 5], [160, 99, 3, 6],
 ];
 
 export class PedestrianManager {

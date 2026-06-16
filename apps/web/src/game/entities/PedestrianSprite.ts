@@ -153,7 +153,8 @@ export class PedestrianSprite {
   }
 
   private scheduleNextMove() {
-    const pause = 500 + Math.random() * 2000;
+    // Short pause: 200–900ms so pedestrians feel lively
+    const pause = 200 + Math.random() * 700;
     this.scene.time.delayedCall(pause, () => this.doMove());
   }
 
@@ -163,7 +164,8 @@ export class PedestrianSprite {
     if (!container?.scene) return;
 
     const shuffled = [...DIRS].sort(() => Math.random() - 0.5);
-    const dist = (2 + Math.floor(Math.random() * 4)) * TILE_SIZE;
+    // Bigger steps (3–8 tiles) so they cover more ground
+    const dist = (3 + Math.floor(Math.random() * 6)) * TILE_SIZE;
     let chosen: { dir: Direction; tx: number; ty: number } | null = null;
 
     for (const dir of shuffled) {
