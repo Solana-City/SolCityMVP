@@ -47,6 +47,7 @@ export class PedestrianSprite {
   private speed: number;
   private moveTimer: Phaser.Time.TimerEvent | null = null;
   private isMoving = false;
+  private lastDir: Direction = "down";
 
   constructor(
     scene: Phaser.Scene,
@@ -75,6 +76,26 @@ export class PedestrianSprite {
 
     this.showIdleFrame();
     this.scheduleNextMove();
+
+    // Keep walking animation in sync with actual physics velocity each frame
+    scene.events.on("update", this.syncAnimation, this);
+  }
+
+  private syncAnimation() {
+    if (!this.isMoving) return;
+    const body = this.avatar.getContainer().body as Phaser.Physics.Arcade.Body;
+    const vx = body.velocity.x;
+    const vy = body.velocity.y;
+    if (Math.abs(vx) < 1 && Math.abs(vy) < 1) return;
+
+    const dir: Direction = Math.abs(vx) >= Math.abs(vy)
+      ? (vx > 0 ? "right" : "left")
+      : (vy > 0 ? "down" : "up");
+
+    if (dir !== this.lastDir) {
+      this.lastDir = dir;
+      this.avatar.walk(dir);
+    }
   }
 
   get x() { return this.avatar.x; }
@@ -90,16 +111,30 @@ export class PedestrianSprite {
   /** No visual marker — player must find target by appearance only. */
   setAsTarget(_isTarget: boolean): void {}
 
-  /** Brief scale pulse when found by a player. */
+  /** Brief pause + scale pulse when found, then resume movement cleanly. */
   celebrateFound(): void {
     const container = this.avatar.getContainer();
+    const body = container.body as Phaser.Physics.Arcade.Body;
+
+    // Stop movement for the celebration duration
+    this.moveTimer?.remove(false);
+    this.moveTimer = null;
+    body.setVelocity(0, 0);
+    this.isMoving = false;
+    this.showIdleFrame();
+
+    const baseScale = container.scaleX;
     this.scene.tweens.add({
       targets: container,
-      scaleX: 1.3, scaleY: 1.3,
-      duration: 150,
+      scaleX: baseScale * 1.4, scaleY: baseScale * 1.4,
+      duration: 120,
       yoyo: true,
       repeat: 2,
       ease: "Sine.easeInOut",
+      onComplete: () => {
+        container.setScale(baseScale); // guarantee correct scale after tween
+        this.scheduleNextMove();
+      },
     });
   }
 
@@ -133,6 +168,7 @@ export class PedestrianSprite {
     const vy = dir === "up"   ? -spd : dir === "down"  ? spd : 0;
 
     body.setVelocity(vx, vy);
+    this.lastDir = dir;
     this.avatar.walk(dir);
     this.isMoving = true;
 
@@ -157,6 +193,7 @@ export class PedestrianSprite {
 
   destroy() {
     this.moveTimer?.remove(false);
+    this.scene.events.off("update", this.syncAnimation, this);
     this.avatar.destroy();
   }
 }
