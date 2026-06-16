@@ -83,6 +83,7 @@ export class PedestrianSprite {
     body.setSize(TILE_SIZE * 0.5, TILE_SIZE * 0.3);
     body.setOffset(-TILE_SIZE * 0.25, -TILE_SIZE * 0.2);
     body.setCollideWorldBounds(true);
+    body.setImmovable(true);
     body.setMaxVelocity(80, 80);
 
     this.showIdleFrame();
