@@ -178,7 +178,7 @@ export default function Home() {
               position: "fixed", zIndex: 20,
               top: "max(env(safe-area-inset-top, 0px), 12px)",
               left: "max(env(safe-area-inset-left, 0px), 12px)",
-              display: "flex", flexDirection: "column", gap: 8,
+              display: "flex", flexDirection: "column", gap: 6,
             }}>
               <WhereIsNPCCard gameRef={game} wallet={walletAddress} />
               <QuestPanel wallet={walletAddress} />
@@ -203,24 +203,24 @@ export default function Home() {
             ) : (
               /* ── Desktop: unified card panel ── */
               <div style={{
-                background: "rgba(8,10,22,0.52)",
-                border: "1px solid rgba(153,69,255,0.22)",
-                borderRadius: 12,
+                background: "rgba(8,10,22,0.58)",
+                border: "1px solid rgba(153,69,255,0.2)",
+                borderRadius: 14,
                 overflow: "hidden",
-                minWidth: 230,
-                backdropFilter: "blur(14px)",
-                boxShadow: "0 4px 32px rgba(0,0,0,0.35)",
+                width: 210,
+                backdropFilter: "blur(16px)",
+                boxShadow: "0 4px 28px rgba(0,0,0,0.4)",
               }}>
                 {/* Header: icon + PFP + wardrobe */}
                 <div style={{
                   display: "flex", alignItems: "center", gap: 8,
-                  padding: "9px 11px",
+                  padding: "11px 13px",
                   borderBottom: "1px solid rgba(153,69,255,0.1)",
                 }}>
                   <img
                     src="/assets/branding/icon.png"
                     alt=""
-                    style={{ width: 28, height: 28, imageRendering: "pixelated", opacity: 0.9 }}
+                    style={{ width: 26, height: 26, imageRendering: "pixelated", opacity: 0.9 }}
                     onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
                   />
                   <div style={{ flex: 1 }} />
@@ -228,8 +228,8 @@ export default function Home() {
                   <PfpButton gameRef={game} onClick={() => setProfileOpen(true)} />
                 </div>
 
-                {/* Wallet inline — status dot + address/balance + button in one row */}
-                <div style={{ padding: "8px 11px" }}>
+                {/* Wallet inline */}
+                <div style={{ padding: "10px 13px" }}>
                   <WalletBar layout="panel" onWalletChange={handleWalletChange} />
                 </div>
 
@@ -237,7 +237,7 @@ export default function Home() {
                 <div style={{
                   display: "flex", alignItems: "center",
                   borderTop: "1px solid rgba(153,69,255,0.1)",
-                  padding: "5px 8px",
+                  padding: "6px 10px",
                   gap: 6,
                 }}>
                   <div style={{ flex: 1 }}>
