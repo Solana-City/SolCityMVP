@@ -141,6 +141,9 @@ interface Props {
 }
 
 export default function WhereIsNPCCard({ gameRef, wallet }: Props) {
+  // CityScene falls back to "guest" when no wallet is connected — match that
+  // identifier here so score lookups and "you found it" checks line up.
+  const effectiveWallet = wallet ?? "guest";
   const [collapsed, setCollapsed] = useState(false);
   const [showInfo, setShowInfo] = useState(false);
   const [showLeaderboard, setShowLeaderboard] = useState(false);
@@ -164,10 +167,11 @@ export default function WhereIsNPCCard({ gameRef, wallet }: Props) {
     const onFound = ({ wallet: w, loadout }: { wallet: string; loadout: Loadout }) => {
       const newScore = recordFind(w);
       recordRoundWinner(getRoundIndex(), w);
-      if (w === wallet) incrementQuest(w, "hunt_3_npcs");
+      const isMe = w === effectiveWallet;
+      if (isMe) incrementQuest(w, "hunt_3_npcs");
       const short = w.length > 10 ? `${w.slice(0, 4)}…${w.slice(-4)}` : (w === "guest" ? "A visitor" : w);
-      setFoundMsg(w === wallet ? `You found them! ★ ${newScore}` : `${short} found them!`);
-      setMyScore(getMyScore(wallet ?? ""));
+      setFoundMsg(isMe ? `You found them! ★ ${newScore}` : `${short} found them!`);
+      if (isMe) setMyScore(newScore);
       setTargetLoadout(null);
     };
     const onRoundCheck = () => {
@@ -185,9 +189,9 @@ export default function WhereIsNPCCard({ gameRef, wallet }: Props) {
       gameRef.events.off("whereIsNPC:roundCheck", onRoundCheck);
       gameRef.events.off("whereIsNPC:targetInfo", onTargetInfo);
     };
-  }, [gameRef, wallet, round]);
+  }, [gameRef, effectiveWallet, round]);
 
-  useEffect(() => { setMyScore(getMyScore(wallet ?? "")); }, [wallet]);
+  useEffect(() => { setMyScore(getMyScore(effectiveWallet)); }, [effectiveWallet]);
 
   const mm = Math.floor(msLeft / 60000);
   const ss = String(Math.floor((msLeft % 60000) / 1000)).padStart(2, "0");
