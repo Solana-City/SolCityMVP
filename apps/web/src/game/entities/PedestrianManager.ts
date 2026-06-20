@@ -1,7 +1,7 @@
 import * as Phaser from "phaser";
 import { TILE_SIZE, PLAYABLE_ZONE } from "../config/constants";
 import { PedestrianSprite, makePedestrianLoadout } from "./PedestrianSprite";
-import { getTargetPedIndex, advanceFindSlot, ROTATION_BATCH_MS } from "../minigames/whereIsNPC/WhereIsNPCGame";
+import { getTargetPedIndex, advanceFindSlot, getCurrentSlot, ROTATION_BATCH_MS } from "../minigames/whereIsNPC/WhereIsNPCGame";
 
 export const PEDESTRIAN_COUNT = 96;
 const SPEED_BANDS = [18, 24, 24, 30, 30, 38, 44];
@@ -146,6 +146,7 @@ export class PedestrianManager {
     const newIndex = getTargetPedIndex(
       Math.floor(Date.now() / (5 * 60 * 1000)),
       this.pedestrians.length || PEDESTRIAN_COUNT,
+      getCurrentSlot(),
     );
     if (newIndex === this.currentTargetIndex) return;
 

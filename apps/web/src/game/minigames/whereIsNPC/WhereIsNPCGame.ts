@@ -42,8 +42,8 @@ export function getRoundIndex(): number {
   return Math.floor(Date.now() / ROUND_MS);
 }
 
-export function getTargetPedIndex(round: number, pedCount: number): number {
-  return Math.floor(rng(round ^ 0xc0ffee) * pedCount);
+export function getTargetPedIndex(round: number, pedCount: number, slot = 0): number {
+  return Math.floor(rng((round ^ 0xc0ffee) + slot * 0x9e3779b9) * pedCount);
 }
 
 export function getMsRemaining(): number {
@@ -143,4 +143,9 @@ export function markCurrentFound(wallet: string): void {
 export function advanceFindSlot(): void {
   const round = getRoundIndex();
   roundFindCounts.set(round, (roundFindCounts.get(round) ?? 0) + 1);
+}
+
+/** Current find slot within the active round (how many targets already found). */
+export function getCurrentSlot(): number {
+  return roundFindCounts.get(getRoundIndex()) ?? 0;
 }

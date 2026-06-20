@@ -165,7 +165,7 @@ export default function WhereIsNPCCard({ gameRef, wallet }: Props) {
       const newScore = recordFind(w);
       recordRoundWinner(getRoundIndex(), w);
       if (w === wallet) incrementQuest(w, "hunt_3_npcs");
-      const short = `${w.slice(0, 4)}…${w.slice(-4)}`;
+      const short = w.length > 10 ? `${w.slice(0, 4)}…${w.slice(-4)}` : (w === "guest" ? "A visitor" : w);
       setFoundMsg(w === wallet ? `You found them! ★ ${newScore}` : `${short} found them!`);
       setMyScore(getMyScore(wallet ?? ""));
       setTargetLoadout(null);
