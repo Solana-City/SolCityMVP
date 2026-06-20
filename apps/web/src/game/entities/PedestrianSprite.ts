@@ -96,7 +96,13 @@ export class PedestrianSprite {
 
   private syncAnimation() {
     if (!this.isMoving) return;
-    const body = this.avatar.getContainer().body as Phaser.Physics.Arcade.Body;
+    const container = this.avatar.getContainer();
+    // Container/body can already be torn down (e.g. mid-recycle in
+    // PedestrianManager.rotateBatch()) by the time this frame's "update"
+    // fires, since scene.events.off() in destroy() doesn't retroactively
+    // skip a listener collected earlier in the same emit pass.
+    if (!container?.scene || !container.body) return;
+    const body = container.body as Phaser.Physics.Arcade.Body;
     const vx = body.velocity.x;
     const vy = body.velocity.y;
     if (Math.abs(vx) < 1 && Math.abs(vy) < 1) return;
@@ -127,6 +133,7 @@ export class PedestrianSprite {
   /** Brief pause + scale pulse when found, then resume movement cleanly. */
   celebrateFound(): void {
     const container = this.avatar.getContainer();
+    if (!container?.scene || !container.body) return;
     const body = container.body as Phaser.Physics.Arcade.Body;
 
     // Stop movement for the celebration duration
