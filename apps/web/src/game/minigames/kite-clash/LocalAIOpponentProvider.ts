@@ -58,7 +58,6 @@ export class LocalAIOpponentProvider implements OpponentKiteProvider {
     const wave = (Math.sin(phase * Math.PI * 2) + 1) / 2; // 0..1
     this.lineLength = MIN_LINE_LENGTH + wave * (MAX_LINE_LENGTH - MIN_LINE_LENGTH);
 
-    this.attackTimerMs += dtSeconds * 1000;
   }
 
   getActiveOpponents(): OpponentKiteState[] {
@@ -89,19 +88,28 @@ export class LocalAIOpponentProvider implements OpponentKiteProvider {
   }
 
   /**
-   * The rival occasionally rolls a cut attempt against the player too.
+   * The rival rolls a cut attempt against the player. The engine only
+   * calls this when it has already determined the two kites' lines are
+   * actually close enough to cross (same proximity check gating the
+   * player's own attempts) — so every outcome here, including a
+   * self-inflicted "backfire", reads as caused by something the player
+   * can see happening, not a random event out of nowhere.
+   *
    * From the RIVAL's point of view as attacker: "success" = the rival cuts
    * the PLAYER's line (the player's run ends — rival is unaffected and
    * keeps flying); "backfire" = the rival cuts ITS OWN line instead (it
    * dies and respawns after the usual cooldown); "neutral" = nothing.
    */
-  rollOpponentAttacksOnPlayer(playerExposure: number): CutOutcome | null {
-    if (!this.alive) return null;
+  rollOpponentAttacksOnPlayer(playerExposure: number, isNearby: boolean, dtSeconds: number): CutOutcome | null {
+    if (!this.alive || !isNearby) {
+      // Leaving range resets the buildup — requires sustained proximity,
+      // not just a single passing frame, before the next attack fires.
+      this.attackTimerMs = 0;
+      return null;
+    }
+    this.attackTimerMs += dtSeconds * 1000;
     if (this.attackTimerMs < this.ATTACK_INTERVAL_MS) return null;
     this.attackTimerMs = 0;
-    // Flat chance per attempt window that the lines are even crossed —
-    // keeps this simple for the MVP without real line-geometry checks.
-    if (Math.random() > 0.4) return null;
     const outcome = resolveCutAttempt(playerExposure);
     if (outcome === "backfire") this.killRival();
     return outcome;

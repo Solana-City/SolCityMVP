@@ -31,8 +31,14 @@ export interface OpponentKiteProvider {
   getActiveOpponents(): OpponentKiteState[];
   /** Resolve a cut attempt the player makes against one opponent. */
   attemptCut(opponentId: string, attackerExposure: number): CutAttemptResult;
-  /** Resolve a cut attempt an opponent makes against the player (called by the engine each tick). */
-  rollOpponentAttacksOnPlayer(playerExposure: number): CutOutcome | null;
+  /**
+   * Resolve a cut attempt an opponent makes against the player. The engine
+   * passes `isNearby` (computed from the same line-proximity check that
+   * gates the player's own cut attempts) so the provider only ever rolls
+   * an attack while the lines are actually visibly close — never out of
+   * nowhere.
+   */
+  rollOpponentAttacksOnPlayer(playerExposure: number, isNearby: boolean, dtSeconds: number): CutOutcome | null;
 }
 
 export type WindTier = "LOW" | "MEDIUM" | "HIGH";

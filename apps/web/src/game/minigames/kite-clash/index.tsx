@@ -232,19 +232,27 @@ export default function KiteClashGame({ onResult, onClose }: MiniGameComponentPr
         ESC — Close
       </button>
 
-      {/* Controls hint */}
+      {/* Controls hint — switches to an active cut prompt once a rival's
+          (orange, dashed) line is close enough to yours to cross. */}
       <div
         style={{
           position: "absolute",
           bottom: 14,
           left: 16,
           fontSize: 10,
-          color: "rgba(255,255,255,0.55)",
+          color: snapshot?.nearbyOpponent ? "#FFD700" : "rgba(255,255,255,0.55)",
           lineHeight: 1.5,
         }}
       >
-        WASD/Arrows: move<br />
-        Hold Space: reel in (and cut, if crossing a rival's line)
+        WASD/Arrows: move
+        <br />
+        {snapshot?.nearbyOpponent ? (
+          <span style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 11 }}>
+            ✂ HOLD SPACE TO CUT!
+          </span>
+        ) : (
+          "Get close to a rival's (orange) line, then hold Space to cut it"
+        )}
       </div>
 
       {/* End screen */}

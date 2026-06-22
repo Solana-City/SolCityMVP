@@ -56,8 +56,9 @@ export function resolveCutAttempt(targetExposure: number): "success" | "neutral"
 }
 /** Resolution ticks, not every frame — feels like discrete attempts. */
 export const CUT_RESOLUTION_INTERVAL_MS = 500;
-/** Max distance (px) between player and an opponent's line to count as "overlap". */
-export const CUT_OVERLAP_RANGE_PX = 46;
+/** Max distance (px, at a 900px-wide canvas — engine scales this up on wider screens)
+ * between player and an opponent's kite to count as "lines crossing". */
+export const CUT_OVERLAP_RANGE_PX = 70;
 
 // ── Rival AI ──────────────────────────────────────────────────────────────────
 export const RIVAL_SPAWN_DELAY_MS = 4_000;

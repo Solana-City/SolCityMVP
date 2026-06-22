@@ -45,6 +45,10 @@ export interface EngineSnapshot {
   windDirection: WindDirection;
   runNumber: number;
   cutMessage: string | null;
+  /** A rival's line is close enough to attempt a cut — show the HUD hint. */
+  nearbyOpponent: boolean;
+  /** nearbyOpponent && currently holding the reel-in key — cut roll is actively ticking. */
+  cutReady: boolean;
 }
 
 export interface KiteClashEngineCallbacks {
@@ -91,6 +95,10 @@ export class KiteClashEngine {
   private windDirection: WindDirection = "right";
   private windChangeAtMs = 0;
   private elapsedMs = 0;
+
+  /** Closest opponent within cut range this frame, if any — drives both
+   * the highlight ring/HUD hint and what a held-Space cut attempt targets. */
+  private nearbyOpponentId: string | null = null;
 
   private cutResolveTimerMs = 0;
   private spoolAngle = 0;
@@ -254,38 +262,44 @@ export class KiteClashEngine {
     // ── Passive scoring ──
     this.score += scoreRatePerSecond(exposure) * this.currentMultiplier() * dt;
 
-    // ── Opponent simulation + cut resolution ──
+    // ── Opponent simulation ──
     this.opponents.update(dt);
 
-    if (reeling) {
+    // ── Proximity check, once per frame — drives the highlight ring/HUD
+    // hint AND gates both who can attempt a cut on whom this tick. ──
+    const overlapRange = CUT_OVERLAP_RANGE_PX * Math.min(1.3, this.width / 900);
+    const nearby = this.opponents
+      .getActiveOpponents()
+      .find((o) => distance(o.position, this.playerPos) <= overlapRange);
+    this.nearbyOpponentId = nearby?.id ?? null;
+
+    if (reeling && nearby) {
       this.cutResolveTimerMs += dt * 1000;
       if (this.cutResolveTimerMs >= CUT_RESOLUTION_INTERVAL_MS) {
         this.cutResolveTimerMs = 0;
-        this.tryResolveCutAttempt(exposure);
+        this.tryResolveCutAttempt(nearby.id, exposure);
       }
     } else {
       this.cutResolveTimerMs = 0;
     }
 
-    const rivalOutcome = this.opponents.rollOpponentAttacksOnPlayer(exposure);
+    const rivalOutcome = this.opponents.rollOpponentAttacksOnPlayer(exposure, !!nearby, dt);
     if (rivalOutcome === "success") {
       this.endRun("The rival cut your line!");
     } else if (rivalOutcome === "backfire") {
-      this.flashCutMessage("The rival cut its own line!");
+      this.flashCutMessage("The rival cut its own line trying to cut yours!");
     }
   }
 
-  private tryResolveCutAttempt(playerExposure: number): void {
-    const overlapping = this.opponents
-      .getActiveOpponents()
-      .find((o) => distance(o.position, this.playerPos) <= CUT_OVERLAP_RANGE_PX);
-    if (!overlapping) return;
+  private tryResolveCutAttempt(opponentId: string, playerExposure: number): void {
+    const target = this.opponents.getActiveOpponents().find((o) => o.id === opponentId);
+    if (!target) return;
 
-    const result = this.opponents.attemptCut(overlapping.id, playerExposure);
+    const result = this.opponents.attemptCut(opponentId, playerExposure);
     if (result.outcome === "success") {
       this.score += result.scoreBonus;
       this.multiplierIdx = Math.min(this.multiplierIdx + 1, MULTIPLIER_STEPS.length - 1);
-      this.spawnCutVfx(overlapping.position);
+      this.spawnCutVfx(target.position);
       this.flashCutMessage(`Line cut! +${result.scoreBonus}`);
     } else if (result.outcome === "backfire") {
       this.endRun("Your own line was cut!");
@@ -327,6 +341,8 @@ export class KiteClashEngine {
       windDirection: this.windDirection,
       runNumber: this.runNumber,
       cutMessage: this.cutMessage,
+      nearbyOpponent: this.nearbyOpponentId !== null,
+      cutReady: this.nearbyOpponentId !== null && this.isHoldingReelKey(),
     });
   }
 
@@ -342,10 +358,19 @@ export class KiteClashEngine {
     this.renderAmbientKites(ctx);
 
     const exposure = exposureFromLineLength(this.lineLength);
-    for (const o of this.opponents.getActiveOpponents()) {
-      this.renderKite(ctx, o.position, o.exposure, o.skinColor, 0, false);
+    const opponents = this.opponents.getActiveOpponents();
+    for (const o of opponents) {
+      // PLACEHOLDER — every rival kite also flies its own line, anchored
+      // off-screen at a different point than the player's spool, so the
+      // two lines visibly cross when the kites get close. This is the
+      // "lines crossing" cue the cut mechanic is built around.
+      this.renderOpponentLine(ctx, o.position);
     }
     this.renderLine(ctx, this.playerPos);
+    for (const o of opponents) {
+      this.renderKite(ctx, o.position, o.exposure, o.skinColor, 0, false);
+      if (o.id === this.nearbyOpponentId) this.renderCutRing(ctx, o.position, this.isHoldingReelKey());
+    }
     this.renderKite(ctx, this.playerPos, exposure, PLAYER_SKIN_COLOR, this.playerTiltDeg, true);
 
     this.renderCutVfx(ctx);
@@ -517,6 +542,35 @@ export class KiteClashEngine {
     ctx.moveTo(this.width / 2, this.height + 10 - 64 * scale);
     ctx.lineTo(kitePos.x, kitePos.y);
     ctx.stroke();
+  }
+
+  /** PLACEHOLDER — a rival's line, anchored off-screen below at the edge
+   * rather than the player's own spool, so the two lines read as two
+   * separate kites whose strings can visibly cross. */
+  private renderOpponentLine(ctx: CanvasRenderingContext2D, kitePos: { x: number; y: number }): void {
+    const anchorX = kitePos.x < this.width / 2 ? this.width * 0.12 : this.width * 0.88;
+    ctx.strokeStyle = "rgba(255,107,53,0.55)";
+    ctx.setLineDash([6, 5]);
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(anchorX, this.height + 20);
+    ctx.lineTo(kitePos.x, kitePos.y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  /** Pulsing ring shown around a rival kite once its line is close enough
+   * to attempt a cut — brighter/solid while actively holding the reel key. */
+  private renderCutRing(ctx: CanvasRenderingContext2D, pos: { x: number; y: number }, active: boolean): void {
+    const pulse = 0.7 + Math.sin(this.elapsedMs / 120) * 0.3;
+    ctx.save();
+    ctx.strokeStyle = active ? `rgba(255,215,0,${pulse})` : "rgba(255,255,255,0.6)";
+    ctx.lineWidth = active ? 3 : 1.5;
+    ctx.setLineDash(active ? [] : [4, 4]);
+    ctx.beginPath();
+    ctx.arc(pos.x, pos.y, 32, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
   }
 
   private renderCutVfx(ctx: CanvasRenderingContext2D): void {
