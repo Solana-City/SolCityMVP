@@ -120,6 +120,21 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     spriteKey: "Pratik",
   },
   {
+    id: "jokenpo-master",
+    name: "JoKenPo Master",
+    role: "Rock Paper Scissors",
+    tileX: 85,
+    tileY: 117,
+    color: 0xc084fc,
+    dialog: [
+      "Rock. Paper. Scissors. The oldest game, the newest privacy trick.",
+      "We play for devnet SOL. Your move sits inside a TEE — a Private Ephemeral Rollup — so neither I, the validator, nor anyone watching the chain can see it before we both lock in.",
+      "Pick your wager, pick a best-of, and let's see who blinks first.",
+    ],
+    action: { type: "minigame", label: "Challenge me!", miniGameId: "jokenpo" },
+    spriteKey: "JoKenPo Master",
+  },
+  {
     id: "magic-man",
     name: "Magic Man",
     role: "Privacy Operator",

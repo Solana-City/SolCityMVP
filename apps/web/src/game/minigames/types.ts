@@ -15,7 +15,18 @@ export interface FoodCartContext extends MiniGameBaseContext {
   amountLamports: number;
 }
 
-export type MiniGameContext = MiniGameBaseContext | FoodCartContext;
+export type JokenpoOpponent =
+  | { kind: "bot" }
+  | { kind: "player"; wallet: string; gameId: string; isHost: boolean };
+
+export interface JokenpoContext extends MiniGameBaseContext {
+  opponent: JokenpoOpponent;
+  /** Per-player wager in SOL — 0 is a free match. */
+  stakeSol: number;
+  bestOf: 1 | 3;
+}
+
+export type MiniGameContext = MiniGameBaseContext | FoodCartContext | JokenpoContext;
 
 export interface MiniGameResult {
   success: boolean;

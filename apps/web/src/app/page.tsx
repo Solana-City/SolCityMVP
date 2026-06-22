@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import dynamic from "next/dynamic";
+import { PublicKey } from "@solana/web3.js";
 import type { NPCDefinition, NPCAction } from "@/game/config/npcRegistry";
 import type { MiniGameContext, MiniGameResult } from "@/game/minigames/types";
 import { launch as launchMiniGame } from "@/game/minigames";
@@ -30,6 +31,8 @@ const WardrobePanel       = dynamic(() => import("@/ui/WardrobePanel"),       { 
 const ConnectScreen       = dynamic(() => import("@/ui/ConnectScreen"),       { ssr: false });
 const WhereIsNPCCard      = dynamic(() => import("@/ui/WhereIsNPCCard"),      { ssr: false });
 const QuestPanel          = dynamic(() => import("@/ui/QuestPanel"),          { ssr: false });
+const PlayerCard          = dynamic(() => import("@/ui/PlayerCard"),          { ssr: false });
+const InvitePrompt        = dynamic(() => import("@/ui/InvitePrompt"),        { ssr: false });
 
 import ErrorBoundary from "@/ui/ErrorBoundary";
 
@@ -51,6 +54,7 @@ export default function Home() {
   const [activeNPC, setActiveNPC] = useState<NPCDefinition | null>(null);
   const [activeAction, setActiveAction] = useState<NPCAction | null>(null);
   const [activeMiniGame, setActiveMiniGame] = useState<{ id: string; context: MiniGameContext } | null>(null);
+  const [playerCardTarget, setPlayerCardTarget] = useState<{ wallet: string; displayName?: string } | null>(null);
   const [profileOpen, setProfileOpen] = useState(false);
   const [wardrobeOpen, setWardrobeOpen] = useState(false);
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
@@ -78,6 +82,13 @@ export default function Home() {
     return () => { game.events.off("minigame:launch", handler); };
   }, [game]);
 
+  useEffect(() => {
+    if (!game) return;
+    const handler = (data: { wallet: string; displayName?: string }) => setPlayerCardTarget(data);
+    game.events.on("player:cardOpen", handler);
+    return () => { game.events.off("player:cardOpen", handler); };
+  }, [game]);
+
   const handleDialogClose = useCallback(() => {
     setActiveNPC(null);
     game?.events.emit("npc:close");
@@ -100,7 +111,16 @@ export default function Home() {
       return;
     }
     if (action.type === "minigame") {
-      if (action.miniGameId) {
+      if (action.miniGameId === "jokenpo") {
+        launchMiniGame("jokenpo", {
+          wallet: walletAddress ? new PublicKey(walletAddress) : null,
+          opponent: { kind: "bot" },
+          // Real values get picked by the in-overlay stake setup screen for
+          // the bot path — these are just well-typed placeholders until then.
+          stakeSol: 0,
+          bestOf: 1,
+        });
+      } else if (action.miniGameId) {
         // Build a stub context — PDAs are null until on-chain order accounts are wired in
         launchMiniGame(action.miniGameId, {
           wallet: null,
@@ -110,13 +130,13 @@ export default function Home() {
           expiresAt:     Math.floor(Date.now() / 1000) + 60,
           amountLamports: 10_000_000,
         });
-        // Don't emit npc:close — CityScene is paused by minigame:launch;
-        // minigame:close will resume it when the game ends.
       }
+      // Don't emit npc:close — CityScene is paused by minigame:launch;
+      // minigame:close will resume it when the game ends.
       return;
     }
     setActiveAction(action);
-  }, [game]);
+  }, [game, walletAddress]);
 
   const handleActionClose = useCallback(() => {
     setActiveAction(null);
@@ -253,6 +273,16 @@ export default function Home() {
           </div>
 
           <ToastStack />
+          <InvitePrompt gameRef={game} />
+          {playerCardTarget && (
+            <PlayerCard
+              gameRef={game}
+              wallet={playerCardTarget.wallet}
+              displayName={playerCardTarget.displayName}
+              myWallet={walletAddress}
+              onClose={() => setPlayerCardTarget(null)}
+            />
+          )}
           <MobileControls gameRef={game} chatOpen={chatOpen} onChatToggle={() => setChatOpen((v) => !v)} />
           <ChatPanel gameRef={game} visible={chatOpen} />
           <NPCDialog npc={activeNPC} onClose={handleDialogClose} onAction={handleAction} />

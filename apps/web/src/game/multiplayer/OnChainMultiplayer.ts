@@ -48,7 +48,13 @@ type BCMsg =
   | { t: "join";  w: string; x: number; y: number; d: number; m: boolean; name?: string; score?: number }
   | { t: "pos";   w: string; x: number; y: number; d: number; m: boolean }
   | { t: "chat";  w: string; text: string }
-  | { t: "leave"; w: string };
+  | { t: "leave"; w: string }
+  // Game challenge invites — same-browser/tab delivery only for now (no
+  // cross-browser memo fallback yet, unlike chat). Good enough for local
+  // testing with two tabs; a future pass can mirror sendChatMemo's
+  // onLogs-subscription trick for cross-device delivery.
+  | { t: "invite";       w: string; to: string; game: string; gameId: string; stakeLamports: number; bestOf: 1 | 3 }
+  | { t: "invite-reply"; w: string; to: string; game: string; gameId: string; accept: boolean };
 
 // Throttle position broadcasts (ms between sends)
 const POS_THROTTLE_MS = 100;
@@ -439,6 +445,30 @@ export class OnChainMultiplayer {
     return Array.from(this.knownPlayers.values());
   }
 
+  /** Returns what we know about one player (for the click-to-challenge profile card). */
+  getPlayer(wallet: string): OnChainPlayer | undefined {
+    return this.knownPlayers.get(wallet);
+  }
+
+  /**
+   * Send a game challenge to another connected player — same-browser/tab
+   * delivery via BroadcastChannel (see BCMsg note above on the missing
+   * cross-browser fallback). `game` is an extensible id ("jokenpo" today,
+   * more later); `gameId` is the on-chain game PDA seed the host already
+   * picked, so the invite IS the handshake that hands it to the joiner.
+   */
+  sendGameInvite(toWallet: string, opts: { game: string; gameId: string; stakeLamports: number; bestOf: 1 | 3 }): void {
+    const w = this.wallet?.toBase58();
+    if (!w) return;
+    this.bc?.postMessage({ t: "invite", w, to: toWallet, ...opts } satisfies BCMsg);
+  }
+
+  sendGameInviteReply(toWallet: string, opts: { game: string; gameId: string; accept: boolean }): void {
+    const w = this.wallet?.toBase58();
+    if (!w) return;
+    this.bc?.postMessage({ t: "invite-reply", w, to: toWallet, ...opts } satisfies BCMsg);
+  }
+
   /** Called by CityScene when the local player's score changes. */
   updateScore(score: number): void {
     this.localScore = score;
@@ -480,6 +510,18 @@ export class OnChainMultiplayer {
           break;
         case "leave":
           this.handlePlayerLeave(msg.w);
+          break;
+        case "invite":
+          if (msg.to !== walletStr) break;
+          (globalThis as any).__solCityGameEvents?.emit("network:invite", {
+            from: msg.w, game: msg.game, gameId: msg.gameId, stakeLamports: msg.stakeLamports, bestOf: msg.bestOf,
+          });
+          break;
+        case "invite-reply":
+          if (msg.to !== walletStr) break;
+          (globalThis as any).__solCityGameEvents?.emit("network:inviteReply", {
+            from: msg.w, game: msg.game, gameId: msg.gameId, accept: msg.accept,
+          });
           break;
       }
     };

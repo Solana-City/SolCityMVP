@@ -26,6 +26,9 @@ assets/exported/
 # Rust/Anchor build artifacts
 target/
 
+# Program deploy keypairs — holds upgrade authority, never commit
+programs/*/keys/
+
 # TypeScript build cache
 *.tsbuildinfo
 
