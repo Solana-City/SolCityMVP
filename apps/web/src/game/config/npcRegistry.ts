@@ -73,6 +73,21 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     spriteKey: "Sushi Man",
   },
   {
+    id: "kite-pro",
+    name: "Kite Pro",
+    role: "Kite Clash",
+    tileX: 150,
+    tileY: 120,
+    color: 0x00b4d8,
+    dialog: [
+      "Hey! Want to take a kite up and see who else is flying right now?",
+      "Stay airborne to rack up points — the further out you let your line, the faster you score.",
+      "But flying high makes you an easy target. Cut a rival's line for a bonus, if you dare.",
+    ],
+    action: { type: "minigame", label: "Launch Kite", miniGameId: "kite-clash" },
+    spriteKey: "Kite Pro",
+  },
+  {
     id: "swap-npc",
     name: "Jupiter Cat",
     role: "Token Swap",
