@@ -78,7 +78,7 @@ interface Props {
 }
 
 export default function QuestPanel({ wallet }: Props) {
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(true);
   const [showLeaderboard, setShowLeaderboard] = useState(false);
   const [progress, setProgress] = useState<Record<string, QuestProgress>>({});
   const [totalPoints, setTotalPoints] = useState(0);
