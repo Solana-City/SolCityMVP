@@ -28,7 +28,7 @@ import {
   WIND_DRAG_BASE_PX_PER_SEC,
   windDragMultiplier,
   CUT_RESOLUTION_INTERVAL_MS,
-  CUT_OVERLAP_RANGE_PX,
+  CUT_DEPTH_TOLERANCE,
   PLAYER_SKIN_COLOR,
   READY_OVERLAY_MS,
 } from "./constants";
@@ -96,9 +96,12 @@ export class KiteClashEngine {
   private windChangeAtMs = 0;
   private elapsedMs = 0;
 
-  /** Closest opponent within cut range this frame, if any — drives both
-   * the highlight ring/HUD hint and what a held-Space cut attempt targets. */
+  /** Opponent whose LINE is actually crossing the player's line this frame
+   * (at a similar depth — see CUT_DEPTH_TOLERANCE), if any. Drives the
+   * crossing-point highlight, the HUD hint, and what a held-Space cut
+   * attempt targets. The focus is the line crossing, not kite proximity. */
   private nearbyOpponentId: string | null = null;
+  private crossingPoint: { x: number; y: number } | null = null;
 
   private cutResolveTimerMs = 0;
   private spoolAngle = 0;
@@ -154,6 +157,8 @@ export class KiteClashEngine {
     this.multiplierIdx = 0;
     this.lineLength = START_LINE_LENGTH;
     this.cutMessage = null;
+    this.nearbyOpponentId = null;
+    this.crossingPoint = null;
     this.opponents = new LocalAIOpponentProvider({ width: this.width, height: this.height * 0.7 });
     this.resetPlayer();
     this.phase = "ready";
@@ -265,44 +270,57 @@ export class KiteClashEngine {
     // ── Opponent simulation ──
     this.opponents.update(dt);
 
-    // ── Proximity check, once per frame — drives the highlight ring/HUD
-    // hint AND gates both who can attempt a cut on whom this tick. ──
-    const overlapRange = CUT_OVERLAP_RANGE_PX * Math.min(1.3, this.width / 900);
-    const nearby = this.opponents
-      .getActiveOpponents()
-      .find((o) => distance(o.position, this.playerPos) <= overlapRange);
-    this.nearbyOpponentId = nearby?.id ?? null;
+    // ── Line-crossing check, once per frame. The focus is the LINE near
+    // the kite, not the kite itself: two lines only meaningfully cross if
+    // they're actually drawn crossing on screen AND the two kites are
+    // flying at a similar depth (exposure) — a kite reeled in tight and
+    // one let far out aren't really near each other even if their 2D
+    // positions happen to overlap. ──
+    const playerLine = this.playerLineSegment();
+    let nearbyId: string | null = null;
+    let crossing: { x: number; y: number } | null = null;
+    for (const o of this.opponents.getActiveOpponents()) {
+      if (Math.abs(o.exposure - exposure) > CUT_DEPTH_TOLERANCE) continue;
+      const opponentLine = this.opponentLineSegment(o.position);
+      const hit = segmentIntersection(playerLine[0], playerLine[1], opponentLine[0], opponentLine[1]);
+      if (hit) {
+        nearbyId = o.id;
+        crossing = hit;
+        break;
+      }
+    }
+    this.nearbyOpponentId = nearbyId;
+    this.crossingPoint = crossing;
 
-    if (reeling && nearby) {
+    if (reeling && nearbyId) {
       this.cutResolveTimerMs += dt * 1000;
       if (this.cutResolveTimerMs >= CUT_RESOLUTION_INTERVAL_MS) {
         this.cutResolveTimerMs = 0;
-        this.tryResolveCutAttempt(nearby.id, exposure);
+        this.tryResolveCutAttempt(nearbyId, exposure);
       }
     } else {
       this.cutResolveTimerMs = 0;
     }
 
-    const rivalOutcome = this.opponents.rollOpponentAttacksOnPlayer(exposure, !!nearby, dt);
+    const rivalOutcome = this.opponents.rollOpponentAttacksOnPlayer(exposure, !!nearbyId, dt);
     if (rivalOutcome === "success") {
-      this.endRun("The rival cut your line!");
+      this.endRun("The rival cut your line!", this.crossingPoint ?? undefined);
     } else if (rivalOutcome === "backfire") {
       this.flashCutMessage("The rival cut its own line trying to cut yours!");
     }
   }
 
   private tryResolveCutAttempt(opponentId: string, playerExposure: number): void {
-    const target = this.opponents.getActiveOpponents().find((o) => o.id === opponentId);
-    if (!target) return;
-
     const result = this.opponents.attemptCut(opponentId, playerExposure);
+    // The cut happens to the LINE, at the crossing point — not at the kite.
+    const vfxOrigin = this.crossingPoint ?? this.playerPos;
     if (result.outcome === "success") {
       this.score += result.scoreBonus;
       this.multiplierIdx = Math.min(this.multiplierIdx + 1, MULTIPLIER_STEPS.length - 1);
-      this.spawnCutVfx(target.position);
+      this.spawnCutVfx(vfxOrigin);
       this.flashCutMessage(`Line cut! +${result.scoreBonus}`);
     } else if (result.outcome === "backfire") {
-      this.endRun("Your own line was cut!");
+      this.endRun("Your own line was cut!", vfxOrigin);
     }
   }
 
@@ -315,9 +333,9 @@ export class KiteClashEngine {
     this.cutMessageUntilMs = this.elapsedMs + 1800;
   }
 
-  private endRun(reason: string): void {
+  private endRun(reason: string, vfxOrigin?: { x: number; y: number }): void {
     this.phase = "ended";
-    this.spawnCutVfx(this.playerPos);
+    this.spawnCutVfx(vfxOrigin ?? this.playerPos);
     this.flashCutMessage(reason);
   }
 
@@ -369,9 +387,11 @@ export class KiteClashEngine {
     this.renderLine(ctx, this.playerPos);
     for (const o of opponents) {
       this.renderKite(ctx, o.position, o.exposure, o.skinColor, 0, false);
-      if (o.id === this.nearbyOpponentId) this.renderCutRing(ctx, o.position, this.isHoldingReelKey());
     }
     this.renderKite(ctx, this.playerPos, exposure, PLAYER_SKIN_COLOR, this.playerTiltDeg, true);
+    // The cut targets the LINE near the kite, not the kite itself — the
+    // highlight lives at the actual crossing point of the two lines.
+    if (this.crossingPoint) this.renderCrossingHighlight(ctx, this.crossingPoint, this.isHoldingReelKey());
 
     this.renderCutVfx(ctx);
     this.renderHands(ctx);
@@ -534,12 +554,35 @@ export class KiteClashEngine {
     ctx.restore();
   }
 
-  private renderLine(ctx: CanvasRenderingContext2D, kitePos: { x: number; y: number }): void {
+  /** The player's spool anchor point — shared by the line geometry used for
+   * both rendering and the line-crossing cut check. */
+  private playerLineAnchor(): { x: number; y: number } {
     const scale = Math.min(1.3, this.width / 900);
+    return { x: this.width / 2, y: this.height + 10 - 64 * scale };
+  }
+
+  private playerLineSegment(): [{ x: number; y: number }, { x: number; y: number }] {
+    return [this.playerLineAnchor(), this.playerPos];
+  }
+
+  /** A rival's off-screen anchor — different point than the player's own
+   * spool so the two lines read as two separate kites/handlers, the same
+   * geometry used to test whether the lines actually cross. */
+  private opponentLineAnchor(kitePos: { x: number; y: number }): { x: number; y: number } {
+    const anchorX = kitePos.x < this.width / 2 ? this.width * 0.12 : this.width * 0.88;
+    return { x: anchorX, y: this.height + 20 };
+  }
+
+  private opponentLineSegment(kitePos: { x: number; y: number }): [{ x: number; y: number }, { x: number; y: number }] {
+    return [this.opponentLineAnchor(kitePos), kitePos];
+  }
+
+  private renderLine(ctx: CanvasRenderingContext2D, kitePos: { x: number; y: number }): void {
+    const anchor = this.playerLineAnchor();
     ctx.strokeStyle = "rgba(255,255,255,0.7)";
     ctx.lineWidth = 1.5;
     ctx.beginPath();
-    ctx.moveTo(this.width / 2, this.height + 10 - 64 * scale);
+    ctx.moveTo(anchor.x, anchor.y);
     ctx.lineTo(kitePos.x, kitePos.y);
     ctx.stroke();
   }
@@ -548,27 +591,31 @@ export class KiteClashEngine {
    * rather than the player's own spool, so the two lines read as two
    * separate kites whose strings can visibly cross. */
   private renderOpponentLine(ctx: CanvasRenderingContext2D, kitePos: { x: number; y: number }): void {
-    const anchorX = kitePos.x < this.width / 2 ? this.width * 0.12 : this.width * 0.88;
+    const anchor = this.opponentLineAnchor(kitePos);
     ctx.strokeStyle = "rgba(255,107,53,0.55)";
     ctx.setLineDash([6, 5]);
     ctx.lineWidth = 1.5;
     ctx.beginPath();
-    ctx.moveTo(anchorX, this.height + 20);
+    ctx.moveTo(anchor.x, anchor.y);
     ctx.lineTo(kitePos.x, kitePos.y);
     ctx.stroke();
     ctx.setLineDash([]);
   }
 
-  /** Pulsing ring shown around a rival kite once its line is close enough
-   * to attempt a cut — brighter/solid while actively holding the reel key. */
-  private renderCutRing(ctx: CanvasRenderingContext2D, pos: { x: number; y: number }, active: boolean): void {
+  /**
+   * Pulsing highlight drawn AT the point where the player's and a rival's
+   * lines actually cross — the cut targets the line, not the kite, so the
+   * feedback lives there instead of on either kite shape.
+   */
+  private renderCrossingHighlight(ctx: CanvasRenderingContext2D, pos: { x: number; y: number }, active: boolean): void {
     const pulse = 0.7 + Math.sin(this.elapsedMs / 120) * 0.3;
     ctx.save();
-    ctx.strokeStyle = active ? `rgba(255,215,0,${pulse})` : "rgba(255,255,255,0.6)";
-    ctx.lineWidth = active ? 3 : 1.5;
-    ctx.setLineDash(active ? [] : [4, 4]);
+    ctx.strokeStyle = active ? `rgba(255,215,0,${pulse})` : "rgba(255,255,255,0.7)";
+    ctx.fillStyle = active ? `rgba(255,215,0,${pulse * 0.5})` : "rgba(255,255,255,0.25)";
+    ctx.lineWidth = active ? 2.5 : 1.5;
     ctx.beginPath();
-    ctx.arc(pos.x, pos.y, 32, 0, Math.PI * 2);
+    ctx.arc(pos.x, pos.y, active ? 10 : 7, 0, Math.PI * 2);
+    ctx.fill();
     ctx.stroke();
     ctx.restore();
   }
@@ -632,8 +679,28 @@ function clamp(v: number, min: number, max: number): number {
 function lerp(a: number, b: number, t: number): number {
   return a + (b - a) * t;
 }
-function distance(a: { x: number; y: number }, b: { x: number; y: number }): number {
-  return Math.hypot(a.x - b.x, a.y - b.y);
+/**
+ * Standard segment-segment intersection (parametric form). Returns the
+ * intersection point only if it falls within both segments — this is what
+ * "the lines are crossing" means geometrically, not just "the kites are
+ * close together."
+ */
+function segmentIntersection(
+  p1: { x: number; y: number },
+  p2: { x: number; y: number },
+  p3: { x: number; y: number },
+  p4: { x: number; y: number }
+): { x: number; y: number } | null {
+  const d1x = p2.x - p1.x;
+  const d1y = p2.y - p1.y;
+  const d2x = p4.x - p3.x;
+  const d2y = p4.y - p3.y;
+  const denom = d1x * d2y - d1y * d2x;
+  if (Math.abs(denom) < 1e-6) return null; // parallel
+  const t = ((p3.x - p1.x) * d2y - (p3.y - p1.y) * d2x) / denom;
+  const u = ((p3.x - p1.x) * d1y - (p3.y - p1.y) * d1x) / denom;
+  if (t < 0 || t > 1 || u < 0 || u > 1) return null;
+  return { x: p1.x + t * d1x, y: p1.y + t * d1y };
 }
 function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number): void {
   ctx.beginPath();

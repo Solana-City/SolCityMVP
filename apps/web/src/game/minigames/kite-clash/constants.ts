@@ -56,9 +56,13 @@ export function resolveCutAttempt(targetExposure: number): "success" | "neutral"
 }
 /** Resolution ticks, not every frame — feels like discrete attempts. */
 export const CUT_RESOLUTION_INTERVAL_MS = 500;
-/** Max distance (px, at a 900px-wide canvas — engine scales this up on wider screens)
- * between player and an opponent's kite to count as "lines crossing". */
-export const CUT_OVERLAP_RANGE_PX = 70;
+/**
+ * Two kites' lines can only meaningfully cross if they're flying at a
+ * similar depth — a kite reeled in close and one let far out aren't
+ * actually near each other in 3D even if their 2D projections overlap.
+ * Max allowed |exposureA - exposureB| (0-1) for a line-crossing to count.
+ */
+export const CUT_DEPTH_TOLERANCE = 0.4;
 
 // ── Rival AI ──────────────────────────────────────────────────────────────────
 export const RIVAL_SPAWN_DELAY_MS = 4_000;

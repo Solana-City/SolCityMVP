@@ -251,7 +251,7 @@ export default function KiteClashGame({ onResult, onClose }: MiniGameComponentPr
             ✂ HOLD SPACE TO CUT!
           </span>
         ) : (
-          "Get close to a rival's (orange) line, then hold Space to cut it"
+          "Cross your line over a rival's (orange) at a similar depth, then hold Space to cut it"
         )}
       </div>
 
