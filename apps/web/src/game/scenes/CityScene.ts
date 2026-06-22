@@ -677,6 +677,16 @@ export class CityScene extends Phaser.Scene {
     avatar.getContainer().add(label);
     this.nameLabels.set(wallet, label);
 
+    // Clickable hit zone — opens this player's profile card in React.
+    const container = avatar.getContainer();
+    container.setData("wallet", wallet);
+    const hitZone = this.add.rectangle(0, -24, 48, 72, 0x000000, 0);
+    hitZone.setInteractive({ useHandCursor: true });
+    hitZone.on("pointerdown", () => {
+      this.game.events.emit("player:cardOpen", { wallet, displayName });
+    });
+    container.add(hitZone);
+
     this.chat.addSystemMessage(`${displayName} entered the city`);
   }
 

@@ -30,6 +30,7 @@ const WardrobePanel       = dynamic(() => import("@/ui/WardrobePanel"),       { 
 const ConnectScreen       = dynamic(() => import("@/ui/ConnectScreen"),       { ssr: false });
 const WhereIsNPCCard      = dynamic(() => import("@/ui/WhereIsNPCCard"),      { ssr: false });
 const QuestPanel          = dynamic(() => import("@/ui/QuestPanel"),          { ssr: false });
+const PlayerCard          = dynamic(() => import("@/ui/PlayerCard"),          { ssr: false });
 
 import ErrorBoundary from "@/ui/ErrorBoundary";
 
@@ -51,6 +52,7 @@ export default function Home() {
   const [activeNPC, setActiveNPC] = useState<NPCDefinition | null>(null);
   const [activeAction, setActiveAction] = useState<NPCAction | null>(null);
   const [activeMiniGame, setActiveMiniGame] = useState<{ id: string; context: MiniGameContext } | null>(null);
+  const [playerCardTarget, setPlayerCardTarget] = useState<{ wallet: string; displayName?: string } | null>(null);
   const [profileOpen, setProfileOpen] = useState(false);
   const [wardrobeOpen, setWardrobeOpen] = useState(false);
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
@@ -76,6 +78,13 @@ export default function Home() {
     const handler = (data: { id: string; context: MiniGameContext }) => setActiveMiniGame(data);
     game.events.on("minigame:launch", handler);
     return () => { game.events.off("minigame:launch", handler); };
+  }, [game]);
+
+  useEffect(() => {
+    if (!game) return;
+    const handler = (data: { wallet: string; displayName?: string }) => setPlayerCardTarget(data);
+    game.events.on("player:cardOpen", handler);
+    return () => { game.events.off("player:cardOpen", handler); };
   }, [game]);
 
   const handleDialogClose = useCallback(() => {
@@ -253,6 +262,15 @@ export default function Home() {
           </div>
 
           <ToastStack />
+          {playerCardTarget && (
+            <PlayerCard
+              gameRef={game}
+              wallet={playerCardTarget.wallet}
+              displayName={playerCardTarget.displayName}
+              myWallet={walletAddress}
+              onClose={() => setPlayerCardTarget(null)}
+            />
+          )}
           <MobileControls gameRef={game} chatOpen={chatOpen} onChatToggle={() => setChatOpen((v) => !v)} />
           <ChatPanel gameRef={game} visible={chatOpen} />
           <NPCDialog npc={activeNPC} onClose={handleDialogClose} onAction={handleAction} />

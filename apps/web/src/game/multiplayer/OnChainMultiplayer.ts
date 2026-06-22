@@ -439,6 +439,11 @@ export class OnChainMultiplayer {
     return Array.from(this.knownPlayers.values());
   }
 
+  /** Returns what we know about one player (for the click-to-view profile card). */
+  getPlayer(wallet: string): OnChainPlayer | undefined {
+    return this.knownPlayers.get(wallet);
+  }
+
   /** Called by CityScene when the local player's score changes. */
   updateScore(score: number): void {
     this.localScore = score;
