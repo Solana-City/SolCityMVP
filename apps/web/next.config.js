@@ -66,6 +66,7 @@ module.exports = withPWA({
   workboxOptions: {
     skipWaiting: true,
     clientsClaim: true,
+    cleanupOutdatedCaches: true,
     // Explicit NetworkOnly for any GET calls to blockchain infra
     runtimeCaching: [
       // Solana RPC endpoints — never cache
@@ -84,12 +85,12 @@ module.exports = withPWA({
         handler: "NetworkOnly",
       },
       // Game static assets — cache aggressively (served from same origin /public)
-      // v2: bumped to bust stale pink-background sprite cache from previous deploy
+      // v4: bumped to bust old WebGL-era caches and force fresh asset loads
       {
         urlPattern: /\/assets\/(tilesets|sprites|maps|minigames|icons)\//,
         handler: "CacheFirst",
         options: {
-          cacheName: "sc-game-assets-v2",
+          cacheName: "sc-game-assets-v4",
           expiration: {
             maxEntries: 200,
             maxAgeSeconds: 30 * 24 * 60 * 60, // 30 days

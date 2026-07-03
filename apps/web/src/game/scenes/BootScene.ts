@@ -79,6 +79,18 @@ export class BootScene extends Phaser.Scene {
   create(): void {
     generateTileset(this);
 
+    const isMobile = window.matchMedia("(pointer: coarse)").matches;
+
+    if (isMobile) {
+      // On mobile, applyChromaKey calls getImageData/putImageData on every
+      // paperdoll sprite synchronously — this blocks the main thread long
+      // enough for iOS to kill the tab. Skip it; sprites show a pink fringe
+      // but the game loads. Pre-processed sprites (transparent background
+      // baked in) will eliminate this trade-off when ready.
+      this.scene.start("CityScene");
+      return;
+    }
+
     // Apply chroma key to all paper doll layers — removes the pink background
     // (rgb 215,123,186) so layers composite transparently over each other.
     for (const { variant } of getAllLayerVariants()) {
