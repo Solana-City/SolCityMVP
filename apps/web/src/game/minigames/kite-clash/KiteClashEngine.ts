@@ -78,6 +78,8 @@ export class KiteClashEngine {
   private rafId: number | null = null;
   private lastTs = 0;
   private heldKeys = new Set<string>();
+  private touchReelActive = false;
+  private touchMove = { dx: 0, dy: 0 };
 
   private phase: RunPhase = "ready";
   private readyUntilMs = 0;
@@ -186,8 +188,18 @@ export class KiteClashEngine {
     this.heldKeys.delete(e.key.toLowerCase());
   };
 
+  /** Called by the touch REEL button in the React wrapper. */
+  setTouchReel(active: boolean): void {
+    this.touchReelActive = active;
+  }
+
+  /** Called by the touch joystick in the React wrapper (-1..1 each axis). */
+  setTouchMove(dx: number, dy: number): void {
+    this.touchMove = { dx, dy };
+  }
+
   private isHoldingReelKey(): boolean {
-    return this.heldKeys.has(" ") || this.heldKeys.has("spacebar");
+    return this.touchReelActive || this.heldKeys.has(" ") || this.heldKeys.has("spacebar");
   }
 
   private scheduleNextWindChange(): void {
@@ -232,13 +244,15 @@ export class KiteClashEngine {
 
     this.maybeChangeWind();
 
-    // ── Movement (WASD/arrows) ──
-    let vx = 0;
-    let vy = 0;
+    // ── Movement (WASD/arrows OR touch joystick) ──
+    let vx = this.touchMove.dx;
+    let vy = this.touchMove.dy;
     if (this.heldKeys.has("a") || this.heldKeys.has("arrowleft")) vx -= 1;
     if (this.heldKeys.has("d") || this.heldKeys.has("arrowright")) vx += 1;
     if (this.heldKeys.has("w") || this.heldKeys.has("arrowup")) vy -= 1;
     if (this.heldKeys.has("s") || this.heldKeys.has("arrowdown")) vy += 1;
+    vx = clamp(vx, -1, 1);
+    vy = clamp(vy, -1, 1);
 
     const exposure = exposureFromLineLength(this.lineLength);
 

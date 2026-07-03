@@ -1,9 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { KiteClashEngine, type EngineSnapshot } from "./KiteClashEngine";
 import type { MiniGameComponentProps } from "../types";
 import type { MiniGameBaseContext } from "../types";
+
+const isTouchDevice = () =>
+  typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches;
 
 const WIND_BARS: Record<EngineSnapshot["windTier"], number> = { LOW: 1, MEDIUM: 2, HIGH: 3 };
 
@@ -13,11 +16,51 @@ const WIND_BARS: Record<EngineSnapshot["windTier"], number> = { LOW: 1, MEDIUM: 
  * overlay on top, matching the existing minigame overlays' convention of
  * crisp DOM text over a game canvas rather than canvas-drawn text.
  */
+const JOYSTICK_R = 48; // px
+
 export default function KiteClashGame({ onResult, onClose }: MiniGameComponentProps<MiniGameBaseContext>) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const engineRef = useRef<KiteClashEngine | null>(null);
   const lastUiUpdateRef = useRef(0);
   const [snapshot, setSnapshot] = useState<EngineSnapshot | null>(null);
+  const [isTouch, setIsTouch] = useState(false);
+
+  // joystick state refs (not React state — updated on every pointer move)
+  const joystickOrigin = useRef({ x: 0, y: 0 });
+  const joystickPointerId = useRef<number | null>(null);
+  const joystickThumbRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setIsTouch(isTouchDevice());
+  }, []);
+
+  // Joystick handlers
+  const onJoyDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (joystickPointerId.current !== null) return;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    joystickPointerId.current = e.pointerId;
+    const rect = e.currentTarget.getBoundingClientRect();
+    joystickOrigin.current = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+  }, []);
+
+  const onJoyMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (joystickPointerId.current !== e.pointerId) return;
+    const dx = e.clientX - joystickOrigin.current.x;
+    const dy = e.clientY - joystickOrigin.current.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    const clamped = Math.min(dist, JOYSTICK_R);
+    const angle = Math.atan2(dy, dx);
+    const tx = Math.cos(angle) * clamped;
+    const ty = Math.sin(angle) * clamped;
+    if (joystickThumbRef.current) joystickThumbRef.current.style.transform = `translate(${tx}px,${ty}px)`;
+    engineRef.current?.setTouchMove(tx / JOYSTICK_R, ty / JOYSTICK_R);
+  }, []);
+
+  const onJoyRelease = useCallback(() => {
+    joystickPointerId.current = null;
+    if (joystickThumbRef.current) joystickThumbRef.current.style.transform = "translate(0px,0px)";
+    engineRef.current?.setTouchMove(0, 0);
+  }, []);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -232,28 +275,87 @@ export default function KiteClashGame({ onResult, onClose }: MiniGameComponentPr
         ESC — Close
       </button>
 
-      {/* Controls hint — switches to an active cut prompt once a rival's
-          (orange, dashed) line is close enough to yours to cross. */}
-      <div
-        style={{
-          position: "absolute",
-          bottom: 14,
-          left: 16,
-          fontSize: 10,
-          color: snapshot?.nearbyOpponent ? "#FFD700" : "rgba(255,255,255,0.55)",
-          lineHeight: 1.5,
-        }}
-      >
-        WASD/Arrows: move
-        <br />
-        {snapshot?.nearbyOpponent ? (
-          <span style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 11 }}>
-            ✂ HOLD SPACE TO CUT!
-          </span>
-        ) : (
-          "Cross your line over a rival's (orange) at a similar depth, then hold Space to cut it"
-        )}
-      </div>
+      {/* Controls hint — desktop only (on mobile the touch buttons replace this) */}
+      {!isTouch && (
+        <div
+          style={{
+            position: "absolute",
+            bottom: 14,
+            left: 16,
+            fontSize: 10,
+            color: snapshot?.nearbyOpponent ? "#FFD700" : "rgba(255,255,255,0.55)",
+            lineHeight: 1.5,
+          }}
+        >
+          WASD/Arrows: move
+          <br />
+          {snapshot?.nearbyOpponent ? (
+            <span style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 11 }}>
+              ✂ HOLD SPACE TO CUT!
+            </span>
+          ) : (
+            "Cross your line over a rival's (orange) at a similar depth, then hold Space to cut it"
+          )}
+        </div>
+      )}
+
+      {/* Touch controls — only on mobile */}
+      {isTouch && snapshot?.phase === "playing" && (
+        <div style={{
+          position: "absolute", bottom: 0, left: 0, right: 0,
+          display: "flex", justifyContent: "space-between", alignItems: "flex-end",
+          padding: "0 20px max(env(safe-area-inset-bottom, 0px), 20px)",
+          pointerEvents: "none",
+        }}>
+          {/* Left — kite joystick */}
+          <div
+            onPointerDown={onJoyDown}
+            onPointerMove={onJoyMove}
+            onPointerUp={onJoyRelease}
+            onPointerCancel={onJoyRelease}
+            style={{
+              width: 110, height: 110, borderRadius: "50%",
+              background: "rgba(153,69,255,0.12)",
+              border: "2px solid rgba(153,69,255,0.35)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              touchAction: "none", userSelect: "none", pointerEvents: "auto",
+            }}
+          >
+            <div ref={joystickThumbRef} style={{
+              width: 40, height: 40, borderRadius: "50%",
+              background: "rgba(153,69,255,0.55)",
+              border: "2px solid rgba(153,69,255,0.85)",
+              pointerEvents: "none", willChange: "transform",
+            }} />
+          </div>
+
+          {/* Right — REEL / CUT hold button */}
+          <button
+            onPointerDown={(e) => { e.preventDefault(); engineRef.current?.setTouchReel(true); }}
+            onPointerUp={() => engineRef.current?.setTouchReel(false)}
+            onPointerCancel={() => engineRef.current?.setTouchReel(false)}
+            style={{
+              width: 90, height: 90, borderRadius: "50%",
+              background: snapshot?.nearbyOpponent
+                ? "rgba(255,107,53,0.35)"
+                : "rgba(20,241,149,0.18)",
+              border: `2px solid ${snapshot?.nearbyOpponent ? "#FF6B35" : "rgba(20,241,149,0.5)"}`,
+              color: snapshot?.nearbyOpponent ? "#FF6B35" : "#14F195",
+              fontSize: "9px",
+              fontFamily: '"Press Start 2P", monospace',
+              cursor: "pointer",
+              touchAction: "none",
+              userSelect: "none",
+              pointerEvents: "auto",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              textAlign: "center", lineHeight: 1.4,
+              WebkitTapHighlightColor: "transparent",
+            }}
+          >
+            {snapshot?.nearbyOpponent ? "✂ CUT" : "REEL"}
+          </button>
+        </div>
+      )}
 
       {/* End screen */}
       {snapshot?.phase === "ended" && (

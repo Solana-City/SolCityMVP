@@ -73,7 +73,7 @@ export default function PhaserGame({ onGameReady }: PhaserGameProps) {
     <div
       ref={containerRef}
       className="w-full h-full"
-      style={{ imageRendering: "pixelated" }}
+      style={{ imageRendering: "pixelated", touchAction: "none" }}
     />
   );
 }

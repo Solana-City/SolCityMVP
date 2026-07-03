@@ -57,6 +57,7 @@ export default function Home() {
   const [wardrobeOpen, setWardrobeOpen] = useState(false);
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
   const [logOpen, setLogOpen] = useState(false);
+  const [mobilePanel, setMobilePanel] = useState<"hunt" | "quests" | null>(null);
   // Chat hidden by default on touch devices, visible on desktop
   const [chatOpen, setChatOpen] = useState(() =>
     typeof window === "undefined"
@@ -182,7 +183,7 @@ export default function Home() {
           <HUD />
 
           {/* Left-side panel stack — hunt card + daily quests */}
-          {!isTouch && (
+          {!isTouch ? (
             <div style={{
               position: "fixed", zIndex: 20,
               top: "max(env(safe-area-inset-top, 0px), 12px)",
@@ -192,6 +193,30 @@ export default function Home() {
               <WhereIsNPCCard gameRef={game} wallet={walletAddress} />
               <QuestPanel wallet={walletAddress} />
             </div>
+          ) : (
+            /* Mobile: icon buttons to open panels as overlays */
+            <>
+              <div style={{
+                position: "fixed", zIndex: 20,
+                top: "max(env(safe-area-inset-top, 0px), 52px)",
+                left: "max(env(safe-area-inset-left, 0px), 12px)",
+                display: "flex", flexDirection: "column", gap: 6,
+              }}>
+                <MobilePanelToggle icon="🎯" active={mobilePanel === "hunt"} onClick={() => setMobilePanel(v => v === "hunt" ? null : "hunt")} />
+                <MobilePanelToggle icon="📋" active={mobilePanel === "quests"} onClick={() => setMobilePanel(v => v === "quests" ? null : "quests")} />
+              </div>
+              {mobilePanel !== null && (
+                <div style={{
+                  position: "fixed", zIndex: 25,
+                  top: "max(env(safe-area-inset-top, 0px), 12px)",
+                  left: "max(env(safe-area-inset-left, 0px), 58px)",
+                  maxHeight: "60vh", overflowY: "auto",
+                }} onClick={e => { if (e.target === e.currentTarget) setMobilePanel(null); }}>
+                  {mobilePanel === "hunt" && <WhereIsNPCCard gameRef={game} wallet={walletAddress} />}
+                  {mobilePanel === "quests" && <QuestPanel wallet={walletAddress} />}
+                </div>
+              )}
+            </>
           )}
 
           {/* Top-right HUD panel */}
@@ -290,6 +315,26 @@ export default function Home() {
         </main>
       </SolanaProvider>
     </ErrorBoundary>
+  );
+}
+
+function MobilePanelToggle({ icon, active, onClick }: { icon: string; active: boolean; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        width: 40, height: 40, borderRadius: 10,
+        border: `1px solid ${active ? "rgba(20,241,149,0.6)" : "rgba(153,69,255,0.3)"}`,
+        background: active ? "rgba(20,241,149,0.15)" : "rgba(8,10,22,0.7)",
+        backdropFilter: "blur(8px)",
+        cursor: "pointer",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        fontSize: 18, flexShrink: 0,
+        WebkitTapHighlightColor: "transparent",
+      }}
+    >
+      {icon}
+    </button>
   );
 }
 

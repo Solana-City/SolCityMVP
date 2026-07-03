@@ -2,14 +2,15 @@
 
 import { useWallet } from "@solana/wallet-adapter-react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 
 export default function ConnectScreen() {
   const { connected } = useWallet();
   const { setVisible } = useWalletModal();
   const openModal = useCallback(() => setVisible(true), [setVisible]);
+  const [dismissed, setDismissed] = useState(false);
 
-  if (connected) return null;
+  if (connected || dismissed) return null;
 
   return (
     <div
@@ -44,7 +45,7 @@ export default function ConnectScreen() {
       <div
         style={{
           position: "absolute",
-          bottom: "6%",
+          bottom: "max(env(safe-area-inset-bottom, 0px), 6%)",
           left: "50%",
           transform: "translateX(-50%)",
           display: "flex",
@@ -54,10 +55,10 @@ export default function ConnectScreen() {
           background: "rgba(6,8,20,0.58)",
           border: "1px solid rgba(153,69,255,0.28)",
           borderRadius: 20,
-          padding: "28px 48px 22px",
+          padding: "28px 32px 22px",
           backdropFilter: "blur(16px)",
           boxShadow: "0 8px 40px rgba(0,0,0,0.45)",
-          minWidth: 320,
+          width: "min(360px, 90vw)",
         }}
       >
         <div style={{ textAlign: "center", marginBottom: 4 }}>
@@ -112,10 +113,7 @@ export default function ConnectScreen() {
         </button>
 
         <button
-          onClick={() => {
-            const el = document.getElementById("solcity-connect-overlay");
-            if (el) el.style.display = "none";
-          }}
+          onClick={() => setDismissed(true)}
           style={{
             fontFamily: '"Fira Code", monospace',
             fontSize: 12,
