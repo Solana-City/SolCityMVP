@@ -88,12 +88,29 @@ export class CityScene extends Phaser.Scene {
     // plaza structure and must use fixed depth, not Y-sort.
     const Y_SORT_PREFIXES = ["Vegetation", "DecorLight", "Build", "GameAsset"];
 
+    // On mobile, skip purely decorative layers with no collision tiles.
+    // 69 layers × 200×200 tiles = 2.76M Tile objects (~690MB) kills mobile tabs.
+    // Lamp posts, bushes, and extra palm groups are skipped — buildings/trees kept.
+    const isMobileMap = window.matchMedia("(pointer: coarse)").matches;
+    const MOBILE_SKIP_PREFIXES = ["DecorLight", "VegetationBush", "DecorKGBin"];
+    // Track how many VegetationPalm layers we keep — first 2 are enough on mobile.
+    let palmLayerCount = 0;
+
     // Create all tile layers in order from the JSON.
     // Do NOT pass x/y — Phaser defaults to layerData.x/y which already
     // incorporates the Tiled offsetx/offsety for each layer. Passing 0,0
     // would override those offsets and shift every layer to the origin.
     for (let i = 0; i < map.layers.length; i++) {
       const layerName = map.layers[i].name;
+
+      if (isMobileMap) {
+        if (MOBILE_SKIP_PREFIXES.some(p => layerName.startsWith(p))) continue;
+        if (layerName.startsWith("VegetationPalm")) {
+          if (palmLayerCount >= 2) continue;
+          palmLayerCount++;
+        }
+      }
+
       const layer = map.createLayer(i, allTilesets);
       if (!layer) continue;
 
