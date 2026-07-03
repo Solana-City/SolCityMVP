@@ -20,11 +20,15 @@ export default function PhaserGame({ onGameReady }: PhaserGameProps) {
   useEffect(() => {
     if (gameRef.current || !containerRef.current) return;
 
+    // On mobile (coarse-pointer / touch devices) force Canvas2D instead of
+    // WebGL. WebGL uploads every texture to GPU VRAM, and the combined weight
+    // of 16 tilesets + 22 paperdoll sheets + 13 NPC sprites saturates mobile
+    // GPU memory, causing Chrome/Safari to kill the tab (OOM crash).
+    // Canvas2D keeps textures in system RAM which has a much higher limit.
+    // On desktop AUTO still picks WebGL for crisp pixel art.
+    const isMobile = window.matchMedia("(pointer: coarse)").matches;
     const config: Phaser.Types.Core.GameConfig = {
-      // AUTO lets Phaser fall back to Canvas if WebGL context creation fails
-      // (e.g. GPU memory exhausted, too many WebGL contexts, restricted WebView).
-      // Forcing WEBGL on mobile causes a hard crash with no error boundary catch.
-      type: Phaser.AUTO,
+      type: isMobile ? Phaser.CANVAS : Phaser.AUTO,
       parent: containerRef.current,
       width: window.innerWidth,
       height: window.innerHeight,
@@ -58,9 +62,8 @@ export default function PhaserGame({ onGameReady }: PhaserGameProps) {
         antialias: false,
         antialiasGL: false,
         roundPixels: true,
-        // Hint to the GPU driver to prefer battery-saving mode on mobile.
-        // Reduces heat and GPU memory pressure, helping avoid context loss.
-        powerPreference: "low-power",
+        // Only relevant for WebGL; ignored in Canvas mode.
+        powerPreference: isMobile ? "default" : "low-power",
       },
     };
 
