@@ -60,6 +60,8 @@ export class PedestrianSprite {
   private moveTimer: Phaser.Time.TimerEvent | null = null;
   private isMoving = false;
   private lastDir: Direction = "down";
+  private walkVx = 0;
+  private walkVy = 0;
 
   constructor(
     scene: Phaser.Scene,
@@ -84,7 +86,8 @@ export class PedestrianSprite {
     body.setSize(TILE_SIZE * 0.5, TILE_SIZE * 0.3);
     body.setOffset(-TILE_SIZE * 0.25, -TILE_SIZE * 0.2);
     body.setCollideWorldBounds(true);
-    body.setImmovable(true);
+    body.setImmovable(false);
+    body.setDrag(600, 600);
     body.setMaxVelocity(80, 80);
 
     this.showIdleFrame();
@@ -95,7 +98,6 @@ export class PedestrianSprite {
   }
 
   private syncAnimation() {
-    if (!this.isMoving) return;
     const container = this.avatar.getContainer();
     // Container/body can already be torn down (e.g. mid-recycle in
     // PedestrianManager.rotateBatch()) by the time this frame's "update"
@@ -103,9 +105,16 @@ export class PedestrianSprite {
     // skip a listener collected earlier in the same emit pass.
     if (!container?.scene || !container.body) return;
     const body = container.body as Phaser.Physics.Arcade.Body;
+
+    if (this.isMoving) {
+      // Reapply intended walk velocity each frame so drag only kills push impulses
+      // (extra velocity added by player collision) without fighting the walk itself.
+      body.setVelocity(this.walkVx, this.walkVy);
+    }
+
     const vx = body.velocity.x;
     const vy = body.velocity.y;
-    if (Math.abs(vx) < 1 && Math.abs(vy) < 1) return;
+    if (!this.isMoving || (Math.abs(vx) < 1 && Math.abs(vy) < 1)) return;
 
     const dir: Direction = Math.abs(vx) >= Math.abs(vy)
       ? (vx > 0 ? "right" : "left")
@@ -139,6 +148,8 @@ export class PedestrianSprite {
     // Stop movement for the celebration duration
     this.moveTimer?.remove(false);
     this.moveTimer = null;
+    this.walkVx = 0;
+    this.walkVy = 0;
     body.setVelocity(0, 0);
     this.isMoving = false;
     this.showIdleFrame();
@@ -184,10 +195,10 @@ export class PedestrianSprite {
     const dir = DIRS[Math.floor(Math.random() * DIRS.length)];
 
     const spd = this.speed;
-    const vx = dir === "left" ? -spd : dir === "right" ? spd : 0;
-    const vy = dir === "up"   ? -spd : dir === "down"  ? spd : 0;
+    this.walkVx = dir === "left" ? -spd : dir === "right" ? spd : 0;
+    this.walkVy = dir === "up"   ? -spd : dir === "down"  ? spd : 0;
 
-    body.setVelocity(vx, vy);
+    body.setVelocity(this.walkVx, this.walkVy);
     this.lastDir = dir;
     this.avatar.walk(dir);
     this.isMoving = true;
@@ -203,6 +214,8 @@ export class PedestrianSprite {
     if (!container?.scene) return;
 
     const body = container.body as Phaser.Physics.Arcade.Body;
+    this.walkVx = 0;
+    this.walkVy = 0;
     body.setVelocity(0, 0);
     this.isMoving = false;
     this.showIdleFrame();

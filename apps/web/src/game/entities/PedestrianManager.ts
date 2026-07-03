@@ -40,7 +40,8 @@ export class PedestrianManager {
   spawn(scene: Phaser.Scene, collisionLayers: Phaser.Tilemaps.TilemapLayer[]): void {
     this.scene = scene;
     this.collisionLayers = collisionLayers;
-    this.pedGroup = scene.physics.add.group();
+    // immovable: true ensures that pedGroup.add() never resets individual body immovability
+    this.pedGroup = scene.physics.add.group({ immovable: true });
 
     for (let i = 0; i < PEDESTRIAN_COUNT; i++) {
       scene.time.delayedCall(i * 80, () => {
@@ -86,22 +87,40 @@ export class PedestrianManager {
     scene.physics.add.collider(this.pedGroup, this.pedGroup);
   }
 
+  private isBlocked(col: number, row: number): boolean {
+    const wx = col * TILE_SIZE + TILE_SIZE / 2;
+    const wy = row * TILE_SIZE + TILE_SIZE / 2;
+    return this.collisionLayers.some(layer => {
+      const tile = layer.getTileAtWorldXY(wx, wy);
+      return tile !== null && tile.collides;
+    });
+  }
+
   private spawnOne(i: number): PedestrianSprite {
     const PZ = PLAYABLE_ZONE;
     const zone = SPAWN_ZONES[i % SPAWN_ZONES.length];
     const [zCol, zRow, rCol, rRow] = zone;
-    const col = Math.round(zCol + (Math.random() * 2 - 1) * rCol);
-    const row = Math.round(zRow + (Math.random() * 2 - 1) * rRow);
-    const clampedCol = Math.max(PZ.col1 + 2, Math.min(PZ.col2 - 2, col));
-    const clampedRow = Math.max(PZ.row1 + 2, Math.min(PZ.row2 - 2, row));
 
-    // Keep fountain basin clear for spawn
-    const safeCol = (clampedCol >= 95 && clampedCol <= 103 && clampedRow >= 91 && clampedRow <= 99)
-      ? clampedCol + 6
-      : clampedCol;
+    let col = Math.round(zCol + (Math.random() * 2 - 1) * rCol);
+    let row = Math.round(zRow + (Math.random() * 2 - 1) * rRow);
+    col = Math.max(PZ.col1 + 2, Math.min(PZ.col2 - 2, col));
+    row = Math.max(PZ.row1 + 2, Math.min(PZ.row2 - 2, row));
 
-    const wx = safeCol * TILE_SIZE + TILE_SIZE / 2;
-    const wy = clampedRow * TILE_SIZE + TILE_SIZE / 2;
+    // Scan downward up to 8 tiles to escape any collider
+    let tries = 0;
+    while (this.isBlocked(col, row) && tries < 8) {
+      row++;
+      tries++;
+    }
+    // If still blocked, shift right and try again
+    if (this.isBlocked(col, row)) {
+      col += 2;
+      row = Math.max(PZ.row1 + 2, Math.min(PZ.row2 - 2,
+        Math.round(zRow + (Math.random() * 2 - 1) * rRow)));
+    }
+
+    const wx = col * TILE_SIZE + TILE_SIZE / 2;
+    const wy = row * TILE_SIZE + TILE_SIZE / 2;
     const loadout = makePedestrianLoadout(i * 31337 + 17);
     const speed   = SPEED_BANDS[Math.floor(Math.random() * SPEED_BANDS.length)];
 
@@ -126,10 +145,13 @@ export class PedestrianManager {
       const PZ = PLAYABLE_ZONE;
       const zone = SPAWN_ZONES[i % SPAWN_ZONES.length];
       const [zCol, zRow, rCol, rRow] = zone;
-      const col = Math.max(PZ.col1 + 2, Math.min(PZ.col2 - 2,
+      let col = Math.max(PZ.col1 + 2, Math.min(PZ.col2 - 2,
         Math.round(zCol + (Math.random() * 2 - 1) * rCol)));
-      const row = Math.max(PZ.row1 + 2, Math.min(PZ.row2 - 2,
+      let row = Math.max(PZ.row1 + 2, Math.min(PZ.row2 - 2,
         Math.round(zRow + (Math.random() * 2 - 1) * rRow)));
+
+      let t = 0;
+      while (this.isBlocked(col, row) && t < 8) { row++; t++; }
 
       const newPed = new PedestrianSprite(
         this.scene,
