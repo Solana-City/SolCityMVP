@@ -3,7 +3,7 @@ import { generateTileset } from "../utils/tilesetGenerator";
 import { SimpleSprite } from "../entities/SimpleSprite";
 import { AvatarSprite } from "../entities/AvatarSprite";
 import { NPC_REGISTRY } from "../config/npcRegistry";
-import { getAllLayerVariants, SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT } from "../config/paperDoll";
+import { getAllLayerVariants, getLoadoutVariants, loadSavedLoadout, SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT } from "../config/paperDoll";
 
 // Background color used in the spriter's sheets — treated as transparent.
 const CHROMA_R = 215;
@@ -71,7 +71,13 @@ export class BootScene extends Phaser.Scene {
       SimpleSprite.load(this, npc.spriteKey, `assets/sprites/${filename}.png`, 64, 64);
     }
 
-    for (const { variant } of getAllLayerVariants()) {
+    // On mobile load only the player's current loadout (~5-7 sheets) instead of
+    // all 22 variants — loading everything saturates system RAM on iOS/Android.
+    const isMobilePreload = window.matchMedia("(pointer: coarse)").matches;
+    const variantsToLoad = isMobilePreload
+      ? getLoadoutVariants(loadSavedLoadout())
+      : getAllLayerVariants();
+    for (const { variant } of variantsToLoad) {
       AvatarSprite.loadSpriteSheet(this, variant.textureKey, `assets/sprites/paperdoll/${variant.file}`);
     }
   }

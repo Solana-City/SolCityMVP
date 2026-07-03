@@ -125,6 +125,19 @@ export function getAllLayerVariants(): { category: LayerCategory; variant: Layer
   );
 }
 
+/**
+ * Only the variants worn in the given loadout — used on mobile to skip loading
+ * the ~22 full sheets and only load the 5-7 the player actually wears.
+ */
+export function getLoadoutVariants(loadout: Loadout): { category: LayerCategory; variant: LayerVariant }[] {
+  return LAYER_ORDER.flatMap((category) => {
+    const variantId = loadout[category];
+    if (!variantId) return [];
+    const variant = getVariant(category, variantId);
+    return variant ? [{ category, variant }] : [];
+  });
+}
+
 const STORAGE_KEY = "solcity:loadout";
 
 export function saveLoadout(loadout: Loadout): void {
