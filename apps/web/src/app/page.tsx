@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import dynamic from "next/dynamic";
 import type { NPCDefinition, NPCAction } from "@/game/config/npcRegistry";
 import type { MiniGameContext, MiniGameResult } from "@/game/minigames/types";
@@ -58,6 +58,8 @@ export default function Home() {
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
   const [logOpen, setLogOpen] = useState(false);
   const [mobilePanel, setMobilePanel] = useState<"hunt" | "quests" | null>(null);
+  // Wallet address that connected before the Phaser game was ready — replayed once game loads.
+  const pendingWalletRef = useRef<string | null | undefined>(undefined);
   // Chat hidden by default on touch devices, visible on desktop
   const [chatOpen, setChatOpen] = useState(() =>
     typeof window === "undefined"
@@ -158,7 +160,23 @@ export default function Home() {
 
   const handleWalletChange = useCallback((wallet: string | null) => {
     setWalletAddress(wallet);
-    if (!game) return;
+    if (!game) {
+      // Game still loading — store and replay once it's ready
+      pendingWalletRef.current = wallet;
+      return;
+    }
+    if (wallet) {
+      game.events.emit("wallet:connected", wallet);
+    } else {
+      game.events.emit("wallet:disconnected");
+    }
+  }, [game]);
+
+  // Replay a wallet connection that arrived before the game was ready
+  useEffect(() => {
+    if (!game || pendingWalletRef.current === undefined) return;
+    const wallet = pendingWalletRef.current;
+    pendingWalletRef.current = undefined;
     if (wallet) {
       game.events.emit("wallet:connected", wallet);
     } else {
