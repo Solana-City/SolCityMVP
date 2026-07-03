@@ -143,21 +143,19 @@ export class SimpleSprite {
   private registerAnimations(): void {
     const directions: Direction[] = ["down", "left", "right", "up"];
     const cols = 4;
-    const totalFrames = this.scene.textures.get(this.textureKey).frameTotal - 1; // -1 for __BASE
 
     for (const dir of directions) {
       const row = this.directionRow[dir];
       const key = `${this.textureKey}-walk-${dir}`;
-      const start = row * cols;
-      const end = row * cols + cols - 1;
 
-      if (!this.scene.anims.exists(key) && totalFrames > end) {
-        this.scene.anims.create({
-          key,
-          frames: this.scene.anims.generateFrameNumbers(this.textureKey, { start, end }),
-          frameRate: 8,
-          repeat: -1,
+      if (!this.scene.anims.exists(key)) {
+        const frames = this.scene.anims.generateFrameNumbers(this.textureKey, {
+          start: row * cols,
+          end: row * cols + cols - 1,
         });
+        if (frames.length > 0) {
+          this.scene.anims.create({ key, frames, frameRate: 8, repeat: -1 });
+        }
       }
     }
   }
