@@ -78,7 +78,8 @@ export class AvatarSprite {
     this.isWalking = true;
     for (const sprite of this.layerSprites.values()) {
       const key = `${sprite.texture.key}-walk-${direction}`;
-      if (sprite.anims.animationManager.exists(key)) {
+      const anim = this.scene.anims.get(key);
+      if (anim && anim.frames.length > 0) {
         sprite.anims.play(key, true);
       }
     }
