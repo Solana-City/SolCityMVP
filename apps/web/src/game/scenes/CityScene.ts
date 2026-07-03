@@ -243,14 +243,24 @@ export class CityScene extends Phaser.Scene {
     this.cameras.main.setBackgroundColor(0x061a2c);
     this.cameras.main.roundPixels = true;
 
-    // Input
-    this.cursors = this.input.keyboard!.createCursorKeys();
-    this.wasd = {
-      up: this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.W),
-      down: this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.S),
-      left: this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.A),
-      right: this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.D),
-    };
+    // Input — keyboard plugin may be null on certain mobile browsers/configs;
+    // guard every access so a missing keyboard doesn't crash CityScene.
+    const kb = this.input.keyboard;
+    if (kb) {
+      this.cursors = kb.createCursorKeys();
+      this.wasd = {
+        up:    kb.addKey(Phaser.Input.Keyboard.KeyCodes.W),
+        down:  kb.addKey(Phaser.Input.Keyboard.KeyCodes.S),
+        left:  kb.addKey(Phaser.Input.Keyboard.KeyCodes.A),
+        right: kb.addKey(Phaser.Input.Keyboard.KeyCodes.D),
+      };
+    } else {
+      // Provide inert stub objects so update() can read .isDown without crashing
+      const stub = { isDown: false } as Phaser.Input.Keyboard.Key;
+      this.cursors = { up: stub, down: stub, left: stub, right: stub,
+        shift: stub, space: stub } as unknown as Phaser.Types.Input.Keyboard.CursorKeys;
+      this.wasd = { up: stub, down: stub, left: stub, right: stub };
+    }
 
     // Profile system — singleton, shared with React UI
     this.profile = profileManager;
@@ -359,8 +369,8 @@ export class CityScene extends Phaser.Scene {
       if (loadout) this.game.events.emit("whereIsNPC:targetInfo", loadout);
     });
 
-    // G key — toggle collision debug overlay
-    this.input.keyboard!.on("keydown-G", () => {
+    // G key — toggle collision debug overlay (desktop only)
+    this.input.keyboard?.on("keydown-G", () => {
       this.physics.world.drawDebug = !this.physics.world.drawDebug;
       if (!this.physics.world.drawDebug) {
         this.physics.world.debugGraphic?.clear();
@@ -396,8 +406,8 @@ export class CityScene extends Phaser.Scene {
       }
     });
 
-    // E key for NPC interaction (handled here, not in React, to check proximity)
-    this.input.keyboard!.on("keydown-E", () => {
+    // E key for NPC interaction (desktop only — mobile uses the ACT button)
+    this.input.keyboard?.on("keydown-E", () => {
       if (this.chatInputActive || this.interactionBlocked) return;
       if (this.tryHuntInteraction()) return;
       const nearby = this.npcSprites.find((n) => n.isInRange);

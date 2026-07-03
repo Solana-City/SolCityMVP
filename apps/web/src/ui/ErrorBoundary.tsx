@@ -139,12 +139,13 @@ export default class ErrorBoundary extends React.Component<Props, State> {
           </div>
           {error.stack && (
             <pre style={{
-              color: "#333355", fontSize: 9, maxWidth: 420, maxHeight: 120,
+              color: "#8888bb", fontSize: 9, maxWidth: 420, maxHeight: 200,
               overflow: "auto", textAlign: "left", whiteSpace: "pre-wrap",
-              background: "rgba(255,255,255,0.03)", borderRadius: 6,
-              padding: "6px 8px", margin: 0, lineHeight: 1.5,
+              background: "rgba(255,255,255,0.06)", borderRadius: 6,
+              padding: "8px 10px", margin: "8px 0 0", lineHeight: 1.6,
+              border: "1px solid rgba(255,255,255,0.08)",
             }}>
-              {error.stack.slice(0, 600)}
+              {error.stack.slice(0, 1200)}
             </pre>
           )}
         </div>

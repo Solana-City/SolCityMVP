@@ -81,8 +81,9 @@ export function setupEmojiKeys(
   getChatActive: () => boolean,
   onEmoji?: (emoji: EmojiDef) => void
 ): void {
+  if (!scene.input.keyboard) return;
   for (const emoji of EMOJI_REGISTRY) {
-    scene.input.keyboard!.on(`keydown-${emoji.key}`, () => {
+    scene.input.keyboard.on(`keydown-${emoji.key}`, () => {
       if (getChatActive()) return;
       showEmoji(scene, getTarget(), emoji);
       onEmoji?.(emoji);

@@ -38,6 +38,15 @@ export default function PhaserGame({ onGameReady }: PhaserGameProps) {
           debug: false,
         },
       },
+      // Explicitly keep keyboard enabled even on mobile — CityScene guards all
+      // keyboard accesses so a null plugin won't crash anything, but having it
+      // present means we don't have to branch everywhere.
+      input: {
+        keyboard: true,
+        mouse: true,
+        touch: true,
+        gamepad: false,
+      },
       scene: [BootScene, CityScene],
       scale: {
         mode: Phaser.Scale.RESIZE,
