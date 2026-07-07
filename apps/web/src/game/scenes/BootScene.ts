@@ -91,12 +91,23 @@ export class BootScene extends Phaser.Scene {
     const isMobile = window.matchMedia("(pointer: coarse)").matches;
 
     if (isMobile) {
-      // On mobile, applyChromaKey calls getImageData/putImageData on every
-      // paperdoll sprite synchronously — this blocks the main thread long
-      // enough for iOS to kill the tab. Skip it; sprites show a pink fringe
-      // but the game loads. Pre-processed sprites (transparent background
-      // baked in) will eliminate this trade-off when ready.
-      this.scene.start("CityScene");
+      // On mobile we loaded only the player's loadout (~5-7 sprites).
+      // Process chroma key one sprite per requestAnimationFrame so we
+      // never block the main thread for more than ~30ms at a time.
+      const variants = getLoadoutVariants(loadSavedLoadout()).filter(
+        ({ variant }) => this.textures.exists(variant.textureKey)
+      );
+      let i = 0;
+      const processNext = () => {
+        if (i < variants.length) {
+          applyChromaKey(this, variants[i].textureKey);
+          i++;
+          requestAnimationFrame(processNext);
+        } else {
+          this.scene.start("CityScene");
+        }
+      };
+      requestAnimationFrame(processNext);
       return;
     }
 
