@@ -60,6 +60,24 @@ export class CityScene extends Phaser.Scene {
 
   create(): void {
     // ── Tiled map with real sprite art ────────────────────────────────────
+
+    // On mobile, strip decorative layers from the cached JSON BEFORE Phaser
+    // parses it. make.tilemap() creates Tile objects for every position in
+    // every layer — 69 layers × 200×200 = 2.76M objects (~690MB). Removing
+    // ~40 decorative layers before parse cuts that to ~29 layers (~290MB).
+    const isMobileMap = window.matchMedia("(pointer: coarse)").matches;
+    if (isMobileMap) {
+      const rawMap = this.cache.json.get("city-map");
+      if (rawMap?.layers) {
+        const SKIP_PREFIXES = [
+          "DecorLight", "VegetationBush", "VegetationPalm", "DecorKGBin",
+        ];
+        rawMap.layers = rawMap.layers.filter((l: { name: string }) =>
+          !SKIP_PREFIXES.some(p => l.name.startsWith(p))
+        );
+      }
+    }
+
     const map = this.make.tilemap({ key: "city-map" });
     const tileSize  = map.tileWidth;   // 24
     const mapWidth  = map.width;        // 200
@@ -88,29 +106,12 @@ export class CityScene extends Phaser.Scene {
     // plaza structure and must use fixed depth, not Y-sort.
     const Y_SORT_PREFIXES = ["Vegetation", "DecorLight", "Build", "GameAsset"];
 
-    // On mobile, skip purely decorative layers with no collision tiles.
-    // 69 layers × 200×200 tiles = 2.76M Tile objects (~690MB) kills mobile tabs.
-    // Lamp posts, bushes, and extra palm groups are skipped — buildings/trees kept.
-    const isMobileMap = window.matchMedia("(pointer: coarse)").matches;
-    const MOBILE_SKIP_PREFIXES = ["DecorLight", "VegetationBush", "DecorKGBin"];
-    // Track how many VegetationPalm layers we keep — first 2 are enough on mobile.
-    let palmLayerCount = 0;
-
     // Create all tile layers in order from the JSON.
     // Do NOT pass x/y — Phaser defaults to layerData.x/y which already
     // incorporates the Tiled offsetx/offsety for each layer. Passing 0,0
     // would override those offsets and shift every layer to the origin.
     for (let i = 0; i < map.layers.length; i++) {
       const layerName = map.layers[i].name;
-
-      if (isMobileMap) {
-        if (MOBILE_SKIP_PREFIXES.some(p => layerName.startsWith(p))) continue;
-        if (layerName.startsWith("VegetationPalm")) {
-          if (palmLayerCount >= 2) continue;
-          palmLayerCount++;
-        }
-      }
-
       const layer = map.createLayer(i, allTilesets);
       if (!layer) continue;
 
