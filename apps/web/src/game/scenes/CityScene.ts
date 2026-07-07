@@ -61,23 +61,6 @@ export class CityScene extends Phaser.Scene {
   create(): void {
     // ── Tiled map with real sprite art ────────────────────────────────────
 
-    // On mobile, strip decorative layers from the cached JSON BEFORE Phaser
-    // parses it. make.tilemap() creates Tile objects for every position in
-    // every layer — 69 layers × 200×200 = 2.76M objects (~690MB). Removing
-    // ~40 decorative layers before parse cuts that to ~29 layers (~290MB).
-    const isMobileMap = window.matchMedia("(pointer: coarse)").matches;
-    if (isMobileMap) {
-      const rawMap = this.cache.json.get("city-map");
-      if (rawMap?.layers) {
-        const SKIP_PREFIXES = [
-          "DecorLight", "VegetationBush", "VegetationPalm", "DecorKGBin",
-        ];
-        rawMap.layers = rawMap.layers.filter((l: { name: string }) =>
-          !SKIP_PREFIXES.some(p => l.name.startsWith(p))
-        );
-      }
-    }
-
     const map = this.make.tilemap({ key: "city-map" });
     const tileSize  = map.tileWidth;   // 24
     const mapWidth  = map.width;        // 200

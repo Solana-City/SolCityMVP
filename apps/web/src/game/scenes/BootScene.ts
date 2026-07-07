@@ -53,7 +53,10 @@ export class BootScene extends Phaser.Scene {
       }
     });
 
-    this.load.tilemapTiledJSON("city-map", "assets/maps/city.json");
+    const mapFile = window.matchMedia("(pointer: coarse)").matches
+      ? "assets/maps/city-mobile.json"
+      : "assets/maps/city.json";
+    this.load.tilemapTiledJSON("city-map", mapFile);
 
     for (const key of TILESET_KEYS) {
       this.load.image(key, `assets/tilesets/${key}.png`);
