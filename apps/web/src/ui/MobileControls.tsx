@@ -156,7 +156,7 @@ export default function MobileControls({ gameRef, chatOpen, onChatToggle }: Mobi
 
   const handleInteract = () => {
     emitGame("touch:interact");
-    if ("vibrate" in navigator) navigator.vibrate(18); // haptic nudge
+    if (typeof navigator.vibrate === "function") navigator.vibrate(18);
   };
   const handleEmoji = (emoji: (typeof EMOJI_REGISTRY)[number]) => {
     emitGame("emoji:trigger", emoji);
