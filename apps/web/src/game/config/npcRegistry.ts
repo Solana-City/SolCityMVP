@@ -111,10 +111,9 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     tileY: 104,
     color: 0x00d1ff,
     dialog: [
-      "Hello! I'm Ana, the Postmaster.",
-      "Need to send SOL or any token to someone? You're in the right place.",
-      "Just enter the destination address and the amount.",
-      "The transfer goes through instantly on Solana.",
+      "Steve Sends, at your service.",
+      "Need to move SOL or any token to another wallet? This is your stop.",
+      "Drop in the destination address and the amount — it lands on the other side in seconds.",
     ],
     action: { type: "transfer", label: "Send tokens" },
     spriteKey: "avatar-send-npc",
