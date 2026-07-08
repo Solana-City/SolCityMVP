@@ -120,10 +120,8 @@ export class PedestrianSprite {
       ? (vx > 0 ? "right" : "left")
       : (vy > 0 ? "down" : "up");
 
-    if (dir !== this.lastDir) {
-      this.lastDir = dir;
-      this.avatar.walk(dir);
-    }
+    this.lastDir = dir;
+    this.avatar.walk(dir); // anims.play ignoreIfPlaying=true — no-op if already animating
   }
 
   get x() { return this.avatar.x; }

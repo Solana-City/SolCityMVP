@@ -53,8 +53,7 @@ export class PedestrianManager {
     this.scene = scene;
     this.collisionLayers = collisionLayers;
     this.count = getPedestrianCount();
-    // immovable: true ensures that pedGroup.add() never resets individual body immovability
-    this.pedGroup = scene.physics.add.group({ immovable: true });
+    this.pedGroup = scene.physics.add.group();
 
     for (let i = 0; i < this.count; i++) {
       scene.time.delayedCall(i * 80, () => {
