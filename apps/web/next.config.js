@@ -64,8 +64,14 @@ module.exports = withPWA({
   cacheOnFrontEndNav: true,
 
   workboxOptions: {
-    skipWaiting: true,
-    clientsClaim: true,
+    // skipWaiting/clientsClaim MUST stay off: with them on, a freshly
+    // deployed SW takes over tabs still running the previous build and
+    // cleanupOutdatedCaches purges their precache — the old page then
+    // lazy-loads a hashed chunk that exists neither in cache nor on the
+    // server ("Loading chunk X failed"). The new SW now waits until all
+    // tabs close; updates apply on the next visit.
+    skipWaiting: false,
+    clientsClaim: false,
     cleanupOutdatedCaches: true,
     // Explicit NetworkOnly for any GET calls to blockchain infra
     runtimeCaching: [
