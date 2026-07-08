@@ -3,7 +3,7 @@ import { generateTileset } from "../utils/tilesetGenerator";
 import { SimpleSprite } from "../entities/SimpleSprite";
 import { AvatarSprite } from "../entities/AvatarSprite";
 import { NPC_REGISTRY } from "../config/npcRegistry";
-import { getAllLayerVariants, getLoadoutVariants, loadSavedLoadout, SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT } from "../config/paperDoll";
+import { getAllLayerVariants, SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT } from "../config/paperDoll";
 
 // Background color used in the spriter's sheets — treated as transparent.
 const CHROMA_R = 215;
@@ -80,13 +80,11 @@ export class BootScene extends Phaser.Scene {
       SimpleSprite.load(this, npc.spriteKey, `assets/sprites/${filename}.png`, 64, 64);
     }
 
-    // On mobile load only the player's current loadout (~5-7 sheets) instead of
-    // all 22 variants — loading everything saturates system RAM on iOS/Android.
-    const isMobilePreload = window.matchMedia("(pointer: coarse)").matches;
-    const variantsToLoad = isMobilePreload
-      ? getLoadoutVariants(loadSavedLoadout())
-      : getAllLayerVariants();
-    for (const { variant } of variantsToLoad) {
+    // Paper doll sheets are small (256x256 each, ~5MB decoded in total) — load
+    // all of them on every platform. Pedestrians wear random variants, so
+    // loading only the player's loadout left their missing layers invisible
+    // on mobile. The heavy mobile memory cost is the tilemap, not these sheets.
+    for (const { variant } of getAllLayerVariants()) {
       AvatarSprite.loadSpriteSheet(this, variant.textureKey, `assets/sprites/paperdoll/${variant.file}`);
     }
   }
@@ -97,10 +95,10 @@ export class BootScene extends Phaser.Scene {
     const isMobile = window.matchMedia("(pointer: coarse)").matches;
 
     if (isMobile) {
-      // On mobile we loaded only the player's loadout (~5-7 sprites).
       // Process chroma key one sprite per requestAnimationFrame so we
-      // never block the main thread for more than ~30ms at a time.
-      const variants = getLoadoutVariants(loadSavedLoadout()).filter(
+      // never block the main thread for more than ~30ms at a time
+      // (~21 sheets ≈ 0.35s total before CityScene starts).
+      const variants = getAllLayerVariants().filter(
         ({ variant }) => this.textures.exists(variant.textureKey)
       );
       let i = 0;
