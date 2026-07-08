@@ -83,7 +83,7 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (!npc) return;
-      if (e.key === "e" || e.key === "E" || e.key === "Enter") {
+      if (e.key === "e" || e.key === "E" || e.key === "Enter" || e.key === " ") {
         e.preventDefault();
         skipOrAdvance();
       }

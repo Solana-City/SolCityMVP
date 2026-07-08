@@ -418,8 +418,8 @@ export class CityScene extends Phaser.Scene {
       }
     });
 
-    // E key for NPC interaction (desktop only — mobile uses the ACT button)
-    this.input.keyboard?.on("keydown-E", () => {
+    // E / Space for NPC interaction (desktop only — mobile uses the ACT button)
+    const tryInteract = () => {
       if (this.chatInputActive || this.interactionBlocked) return;
       if (this.tryHuntInteraction()) return;
       const nearby = this.npcSprites.find((n) => n.isInRange);
@@ -427,7 +427,9 @@ export class CityScene extends Phaser.Scene {
         this.interactionBlocked = true;
         this.game.events.emit("npc:interact", nearby.def);
       }
-    });
+    };
+    this.input.keyboard?.on("keydown-E", tryInteract);
+    this.input.keyboard?.on("keydown-SPACE", tryInteract);
 
     // On-chain multiplayer via MagicBlock Ephemeral Rollups
     this.network = new OnChainMultiplayer();
