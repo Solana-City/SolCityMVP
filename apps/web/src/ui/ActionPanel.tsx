@@ -617,7 +617,7 @@ function EarnListingsStage({
         {!loading && !failed && listings.map((listing, i) => (
           <a
             key={i}
-            href={`https://superteam.fun/earn/listings/${listing.slug}`}
+            href={`https://earn.superteam.fun/listings/${listing.slug}`}
             target="_blank"
             rel="noopener noreferrer"
             style={{
