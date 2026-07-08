@@ -14,21 +14,9 @@ import { ProfileManager, profileManager } from "../config/profileManager";
 import { AchievementEngine } from "../progression/achievementEngine";
 import { setupEmojiKeys, showEmoji, EMOJI_REGISTRY, EmojiDef } from "../chat/EmojiSystem";
 
-// ── Pixel-perfect zoom helper ─────────────────────────────────────────────────
-//
-// Sprites are rendered at scale=0.5 in world space. The invariant for crisp
-// pixel art is:  sprite_scale × camera_zoom = integer
-// With sprite_scale=0.5 that means zoom must be a multiple of 2: {2, 4, …}
-//
-// snapToPixelPerfect rounds any arbitrary zoom to the nearest valid value so
-// that every source pixel maps to exactly N screen pixels (no fractions).
-const PIXEL_PERFECT_ZOOMS = [2, 4] as const;
-function snapToPixelPerfect(z: number): number {
-  // Find the valid zoom closest to z
-  return PIXEL_PERFECT_ZOOMS.reduce((best, v) =>
-    Math.abs(v - z) < Math.abs(best - z) ? v : best
-  );
-}
+// Pixel-perfect zoom values and snapping live in config/zoomConfig.ts —
+// shared with ZoomControl and the pinch-zoom hook.
+import { loadZoom, snapZoom } from "../config/zoomConfig";
 
 export class CityScene extends Phaser.Scene {
   private avatar!: AvatarSprite;
@@ -255,15 +243,13 @@ export class CityScene extends Phaser.Scene {
     // Camera — locked to player, no edge clamping so player stays centred
     // even at the map borders.
     //
-    // Pixel-perfect invariant:
-    //   sprite_scale (0.5) × camera_zoom must equal an integer.
-    //   → valid zooms: 2, 4  (gives effective scale 1.0 and 2.0)
-    //   Any other value (e.g. 1.5 → 0.75, 1.0 → 0.5, 3.0 → 1.5) causes each
-    //   source pixel to land on a fractional screen position, producing
-    //   irregular pixel sizes and blurry outlines — the classic "shimmy" look.
+    // Pixel-perfect invariant (see zoomConfig.ts): sprite_scale (0.5) ×
+    // camera_zoom must be a whole number of device pixels, so only the
+    // zooms from getValidZooms() are used. Anything else lands source
+    // pixels on fractional positions → irregular pixel sizes and blurry
+    // outlines — the classic "shimmy" look.
     this.cameras.main.startFollow(container, true, 1.0, 1.0);
-    const storedZoom = parseFloat(localStorage.getItem("solcity:zoom") ?? "");
-    this.cameras.main.setZoom(isNaN(storedZoom) ? 2 : snapToPixelPerfect(storedZoom));
+    this.cameras.main.setZoom(loadZoom());
     this.cameras.main.setBackgroundColor(0x061a2c);
     this.cameras.main.roundPixels = true;
 
@@ -408,7 +394,7 @@ export class CityScene extends Phaser.Scene {
 
     // Camera zoom from UI control — always snap to a pixel-perfect value
     this.game.events.on("camera:zoom", (zoom: number) => {
-      this.cameras.main.setZoom(snapToPixelPerfect(zoom));
+      this.cameras.main.setZoom(snapZoom(zoom));
     });
 
     // Mobile touch input

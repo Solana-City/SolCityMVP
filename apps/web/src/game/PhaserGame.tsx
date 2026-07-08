@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import * as Phaser from "phaser";
 import { BootScene } from "./scenes/BootScene";
 import { CityScene } from "./scenes/CityScene";
+import { computeRenderDpr } from "./config/zoomConfig";
 
 interface PhaserGameProps {
   onGameReady?: (game: Phaser.Game) => void;
@@ -27,11 +28,23 @@ export default function PhaserGame({ onGameReady }: PhaserGameProps) {
     // Canvas2D keeps textures in system RAM which has a much higher limit.
     // On desktop AUTO still picks WebGL for crisp pixel art.
     const isMobile = window.matchMedia("(pointer: coarse)").matches;
+
+    // Render the canvas backing store at device resolution on desktop
+    // (dpr is 1 on mobile — see computeRenderDpr). The Scale zoom of 1/dpr
+    // shrinks the CSS size back to the window, so one game pixel maps to
+    // exactly one device pixel. Without this, fractional-DPR screens
+    // (Windows 125%/150%, Retina) CSS-upscale the canvas with
+    // nearest-neighbor, producing unevenly sized "distorted" pixels.
+    // Published on globalThis so zoomConfig uses the same value the canvas
+    // was actually created with.
+    const dpr = computeRenderDpr();
+    (globalThis as { __solCityRenderDpr?: number }).__solCityRenderDpr = dpr;
+
     const config: Phaser.Types.Core.GameConfig = {
       type: isMobile ? Phaser.CANVAS : Phaser.AUTO,
       parent: containerRef.current,
-      width: window.innerWidth,
-      height: window.innerHeight,
+      width: Math.round(window.innerWidth * dpr),
+      height: Math.round(window.innerHeight * dpr),
       pixelArt: true,
       roundPixels: true,
       antialias: false,
@@ -53,7 +66,11 @@ export default function PhaserGame({ onGameReady }: PhaserGameProps) {
       },
       scene: [BootScene, CityScene],
       scale: {
-        mode: Phaser.Scale.RESIZE,
+        // NONE (not RESIZE) because RESIZE forces 1 game px = 1 CSS px,
+        // which defeats the device-resolution backing store. Window
+        // resizes are forwarded manually below.
+        mode: Phaser.Scale.NONE,
+        zoom: 1 / dpr,
         autoCenter: Phaser.Scale.CENTER_BOTH,
       },
       backgroundColor: "#061a2c",
@@ -67,15 +84,24 @@ export default function PhaserGame({ onGameReady }: PhaserGameProps) {
       },
     };
 
+    const onResize = () => {
+      gameRef.current?.scale.resize(
+        Math.round(window.innerWidth * dpr),
+        Math.round(window.innerHeight * dpr)
+      );
+    };
+
     try {
       gameRef.current = new Phaser.Game(config);
       onGameReady?.(gameRef.current);
+      window.addEventListener("resize", onResize);
     } catch (err) {
       console.error("[PhaserGame] Failed to initialize:", err);
       setFatalError(err instanceof Error ? err : new Error(String(err)));
     }
 
     return () => {
+      window.removeEventListener("resize", onResize);
       gameRef.current?.destroy(true);
       gameRef.current = null;
     };

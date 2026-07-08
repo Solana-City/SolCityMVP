@@ -1,22 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-
-const STORAGE_KEY = "solcity:zoom";
-// Must match CityScene / ZoomControl: only multiples of 2 are pixel-perfect
-// with the current sprite_scale=0.5 setting.
-const VALID_ZOOMS = [2, 4] as const;
-
-function snapZoom(z: number): number {
-  return VALID_ZOOMS.reduce((best, v) =>
-    Math.abs(v - z) < Math.abs(best - z) ? v : best
-  );
-}
-
-function currentZoom(): number {
-  const stored = parseFloat(localStorage.getItem(STORAGE_KEY) ?? "");
-  return isNaN(stored) ? 2 : snapZoom(stored);
-}
+import { getValidZooms, snapZoom, loadZoom, saveZoom } from "@/game/config/zoomConfig";
 
 function broadcastZoom(zoom: number) {
   (globalThis as any).__solCityGameEvents?.emit("camera:zoom", zoom);
@@ -29,8 +14,8 @@ export function usePinchZoom() {
 
     const pts = new Map<number, { x: number; y: number }>();
     let startDist = 0;
-    let startZoom = 1;
-    let lastRaw = 1;
+    let startZoom = 2;
+    let lastSnapped = 2;
 
     function dist() {
       const [a, b] = [...pts.values()];
@@ -41,8 +26,8 @@ export function usePinchZoom() {
       pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
       if (pts.size === 2) {
         startDist = dist();
-        startZoom = currentZoom();
-        lastRaw = startZoom;
+        startZoom = loadZoom();
+        lastSnapped = startZoom;
       }
     }
 
@@ -50,23 +35,22 @@ export function usePinchZoom() {
       if (!pts.has(e.pointerId) || pts.size < 2) return;
       pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
+      const zooms = getValidZooms();
       const ratio = dist() / startDist;
-      const raw = Math.min(VALID_ZOOMS[VALID_ZOOMS.length - 1],
-                           Math.max(VALID_ZOOMS[0], startZoom * ratio));
-      // Only emit when raw value shifts enough to avoid noise
-      if (Math.abs(raw - lastRaw) < 0.5) return;
-      lastRaw = raw;
-      broadcastZoom(snapZoom(raw)); // emit snapped value immediately
+      const raw = Math.min(zooms[zooms.length - 1],
+                           Math.max(zooms[0], startZoom * ratio));
+      const snapped = snapZoom(raw);
+      if (snapped === lastSnapped) return;
+      lastSnapped = snapped;
+      broadcastZoom(snapped);
     }
 
     function onUp(e: PointerEvent) {
       if (!pts.has(e.pointerId)) return;
       pts.delete(e.pointerId);
       if (pts.size < 2 && startDist > 0) {
-        // Snap to nearest 0.25 on finger lift
-        const snapped = snapZoom(lastRaw);
-        broadcastZoom(snapped);
-        localStorage.setItem(STORAGE_KEY, String(snapped));
+        broadcastZoom(lastSnapped);
+        saveZoom(lastSnapped);
         startDist = 0;
       }
     }

@@ -269,11 +269,14 @@ export default function Home() {
             }}
           >
             {isTouch ? (
-              /* ── Mobile: compact horizontal strip ── */
-              <div className="flex items-center gap-2">
-                <PfpButton gameRef={game} onClick={() => setProfileOpen(true)} />
-                <WardrobeButton onClick={() => setWardrobeOpen(true)} />
-                <WalletBar onWalletChange={handleWalletChange} />
+              /* ── Mobile: compact horizontal strip + zoom below ── */
+              <div className="flex flex-col items-end gap-2">
+                <div className="flex items-center gap-2">
+                  <PfpButton gameRef={game} onClick={() => setProfileOpen(true)} />
+                  <WardrobeButton onClick={() => setWardrobeOpen(true)} />
+                  <WalletBar onWalletChange={handleWalletChange} />
+                </div>
+                <ZoomControl />
               </div>
             ) : (
               /* ── Desktop: unified card panel ── */
