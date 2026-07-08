@@ -30,6 +30,11 @@ const TILESET_KEYS = [
   "SCGameAssets",
 ];
 
+// SCUrbanEquipament and SCBuildKeepGreen have no tiles in city-mobile.json.
+const TILESET_KEYS_MOBILE = TILESET_KEYS.filter(
+  k => k !== "SCUrbanEquipament" && k !== "SCBuildKeepGreen"
+);
+
 export class BootScene extends Phaser.Scene {
   constructor() {
     super({ key: "BootScene" });
@@ -58,7 +63,8 @@ export class BootScene extends Phaser.Scene {
       : "assets/maps/city.json";
     this.load.tilemapTiledJSON("city-map", mapFile);
 
-    for (const key of TILESET_KEYS) {
+    const isMobileTilesets = window.matchMedia("(pointer: coarse)").matches;
+    for (const key of (isMobileTilesets ? TILESET_KEYS_MOBILE : TILESET_KEYS)) {
       this.load.image(key, `assets/tilesets/${key}.png`);
     }
 
