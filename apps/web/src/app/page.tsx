@@ -69,6 +69,17 @@ export default function Home() {
 
   usePinchZoom();
 
+  // Mobile panels and chat are mutually exclusive — the screen is too small
+  // to stack overlays on top of the game view.
+  const toggleMobilePanel = useCallback((panel: "hunt" | "quests") => {
+    setChatOpen(false);
+    setMobilePanel(v => (v === panel ? null : panel));
+  }, []);
+  const toggleMobileChat = useCallback(() => {
+    setMobilePanel(null);
+    setChatOpen(v => !v);
+  }, []);
+
   useEffect(() => {
     if (!game) return;
     const handler = (npc: NPCDefinition) => setActiveNPC(npc);
@@ -212,7 +223,9 @@ export default function Home() {
               <QuestPanel wallet={walletAddress} />
             </div>
           ) : (
-            /* Mobile: icon buttons to open panels as overlays */
+            /* Mobile: single icon rail — hunt, quests and chat toggles.
+               Panels open as overlays and are mutually exclusive with the
+               chat so the small screen never stacks multiple windows. */
             <>
               <div style={{
                 position: "fixed", zIndex: 20,
@@ -220,18 +233,28 @@ export default function Home() {
                 left: "max(env(safe-area-inset-left, 0px), 12px)",
                 display: "flex", flexDirection: "column", gap: 6,
               }}>
-                <MobilePanelToggle icon="🎯" active={mobilePanel === "hunt"} onClick={() => setMobilePanel(v => v === "hunt" ? null : "hunt")} />
-                <MobilePanelToggle icon="📋" active={mobilePanel === "quests"} onClick={() => setMobilePanel(v => v === "quests" ? null : "quests")} />
+                <MobilePanelToggle icon="🎯" active={mobilePanel === "hunt"} onClick={() => toggleMobilePanel("hunt")} />
+                <MobilePanelToggle icon="📋" active={mobilePanel === "quests"} onClick={() => toggleMobilePanel("quests")} />
+                <MobilePanelToggle icon="💬" active={chatOpen} onClick={toggleMobileChat} />
               </div>
               {mobilePanel !== null && (
-                <div style={{
-                  position: "fixed", zIndex: 25,
-                  top: "max(env(safe-area-inset-top, 0px), 12px)",
-                  left: "max(env(safe-area-inset-left, 0px), 58px)",
-                  maxHeight: "60vh", overflowY: "auto",
-                }} onClick={e => { if (e.target === e.currentTarget) setMobilePanel(null); }}>
-                  {mobilePanel === "hunt" && <WhereIsNPCCard gameRef={game} wallet={walletAddress} />}
-                  {mobilePanel === "quests" && <QuestPanel wallet={walletAddress} />}
+                /* Full-screen transparent backdrop — tap anywhere outside the panel to close */
+                <div
+                  style={{ position: "fixed", inset: 0, zIndex: 25 }}
+                  onClick={() => setMobilePanel(null)}
+                >
+                  <div
+                    style={{
+                      position: "absolute",
+                      top: "max(env(safe-area-inset-top, 0px), 12px)",
+                      left: "max(env(safe-area-inset-left, 0px), 58px)",
+                      maxHeight: "calc(100dvh - 24px)", overflowY: "auto",
+                    }}
+                    onClick={e => e.stopPropagation()}
+                  >
+                    {mobilePanel === "hunt" && <WhereIsNPCCard gameRef={game} wallet={walletAddress} />}
+                    {mobilePanel === "quests" && <QuestPanel wallet={walletAddress} />}
+                  </div>
                 </div>
               )}
             </>
@@ -314,7 +337,7 @@ export default function Home() {
               onClose={() => setPlayerCardTarget(null)}
             />
           )}
-          <MobileControls gameRef={game} chatOpen={chatOpen} onChatToggle={() => setChatOpen((v) => !v)} />
+          <MobileControls />
           <ChatPanel gameRef={game} visible={chatOpen} />
           <NPCDialog npc={activeNPC} onClose={handleDialogClose} onAction={handleAction} />
           <ActionPanel action={activeAction} onClose={handleActionClose} />

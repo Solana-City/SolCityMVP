@@ -12,6 +12,9 @@ body {
   background: #0e0e2c;
   width: 100vw;
   height: 100vh;
+  /* Dynamic viewport height — tracks the real visible area on mobile when
+     the browser URL bar collapses/expands (falls back to 100vh above). */
+  height: 100dvh;
 
   /* ── Mobile essentials ────────────────────────────── */
   /* Remove 300ms tap delay and double-tap-to-zoom on all browsers */

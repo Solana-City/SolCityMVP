@@ -3,12 +3,6 @@
 import { useEffect, useRef, useState } from "react";
 import { EMOJI_REGISTRY } from "@/game/chat/EmojiSystem";
 
-interface MobileControlsProps {
-  gameRef: Phaser.Game | null;
-  chatOpen: boolean;
-  onChatToggle: () => void;
-}
-
 const JOYSTICK_RADIUS = 52; // px — max thumb travel from center
 
 function emitGame(event: string, data?: unknown) {
@@ -140,7 +134,7 @@ function ActionButton({
 
 // ── Root ─────────────────────────────────────────────────────────────────────
 
-export default function MobileControls({ gameRef, chatOpen, onChatToggle }: MobileControlsProps) {
+export default function MobileControls() {
   const [isTouch, setIsTouch] = useState(false);
   const [showEmojis, setShowEmojis] = useState(false);
 
@@ -225,18 +219,6 @@ export default function MobileControls({ gameRef, chatOpen, onChatToggle }: Mobi
             size={56}
           />
         </div>
-      </div>
-
-      {/* Chat toggle — top-left, below the score HUD */}
-      <div
-        className="fixed pointer-events-auto z-30"
-        style={{ top: 96, left: 16 }}
-      >
-        <ActionButton
-          label={chatOpen ? "✕" : "💬"}
-          color="#00D1FF"
-          onPress={onChatToggle}
-        />
       </div>
     </>
   );
