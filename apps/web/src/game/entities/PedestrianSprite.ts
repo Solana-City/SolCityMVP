@@ -221,6 +221,15 @@ export class PedestrianSprite {
     this.scheduleNextMove();
   }
 
+  /** Resets the body velocity to the NPC's intended walk velocity (or 0 if idle),
+   *  cancelling any impulse arcade physics applied during collision resolution. */
+  cancelImpulse(): void {
+    const container = this.avatar.getContainer();
+    if (!container?.scene || !container.body) return;
+    const body = container.body as Phaser.Physics.Arcade.Body;
+    body.setVelocity(this.walkVx, this.walkVy);
+  }
+
   nudge(dx: number, dy: number): void {
     const now = this.scene.time.now;
     if (now - this.nudgeCooldown < 400) return;

@@ -87,11 +87,12 @@ export class PedestrianManager {
       scene.physics.add.collider(this.pedGroup, cl);
     }
 
-    // Player walking into a ped nudges it exactly 1 tile away — no physics velocity.
-    scene.physics.add.overlap(
+    // Peds block the player; the callback neutralises the physics impulse and
+    // applies a single 1-tile position nudge (with cooldown) instead of a slide.
+    scene.physics.add.collider(
       this.pedGroup,
       playerContainer,
-      this.onPlayerOverlap as Phaser.Types.Physics.Arcade.ArcadePhysicsCallback,
+      this.onPlayerCollide as Phaser.Types.Physics.Arcade.ArcadePhysicsCallback,
       undefined,
       this,
     );
@@ -105,7 +106,7 @@ export class PedestrianManager {
     scene.physics.add.collider(this.pedGroup, this.pedGroup);
   }
 
-  private onPlayerOverlap(
+  private onPlayerCollide(
     pedCont: Phaser.Types.Physics.Arcade.GameObjectWithBody,
     playerCont: Phaser.Types.Physics.Arcade.GameObjectWithBody,
   ): void {
@@ -113,6 +114,10 @@ export class PedestrianManager {
     const player = playerCont as unknown as Phaser.GameObjects.Container;
     const pedSprite = this.pedestrians.find(p => p.getContainer() === ped);
     if (!pedSprite) return;
+
+    // Cancel the velocity arcade physics just applied to the NPC so it
+    // doesn't slide — then nudge it exactly 1 tile away from the player.
+    pedSprite.cancelImpulse();
 
     const dx = ped.x - player.x;
     const dy = ped.y - player.y;
