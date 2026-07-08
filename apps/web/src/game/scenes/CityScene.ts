@@ -53,6 +53,16 @@ export class CityScene extends Phaser.Scene {
   private profile!: ProfileManager;
   private touchDx = 0;
   private touchDy = 0;
+  /**
+   * Crop origin of the loaded map in original (200x200) tile coordinates.
+   * Desktop loads the full city.json → origin (0,0). Mobile loads the
+   * pre-cropped city-mobile.json (120x62 tiles starting at the playable
+   * zone) whose layers carry offsetx/offsety restoring original world
+   * positions — so world-pixel math stays in original coordinates, but
+   * tile-index lookups into map data must subtract this origin.
+   */
+  private originCol = 0;
+  private originRow = 0;
 
   constructor() {
     super({ key: "CityScene" });
@@ -62,9 +72,11 @@ export class CityScene extends Phaser.Scene {
     // ── Tiled map with real sprite art ────────────────────────────────────
 
     const map = this.make.tilemap({ key: "city-map" });
-    const tileSize  = map.tileWidth;   // 24
-    const mapWidth  = map.width;        // 200
-    const mapHeight = map.height;       // 200
+    const tileSize = map.tileWidth;   // 24
+
+    const isMobileMap = window.matchMedia("(pointer: coarse)").matches;
+    this.originCol = isMobileMap ? PLAYABLE_ZONE.col1 : 0;
+    this.originRow = isMobileMap ? PLAYABLE_ZONE.row1 : 0;
 
     // Add all tileset spritesheets loaded in BootScene
     const allTilesets = [
@@ -113,13 +125,17 @@ export class CityScene extends Phaser.Scene {
       if (layerName === "DecorFountain") {
         layer.forEachTile((tile: Phaser.Tilemaps.Tile) => {
           if (tile.index <= 0) return;
-          const inCorridor = tile.x >= 99 && tile.x <= 100 && tile.y >= 97;
+          // tile.x/tile.y are map-data coordinates — shift back to original
+          // 200x200 coordinates before comparing against the corridor bounds.
+          const col = tile.x + this.originCol;
+          const row = tile.y + this.originRow;
+          const inCorridor = col >= 99 && col <= 100 && row >= 97;
           if (inCorridor) {
             tile.resetCollision();
           } else {
             tile.setCollision(true, true, true, true);
           }
-        }, this, 95, 91, 9, 9); // startX=95, startY=91, width=9 cols, height=9 rows
+        }, this, 95 - this.originCol, 91 - this.originRow, 9, 9); // cols 95-103, rows 91-99 in original coords
       }
 
       const collidingTiles = layer.filterTiles((t: Phaser.Tilemaps.Tile) => t.collides);
@@ -216,8 +232,15 @@ export class CityScene extends Phaser.Scene {
     addZoneWall(zoneX1 + zoneW + wallThick / 2, zoneY1 + zoneH / 2,                wallThick, zoneH + wallThick * 2); // east
     this.physics.add.collider(container, zoneWalls);
 
-    this.physics.world.setBounds(0, 0, map.widthInPixels, map.heightInPixels);
-    this.cameras.main.setBounds(0, 0, map.widthInPixels, map.heightInPixels);
+    // Bounds must cover where the map content actually renders. On mobile the
+    // cropped map's layers are offset to original world positions, so the
+    // bounds rectangle starts at the crop origin — with (0,0) bounds the
+    // player would spawn outside them and collideWorldBounds would shove it
+    // into the empty area beyond the map.
+    const boundsX = this.originCol * tileSize;
+    const boundsY = this.originRow * tileSize;
+    this.physics.world.setBounds(boundsX, boundsY, map.widthInPixels, map.heightInPixels);
+    this.cameras.main.setBounds(boundsX, boundsY, map.widthInPixels, map.heightInPixels);
 
     // "YOU" label — same visual weight as NPC names for consistency.
     const youLabel = this.add.text(0, -38, "YOU", {
@@ -780,9 +803,11 @@ export class CityScene extends Phaser.Scene {
   ): { wx: number; wy: number } {
     // A tile position is blocked if ANY layer has a collidable tile there.
     // Uses Phaser's tile.collides flag set by setCollisionFromCollisionGroup().
+    // col/row arrive in original 200x200 coordinates — shift by the crop
+    // origin so lookups hit the right tiles in the (possibly cropped) map data.
     const isTileBlocked = (c: number, r: number): boolean =>
       map.layers.some(layerData => {
-        const tile = map.getTileAt(c, r, false, layerData.name);
+        const tile = map.getTileAt(c - this.originCol, r - this.originRow, false, layerData.name);
         return tile !== null && tile.collides;
       });
 
