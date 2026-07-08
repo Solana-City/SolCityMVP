@@ -96,13 +96,13 @@ export class SimpleSprite {
   walk(direction: Direction): void {
     this.currentDirection = direction;
     const animKey = `${this.textureKey}-walk-${direction}`;
-    if (!this.isWalking || this.sprite.anims.getName() !== animKey) {
-      this.isWalking = true;
-      const anim = this.scene.anims.get(animKey);
-      if (anim && anim.frames.length > 0) {
-        this.sprite.anims.play(animKey, true);
-      }
-    }
+    const anim = this.scene.anims.get(animKey);
+    if (!anim || anim.frames.length === 0) return;
+    // Already playing this exact animation — let it continue from the current frame.
+    if (this.sprite.anims.isPlaying && this.sprite.anims.currentAnim?.key === animKey) return;
+    this.isWalking = true;
+    // Start at frame 1 (mid-stride) so even a single-frame tap shows visible movement.
+    this.sprite.anims.play({ key: animKey, startFrame: Math.min(1, anim.frames.length - 1) });
   }
 
   /** Stop walking and show the idle frame for the current direction. */

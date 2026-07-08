@@ -62,6 +62,7 @@ export class PedestrianSprite {
   private lastDir: Direction = "down";
   private walkVx = 0;
   private walkVy = 0;
+  private nudgeCooldown = 0;
 
   constructor(
     scene: Phaser.Scene,
@@ -218,6 +219,17 @@ export class PedestrianSprite {
     this.isMoving = false;
     this.showIdleFrame();
     this.scheduleNextMove();
+  }
+
+  nudge(dx: number, dy: number): void {
+    const now = this.scene.time.now;
+    if (now - this.nudgeCooldown < 400) return;
+    this.nudgeCooldown = now;
+
+    const container = this.avatar.getContainer();
+    if (!container?.scene || !container.body) return;
+    const body = container.body as Phaser.Physics.Arcade.Body;
+    body.reset(container.x + dx, container.y + dy);
   }
 
   updateDepth() { this.avatar.updateDepth(); }

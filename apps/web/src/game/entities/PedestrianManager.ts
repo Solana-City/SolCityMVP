@@ -87,8 +87,14 @@ export class PedestrianManager {
       scene.physics.add.collider(this.pedGroup, cl);
     }
 
-    // Peds can't walk through the player
-    scene.physics.add.collider(this.pedGroup, playerContainer);
+    // Player walking into a ped nudges it exactly 1 tile away — no physics velocity.
+    scene.physics.add.overlap(
+      this.pedGroup,
+      playerContainer,
+      this.onPlayerOverlap as Phaser.Types.Physics.Arcade.ArcadePhysicsCallback,
+      undefined,
+      this,
+    );
 
     // Peds can't walk through fixed NPCs
     for (const nc of npcContainers) {
@@ -97,6 +103,24 @@ export class PedestrianManager {
 
     // Peds can't walk through each other
     scene.physics.add.collider(this.pedGroup, this.pedGroup);
+  }
+
+  private onPlayerOverlap(
+    pedCont: Phaser.Types.Physics.Arcade.GameObjectWithBody,
+    playerCont: Phaser.Types.Physics.Arcade.GameObjectWithBody,
+  ): void {
+    const ped = pedCont as unknown as Phaser.GameObjects.Container;
+    const player = playerCont as unknown as Phaser.GameObjects.Container;
+    const pedSprite = this.pedestrians.find(p => p.getContainer() === ped);
+    if (!pedSprite) return;
+
+    const dx = ped.x - player.x;
+    const dy = ped.y - player.y;
+    const absX = Math.abs(dx);
+    const absY = Math.abs(dy);
+    const pushX = absX >= absY ? (dx >= 0 ? TILE_SIZE : -TILE_SIZE) : 0;
+    const pushY = absX < absY  ? (dy >= 0 ? TILE_SIZE : -TILE_SIZE) : 0;
+    pedSprite.nudge(pushX, pushY);
   }
 
   private isBlocked(col: number, row: number): boolean {

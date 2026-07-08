@@ -79,9 +79,12 @@ export class AvatarSprite {
     for (const sprite of this.layerSprites.values()) {
       const key = `${sprite.texture.key}-walk-${direction}`;
       const anim = this.scene.anims.get(key);
-      if (anim && anim.frames.length > 0) {
-        sprite.anims.play(key, true);
-      }
+      if (!anim || anim.frames.length === 0) continue;
+      // Already playing this exact animation — let it continue from the current frame.
+      if (sprite.anims.isPlaying && sprite.anims.currentAnim?.key === key) continue;
+      // Start at frame 1 (mid-stride) so even a single-frame tap shows visible movement.
+      // Frame 0 is the neutral/idle pose — starting there looks like no animation at all.
+      sprite.anims.play({ key, startFrame: Math.min(1, anim.frames.length - 1) });
     }
   }
 
