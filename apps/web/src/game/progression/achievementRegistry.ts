@@ -26,7 +26,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   {
     id: "first-swap",
     title: "First Swap",
-    description: "You made your first token swap with Jupiter Joe.",
+    description: "You made your first token swap with Jupiter Cat.",
     icon: "💱",
     tier: "common",
     check: (p) => p.swapCount >= 1,

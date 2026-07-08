@@ -697,9 +697,9 @@ function TutorPanel({ onClose }: { onClose: () => void }) {
           )}
         />
         <StepCard number={2} title="Swap tokens" color="#FFD700"
-          description="Walk to Jupiter Joe (gold NPC, north) and press E to exchange tokens via Jupiter." />
+          description="Walk to Jupiter Cat (gold NPC, north) and press E to exchange tokens via Jupiter." />
         <StepCard number={3} title="Send SOL" color="#00D1FF"
-          description="Visit Postmaster Ana (blue NPC) to transfer SOL to any wallet on devnet." />
+          description="Visit Steve Sends (blue NPC) to transfer SOL to any wallet on devnet." />
         <StepCard number={4} title="Explore & earn" color="#9945FF"
           description="Check the Superteam Hub for bounties. Every interaction earns score and unlocks outfits!" />
       </div>
