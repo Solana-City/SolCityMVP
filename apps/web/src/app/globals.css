@@ -50,6 +50,13 @@ button:focus-visible {
   height: 100%;
 }
 
+/* Full visible viewport — dvh tracks the mobile URL bar collapsing/expanding
+   so the game canvas never letterboxes; vh is the fallback for old browsers. */
+.app-viewport {
+  height: 100vh;
+  height: 100dvh;
+}
+
 @keyframes pulse {
   0%, 100% { opacity: 1; transform: scale(1); }
   50%      { opacity: 0.5; transform: scale(1.3); }

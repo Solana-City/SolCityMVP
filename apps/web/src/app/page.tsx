@@ -205,7 +205,7 @@ export default function Home() {
         {/* Headless bridge so Phaser can request wallet signatures */}
         <WalletSignBridge />
         <ConnectScreen />
-        <main className="w-screen h-screen relative">
+        <main className="w-screen app-viewport relative">
           <PhaserGame onGameReady={setGame} />
 
           {/* Score HUD — top left */}

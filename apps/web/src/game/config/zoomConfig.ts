@@ -3,8 +3,8 @@
  *
  * Sprites render at world scale 0.5, so one source pixel covers
  * 0.5 x cameraZoom canvas pixels. Crisp pixel art requires that to be a
- * whole number of DEVICE pixels. On desktop the canvas backing store is
- * rendered at devicePixelRatio resolution (see PhaserGame), so any EVEN
+ * whole number of DEVICE pixels. The canvas backing store is rendered at
+ * devicePixelRatio resolution (capped at 2 — see PhaserGame), so any EVEN
  * camera zoom is pixel-perfect — which yields several crisp steps.
  *
  * "View scale" is what the user perceives: the size of one source pixel in
@@ -17,8 +17,10 @@ const VIEW_SCALE_KEY = "solcity:view-scale";
 /** Pre-DPR-aware storage key — held the raw camera zoom at an implied dpr of 1. */
 const LEGACY_ZOOM_KEY = "solcity:zoom";
 
-const MIN_VIEW_SCALE = 0.6;
-const MAX_VIEW_SCALE = 4.05;
+// Bias the range toward zooming OUT (seeing more of the city) rather than
+// magnification: floor at half scale, cap at 2.5x.
+const MIN_VIEW_SCALE = 0.45;
+const MAX_VIEW_SCALE = 2.55;
 
 /**
  * DPR the canvas backing store is rendered at. PhaserGame publishes the
@@ -32,10 +34,10 @@ export function getRenderDpr(): number {
 }
 
 export function computeRenderDpr(): number {
-  // Mobile keeps a 1:1 CSS-pixel canvas: the Canvas2D renderer redraws
-  // every pixel on the CPU each frame, and a DPR-sized backing store would
-  // multiply that fill cost by dpr^2.
-  if (window.matchMedia("(pointer: coarse)").matches) return 1;
+  // Capped at 2 everywhere: on mobile the Canvas2D renderer redraws every
+  // backing-store pixel each frame, so the cap bounds the fill cost at 4x
+  // CSS resolution (phones at dpr 3 get a slight CSS upscale instead).
+  // A dpr-2 backing store is what allows the crisp 0.5x zoom-out level.
   return Math.min(Math.max(window.devicePixelRatio || 1, 1), 2);
 }
 
