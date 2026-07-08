@@ -3,9 +3,20 @@ import { TILE_SIZE, PLAYABLE_ZONE } from "../config/constants";
 import { PedestrianSprite, makePedestrianLoadout } from "./PedestrianSprite";
 import { getTargetPedIndex, advanceFindSlot, getCurrentSlot, ROTATION_BATCH_MS } from "../minigames/whereIsNPC/WhereIsNPCGame";
 
-export const PEDESTRIAN_COUNT = 96;
+// The Canvas renderer on mobile redraws every sprite on the CPU each frame,
+// and each pedestrian is up to 7 layered sprites — a 96-strong crowd is
+// ~600 sprites per frame. A smaller crowd keeps the streets alive at a
+// fraction of the draw cost.
+const PEDESTRIAN_COUNT_DESKTOP = 96;
+const PEDESTRIAN_COUNT_MOBILE = 40;
+
+function getPedestrianCount(): number {
+  return window.matchMedia("(pointer: coarse)").matches
+    ? PEDESTRIAN_COUNT_MOBILE
+    : PEDESTRIAN_COUNT_DESKTOP;
+}
+
 const SPEED_BANDS = [18, 24, 24, 30, 30, 38, 44];
-const ROTATION_BATCH_SIZE = Math.ceil(PEDESTRIAN_COUNT / 4);
 
 // 32 zones covering the full PLAYABLE_ZONE (col1:42 col2:162 row1:68 row2:130)
 const SPAWN_ZONES: [number, number, number, number][] = [
@@ -34,21 +45,23 @@ export class PedestrianManager {
   private scene!: Phaser.Scene;
   private collisionLayers: Phaser.Tilemaps.TilemapLayer[] = [];
   private rotationBatch = 0;
+  private count = PEDESTRIAN_COUNT_DESKTOP;
   /** Arcade group — lets us do pedGroup vs pedGroup in one collider call */
   private pedGroup!: Phaser.Physics.Arcade.Group;
 
   spawn(scene: Phaser.Scene, collisionLayers: Phaser.Tilemaps.TilemapLayer[]): void {
     this.scene = scene;
     this.collisionLayers = collisionLayers;
+    this.count = getPedestrianCount();
     // immovable: true ensures that pedGroup.add() never resets individual body immovability
     this.pedGroup = scene.physics.add.group({ immovable: true });
 
-    for (let i = 0; i < PEDESTRIAN_COUNT; i++) {
+    for (let i = 0; i < this.count; i++) {
       scene.time.delayedCall(i * 80, () => {
         const ped = this.spawnOne(i);
         this.pedGroup.add(ped.getContainer());
         this.pedestrians.push(ped);
-        if (this.pedestrians.length === PEDESTRIAN_COUNT) this.refreshTarget();
+        if (this.pedestrians.length === this.count) this.refreshTarget();
       });
     }
 
@@ -128,8 +141,9 @@ export class PedestrianManager {
   }
 
   private rotateBatch(): void {
-    const start = this.rotationBatch * ROTATION_BATCH_SIZE;
-    const end   = Math.min(start + ROTATION_BATCH_SIZE, this.pedestrians.length);
+    const batchSize = Math.ceil(this.count / 4);
+    const start = this.rotationBatch * batchSize;
+    const end   = Math.min(start + batchSize, this.pedestrians.length);
     this.rotationBatch = (this.rotationBatch + 1) % 4;
 
     for (let i = start; i < end; i++) {
@@ -167,7 +181,7 @@ export class PedestrianManager {
   refreshTarget(): void {
     const newIndex = getTargetPedIndex(
       Math.floor(Date.now() / (5 * 60 * 1000)),
-      this.pedestrians.length || PEDESTRIAN_COUNT,
+      this.pedestrians.length || this.count,
       getCurrentSlot(),
     );
     if (newIndex === this.currentTargetIndex) return;
