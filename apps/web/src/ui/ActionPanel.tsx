@@ -413,20 +413,6 @@ const EARN_CATEGORIES: EarnCategory[] = [
   { type: "hackathon", label: "Hackathon Tracks",  sublabel: "Compete and win",        color: "#FFD700", viewAllUrl: "https://superteam.fun/earn/hackathon/frontier"  },
 ];
 
-// ── Curated bounty list — update periodically from earn.superteam.fun ─
-// Last updated: 2026-05-12
-const CURATED_BOUNTIES: EarnListing[] = [
-  { title: "Create Content about the Solana Summit in Germany",        rewardAmount: 10000, token: "USDG", deadline: "2026-06-05T21:59:59.000Z", sponsorName: "Superteam Germany",    slug: "create-content-about-the-solana-summit-in-germany",                          type: "bounty" },
-  { title: "Solana Summit Kazakhstan — Startup Battle",                rewardAmount: 10000, token: "USDG", deadline: "2026-05-23T18:59:59.000Z", sponsorName: "Superteam Kazakhstan", slug: "solana-summit-kazakhstan-startup-battle-live-pitch-competition",              type: "bounty" },
-  { title: "Promote Solana Summit Kazakhstan — Content & Community",   rewardAmount: 7000,  token: "USDG", deadline: "2026-05-21T18:59:59.000Z", sponsorName: "Superteam Kazakhstan", slug: "promote-solana-summit-kazakhstan-content-and-community-bounty",               type: "bounty" },
-  { title: "Create Your Own Currency on Flipcash",                     rewardAmount: 2250,  token: "USDC", deadline: "2026-05-23T03:59:59.999Z", sponsorName: "Flipcash",             slug: "create-your-own-currency-on-flipcash",                                        type: "bounty" },
-  { title: "Artist Competition at Solana Breakpoint London 2026",      rewardAmount: 1500,  token: "USDG", deadline: "2026-05-15T22:59:59.999Z", sponsorName: "Superteam UK",         slug: "bp26-artist-competition",                                                     type: "bounty" },
-  { title: "Pitch & Demo Your Project at Kyiv Demo Day",               rewardAmount: 1700,  token: "USDG", deadline: "2026-05-16T20:59:59.999Z", sponsorName: "Superteam Ukraine",    slug: "pitch-and-demo-your-project-at-kyiv-demo-day",                                type: "bounty" },
-  { title: "Birdeye Data 4-Week BIP Competition — Sprint 4",           rewardAmount: 500,   token: "USDC", deadline: "2026-05-16T16:59:59.999Z", sponsorName: "Birdeye Data",         slug: "birdeye-data-4-week-bip-competition-sprint-4",                                type: "bounty" },
-  { title: "Write Engaging Twitter Thread on CoinEx Earn",             rewardAmount: 500,   token: "USDC", deadline: "2026-05-25T18:29:59.000Z", sponsorName: "CoinEx",               slug: "write-engaging-twitter-thread-on-coinex-earn-for-staking-rewards",            type: "bounty" },
-  { title: "Write a Twitter thread on Raze",                           rewardAmount: 180,   token: "USDC", deadline: "2026-05-24T15:59:59.000Z", sponsorName: "Raze",                 slug: "write-a-twitter-thread-on-raze",                                              type: "bounty" },
-  { title: "Write a Twitter Thread on Kimia Protocol",                 rewardAmount: 110,   token: "USDC", deadline: "2026-05-26T18:29:59.000Z", sponsorName: "Kimia",                slug: "write-a-twitter-thread-on-kimia-protocol",                                    type: "bounty" },
-];
 
 function BountiesPanel({ onClose }: { onClose: () => void }) {
   const [selected, setSelected] = useState<EarnCategory | null>(null);
@@ -507,23 +493,18 @@ function EarnListingsStage({
   onBack: () => void;
   onClose: () => void;
 }) {
-  const isBounty = category.type === "bounty";
-
-  const activeBounties = CURATED_BOUNTIES.filter(
-    (b) => !b.deadline || new Date(b.deadline) > new Date()
-  );
-  const [listings, setListings] = useState<EarnListing[]>(isBounty ? activeBounties : []);
-  const [loading, setLoading]   = useState(!isBounty);
+  const [listings, setListings] = useState<EarnListing[]>([]);
+  const [loading, setLoading]   = useState(true);
   const [failed, setFailed]     = useState(false);
 
   useEffect(() => {
-    if (isBounty) return; // bounties use the static curated list
     let cancelled = false;
     setLoading(true);
     setFailed(false);
+    setListings([]);
 
     import("@/game/solana/superteamEarn").then(({ fetchEarnListings }) => {
-      fetchEarnListings(category.type, 5)
+      fetchEarnListings(category.type, 8)
         .then((items) => {
           if (!cancelled) { setListings(items); setLoading(false); }
         })
@@ -533,7 +514,7 @@ function EarnListingsStage({
     });
 
     return () => { cancelled = true; };
-  }, [category.type, isBounty]);
+  }, [category.type]);
 
   const formatDeadline = (deadline: string | null) => {
     if (!deadline) return "Open";

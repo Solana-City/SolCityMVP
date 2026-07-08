@@ -15,28 +15,10 @@ export async function fetchEarnListings(
   take = 5
 ): Promise<EarnListing[]> {
   try {
-    // Fetch a larger pool then filter client-side — the server ignores the type
-    // param when no listings of that type are open, returning all open listings.
-    const pool = Math.max(take * 5, 25);
-    const url = `https://superteam.fun/api/listings?type=${type}&status=open&take=${pool}&order=desc`;
-    const res = await fetch(url);
+    // Proxy through our own API route — avoids CORS and caches server-side for 1h.
+    const res = await fetch(`/api/earn-listings?type=${type}&take=${take}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    const items: any[] = Array.isArray(data)
-      ? data
-      : (data.data ?? data.listings ?? []);
-    return items
-      .filter((item: any) => (item.type ?? type) === type)
-      .slice(0, take)
-      .map((item: any) => ({
-        title: item.title ?? "",
-        rewardAmount: item.rewardAmount ?? null,
-        token: item.token ?? "USDC",
-        deadline: item.deadline ?? null,
-        sponsorName: item.sponsor?.name ?? item.sponsorName ?? "",
-        slug: item.slug ?? "",
-        type,
-      }));
+    return await res.json();
   } catch (err) {
     console.error("[superteamEarn] fetch error:", err);
     return [];
