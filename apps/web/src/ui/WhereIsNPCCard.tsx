@@ -144,6 +144,12 @@ export default function WhereIsNPCCard({ gameRef, wallet }: Props) {
   // CityScene falls back to "guest" when no wallet is connected — match that
   // identifier here so score lookups and "you found it" checks line up.
   const effectiveWallet = wallet ?? "guest";
+  // Compact sizing on touch devices — the card opens as an overlay next to
+  // the icon rail and must not swallow the small game view.
+  const [isTouch, setIsTouch] = useState(false);
+  useEffect(() => {
+    setIsTouch(window.matchMedia("(pointer: coarse)").matches);
+  }, []);
   const [collapsed, setCollapsed] = useState(false);
   const [showInfo, setShowInfo] = useState(false);
   const [showLeaderboard, setShowLeaderboard] = useState(false);
@@ -216,7 +222,7 @@ export default function WhereIsNPCCard({ gameRef, wallet }: Props) {
 
       {showInfo && (
         <div style={{
-          position: "fixed", top: 12, left: 224, zIndex: 200,
+          position: "fixed", top: 12, left: isTouch ? 236 : 224, zIndex: 200,
           background: "#0c0f1e", border: "1px solid rgba(153,69,255,0.3)",
           borderRadius: 12, padding: "14px 16px", width: 248,
           fontSize: 12, color: "#a0a0cc", lineHeight: 1.65,
@@ -227,8 +233,8 @@ export default function WhereIsNPCCard({ gameRef, wallet }: Props) {
           <div style={{ color: "#c084fc", marginBottom: 10, fontFamily: '"Press Start 2P", monospace', fontSize: 8, letterSpacing: 0.5 }}>
             HOW TO PLAY
           </div>
-          Find the citizen shown below. Walk up to them and press{" "}
-          <span style={{ color: "#14F195", fontWeight: 600 }}>E</span> to greet them.
+          Find the citizen shown below. Walk up to them and {isTouch ? "tap" : "press"}{" "}
+          <span style={{ color: "#14F195", fontWeight: 600 }}>{isTouch ? "ACT" : "E"}</span> to greet them.
           <br /><br />
           A new citizen appears every{" "}
           <span style={{ color: "#FFD700", fontWeight: 600 }}>5 minutes</span>.
@@ -240,7 +246,7 @@ export default function WhereIsNPCCard({ gameRef, wallet }: Props) {
         background: "rgba(8,10,22,0.58)",
         border: "1px solid rgba(153,69,255,0.2)",
         borderRadius: 14,
-        width: 210,
+        width: isTouch ? 172 : 210,
         backdropFilter: "blur(16px)",
         boxShadow: "0 4px 28px rgba(0,0,0,0.4)",
         fontFamily: '"Fira Code", monospace',
@@ -250,7 +256,7 @@ export default function WhereIsNPCCard({ gameRef, wallet }: Props) {
         {/* Header */}
         <div style={{
           display: "flex", alignItems: "center", gap: 8,
-          padding: "11px 13px",
+          padding: isTouch ? "8px 10px" : "11px 13px",
           borderBottom: collapsed ? "none" : "1px solid rgba(153,69,255,0.1)",
           cursor: "pointer",
           userSelect: "none",
@@ -277,7 +283,7 @@ export default function WhereIsNPCCard({ gameRef, wallet }: Props) {
         </div>
 
         {!collapsed && (
-          <div style={{ padding: "12px 13px", display: "flex", flexDirection: "column", gap: 10 }}>
+          <div style={{ padding: isTouch ? "9px 10px" : "12px 13px", display: "flex", flexDirection: "column", gap: isTouch ? 7 : 10 }}>
             {/* Found banner */}
             {foundMsg && (
               <div style={{
@@ -297,15 +303,15 @@ export default function WhereIsNPCCard({ gameRef, wallet }: Props) {
                 <div style={{
                   background: "rgba(153,69,255,0.07)",
                   border: "1px solid rgba(153,69,255,0.18)",
-                  borderRadius: 10, padding: 8,
+                  borderRadius: 10, padding: isTouch ? 6 : 8,
                   transition: "border-color 0.2s ease",
                 }}>
-                  <MiniAvatar loadout={targetLoadout} size={88} />
+                  <MiniAvatar loadout={targetLoadout} size={isTouch ? 60 : 88} />
                 </div>
               </div>
             ) : (
               <div style={{
-                height: 104, display: "flex", alignItems: "center", justifyContent: "center",
+                height: isTouch ? 72 : 104, display: "flex", alignItems: "center", justifyContent: "center",
                 fontSize: 12, color: "#3a3a5a",
               }}>
                 {foundMsg ? "New citizen incoming…" : "Loading…"}
