@@ -106,7 +106,7 @@ export class BootScene extends Phaser.Scene {
       let i = 0;
       const processNext = () => {
         if (i < variants.length) {
-          applyChromaKey(this, variants[i].textureKey);
+          applyChromaKey(this, variants[i].variant.textureKey);
           i++;
           requestAnimationFrame(processNext);
         } else {
