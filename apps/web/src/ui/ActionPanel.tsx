@@ -48,7 +48,7 @@ export default function ActionPanel({ action, onClose }: ActionPanelProps) {
           onClick={onClose}
         />
         <div
-          className="relative w-full rounded-t-2xl p-5"
+          className="relative w-full rounded-t-2xl"
           style={{
             background: "rgba(10,10,30,0.98)",
             border: "1px solid rgba(153,69,255,0.25)",
@@ -56,7 +56,9 @@ export default function ActionPanel({ action, onClose }: ActionPanelProps) {
             fontFamily: '"Fira Code", monospace',
             maxHeight: "85dvh",
             overflowY: "auto",
-            paddingBottom: "max(env(safe-area-inset-bottom, 16px), 24px)",
+            maxWidth: 480,
+            padding: "16px 16px 0",
+            paddingBottom: "max(env(safe-area-inset-bottom, 16px), 20px)",
           }}
         >
           {/* Drag handle */}

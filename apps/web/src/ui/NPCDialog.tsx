@@ -132,8 +132,10 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
         style={{
           position:     "fixed",
           bottom:       "calc(env(safe-area-inset-bottom, 0px) + 12px)",
-          left:         10,
-          right:        10,
+          left:         "50%",
+          transform:    "translateX(-50%)",
+          width:        "calc(100vw - 20px)",
+          maxWidth:     480,
           zIndex:       30,
           fontFamily:   '"Fira Code", monospace',
           background:   "rgba(8,8,24,0.96)",
@@ -348,8 +350,8 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
               <Dots />
               <span style={{ fontSize: "11px", color: "#3a3a52" }}>
                 {isTyping ? "..." : isLastLine
-                  ? "[E] Action · [ESC] Close"
-                  : "[E] Continue · [ESC] Close"}
+                  ? "[E/Space] Action · [ESC] Close"
+                  : "[E/Space] Continue · [ESC] Close"}
               </span>
             </div>
             {isLastLine && doneTyping && (
