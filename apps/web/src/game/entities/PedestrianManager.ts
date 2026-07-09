@@ -87,14 +87,14 @@ export class PedestrianManager {
       scene.physics.add.collider(this.pedGroup, cl);
     }
 
-    // Both player and peds are immovable — a collider would skip both.
-    // Overlap fires the callback regardless, giving us the nudge without
-    // any physics force on either body.
-    scene.physics.add.overlap(
+    // processCallback decides who initiated contact:
+    //   player moving toward ped → block player + nudge ped
+    //   ped walking into player  → skip physics, player unaffected
+    scene.physics.add.collider(
       this.pedGroup,
       playerContainer,
       this.onPlayerCollide as Phaser.Types.Physics.Arcade.ArcadePhysicsCallback,
-      undefined,
+      this.onPlayerPedProcess as Phaser.Types.Physics.Arcade.ArcadePhysicsCallback,
       this,
     );
 
@@ -105,6 +105,24 @@ export class PedestrianManager {
 
     // Ped-ped collider omitted: both bodies are immovable, Phaser skips
     // resolution anyway — no point paying the broadphase cost.
+  }
+
+  /** Returns true only when the player is actively moving toward the ped.
+   *  Returning false skips physics resolution so the ped cannot push the player. */
+  private onPlayerPedProcess(
+    pedCont: Phaser.Types.Physics.Arcade.GameObjectWithBody,
+    playerCont: Phaser.Types.Physics.Arcade.GameObjectWithBody,
+  ): boolean {
+    const ped    = pedCont    as unknown as Phaser.GameObjects.Container;
+    const player = playerCont as unknown as Phaser.GameObjects.Container;
+    const pBody  = (player as any).body as Phaser.Physics.Arcade.Body;
+    const dx = ped.x - player.x;
+    const dy = ped.y - player.y;
+    // Dominant axis: is the player's velocity headed toward the ped?
+    if (Math.abs(dx) >= Math.abs(dy)) {
+      return dx > 0 ? pBody.velocity.x > 0 : pBody.velocity.x < 0;
+    }
+    return dy > 0 ? pBody.velocity.y > 0 : pBody.velocity.y < 0;
   }
 
   private onPlayerCollide(
