@@ -87,8 +87,8 @@ export class PedestrianManager {
       scene.physics.add.collider(this.pedGroup, cl);
     }
 
-    // Peds block the player; the callback neutralises the physics impulse and
-    // applies a single 1-tile position nudge (with cooldown) instead of a slide.
+    // Ped bodies are immovable — player is blocked by them; callback nudges
+    // the ped 1 tile so the player can clear a path (400ms cooldown).
     scene.physics.add.collider(
       this.pedGroup,
       playerContainer,
@@ -102,8 +102,8 @@ export class PedestrianManager {
       scene.physics.add.collider(this.pedGroup, nc);
     }
 
-    // Peds can't walk through each other
-    scene.physics.add.collider(this.pedGroup, this.pedGroup);
+    // Ped-ped collider omitted: both bodies are immovable, Phaser skips
+    // resolution anyway — no point paying the broadphase cost.
   }
 
   private onPlayerCollide(
@@ -114,10 +114,6 @@ export class PedestrianManager {
     const player = playerCont as unknown as Phaser.GameObjects.Container;
     const pedSprite = this.pedestrians.find(p => p.getContainer() === ped);
     if (!pedSprite) return;
-
-    // Cancel the velocity arcade physics just applied to the NPC so it
-    // doesn't slide — then nudge it exactly 1 tile away from the player.
-    pedSprite.cancelImpulse();
 
     const dx = ped.x - player.x;
     const dy = ped.y - player.y;
