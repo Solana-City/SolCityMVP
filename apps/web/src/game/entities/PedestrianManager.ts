@@ -87,9 +87,10 @@ export class PedestrianManager {
       scene.physics.add.collider(this.pedGroup, cl);
     }
 
-    // Ped bodies are immovable — player is blocked by them; callback nudges
-    // the ped 1 tile so the player can clear a path (400ms cooldown).
-    scene.physics.add.collider(
+    // Both player and peds are immovable — a collider would skip both.
+    // Overlap fires the callback regardless, giving us the nudge without
+    // any physics force on either body.
+    scene.physics.add.overlap(
       this.pedGroup,
       playerContainer,
       this.onPlayerCollide as Phaser.Types.Physics.Arcade.ArcadePhysicsCallback,
