@@ -170,7 +170,6 @@ export class CityScene extends Phaser.Scene {
     this.playerBody.setSize(TILE_SIZE * 0.5, TILE_SIZE * 0.3);
     this.playerBody.setOffset(-TILE_SIZE * 0.25, -TILE_SIZE * 0.2);
     this.playerBody.setCollideWorldBounds(true);
-    this.playerBody.setImmovable(true);
     for (const cl of this.collisionLayers) {
       this.physics.add.collider(container, cl);
     }
