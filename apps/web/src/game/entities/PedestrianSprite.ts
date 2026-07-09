@@ -80,14 +80,16 @@ export class PedestrianSprite {
 
     this.avatar = new AvatarSprite(scene, x, y, loadout);
 
-    // Immovable so physics collisions never slide NPCs — only nudge() moves them.
+    // Enable physics — body NOT immovable so physics resolves collisions
     const container = this.avatar.getContainer();
     scene.physics.world.enable(container);
     const body = container.body as Phaser.Physics.Arcade.Body;
     body.setSize(TILE_SIZE * 0.5, TILE_SIZE * 0.3);
     body.setOffset(-TILE_SIZE * 0.25, -TILE_SIZE * 0.2);
     body.setCollideWorldBounds(true);
-    body.setImmovable(true);
+    body.setImmovable(false);
+    body.setDrag(600, 600);
+    body.setMaxVelocity(80, 80);
 
     this.showIdleFrame();
     this.scheduleNextMove();
@@ -98,21 +100,17 @@ export class PedestrianSprite {
 
   private syncAnimation() {
     const container = this.avatar.getContainer();
-    // Container/body can be torn down mid-recycle; guard before every access.
+    // Container/body can already be torn down (e.g. mid-recycle in
+    // PedestrianManager.rotateBatch()) by the time this frame's "update"
+    // fires, since scene.events.off() in destroy() doesn't retroactively
+    // skip a listener collected earlier in the same emit pass.
     if (!container?.scene || !container.body) return;
     const body = container.body as Phaser.Physics.Arcade.Body;
 
     if (this.isMoving) {
+      // Reapply intended walk velocity each frame so drag only kills push impulses
+      // (extra velocity added by player collision) without fighting the walk itself.
       body.setVelocity(this.walkVx, this.walkVy);
-
-      // Tile collider sets body.blocked even on immovable bodies — use it to
-      // detect wall contact and stop the walk so the NPC doesn't vibrate.
-      const hitWall =
-        (this.walkVx > 0 && body.blocked.right) ||
-        (this.walkVx < 0 && body.blocked.left)  ||
-        (this.walkVy > 0 && body.blocked.down)  ||
-        (this.walkVy < 0 && body.blocked.up);
-      if (hitWall) { this.stopMove(); return; }
     }
 
     const vx = body.velocity.x;
@@ -124,7 +122,7 @@ export class PedestrianSprite {
       : (vy > 0 ? "down" : "up");
 
     this.lastDir = dir;
-    this.avatar.walk(dir);
+    this.avatar.walk(dir); // anims.play ignoreIfPlaying=true — no-op if already animating
   }
 
   get x() { return this.avatar.x; }
@@ -221,6 +219,15 @@ export class PedestrianSprite {
     this.isMoving = false;
     this.showIdleFrame();
     this.scheduleNextMove();
+  }
+
+  /** Resets the body velocity to the NPC's intended walk velocity (or 0 if idle),
+   *  cancelling any impulse arcade physics applied during collision resolution. */
+  cancelImpulse(): void {
+    const container = this.avatar.getContainer();
+    if (!container?.scene || !container.body) return;
+    const body = container.body as Phaser.Physics.Arcade.Body;
+    body.setVelocity(this.walkVx, this.walkVy);
   }
 
   nudge(dx: number, dy: number): void {

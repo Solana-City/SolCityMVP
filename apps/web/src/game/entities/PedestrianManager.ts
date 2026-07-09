@@ -87,8 +87,9 @@ export class PedestrianManager {
       scene.physics.add.collider(this.pedGroup, cl);
     }
 
-    // Overlap only — both bodies are immovable so a collider would apply no
-    // physics separation; overlap fires the nudge callback without physics.
+    // Overlap fires the nudge callback without blocking — player passes through
+    // peds but triggers a 1-tile nudge on contact. Using overlap (not collider)
+    // prevents peds from applying physics force to the player.
     scene.physics.add.overlap(
       this.pedGroup,
       playerContainer,
@@ -102,8 +103,8 @@ export class PedestrianManager {
       scene.physics.add.collider(this.pedGroup, nc);
     }
 
-    // Ped-ped collider omitted: both bodies are immovable, Phaser skips
-    // resolution anyway — no point paying the broadphase cost.
+    // Peds can't walk through each other
+    scene.physics.add.collider(this.pedGroup, this.pedGroup);
   }
 
   private onPlayerCollide(
@@ -114,6 +115,9 @@ export class PedestrianManager {
     const player = playerCont as unknown as Phaser.GameObjects.Container;
     const pedSprite = this.pedestrians.find(p => p.getContainer() === ped);
     if (!pedSprite) return;
+
+    // Cancel any physics impulse before nudging so the ped doesn't slide.
+    pedSprite.cancelImpulse();
 
     const dx = ped.x - player.x;
     const dy = ped.y - player.y;
