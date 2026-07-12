@@ -126,6 +126,12 @@ export class OnChainMultiplayer {
   private cleanupInterval: ReturnType<typeof setInterval> | null = null;
   /** Poll/discovery timers — cleared on disconnect so they don't stack across reconnects. */
   private discoveryTimers: ReturnType<typeof setInterval>[] = [];
+  /** Program-wide and chat-log subscriptions — removed on disconnect. The
+   *  wallet adapter can cycle connect/disconnect rapidly; leaking one
+   *  subscription per cycle is what trips devnet's connection-level rate
+   *  limit ("Connection rate limits exceeded"). */
+  private programSubId: number | null = null;
+  private logsSubId: number | null = null;
 
   constructor() {
     this.routerConnection    = new ConnectionMagicRouter(ENDPOINTS.magicRouter,  "confirmed");
@@ -258,11 +264,25 @@ export class OnChainMultiplayer {
     this.bc?.close();
     this.bc = null;
 
-    // Unsubscribe from MagicBlock account changes
+    // Unsubscribe per-player account listeners. Subs are created on the
+    // base connection (subscribeToPlayerWallet) or the ephemeral one
+    // (subscribeToPlayer) — try both; removing an unknown id is a no-op.
     for (const subId of this.accountSubs.values()) {
+      this.baseConnection.removeAccountChangeListener(subId).catch(() => {});
       this.ephemeralConnection.removeAccountChangeListener(subId).catch(() => {});
     }
     this.accountSubs.clear();
+
+    // Remove the program-wide and chat-log subscriptions — leaking these
+    // across reconnect cycles exhausts devnet's connection-level rate limit.
+    if (this.programSubId !== null) {
+      this.baseConnection.removeProgramAccountChangeListener(this.programSubId).catch(() => {});
+      this.programSubId = null;
+    }
+    if (this.logsSubId !== null) {
+      this.baseConnection.removeOnLogsListener(this.logsSubId).catch(() => {});
+      this.logsSubId = null;
+    }
 
     if (this.cleanupInterval) { clearInterval(this.cleanupInterval); this.cleanupInterval = null; }
     for (const t of this.discoveryTimers) clearInterval(t);
@@ -399,8 +419,9 @@ export class OnChainMultiplayer {
 
   /** Subscribe to Memo program logs for real-time cross-browser chat. */
   private subscribeCrossNetworkChat(): void {
+    if (this.logsSubId !== null) return; // already subscribed — don't stack
     try {
-      this.baseConnection.onLogs(
+      this.logsSubId = this.baseConnection.onLogs(
         MEMO_PROGRAM_ID,
         (logs) => {
           if (logs.err) return;
@@ -672,14 +693,16 @@ export class OnChainMultiplayer {
 
     // 3. Subscribe to base layer program account changes (standard Solana devnet WebSocket)
     try {
-      this.baseConnection.onProgramAccountChange(
-        SOL_CITY_PROGRAM_ID,
-        (keyedInfo) => {
-          this.decodeAndUpdatePlayer(keyedInfo.accountId.toBase58(), keyedInfo.accountInfo.data);
-        },
-        "confirmed",
-      );
-      console.log("[Multiplayer] base layer subscription active");
+      if (this.programSubId === null) {
+        this.programSubId = this.baseConnection.onProgramAccountChange(
+          SOL_CITY_PROGRAM_ID,
+          (keyedInfo) => {
+            this.decodeAndUpdatePlayer(keyedInfo.accountId.toBase58(), keyedInfo.accountInfo.data);
+          },
+          "confirmed",
+        );
+        console.log("[Multiplayer] base layer subscription active");
+      }
     } catch (err) {
       console.warn("[Multiplayer] subscription failed:", err);
     }
@@ -752,12 +775,15 @@ export class OnChainMultiplayer {
     }
   }
 
-  // Only one move verification runs at a time — moves arrive at up to 2/s
-  // and each verification polls for a few seconds, so we sample instead of
-  // verifying every signature. A systemic failure (unauthorized session key,
-  // dropped txs) still surfaces within one sample window and turns the
-  // batch red in the UI.
+  // Only one move verification runs at a time, and after a verified success
+  // we trust the pipe for VERIFY_HEALTHY_WINDOW_MS before sampling again —
+  // moves arrive at up to 2/s and each verification polls for a few seconds,
+  // so verifying every signature would meaningfully raise RPC volume. A
+  // systemic failure (unauthorized session key, dropped txs) still surfaces
+  // within one sample window and turns the batch red in the UI.
+  private static readonly VERIFY_HEALTHY_WINDOW_MS = 10_000;
   private moveVerifyBusy = false;
+  private lastVerifyOkAt = 0;
   private firstVerifiedLogged = false;
 
   /**
@@ -774,8 +800,11 @@ export class OnChainMultiplayer {
     // Attach the signature immediately so the explorer link exists while pending.
     transactionLog.attachSignature(entryId, sig);
 
-    if (this.moveVerifyBusy) {
-      // Sampled out — the in-flight verification covers systemic failures.
+    if (
+      this.moveVerifyBusy ||
+      Date.now() - this.lastVerifyOkAt < OnChainMultiplayer.VERIFY_HEALTHY_WINDOW_MS
+    ) {
+      // Sampled out — a recent or in-flight verification covers systemic failures.
       transactionLog.markConfirmed(entryId, sig);
       return;
     }
@@ -790,8 +819,10 @@ export class OnChainMultiplayer {
           if (s.err) {
             transactionLog.markFailed(entryId, `on-chain error: ${JSON.stringify(s.err)}`);
             console.warn("[Multiplayer] move tx FAILED on-chain:", sig.slice(0, 12), s.err);
+            this.lastVerifyOkAt = 0; // unhealthy — verify the next move too
           } else {
             transactionLog.markConfirmed(entryId, sig);
+            this.lastVerifyOkAt = Date.now();
             if (!this.firstVerifiedLogged) {
               this.firstVerifiedLogged = true;
               console.log("[Multiplayer] ✓ first position tx verified on-chain:", sig.slice(0, 12));
@@ -802,6 +833,7 @@ export class OnChainMultiplayer {
       }
       transactionLog.markFailed(entryId, "dropped — never landed on the rollup");
       console.warn("[Multiplayer] move tx dropped (no status after 5s):", sig.slice(0, 12));
+      this.lastVerifyOkAt = 0; // unhealthy — verify the next move too
     } catch {
       // Status RPC unavailable — keep the optimistic confirm rather than
       // reporting a failure we haven't observed.
@@ -1041,6 +1073,40 @@ export class OnChainMultiplayer {
 
   // ── Position transaction (Magic Router) ──────────────────────────────
 
+  // Helper: race a promise against a timeout so a hanging RPC call never
+  // blocks position updates indefinitely (was causing "pending forever" bug).
+  private static withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+    return Promise.race([
+      p,
+      new Promise<T>((_, reject) =>
+        setTimeout(() => reject(new Error("rpc timeout")), ms)
+      ),
+    ]);
+  }
+
+  /**
+   * Cached recent blockhash for move txs. Moves fire at 2/s and fetching a
+   * fresh blockhash per tx doubled RPC volume on the move path — which is
+   * what pushed the endpoints into rate limiting and made sends time out.
+   * Validity margins: ER blocks are ~50ms so 150 blocks ≈ 7.5s (cache 3s);
+   * base layer blockhashes live ~60s+ (cache 20s). If a cached hash ever
+   * expires early the tx is dropped and the status verifier flags it.
+   */
+  private cachedMoveBlockhash: { hash: string; fetchedAt: number; layer: "ephemeral" | "base" } | null = null;
+
+  private async getMoveBlockhash(layer: "ephemeral" | "base"): Promise<string> {
+    const ttlMs = layer === "ephemeral" ? 3_000 : 20_000;
+    const now = Date.now();
+    const cached = this.cachedMoveBlockhash;
+    if (cached && cached.layer === layer && now - cached.fetchedAt < ttlMs) {
+      return cached.hash;
+    }
+    const conn = layer === "ephemeral" ? this.ephemeralConnection : this.baseConnection;
+    const { blockhash } = await OnChainMultiplayer.withTimeout(conn.getLatestBlockhash(), 5_000);
+    this.cachedMoveBlockhash = { hash: blockhash, fetchedAt: now, layer };
+    return blockhash;
+  }
+
   private async sendPositionTransaction(x: number, y: number, direction: number): Promise<string | null> {
     if (!this.wallet) return null;
 
@@ -1052,47 +1118,40 @@ export class OnChainMultiplayer {
     const tx = new Transaction().add(ix);
     tx.feePayer = sessionKey;
 
-    // Helper: race a promise against a timeout so a hanging RPC call never
-    // blocks position updates indefinitely (was causing "pending forever" bug).
-    const withTimeout = <T>(p: Promise<T>, ms: number): Promise<T> => {
-      return Promise.race([
-        p,
-        new Promise<T>((_, reject) =>
-          setTimeout(() => reject(new Error("rpc timeout")), ms)
-        ),
-      ]);
-    };
-
     if (this.useEphemeral) {
-      // Direct path to ephemeral RPC — returns a real ER tx hash indexable on
-      // explorer.magicblock.app. The router path returned opaque router IDs.
+      // Direct path to ephemeral RPC — returns a real ER tx hash.
       try {
-        const { blockhash } = await withTimeout(
-          this.ephemeralConnection.getLatestBlockhash(),
-          3_000,
-        );
-        tx.recentBlockhash = blockhash;
+        tx.recentBlockhash = await this.getMoveBlockhash("ephemeral");
         this.sessionKeys.signTransaction(tx);
-        const sig = await withTimeout(
+        const sig = await OnChainMultiplayer.withTimeout(
           this.ephemeralConnection.sendRawTransaction(tx.serialize(), { skipPreflight: true }),
-          3_000,
+          6_000,
         );
         // Actual execution outcome is verified by trackMoveConfirmation
         // (sampled getSignatureStatuses) in the caller.
         return sig;
       } catch (err: any) {
         // Don't permanently disable ER — rate limits and transient errors clear up.
-        // Return null so the log entry is marked failed; next throttle interval retries.
+        // Drop the cached blockhash (it may be the stale part) and return null
+        // so the log entry is marked failed; next throttle interval retries.
+        this.cachedMoveBlockhash = null;
         console.warn("[Multiplayer] ephemeral tx skipped:", err?.message);
         return null;
       }
     }
 
     // Base layer path — only used when delegation is not active.
-    const { blockhash } = await withTimeout(this.baseConnection.getLatestBlockhash(), 5_000);
-    tx.recentBlockhash = blockhash;
-    this.sessionKeys.signTransaction(tx);
-    return this.baseConnection.sendRawTransaction(tx.serialize(), { skipPreflight: true });
+    try {
+      tx.recentBlockhash = await this.getMoveBlockhash("base");
+      this.sessionKeys.signTransaction(tx);
+      return await OnChainMultiplayer.withTimeout(
+        this.baseConnection.sendRawTransaction(tx.serialize(), { skipPreflight: true }),
+        6_000,
+      );
+    } catch (err) {
+      this.cachedMoveBlockhash = null;
+      throw err;
+    }
   }
 
   // ── Wallet signing bridge ─────────────────────────────────────────────
