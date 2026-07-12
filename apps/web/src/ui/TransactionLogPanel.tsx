@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   transactionLog,
   getExplorerUrl,
@@ -103,6 +104,38 @@ export default function TransactionLogPanel({ isOpen, onToggle }: Props) {
     return rect.bottom + 6;
   })();
 
+  const floatingPanel = isOpen ? (
+    <div
+      className="fixed z-30 rounded-xl overflow-hidden flex flex-col"
+      style={{
+        top: panelTop,
+        right: 16,
+        width: 420,
+        maxWidth: "calc(100vw - 32px)",
+        height: `min(560px, calc(100vh - ${panelTop + 8}px))`,
+        background: "rgba(10,10,30,0.97)",
+        border: "1px solid rgba(153,69,255,0.35)",
+        backdropFilter: "blur(4px)",
+        fontFamily: '"Fira Code", monospace',
+      }}
+    >
+      <Header
+        total={entries.length}
+        pending={pendingCount}
+        failed={failedCount}
+        onClear={() => transactionLog.clear()}
+        onClose={onToggle}
+      />
+      <Filters
+        kindFilter={kindFilter}
+        setKindFilter={setKindFilter}
+        statusFilter={statusFilter}
+        setStatusFilter={setStatusFilter}
+      />
+      <EntryList entries={filtered} />
+    </div>
+  ) : null;
+
   return (
     <>
       <div ref={triggerRef} style={{ display: "contents" }}>
@@ -114,37 +147,9 @@ export default function TransactionLogPanel({ isOpen, onToggle }: Props) {
           failedCount={failedCount}
         />
       </div>
-      {isOpen && (
-        <div
-          className="fixed z-30 rounded-xl overflow-hidden flex flex-col"
-          style={{
-            top: panelTop,
-            right: 16,
-            width: 420,
-            maxWidth: "calc(100vw - 32px)",
-            height: `min(560px, calc(100vh - ${panelTop + 8}px))`,
-            background: "rgba(10,10,30,0.97)",
-            border: "1px solid rgba(153,69,255,0.35)",
-            backdropFilter: "blur(4px)",
-            fontFamily: '"Fira Code", monospace',
-          }}
-        >
-          <Header
-            total={entries.length}
-            pending={pendingCount}
-            failed={failedCount}
-            onClear={() => transactionLog.clear()}
-            onClose={onToggle}
-          />
-          <Filters
-            kindFilter={kindFilter}
-            setKindFilter={setKindFilter}
-            statusFilter={statusFilter}
-            setStatusFilter={setStatusFilter}
-          />
-          <EntryList entries={filtered} />
-        </div>
-      )}
+      {typeof document !== "undefined" && floatingPanel
+        ? createPortal(floatingPanel, document.body)
+        : null}
     </>
   );
 }
