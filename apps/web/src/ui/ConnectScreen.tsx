@@ -2,13 +2,19 @@
 
 import { useWallet } from "@solana/wallet-adapter-react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 export default function ConnectScreen() {
   const { connected } = useWallet();
   const { setVisible } = useWalletModal();
   const openModal = useCallback(() => setVisible(true), [setVisible]);
   const [dismissed, setDismissed] = useState(false);
+
+  // Reset "continue as guest" dismissal whenever the wallet disconnects so
+  // clicking the disconnect button always returns the user to this screen.
+  useEffect(() => {
+    if (!connected) setDismissed(false);
+  }, [connected]);
 
   if (connected || dismissed) return null;
 
