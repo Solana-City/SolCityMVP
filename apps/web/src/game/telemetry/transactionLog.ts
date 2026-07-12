@@ -70,10 +70,11 @@ class TransactionLogService {
    *
    * Returns the batch entry so callers can attach a signature later.
    */
-  recordMove(params: { signature?: string; status?: TxStatus }): TxEntry {
+  recordMove(params: { signature?: string; status?: TxStatus; layer?: TxLayer }): TxEntry {
     const now = Date.now();
     const signature = params.signature;
     const status = params.status ?? "confirmed";
+    const layer = params.layer ?? "ephemeral";
 
     if (
       this.currentMoveBatch &&
@@ -85,6 +86,9 @@ class TransactionLogService {
       batch.updatedAt = now;
       // Only keep the latest signature as a sample, for linking to explorer.
       if (signature) batch.signature = signature;
+      // Layer follows the latest sample so the explorer link queries the
+      // cluster that latest signature actually landed on.
+      batch.layer = layer;
       batch.label = this.formatMoveBatchLabel(batch);
       batch.status = status;
       this.notify();
@@ -94,7 +98,7 @@ class TransactionLogService {
     const entry: TxEntry = {
       id: this.mintId(),
       kind: "move",
-      layer: "ephemeral",
+      layer,
       status,
       label: "Position update",
       signature,

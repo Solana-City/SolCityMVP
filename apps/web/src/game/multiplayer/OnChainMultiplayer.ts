@@ -157,12 +157,42 @@ export class OnChainMultiplayer {
     this.rpcBackoffMs = 0;
   }
 
-  private noteRpcError(err: unknown): void {
+  private isRateLimitError(err: unknown): boolean {
     const msg = (err as Error)?.message ?? String(err);
-    if (!msg.includes("429") && !/too many requests/i.test(msg)) return;
+    return msg.includes("429") || /too many requests|rate limit/i.test(msg);
+  }
+
+  private noteRpcError(err: unknown): void {
+    if (!this.isRateLimitError(err)) return;
     this.rpcBackoffMs = Math.min(Math.max(this.rpcBackoffMs * 2, 5_000), 60_000);
     this.rpcBackoffUntil = Date.now() + this.rpcBackoffMs;
     console.warn(`[Multiplayer] devnet RPC rate-limited — backing off ${this.rpcBackoffMs / 1000}s`);
+  }
+
+  /**
+   * Runs a base-layer RPC call with retries on 429. The recurring pollers
+   * simply skip rate-limited ticks, but the one-shot connect sequence
+   * (init / authorize / delegate) must eventually succeed or the session
+   * silently degrades to the base-layer fallback for its whole lifetime —
+   * exactly what a transient 429 during the connect burst was causing.
+   */
+  private async baseRpcWithRetry<T>(fn: () => Promise<T>, attempts = 4): Promise<T> {
+    let lastErr: unknown;
+    for (let i = 0; i < attempts; i++) {
+      // Honor the global backoff window, plus a growing delay between tries.
+      const wait = Math.max(this.rpcBackoffUntil - Date.now(), i === 0 ? 0 : 2_000 * i);
+      if (wait > 0) await new Promise(r => setTimeout(r, Math.min(wait, 15_000)));
+      try {
+        const res = await fn();
+        this.noteRpcSuccess();
+        return res;
+      } catch (err) {
+        lastErr = err;
+        this.noteRpcError(err);
+        if (!this.isRateLimitError(err)) throw err; // real error — don't mask it
+      }
+    }
+    throw lastErr;
   }
 
   get connected(): boolean { return this._connected; }
@@ -298,7 +328,13 @@ export class OnChainMultiplayer {
 
     // Layer 2: on-chain position update
     if (isProgramDeployed()) {
-      const entry = transactionLog.recordMove({ status: "pending" });
+      // Record the layer this move will actually be sent to — when
+      // delegation failed and we fall back to base devnet, the explorer
+      // link must query base, not the ER (which would show nothing).
+      const entry = transactionLog.recordMove({
+        status: "pending",
+        layer: this.useEphemeral ? "ephemeral" : "base",
+      });
       this.sendPositionTransaction(x, y, dirNum)
         .then(sig => {
           if (sig) {
@@ -564,7 +600,7 @@ export class OnChainMultiplayer {
     //    Existing player: auth + fund (if needed) = 1 sign prompt.
     //    Already authorized + funded: no prompt at all.
     try {
-      const existing = await this.baseConnection.getAccountInfo(playerPDA);
+      const existing = await this.baseRpcWithRetry(() => this.baseConnection.getAccountInfo(playerPDA));
       const sessionKey = this.sessionKeys.getSessionPublicKey();
       const name = displayName ?? walletStr.slice(0, 8);
 
@@ -574,7 +610,7 @@ export class OnChainMultiplayer {
 
       if (!existing) {
         console.log("… new player — init + auth" + (needsFunding ? " + fund" : "") + " (1 sign prompt)");
-        const { blockhash } = await this.baseConnection.getLatestBlockhash();
+        const { blockhash } = await this.baseRpcWithRetry(() => this.baseConnection.getLatestBlockhash());
         const tx = new Transaction({ recentBlockhash: blockhash, feePayer: wallet })
           .add(buildInitializePlayerIx(wallet, name))
           .add(buildAuthorizeSessionIx(wallet, sessionKey));
@@ -602,7 +638,7 @@ export class OnChainMultiplayer {
     let isDelegated = false;
     try {
       const delegationRecord = delegationRecordPdaFromDelegatedAccount(playerPDA);
-      const recordInfo = await this.baseConnection.getAccountInfo(delegationRecord);
+      const recordInfo = await this.baseRpcWithRetry(() => this.baseConnection.getAccountInfo(delegationRecord));
       isDelegated = recordInfo !== null;
       console.log(`${isDelegated ? "✓ delegated" : "○ not delegated"} (on-chain check)`);
     } catch (e: any) {
@@ -628,8 +664,11 @@ export class OnChainMultiplayer {
     console.log(`→ position layer: ${this.useEphemeral ? "🚀 EPHEMERAL ROLLUP" : "📡 BASE DEVNET"}`);
     console.groupEnd();
 
-    // 2. Discover existing players via base layer getProgramAccounts
-    await this.discoverPlayersFromBase(wallet);
+    // 2. Discover existing players via base layer getProgramAccounts.
+    //    Deferred a few seconds: the connect sequence just fired a burst of
+    //    base-layer calls, and getProgramAccounts on top of it is what tips
+    //    the public RPC into 429 — which used to kill delegation itself.
+    setTimeout(() => this.discoverPlayersFromBase(wallet), 3_000);
 
     // 3. Subscribe to base layer program account changes (standard Solana devnet WebSocket)
     try {
@@ -820,7 +859,7 @@ export class OnChainMultiplayer {
     });
     try {
       const ix = buildDelegateIx(wallet);
-      const { blockhash } = await this.baseConnection.getLatestBlockhash();
+      const { blockhash } = await this.baseRpcWithRetry(() => this.baseConnection.getLatestBlockhash());
       const tx = new Transaction({ recentBlockhash: blockhash, feePayer: wallet }).add(ix);
 
       const sig = await this.requestWalletSign(tx);
