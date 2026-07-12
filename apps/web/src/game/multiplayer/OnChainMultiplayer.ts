@@ -554,7 +554,11 @@ export class OnChainMultiplayer {
         console.log("✓ initialized + authorized:", sig.slice(0, 12));
       } else {
         console.log("✓ PDA exists — auth" + (needsFunding ? " + fund" : "") + (needsFunding ? " (1 sign prompt)" : " (may skip if cached)"));
-        await this.sessionKeys.authorize(wallet, this.baseConnection, undefined, needsFunding ? SESSION_FUND_LAMPORTS : 0);
+        // Pass routerConnection as altConnection so authorize_session is broadcast
+        // to both base layer AND the ER router, registering the session key on
+        // the ephemeral rollup. Without this, commitAndUndelegate fails with
+        // "unknown signer" because the ER doesn't know the current session key.
+        await this.sessionKeys.authorize(wallet, this.baseConnection, this.routerConnection, needsFunding ? SESSION_FUND_LAMPORTS : 0);
         console.log("✓ session authorized");
       }
     } catch (err: any) {
