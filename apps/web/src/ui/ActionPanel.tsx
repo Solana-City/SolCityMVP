@@ -718,6 +718,7 @@ type PayStatus =
   | "ready"
   | "depositing"
   | "transferring"
+  | "withdrawing"
   | "done"
   | "error";
 
@@ -732,8 +733,10 @@ function PrivatePaymentPanel({ onClose }: { onClose: () => void }) {
   const [amount, setAmount]             = useState("1");
   const [showAmount, setShowAmount]     = useState(false);
   const [depositAmt, setDepositAmt]     = useState("5");
+  const [withdrawAmt, setWithdrawAmt]   = useState("1");
+  const [lastAction, setLastAction]     = useState<"send" | "withdraw" | "deposit">("send");
   const [error, setError]               = useState<string | null>(null);
-  const [activeTab, setActiveTab]       = useState<"deposit" | "send">("send");
+  const [activeTab, setActiveTab]       = useState<"deposit" | "send" | "withdraw">("send");
 
   // Re-authenticate whenever cluster changes
   useEffect(() => {
@@ -797,7 +800,7 @@ function PrivatePaymentPanel({ onClose }: { onClose: () => void }) {
       const mb = await import("@/game/solana/magicblockPayments");
       const txData = await mb.buildPrivateTransfer(publicKey.toBase58(), recipient, parsed, authToken, cluster);
       await mb.signAndSubmit(txData, signTransaction as any, authToken, cluster);
-      // Success — don't show a transaction link (that's the whole point)
+      setLastAction("send");
       setStatus("done");
       emitGameEvent("game:transfer");
       transactionLog.record({
@@ -808,6 +811,33 @@ function PrivatePaymentPanel({ onClose }: { onClose: () => void }) {
       });
     } catch (e: any) {
       setError(e.message ?? "Transfer failed");
+      setStatus("ready");
+    }
+  };
+
+  const handleWithdraw = async () => {
+    if (!publicKey || !signTransaction || !authToken) return;
+    const parsed = parseFloat(withdrawAmt);
+    if (isNaN(parsed) || parsed <= 0) { setError("Invalid amount"); return; }
+    if (balance !== null && parsed > balance) { setError("Insufficient private balance"); return; }
+
+    setStatus("withdrawing");
+    setError(null);
+    try {
+      const mb = await import("@/game/solana/magicblockPayments");
+      const txData = await mb.buildWithdraw(publicKey.toBase58(), parsed, authToken, cluster);
+      await mb.signAndSubmit(txData, signTransaction as any, authToken, cluster);
+      await refreshBalance();
+      setLastAction("withdraw");
+      setStatus("done");
+      transactionLog.record({
+        kind: "transfer",
+        layer: "base",
+        label: `Withdraw ${parsed} USDC from private balance`,
+        status: "confirmed",
+      });
+    } catch (e: any) {
+      setError(e.message ?? "Withdraw failed");
       setStatus("ready");
     }
   };
@@ -841,20 +871,25 @@ function PrivatePaymentPanel({ onClose }: { onClose: () => void }) {
   }
 
   if (status === "done") {
+    const isWithdraw = lastAction === "withdraw";
     return (
       <>
         <PanelHeader color={FUCHSIA} title="PRIVATE TRANSFER" />
         <div style={{ textAlign: "center", padding: "24px 0" }}>
-          <div style={{ fontSize: 28, color: FUCHSIA, marginBottom: 8 }}>◈</div>
+          <div style={{ fontSize: 28, color: FUCHSIA, marginBottom: 8 }}>{isWithdraw ? "◇" : "◈"}</div>
           <div style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 9, color: FUCHSIA, marginBottom: 12 }}>
-            TRANSFER SHIELDED
+            {isWithdraw ? "WITHDRAWN" : "TRANSFER SHIELDED"}
           </div>
           <div style={{ fontSize: 11, color: "#888899", lineHeight: 1.6, marginBottom: 4 }}>
-            Settled privately via MagicBlock PER.
+            {isWithdraw
+              ? "Funds returned to your wallet from the Private Ephemeral Rollup."
+              : "Settled privately via MagicBlock PER."}
           </div>
-          <div style={{ fontSize: 10, color: "#555566" }}>No on-chain trace. No explorer link.</div>
+          {!isWithdraw && (
+            <div style={{ fontSize: 10, color: "#555566" }}>No on-chain trace. No explorer link.</div>
+          )}
         </div>
-        <button onClick={onClose} style={btnStyle(FUCHSIA, "#fff")} className="w-full py-2.5 mt-2">CLOSE</button>
+        <button onClick={() => setStatus("ready")} style={btnStyle(FUCHSIA, "#fff")} className="w-full py-2.5 mt-2">BACK</button>
       </>
     );
   }
@@ -883,19 +918,19 @@ function PrivatePaymentPanel({ onClose }: { onClose: () => void }) {
 
       {/* Tabs */}
       <div style={{ display: "flex", gap: 4, marginBottom: 12 }}>
-        {(["send", "deposit"] as const).map(tab => (
+        {(["send", "deposit", "withdraw"] as const).map(tab => (
           <button
             key={tab}
-            onClick={() => setActiveTab(tab)}
+            onClick={() => { setActiveTab(tab); setError(null); }}
             style={{
               flex: 1, padding: "6px 0", borderRadius: 6, border: "none", cursor: "pointer",
-              fontFamily: '"Press Start 2P", monospace', fontSize: 8,
+              fontFamily: '"Press Start 2P", monospace', fontSize: 7,
               background: activeTab === tab ? `${FUCHSIA}22` : "#0d0d22",
               color: activeTab === tab ? FUCHSIA : "#444455",
               borderBottom: activeTab === tab ? `2px solid ${FUCHSIA}` : "2px solid transparent",
             }}
           >
-            {tab === "send" ? "SEND" : "DEPOSIT"}
+            {tab === "send" ? "SEND" : tab === "deposit" ? "DEPOSIT" : "WITHDRAW"}
           </button>
         ))}
       </div>
@@ -977,6 +1012,36 @@ function PrivatePaymentPanel({ onClose }: { onClose: () => void }) {
               className="flex-1 py-2.5"
             >
               {status === "depositing" ? "SIGNING…" : "DEPOSIT"}
+            </button>
+            <button onClick={onClose} style={{ background: "transparent", border: "1px solid #333344", color: "#666677", borderRadius: 8, padding: "0 14px", cursor: "pointer", fontSize: 12 }}>ESC</button>
+          </div>
+        </>
+      )}
+
+      {/* Withdraw tab */}
+      {activeTab === "withdraw" && (
+        <>
+          <div style={{ fontSize: 11, color: "#777788", marginBottom: 12, lineHeight: 1.6 }}>
+            Withdraw USDC from your Private Ephemeral Rollup balance back to your wallet.
+          </div>
+          <InputBox label="Amount to withdraw (USDC)">
+            <input
+              type="text"
+              value={withdrawAmt}
+              onChange={e => setWithdrawAmt(e.target.value)}
+              placeholder="1.00"
+              style={{ background: "transparent", color: "#fff", border: "none", fontSize: 20, fontFamily: "monospace", width: "100%", outline: "none", fontWeight: "bold" }}
+            />
+          </InputBox>
+          {error && <div style={{ fontSize: 11, color: "#ff4444", marginBottom: 8, textAlign: "center" }}>{error}</div>}
+          <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+            <button
+              onClick={handleWithdraw}
+              disabled={status === "withdrawing" || !balance || balance <= 0}
+              style={btnStyle(balance && balance > 0 ? FUCHSIA : "#333344", "#fff")}
+              className="flex-1 py-2.5"
+            >
+              {status === "withdrawing" ? "SIGNING…" : "WITHDRAW"}
             </button>
             <button onClick={onClose} style={{ background: "transparent", border: "1px solid #333344", color: "#666677", borderRadius: 8, padding: "0 14px", cursor: "pointer", fontSize: 12 }}>ESC</button>
           </div>

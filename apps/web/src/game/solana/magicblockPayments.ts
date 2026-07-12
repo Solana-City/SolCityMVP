@@ -133,6 +133,25 @@ export async function buildPrivateTransfer(
   );
 }
 
+export async function buildWithdraw(
+  owner: string,
+  amountUsdc: number,
+  token: string,
+  clusterKey: ClusterKey = "mainnet"
+): Promise<TxData> {
+  const c = CLUSTERS[clusterKey];
+  return post(
+    "/v1/spl/withdraw",
+    {
+      owner,
+      amount: Math.round(amountUsdc * 10 ** USDC_DECIMALS),
+      mint:    c.usdcMint,
+      cluster: c.cluster,
+    },
+    token
+  );
+}
+
 // ── Sign & submit ─────────────────────────────────────────────────────────────
 
 export async function signAndSubmit(
