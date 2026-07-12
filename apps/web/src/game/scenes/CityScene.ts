@@ -32,6 +32,9 @@ export class CityScene extends Phaser.Scene {
   private remotePlayers = new Map<string, SimpleSprite>();
   private nameLabels = new Map<string, Phaser.GameObjects.Text>();
   private activeBubbles = new Map<string, ChatBubble>();
+  // Debounce "entered the city" — wallet reconnects clear knownPlayers and
+  // re-discover the same players, which would spam the chat on every reconnect.
+  private recentJoins = new Map<string, number>();
   private currentDirection: Direction = "down";
   private idleDelay = 0;
   private chatInputActive = false;
@@ -715,7 +718,11 @@ export class CityScene extends Phaser.Scene {
     });
     container.add(hitZone);
 
-    this.chat.addSystemMessage(`${displayName} entered the city`);
+    const now = Date.now();
+    if (now - (this.recentJoins.get(wallet) ?? 0) > 30_000) {
+      this.chat.addSystemMessage(`${displayName} entered the city`);
+      this.recentJoins.set(wallet, now);
+    }
   }
 
   private removeRemotePlayer(wallet: string): void {
