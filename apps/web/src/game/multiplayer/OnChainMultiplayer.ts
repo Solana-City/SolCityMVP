@@ -753,6 +753,9 @@ export class OnChainMultiplayer {
       });
       transactionLog.markConfirmed(entry.id, sig);
       console.log("[Multiplayer] committed & undelegated:", sig.slice(0, 12));
+      // PDA is back on base layer — safe to rotate session key now so the next
+      // connect can re-authorize a fresh key on base layer before re-delegating.
+      this.sessionKeys.rotateKey();
     } catch (err: any) {
       transactionLog.markFailed(entry.id, err?.message ?? "undelegate failed");
     }

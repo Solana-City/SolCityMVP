@@ -7,7 +7,6 @@ import {
 } from "@solana/web3.js";
 import {
   buildAuthorizeSessionIx,
-  buildRevokeSessionIx,
   isProgramDeployed,
 } from "./instructions";
 
@@ -128,27 +127,31 @@ export class SessionKeyManager {
   }
 
   /**
-   * Revokes the session key on-chain and discards the local keypair.
-   * Called on wallet disconnect. Pass the Magic Router connection so
-   * the revoke_session tx is routed correctly when the account is delegated.
+   * Marks the session as locally disconnected without destroying the keypair.
+   *
+   * The session key must survive disconnect so that the ER's copy of the player
+   * PDA (which stores the authorized session key) stays in sync with what we
+   * have locally. Deleting the key and generating a new one on every disconnect
+   * was the root cause of "unknown signer" on commitAndUndelegate — the ER had
+   * the old key, the new session had a different key, and no instruction could
+   * update the ER copy (the tx for authorize_session uses the base-layer
+   * blockhash which the ER rejects).
+   *
+   * Key rotation is safe only AFTER a successful commitAndUndelegate brings the
+   * PDA back to the base layer — call rotateKey() from OnChainMultiplayer then.
    */
-  async revoke(connection?: Connection): Promise<void> {
+  revoke(_connection?: Connection): void {
     this.authorized = false;
-
-    if (isProgramDeployed() && this.mainWallet && connection) {
-      try {
-        const ix = buildRevokeSessionIx(this.mainWallet);
-        const { blockhash } = await connection.getLatestBlockhash();
-        const tx = new Transaction({
-          recentBlockhash: blockhash,
-          feePayer: this.mainWallet,
-        }).add(ix);
-        this.requestWalletSign(tx).catch(() => {});
-      } catch {}
-    }
-
     this.mainWallet = null;
-    localStorage.removeItem(STORAGE_KEY);
+    // Session key intentionally kept in localStorage — see note above.
+  }
+
+  /**
+   * Generates a fresh session key and persists it.
+   * Call only after a successful commitAndUndelegate (PDA is back on base layer,
+   * so a new key can be authorized on the next connect without ER mismatch).
+   */
+  rotateKey(): void {
     this.sessionKey = Keypair.generate();
     this.persist();
   }
