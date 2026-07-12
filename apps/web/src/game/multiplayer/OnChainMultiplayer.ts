@@ -100,6 +100,9 @@ export class OnChainMultiplayer {
 
   // Player registry (local)
   private knownPlayers = new Map<string, OnChainPlayer>();
+  // Wallets temporarily blocked from re-discovery after ghost-pruning.
+  // Prevents the add→prune→rediscover cycle for accounts with stale on-chain timestamps.
+  private blockedPlayers = new Map<string, number>(); // wallet → unblock-at epoch ms
 
   // Callbacks wired by CityScene
   private addCallbacks:    PlayerCallback[] = [];
@@ -859,15 +862,23 @@ export class OnChainMultiplayer {
       if (walletStr === this.wallet?.toBase58()) return; // skip self
       const now = Date.now();
 
-      // Ghost pruning: only remove players already in the scene.
-      // Do NOT block NEW discoveries — players with stale last_active (e.g. from
-      // a previously delegated PDA) would never appear if we return early here.
-      // pruneStale() handles removal via lastUpdate after they're added.
-      const GHOST_THRESHOLD_MS = 120_000; // 2 minutes
+      // Skip wallets that were recently ghost-pruned — prevents the rapid
+      // add→prune→rediscover cycle for accounts with stale on-chain timestamps
+      // (e.g. ER-active players whose base-layer last_active is old, or dead
+      // test accounts that keep appearing via getProgramAccounts).
+      const blockedUntil = this.blockedPlayers.get(walletStr);
+      if (blockedUntil !== undefined) {
+        if (now < blockedUntil) return; // still blocked
+        this.blockedPlayers.delete(walletStr); // block expired — allow re-discovery
+      }
+
+      const GHOST_THRESHOLD_MS = 120_000; // 2 minutes on-chain inactivity
+      const BLOCK_DURATION_MS  = 600_000; // 10 minutes before we try again
       const isKnown = this.knownPlayers.has(walletStr);
       if (isKnown && now - lastActiveMs > GHOST_THRESHOLD_MS) {
-        console.log(`[Multiplayer] pruning ghost ${walletStr.slice(0,8)} (inactive ${Math.round((now - lastActiveMs) / 1000)}s)`);
+        console.log(`[Multiplayer] ghost-pruning ${walletStr.slice(0,8)} (${Math.round((now - lastActiveMs) / 60_000)}min stale) — blocked for 10 min`);
         this.handlePlayerLeave(walletStr);
+        this.blockedPlayers.set(walletStr, now + BLOCK_DURATION_MS);
         return;
       }
 
@@ -921,10 +932,18 @@ export class OnChainMultiplayer {
         );
         tx.recentBlockhash = blockhash;
         this.sessionKeys.signTransaction(tx);
-        return await withTimeout(
+        const sig = await withTimeout(
           this.ephemeralConnection.sendRawTransaction(tx.serialize(), { skipPreflight: true }),
           3_000,
         );
+        // Fire-and-forget confirmation — lets us see in console if the ER instruction
+        // actually succeeded (vs. just being accepted into the queue with skipPreflight).
+        this.ephemeralConnection.confirmTransaction(sig, "confirmed").then(r => {
+          if (r.value.err) {
+            console.warn("[Multiplayer] ER tx FAILED on-chain:", sig.slice(0, 12), r.value.err);
+          }
+        }).catch(() => {});
+        return sig;
       } catch (err: any) {
         // Don't permanently disable ER — rate limits and transient errors clear up.
         // Return null so the log entry is marked failed; next throttle interval retries.
