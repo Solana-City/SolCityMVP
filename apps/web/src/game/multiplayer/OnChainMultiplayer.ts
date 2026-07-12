@@ -909,19 +909,17 @@ export class OnChainMultiplayer {
     };
 
     if (this.useEphemeral) {
-      // Fast path: Magic Router → ephemeral rollup (sub-50ms when healthy).
-      // useEphemeral is set only after a confirmed on-chain delegation check.
+      // Direct path to ephemeral RPC — returns a real ER tx hash indexable on
+      // explorer.magicblock.app. The router path returned opaque router IDs.
       try {
         const { blockhash } = await withTimeout(
-          this.routerConnection.getLatestBlockhashForTransaction(
-            new Transaction().add(ix)
-          ),
-          3_000, // 3s timeout — fall through to base layer on ephemeral RPC issues
+          this.ephemeralConnection.getLatestBlockhash(),
+          3_000,
         );
         tx.recentBlockhash = blockhash;
         this.sessionKeys.signTransaction(tx);
         return await withTimeout(
-          this.routerConnection.sendRawTransaction(tx.serialize(), { skipPreflight: true }),
+          this.ephemeralConnection.sendRawTransaction(tx.serialize(), { skipPreflight: true }),
           3_000,
         );
       } catch (err: any) {
