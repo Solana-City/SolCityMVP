@@ -221,14 +221,18 @@ export const transactionLog = new TransactionLogService();
  */
 export function getExplorerUrl(entry: TxEntry): string | null {
   if (!entry.signature) return null;
+  // sim: prefixed signatures are local-only; router-returned move sigs are
+  // router IDs (not Solana base58 tx hashes) so they won't resolve on explorers.
+  if (entry.signature.startsWith("sim:")) return null;
   switch (entry.layer) {
     case "ephemeral":
-      // MagicBlock provides an explorer keyed by the ER endpoint.
+      // Move transactions flow through the MagicBlock router and are indexed
+      // on the ER explorer. Non-move ephemeral txs (delegate, minigame) also
+      // land here.
       return `https://explorer.magicblock.app/?cluster=devnet.magicblock.app&tx=${entry.signature}`;
     case "base":
       return `https://explorer.solana.com/tx/${entry.signature}?cluster=devnet`;
     case "jupiter":
-      // Jupiter lands on Solana; prefer Solscan which often has richer swap detail.
       return `https://solscan.io/tx/${entry.signature}`;
     case "local":
     default:

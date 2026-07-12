@@ -604,15 +604,13 @@ export class CityScene extends Phaser.Scene {
       npc.checkProximity(this.avatar.x, this.avatar.y);
     }
 
-    // Sync position to server
-    if (this.network.connected) {
-      this.network.sendInput(
-        this.avatar.x,
-        this.avatar.y,
-        this.currentDirection,
-        direction !== null
-      );
-    }
+    // Sync position to server (always call — sendInput handles sim-log when not connected)
+    this.network.sendInput(
+      this.avatar.x,
+      this.avatar.y,
+      this.currentDirection,
+      direction !== null
+    );
 
     // Pedestrian depth sorting
     this.pedestrians.updateDepths();

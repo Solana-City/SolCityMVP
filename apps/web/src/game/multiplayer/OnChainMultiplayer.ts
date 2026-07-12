@@ -50,8 +50,8 @@ type BCMsg =
   | { t: "chat";  w: string; text: string }
   | { t: "leave"; w: string };
 
-// Throttle position broadcasts (ms between sends)
-const POS_THROTTLE_MS = 100;
+// Throttle position broadcasts. 500ms = 2 tx/s — stays under devnet ER rate limits.
+const POS_THROTTLE_MS = 500;
 
 // ── Types ──────────────────────────────────────────────────────────────
 
@@ -136,6 +136,7 @@ export class OnChainMultiplayer {
   // ── Connect ──────────────────────────────────────────────────────────
 
   async connect(walletPublicKey: PublicKey, displayName?: string): Promise<void> {
+    if (this._connected) return; // prevent duplicate initialization from wallet adapter re-fires
     this.wallet = walletPublicKey;
     const walletStr = walletPublicKey.toBase58();
 
@@ -217,8 +218,6 @@ export class OnChainMultiplayer {
   // ── Send input ────────────────────────────────────────────────────────
 
   sendInput(x: number, y: number, direction: string, isWalking: boolean): void {
-    if (!this._connected || !this.wallet) return;
-
     const roundX = Math.round(x);
     const roundY = Math.round(y);
     const dirNum = ({ down: 0, left: 1, right: 2, up: 3 } as Record<string, number>)[direction] ?? 0;
@@ -236,6 +235,12 @@ export class OnChainMultiplayer {
     this.lastPosSent = now;
 
     this.lastPos = { x: roundX, y: roundY, direction: dirNum, isWalking };
+
+    // Not connected — log sim entry so the activity log stays active without a wallet
+    if (!this._connected || !this.wallet) {
+      transactionLog.recordMove({ signature: "sim:move", status: "confirmed" });
+      return;
+    }
 
     // Update local registry immediately
     const walletStr = this.wallet.toBase58();
@@ -459,6 +464,9 @@ export class OnChainMultiplayer {
   private startBroadcastChannel(walletStr: string, displayName?: string): void {
     if (typeof BroadcastChannel === "undefined") return;
 
+    // Close any stale channel before creating a new one — prevents duplicate listeners
+    // that accumulate when connect() is called more than once in the same session.
+    this.bc?.close();
     this.bc = new BroadcastChannel(BROADCAST_CHANNEL);
     this.bc.onmessage = (event: MessageEvent<BCMsg>) => {
       const msg = event.data;
@@ -553,41 +561,34 @@ export class OnChainMultiplayer {
       console.warn("✗ init/auth failed:", err?.message);
     }
 
-    // If PDA is still delegated from a previous session, commit state back to
-    // base layer so writes work. Uses session key — no wallet popup needed.
-    // If this fails (e.g. wrong session key or unreliable ephemeral endpoint),
-    // position writes will silently fail. Discovery still works; player appears
-    // but position is stale. User should clear browser storage and reconnect.
+    // Check if PDA is already delegated to the ephemeral rollup (on-chain, reliable).
+    let isDelegated = false;
     try {
       const delegationRecord = delegationRecordPdaFromDelegatedAccount(playerPDA);
       const recordInfo = await this.baseConnection.getAccountInfo(delegationRecord);
-      if (recordInfo !== null) {
-        console.log("… PDA delegated from previous session — undelegating (no popup)");
-        await this.commitAndUndelegatePlayer(wallet);
-        // Verify undelegation succeeded
-        const verify = await this.baseConnection.getAccountInfo(
-          delegationRecordPdaFromDelegatedAccount(playerPDA)
-        );
-        if (verify !== null) {
-          // Still delegated — undelegation failed
-          console.warn("⚠ PDA still delegated after undelegation attempt.");
-          console.warn("⚠ Position updates will fail. Clear browser storage and reconnect.");
-          // Notify the game via the global event bus
-          const bus = (globalThis as any).__solCityGameEvents;
-          bus?.emit("multiplayer:warning",
-            "⚠ Old session detected. Clear browser storage and reconnect."
-          );
-        } else {
-          console.log("✓ undelegated — base layer writes now work");
-        }
-      }
+      isDelegated = recordInfo !== null;
+      console.log(`${isDelegated ? "✓ delegated" : "○ not delegated"} (on-chain check)`);
     } catch (e: any) {
-      console.warn("○ undelegation check skipped:", e?.message);
+      console.log("○ delegation check failed:", e?.message);
     }
 
-    // Always use base layer — no delegation on devnet
-    this.useEphemeral = false;
-    console.log("→ position layer: 📡 BASE DEVNET");
+    // Delegate or reuse delegation so position writes go to the ephemeral rollup.
+    try {
+      if (!isDelegated) {
+        console.log("… delegating PDA to ephemeral rollup (1 sign prompt)");
+        await this.delegateToEphemeral(wallet);
+        const delegationRecord = delegationRecordPdaFromDelegatedAccount(playerPDA);
+        const info = await this.baseConnection.getAccountInfo(delegationRecord);
+        this.useEphemeral = info !== null;
+      } else {
+        this.useEphemeral = true;
+        console.log("✓ already delegated — using ephemeral rollup");
+      }
+    } catch (err: any) {
+      console.warn("○ delegation skipped:", err?.message);
+      this.useEphemeral = false;
+    }
+    console.log(`→ position layer: ${this.useEphemeral ? "🚀 EPHEMERAL ROLLUP" : "📡 BASE DEVNET"}`);
     console.groupEnd();
 
     // 2. Discover existing players via base layer getProgramAccounts
@@ -730,7 +731,7 @@ export class OnChainMultiplayer {
    */
   private async commitAndUndelegatePlayer(wallet: PublicKey): Promise<void> {
     const entry = transactionLog.record({
-      kind: "undelegate", layer: "base",
+      kind: "undelegate", layer: "ephemeral",
       label: "Commit & undelegate session", status: "pending",
     });
     try {
@@ -920,12 +921,14 @@ export class OnChainMultiplayer {
           3_000,
         );
       } catch (err: any) {
-        console.warn("[Multiplayer] ephemeral tx failed, falling back to base layer:", err?.message);
-        this.useEphemeral = false; // temporary degradation — resets on next connect
+        // Don't permanently disable ER — rate limits and transient errors clear up.
+        // Return null so the log entry is marked failed; next throttle interval retries.
+        console.warn("[Multiplayer] ephemeral tx skipped:", err?.message);
+        return null;
       }
     }
 
-    // Base layer path (undelegated PDAs or ephemeral fallback).
+    // Base layer path — only used when delegation is not active.
     const { blockhash } = await withTimeout(this.baseConnection.getLatestBlockhash(), 5_000);
     tx.recentBlockhash = blockhash;
     this.sessionKeys.signTransaction(tx);
