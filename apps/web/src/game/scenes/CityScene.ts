@@ -744,7 +744,13 @@ export class CityScene extends Phaser.Scene {
       this.activeBubbles.delete(wallet);
     }
 
-    this.chat.addSystemMessage(`Player left the city`);
+    // Only announce departure if the player was here long enough to matter.
+    // Rapid disconnect-reconnect cycles (wallet adapter loops) produce a
+    // "left" within seconds of "entered" — suppress those to keep chat clean.
+    const joinedAt = this.recentJoins.get(wallet) ?? 0;
+    if (Date.now() - joinedAt > 30_000) {
+      this.chat.addSystemMessage(`Player left the city`);
+    }
   }
 
   private updateRemotePlayer(wallet: string, player: OnChainPlayer): void {
