@@ -16,12 +16,17 @@ import type { Transaction } from "@solana/web3.js";
  * Renders nothing — pure side-effect.
  */
 export default function WalletSignBridge() {
-  const { sendTransaction } = useWallet() as { sendTransaction?: Function };
+  const { sendTransaction, signTransaction } = useWallet() as {
+    sendTransaction?: Function;
+    signTransaction?: Function;
+  };
   const { connection } = useConnection();
 
   const sendRef = useRef(sendTransaction);
+  const signRef = useRef(signTransaction);
   const connRef = useRef(connection);
   sendRef.current = sendTransaction;
+  signRef.current = signTransaction;
   connRef.current = connection;
 
   useEffect(() => {
@@ -44,8 +49,25 @@ export default function WalletSignBridge() {
         }
       };
 
+      // Sign WITHOUT sending — for transactions that must be submitted to a
+      // different cluster than the app connection (e.g. authorize_session on
+      // the ephemeral rollup, which needs an ER blockhash and ER endpoint).
+      const signOnlyHandler = async (tx: Transaction) => {
+        try {
+          if (!signRef.current) throw new Error("Wallet cannot sign transactions");
+          const signed = await signRef.current(tx);
+          bus.emit("wallet:signedTxOnly", signed);
+        } catch (err) {
+          bus.emit("wallet:signOnlyError", err);
+        }
+      };
+
       bus.on("wallet:needSign", handler);
-      off = () => bus.off("wallet:needSign", handler);
+      bus.on("wallet:needSignOnly", signOnlyHandler);
+      off = () => {
+        bus.off("wallet:needSign", handler);
+        bus.off("wallet:needSignOnly", signOnlyHandler);
+      };
       // Signal readiness so CityScene can detect WalletSignBridge is live
       // and skip the fixed 700ms delay on the next wallet connect.
       bus.emit("walletBridge:ready");

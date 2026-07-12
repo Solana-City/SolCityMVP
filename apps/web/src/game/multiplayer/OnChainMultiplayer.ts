@@ -616,12 +616,26 @@ export class OnChainMultiplayer {
 
     console.group(`[Multiplayer] setup for ${walletStr.slice(0,8)}…`);
 
-    // 1. Initialize PDA + authorize session key + fund session key.
-    //    New player: init + auth + fund = 1 sign prompt.
-    //    Existing player: auth + fund (if needed) = 1 sign prompt.
-    //    Already authorized + funded: no prompt at all.
+    // 1. Read PDA + delegation state FIRST — where the live copy of the
+    //    account resides decides which cluster authorize_session must target.
+    //    A delegated PDA is owned by the delegation program on base, so a
+    //    base-layer authorize can never write it; and the ER rejects txs
+    //    built with base blockhashes. The old "broadcast to both" approach
+    //    therefore updated NEITHER copy, leaving the ER with a stale session
+    //    key and every move failing with InvalidSessionKey (custom 6000).
+    let isDelegated = false;
     try {
       const existing = await this.baseRpcWithRetry(() => this.baseConnection.getAccountInfo(playerPDA));
+
+      try {
+        const delegationRecord = delegationRecordPdaFromDelegatedAccount(playerPDA);
+        const recordInfo = await this.baseRpcWithRetry(() => this.baseConnection.getAccountInfo(delegationRecord));
+        isDelegated = recordInfo !== null;
+        console.log(`${isDelegated ? "✓ delegated" : "○ not delegated"} (on-chain check)`);
+      } catch (e: any) {
+        console.log("○ delegation check failed:", e?.message);
+      }
+
       const sessionKey = this.sessionKeys.getSessionPublicKey();
       const name = displayName ?? walletStr.slice(0, 8);
 
@@ -642,28 +656,26 @@ export class OnChainMultiplayer {
         await this.confirmReal(this.baseConnection, sig);
         this.sessionKeys["authorized"] = true;
         console.log("✓ initialized + authorized:", sig.slice(0, 12));
-      } else {
-        console.log("✓ PDA exists — auth" + (needsFunding ? " + fund" : "") + (needsFunding ? " (1 sign prompt)" : " (may skip if cached)"));
-        // Pass routerConnection as altConnection so authorize_session is broadcast
-        // to both base layer AND the ER router, registering the session key on
-        // the ephemeral rollup. Without this, commitAndUndelegate fails with
-        // "unknown signer" because the ER doesn't know the current session key.
-        await this.sessionKeys.authorize(wallet, this.baseConnection, this.routerConnection, needsFunding ? SESSION_FUND_LAMPORTS : 0);
+      } else if (!isDelegated) {
+        console.log("✓ PDA on base — auth" + (needsFunding ? " + fund (1 sign prompt)" : " (may skip if cached)"));
+        await this.sessionKeys.authorize(wallet, this.baseConnection, undefined, needsFunding ? SESSION_FUND_LAMPORTS : 0);
         console.log("✓ session authorized");
+      } else {
+        // Delegated: the ER copy is the authoritative session state.
+        // Re-authorize on the rollup only if its stored key differs from ours
+        // — when in sync this whole branch needs no wallet prompt.
+        await this.syncSessionKeyOnEr(wallet, playerPDA);
+        if (needsFunding) {
+          console.log("… funding session key (1 sign prompt)");
+          const { blockhash } = await this.baseRpcWithRetry(() => this.baseConnection.getLatestBlockhash());
+          const fundTx = new Transaction({ recentBlockhash: blockhash, feePayer: wallet })
+            .add(SystemProgram.transfer({ fromPubkey: wallet, toPubkey: sessionKey, lamports: SESSION_FUND_LAMPORTS }));
+          const sig = await this.requestWalletSign(fundTx);
+          await this.confirmReal(this.baseConnection, sig);
+        }
       }
     } catch (err: any) {
       console.warn("✗ init/auth failed:", err?.message);
-    }
-
-    // Check if PDA is already delegated to the ephemeral rollup (on-chain, reliable).
-    let isDelegated = false;
-    try {
-      const delegationRecord = delegationRecordPdaFromDelegatedAccount(playerPDA);
-      const recordInfo = await this.baseRpcWithRetry(() => this.baseConnection.getAccountInfo(delegationRecord));
-      isDelegated = recordInfo !== null;
-      console.log(`${isDelegated ? "✓ delegated" : "○ not delegated"} (on-chain check)`);
-    } catch (e: any) {
-      console.log("○ delegation check failed:", e?.message);
     }
 
     // Delegate or reuse delegation so position writes go to the ephemeral rollup.
@@ -882,6 +894,74 @@ export class OnChainMultiplayer {
       transactionLog.markFailed(entry.id, err?.message ?? "init failed");
       throw err;
     }
+  }
+
+  /**
+   * Reads session_authority from a raw PlayerState buffer.
+   * Layout: 8-byte discriminator + 32-byte authority + Option<Pubkey>
+   * (1-byte tag at offset 40, 32-byte key at 41 when tag = 1).
+   */
+  private readSessionAuthority(data: Buffer | Uint8Array): PublicKey | null {
+    const buf = Buffer.from(data);
+    if (buf.length < 8 + 32 + 33) return null;
+    if (buf.readUInt8(40) !== 1) return null;
+    return new PublicKey(buf.slice(41, 73));
+  }
+
+  /**
+   * Ensures the ER's copy of the player PDA authorizes the CURRENT session
+   * key. While delegated, that copy is the authoritative session state:
+   * the base account is owned by the delegation program (unwritable by our
+   * program), so the fix has to run on the rollup itself — ER blockhash,
+   * wallet signs locally (sign-only bridge), sent to the ER endpoint.
+   */
+  private async syncSessionKeyOnEr(wallet: PublicKey, playerPDA: PublicKey): Promise<void> {
+    const sessionKey = this.sessionKeys.getSessionPublicKey();
+
+    let erSession: PublicKey | null = null;
+    try {
+      const info = await OnChainMultiplayer.withTimeout(
+        this.ephemeralConnection.getAccountInfo(playerPDA), 5_000
+      );
+      erSession = info ? this.readSessionAuthority(info.data) : null;
+    } catch (e: any) {
+      console.warn("○ ER PDA read failed:", e?.message);
+    }
+
+    if (erSession && erSession.equals(sessionKey)) {
+      this.sessionKeys["authorized"] = true;
+      console.log("✓ ER session key in sync — no prompt needed");
+      return;
+    }
+
+    console.log(
+      `… ER session key ${erSession ? `stale (${erSession.toBase58().slice(0, 8)}… on ER)` : "unreadable"}` +
+      " — re-authorizing on the rollup (1 sign prompt)"
+    );
+    const ix = buildAuthorizeSessionIx(wallet, sessionKey);
+    const { blockhash } = await OnChainMultiplayer.withTimeout(
+      this.ephemeralConnection.getLatestBlockhash(), 5_000
+    );
+    const tx = new Transaction({ recentBlockhash: blockhash, feePayer: wallet }).add(ix);
+    const signed = await this.requestWalletSignOnly(tx);
+    const sig = await this.ephemeralConnection.sendRawTransaction(signed.serialize(), {
+      skipPreflight: true,
+    });
+
+    // Verify it landed — a silent drop here would leave every subsequent
+    // move failing with InvalidSessionKey again.
+    for (const delayMs of [800, 1500, 3000]) {
+      await new Promise(r => setTimeout(r, delayMs));
+      const st = await this.ephemeralConnection.getSignatureStatuses([sig]);
+      const s = st?.value?.[0];
+      if (s) {
+        if (s.err) throw new Error(`ER authorize failed: ${JSON.stringify(s.err)}`);
+        this.sessionKeys["authorized"] = true;
+        console.log("✓ session key re-authorized on ER:", sig.slice(0, 12));
+        return;
+      }
+    }
+    throw new Error("ER authorize dropped — no status after 5s");
   }
 
   private async delegateToEphemeral(wallet: PublicKey): Promise<void> {
@@ -1186,6 +1266,34 @@ export class OnChainMultiplayer {
         reject(err);
       });
       bus.emit("wallet:needSign", tx);
+    });
+  }
+
+  /**
+   * Asks the wallet to SIGN a transaction without sending it — used when the
+   * tx must be submitted to a different cluster than the app connection
+   * (e.g. authorize_session on the ephemeral rollup). Returns the signed tx.
+   */
+  private requestWalletSignOnly(tx: Transaction): Promise<Transaction> {
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error("wallet sign timeout")), 60_000);
+
+      const bus = (globalThis as any).__solCityGameEvents as Phaser.Events.EventEmitter | undefined;
+      if (!bus) {
+        clearTimeout(timeout);
+        reject(new Error("wallet bus not available — session offline"));
+        return;
+      }
+
+      bus.once("wallet:signedTxOnly", (signed: Transaction) => {
+        clearTimeout(timeout);
+        resolve(signed);
+      });
+      bus.once("wallet:signOnlyError", (err: Error) => {
+        clearTimeout(timeout);
+        reject(err);
+      });
+      bus.emit("wallet:needSignOnly", tx);
     });
   }
 
