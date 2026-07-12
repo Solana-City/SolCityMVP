@@ -138,6 +138,19 @@ class TransactionLogService {
     return entry;
   }
 
+  /**
+   * Attaches a signature without changing status — used right after
+   * sendRawTransaction with skipPreflight, where we hold a real signature
+   * but don't yet know whether the instruction executed.
+   */
+  attachSignature(id: string, signature: string): void {
+    const entry = this.entries.find((e) => e.id === id);
+    if (!entry) return;
+    entry.signature = signature;
+    entry.updatedAt = Date.now();
+    this.notify();
+  }
+
   markConfirmed(id: string, signature: string): void {
     const entry = this.entries.find((e) => e.id === id);
     if (!entry) return;
@@ -226,10 +239,12 @@ export function getExplorerUrl(entry: TxEntry): string | null {
   if (entry.signature.startsWith("sim:")) return null;
   switch (entry.layer) {
     case "ephemeral":
-      // Move transactions flow through the MagicBlock router and are indexed
-      // on the ER explorer. Non-move ephemeral txs (delegate, minigame) also
-      // land here.
-      return `https://explorer.magicblock.app/?cluster=devnet.magicblock.app&tx=${entry.signature}`;
+      // The ephemeral rollup is a standard SVM node, so Solana Explorer can
+      // query it directly as a custom cluster — no dependency on MagicBlock's
+      // own explorer indexing. Caveat: the rollup only retains recent
+      // history, so links naturally expire once the ER session is committed
+      // and pruned.
+      return `https://explorer.solana.com/tx/${entry.signature}?cluster=custom&customUrl=${encodeURIComponent("https://devnet.magicblock.app")}`;
     case "base":
       return `https://explorer.solana.com/tx/${entry.signature}?cluster=devnet`;
     case "jupiter":

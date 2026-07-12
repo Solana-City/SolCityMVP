@@ -124,12 +124,45 @@ export class OnChainMultiplayer {
   /** true = use ephemeral rollup; false = fall back to base layer devnet */
   private useEphemeral = false;
   private cleanupInterval: ReturnType<typeof setInterval> | null = null;
+  /** Poll/discovery timers — cleared on disconnect so they don't stack across reconnects. */
+  private discoveryTimers: ReturnType<typeof setInterval>[] = [];
 
   constructor() {
     this.routerConnection    = new ConnectionMagicRouter(ENDPOINTS.magicRouter,  "confirmed");
     this.ephemeralConnection = new Connection(ENDPOINTS.ephemeral,    "confirmed");
-    this.baseConnection      = new Connection(ENDPOINTS.solanaDevnet, "confirmed");
+    // disableRetryOnRateLimit: web3.js otherwise auto-retries 429s with its
+    // own delays ("Retrying after 2000ms..." console spam), stacking on top
+    // of our polling intervals and extending the rate-limit window. Our
+    // exponential backoff below is the single retry authority.
+    this.baseConnection      = new Connection(ENDPOINTS.solanaDevnet, {
+      commitment: "confirmed",
+      disableRetryOnRateLimit: true,
+    });
     this.sessionKeys         = new SessionKeyManager();
+  }
+
+  // ── Base-layer RPC backoff ────────────────────────────────────────────
+  // api.devnet.solana.com rate-limits aggressively. When it returns 429 we
+  // back off exponentially (5s → 60s) instead of hammering it — hammering
+  // extends the ban, which makes discovery fail, which makes remote players
+  // flap in and out of the city.
+  private rpcBackoffMs = 0;
+  private rpcBackoffUntil = 0;
+
+  private rpcAvailable(): boolean {
+    return Date.now() >= this.rpcBackoffUntil;
+  }
+
+  private noteRpcSuccess(): void {
+    this.rpcBackoffMs = 0;
+  }
+
+  private noteRpcError(err: unknown): void {
+    const msg = (err as Error)?.message ?? String(err);
+    if (!msg.includes("429") && !/too many requests/i.test(msg)) return;
+    this.rpcBackoffMs = Math.min(Math.max(this.rpcBackoffMs * 2, 5_000), 60_000);
+    this.rpcBackoffUntil = Date.now() + this.rpcBackoffMs;
+    console.warn(`[Multiplayer] devnet RPC rate-limited — backing off ${this.rpcBackoffMs / 1000}s`);
   }
 
   get connected(): boolean { return this._connected; }
@@ -202,6 +235,8 @@ export class OnChainMultiplayer {
     this.accountSubs.clear();
 
     if (this.cleanupInterval) { clearInterval(this.cleanupInterval); this.cleanupInterval = null; }
+    for (const t of this.discoveryTimers) clearInterval(t);
+    this.discoveryTimers = [];
 
     if (isProgramDeployed() && this.wallet) {
       this.commitAndUndelegatePlayer(this.wallet).catch(() => {});
@@ -267,12 +302,7 @@ export class OnChainMultiplayer {
       this.sendPositionTransaction(x, y, dirNum)
         .then(sig => {
           if (sig) {
-            transactionLog.markConfirmed(entry.id, sig);
-            // Log first confirmed tx so we know writes are working
-            if (!(this as any)._firstConfirmed) {
-              (this as any)._firstConfirmed = true;
-              console.log("[Multiplayer] ✓ first position tx confirmed:", sig.slice(0,12));
-            }
+            this.trackMoveConfirmation(entry.id, sig);
           } else {
             transactionLog.markFailed(entry.id, "null signature");
             console.warn("[Multiplayer] position tx returned null sig");
@@ -615,12 +645,18 @@ export class OnChainMultiplayer {
       console.warn("[Multiplayer] subscription failed:", err);
     }
 
-    // 4. Per-player getAccountInfo polling every 2s — fallback for when
-    //    onProgramAccountChange doesn't fire on the RPC node
-    setInterval(() => this.pollKnownPlayerPDAs(wallet), 2_000);
-
-    // 5. Full discovery every 8s to catch players who joined after initial connect
-    setInterval(() => this.discoverPlayersFromBase(wallet), 8_000);
+    // 4. Batched PDA polling every 5s — fallback for when
+    //    onProgramAccountChange doesn't fire on the RPC node.
+    //    (One getMultipleAccountsInfo call per tick, not N getAccountInfo.)
+    for (const t of this.discoveryTimers) clearInterval(t);
+    this.discoveryTimers = [
+      setInterval(() => this.pollKnownPlayerPDAs(wallet), 5_000),
+      // 5. Full discovery every 30s to catch players who joined after initial
+      //    connect. getProgramAccounts is the most expensive call the public
+      //    RPC allows — keep it rare; the WebSocket subscription and the PDA
+      //    poll carry the real-time load.
+      setInterval(() => this.discoverPlayersFromBase(wallet), 30_000),
+    ];
 
     // 6. Cross-browser chat via Solana Memo + onLogs
     this.subscribeCrossNetworkChat();
@@ -631,11 +667,13 @@ export class OnChainMultiplayer {
 
   /** Discover players whose PDAs exist on devnet base layer. */
   private async discoverPlayersFromBase(self: PublicKey): Promise<void> {
+    if (!this.rpcAvailable()) return; // rate-limited — skip this tick
     try {
       const accounts = await this.baseConnection.getProgramAccounts(
         SOL_CITY_PROGRAM_ID,
         { commitment: "confirmed" }
       );
+      this.noteRpcSuccess();
       console.log(`[Multiplayer] getProgramAccounts: ${accounts.length} account(s) on base layer`);
       let added = 0;
       for (const { pubkey, account } of accounts) {
@@ -645,29 +683,93 @@ export class OnChainMultiplayer {
       }
       if (added > 0) console.log(`[Multiplayer] discovery: ${added} new player(s) added`);
     } catch (err: any) {
+      this.noteRpcError(err);
       console.warn("[Multiplayer] base discovery FAILED:", err?.message);
     }
   }
 
   /**
-   * For each player we already know, fetch their PDA directly via getAccountInfo
-   * on BOTH the base layer and the ephemeral rollup.  getAccountInfo is always
-   * supported, unlike getProgramAccounts which may be disabled on some nodes.
-   * The data with the higher last_active timestamp takes effect.
+   * Polls the PDAs of every known player in ONE batched RPC call
+   * (getMultipleAccountsInfo) — fallback for when onProgramAccountChange
+   * doesn't fire on the RPC node. Batching is the biggest 429 saver: the
+   * previous per-player getAccountInfo fan-out multiplied request volume by
+   * the number of players every 2 seconds.
    */
   private async pollKnownPlayerPDAs(self: PublicKey): Promise<void> {
+    if (!this.rpcAvailable()) return; // rate-limited — skip this tick
     const selfStr = self.toBase58();
     const wallets = [...this.knownPlayers.keys()].filter(w => w !== selfStr);
     if (wallets.length === 0) return;
 
-    await Promise.allSettled(wallets.map(async (walletStr) => {
-      try {
-        const walletPub = new PublicKey(walletStr);
-        const [pda] = derivePlayerPDA(walletPub);
-        const info = await this.baseConnection.getAccountInfo(pda, "confirmed");
-        if (info) this.decodeAndUpdatePlayer(pda.toBase58(), info.data);
-      } catch { /* ignore per-player errors */ }
-    }));
+    try {
+      const pdas = wallets.map(w => derivePlayerPDA(new PublicKey(w))[0]);
+      const infos = await this.baseConnection.getMultipleAccountsInfo(pdas, "confirmed");
+      this.noteRpcSuccess();
+      infos.forEach((info, i) => {
+        if (info) this.decodeAndUpdatePlayer(pdas[i].toBase58(), info.data);
+      });
+    } catch (err) {
+      this.noteRpcError(err);
+    }
+  }
+
+  // Only one move verification runs at a time — moves arrive at up to 2/s
+  // and each verification polls for a few seconds, so we sample instead of
+  // verifying every signature. A systemic failure (unauthorized session key,
+  // dropped txs) still surfaces within one sample window and turns the
+  // batch red in the UI.
+  private moveVerifyBusy = false;
+  private firstVerifiedLogged = false;
+
+  /**
+   * Learns what actually happened to a move tx sent with skipPreflight.
+   * sendRawTransaction always returns the tx's own signature (it is derived
+   * from the signed bytes, not assigned by the node), so holding a signature
+   * proves nothing. getSignatureStatuses distinguishes the three outcomes:
+   *   status with err  → executed and failed (session key problem, etc.)
+   *   status without err → landed successfully
+   *   status null after retries → dropped, never processed — this is exactly
+   *     the case where the explorer shows an empty/unknown transaction.
+   */
+  private async trackMoveConfirmation(entryId: string, sig: string): Promise<void> {
+    // Attach the signature immediately so the explorer link exists while pending.
+    transactionLog.attachSignature(entryId, sig);
+
+    if (this.moveVerifyBusy) {
+      // Sampled out — the in-flight verification covers systemic failures.
+      transactionLog.markConfirmed(entryId, sig);
+      return;
+    }
+    this.moveVerifyBusy = true;
+    try {
+      const conn = this.useEphemeral ? this.ephemeralConnection : this.baseConnection;
+      for (const delayMs of [800, 1500, 3000]) {
+        await new Promise(r => setTimeout(r, delayMs));
+        const st = await conn.getSignatureStatuses([sig]);
+        const s = st?.value?.[0];
+        if (s) {
+          if (s.err) {
+            transactionLog.markFailed(entryId, `on-chain error: ${JSON.stringify(s.err)}`);
+            console.warn("[Multiplayer] move tx FAILED on-chain:", sig.slice(0, 12), s.err);
+          } else {
+            transactionLog.markConfirmed(entryId, sig);
+            if (!this.firstVerifiedLogged) {
+              this.firstVerifiedLogged = true;
+              console.log("[Multiplayer] ✓ first position tx verified on-chain:", sig.slice(0, 12));
+            }
+          }
+          return;
+        }
+      }
+      transactionLog.markFailed(entryId, "dropped — never landed on the rollup");
+      console.warn("[Multiplayer] move tx dropped (no status after 5s):", sig.slice(0, 12));
+    } catch {
+      // Status RPC unavailable — keep the optimistic confirm rather than
+      // reporting a failure we haven't observed.
+      transactionLog.markConfirmed(entryId, sig);
+    } finally {
+      this.moveVerifyBusy = false;
+    }
   }
 
   /**
@@ -936,13 +1038,8 @@ export class OnChainMultiplayer {
           this.ephemeralConnection.sendRawTransaction(tx.serialize(), { skipPreflight: true }),
           3_000,
         );
-        // Fire-and-forget confirmation — lets us see in console if the ER instruction
-        // actually succeeded (vs. just being accepted into the queue with skipPreflight).
-        this.ephemeralConnection.confirmTransaction(sig, "confirmed").then(r => {
-          if (r.value.err) {
-            console.warn("[Multiplayer] ER tx FAILED on-chain:", sig.slice(0, 12), r.value.err);
-          }
-        }).catch(() => {});
+        // Actual execution outcome is verified by trackMoveConfirmation
+        // (sampled getSignatureStatuses) in the caller.
         return sig;
       } catch (err: any) {
         // Don't permanently disable ER — rate limits and transient errors clear up.
