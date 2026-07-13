@@ -3,7 +3,12 @@
 import { useEffect, useRef, useState } from "react";
 import { EMOJI_REGISTRY } from "@/game/chat/EmojiSystem";
 
-const JOYSTICK_RADIUS = 52; // px — max thumb travel from center
+const JOYSTICK_RADIUS = 34; // px — max thumb travel from center
+
+// Pixel-art control sprites (public/assets/ui). Rendered at 1x or 1.5x of
+// their native size so device-pixel scaling stays close to integer.
+const UI = "/assets/ui";
+const PIXELATED: React.CSSProperties = { imageRendering: "pixelated" };
 
 function emitGame(event: string, data?: unknown) {
   (globalThis as any).__solCityGameEvents?.emit(event, data);
@@ -13,7 +18,7 @@ function emitGame(event: string, data?: unknown) {
 
 function Joystick() {
   const outerRef = useRef<HTMLDivElement>(null);
-  const thumbRef = useRef<HTMLDivElement>(null);
+  const thumbRef = useRef<HTMLImageElement>(null);
   const pointerId = useRef<number | null>(null);
   const origin = useRef({ x: 0, y: 0 });
 
@@ -53,11 +58,9 @@ function Joystick() {
       onPointerUp={release}
       onPointerCancel={release}
       style={{
-        width: 120,
-        height: 120,
-        borderRadius: "50%",
-        background: "rgba(153,69,255,0.12)",
-        border: "2px solid rgba(153,69,255,0.35)",
+        position: "relative",
+        width: 100,
+        height: 100,
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
@@ -66,34 +69,44 @@ function Joystick() {
         flexShrink: 0,
       }}
     >
-      <div
+      {/* Pad base — stays put while the cross thumb moves (same center). */}
+      <img
+        src={`${UI}/controller_bg.png`}
+        width={100}
+        height={100}
+        alt=""
+        draggable={false}
+        style={{ ...PIXELATED, position: "absolute", inset: 0, opacity: 0.9 }}
+      />
+      <img
         ref={thumbRef}
-        style={{
-          width: 44,
-          height: 44,
-          borderRadius: "50%",
-          background: "rgba(153,69,255,0.55)",
-          border: "2px solid rgba(153,69,255,0.85)",
-          pointerEvents: "none",
-          willChange: "transform",
-        }}
+        src={`${UI}/controller.png`}
+        width={44}
+        height={44}
+        alt="Joystick"
+        draggable={false}
+        style={{ ...PIXELATED, pointerEvents: "none", willChange: "transform" }}
       />
     </div>
   );
 }
 
-// ── Action buttons ───────────────────────────────────────────────────────────
+// ── Sprite button (bg layer + pressable top layer) ──────────────────────────
+// Per the spriter's contract: the bg layer must never transform on press —
+// only the top layer moves, so the button reads as sinking into its base.
 
-function ActionButton({
-  label,
-  color,
+function SpriteButton({
+  bg,
+  icon,
+  size,
+  alt,
   onPress,
-  size = 64,
 }: {
-  label: string;
-  color: string;
+  bg: string;
+  icon: string;
+  size: number;
+  alt: string;
   onPress: () => void;
-  size?: number;
 }) {
   const [pressed, setPressed] = useState(false);
 
@@ -107,27 +120,41 @@ function ActionButton({
       onPointerUp={() => setPressed(false)}
       onPointerCancel={() => setPressed(false)}
       style={{
+        position: "relative",
         width: size,
         height: size,
-        borderRadius: "50%",
-        background: pressed ? `${color}40` : `${color}1a`,
-        border: `2px solid ${pressed ? color : `${color}88`}`,
-        color,
-        fontSize: "10px",
-        fontFamily: '"Press Start 2P", monospace',
+        padding: 0,
+        background: "transparent",
+        border: "none",
         cursor: "pointer",
         touchAction: "none",
         userSelect: "none",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
         flexShrink: 0,
-        transform: pressed ? "scale(0.92)" : "scale(1)",
-        transition: "transform 0.08s, background 0.08s, border-color 0.08s",
         WebkitTapHighlightColor: "transparent",
       }}
     >
-      {label}
+      <img
+        src={bg}
+        width={size}
+        height={size}
+        alt=""
+        draggable={false}
+        style={{ ...PIXELATED, position: "absolute", inset: 0 }}
+      />
+      <img
+        src={icon}
+        width={size}
+        height={size}
+        alt={alt}
+        draggable={false}
+        style={{
+          ...PIXELATED,
+          position: "absolute",
+          inset: 0,
+          transform: pressed ? "translateY(3px)" : "none",
+          transition: "transform 0.08s",
+        }}
+      />
     </button>
   );
 }
@@ -164,7 +191,7 @@ export default function MobileControls() {
         <div
           className="fixed z-30 flex flex-wrap gap-2 p-3 rounded-xl"
           style={{
-            bottom: "calc(env(safe-area-inset-bottom, 0px) + 160px)",
+            bottom: "calc(env(safe-area-inset-bottom, 0px) + 180px)",
             right: "max(env(safe-area-inset-right, 0px), 16px)",
             background: "rgba(10,10,30,0.94)",
             border: "1px solid rgba(153,69,255,0.3)",
@@ -211,12 +238,19 @@ export default function MobileControls() {
 
         {/* Right — action buttons */}
         <div className="pointer-events-auto flex flex-col items-center gap-3">
-          <ActionButton label="ACT" color="#14F195" onPress={handleInteract} size={72} />
-          <ActionButton
-            label={showEmojis ? "✕" : "☺"}
-            color="#9945FF"
+          <SpriteButton
+            bg={`${UI}/btn_act_bg.png`}
+            icon={`${UI}/btn_act.png`}
+            size={87}
+            alt="ACT"
+            onPress={handleInteract}
+          />
+          <SpriteButton
+            bg={`${UI}/btn_emoji_bg.png`}
+            icon={showEmojis ? `${UI}/btn_emoji_X.png` : `${UI}/btn_emoji.png`}
+            size={63}
+            alt={showEmojis ? "Close emojis" : "Emojis"}
             onPress={() => setShowEmojis((v) => !v)}
-            size={56}
           />
         </div>
       </div>

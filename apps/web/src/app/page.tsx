@@ -233,9 +233,9 @@ export default function Home() {
                 left: "max(env(safe-area-inset-left, 0px), 12px)",
                 display: "flex", flexDirection: "column", gap: 6,
               }}>
-                <MobilePanelToggle icon="🎯" active={mobilePanel === "hunt"} onClick={() => toggleMobilePanel("hunt")} />
-                <MobilePanelToggle icon="📋" active={mobilePanel === "quests"} onClick={() => toggleMobilePanel("quests")} />
-                <MobilePanelToggle icon="💬" active={chatOpen} onClick={toggleMobileChat} />
+                <MobilePanelToggle iconSrc="/assets/ui/ico_achievements.png" label="Find someone" active={mobilePanel === "hunt"} onClick={() => toggleMobilePanel("hunt")} />
+                <MobilePanelToggle iconSrc="/assets/ui/ico_tasks.png" label="Daily quests" active={mobilePanel === "quests"} onClick={() => toggleMobilePanel("quests")} />
+                <MobilePanelToggle iconSrc="/assets/ui/ico_chat.png" label="Chat" active={chatOpen} onClick={toggleMobileChat} />
               </div>
               {mobilePanel !== null && (
                 /* Full-screen transparent backdrop — tap anywhere outside the panel to close */
@@ -362,22 +362,40 @@ export default function Home() {
   );
 }
 
-function MobilePanelToggle({ icon, active, onClick }: { icon: string; active: boolean; onClick: () => void }) {
+function MobilePanelToggle({ iconSrc, label, active, onClick }: {
+  iconSrc: string; label: string; active: boolean; onClick: () => void;
+}) {
   return (
     <button
       onClick={onClick}
+      title={label}
       style={{
-        width: 40, height: 40, borderRadius: 10,
-        border: `1px solid ${active ? "rgba(20,241,149,0.6)" : "rgba(153,69,255,0.3)"}`,
-        background: active ? "rgba(20,241,149,0.15)" : "rgba(8,10,22,0.7)",
-        backdropFilter: "blur(8px)",
-        cursor: "pointer",
+        position: "relative",
+        width: 48, height: 48, padding: 0,
+        background: "transparent", border: "none",
+        cursor: "pointer", flexShrink: 0,
         display: "flex", alignItems: "center", justifyContent: "center",
-        fontSize: 18, flexShrink: 0,
         WebkitTapHighlightColor: "transparent",
+        filter: active ? "brightness(1.45)" : "none",
       }}
     >
-      {icon}
+      <img
+        src="/assets/ui/bg_ico.png"
+        width={48} height={48} alt="" draggable={false}
+        style={{ imageRendering: "pixelated", position: "absolute", inset: 0 }}
+      />
+      <img
+        src={iconSrc}
+        width={36} height={36} alt={label} draggable={false}
+        style={{ imageRendering: "pixelated", position: "relative" }}
+      />
+      {active && (
+        <span style={{
+          position: "absolute", inset: 2, borderRadius: 8,
+          boxShadow: "0 0 0 2px rgba(20,241,149,0.75)",
+          pointerEvents: "none",
+        }} />
+      )}
     </button>
   );
 }
@@ -404,7 +422,11 @@ function WardrobeButton({ onClick }: { onClick: () => void }) {
       onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(20,241,149,0.18)")}
       onMouseLeave={(e) => (e.currentTarget.style.background = "rgba(20,241,149,0.07)")}
     >
-      👕
+      <img
+        src="/assets/ui/ico_wardrop.png"
+        width={24} height={24} alt="Wardrobe" draggable={false}
+        style={{ imageRendering: "pixelated" }}
+      />
     </button>
   );
 }

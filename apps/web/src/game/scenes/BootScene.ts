@@ -68,6 +68,11 @@ export class BootScene extends Phaser.Scene {
       this.load.image(key, `assets/tilesets/${key}.png`);
     }
 
+    // Pixel-art NPC attention balloons — one per palette variant.
+    for (const variant of ["green", "orange", "purple", "red", "yellow"]) {
+      this.load.image(`attention-${variant}`, `assets/ui/attention_${variant}.png`);
+    }
+
     SimpleSprite.load(this, "avatar-player", "assets/sprites/main_char.png", 64, 64);
 
     const loadedKeys = new Set<string>();

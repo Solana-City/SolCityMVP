@@ -7,12 +7,39 @@ import { progressionBus } from "../progression/progressionBus";
 
 const INTERACT_RANGE = TILE_SIZE * 1.8;
 
+// Pixel-art attention balloons come in five palette variants (see
+// assets/ui/attention_*.png). Each NPC uses the variant closest to its
+// registry color, measured by RGB distance to these representative values.
+const ATTENTION_RGB: Record<string, [number, number, number]> = {
+  green:  [63, 190, 96],
+  orange: [240, 138, 48],
+  purple: [153, 69, 255],
+  red:    [229, 72, 82],
+  yellow: [245, 197, 66],
+};
+
+function attentionVariantFor(color: number): string {
+  const r = (color >> 16) & 0xff;
+  const g = (color >> 8) & 0xff;
+  const b = color & 0xff;
+  let best = "yellow";
+  let bestDist = Infinity;
+  for (const [name, [vr, vg, vb]] of Object.entries(ATTENTION_RGB)) {
+    const d = (r - vr) ** 2 + (g - vg) ** 2 + (b - vb) ** 2;
+    if (d < bestDist) { bestDist = d; best = name; }
+  }
+  return best;
+}
+
 export class NPCSprite {
   private scene: Phaser.Scene;
   private avatar: SimpleSprite;
   private exclamation: Phaser.GameObjects.Container;
-  private exclamationBg: Phaser.GameObjects.Arc;
-  private exclamationText: Phaser.GameObjects.Text;
+  /** Pixel-art balloon sprite (preferred) — null when the texture is missing. */
+  private exclamationImg: Phaser.GameObjects.Image | null = null;
+  /** Primitive fallback pieces — only created when the sprite isn't available. */
+  private exclamationBg: Phaser.GameObjects.Arc | null = null;
+  private exclamationText: Phaser.GameObjects.Text | null = null;
   private nameText: Phaser.GameObjects.Text;
   private promptText: Phaser.GameObjects.Text;
   private _isInRange = false;
@@ -70,14 +97,23 @@ export class NPCSprite {
     container.add(this.nameText);
 
     // ── Exclamation bubble ───────────────────────────────────────────────────
-    this.exclamationBg = scene.add.circle(0, 0, 8, def.color);
-    this.exclamationText = scene.add.text(0, 0, "!", {
-      fontSize: "12px", fontFamily: "monospace",
-      color: "#ffffff", fontStyle: "bold",
-      resolution: 2,
-    }).setOrigin(0.5, 0.5);
-
-    this.exclamation = scene.add.container(0, -56, [this.exclamationBg, this.exclamationText]);
+    const balloonKey = `attention-${attentionVariantFor(def.color)}`;
+    if (scene.textures.exists(balloonKey)) {
+      this.exclamationImg = scene.add.image(0, 0, balloonKey);
+      // 64x64 source rendered at 20px world — same footprint as the old
+      // 8px-radius circle, with room for the sprite's outline.
+      this.exclamationImg.setDisplaySize(20, 20);
+      this.exclamation = scene.add.container(0, -56, [this.exclamationImg]);
+    } else {
+      // Fallback: primitive circle + "!" (texture failed to load).
+      this.exclamationBg = scene.add.circle(0, 0, 8, def.color);
+      this.exclamationText = scene.add.text(0, 0, "!", {
+        fontSize: "12px", fontFamily: "monospace",
+        color: "#ffffff", fontStyle: "bold",
+        resolution: 2,
+      }).setOrigin(0.5, 0.5);
+      this.exclamation = scene.add.container(0, -56, [this.exclamationBg, this.exclamationText]);
+    }
     container.add(this.exclamation);
 
     scene.tweens.add({
@@ -285,6 +321,12 @@ export class NPCSprite {
   }
 
   private applyVisitedState(visited: boolean): void {
+    if (this.exclamationImg) {
+      // Sprite balloon: fade out once visited — color variants stay intact.
+      this.exclamationImg.setAlpha(visited ? 0.35 : 1);
+      return;
+    }
+    if (!this.exclamationBg || !this.exclamationText) return;
     if (visited) {
       this.exclamationBg.setFillStyle(0x555577);
       this.exclamationText.setText("·");

@@ -174,24 +174,45 @@ export default function WalletBar({ onWalletChange, layout = "default" }: Wallet
             {balance !== null ? `${balance} ◎` : shortAddr}
           </span>
         )}
-        <button
-          onClick={handleClick}
-          className="rounded cursor-pointer"
-          style={{
-            background: connected ? "rgba(20,241,149,0.12)" : "rgba(153,69,255,0.8)",
-            color: connected ? "#14F195" : "#ffffff",
-            border: connected ? "1px solid rgba(20,241,149,0.3)" : "1px solid rgba(153,69,255,0.5)",
-            fontFamily: '"Press Start 2P", monospace',
-            fontSize: "8px",
-            padding: "10px 12px",
-            minHeight: 44,
-            display: "flex",
-            alignItems: "center",
-            WebkitTapHighlightColor: "transparent",
-          }}
-        >
-          {connected ? "●" : "CONNECT"}
-        </button>
+        {connected ? (
+          <button
+            onClick={handleClick}
+            className="rounded cursor-pointer"
+            style={{
+              background: "rgba(20,241,149,0.12)",
+              color: "#14F195",
+              border: "1px solid rgba(20,241,149,0.3)",
+              fontFamily: '"Press Start 2P", monospace',
+              fontSize: "8px",
+              padding: "10px 12px",
+              minHeight: 44,
+              display: "flex",
+              alignItems: "center",
+              WebkitTapHighlightColor: "transparent",
+            }}
+          >
+            ●
+          </button>
+        ) : (
+          /* Pixel-art CONNECT button (90x30 source at 1.5x) */
+          <button
+            onClick={handleClick}
+            style={{
+              background: "transparent",
+              border: "none",
+              padding: 0,
+              cursor: "pointer",
+              WebkitTapHighlightColor: "transparent",
+              lineHeight: 0,
+            }}
+          >
+            <img
+              src="/assets/ui/btn_connect.png"
+              width={135} height={45} alt="Connect wallet" draggable={false}
+              style={{ imageRendering: "pixelated" }}
+            />
+          </button>
+        )}
       </div>
     );
   }
