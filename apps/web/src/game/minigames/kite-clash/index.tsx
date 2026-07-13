@@ -8,7 +8,12 @@ import type { MiniGameBaseContext } from "../types";
 const isTouchDevice = () =>
   typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches;
 
-const WIND_BARS: Record<EngineSnapshot["windTier"], number> = { LOW: 1, MEDIUM: 2, HIGH: 3 };
+const KITE_UI = "/assets/minigames/kite/ui";
+const PIXELATED: React.CSSProperties = { imageRendering: "pixelated" };
+
+// Wind gauge fill frame per tier (wind_power1-6.png, increasing fill).
+// Each tier alternates between two adjacent frames for a windy shimmer.
+const WIND_FRAME_BASE: Record<EngineSnapshot["windTier"], number> = { LOW: 2, MEDIUM: 4, HIGH: 6 };
 
 /**
  * Kite Clash — single-player MVP. Renders the animated scene on a <canvas>
@@ -24,6 +29,12 @@ export default function KiteClashGame({ onResult, onClose }: MiniGameComponentPr
   const lastUiUpdateRef = useRef(0);
   const [snapshot, setSnapshot] = useState<EngineSnapshot | null>(null);
   const [isTouch, setIsTouch] = useState(false);
+  const [windShimmer, setWindShimmer] = useState(false);
+
+  useEffect(() => {
+    const id = setInterval(() => setWindShimmer((v) => !v), 350);
+    return () => clearInterval(id);
+  }, []);
 
   // joystick state refs (not React state — updated on every pointer move)
   const joystickOrigin = useRef({ x: 0, y: 0 });
@@ -99,8 +110,10 @@ export default function KiteClashGame({ onResult, onClose }: MiniGameComponentPr
     return () => window.removeEventListener("keydown", onEsc);
   }, [onClose]);
 
-  const windArrow = snapshot?.windDirection === "left" ? "←" : "→";
-  const windBars = snapshot ? WIND_BARS[snapshot.windTier] : 1;
+  const windFrame = Math.max(
+    1,
+    WIND_FRAME_BASE[snapshot?.windTier ?? "LOW"] - (windShimmer ? 1 : 0)
+  );
 
   return (
     <div
@@ -137,7 +150,8 @@ export default function KiteClashGame({ onResult, onClose }: MiniGameComponentPr
           PLAYER 1
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 4 }}>
-          <span style={{ fontSize: 13 }}>✦</span>
+          {/* One heart — the GDD is permadeath (1 life per run). */}
+          <img src={`${KITE_UI}/ico_heart.png`} width={18} height={18} alt="Life" draggable={false} style={PIXELATED} />
           <span style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 10, color: "#fff" }}>
             RUN #{snapshot?.runNumber ?? 1}
           </span>
@@ -174,20 +188,22 @@ export default function KiteClashGame({ onResult, onClose }: MiniGameComponentPr
           </span>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 7, justifyContent: "flex-end", marginTop: 8 }}>
-          <div style={{ display: "flex", alignItems: "flex-end", gap: 2, height: 14 }}>
-            {[1, 2, 3, 4, 5, 6].map((bar) => (
-              <div
-                key={bar}
-                style={{
-                  width: 4,
-                  height: `${Math.min(14, bar * 2 + 2)}px`,
-                  background: bar <= windBars * 2 ? "#2b3a4a" : "rgba(43,58,74,0.3)",
-                  border: "1px solid #000",
-                }}
-              />
-            ))}
-          </div>
-          <span style={{ fontSize: 14 }}>{windArrow}</span>
+          {/* Pixel-art wind gauge — fill frame follows the tier, shimmering
+              between two adjacent frames so it reads as live wind. */}
+          <img
+            src={`${KITE_UI}/wind_power${windFrame}.png`}
+            width={68} height={34} alt="" draggable={false}
+            style={PIXELATED}
+          />
+          <img
+            src={`${KITE_UI}/ico_arrow.png`}
+            width={22} height={11} alt={snapshot?.windDirection === "left" ? "Wind left" : "Wind right"}
+            draggable={false}
+            style={{
+              ...PIXELATED,
+              transform: snapshot?.windDirection === "left" ? "scaleX(-1)" : "none",
+            }}
+          />
           <span style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 9, color: "#fff" }}>
             WIND SPEED: {snapshot?.windTier ?? "LOW"}
           </span>

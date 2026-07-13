@@ -4,12 +4,13 @@
  * `OpponentKiteProvider` (types.ts) so a real-player provider can replace
  * `LocalAIOpponentProvider` later without touching this file.
  *
- * All visuals here are placeholder primitives (Graphics-style shapes drawn
- * straight to Canvas2D) — every PLACEHOLDER block is a drop-in swap point
- * for Dom's pixel art later.
+ * Visuals use the pixel-art assets from public/assets/minigames/kite
+ * (see assets.ts). Each render helper keeps a primitive-drawing fallback
+ * for frames before its image finishes loading.
  */
 import type { OpponentKiteProvider, WindDirection, WindTier } from "./types";
 import { LocalAIOpponentProvider } from "./LocalAIOpponentProvider";
+import { loadKiteAssets, ready, type KiteAssets } from "./assets";
 import {
   KITE_MOVE_SPEED,
   KITE_TILT_MAX_DEG,
@@ -60,6 +61,8 @@ interface Cloud {
   y: number;
   scale: number;
   speed: number;
+  /** Index into KiteAssets.clouds — which sprite this cloud uses. */
+  sprite: number;
 }
 
 interface CutVfx {
@@ -110,6 +113,9 @@ export class KiteClashEngine {
 
   private clouds: Cloud[] = [];
   private cutVfx: CutVfx[] = [];
+  private assets: KiteAssets = loadKiteAssets();
+  /** Sailboat drift position (world px, wraps around the screen). */
+  private shipX = -40;
 
   private opponents: OpponentKiteProvider;
   private callbacks: KiteClashEngineCallbacks;
@@ -134,6 +140,9 @@ export class KiteClashEngine {
     this.canvas.width = this.width * dpr;
     this.canvas.height = this.height * dpr;
     this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    // Resizing the canvas resets context state — re-disable smoothing so
+    // the pixel art stays crisp.
+    this.ctx.imageSmoothingEnabled = false;
     if (this.opponents instanceof LocalAIOpponentProvider) {
       this.opponents.setSkyBounds({ width: this.width, height: this.height * 0.7 });
     }
@@ -173,11 +182,12 @@ export class KiteClashEngine {
   }
 
   private seedClouds(): void {
-    this.clouds = Array.from({ length: 5 }, (_, i) => ({
-      x: (i / 5) * (this.width || 800),
-      y: 20 + Math.random() * 80,
-      scale: 0.7 + Math.random() * 0.8,
+    this.clouds = Array.from({ length: 6 }, (_, i) => ({
+      x: (i / 6) * (this.width || 800),
+      y: 16 + Math.random() * 110,
+      scale: 0.8 + Math.random() * 0.6,
       speed: 6 + Math.random() * 8,
+      sprite: Math.floor(Math.random() * this.assets.clouds.length),
     }));
   }
 
@@ -228,11 +238,14 @@ export class KiteClashEngine {
   };
 
   private update(dt: number): void {
-    // Clouds drift regardless of run phase — keeps the sky alive on the ready/end screens.
+    // Clouds and the sailboat drift regardless of run phase — keeps the
+    // scene alive on the ready/end screens.
     for (const c of this.clouds) {
       c.x += c.speed * dt;
       if (c.x > this.width + 60) c.x = -60;
     }
+    this.shipX += 5 * dt;
+    if (this.shipX > this.width + 40) this.shipX = -40;
     for (const v of this.cutVfx) v.ageMs += dt * 1000;
     this.cutVfx = this.cutVfx.filter((v) => v.ageMs < VFX_LIFETIME_MS);
 
@@ -386,7 +399,7 @@ export class KiteClashEngine {
 
     this.renderSky(ctx);
     this.renderClouds(ctx);
-    this.renderLandscape(ctx);
+    this.renderSea(ctx);
     this.renderAmbientKites(ctx);
 
     const exposure = exposureFromLineLength(this.lineLength);
@@ -408,98 +421,94 @@ export class KiteClashEngine {
     if (this.crossingPoint) this.renderCrossingHighlight(ctx, this.crossingPoint, this.isHoldingReelKey());
 
     this.renderCutVfx(ctx);
+    this.renderRailing(ctx);
     this.renderHands(ctx);
   }
 
+  /**
+   * Layout of the cover-scaled background image: uniformly scaled to fill
+   * the canvas, horizontally centered, bottom-anchored (the sea band matters
+   * more than the sky top, which can crop on ultrawide screens).
+   */
+  private bgLayout(): { scale: number; dx: number; dy: number } {
+    const iw = 704, ih = 384;
+    const scale = Math.max(this.width / iw, this.height / ih);
+    return {
+      scale,
+      dx: (this.width - iw * scale) / 2,
+      dy: this.height - ih * scale,
+    };
+  }
+
+  /** World y of the sky/sea line (y=236 in the 384px-tall background art). */
+  private horizonY(): number {
+    if (!ready(this.assets.background)) return this.height * 0.7;
+    const { scale, dy } = this.bgLayout();
+    return dy + 236 * scale;
+  }
+
   private renderSky(ctx: CanvasRenderingContext2D): void {
-    // PLACEHOLDER: swap for a proper time-of-day gradient art asset.
-    // Matches the reference concept's dusk gradient — blue overhead fading
-    // to a warm peach band near the horizon.
-    const grad = ctx.createLinearGradient(0, 0, 0, this.height);
-    grad.addColorStop(0, "#2a5f9e");
-    grad.addColorStop(0.45, "#6fa3cf");
-    grad.addColorStop(0.72, "#f3cfa0");
-    grad.addColorStop(1, "#f6e0b8");
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, this.width, this.height);
+    if (ready(this.assets.background)) {
+      const { scale, dx, dy } = this.bgLayout();
+      ctx.drawImage(this.assets.background, dx, dy, 704 * scale, 384 * scale);
+      return;
+    }
+    // Fallback while the image loads: flat bands approximating the art.
+    ctx.fillStyle = "#7ce0e8";
+    ctx.fillRect(0, 0, this.width, this.height * 0.62);
+    ctx.fillStyle = "#4b8de8";
+    ctx.fillRect(0, this.height * 0.62, this.width, this.height * 0.38);
   }
 
   private renderClouds(ctx: CanvasRenderingContext2D): void {
-    // PLACEHOLDER: soft ellipse clusters standing in for pixel-art cloud sprites.
-    ctx.fillStyle = "rgba(255,255,255,0.65)";
     for (const c of this.clouds) {
-      ctx.beginPath();
-      ctx.ellipse(c.x, c.y, 38 * c.scale, 16 * c.scale, 0, 0, Math.PI * 2);
-      ctx.ellipse(c.x + 24 * c.scale, c.y + 4, 26 * c.scale, 12 * c.scale, 0, 0, Math.PI * 2);
-      ctx.ellipse(c.x - 22 * c.scale, c.y + 5, 20 * c.scale, 10 * c.scale, 0, 0, Math.PI * 2);
-      ctx.fill();
+      const sprite = this.assets.clouds[c.sprite];
+      if (ready(sprite)) {
+        const w = sprite.naturalWidth * c.scale;
+        const h = sprite.naturalHeight * c.scale;
+        ctx.drawImage(sprite, c.x - w / 2, c.y - h / 2, w, h);
+      } else {
+        // Fallback: soft ellipse cluster while the sprite loads.
+        ctx.fillStyle = "rgba(255,255,255,0.65)";
+        ctx.beginPath();
+        ctx.ellipse(c.x, c.y, 38 * c.scale, 16 * c.scale, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
     }
   }
 
-  private renderLandscape(ctx: CanvasRenderingContext2D): void {
-    // PLACEHOLDER for Dom's final backdrop art. The reference concept image
-    // is a layout/positioning guide only — not the final art direction —
-    // so these named shapes exist to mark WHERE each landmark sits, not
-    // to lock in its exact look:
-    const horizon = this.height * 0.7;
-
-    // PLACEHOLDER — Corcovado mountain + Christ the Redeemer silhouette (left-of-center).
-    ctx.fillStyle = "#4a6b55";
-    ctx.beginPath();
-    ctx.moveTo(this.width * 0.08, horizon);
-    ctx.lineTo(this.width * 0.22, horizon - 95);
-    ctx.lineTo(this.width * 0.27, horizon - 30);
-    ctx.lineTo(this.width * 0.36, horizon);
-    ctx.closePath();
-    ctx.fill();
-    // Tiny statue silhouette on the peak — PLACEHOLDER for the Christ statue.
-    ctx.fillRect(this.width * 0.22 - 1.5, horizon - 112, 3, 18);
-    ctx.fillRect(this.width * 0.22 - 7, horizon - 104, 14, 3);
-
-    // PLACEHOLDER — Sugarloaf Mountain silhouette (right-of-center).
-    ctx.fillStyle = "#3f5e4d";
-    ctx.beginPath();
-    ctx.ellipse(this.width * 0.74, horizon - 6, this.width * 0.085, 60, 0, Math.PI, Math.PI * 2);
-    ctx.fill();
-    ctx.fillRect(this.width * 0.74 - 4, horizon - 6, 8, 8);
-
-    // PLACEHOLDER — city skyline silhouette, mid layer.
-    ctx.fillStyle = "#33495f";
-    for (let i = 0; i < 14; i++) {
-      const bw = this.width / 14;
-      const bh = 22 + ((i * 31) % 38);
-      ctx.fillRect(this.width * 0.32 + i * bw * 0.5, horizon - bh, bw * 0.4, bh);
-    }
-
-    // PLACEHOLDER — river band, winding through the jungle.
-    ctx.fillStyle = "#9fc9d6";
-    ctx.beginPath();
-    ctx.moveTo(this.width * 0.35, horizon);
-    ctx.quadraticCurveTo(this.width * 0.5, horizon + 16, this.width * 0.65, horizon);
-    ctx.lineTo(this.width, horizon + 6);
-    ctx.lineTo(this.width, this.height);
-    ctx.lineTo(0, this.height);
-    ctx.lineTo(0, horizon + 10);
-    ctx.closePath();
-    ctx.fill();
-
-    // PLACEHOLDER — jungle/palm foliage silhouettes framing the bottom corners.
-    ctx.fillStyle = "#27462f";
-    ctx.beginPath();
-    ctx.ellipse(this.width * 0.06, this.height * 0.92, 90, 50, 0, 0, Math.PI * 2);
-    ctx.ellipse(this.width * 0.97, this.height * 0.94, 100, 55, 0, 0, Math.PI * 2);
-    ctx.fill();
+  /** Sea-band dressing: the little sailboat drifting across the horizon. */
+  private renderSea(ctx: CanvasRenderingContext2D): void {
+    const ship = this.assets.ship;
+    if (!ready(ship)) return;
+    const horizon = this.horizonY();
+    ctx.drawImage(ship, this.shipX - 13, horizon + 8, 26, 36);
   }
 
-  /** PLACEHOLDER — small distant kites with no gameplay role, just atmosphere
-   * matching the reference's scattered background kites. Swap for sprites
-   * with the same lightweight "decorative only" treatment. */
+  /** Railing strip along the bottom edge, with the seagull perched on it. */
+  private renderRailing(ctx: CanvasRenderingContext2D): void {
+    const border = this.assets.border;
+    if (!ready(border)) return;
+    const sc = Math.max(1, this.width / 704);
+    const borderH = 28 * sc;
+    ctx.drawImage(border, 0, this.height - borderH, 704 * sc, borderH);
+
+    const bird = this.assets.bird;
+    if (ready(bird)) {
+      const bw = 72 * sc * 0.9;
+      const bh = 76 * sc * 0.9;
+      // Feet resting on top of the railing, off to the right like the concept.
+      ctx.drawImage(bird, this.width * 0.86 - bw / 2, this.height - borderH - bh + 6 * sc, bw, bh);
+    }
+  }
+
+  /** Small distant kites with no gameplay role, just atmosphere. */
   private renderAmbientKites(ctx: CanvasRenderingContext2D): void {
     const t = this.elapsedMs / 1000;
     const ambient = [
-      { x: 0.16, y: 0.32, color: "#4ade80", scale: 0.4, speed: 0.6 },
-      { x: 0.42, y: 0.42, color: "#38bdf8", scale: 0.32, speed: 0.5 },
-      { x: 0.88, y: 0.38, color: "#a78bfa", scale: 0.36, speed: 0.45 },
+      { x: 0.16, y: 0.32, color: "#4ade80", scale: 0.28, speed: 0.6, player: true },
+      { x: 0.42, y: 0.42, color: "#38bdf8", scale: 0.22, speed: 0.5, player: false },
+      { x: 0.88, y: 0.38, color: "#a78bfa", scale: 0.25, speed: 0.45, player: false },
     ];
     for (const k of ambient) {
       const x = k.x * this.width + Math.sin(t * k.speed) * 14;
@@ -510,7 +519,7 @@ export class KiteClashEngine {
       ctx.moveTo(x, y);
       ctx.lineTo(x - 18, y + this.height * 0.18);
       ctx.stroke();
-      this.renderKite(ctx, { x, y }, 1, k.color, Math.sin(t * k.speed) * 8, false, k.scale);
+      this.renderKite(ctx, { x, y }, 1, k.color, Math.sin(t * k.speed) * 8, k.player, k.scale);
     }
   }
 
@@ -523,11 +532,23 @@ export class KiteClashEngine {
     isPlayer: boolean,
     forcedScale?: number
   ): void {
-    // PLACEHOLDER: diamond primitive standing in for Dom's pixel-art kite.
-    // The player's kite uses a Brazilian-flag-inspired palette (green body,
-    // yellow border, blue accent disc) to match the reference concept —
-    // swap the whole shape for the real sprite, palette included.
-    const scale = forcedScale ?? lerp(1.6, 0.6, exposure); // reeled-in = bigger/foreground, let-out = smaller/background
+    // Pixel-art kites: Brazil flag for the player, Solana for rivals.
+    const sprite = isPlayer ? this.assets.kitePlayer : this.assets.kiteRival;
+    if (ready(sprite)) {
+      // reeled-in = bigger/foreground, let-out = smaller/background
+      const s = forcedScale ?? lerp(0.85, 0.34, exposure);
+      const w = 70 * s;
+      const h = 112 * s;
+      ctx.save();
+      ctx.translate(pos.x, pos.y);
+      ctx.rotate((tiltDeg * Math.PI) / 180);
+      ctx.drawImage(sprite, -w / 2, -h * 0.35, w, h);
+      ctx.restore();
+      return;
+    }
+
+    // Fallback while the sprite loads: diamond primitive.
+    const scale = forcedScale ?? lerp(1.6, 0.6, exposure);
     const w = 26 * scale;
     const h = 34 * scale;
 
@@ -568,9 +589,20 @@ export class KiteClashEngine {
     ctx.restore();
   }
 
+  /** Uniform scale for the first-person hands sprite (300x100 source). */
+  private handsScale(): number {
+    return Math.min(1.4, Math.max(0.9, this.width / 700));
+  }
+
   /** The player's spool anchor point — shared by the line geometry used for
-   * both rendering and the line-crossing cut check. */
+   * both rendering and the line-crossing cut check. Matches the spriter's
+   * rope zone: X=50%, Y=34% of the hands sprite. */
   private playerLineAnchor(): { x: number; y: number } {
+    if (ready(this.assets.hands)) {
+      const hs = this.handsScale();
+      const imgH = 100 * hs;
+      return { x: this.width / 2, y: this.height - imgH + 0.34 * imgH };
+    }
     const scale = Math.min(1.3, this.width / 900);
     return { x: this.width / 2, y: this.height + 10 - 64 * scale };
   }
@@ -650,8 +682,16 @@ export class KiteClashEngine {
   }
 
   private renderHands(ctx: CanvasRenderingContext2D): void {
-    // PLACEHOLDER: rounded rects + a rotating, thread-wound cylinder
-    // standing in for first-person pixel-art hands holding a spool.
+    const hands = this.assets.hands;
+    if (ready(hands)) {
+      const hs = this.handsScale();
+      const w = 300 * hs;
+      const h = 100 * hs;
+      ctx.drawImage(hands, this.width / 2 - w / 2, this.height - h, w, h);
+      return;
+    }
+
+    // Fallback while the sprite loads: rounded rects + thread-wound spool.
     const cx = this.width / 2;
     const cy = this.height + 10;
     const scale = Math.min(1.3, this.width / 900);
