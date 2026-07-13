@@ -93,7 +93,7 @@ module.exports = withPWA({
       // Game static assets — cache aggressively (served from same origin /public)
       // v4: bumped to bust old WebGL-era caches and force fresh asset loads
       {
-        urlPattern: /\/assets\/(tilesets|sprites|maps|minigames|icons)\//,
+        urlPattern: /\/assets\/(tilesets|sprites|maps|minigames|icons|ui)\//,
         handler: "CacheFirst",
         options: {
           cacheName: "sc-game-assets-v4",
