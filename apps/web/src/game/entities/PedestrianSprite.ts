@@ -82,6 +82,8 @@ export class PedestrianSprite {
 
     // Enable physics — body NOT immovable so physics resolves collisions
     const container = this.avatar.getContainer();
+    // Back-reference for PedestrianManager's ped-vs-ped contact resolver.
+    (container as any).__pedestrian = this;
     scene.physics.world.enable(container);
     const body = container.body as Phaser.Physics.Arcade.Body;
     body.setSize(TILE_SIZE * 0.5, TILE_SIZE * 0.3);
@@ -205,6 +207,34 @@ export class PedestrianSprite {
     // Walk for 600ms–2s, then stop and rest
     const moveDuration = 600 + Math.random() * 1400;
     this.moveTimer = this.scene.time.delayedCall(moveDuration, () => this.stopMove());
+  }
+
+  /**
+   * Halts this pedestrian because it touched another one. No push, no
+   * momentum transfer — the walker simply stops where it is, waits out the
+   * usual pause and picks a new direction. Stationary pedestrians only get
+   * residual velocity (e.g. a shove that slid them into a neighbor) zeroed.
+   */
+  haltFromContact(): void {
+    const container = this.avatar.getContainer();
+    if (!container?.scene || !container.body) return;
+    const body = container.body as Phaser.Physics.Arcade.Body;
+
+    if (!this.isMoving) {
+      body.setVelocity(0, 0);
+      return;
+    }
+
+    // Cancel the pending walk-duration timer so it can't fire a second
+    // stopMove later and double-schedule the next move.
+    this.moveTimer?.remove(false);
+    this.moveTimer = null;
+    this.walkVx = 0;
+    this.walkVy = 0;
+    body.setVelocity(0, 0);
+    this.isMoving = false;
+    this.showIdleFrame();
+    this.scheduleNextMove();
   }
 
   private stopMove() {

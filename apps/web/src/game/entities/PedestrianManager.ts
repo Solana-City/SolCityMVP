@@ -105,8 +105,50 @@ export class PedestrianManager {
       scene.physics.add.collider(this.pedGroup, nc);
     }
 
-    // Peds can't walk through each other
-    scene.physics.add.collider(this.pedGroup, this.pedGroup);
+    // Peds can't walk through each other — but they must NEVER push each
+    // other either. A collider transfers momentum during separation (the
+    // walker drags the other along, then shoves it away), so instead an
+    // overlap check halts a walking pedestrian the moment it touches a
+    // neighbor: no impulse, no dragging, and since both stop at sub-pixel
+    // penetration, no walking over each other.
+    scene.physics.add.overlap(
+      this.pedGroup,
+      this.pedGroup,
+      this.onPedContact as Phaser.Types.Physics.Arcade.ArcadePhysicsCallback,
+      undefined,
+      this,
+    );
+  }
+
+  private onPedContact(
+    aObj: Phaser.Types.Physics.Arcade.GameObjectWithBody,
+    bObj: Phaser.Types.Physics.Arcade.GameObjectWithBody,
+  ): void {
+    const a = (aObj as any).__pedestrian as PedestrianSprite | undefined;
+    const b = (bObj as any).__pedestrian as PedestrianSprite | undefined;
+    a?.haltFromContact();
+    b?.haltFromContact();
+
+    // Deep interpenetration (e.g. two spawns landing on the same tile, or a
+    // player shove sliding one into a neighbor) is resolved with a static
+    // position nudge along the shallow axis — a placement fix, not a push.
+    const ba = aObj.body as Phaser.Physics.Arcade.Body;
+    const bb = bObj.body as Phaser.Physics.Arcade.Body;
+    const overlapX = Math.min(ba.right, bb.right) - Math.max(ba.left, bb.left);
+    const overlapY = Math.min(ba.bottom, bb.bottom) - Math.max(ba.top, bb.top);
+    if (overlapX <= 3 || overlapY <= 3) return;
+
+    const ca = aObj as unknown as Phaser.GameObjects.Container;
+    const cb = bObj as unknown as Phaser.GameObjects.Container;
+    if (overlapX < overlapY) {
+      const dir = ba.center.x <= bb.center.x ? 1 : -1;
+      ca.x -= (overlapX / 2) * dir;
+      cb.x += (overlapX / 2) * dir;
+    } else {
+      const dir = ba.center.y <= bb.center.y ? 1 : -1;
+      ca.y -= (overlapY / 2) * dir;
+      cb.y += (overlapY / 2) * dir;
+    }
   }
 
   private onPlayerCollide(
