@@ -113,7 +113,7 @@ export class BootScene extends Phaser.Scene {
           i++;
           requestAnimationFrame(processNext);
         } else {
-          this.scene.start("CityScene");
+          waitForGameFont(() => this.scene.start("CityScene"));
         }
       };
       requestAnimationFrame(processNext);
@@ -128,8 +128,23 @@ export class BootScene extends Phaser.Scene {
       }
     }
 
-    this.scene.start("CityScene");
+    waitForGameFont(() => this.scene.start("CityScene"));
   }
+}
+
+/**
+ * Phaser draws text on a <canvas> — if the web font hasn't finished loading
+ * yet, the canvas rasterizes with the fallback font and never redraws once
+ * the font arrives (unlike DOM text, which repaints automatically). Force
+ * the font to load and wait for it before any in-game Text object is created,
+ * so NPC labels/chat bubbles reliably render in Press Start 2P.
+ */
+function waitForGameFont(onReady: () => void): void {
+  const timeout = new Promise<void>((resolve) => setTimeout(resolve, 1000));
+  Promise.race([
+    document.fonts.load('10px "Press Start 2P"').then(() => undefined),
+    timeout,
+  ]).then(onReady).catch(onReady);
 }
 
 /**
