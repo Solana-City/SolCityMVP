@@ -366,6 +366,11 @@ export class CityScene extends Phaser.Scene {
       container,
       this.npcSprites.map(n => n.getContainer()),
     );
+    // Pedestrians must also respect the playable-zone boundary and the
+    // MagicBlock building patch walls (same groups as the player colliders above).
+    const pedGroup = this.pedestrians.getPedGroup();
+    this.physics.add.collider(pedGroup, zoneWalls);
+    this.physics.add.collider(pedGroup, mbWalls);
 
     // Sync target when round changes (check every 10 s)
     this.time.addEvent({

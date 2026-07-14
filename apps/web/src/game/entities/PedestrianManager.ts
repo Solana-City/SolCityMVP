@@ -49,6 +49,8 @@ export class PedestrianManager {
   /** Arcade group — lets us do pedGroup vs pedGroup in one collider call */
   private pedGroup!: Phaser.Physics.Arcade.Group;
 
+  getPedGroup(): Phaser.Physics.Arcade.Group { return this.pedGroup; }
+
   spawn(scene: Phaser.Scene, collisionLayers: Phaser.Tilemaps.TilemapLayer[]): void {
     this.scene = scene;
     this.collisionLayers = collisionLayers;
