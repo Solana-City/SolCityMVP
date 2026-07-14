@@ -19,7 +19,6 @@ const ActionPanel         = dynamic(() => import("@/ui/ActionPanel"),         { 
 const ProfilePanel        = dynamic(() => import("@/ui/ProfilePanel"),        { ssr: false });
 const TransactionLogPanel = dynamic(() => import("@/ui/TransactionLogPanel"), { ssr: false });
 const ToastStack          = dynamic(() => import("@/ui/ToastStack"),          { ssr: false });
-const HUD                 = dynamic(() => import("@/ui/HUD"),                 { ssr: false });
 const WalletSignBridge    = dynamic(() => import("@/ui/WalletSignBridge"),    { ssr: false });
 const MobileControls      = dynamic(() => import("@/ui/MobileControls"),      { ssr: false });
 const ZoomControl         = dynamic(() => import("@/ui/ZoomControl"),         { ssr: false });
@@ -207,9 +206,6 @@ export default function Home() {
         <ConnectScreen />
         <main className="w-screen app-viewport relative">
           <PhaserGame onGameReady={setGame} />
-
-          {/* Score HUD — top left */}
-          <HUD />
 
           {/* Left-side panel stack — hunt card + daily quests */}
           {!isTouch ? (
