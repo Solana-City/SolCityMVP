@@ -18,7 +18,11 @@ html,
 body {
   margin: 0;
   padding: 0;
-  font-family: "Press Start 2P", monospace;
+  /* Fira Code is the body/reading default — Press Start 2P is reserved for
+     headings, buttons, and labels (set explicitly per-element throughout the
+     UI). Forcing Press Start 2P here bled the pixel-art display font onto
+     plain text that was never sized for its much wider glyphs. */
+  font-family: "Fira Code", monospace;
   overflow: hidden;
   background: #0e0e2c;
   width: 100vw;
