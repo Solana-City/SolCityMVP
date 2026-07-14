@@ -38,7 +38,7 @@ export default function RotatePrompt() {
         alignItems: "center",
         justifyContent: "center",
         gap: 28,
-        fontFamily: '"Fira Code", monospace',
+        fontFamily: '"Press Start 2P", monospace',
       }}
     >
       <style>{`
@@ -50,7 +50,7 @@ export default function RotatePrompt() {
         }
       `}</style>
 
-      <div style={{ fontSize: 64, animation: "sc-rotate-hint 2.4s ease-in-out infinite" }}>
+      <div style={{ fontSize: 46, animation: "sc-rotate-hint 2.4s ease-in-out infinite" }}>
         📱
       </div>
 
@@ -58,7 +58,7 @@ export default function RotatePrompt() {
         <div
           style={{
             color: "#9945FF",
-            fontSize: 18,
+            fontSize: 13,
             fontWeight: "bold",
             marginBottom: 10,
             letterSpacing: -0.3,
@@ -66,7 +66,7 @@ export default function RotatePrompt() {
         >
           Rotate your device
         </div>
-        <div style={{ color: "#444466", fontSize: 13, lineHeight: 1.6 }}>
+        <div style={{ color: "#444466", fontSize: 10, lineHeight: 1.6 }}>
           Sol City is designed for landscape mode.
           <br />
           Turn your phone sideways to play.

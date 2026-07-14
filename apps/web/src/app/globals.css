@@ -11,18 +11,15 @@
   font-display: swap;
 }
 
-/* Fira Code still loaded from CDN (body/chat text) */
-@import url("https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&display=swap");
-
 html,
 body {
   margin: 0;
   padding: 0;
-  /* Fira Code is the body/reading default — Press Start 2P is reserved for
-     headings, buttons, and labels (set explicitly per-element throughout the
-     UI). Forcing Press Start 2P here bled the pixel-art display font onto
-     plain text that was never sized for its much wider glyphs. */
-  font-family: "Fira Code", monospace;
+  /* Press Start 2P is now the single font used across all of Solana City —
+     every component that used to reference Fira Code has been converted, and
+     font-size values throughout the UI were reduced to compensate for its
+     much wider/heavier glyphs at the same nominal px. */
+  font-family: "Press Start 2P", monospace;
   overflow: hidden;
   background: #0e0e2c;
   width: 100vw;

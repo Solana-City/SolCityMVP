@@ -99,7 +99,7 @@ export default function ToastStack() {
   return (
     <div
       className="fixed left-1/2 -translate-x-1/2 z-40 flex flex-col items-center gap-3 pointer-events-none"
-      style={{ top: 80, fontFamily: '"Fira Code", monospace' }}
+      style={{ top: 80, fontFamily: '"Press Start 2P", monospace' }}
     >
       {toasts.map((t) => (
         <ToastItem key={t.id} toast={t} />
@@ -121,7 +121,7 @@ function ScoreToast({ toast }: { toast: Toast }) {
       style={{
         fontFamily: '"Press Start 2P", monospace',
         color: toast.color,
-        fontSize: "20px",
+        fontSize: "15px",
         textShadow: `0 0 10px ${toast.color}88, 0 2px 4px rgba(0,0,0,0.8)`,
       }}
     >
@@ -154,12 +154,12 @@ function SmallCard({ toast }: { toast: Toast }) {
         maxWidth: 400,
       }}
     >
-      {toast.icon && <div style={{ fontSize: "24px", flexShrink: 0 }}>{toast.icon}</div>}
+      {toast.icon && <div style={{ fontSize: "17px", flexShrink: 0 }}>{toast.icon}</div>}
       <div className="min-w-0">
         <div
           style={{
             fontFamily: '"Press Start 2P", monospace',
-            fontSize: "10px",
+            fontSize: "8px",
             color: toast.color,
             letterSpacing: "0.05em",
           }}
@@ -167,7 +167,7 @@ function SmallCard({ toast }: { toast: Toast }) {
           {toast.title}
         </div>
         {toast.subtitle && (
-          <div style={{ fontSize: "11px", color: "#aaaacc", marginTop: 4 }}>
+          <div style={{ fontSize: "8px", color: "#aaaacc", marginTop: 4 }}>
             {toast.subtitle}
           </div>
         )}
@@ -251,7 +251,7 @@ function AchievementFrame({ toast }: { toast: Toast }) {
             alignItems: "center",
             justifyContent: "center",
             flexShrink: 0,
-            fontSize: "36px",
+            fontSize: "26px",
             background: `radial-gradient(circle, ${toast.color}33 0%, transparent 70%)`,
             borderRadius: "50%",
           }}
@@ -263,7 +263,7 @@ function AchievementFrame({ toast }: { toast: Toast }) {
           <div
             style={{
               fontFamily: '"Press Start 2P", monospace',
-              fontSize: "13px",
+              fontSize: "10px",
               color: toast.color,
               letterSpacing: "0.03em",
               textShadow: `0 0 8px ${toast.color}66`,
@@ -273,7 +273,7 @@ function AchievementFrame({ toast }: { toast: Toast }) {
             {toast.title}
           </div>
           {toast.subtitle && (
-            <div style={{ fontSize: "11px", color: "#ccccdd", lineHeight: 1.4 }}>
+            <div style={{ fontSize: "8px", color: "#ccccdd", lineHeight: 1.4 }}>
               {toast.subtitle}
             </div>
           )}

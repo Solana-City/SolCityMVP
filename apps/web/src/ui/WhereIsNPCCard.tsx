@@ -85,7 +85,7 @@ function LeaderboardModal({ onClose }: { onClose: () => void }) {
       <div style={{
         background: "#0b0e1c", border: "1px solid rgba(153,69,255,0.3)",
         borderRadius: 16, minWidth: 320, maxWidth: "90vw",
-        fontFamily: '"Fira Code", monospace', color: "#d0d0f0",
+        fontFamily: '"Press Start 2P", monospace', color: "#d0d0f0",
         overflow: "hidden",
         animation: "slideUp 0.18s ease",
       }}>
@@ -94,11 +94,11 @@ function LeaderboardModal({ onClose }: { onClose: () => void }) {
           borderBottom: "1px solid rgba(153,69,255,0.1)",
           display: "flex", alignItems: "center", justifyContent: "space-between",
         }}>
-          <span style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 10, color: "#c084fc", letterSpacing: 0.5 }}>
+          <span style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 8, color: "#c084fc", letterSpacing: 0.5 }}>
             🏆 LEADERBOARD
           </span>
           <button onClick={onClose} style={{
-            background: "none", border: "none", color: "#555", fontSize: 20,
+            background: "none", border: "none", color: "#555", fontSize: 15,
             cursor: "pointer", lineHeight: 1, padding: "0 2px",
             transition: "color 0.15s",
           }}
@@ -108,7 +108,7 @@ function LeaderboardModal({ onClose }: { onClose: () => void }) {
         </div>
         <div style={{ padding: "8px 20px 18px" }}>
           {entries.length === 0 ? (
-            <div style={{ color: "#444466", fontSize: 12, padding: "20px 0", textAlign: "center" }}>
+            <div style={{ color: "#444466", fontSize: 9, padding: "20px 0", textAlign: "center" }}>
               No finds yet — be the first!
             </div>
           ) : entries.map((e, i) => (
@@ -118,12 +118,12 @@ function LeaderboardModal({ onClose }: { onClose: () => void }) {
               borderBottom: i < entries.length - 1 ? "1px solid rgba(153,69,255,0.07)" : "none",
             }}>
               <span style={{
-                fontFamily: '"Press Start 2P", monospace', fontSize: 9,
+                fontFamily: '"Press Start 2P", monospace', fontSize: 7,
                 color: i === 0 ? "#FFD700" : i === 1 ? "#c0c0cc" : i === 2 ? "#cd7f32" : "#333355",
                 minWidth: 24,
               }}>#{i + 1}</span>
-              <span style={{ flex: 1, fontSize: 12, color: "#9090cc" }}>{e.display}</span>
-              <span style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 9, color: "#14F195" }}>
+              <span style={{ flex: 1, fontSize: 9, color: "#9090cc" }}>{e.display}</span>
+              <span style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 7, color: "#14F195" }}>
                 {e.count} ★
               </span>
             </div>
@@ -225,12 +225,12 @@ export default function WhereIsNPCCard({ gameRef, wallet }: Props) {
           position: "fixed", top: 12, left: isTouch ? 236 : 224, zIndex: 200,
           background: "#0c0f1e", border: "1px solid rgba(153,69,255,0.3)",
           borderRadius: 12, padding: "14px 16px", width: 248,
-          fontSize: 12, color: "#a0a0cc", lineHeight: 1.65,
+          fontSize: 9, color: "#a0a0cc", lineHeight: 1.65,
           boxShadow: "0 8px 32px rgba(0,0,0,0.55)",
-          fontFamily: '"Fira Code", monospace',
+          fontFamily: '"Press Start 2P", monospace',
           animation: "slideUp 0.15s ease",
         }} onClick={() => setShowInfo(false)}>
-          <div style={{ color: "#c084fc", marginBottom: 10, fontFamily: '"Press Start 2P", monospace', fontSize: 8, letterSpacing: 0.5 }}>
+          <div style={{ color: "#c084fc", marginBottom: 10, fontFamily: '"Press Start 2P", monospace', fontSize: 7, letterSpacing: 0.5 }}>
             HOW TO PLAY
           </div>
           Find the citizen shown below. Walk up to them and {isTouch ? "tap" : "press"}{" "}
@@ -249,7 +249,7 @@ export default function WhereIsNPCCard({ gameRef, wallet }: Props) {
         width: isTouch ? 172 : 210,
         backdropFilter: "blur(16px)",
         boxShadow: "0 4px 28px rgba(0,0,0,0.4)",
-        fontFamily: '"Fira Code", monospace',
+        fontFamily: '"Press Start 2P", monospace',
         color: "#d0d0f0",
         overflow: "hidden",
       }}>
@@ -261,15 +261,15 @@ export default function WhereIsNPCCard({ gameRef, wallet }: Props) {
           cursor: "pointer",
           userSelect: "none",
         }} onClick={() => setCollapsed(v => !v)}>
-          <span style={{ fontSize: 15, lineHeight: 1 }}>🔍</span>
+          <span style={{ fontSize: 11, lineHeight: 1 }}>🔍</span>
           <span style={{
-            fontFamily: '"Press Start 2P", monospace', fontSize: 8,
+            fontFamily: '"Press Start 2P", monospace', fontSize: 7,
             color: "#c084fc", letterSpacing: 0.5, flex: 1,
             lineHeight: 1.4,
           }}>FIND SOMEONE</span>
           <button className="hunt-btn" style={{
             background: "rgba(153,69,255,0.1)", border: "1px solid rgba(153,69,255,0.25)",
-            borderRadius: 6, color: "#9945FF", fontSize: 11,
+            borderRadius: 6, color: "#9945FF", fontSize: 8,
             width: 22, height: 22, cursor: "pointer",
             display: "flex", alignItems: "center", justifyContent: "center",
             flexShrink: 0,
@@ -277,7 +277,7 @@ export default function WhereIsNPCCard({ gameRef, wallet }: Props) {
             onClick={e => { e.stopPropagation(); setShowInfo(v => !v); }}
             title="How to play"
           >ℹ</button>
-          <span className="hunt-collapse" style={{ color: "#444466", fontSize: 11, marginLeft: 2 }}>
+          <span className="hunt-collapse" style={{ color: "#444466", fontSize: 8, marginLeft: 2 }}>
             {collapsed ? "▲" : "▼"}
           </span>
         </div>
@@ -289,7 +289,7 @@ export default function WhereIsNPCCard({ gameRef, wallet }: Props) {
               <div style={{
                 background: "rgba(20,241,149,0.08)", border: "1px solid rgba(20,241,149,0.25)",
                 borderRadius: 8, padding: "7px 10px",
-                fontSize: 11, color: "#14F195",
+                fontSize: 8, color: "#14F195",
                 textAlign: "center", lineHeight: 1.4,
                 animation: "slideUp 0.2s ease",
               }}>
@@ -312,7 +312,7 @@ export default function WhereIsNPCCard({ gameRef, wallet }: Props) {
             ) : (
               <div style={{
                 height: isTouch ? 72 : 104, display: "flex", alignItems: "center", justifyContent: "center",
-                fontSize: 12, color: "#3a3a5a",
+                fontSize: 9, color: "#3a3a5a",
               }}>
                 {foundMsg ? "New citizen incoming…" : "Loading…"}
               </div>
@@ -321,10 +321,10 @@ export default function WhereIsNPCCard({ gameRef, wallet }: Props) {
             {/* Timer bar */}
             <div>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5 }}>
-                <span style={{ fontSize: 11, color: "#6060aa" }}>
+                <span style={{ fontSize: 8, color: "#6060aa" }}>
                   ⏱ {mm}:{ss}
                 </span>
-                <span style={{ fontSize: 11, color: "#6060aa" }}>next citizen</span>
+                <span style={{ fontSize: 8, color: "#6060aa" }}>next citizen</span>
               </div>
               <div style={{ height: 3, background: "rgba(255,255,255,0.06)", borderRadius: 2 }}>
                 <div style={{
@@ -339,17 +339,17 @@ export default function WhereIsNPCCard({ gameRef, wallet }: Props) {
             {/* Score + leaderboard */}
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               {wallet ? (
-                <span style={{ fontSize: 12, color: "#14F195", flex: 1 }}>
+                <span style={{ fontSize: 9, color: "#14F195", flex: 1 }}>
                   ★ {myScore} found
                 </span>
               ) : (
-                <span style={{ fontSize: 11, color: "#3a3a5a", flex: 1 }}>Connect wallet</span>
+                <span style={{ fontSize: 8, color: "#3a3a5a", flex: 1 }}>Connect wallet</span>
               )}
               <button className="hunt-btn" onClick={() => setShowLeaderboard(true)} style={{
                 background: "rgba(153,69,255,0.1)",
                 border: "1px solid rgba(153,69,255,0.22)",
                 borderRadius: 7, padding: "5px 10px",
-                color: "#9945FF", fontSize: 12, cursor: "pointer",
+                color: "#9945FF", fontSize: 9, cursor: "pointer",
               }}>
                 🏆
               </button>

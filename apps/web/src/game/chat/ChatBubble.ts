@@ -2,8 +2,8 @@ import * as Phaser from "phaser";
 
 const BUBBLE_DURATION = 4000;
 const BUBBLE_PADDING = 6;
-const BUBBLE_FONT_SIZE = 10;
-const BUBBLE_MAX_WIDTH = 140;
+const BUBBLE_FONT_SIZE = 8;
+const BUBBLE_MAX_WIDTH = 150;
 
 /**
  * A temporary text bubble that appears above a game object.
@@ -21,7 +21,7 @@ export class ChatBubble {
   ) {
     const bubbleText = scene.add.text(0, 0, text, {
       fontSize: `${BUBBLE_FONT_SIZE}px`,
-      fontFamily: "monospace",
+      fontFamily: '"Press Start 2P", monospace',
       color: "#ffffff",
       wordWrap: { width: BUBBLE_MAX_WIDTH },
       align: "center",

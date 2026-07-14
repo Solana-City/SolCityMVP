@@ -20,7 +20,7 @@ function QuestLeaderboardModal({ onClose }: { onClose: () => void }) {
       <div style={{
         background: "#0b0e1c", border: "1px solid rgba(20,241,149,0.25)",
         borderRadius: 16, minWidth: 320, maxWidth: "90vw",
-        fontFamily: '"Fira Code", monospace', color: "#d0d0f0",
+        fontFamily: '"Press Start 2P", monospace', color: "#d0d0f0",
         overflow: "hidden",
         animation: "slideUp 0.18s ease",
       }}>
@@ -29,11 +29,11 @@ function QuestLeaderboardModal({ onClose }: { onClose: () => void }) {
           borderBottom: "1px solid rgba(20,241,149,0.1)",
           display: "flex", alignItems: "center", justifyContent: "space-between",
         }}>
-          <span style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 10, color: "#14F195", letterSpacing: 0.5 }}>
+          <span style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 8, color: "#14F195", letterSpacing: 0.5 }}>
             🏆 QUEST LEADERBOARD
           </span>
           <button onClick={onClose} style={{
-            background: "none", border: "none", color: "#555", fontSize: 20,
+            background: "none", border: "none", color: "#555", fontSize: 15,
             cursor: "pointer", lineHeight: 1, padding: "0 2px",
             transition: "color 0.15s",
           }}
@@ -42,11 +42,11 @@ function QuestLeaderboardModal({ onClose }: { onClose: () => void }) {
           >×</button>
         </div>
         <div style={{ padding: "6px 20px 16px" }}>
-          <div style={{ fontSize: 11, color: "#444466", marginBottom: 8, paddingTop: 10, textAlign: "center" }}>
+          <div style={{ fontSize: 8, color: "#444466", marginBottom: 8, paddingTop: 10, textAlign: "center" }}>
             All-time daily quest points
           </div>
           {entries.length === 0 ? (
-            <div style={{ color: "#444466", fontSize: 12, padding: "20px 0", textAlign: "center" }}>
+            <div style={{ color: "#444466", fontSize: 9, padding: "20px 0", textAlign: "center" }}>
               No points yet — complete quests to appear here!
             </div>
           ) : entries.map((e, i) => (
@@ -56,12 +56,12 @@ function QuestLeaderboardModal({ onClose }: { onClose: () => void }) {
               borderBottom: i < entries.length - 1 ? "1px solid rgba(20,241,149,0.06)" : "none",
             }}>
               <span style={{
-                fontFamily: '"Press Start 2P", monospace', fontSize: 9,
+                fontFamily: '"Press Start 2P", monospace', fontSize: 7,
                 color: i === 0 ? "#FFD700" : i === 1 ? "#c0c0cc" : i === 2 ? "#cd7f32" : "#333355",
                 minWidth: 24,
               }}>#{i + 1}</span>
-              <span style={{ flex: 1, fontSize: 12, color: "#9090cc" }}>{e.display}</span>
-              <span style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 9, color: "#14F195" }}>
+              <span style={{ flex: 1, fontSize: 9, color: "#9090cc" }}>{e.display}</span>
+              <span style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 7, color: "#14F195" }}>
                 {e.points} pts
               </span>
             </div>
@@ -135,7 +135,7 @@ export default function QuestPanel({ wallet }: Props) {
         width: 210,
         backdropFilter: "blur(16px)",
         boxShadow: "0 4px 28px rgba(0,0,0,0.4)",
-        fontFamily: '"Fira Code", monospace',
+        fontFamily: '"Press Start 2P", monospace',
         color: "#d0d0f0",
         overflow: "hidden",
       }}>
@@ -147,20 +147,20 @@ export default function QuestPanel({ wallet }: Props) {
           cursor: "pointer",
           userSelect: "none",
         }} onClick={() => setCollapsed(v => !v)}>
-          <span style={{ fontSize: 15, lineHeight: 1 }}>📋</span>
+          <span style={{ fontSize: 11, lineHeight: 1 }}>📋</span>
           <span style={{
-            fontFamily: '"Press Start 2P", monospace', fontSize: 8,
+            fontFamily: '"Press Start 2P", monospace', fontSize: 7,
             color: "#14F195", letterSpacing: 0.5, flex: 1,
             lineHeight: 1.4,
           }}>DAILY QUESTS</span>
           {wallet && (
-            <span style={{ fontSize: 11, color: "#14F195" }}>
+            <span style={{ fontSize: 8, color: "#14F195" }}>
               {dailyEarned}/{dailyMax}
             </span>
           )}
           <button style={{
             background: "rgba(20,241,149,0.08)", border: "1px solid rgba(20,241,149,0.2)",
-            borderRadius: 6, color: "#14F195", fontSize: 12,
+            borderRadius: 6, color: "#14F195", fontSize: 9,
             width: 22, height: 22, cursor: "pointer",
             display: "flex", alignItems: "center", justifyContent: "center",
             flexShrink: 0, transition: "background 0.15s ease",
@@ -170,7 +170,7 @@ export default function QuestPanel({ wallet }: Props) {
             onMouseEnter={e => (e.currentTarget.style.background = "rgba(20,241,149,0.16)")}
             onMouseLeave={e => (e.currentTarget.style.background = "rgba(20,241,149,0.08)")}
           >🏆</button>
-          <span className="quest-collapse" style={{ color: "#444466", fontSize: 11, marginLeft: 2 }}>
+          <span className="quest-collapse" style={{ color: "#444466", fontSize: 8, marginLeft: 2 }}>
             {collapsed ? "▲" : "▼"}
           </span>
         </div>
@@ -182,7 +182,7 @@ export default function QuestPanel({ wallet }: Props) {
               <div style={{
                 background: "rgba(20,241,149,0.1)", border: "1px solid rgba(20,241,149,0.3)",
                 borderRadius: 8, padding: "7px 10px",
-                textAlign: "center", fontSize: 13, color: "#14F195",
+                textAlign: "center", fontSize: 10, color: "#14F195",
                 fontWeight: 700, letterSpacing: 1,
                 animation: "claimPop 0.25s ease, slideUp 0.2s ease",
               }}>{claimFlash} pts earned!</div>
@@ -190,7 +190,7 @@ export default function QuestPanel({ wallet }: Props) {
 
             {/* All-time points */}
             {wallet && totalPoints > 0 && (
-              <div style={{ fontSize: 11, color: "#555577", textAlign: "right" }}>
+              <div style={{ fontSize: 8, color: "#555577", textAlign: "right" }}>
                 All-time: <span style={{ color: "#14F195" }}>{totalPoints} pts</span>
               </div>
             )}
@@ -218,7 +218,7 @@ export default function QuestPanel({ wallet }: Props) {
                 }}>
                   {/* Title row */}
                   <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 5 }}>
-                    <span style={{ fontSize: 12, lineHeight: 1 }}>
+                    <span style={{ fontSize: 9, lineHeight: 1 }}>
                       {claimed ? "✅" : p.completed ? "⭐" : "🔲"}
                     </span>
                     <span style={{
@@ -226,13 +226,13 @@ export default function QuestPanel({ wallet }: Props) {
                       color: claimed ? "#14F195" : p.completed ? "#FFD700" : "#c084fc",
                       flex: 1, lineHeight: 1.5,
                     }}>{quest.title}</span>
-                    <span style={{ fontSize: 11, color: "#14F195", flexShrink: 0 }}>
+                    <span style={{ fontSize: 8, color: "#14F195", flexShrink: 0 }}>
                       {quest.points}pt
                     </span>
                   </div>
 
                   {/* Description */}
-                  <div style={{ fontSize: 11, color: "#6060aa", lineHeight: 1.5, marginBottom: 7 }}>
+                  <div style={{ fontSize: 8, color: "#6060aa", lineHeight: 1.5, marginBottom: 7 }}>
                     {quest.description}
                     {quest.target > 1 && (
                       <span style={{ color: "#444466", marginLeft: 6 }}>
@@ -267,7 +267,7 @@ export default function QuestPanel({ wallet }: Props) {
                         width: "100%",
                         background: "linear-gradient(135deg, #14F195 0%, #0db876 100%)",
                         border: "none", borderRadius: 7,
-                        padding: "7px 0", fontSize: 9,
+                        padding: "7px 0", fontSize: 7,
                         color: "#031a10", cursor: "pointer",
                         fontFamily: '"Press Start 2P", monospace',
                         letterSpacing: 0.5,
@@ -279,7 +279,7 @@ export default function QuestPanel({ wallet }: Props) {
                   )}
                   {claimed && (
                     <div style={{
-                      fontSize: 9, color: "#14F195", textAlign: "center",
+                      fontSize: 7, color: "#14F195", textAlign: "center",
                       fontFamily: '"Press Start 2P", monospace',
                       opacity: 0.6,
                     }}>CLAIMED ✓</div>
@@ -289,7 +289,7 @@ export default function QuestPanel({ wallet }: Props) {
             })}
 
             {!wallet && (
-              <div style={{ fontSize: 11, color: "#3a3a5a", textAlign: "center", padding: "6px 0" }}>
+              <div style={{ fontSize: 8, color: "#3a3a5a", textAlign: "center", padding: "6px 0" }}>
                 Connect wallet to track progress
               </div>
             )}

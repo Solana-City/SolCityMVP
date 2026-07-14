@@ -42,13 +42,13 @@ export function showEmoji(
 
   // Native OS emoji — looks great on all platforms, no pixel artifacts
   const icon = scene.add.text(0, -12, emoji.uiSymbol, {
-    fontSize: "20px",
+    fontSize: "15px",
     fontFamily: "Apple Color Emoji, Segoe UI Emoji, Noto Color Emoji, sans-serif",
   }).setOrigin(0.5);
 
   // Coloured label below
   const label = scene.add.text(0, 8, emoji.symbol, {
-    fontSize: "9px",
+    fontSize: "7px",
     fontFamily: '"Press Start 2P", monospace',
     color: emoji.color,
     stroke: "#0a0a1e",

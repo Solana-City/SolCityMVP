@@ -117,29 +117,29 @@ export default class ErrorBoundary extends React.Component<Props, State> {
           justifyContent: "center",
           gap: 24,
           padding: 32,
-          fontFamily: '"Fira Code", monospace',
+          fontFamily: '"Press Start 2P", monospace',
           textAlign: "center",
         }}
       >
-        <div style={{ fontSize: 52 }}>⚠️</div>
+        <div style={{ fontSize: 37 }}>⚠️</div>
 
         <div>
           <div
             style={{
               color: "#ff5555",
-              fontSize: 18,
+              fontSize: 13,
               fontWeight: "bold",
               marginBottom: 8,
             }}
           >
             Something went wrong
           </div>
-          <div style={{ color: "#444466", fontSize: 12, maxWidth: 360, lineHeight: 1.6 }}>
+          <div style={{ color: "#444466", fontSize: 9, maxWidth: 360, lineHeight: 1.6 }}>
             {error.message || "An unexpected error occurred."}
           </div>
           {error.stack && (
             <pre style={{
-              color: "#8888bb", fontSize: 9, maxWidth: 420, maxHeight: 200,
+              color: "#8888bb", fontSize: 7, maxWidth: 420, maxHeight: 200,
               overflow: "auto", textAlign: "left", whiteSpace: "pre-wrap",
               background: "rgba(255,255,255,0.06)", borderRadius: 6,
               padding: "8px 10px", margin: "8px 0 0", lineHeight: 1.6,
@@ -158,16 +158,16 @@ export default class ErrorBoundary extends React.Component<Props, State> {
             background: "rgba(153,69,255,0.15)",
             border: "1px solid rgba(153,69,255,0.5)",
             color: "#9945FF",
-            fontSize: 13,
+            fontSize: 10,
             fontWeight: "bold",
-            fontFamily: '"Fira Code", monospace',
+            fontFamily: '"Press Start 2P", monospace',
             cursor: "pointer",
           }}
         >
           Reload game
         </button>
 
-        <div style={{ color: "#222244", fontSize: 10 }}>
+        <div style={{ color: "#222244", fontSize: 8 }}>
           If the problem persists, try clearing your browser cache.
         </div>
       </div>

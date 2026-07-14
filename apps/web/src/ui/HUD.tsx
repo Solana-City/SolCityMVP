@@ -63,7 +63,7 @@ export default function HUD() {
         <span
           key={pulse}
           className="score-value"
-          style={{ fontSize: "10px", color: "#14F195" }}
+          style={{ fontSize: "8px", color: "#14F195" }}
         >
           {profile.score.toLocaleString()}
         </span>
@@ -86,7 +86,7 @@ export default function HUD() {
       style={{
         background: "rgba(10,10,30,0.85)",
         border: "1px solid rgba(153,69,255,0.25)",
-        fontFamily: '"Fira Code", monospace',
+        fontFamily: '"Press Start 2P", monospace',
         backdropFilter: "blur(4px)",
         minWidth: 180,
       }}
@@ -96,7 +96,7 @@ export default function HUD() {
         <span
           style={{
             fontFamily: '"Press Start 2P", monospace',
-            fontSize: "10px",
+            fontSize: "8px",
             color: "#777788",
             letterSpacing: "0.05em",
           }}
@@ -108,7 +108,7 @@ export default function HUD() {
           className="score-value"
           style={{
             fontFamily: '"Press Start 2P", monospace',
-            fontSize: "16px",
+            fontSize: "12px",
             color: "#14F195",
             fontWeight: "bold",
           }}
@@ -118,7 +118,7 @@ export default function HUD() {
       </div>
 
       {/* Counters row — compact */}
-      <div className="flex gap-3 mt-2" style={{ fontSize: "10px", color: "#aaaacc" }}>
+      <div className="flex gap-3 mt-2" style={{ fontSize: "8px", color: "#aaaacc" }}>
         <Counter label="swaps" value={profile.swapCount} color="#FFD700" />
         <Counter label="sends" value={profile.transferCount} color="#00D1FF" />
         <Counter label="bounties" value={profile.bountyCount} color="#9945FF" />

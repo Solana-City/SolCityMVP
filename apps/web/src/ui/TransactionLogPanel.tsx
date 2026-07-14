@@ -116,7 +116,7 @@ export default function TransactionLogPanel({ isOpen, onToggle }: Props) {
         background: "rgba(10,10,30,0.97)",
         border: "1px solid rgba(153,69,255,0.35)",
         backdropFilter: "blur(4px)",
-        fontFamily: '"Fira Code", monospace',
+        fontFamily: '"Press Start 2P", monospace',
       }}
     >
       <Header
@@ -184,7 +184,7 @@ function ToggleButton({
         border: `1.5px solid ${borderColor}`,
         color: "#ccccdd",
         fontFamily: '"Press Start 2P", monospace',
-        fontSize: "8px",
+        fontSize: "7px",
       }}
     >
       <PulseDot color={borderColor} active={pendingCount > 0} />
@@ -232,7 +232,7 @@ function Header({
       <div
         style={{
           fontFamily: '"Press Start 2P", monospace',
-          fontSize: "10px",
+          fontSize: "8px",
           color: "#9945FF",
           letterSpacing: "0.05em",
         }}
@@ -359,7 +359,7 @@ function FilterChip({
       className="cursor-pointer transition-colors"
       style={{
         padding: "2px 8px",
-        fontSize: "10px",
+        fontSize: "8px",
         borderRadius: 4,
         background: active ? `${color}22` : "transparent",
         border: `1px solid ${active ? color : "rgba(153,69,255,0.2)"}`,
@@ -422,7 +422,7 @@ function EntryRow({ entry }: { entry: TxEntry }) {
           {entry.batchCount && entry.batchCount > 1 && (
             <span
               style={{
-                fontSize: "9px",
+                fontSize: "7px",
                 color: "#9945FF",
                 background: "rgba(153,69,255,0.12)",
                 padding: "1px 4px",
@@ -435,7 +435,7 @@ function EntryRow({ entry }: { entry: TxEntry }) {
         </div>
         <div
           className="flex items-center gap-2 mt-1"
-          style={{ fontSize: "9px", color: "#666677" }}
+          style={{ fontSize: "7px", color: "#666677" }}
         >
           <span style={{ color: layerColor }}>{entry.layer}</span>
           <span>·</span>
@@ -456,7 +456,7 @@ function EntryRow({ entry }: { entry: TxEntry }) {
           )}
         </div>
         {entry.error && (
-          <div className="mt-1" style={{ fontSize: "10px", color: "#F72585" }}>
+          <div className="mt-1" style={{ fontSize: "8px", color: "#F72585" }}>
             {entry.error}
           </div>
         )}

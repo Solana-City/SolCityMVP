@@ -56,27 +56,27 @@ export default function PlayerCard({ gameRef, wallet, displayName, myWallet, onC
           border: "1px solid rgba(153,69,255,0.25)",
           borderRadius: 16,
           boxShadow: "0 12px 48px rgba(0,0,0,0.55)",
-          fontFamily: '"Fira Code", monospace',
+          fontFamily: '"Press Start 2P", monospace',
           color: "#d0d0f0",
           padding: "18px 20px",
           animation: "pcFade 0.15s ease",
         }}
       >
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
-          <span style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 11, color: "#c084fc" }}>
+          <span style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 8, color: "#c084fc" }}>
             {name}
           </span>
-          <button onClick={onClose} style={{ background: "none", border: "none", color: "#555", fontSize: 18, cursor: "pointer" }}>
+          <button onClick={onClose} style={{ background: "none", border: "none", color: "#555", fontSize: 13, cursor: "pointer" }}>
             ×
           </button>
         </div>
 
-        <div style={{ fontSize: 11, color: "#6060aa", marginBottom: 4 }}>{short}{isSelf ? " (você)" : ""}</div>
+        <div style={{ fontSize: 8, color: "#6060aa", marginBottom: 4 }}>{short}{isSelf ? " (você)" : ""}</div>
 
         <div style={{ margin: "12px 0 4px" }}>
           <Stat label="Score" value={player?.score ?? 0} color="#14F195" />
         </div>
-        <div style={{ fontSize: 10, color: "#3a3a5a", lineHeight: 1.4 }}>
+        <div style={{ fontSize: 8, color: "#3a3a5a", lineHeight: 1.4 }}>
           Só o score de presença é compartilhado entre players hoje —
           conquistas e pontuações de mini-games ainda ficam locais.
         </div>
@@ -88,8 +88,8 @@ export default function PlayerCard({ gameRef, wallet, displayName, myWallet, onC
 function Stat({ label, value, color }: { label: string; value: number; color: string }) {
   return (
     <div style={{ background: "rgba(255,255,255,0.03)", borderRadius: 8, padding: "8px 10px" }}>
-      <div style={{ fontSize: 9, color: "#555577" }}>{label}</div>
-      <div style={{ fontSize: 15, color, fontWeight: 600 }}>{value}</div>
+      <div style={{ fontSize: 7, color: "#555577" }}>{label}</div>
+      <div style={{ fontSize: 11, color, fontWeight: 600 }}>{value}</div>
     </div>
   );
 }

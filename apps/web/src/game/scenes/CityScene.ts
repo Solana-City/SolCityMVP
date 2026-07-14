@@ -236,7 +236,7 @@ export class CityScene extends Phaser.Scene {
 
     // "YOU" label — same visual weight as NPC names for consistency.
     const youLabel = this.add.text(0, -38, "YOU", {
-      fontSize: "10px", fontFamily: "monospace",
+      fontSize: "8px", fontFamily: '"Press Start 2P", monospace',
       color: "#ffffff", align: "center",
       resolution: 2,
       stroke: "#0a0a1e",
@@ -704,7 +704,7 @@ export class CityScene extends Phaser.Scene {
     const displayName = player.displayName ?? shortAddr;
 
     const label = this.add.text(0, -38, displayName, {
-      fontSize: "9px", fontFamily: "monospace",
+      fontSize: "7px", fontFamily: '"Press Start 2P", monospace',
       color: "#aaaacc", align: "center",
       resolution: 2,
       stroke: "#0a0a1e",

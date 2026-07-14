@@ -53,7 +53,7 @@ export default function ActionPanel({ action, onClose }: ActionPanelProps) {
             background: "rgba(10,10,30,0.98)",
             border: "1px solid rgba(153,69,255,0.25)",
             borderBottom: "none",
-            fontFamily: '"Fira Code", monospace',
+            fontFamily: '"Press Start 2P", monospace',
             maxHeight: "85dvh",
             overflowY: "auto",
             maxWidth: 480,
@@ -92,7 +92,7 @@ export default function ActionPanel({ action, onClose }: ActionPanelProps) {
         style={{
           background: "rgba(10,10,30,0.97)",
           border: "1px solid rgba(153,69,255,0.25)",
-          fontFamily: '"Fira Code", monospace',
+          fontFamily: '"Press Start 2P", monospace',
           maxHeight: "90dvh",
           overflowY: "auto",
         }}
@@ -208,20 +208,20 @@ function SwapPanel({ onClose }: { onClose: () => void }) {
   if (status === "done" && result) {
     return (
       <>
-        <h3 style={{ fontFamily: '"Press Start 2P", monospace', fontSize: "11px", color: "#FFD700", marginBottom: 16 }}>
+        <h3 style={{ fontFamily: '"Press Start 2P", monospace', fontSize: "8px", color: "#FFD700", marginBottom: 16 }}>
           TOKEN SWAP
         </h3>
         <div className="text-center py-6">
-          <div style={{ fontSize: 32, color: "#14F195" }}>OK</div>
-          <div style={{ fontFamily: '"Press Start 2P", monospace', fontSize: "10px", color: "#14F195", marginTop: 8 }}>
+          <div style={{ fontSize: 22, color: "#14F195" }}>OK</div>
+          <div style={{ fontFamily: '"Press Start 2P", monospace', fontSize: "8px", color: "#14F195", marginTop: 8 }}>
             SWAP COMPLETE
           </div>
-          <div style={{ fontSize: "12px", color: "#888899", marginTop: 8 }}>
+          <div style={{ fontSize: "9px", color: "#888899", marginTop: 8 }}>
             Received: {result.outAmount} {outputToken}
           </div>
           {result.signature && (
             <a href={`https://solscan.io/tx/${result.signature}`} target="_blank" rel="noopener noreferrer"
-              style={{ display: "block", marginTop: 8, fontSize: "12px", color: "#00D1FF" }}>
+              style={{ display: "block", marginTop: 8, fontSize: "9px", color: "#00D1FF" }}>
               View on Solscan ↗
             </a>
           )}
@@ -234,11 +234,11 @@ function SwapPanel({ onClose }: { onClose: () => void }) {
   if (status === "error" && result) {
     return (
       <>
-        <h3 style={{ fontFamily: '"Press Start 2P", monospace', fontSize: "11px", color: "#FFD700", marginBottom: 16 }}>
+        <h3 style={{ fontFamily: '"Press Start 2P", monospace', fontSize: "8px", color: "#FFD700", marginBottom: 16 }}>
           TOKEN SWAP
         </h3>
         <div className="text-center py-6">
-          <div style={{ fontSize: "12px", color: "#ff4444", marginBottom: 12 }}>{result.error}</div>
+          <div style={{ fontSize: "9px", color: "#ff4444", marginBottom: 12 }}>{result.error}</div>
           <button onClick={() => { setStatus("idle"); setResult(null); setQuote(null); }}
             style={btnStyle("#333344", "#888899")} className="px-4 py-2">Try again</button>
         </div>
@@ -248,12 +248,12 @@ function SwapPanel({ onClose }: { onClose: () => void }) {
 
   return (
     <>
-      <h3 style={{ fontFamily: '"Press Start 2P", monospace', fontSize: "11px", color: "#FFD700", marginBottom: 16 }}>
+      <h3 style={{ fontFamily: '"Press Start 2P", monospace', fontSize: "8px", color: "#FFD700", marginBottom: 16 }}>
         TOKEN SWAP
       </h3>
 
       {/* ⚠️ mainnet note */}
-      <div style={{ fontSize: "9px", color: "#555566", marginBottom: 12, textAlign: "center" }}>
+      <div style={{ fontSize: "7px", color: "#555566", marginBottom: 12, textAlign: "center" }}>
         Jupiter operates on mainnet · real SOL required
       </div>
 
@@ -261,7 +261,7 @@ function SwapPanel({ onClose }: { onClose: () => void }) {
       <TokenBox label="From" token={inputToken} onTokenChange={(t) => { setInputToken(t); setQuote(null); }}
         excludeToken={outputToken} tokens={tokens} getLogo={getTokenLogo}>
         <input type="text" value={amount} onChange={(e) => { setAmount(e.target.value); setQuote(null); }}
-          placeholder="0.0" style={{ background: "transparent", color: "#fff", border: "none", fontSize: 20, fontFamily: "monospace", width: "100%", outline: "none" }} />
+          placeholder="0.0" style={{ background: "transparent", color: "#fff", border: "none", fontSize: 15, fontFamily: "monospace", width: "100%", outline: "none" }} />
       </TokenBox>
 
       <div style={{ textAlign: "center", color: "#555566", marginBottom: 4 }}>↓</div>
@@ -269,7 +269,7 @@ function SwapPanel({ onClose }: { onClose: () => void }) {
       {/* Output token */}
       <TokenBox label="To" token={outputToken} onTokenChange={(t) => { setOutputToken(t); setQuote(null); }}
         excludeToken={inputToken} tokens={tokens} getLogo={getTokenLogo}>
-        <div style={{ fontSize: 20, fontFamily: "monospace", color: quote ? "#fff" : "#333344" }}>
+        <div style={{ fontSize: 15, fontFamily: "monospace", color: quote ? "#fff" : "#333344" }}>
           {quote
             ? (() => { const jup = jupRef.current; const out = jup?.getTokenBySymbol(outputToken); return out ? jup?.fromSmallestUnit(quote.outAmount, out.decimals) : "..."; })()
             : "..."}
@@ -277,7 +277,7 @@ function SwapPanel({ onClose }: { onClose: () => void }) {
       </TokenBox>
 
       {quote && (
-        <div style={{ fontSize: "11px", color: "#555566", display: "flex", justifyContent: "space-between", marginTop: 8 }}>
+        <div style={{ fontSize: "8px", color: "#555566", display: "flex", justifyContent: "space-between", marginTop: 8 }}>
           <span>via Jupiter V6</span>
           <span>slippage: {quote.slippageBps ? `${(quote.slippageBps / 100).toFixed(1)}%` : "auto"}</span>
           <span>impact: {parseFloat(quote.priceImpactPct ?? "0").toFixed(3)}%</span>
@@ -296,7 +296,7 @@ function SwapPanel({ onClose }: { onClose: () => void }) {
             {status === "signing" ? "SIGN IN WALLET..." : status === "submitting" ? "SUBMITTING..." : "CONFIRM SWAP"}
           </button>
         )}
-        <button onClick={onClose} style={{ background: "transparent", border: "1px solid #333344", color: "#666677", borderRadius: 8, padding: "0 16px", cursor: "pointer", fontSize: 12 }}>ESC</button>
+        <button onClick={onClose} style={{ background: "transparent", border: "1px solid #333344", color: "#666677", borderRadius: 8, padding: "0 16px", cursor: "pointer", fontSize: 9 }}>ESC</button>
       </div>
     </>
   );
@@ -347,13 +347,13 @@ function TransferPanel({ onClose }: { onClose: () => void }) {
   if (status === "done" && result?.signature) {
     return (
       <>
-        <h3 style={{ fontFamily: '"Press Start 2P", monospace', fontSize: "11px", color: "#00D1FF", marginBottom: 16 }}>SEND SOL</h3>
+        <h3 style={{ fontFamily: '"Press Start 2P", monospace', fontSize: "8px", color: "#00D1FF", marginBottom: 16 }}>SEND SOL</h3>
         <div className="text-center py-6">
-          <div style={{ fontSize: 32, color: "#14F195" }}>OK</div>
-          <div style={{ fontFamily: '"Press Start 2P", monospace', fontSize: "10px", color: "#14F195", marginTop: 8 }}>TRANSFER SENT</div>
-          <div style={{ fontSize: "12px", color: "#888899", marginTop: 8 }}>{amount} SOL sent</div>
+          <div style={{ fontSize: 22, color: "#14F195" }}>OK</div>
+          <div style={{ fontFamily: '"Press Start 2P", monospace', fontSize: "8px", color: "#14F195", marginTop: 8 }}>TRANSFER SENT</div>
+          <div style={{ fontSize: "9px", color: "#888899", marginTop: 8 }}>{amount} SOL sent</div>
           <a href={`https://explorer.solana.com/tx/${result.signature}?cluster=devnet`} target="_blank" rel="noopener noreferrer"
-            style={{ display: "block", marginTop: 8, fontSize: "12px", color: "#00D1FF" }}>View on Explorer ↗</a>
+            style={{ display: "block", marginTop: 8, fontSize: "9px", color: "#00D1FF" }}>View on Explorer ↗</a>
           <button onClick={onClose} style={btnStyle("#00D1FF", "#000")} className="w-full mt-4">CLOSE</button>
         </div>
       </>
@@ -363,9 +363,9 @@ function TransferPanel({ onClose }: { onClose: () => void }) {
   if (status === "error" && result) {
     return (
       <>
-        <h3 style={{ fontFamily: '"Press Start 2P", monospace', fontSize: "11px", color: "#00D1FF", marginBottom: 16 }}>SEND SOL</h3>
+        <h3 style={{ fontFamily: '"Press Start 2P", monospace', fontSize: "8px", color: "#00D1FF", marginBottom: 16 }}>SEND SOL</h3>
         <div className="text-center py-6">
-          <div style={{ fontSize: "12px", color: "#ff4444", marginBottom: 12 }}>{result.error}</div>
+          <div style={{ fontSize: "9px", color: "#ff4444", marginBottom: 12 }}>{result.error}</div>
           <button onClick={() => { setStatus("idle"); setResult(null); }} style={btnStyle("#333344", "#888899")} className="px-4 py-2">Try again</button>
         </div>
       </>
@@ -374,17 +374,17 @@ function TransferPanel({ onClose }: { onClose: () => void }) {
 
   return (
     <>
-      <h3 style={{ fontFamily: '"Press Start 2P", monospace', fontSize: "11px", color: "#00D1FF", marginBottom: 16 }}>SEND SOL</h3>
+      <h3 style={{ fontFamily: '"Press Start 2P", monospace', fontSize: "8px", color: "#00D1FF", marginBottom: 16 }}>SEND SOL</h3>
       <InputBox label="Recipient address">
         <input type="text" value={recipient} onChange={(e) => setRecipient(e.target.value)}
           placeholder="Paste Solana address…"
-          style={{ background: "transparent", color: "#fff", border: "none", fontSize: 12, fontFamily: "monospace", width: "100%", outline: "none" }} />
+          style={{ background: "transparent", color: "#fff", border: "none", fontSize: 9, fontFamily: "monospace", width: "100%", outline: "none" }} />
       </InputBox>
       <InputBox label="Amount (SOL)">
         <input type="text" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.01"
-          style={{ background: "transparent", color: "#fff", border: "none", fontSize: 20, fontFamily: "monospace", width: "100%", outline: "none", fontWeight: "bold" }} />
+          style={{ background: "transparent", color: "#fff", border: "none", fontSize: 15, fontFamily: "monospace", width: "100%", outline: "none", fontWeight: "bold" }} />
       </InputBox>
-      <div style={{ fontSize: "9px", color: "#555566", marginTop: 4, marginBottom: 12, textAlign: "center" }}>
+      <div style={{ fontSize: "7px", color: "#555566", marginTop: 4, marginBottom: 12, textAlign: "center" }}>
         Transfers on devnet · requires devnet SOL
       </div>
       <div className="flex gap-2">
@@ -392,7 +392,7 @@ function TransferPanel({ onClose }: { onClose: () => void }) {
           style={btnStyle(connected ? "#00D1FF" : "#333344", connected ? "#000" : "#666677")} className="flex-1 py-2.5">
           {!connected ? "CONNECT WALLET FIRST" : status === "sending" ? "SENDING…" : "SEND"}
         </button>
-        <button onClick={onClose} style={{ background: "transparent", border: "1px solid #333344", color: "#666677", borderRadius: 8, padding: "0 16px", cursor: "pointer", fontSize: 12 }}>ESC</button>
+        <button onClick={onClose} style={{ background: "transparent", border: "1px solid #333344", color: "#666677", borderRadius: 8, padding: "0 16px", cursor: "pointer", fontSize: 9 }}>ESC</button>
       </div>
     </>
   );
@@ -425,18 +425,18 @@ function BountiesPanel({ onClose }: { onClose: () => void }) {
 
   return (
     <>
-      <h3 style={{ fontFamily: '"Press Start 2P", monospace', fontSize: "11px", color: "#9945FF", marginBottom: 10 }}>
+      <h3 style={{ fontFamily: '"Press Start 2P", monospace', fontSize: "8px", color: "#9945FF", marginBottom: 10 }}>
         SUPERTEAM EARN
       </h3>
 
       <div style={{ marginBottom: 14 }}>
-        <p style={{ fontSize: "12px", color: "#ccccdd", marginBottom: 6, lineHeight: 1.5 }}>
+        <p style={{ fontSize: "9px", color: "#ccccdd", marginBottom: 6, lineHeight: 1.5 }}>
           Get paid to work on Solana. Tasks for designers, devs, and writers.
         </p>
-        <p style={{ fontSize: "10px", color: "#14F195", marginBottom: 5 }}>
+        <p style={{ fontSize: "8px", color: "#14F195", marginBottom: 5 }}>
           Rewards from $50 to $5,000+ · Paid in USDC · Open to everyone
         </p>
-        <p style={{ fontSize: "10px", color: "#777788", lineHeight: 1.5 }}>
+        <p style={{ fontSize: "8px", color: "#777788", lineHeight: 1.5 }}>
           Whether you have 2 hours or 2 weeks, there's something here for you.
         </p>
       </div>
@@ -457,10 +457,10 @@ function BountiesPanel({ onClose }: { onClose: () => void }) {
             onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.borderColor = `${cat.color}66`; }}
             onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.borderColor = `${cat.color}33`; }}
           >
-            <div style={{ fontSize: "11px", color: cat.color, fontWeight: "bold", marginBottom: 4 }}>
+            <div style={{ fontSize: "8px", color: cat.color, fontWeight: "bold", marginBottom: 4 }}>
               {cat.label}
             </div>
-            <div style={{ fontSize: "10px", color: "#777788", marginBottom: 10 }}>
+            <div style={{ fontSize: "8px", color: "#777788", marginBottom: 10 }}>
               {cat.sublabel}
             </div>
             <a
@@ -468,7 +468,7 @@ function BountiesPanel({ onClose }: { onClose: () => void }) {
               target="_blank"
               rel="noopener noreferrer"
               onClick={(e) => e.stopPropagation()}
-              style={{ fontSize: "9px", color: cat.color, textDecoration: "none", borderBottom: `1px solid ${cat.color}44`, paddingBottom: 1 }}
+              style={{ fontSize: "7px", color: cat.color, textDecoration: "none", borderBottom: `1px solid ${cat.color}44`, paddingBottom: 1 }}
             >
               View All →
             </a>
@@ -478,7 +478,7 @@ function BountiesPanel({ onClose }: { onClose: () => void }) {
 
       <button
         onClick={onClose}
-        style={{ background: "transparent", border: "1px solid #333344", color: "#666677", borderRadius: 8, padding: "8px 0", cursor: "pointer", fontSize: 12, width: "100%" }}
+        style={{ background: "transparent", border: "1px solid #333344", color: "#666677", borderRadius: 8, padding: "8px 0", cursor: "pointer", fontSize: 9, width: "100%" }}
       >
         ESC
       </button>
@@ -537,11 +537,11 @@ function EarnListingsStage({
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
         <button
           onClick={onBack}
-          style={{ background: "transparent", border: `1px solid ${category.color}44`, color: category.color, borderRadius: 6, padding: "4px 10px", cursor: "pointer", fontFamily: '"Press Start 2P", monospace', fontSize: "8px" }}
+          style={{ background: "transparent", border: `1px solid ${category.color}44`, color: category.color, borderRadius: 6, padding: "4px 10px", cursor: "pointer", fontFamily: '"Press Start 2P", monospace', fontSize: "7px" }}
         >
           ← BACK
         </button>
-        <h3 style={{ fontFamily: '"Press Start 2P", monospace', fontSize: "10px", color: category.color, margin: 0 }}>
+        <h3 style={{ fontFamily: '"Press Start 2P", monospace', fontSize: "8px", color: category.color, margin: 0 }}>
           {category.label.toUpperCase()}
         </h3>
       </div>
@@ -551,7 +551,7 @@ function EarnListingsStage({
         {/* ── Grants: informational panel (always shown) ── */}
         {isGrants && (
           <div style={{ marginBottom: 14 }}>
-            <p style={{ fontSize: "11px", color: "#888899", marginBottom: 10, lineHeight: 1.6 }}>
+            <p style={{ fontSize: "8px", color: "#888899", marginBottom: 10, lineHeight: 1.6 }}>
               Equity-free funding to build something real on Solana. No pitch deck, no investor meetings.
             </p>
             <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 10 }}>
@@ -581,7 +581,7 @@ function EarnListingsStage({
               />
             </div>
             {/* Divider before live listings */}
-            <div style={{ fontSize: "9px", color: "#333344", textAlign: "center", marginBottom: 10, letterSpacing: 2 }}>
+            <div style={{ fontSize: "7px", color: "#333344", textAlign: "center", marginBottom: 10, letterSpacing: 2 }}>
               ── CURRENT OPEN GRANTS ──
             </div>
           </div>
@@ -589,7 +589,7 @@ function EarnListingsStage({
 
         {/* ── Loading state ── */}
         {loading && (
-          <div style={{ textAlign: "center", padding: "24px 0", color: "#555566", fontSize: "11px" }}>
+          <div style={{ textAlign: "center", padding: "24px 0", color: "#555566", fontSize: "8px" }}>
             Loading listings…
           </div>
         )}
@@ -597,7 +597,7 @@ function EarnListingsStage({
         {/* ── Empty / error state ── */}
         {!loading && (failed || listings.length === 0) && (
           <div style={{ textAlign: "center", padding: isGrants ? "12px 0" : "20px 0" }}>
-            <div style={{ fontSize: "11px", color: "#777788", marginBottom: 12, lineHeight: 1.6 }}>
+            <div style={{ fontSize: "8px", color: "#777788", marginBottom: 12, lineHeight: 1.6 }}>
               {failed
                 ? "Couldn't load listings right now."
                 : isGrants
@@ -608,7 +608,7 @@ function EarnListingsStage({
               href={category.viewAllUrl}
               target="_blank"
               rel="noopener noreferrer"
-              style={{ fontSize: "10px", color: category.color, textDecoration: "none" }}
+              style={{ fontSize: "8px", color: category.color, textDecoration: "none" }}
             >
               Browse all {category.label.toLowerCase()} →
             </a>
@@ -637,16 +637,16 @@ function EarnListingsStage({
           >
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ color: "#ccccdd", fontSize: "12px", marginBottom: 3 }}>
+                <div style={{ color: "#ccccdd", fontSize: "9px", marginBottom: 3 }}>
                   {truncate(listing.title, 40)}
                 </div>
-                <div style={{ fontSize: "10px", color: "#555566" }}>{listing.sponsorName}</div>
+                <div style={{ fontSize: "8px", color: "#555566" }}>{listing.sponsorName}</div>
               </div>
               <div style={{ textAlign: "right", flexShrink: 0 }}>
-                <div style={{ fontFamily: '"Press Start 2P", monospace', fontSize: "9px", color: category.color }}>
+                <div style={{ fontFamily: '"Press Start 2P", monospace', fontSize: "7px", color: category.color }}>
                   {listing.rewardAmount ? `$${listing.rewardAmount} ${listing.token}` : "Variable"}
                 </div>
-                <div style={{ fontSize: "9px", color: "#555566", marginTop: 3 }}>
+                <div style={{ fontSize: "7px", color: "#555566", marginTop: 3 }}>
                   {formatDeadline(listing.deadline)}
                 </div>
               </div>
@@ -660,13 +660,13 @@ function EarnListingsStage({
           href={category.viewAllUrl}
           target="_blank"
           rel="noopener noreferrer"
-          style={{ flex: 1, background: `${category.color}18`, color: category.color, border: `1px solid ${category.color}33`, borderRadius: 8, padding: "10px 0", textAlign: "center", fontFamily: '"Press Start 2P", monospace', fontSize: "8px", textDecoration: "none", display: "block" }}
+          style={{ flex: 1, background: `${category.color}18`, color: category.color, border: `1px solid ${category.color}33`, borderRadius: 8, padding: "10px 0", textAlign: "center", fontFamily: '"Press Start 2P", monospace', fontSize: "7px", textDecoration: "none", display: "block" }}
         >
           SEE ALL {category.label.toUpperCase()} →
         </a>
         <button
           onClick={onClose}
-          style={{ background: "transparent", border: "1px solid #333344", color: "#666677", borderRadius: 8, padding: "0 16px", cursor: "pointer", fontSize: 12 }}
+          style={{ background: "transparent", border: "1px solid #333344", color: "#666677", borderRadius: 8, padding: "0 16px", cursor: "pointer", fontSize: 9 }}
         >
           ESC
         </button>
@@ -683,7 +683,7 @@ function TutorPanel({ onClose }: { onClose: () => void }) {
 
   return (
     <>
-      <h3 style={{ fontFamily: '"Press Start 2P", monospace', fontSize: "11px", color: "#14F195", marginBottom: 16 }}>
+      <h3 style={{ fontFamily: '"Press Start 2P", monospace', fontSize: "8px", color: "#14F195", marginBottom: 16 }}>
         GETTING STARTED
       </h3>
       <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 16 }}>
@@ -695,7 +695,7 @@ function TutorPanel({ onClose }: { onClose: () => void }) {
               CONNECT NOW
             </button>
           ) : (
-            <span style={{ fontSize: "11px", color: "#14F195", display: "block", marginTop: 4 }}>✓ Connected</span>
+            <span style={{ fontSize: "8px", color: "#14F195", display: "block", marginTop: 4 }}>✓ Connected</span>
           )}
         />
         <StepCard number={2} title="Swap tokens" color="#FFD700"
@@ -849,7 +849,7 @@ function PrivatePaymentPanel({ onClose }: { onClose: () => void }) {
       <>
         <PanelHeader color={FUCHSIA} title="PRIVATE TRANSFER" />
         <ClusterToggle cluster={cluster} onChange={setCluster} />
-        <div style={{ textAlign: "center", padding: "24px 0", color: "#888899", fontSize: 12 }}>
+        <div style={{ textAlign: "center", padding: "24px 0", color: "#888899", fontSize: 9 }}>
           Connect your wallet to access private payments.
         </div>
         <button onClick={onClose} style={btnStyle(FUCHSIA, "#fff")} className="w-full py-2.5 mt-2">CLOSE</button>
@@ -863,8 +863,8 @@ function PrivatePaymentPanel({ onClose }: { onClose: () => void }) {
         <PanelHeader color={FUCHSIA} title="PRIVATE TRANSFER" />
         <ClusterToggle cluster={cluster} onChange={setCluster} disabled />
         <div style={{ textAlign: "center", padding: "32px 0" }}>
-          <div style={{ fontSize: 11, color: "#888899", marginBottom: 8 }}>Authenticating with wallet…</div>
-          <div style={{ fontSize: 9, color: "#555566" }}>Sign the message in your wallet to verify identity</div>
+          <div style={{ fontSize: 8, color: "#888899", marginBottom: 8 }}>Authenticating with wallet…</div>
+          <div style={{ fontSize: 7, color: "#555566" }}>Sign the message in your wallet to verify identity</div>
         </div>
       </>
     );
@@ -876,17 +876,17 @@ function PrivatePaymentPanel({ onClose }: { onClose: () => void }) {
       <>
         <PanelHeader color={FUCHSIA} title="PRIVATE TRANSFER" />
         <div style={{ textAlign: "center", padding: "24px 0" }}>
-          <div style={{ fontSize: 28, color: FUCHSIA, marginBottom: 8 }}>{isWithdraw ? "◇" : "◈"}</div>
-          <div style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 9, color: FUCHSIA, marginBottom: 12 }}>
+          <div style={{ fontSize: 20, color: FUCHSIA, marginBottom: 8 }}>{isWithdraw ? "◇" : "◈"}</div>
+          <div style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 7, color: FUCHSIA, marginBottom: 12 }}>
             {isWithdraw ? "WITHDRAWN" : "TRANSFER SHIELDED"}
           </div>
-          <div style={{ fontSize: 11, color: "#888899", lineHeight: 1.6, marginBottom: 4 }}>
+          <div style={{ fontSize: 8, color: "#888899", lineHeight: 1.6, marginBottom: 4 }}>
             {isWithdraw
               ? "Funds returned to your wallet from the Private Ephemeral Rollup."
               : "Settled privately via MagicBlock PER."}
           </div>
           {!isWithdraw && (
-            <div style={{ fontSize: 10, color: "#555566" }}>No on-chain trace. No explorer link.</div>
+            <div style={{ fontSize: 8, color: "#555566" }}>No on-chain trace. No explorer link.</div>
           )}
         </div>
         <button onClick={() => setStatus("ready")} style={btnStyle(FUCHSIA, "#fff")} className="w-full py-2.5 mt-2">BACK</button>
@@ -901,14 +901,14 @@ function PrivatePaymentPanel({ onClose }: { onClose: () => void }) {
 
       {/* Private balance */}
       <div style={{ background: "#0d0d22", border: `1px solid ${FUCHSIA}33`, borderRadius: 8, padding: "10px 14px", marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <span style={{ fontSize: 10, color: "#777788" }}>Private USDC balance</span>
+        <span style={{ fontSize: 8, color: "#777788" }}>Private USDC balance</span>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 10, color: FUCHSIA }}>
+          <span style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 8, color: FUCHSIA }}>
             {balance === null ? "…" : showBalance ? `${balance.toFixed(2)} USDC` : "●●●●"}
           </span>
           <button
             onClick={() => setShowBalance(v => !v)}
-            style={{ background: "none", border: "none", cursor: "pointer", color: "#555566", fontSize: 14, padding: 0, lineHeight: 1 }}
+            style={{ background: "none", border: "none", cursor: "pointer", color: "#555566", fontSize: 11, padding: 0, lineHeight: 1 }}
             title={showBalance ? "Hide balance" : "Show balance"}
           >
             {showBalance ? "◉" : "◎"}
@@ -944,15 +944,15 @@ function PrivatePaymentPanel({ onClose }: { onClose: () => void }) {
               value={recipient}
               onChange={e => setRecipient(e.target.value)}
               placeholder="Paste Solana address…"
-              style={{ background: "transparent", color: "#fff", border: "none", fontSize: 11, fontFamily: "monospace", width: "100%", outline: "none" }}
+              style={{ background: "transparent", color: "#fff", border: "none", fontSize: 8, fontFamily: "monospace", width: "100%", outline: "none" }}
             />
           </InputBox>
           <div style={{ background: "#12122a", border: "1px solid rgba(255,255,255,0.04)", borderRadius: 8, padding: 12, marginBottom: 8 }}>
-            <div style={{ fontSize: 11, color: "#555566", marginBottom: 6, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div style={{ fontSize: 8, color: "#555566", marginBottom: 6, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <span>Amount (USDC)</span>
               <button
                 onClick={() => setShowAmount(v => !v)}
-                style={{ background: "none", border: "none", cursor: "pointer", color: "#555566", fontSize: 13, padding: 0 }}
+                style={{ background: "none", border: "none", cursor: "pointer", color: "#555566", fontSize: 10, padding: 0 }}
                 title={showAmount ? "Hide amount" : "Show amount"}
               >
                 {showAmount ? "◉" : "◎"}
@@ -964,16 +964,16 @@ function PrivatePaymentPanel({ onClose }: { onClose: () => void }) {
                 value={amount}
                 onChange={e => setAmount(e.target.value)}
                 placeholder="0.00"
-                style={{ background: "transparent", color: "#fff", border: "none", fontSize: 20, fontFamily: "monospace", width: "100%", outline: "none", fontWeight: "bold" }}
+                style={{ background: "transparent", color: "#fff", border: "none", fontSize: 15, fontFamily: "monospace", width: "100%", outline: "none", fontWeight: "bold" }}
               />
             ) : (
-              <div style={{ fontSize: 20, fontFamily: "monospace", color: "#777788", letterSpacing: 4 }}>●●●●</div>
+              <div style={{ fontSize: 15, fontFamily: "monospace", color: "#777788", letterSpacing: 4 }}>●●●●</div>
             )}
           </div>
-          <div style={{ fontSize: 9, color: "#555566", textAlign: "center", marginBottom: 12 }}>
+          <div style={{ fontSize: 7, color: "#555566", textAlign: "center", marginBottom: 12 }}>
             Shielded via MagicBlock Private Ephemeral Rollup · Intel TDX
           </div>
-          {error && <div style={{ fontSize: 11, color: "#ff4444", marginBottom: 8, textAlign: "center" }}>{error}</div>}
+          {error && <div style={{ fontSize: 8, color: "#ff4444", marginBottom: 8, textAlign: "center" }}>{error}</div>}
           <div style={{ display: "flex", gap: 8 }}>
             <button
               onClick={handleTransfer}
@@ -983,7 +983,7 @@ function PrivatePaymentPanel({ onClose }: { onClose: () => void }) {
             >
               {status === "transferring" ? "SIGNING…" : "SEND PRIVATELY"}
             </button>
-            <button onClick={onClose} style={{ background: "transparent", border: "1px solid #333344", color: "#666677", borderRadius: 8, padding: "0 14px", cursor: "pointer", fontSize: 12 }}>ESC</button>
+            <button onClick={onClose} style={{ background: "transparent", border: "1px solid #333344", color: "#666677", borderRadius: 8, padding: "0 14px", cursor: "pointer", fontSize: 9 }}>ESC</button>
           </div>
         </>
       )}
@@ -991,7 +991,7 @@ function PrivatePaymentPanel({ onClose }: { onClose: () => void }) {
       {/* Deposit tab */}
       {activeTab === "deposit" && (
         <>
-          <div style={{ fontSize: 11, color: "#777788", marginBottom: 12, lineHeight: 1.6 }}>
+          <div style={{ fontSize: 8, color: "#777788", marginBottom: 12, lineHeight: 1.6 }}>
             Deposit USDC from your wallet into the Private Ephemeral Rollup to enable shielded transfers.
           </div>
           <InputBox label="Amount to deposit (USDC)">
@@ -1000,10 +1000,10 @@ function PrivatePaymentPanel({ onClose }: { onClose: () => void }) {
               value={depositAmt}
               onChange={e => setDepositAmt(e.target.value)}
               placeholder="5.00"
-              style={{ background: "transparent", color: "#fff", border: "none", fontSize: 20, fontFamily: "monospace", width: "100%", outline: "none", fontWeight: "bold" }}
+              style={{ background: "transparent", color: "#fff", border: "none", fontSize: 15, fontFamily: "monospace", width: "100%", outline: "none", fontWeight: "bold" }}
             />
           </InputBox>
-          {error && <div style={{ fontSize: 11, color: "#ff4444", marginBottom: 8, textAlign: "center" }}>{error}</div>}
+          {error && <div style={{ fontSize: 8, color: "#ff4444", marginBottom: 8, textAlign: "center" }}>{error}</div>}
           <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
             <button
               onClick={handleDeposit}
@@ -1013,7 +1013,7 @@ function PrivatePaymentPanel({ onClose }: { onClose: () => void }) {
             >
               {status === "depositing" ? "SIGNING…" : "DEPOSIT"}
             </button>
-            <button onClick={onClose} style={{ background: "transparent", border: "1px solid #333344", color: "#666677", borderRadius: 8, padding: "0 14px", cursor: "pointer", fontSize: 12 }}>ESC</button>
+            <button onClick={onClose} style={{ background: "transparent", border: "1px solid #333344", color: "#666677", borderRadius: 8, padding: "0 14px", cursor: "pointer", fontSize: 9 }}>ESC</button>
           </div>
         </>
       )}
@@ -1021,7 +1021,7 @@ function PrivatePaymentPanel({ onClose }: { onClose: () => void }) {
       {/* Withdraw tab */}
       {activeTab === "withdraw" && (
         <>
-          <div style={{ fontSize: 11, color: "#777788", marginBottom: 12, lineHeight: 1.6 }}>
+          <div style={{ fontSize: 8, color: "#777788", marginBottom: 12, lineHeight: 1.6 }}>
             Withdraw USDC from your Private Ephemeral Rollup balance back to your wallet.
           </div>
           <InputBox label="Amount to withdraw (USDC)">
@@ -1030,10 +1030,10 @@ function PrivatePaymentPanel({ onClose }: { onClose: () => void }) {
               value={withdrawAmt}
               onChange={e => setWithdrawAmt(e.target.value)}
               placeholder="1.00"
-              style={{ background: "transparent", color: "#fff", border: "none", fontSize: 20, fontFamily: "monospace", width: "100%", outline: "none", fontWeight: "bold" }}
+              style={{ background: "transparent", color: "#fff", border: "none", fontSize: 15, fontFamily: "monospace", width: "100%", outline: "none", fontWeight: "bold" }}
             />
           </InputBox>
-          {error && <div style={{ fontSize: 11, color: "#ff4444", marginBottom: 8, textAlign: "center" }}>{error}</div>}
+          {error && <div style={{ fontSize: 8, color: "#ff4444", marginBottom: 8, textAlign: "center" }}>{error}</div>}
           <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
             <button
               onClick={handleWithdraw}
@@ -1043,7 +1043,7 @@ function PrivatePaymentPanel({ onClose }: { onClose: () => void }) {
             >
               {status === "withdrawing" ? "SIGNING…" : "WITHDRAW"}
             </button>
-            <button onClick={onClose} style={{ background: "transparent", border: "1px solid #333344", color: "#666677", borderRadius: 8, padding: "0 14px", cursor: "pointer", fontSize: 12 }}>ESC</button>
+            <button onClick={onClose} style={{ background: "transparent", border: "1px solid #333344", color: "#666677", borderRadius: 8, padding: "0 14px", cursor: "pointer", fontSize: 9 }}>ESC</button>
           </div>
         </>
       )}
@@ -1054,8 +1054,8 @@ function PrivatePaymentPanel({ onClose }: { onClose: () => void }) {
 function PanelHeader({ title, color }: { title: string; color: string }) {
   return (
     <div style={{ marginBottom: 12 }}>
-      <h3 style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 11, color, margin: 0 }}>{title}</h3>
-      <div style={{ fontSize: 9, color: "#444455", marginTop: 4 }}>MagicBlock Private Ephemeral Rollup</div>
+      <h3 style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 8, color, margin: 0 }}>{title}</h3>
+      <div style={{ fontSize: 7, color: "#444455", marginTop: 4 }}>MagicBlock Private Ephemeral Rollup</div>
     </div>
   );
 }
@@ -1067,7 +1067,7 @@ function ClusterToggle({ cluster, onChange, disabled }: {
 }) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
-      <span style={{ fontSize: 9, color: "#555566", fontFamily: '"Press Start 2P", monospace', flexShrink: 0 }}>NETWORK</span>
+      <span style={{ fontSize: 7, color: "#555566", fontFamily: '"Press Start 2P", monospace', flexShrink: 0 }}>NETWORK</span>
       <div style={{ display: "flex", gap: 0, background: "#0d0d22", border: "1px solid #1a1a3a", borderRadius: 6, overflow: "hidden", opacity: disabled ? 0.45 : 1 }}>
         {(["devnet", "mainnet"] as const).map(c => (
           <button
@@ -1080,7 +1080,7 @@ function ClusterToggle({ cluster, onChange, disabled }: {
               borderRight: c === "devnet" ? "1px solid #1a1a3a" : "none",
               padding: "6px 12px",
               fontFamily: '"Press Start 2P", monospace',
-              fontSize: 8,
+              fontSize: 7,
               cursor: disabled ? "not-allowed" : "pointer",
               textTransform: "uppercase",
               fontWeight: cluster === c ? "bold" : "normal",
@@ -1111,11 +1111,11 @@ function TokenBox({ label, token, onTokenChange, excludeToken, tokens, getLogo, 
   return (
     <div style={{ background: "#12122a", border: "1px solid rgba(255,255,255,0.04)", borderRadius: 8, padding: 12, marginBottom: 8 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-        <span style={{ fontSize: "11px", color: "#555566" }}>{label}</span>
+        <span style={{ fontSize: "8px", color: "#555566" }}>{label}</span>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           {logo && <img src={logo} alt={token} style={{ width: 18, height: 18, borderRadius: "50%" }} />}
           <select value={token} onChange={(e) => onTokenChange(e.target.value)}
-            style={{ background: "#1a1a3a", color: "#9945FF", border: "1px solid rgba(153,69,255,0.2)", borderRadius: 4, padding: "2px 6px", fontSize: "12px", cursor: "pointer", outline: "none" }}>
+            style={{ background: "#1a1a3a", color: "#9945FF", border: "1px solid rgba(153,69,255,0.2)", borderRadius: 4, padding: "2px 6px", fontSize: "9px", cursor: "pointer", outline: "none" }}>
             {tokens.filter(t => t !== excludeToken).map(t => <option key={t} value={t}>{t}</option>)}
           </select>
         </div>
@@ -1128,7 +1128,7 @@ function TokenBox({ label, token, onTokenChange, excludeToken, tokens, getLogo, 
 function InputBox({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div style={{ background: "#12122a", border: "1px solid rgba(255,255,255,0.04)", borderRadius: 8, padding: 12, marginBottom: 8 }}>
-      <div style={{ fontSize: "11px", color: "#555566", marginBottom: 6 }}>{label}</div>
+      <div style={{ fontSize: "8px", color: "#555566", marginBottom: 6 }}>{label}</div>
       {children}
     </div>
   );
@@ -1139,12 +1139,12 @@ function StepCard({ number, title, description, color, action }: {
 }) {
   return (
     <div style={{ display: "flex", gap: 12, background: "#12122a", border: "1px solid rgba(255,255,255,0.04)", borderRadius: 8, padding: 12 }}>
-      <div style={{ flexShrink: 0, width: 28, height: 28, borderRadius: "50%", background: `${color}22`, border: `1px solid ${color}44`, color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "12px", fontWeight: "bold" }}>
+      <div style={{ flexShrink: 0, width: 28, height: 28, borderRadius: "50%", background: `${color}22`, border: `1px solid ${color}44`, color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "9px", fontWeight: "bold" }}>
         {number}
       </div>
       <div>
-        <div style={{ color: "#ccccdd", fontWeight: "bold", fontSize: "13px", marginBottom: 3 }}>{title}</div>
-        <div style={{ color: "#777788", fontSize: "11px", lineHeight: 1.5 }}>{description}</div>
+        <div style={{ color: "#ccccdd", fontWeight: "bold", fontSize: "10px", marginBottom: 3 }}>{title}</div>
+        <div style={{ color: "#777788", fontSize: "8px", lineHeight: 1.5 }}>{description}</div>
         {action}
       </div>
     </div>
@@ -1159,7 +1159,7 @@ function btnStyle(bg: string, color = "#fff"): React.CSSProperties {
     borderRadius: 8,
     cursor: "pointer",
     fontFamily: '"Press Start 2P", monospace',
-    fontSize: "9px",
+    fontSize: "7px",
     display: "block",
     textAlign: "center",
   };

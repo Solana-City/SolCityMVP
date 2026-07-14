@@ -209,7 +209,7 @@ export default function MobileControls() {
                 borderRadius: 8,
                 padding: "6px 8px",
                 color: em.color,
-                fontSize: "10px",
+                fontSize: "8px",
                 fontFamily: '"Press Start 2P", monospace',
                 cursor: "pointer",
                 touchAction: "none",

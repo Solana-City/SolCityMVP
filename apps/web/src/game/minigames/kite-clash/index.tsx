@@ -122,7 +122,7 @@ export default function KiteClashGame({ onResult, onClose }: MiniGameComponentPr
         inset: 0,
         zIndex: 100,
         background: "#0a0a14",
-        fontFamily: '"Fira Code", monospace',
+        fontFamily: '"Press Start 2P", monospace',
         color: "#fff",
       }}
     >
@@ -142,7 +142,7 @@ export default function KiteClashGame({ onResult, onClose }: MiniGameComponentPr
         <div
           style={{
             fontFamily: '"Press Start 2P", monospace',
-            fontSize: 13,
+            fontSize: 10,
             color: "#7CFC4D",
             textShadow: "0 2px 0 #000, 2px 0 0 #000, -2px 0 0 #000, 0 -2px 0 #000",
           }}
@@ -152,7 +152,7 @@ export default function KiteClashGame({ onResult, onClose }: MiniGameComponentPr
         <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 4 }}>
           {/* One heart — the GDD is permadeath (1 life per run). */}
           <img src={`${KITE_UI}/ico_heart.png`} width={18} height={18} alt="Life" draggable={false} style={PIXELATED} />
-          <span style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 10, color: "#fff" }}>
+          <span style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 8, color: "#fff" }}>
             RUN #{snapshot?.runNumber ?? 1}
           </span>
         </div>
@@ -164,7 +164,7 @@ export default function KiteClashGame({ onResult, onClose }: MiniGameComponentPr
           <span
             style={{
               fontFamily: '"Press Start 2P", monospace',
-              fontSize: 16,
+              fontSize: 12,
               textShadow: "0 2px 0 #000, 2px 0 0 #000, -2px 0 0 #000, 0 -2px 0 #000",
             }}
           >
@@ -176,7 +176,7 @@ export default function KiteClashGame({ onResult, onClose }: MiniGameComponentPr
             className="kc-multiplier-pulse"
             style={{
               fontFamily: '"Press Start 2P", monospace',
-              fontSize: 13,
+              fontSize: 10,
               padding: "2px 7px",
               borderRadius: 6,
               background: (snapshot?.multiplier ?? 1) > 1 ? "rgba(20,241,149,0.25)" : "rgba(255,255,255,0.12)",
@@ -204,7 +204,7 @@ export default function KiteClashGame({ onResult, onClose }: MiniGameComponentPr
               transform: snapshot?.windDirection === "left" ? "scaleX(-1)" : "none",
             }}
           />
-          <span style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 9, color: "#fff" }}>
+          <span style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 7, color: "#fff" }}>
             WIND SPEED: {snapshot?.windTier ?? "LOW"}
           </span>
         </div>
@@ -215,14 +215,14 @@ export default function KiteClashGame({ onResult, onClose }: MiniGameComponentPr
         <span
           style={{
             fontFamily: '"Press Start 2P", monospace',
-            fontSize: 12,
+            fontSize: 9,
             color: "#fff",
             textShadow: "0 2px 0 #000, 2px 0 0 #000, -2px 0 0 #000, 0 -2px 0 #000",
           }}
         >
           LINE LENGTH: {snapshot?.lineLength ?? 0}m
         </span>
-        <span style={{ fontSize: 14, color: "rgba(255,255,255,0.7)" }}>✦</span>
+        <span style={{ fontSize: 11, color: "rgba(255,255,255,0.7)" }}>✦</span>
       </div>
 
       {/* Center: READY! overlay */}
@@ -241,7 +241,7 @@ export default function KiteClashGame({ onResult, onClose }: MiniGameComponentPr
           <span
             style={{
               fontFamily: '"Press Start 2P", monospace',
-              fontSize: 32,
+              fontSize: 22,
               color: "rgba(255,255,255,0.45)",
               textShadow: "0 4px 12px rgba(0,0,0,0.5)",
               letterSpacing: 2,
@@ -261,7 +261,7 @@ export default function KiteClashGame({ onResult, onClose }: MiniGameComponentPr
             left: "50%",
             transform: "translateX(-50%)",
             fontFamily: '"Press Start 2P", monospace',
-            fontSize: 14,
+            fontSize: 11,
             color: "#FFD700",
             textShadow: "0 2px 6px rgba(0,0,0,0.7)",
             pointerEvents: "none",
@@ -282,7 +282,7 @@ export default function KiteClashGame({ onResult, onClose }: MiniGameComponentPr
           background: "rgba(0,0,0,0.35)",
           border: "1px solid rgba(255,255,255,0.2)",
           color: "#cbd5e1",
-          fontSize: 11,
+          fontSize: 8,
           borderRadius: 6,
           padding: "4px 10px",
           cursor: "pointer",
@@ -298,7 +298,7 @@ export default function KiteClashGame({ onResult, onClose }: MiniGameComponentPr
             position: "absolute",
             bottom: 14,
             left: 16,
-            fontSize: 10,
+            fontSize: 8,
             color: snapshot?.nearbyOpponent ? "#FFD700" : "rgba(255,255,255,0.55)",
             lineHeight: 1.5,
           }}
@@ -306,7 +306,7 @@ export default function KiteClashGame({ onResult, onClose }: MiniGameComponentPr
           WASD/Arrows: move
           <br />
           {snapshot?.nearbyOpponent ? (
-            <span style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 11 }}>
+            <span style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 8 }}>
               ✂ HOLD SPACE TO CUT!
             </span>
           ) : (
@@ -357,7 +357,7 @@ export default function KiteClashGame({ onResult, onClose }: MiniGameComponentPr
                 : "rgba(20,241,149,0.18)",
               border: `2px solid ${snapshot?.nearbyOpponent ? "#FF6B35" : "rgba(20,241,149,0.5)"}`,
               color: snapshot?.nearbyOpponent ? "#FF6B35" : "#14F195",
-              fontSize: "9px",
+              fontSize: "7px",
               fontFamily: '"Press Start 2P", monospace',
               cursor: "pointer",
               touchAction: "none",
@@ -387,10 +387,10 @@ export default function KiteClashGame({ onResult, onClose }: MiniGameComponentPr
             background: "rgba(6,10,20,0.72)",
           }}
         >
-          <div style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 20, color: "#ff6b6b" }}>
+          <div style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 15, color: "#ff6b6b" }}>
             LINE CUT!
           </div>
-          <div style={{ fontSize: 13, color: "#e2e8f0" }}>
+          <div style={{ fontSize: 10, color: "#e2e8f0" }}>
             Final score: <span style={{ color: "#FFD700" }}>{snapshot.score}</span>
           </div>
           <button
@@ -402,7 +402,7 @@ export default function KiteClashGame({ onResult, onClose }: MiniGameComponentPr
               padding: "10px 24px",
               color: "#0a0a14",
               fontFamily: '"Press Start 2P", monospace',
-              fontSize: 12,
+              fontSize: 9,
               cursor: "pointer",
             }}
           >
@@ -419,7 +419,7 @@ export default function KiteClashGame({ onResult, onClose }: MiniGameComponentPr
               borderRadius: 8,
               padding: "8px 20px",
               color: "#cbd5e1",
-              fontSize: 11,
+              fontSize: 8,
               cursor: "pointer",
             }}
           >

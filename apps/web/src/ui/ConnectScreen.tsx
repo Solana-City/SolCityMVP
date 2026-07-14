@@ -70,7 +70,7 @@ export default function ConnectScreen() {
         <div style={{ textAlign: "center", marginBottom: 4 }}>
           <div style={{
             fontFamily: '"Press Start 2P", monospace',
-            fontSize: 15,
+            fontSize: 11,
             color: "#fff",
             letterSpacing: 3,
             textShadow: "0 0 16px rgba(153,69,255,0.8)",
@@ -79,8 +79,8 @@ export default function ConnectScreen() {
             SOLANA CITY
           </div>
           <div style={{
-            fontFamily: '"Fira Code", monospace',
-            fontSize: 12,
+            fontFamily: '"Press Start 2P", monospace',
+            fontSize: 9,
             color: "rgba(180,180,255,0.65)",
             letterSpacing: 2,
           }}>
@@ -92,7 +92,7 @@ export default function ConnectScreen() {
           onClick={openModal}
           style={{
             fontFamily: '"Press Start 2P", monospace',
-            fontSize: 13,
+            fontSize: 10,
             padding: "18px 52px",
             background: "rgba(153,69,255,0.9)",
             color: "#fff",
@@ -121,8 +121,8 @@ export default function ConnectScreen() {
         <button
           onClick={() => setDismissed(true)}
           style={{
-            fontFamily: '"Fira Code", monospace',
-            fontSize: 12,
+            fontFamily: '"Press Start 2P", monospace',
+            fontSize: 9,
             color: "rgba(255,255,255,0.4)",
             background: "none",
             border: "none",
@@ -138,7 +138,7 @@ export default function ConnectScreen() {
 
         <div style={{
           fontFamily: '"Press Start 2P", monospace',
-          fontSize: 8,
+          fontSize: 7,
           color: "#FFD700",
           opacity: 0.6,
           letterSpacing: 1,

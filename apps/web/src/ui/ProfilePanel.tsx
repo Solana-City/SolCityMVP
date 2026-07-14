@@ -137,7 +137,7 @@ export default function ProfilePanel({ gameRef, isOpen, onClose }: ProfilePanelP
         style={{
           background: "rgba(10,10,30,0.97)",
           border: "1px solid rgba(153,69,255,0.25)",
-          fontFamily: '"Fira Code", monospace',
+          fontFamily: '"Press Start 2P", monospace',
           // dvh falls back to vh; on landscape phones dvh tracks the actual
           // viewport height after browser chrome collapses, giving ~10% more room.
           maxHeight: "min(92dvh, 640px)",
@@ -153,7 +153,7 @@ export default function ProfilePanel({ gameRef, isOpen, onClose }: ProfilePanelP
             background: "none",
             border: "none",
             color: "#555566",
-            fontSize: "20px",
+            fontSize: "15px",
             // Ensure 44×44px touch target on mobile
             minWidth: 44,
             minHeight: 44,
@@ -189,7 +189,7 @@ export default function ProfilePanel({ gameRef, isOpen, onClose }: ProfilePanelP
                   background: "rgba(153,69,255,0.15)",
                   border: "2px solid #9945FF",
                   color: "#9945FF",
-                  fontSize: "20px",
+                  fontSize: "15px",
                   fontWeight: "bold",
                 }}
               >
@@ -198,7 +198,7 @@ export default function ProfilePanel({ gameRef, isOpen, onClose }: ProfilePanelP
             )}
             <div
               className="absolute inset-0 rounded-full flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity"
-              style={{ background: "rgba(0,0,0,0.6)", fontSize: "10px", color: "#fff" }}
+              style={{ background: "rgba(0,0,0,0.6)", fontSize: "8px", color: "#fff" }}
             >
               edit
             </div>
@@ -262,7 +262,7 @@ export default function ProfilePanel({ gameRef, isOpen, onClose }: ProfilePanelP
           </div>
           {connected && profile.wallet ? (
             <div className="px-2 py-1.5 rounded" style={{ background: "#12122a" }}>
-              <span style={{ color: "#00D1FF", fontSize: "12px" }}>
+              <span style={{ color: "#00D1FF", fontSize: "9px" }}>
                 {profile.wallet}
               </span>
             </div>
@@ -275,7 +275,7 @@ export default function ProfilePanel({ gameRef, isOpen, onClose }: ProfilePanelP
                 color: "#fff",
                 border: "none",
                 fontFamily: '"Press Start 2P", monospace',
-                fontSize: "8px",
+                fontSize: "7px",
               }}
             >
               CONNECT WALLET
@@ -375,7 +375,7 @@ export default function ProfilePanel({ gameRef, isOpen, onClose }: ProfilePanelP
                 border: "none",
                 borderBottom: lbTab === "online" ? "2px solid #14F195" : "2px solid transparent",
                 color: lbTab === "online" ? "#14F195" : "#555566",
-                fontFamily: '"Fira Code", monospace',
+                fontFamily: '"Press Start 2P", monospace',
                 marginBottom: -1,
               }}
             >
@@ -393,7 +393,7 @@ export default function ProfilePanel({ gameRef, isOpen, onClose }: ProfilePanelP
                 border: "none",
                 borderBottom: lbTab === "alltime" ? "2px solid #FFD700" : "2px solid transparent",
                 color: lbTab === "alltime" ? "#FFD700" : "#555566",
-                fontFamily: '"Fira Code", monospace',
+                fontFamily: '"Press Start 2P", monospace',
                 marginBottom: -1,
               }}
             >
@@ -474,7 +474,7 @@ export default function ProfilePanel({ gameRef, isOpen, onClose }: ProfilePanelP
                       isSelf={isSelf}
                       wallet={entry.wallet}
                       extra={
-                        <span className="text-xs" style={{ color: "#444455", fontSize: 9 }}>
+                        <span className="text-xs" style={{ color: "#444455", fontSize: 7 }}>
                           {entry.swapCount}s·{entry.transferCount}t·{entry.bountyCount}b
                         </span>
                       }
@@ -513,13 +513,13 @@ export default function ProfilePanel({ gameRef, isOpen, onClose }: ProfilePanelP
                     opacity: unlocked ? 1 : 0.45,
                   }}
                 >
-                  <span style={{ fontSize: 20, filter: unlocked ? "none" : "grayscale(1)" }}>
+                  <span style={{ fontSize: 15, filter: unlocked ? "none" : "grayscale(1)" }}>
                     {unlocked ? ach.icon : "🔒"}
                   </span>
                   <div className="min-w-0 flex-1">
                     <div
                       style={{
-                        fontSize: 11,
+                        fontSize: 8,
                         fontFamily: '"Press Start 2P", monospace',
                         color: unlocked ? color : "#555566",
                         marginBottom: 2,
@@ -527,14 +527,14 @@ export default function ProfilePanel({ gameRef, isOpen, onClose }: ProfilePanelP
                     >
                       {ach.title}
                     </div>
-                    <div style={{ fontSize: 10, color: "#666677", lineHeight: 1.4 }}>
+                    <div style={{ fontSize: 8, color: "#666677", lineHeight: 1.4 }}>
                       {ach.description}
                     </div>
                   </div>
                   {unlocked && (
                     <span
                       style={{
-                        fontSize: 8,
+                        fontSize: 7,
                         fontFamily: '"Press Start 2P", monospace',
                         color,
                         textTransform: "uppercase",
@@ -631,7 +631,7 @@ function StatCard({
       </div>
       <div
         className="text-lg font-bold mt-0.5"
-        style={{ color, fontFamily: '"Press Start 2P", monospace', fontSize: "14px" }}
+        style={{ color, fontFamily: '"Press Start 2P", monospace', fontSize: "11px" }}
       >
         {value}
       </div>

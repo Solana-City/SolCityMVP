@@ -191,7 +191,7 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
         display: "flex",
         flexDirection: "column",
         overflow: "hidden",
-        fontFamily: '"Fira Code", monospace',
+        fontFamily: '"Press Start 2P", monospace',
         color: "#d0d0f0",
         boxShadow: "0 0 60px rgba(153,69,255,0.15), 0 24px 64px rgba(0,0,0,0.6)",
       }}>
@@ -204,10 +204,10 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
           background: "rgba(153,69,255,0.06)",
         }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <span style={{ fontSize: 18 }}>👗</span>
+            <span style={{ fontSize: 13 }}>👗</span>
             <span style={{
               fontFamily: '"Press Start 2P", monospace',
-              fontSize: 11,
+              fontSize: 8,
               color: "#c084fc",
               letterSpacing: 2,
             }}>WARDROBE</span>
@@ -219,7 +219,7 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
               title="Random outfit"
               style={{
                 fontFamily: '"Press Start 2P", monospace',
-                fontSize: 8,
+                fontSize: 7,
                 padding: "7px 14px",
                 background: "rgba(20,241,149,0.1)",
                 color: "#14F195",
@@ -236,7 +236,7 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
             </button>
             <button onClick={onClose} style={{
               background: "none", border: "none", color: "#444466",
-              fontSize: 22, cursor: "pointer", lineHeight: 1, padding: "0 2px",
+              fontSize: 16, cursor: "pointer", lineHeight: 1, padding: "0 2px",
             }}>×</button>
           </div>
         </div>
@@ -270,7 +270,7 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
               }}>
                 <AvatarPreview loadout={loadout} />
               </div>
-              <span style={{ fontSize: 9, color: "#444466", letterSpacing: 1 }}>PREVIEW</span>
+              <span style={{ fontSize: 7, color: "#444466", letterSpacing: 1 }}>PREVIEW</span>
             </div>
 
             {/* Divider */}
@@ -304,8 +304,8 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
                     onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = "rgba(153,69,255,0.08)"; }}
                     onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = "transparent"; }}
                   >
-                    <span style={{ fontSize: 14, flexShrink: 0 }}>{CATEGORY_ICONS[cat]}</span>
-                    <span style={{ fontSize: 10, flex: 1, fontFamily: '"Fira Code", monospace' }}>
+                    <span style={{ fontSize: 11, flexShrink: 0 }}>{CATEGORY_ICONS[cat]}</span>
+                    <span style={{ fontSize: 8, flex: 1, fontFamily: '"Press Start 2P", monospace' }}>
                       {CATEGORY_LABELS[cat]}
                     </span>
                     <span style={{
@@ -327,16 +327,16 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
               padding: "12px 16px 10px",
               borderBottom: "1px solid rgba(153,69,255,0.08)",
             }}>
-              <span style={{ fontSize: 16 }}>{CATEGORY_ICONS[activeCategory]}</span>
+              <span style={{ fontSize: 12 }}>{CATEGORY_ICONS[activeCategory]}</span>
               <span style={{
                 fontFamily: '"Press Start 2P", monospace',
-                fontSize: 9,
+                fontSize: 7,
                 color: "#9945FF",
                 letterSpacing: 2,
               }}>
                 {CATEGORY_LABELS[activeCategory].toUpperCase()}
               </span>
-              <span style={{ fontSize: 10, color: "#444466", marginLeft: "auto" }}>
+              <span style={{ fontSize: 8, color: "#444466", marginLeft: "auto" }}>
                 {variants.length} {variants.length === 1 ? "option" : "options"}
                 {OPTIONAL.includes(activeCategory) && " · optional"}
               </span>
@@ -359,7 +359,7 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
                     <div style={{
                       width: 64, height: 64,
                       display: "flex", alignItems: "center", justifyContent: "center",
-                      color: "#333344", fontSize: 24,
+                      color: "#333344", fontSize: 17,
                       border: "1px dashed #2a2a4a", borderRadius: 6,
                     }}>∅</div>
                     <span style={{ color: !currentVariantId ? "#14F195" : "#444466" }}>None</span>
@@ -402,7 +402,7 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
             background: "transparent",
             border: "1px solid rgba(153,69,255,0.2)",
             borderRadius: 8, color: "#555577", cursor: "pointer",
-            fontSize: 11, fontFamily: '"Fira Code", monospace',
+            fontSize: 8, fontFamily: '"Press Start 2P", monospace',
             transition: "border-color 0.15s, color 0.15s",
           }}
           onMouseEnter={e => { e.currentTarget.style.borderColor = "rgba(153,69,255,0.45)"; e.currentTarget.style.color = "#9945FF"; }}
@@ -418,7 +418,7 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
             borderRadius: 8,
             color: "#050a14",
             cursor: "pointer",
-            fontSize: 12,
+            fontSize: 9,
             fontWeight: 700,
             fontFamily: '"Press Start 2P", monospace',
             letterSpacing: 1,
@@ -463,8 +463,8 @@ function VariantCard({
           : "2px solid rgba(255,255,255,0.05)",
         borderRadius: 10,
         cursor: "pointer",
-        fontSize: 10,
-        fontFamily: '"Fira Code", monospace',
+        fontSize: 8,
+        fontFamily: '"Press Start 2P", monospace',
         transition: "background 0.15s, border-color 0.15s, transform 0.1s",
         transform: isFlashing ? "scale(1.04)" : "scale(1)",
         outline: isFlashing ? "2px solid rgba(20,241,149,0.5)" : "none",

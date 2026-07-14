@@ -87,7 +87,7 @@ export default function NPCPortrait({
           background: "rgba(10,10,30,0.95)",
           border: `1px solid ${color}`,
           fontFamily: '"Press Start 2P", monospace',
-          fontSize: "8px",
+          fontSize: "7px",
           color,
           letterSpacing: "0.05em",
         }}

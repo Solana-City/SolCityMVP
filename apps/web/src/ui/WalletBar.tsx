@@ -89,7 +89,7 @@ export default function WalletBar({ onWalletChange, layout = "default" }: Wallet
   // ── Panel layout: single compact row for the unified HUD card ───────────────
   if (layout === "panel") {
     return (
-      <div style={{ display: "flex", alignItems: "center", gap: 8, fontFamily: '"Fira Code", monospace' }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, fontFamily: '"Press Start 2P", monospace' }}>
         {/* Status dot */}
         <span style={{
           width: 7, height: 7, borderRadius: "50%", flexShrink: 0,
@@ -102,19 +102,19 @@ export default function WalletBar({ onWalletChange, layout = "default" }: Wallet
           {connected ? (
             <>
               {balance !== null && (
-                <span style={{ fontSize: 11, color: "#e0e0ff", lineHeight: 1 }}>
+                <span style={{ fontSize: 8, color: "#e0e0ff", lineHeight: 1 }}>
                   {balance} <span style={{ color: "#14F195" }}>SOL</span>
                 </span>
               )}
               {shortAddr && (
-                <span style={{ fontSize: 9, color: "#00D1FF", letterSpacing: 0.3, opacity: 0.8 }}>
+                <span style={{ fontSize: 7, color: "#00D1FF", letterSpacing: 0.3, opacity: 0.8 }}>
                   {shortAddr}
                   {isAndroid && hasSGT && <span style={{ color: "#FFD700", marginLeft: 4 }}>⬡</span>}
                 </span>
               )}
             </>
           ) : (
-            <span style={{ fontSize: 9, color: "#555", letterSpacing: 1,
+            <span style={{ fontSize: 7, color: "#555", letterSpacing: 1,
               fontFamily: '"Press Start 2P", monospace' }}>OFFLINE</span>
           )}
         </div>
@@ -144,7 +144,7 @@ export default function WalletBar({ onWalletChange, layout = "default" }: Wallet
   // ── Mobile layout: compact row (status dot + address + button) ───────────────
   if (isTouch) {
     return (
-      <div className="flex items-center gap-2" style={{ fontFamily: '"Fira Code", monospace' }}>
+      <div className="flex items-center gap-2" style={{ fontFamily: '"Press Start 2P", monospace' }}>
         {/* Seeker badge — only when SGT is confirmed to keep it meaningful */}
         {hasSGT && (
           <span
@@ -183,7 +183,7 @@ export default function WalletBar({ onWalletChange, layout = "default" }: Wallet
               color: "#14F195",
               border: "1px solid rgba(20,241,149,0.3)",
               fontFamily: '"Press Start 2P", monospace',
-              fontSize: "8px",
+              fontSize: "7px",
               padding: "8px 10px",
               minHeight: 32,
               display: "flex",
@@ -221,7 +221,7 @@ export default function WalletBar({ onWalletChange, layout = "default" }: Wallet
   return (
     <div
       className="flex items-center gap-3 flex-wrap justify-end"
-      style={{ fontFamily: '"Fira Code", monospace' }}
+      style={{ fontFamily: '"Press Start 2P", monospace' }}
     >
       {/* Seeker device badge — shown on Android Chrome, gold if SGT confirmed */}
       {isAndroid && (
@@ -290,7 +290,7 @@ export default function WalletBar({ onWalletChange, layout = "default" }: Wallet
           color: connected ? "#14F195" : "#ffffff",
           border: connected ? "1px solid rgba(20,241,149,0.3)" : "1px solid rgba(153,69,255,0.5)",
           fontFamily: '"Press Start 2P", monospace',
-          fontSize: "9px",
+          fontSize: "7px",
           padding: "6px 16px",
           minHeight: 44,
           display: "flex",

@@ -115,7 +115,7 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
           ? "calc(env(safe-area-inset-bottom, 0px) + 156px)"
           : "16px",
         width: isTouch ? "min(280px, calc(100vw - 180px))" : "360px",
-        fontFamily: '"Fira Code", monospace',
+        fontFamily: '"Press Start 2P", monospace',
       }}
     >
       {!isTouch && (
@@ -210,7 +210,7 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
                 color: em.color,
                 border: `1px solid ${em.color}30`,
                 fontFamily: '"Press Start 2P", monospace',
-                fontSize: "8px",
+                fontSize: "7px",
                 display: "flex",
                 alignItems: "center",
                 gap: 4,
@@ -253,7 +253,7 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
             background: "rgba(10,10,30,0.94)",
             color: "#d9d9ec",
             border: "1px solid rgba(153,69,255,0.2)",
-            fontFamily: '"Fira Code", monospace',
+            fontFamily: '"Press Start 2P", monospace',
           }}
         />
       </div>
@@ -293,7 +293,7 @@ function TabButton({
           style={{
             background: color,
             color: "#000",
-            fontSize: "8px",
+            fontSize: "7px",
             fontWeight: "bold",
             minWidth: "14px",
             textAlign: "center",

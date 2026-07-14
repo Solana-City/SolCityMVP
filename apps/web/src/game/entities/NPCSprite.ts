@@ -86,7 +86,7 @@ export class NPCSprite {
 
     // ── Name label ───────────────────────────────────────────────────────────
     this.nameText = scene.add.text(0, -38, def.name, {
-      fontSize: "11px",
+      fontSize: "8px",
       fontFamily: '"Press Start 2P", monospace',
       color: colorHex,
       align: "center",
@@ -108,7 +108,7 @@ export class NPCSprite {
       // Fallback: primitive circle + "!" (texture failed to load).
       this.exclamationBg = scene.add.circle(0, 0, 8, def.color);
       this.exclamationText = scene.add.text(0, 0, "!", {
-        fontSize: "12px", fontFamily: "monospace",
+        fontSize: "9px", fontFamily: "monospace",
         color: "#ffffff", fontStyle: "bold",
         resolution: 2,
       }).setOrigin(0.5, 0.5);
@@ -141,7 +141,7 @@ export class NPCSprite {
     // Desktop: "[E] Talk"   Mobile/touch: "Tap to talk"
     const promptLabel = isTouch ? "Tap to talk" : "[E] Talk";
     this.promptText = scene.add.text(0, -56, promptLabel, {
-      fontSize: "9px",
+      fontSize: "7px",
       fontFamily: '"Press Start 2P", monospace',
       color: "#14F195",
       align: "center",

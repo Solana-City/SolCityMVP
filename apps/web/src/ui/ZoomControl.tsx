@@ -44,7 +44,7 @@ export default function ZoomControl() {
         background: "rgba(10,10,30,0.85)",
         border: "1px solid rgba(153,69,255,0.25)",
         backdropFilter: "blur(4px)",
-        fontFamily: '"Fira Code", monospace',
+        fontFamily: '"Press Start 2P", monospace',
       }}
     >
       <ZBtn size={btnSize} disabled={!canDec} onClick={() => change(zooms[idx - 1])}>−</ZBtn>
@@ -52,7 +52,7 @@ export default function ZoomControl() {
       <span
         style={{
           fontFamily: '"Press Start 2P", monospace',
-          fontSize: "8px",
+          fontSize: "7px",
           color: "#9945FF",
           minWidth: 36,
           textAlign: "center",
@@ -89,7 +89,7 @@ function ZBtn({
         border: "1px solid rgba(153,69,255,0.3)",
         background: disabled ? "transparent" : "rgba(153,69,255,0.12)",
         color: disabled ? "#333344" : "#9945FF",
-        fontSize: "14px",
+        fontSize: "11px",
         lineHeight: 1,
         cursor: disabled ? "default" : "pointer",
         display: "flex",

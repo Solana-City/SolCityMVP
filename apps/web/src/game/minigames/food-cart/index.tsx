@@ -305,7 +305,7 @@ export default function FoodCartGame({
           overflowY: "auto",
           background: "rgba(8,8,22,0.99)",
           border: "1px solid rgba(153,69,255,0.3)",
-          fontFamily: '"Fira Code", monospace',
+          fontFamily: '"Press Start 2P", monospace',
           zIndex: 1,
           boxShadow: "0 0 80px rgba(153,69,255,0.12), inset 0 1px 0 rgba(255,255,255,0.04)",
         }}
@@ -316,27 +316,27 @@ export default function FoodCartGame({
           style={{ borderBottom: "1px solid rgba(153,69,255,0.18)", background: "rgba(153,69,255,0.05)" }}
         >
           <div>
-            <div style={{ color: "#9945FF", fontSize: 10, letterSpacing: 3, textTransform: "uppercase" }}>
+            <div style={{ color: "#9945FF", fontSize: 8, letterSpacing: 3, textTransform: "uppercase" }}>
               Mini Game
             </div>
-            <div style={{ color: "#fff", fontSize: 17, fontWeight: "bold", marginTop: 1 }}>
+            <div style={{ color: "#fff", fontSize: 12, fontWeight: "bold", marginTop: 1 }}>
               🍣 Sushi Station
             </div>
           </div>
           <div className="flex items-center gap-5">
             <div style={{ textAlign: "right" }}>
-              <div style={{ color: "#6666aa", fontSize: 10, letterSpacing: 1 }}>ORDERS</div>
-              <div style={{ color: "#14F195", fontSize: 15, fontWeight: "bold" }}>
+              <div style={{ color: "#6666aa", fontSize: 8, letterSpacing: 1 }}>ORDERS</div>
+              <div style={{ color: "#14F195", fontSize: 11, fontWeight: "bold" }}>
                 {doneCount}<span style={{ color: "#444466" }}>/{orders.length}</span>
               </div>
             </div>
             <div style={{ textAlign: "right" }}>
-              <div style={{ color: "#6666aa", fontSize: 10, letterSpacing: 1 }}>TIME</div>
+              <div style={{ color: "#6666aa", fontSize: 8, letterSpacing: 1 }}>TIME</div>
               <div
                 className={urgent ? "sc-urgent" : ""}
                 style={{
                   color: urgent ? "#ff4444" : "#ffffff",
-                  fontSize: 24,
+                  fontSize: 17,
                   fontWeight: "bold",
                   lineHeight: 1,
                   minWidth: 52,
@@ -376,7 +376,7 @@ export default function FoodCartGame({
               background: "rgba(0,0,0,0.18)",
             }}
           >
-            <div style={{ color: "#444466", fontSize: 9, letterSpacing: 2.5, textTransform: "uppercase", marginBottom: 2 }}>
+            <div style={{ color: "#444466", fontSize: 7, letterSpacing: 2.5, textTransform: "uppercase", marginBottom: 2 }}>
               Queue
             </div>
             {orders.map((ord, i) => {
@@ -400,10 +400,10 @@ export default function FoodCartGame({
                     transition: "all 0.35s",
                   }}
                 >
-                  <div style={{ fontSize: 8, textTransform: "uppercase", letterSpacing: 1.5, color: isActive ? "#9945FF" : isDone ? "#14F195" : "#444466", marginBottom: 3 }}>
+                  <div style={{ fontSize: 7, textTransform: "uppercase", letterSpacing: 1.5, color: isActive ? "#9945FF" : isDone ? "#14F195" : "#444466", marginBottom: 3 }}>
                     {isDone ? "✓ Done" : isActive ? "● Active" : "Queued"}
                   </div>
-                  <div style={{ color: isDone ? "#14F195" : "#ccccee", fontSize: 10, fontWeight: "bold" }}>
+                  <div style={{ color: isDone ? "#14F195" : "#ccccee", fontSize: 8, fontWeight: "bold" }}>
                     {ord.recipe.emoji} {ord.recipe.name}
                   </div>
                   <div style={{ display: "flex", gap: 4, marginTop: 6, flexWrap: "wrap" }}>
@@ -463,7 +463,7 @@ export default function FoodCartGame({
                         top: -6, left: "50%",
                         transform: "translateX(-50%)",
                         color: "#14F195",
-                        fontSize: 12,
+                        fontSize: 9,
                         fontWeight: "bold",
                         whiteSpace: "nowrap",
                         textShadow: "0 0 10px #14F195",
@@ -475,16 +475,16 @@ export default function FoodCartGame({
                   ))}
                 </div>
                 <div>
-                  <div style={{ color: "#9945FF", fontSize: 9, letterSpacing: 2.5, textTransform: "uppercase", marginBottom: 3 }}>
+                  <div style={{ color: "#9945FF", fontSize: 7, letterSpacing: 2.5, textTransform: "uppercase", marginBottom: 3 }}>
                     Serve Next
                   </div>
-                  <div style={{ color: "#ffffff", fontSize: 18, fontWeight: "bold", lineHeight: 1.2 }}>
+                  <div style={{ color: "#ffffff", fontSize: 13, fontWeight: "bold", lineHeight: 1.2 }}>
                     {ING[nextIngId].label}
                   </div>
-                  <div style={{ color: "#6644aa", fontSize: 11, marginTop: 4 }}>
+                  <div style={{ color: "#6644aa", fontSize: 8, marginTop: 4 }}>
                     Step {currentStep + 1}/{currentRecipe?.steps.length} · {currentRecipe?.name}
                   </div>
-                  <div style={{ color: "#333355", fontSize: 10, marginTop: 3 }}>
+                  <div style={{ color: "#333355", fontSize: 8, marginTop: 3 }}>
                     Press{" "}
                     <kbd style={{
                       background: "rgba(153,69,255,0.15)",
@@ -492,7 +492,7 @@ export default function FoodCartGame({
                       borderRadius: 3,
                       padding: "1px 5px",
                       color: "#9945FF",
-                      fontSize: 10,
+                      fontSize: 8,
                     }}>
                       {INGREDIENTS.find(i => i.id === nextIngId)?.hotkey}
                     </kbd>
@@ -503,7 +503,7 @@ export default function FoodCartGame({
             )}
 
             {/* Recipe strip */}
-            <div style={{ color: "#444466", fontSize: 9, letterSpacing: 2.5, textTransform: "uppercase" }}>
+            <div style={{ color: "#444466", fontSize: 7, letterSpacing: 2.5, textTransform: "uppercase" }}>
               {currentRecipe?.emoji} {currentRecipe?.name}
             </div>
             {currentRecipe && (
@@ -525,7 +525,7 @@ export default function FoodCartGame({
                       }}
                     >
                       <Sprite id={sid} size={42} />
-                      <span style={{ color: done ? "#14F195" : active ? "#ccaaff" : "#444466", fontSize: 11 }}>
+                      <span style={{ color: done ? "#14F195" : active ? "#ccaaff" : "#444466", fontSize: 8 }}>
                         {done ? "✓" : active ? "→" : `${si + 1}`}
                       </span>
                     </div>
@@ -541,10 +541,10 @@ export default function FoodCartGame({
                 className="sc-slide rounded-xl px-4 py-3 flex items-center gap-3 shrink-0"
                 style={{ background: "rgba(20,241,149,0.1)", border: "1px solid rgba(20,241,149,0.35)" }}
               >
-                <span style={{ fontSize: 22 }}>⭐</span>
+                <span style={{ fontSize: 16 }}>⭐</span>
                 <div>
-                  <div style={{ color: "#14F195", fontSize: 14, fontWeight: "bold" }}>Order Complete!</div>
-                  <div style={{ color: "#6666aa", fontSize: 11 }}>
+                  <div style={{ color: "#14F195", fontSize: 11, fontWeight: "bold" }}>Order Complete!</div>
+                  <div style={{ color: "#6666aa", fontSize: 8 }}>
                     {orderIdx + 1 < orders.length ? "Next order coming up..." : "Last one done!"}
                   </div>
                 </div>
@@ -555,7 +555,7 @@ export default function FoodCartGame({
 
         {/* ── Ingredient grid ───────────────────────────────────────────── */}
         <div className="p-3 shrink-0">
-          <div style={{ color: "#444466", fontSize: 9, letterSpacing: 2.5, textTransform: "uppercase", marginBottom: 10 }}>
+          <div style={{ color: "#444466", fontSize: 7, letterSpacing: 2.5, textTransform: "uppercase", marginBottom: 10 }}>
             Ingredients
             <span style={{ color: "#222244", marginLeft: 8 }}>(keys 1–9)</span>
           </div>
@@ -597,7 +597,7 @@ export default function FoodCartGame({
                     cursor: isDisabled ? "default" : "pointer",
                     opacity: isDisabled && !isPicked ? 0.45 : 1,
                     transition: "background 0.1s, border-color 0.1s, opacity 0.2s, transform 0.1s",
-                    fontFamily: '"Fira Code", monospace',
+                    fontFamily: '"Press Start 2P", monospace',
                     position: "relative",
                   }}
                   onMouseEnter={e => {
@@ -611,7 +611,7 @@ export default function FoodCartGame({
                   <span style={{
                     position: "absolute", top: 4, right: 5,
                     color: isNext ? "#9945FF" : "#2a2a44",
-                    fontSize: 8,
+                    fontSize: 7,
                     fontWeight: "bold",
                     transition: "color 0.15s",
                   }}>
@@ -622,7 +622,7 @@ export default function FoodCartGame({
                   </div>
                   <span
                     style={{
-                      fontSize: 9,
+                      fontSize: 7,
                       textAlign: "center",
                       lineHeight: 1.3,
                       color: isWrong ? "#ff7777" : isNext ? "#ccaaff" : "#888aaa",
@@ -640,7 +640,7 @@ export default function FoodCartGame({
         {phase === "playing" && (
           <div
             className="text-center py-2 shrink-0"
-            style={{ color: "#1e1e38", fontSize: 10, borderTop: "1px solid rgba(255,255,255,0.03)" }}
+            style={{ color: "#1e1e38", fontSize: 8, borderTop: "1px solid rgba(255,255,255,0.03)" }}
           >
             click outside · Esc to dismiss
           </div>
@@ -694,18 +694,18 @@ function SuccessCard({
           boxShadow: "0 0 80px rgba(20,241,149,0.18), inset 0 1px 0 rgba(20,241,149,0.1)",
           minWidth: 300,
           maxWidth: 380,
-          fontFamily: '"Fira Code", monospace',
+          fontFamily: '"Press Start 2P", monospace',
         }}
       >
-        <div style={{ fontSize: 64, lineHeight: 1, filter: "drop-shadow(0 0 24px rgba(20,241,149,0.55))" }}>
+        <div style={{ fontSize: 46, lineHeight: 1, filter: "drop-shadow(0 0 24px rgba(20,241,149,0.55))" }}>
           🎉
         </div>
 
         <div style={{ textAlign: "center" }}>
-          <div style={{ color: "#14F195", fontSize: 22, fontWeight: "bold", letterSpacing: -0.5 }}>
+          <div style={{ color: "#14F195", fontSize: 16, fontWeight: "bold", letterSpacing: -0.5 }}>
             All Orders Delivered!
           </div>
-          <div style={{ color: "#446655", fontSize: 13, marginTop: 6 }}>
+          <div style={{ color: "#446655", fontSize: 10, marginTop: 6 }}>
             {completed} of {total} completed
           </div>
         </div>
@@ -716,23 +716,23 @@ function SuccessCard({
           style={{ background: "rgba(20,241,149,0.06)", border: "1px solid rgba(20,241,149,0.15)" }}
         >
           <div className="flex justify-between items-center">
-            <span style={{ color: "#446655", fontSize: 12 }}>Order revenue</span>
-            <span style={{ color: "#14F195", fontSize: 13, fontWeight: "bold" }}>+0.01 SOL</span>
+            <span style={{ color: "#446655", fontSize: 9 }}>Order revenue</span>
+            <span style={{ color: "#14F195", fontSize: 10, fontWeight: "bold" }}>+0.01 SOL</span>
           </div>
           <div className="flex justify-between items-center">
-            <span style={{ color: "#446655", fontSize: 12 }}>Customer refund</span>
-            <span style={{ color: "#aaaacc", fontSize: 13 }}>−0.005 SOL</span>
+            <span style={{ color: "#446655", fontSize: 9 }}>Customer refund</span>
+            <span style={{ color: "#aaaacc", fontSize: 10 }}>−0.005 SOL</span>
           </div>
           <div className="flex justify-between items-center">
-            <span style={{ color: "#446655", fontSize: 12 }}>Treasury (5%)</span>
-            <span style={{ color: "#aaaacc", fontSize: 13 }}>−0.0005 SOL</span>
+            <span style={{ color: "#446655", fontSize: 9 }}>Treasury (5%)</span>
+            <span style={{ color: "#aaaacc", fontSize: 10 }}>−0.0005 SOL</span>
           </div>
           <div
             className="flex justify-between items-center pt-2 mt-1"
             style={{ borderTop: "1px solid rgba(20,241,149,0.15)" }}
           >
-            <span style={{ color: "#14F195", fontSize: 13, fontWeight: "bold" }}>You keep</span>
-            <span style={{ color: "#14F195", fontSize: 17, fontWeight: "bold" }}>+0.0045 SOL</span>
+            <span style={{ color: "#14F195", fontSize: 10, fontWeight: "bold" }}>You keep</span>
+            <span style={{ color: "#14F195", fontSize: 12, fontWeight: "bold" }}>+0.0045 SOL</span>
           </div>
         </div>
 
@@ -741,8 +741,8 @@ function SuccessCard({
             className="flex items-center gap-2 rounded-lg px-3 py-2"
             style={{ background: "rgba(153,69,255,0.08)", border: "1px solid rgba(153,69,255,0.2)" }}
           >
-            <span style={{ fontSize: 12 }}>⛓</span>
-            <span style={{ color: "#7755aa", fontSize: 11 }}>Settling on-chain...</span>
+            <span style={{ fontSize: 9 }}>⛓</span>
+            <span style={{ color: "#7755aa", fontSize: 8 }}>Settling on-chain...</span>
           </div>
         ) : (
           <button
@@ -753,9 +753,9 @@ function SuccessCard({
               borderRadius: 12,
               background: "linear-gradient(135deg, #14F195, #0cbe75)",
               color: "#021a0e",
-              fontSize: 15,
+              fontSize: 11,
               fontWeight: "bold",
-              fontFamily: '"Fira Code", monospace',
+              fontFamily: '"Press Start 2P", monospace',
               border: "none",
               cursor: "pointer",
               boxShadow: "0 0 28px rgba(20,241,149,0.35)",
@@ -798,18 +798,18 @@ function FailureCard({
           boxShadow: "0 0 80px rgba(255,60,60,0.12), inset 0 1px 0 rgba(255,60,60,0.08)",
           minWidth: 300,
           maxWidth: 380,
-          fontFamily: '"Fira Code", monospace',
+          fontFamily: '"Press Start 2P", monospace',
         }}
       >
-        <div style={{ fontSize: 64, lineHeight: 1 }}>
+        <div style={{ fontSize: 46, lineHeight: 1 }}>
           {reason === "timeout" ? "⏱️" : "❌"}
         </div>
 
         <div style={{ textAlign: "center" }}>
-          <div style={{ color: "#ff5555", fontSize: 22, fontWeight: "bold", letterSpacing: -0.5 }}>
+          <div style={{ color: "#ff5555", fontSize: 16, fontWeight: "bold", letterSpacing: -0.5 }}>
             {reason === "timeout" ? "Time's Up!" : "Wrong Ingredient!"}
           </div>
-          <div style={{ color: "#664444", fontSize: 13, marginTop: 6 }}>
+          <div style={{ color: "#664444", fontSize: 10, marginTop: 6 }}>
             {reason === "timeout"
               ? "The customer waited too long."
               : "That's not what they ordered."}
@@ -832,8 +832,8 @@ function FailureCard({
               <Sprite id={wrongId} size={44} />
             </div>
             <div>
-              <div style={{ color: "#886666", fontSize: 11 }}>You served</div>
-              <div style={{ color: "#ffaaaa", fontSize: 15, fontWeight: "bold" }}>{ING[wrongId].label}</div>
+              <div style={{ color: "#886666", fontSize: 8 }}>You served</div>
+              <div style={{ color: "#ffaaaa", fontSize: 11, fontWeight: "bold" }}>{ING[wrongId].label}</div>
             </div>
           </div>
         )}
@@ -844,15 +844,15 @@ function FailureCard({
           style={{ background: "rgba(255,60,60,0.05)", border: "1px solid rgba(255,60,60,0.12)" }}
         >
           <div className="flex justify-between items-center">
-            <span style={{ color: "#664444", fontSize: 12 }}>Customer refund (escrow)</span>
-            <span style={{ color: "#ff8888", fontSize: 13, fontWeight: "bold" }}>−0.02 SOL</span>
+            <span style={{ color: "#664444", fontSize: 9 }}>Customer refund (escrow)</span>
+            <span style={{ color: "#ff8888", fontSize: 10, fontWeight: "bold" }}>−0.02 SOL</span>
           </div>
           <div
             className="flex justify-between items-center pt-2 mt-1"
             style={{ borderTop: "1px solid rgba(255,60,60,0.12)" }}
           >
-            <span style={{ color: "#ff5555", fontSize: 13, fontWeight: "bold" }}>Net impact</span>
-            <span style={{ color: "#ff5555", fontSize: 17, fontWeight: "bold" }}>−0.02 SOL</span>
+            <span style={{ color: "#ff5555", fontSize: 10, fontWeight: "bold" }}>Net impact</span>
+            <span style={{ color: "#ff5555", fontSize: 12, fontWeight: "bold" }}>−0.02 SOL</span>
           </div>
         </div>
 
@@ -861,8 +861,8 @@ function FailureCard({
             className="flex items-center gap-2 rounded-lg px-3 py-2"
             style={{ background: "rgba(153,69,255,0.08)", border: "1px solid rgba(153,69,255,0.2)" }}
           >
-            <span style={{ fontSize: 12 }}>⛓</span>
-            <span style={{ color: "#7755aa", fontSize: 11 }}>Settling on-chain...</span>
+            <span style={{ fontSize: 9 }}>⛓</span>
+            <span style={{ color: "#7755aa", fontSize: 8 }}>Settling on-chain...</span>
           </div>
         ) : (
           <button
@@ -873,9 +873,9 @@ function FailureCard({
               borderRadius: 12,
               background: "rgba(255,60,60,0.12)",
               color: "#ff9999",
-              fontSize: 14,
+              fontSize: 11,
               fontWeight: "bold",
-              fontFamily: '"Fira Code", monospace',
+              fontFamily: '"Press Start 2P", monospace',
               border: "1px solid rgba(255,60,60,0.35)",
               cursor: "pointer",
               transition: "transform 0.1s, background 0.1s",

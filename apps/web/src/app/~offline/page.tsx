@@ -13,17 +13,17 @@ export default function OfflinePage() {
         justifyContent: "center",
         gap: 24,
         padding: 32,
-        fontFamily: '"Fira Code", monospace',
+        fontFamily: '"Press Start 2P", monospace',
         textAlign: "center",
       }}
     >
-      <div style={{ fontSize: 56 }}>📡</div>
+      <div style={{ fontSize: 40 }}>📡</div>
 
       <div>
         <div
           style={{
             color: "#9945FF",
-            fontSize: 20,
+            fontSize: 15,
             fontWeight: "bold",
             marginBottom: 10,
             letterSpacing: -0.3,
@@ -34,7 +34,7 @@ export default function OfflinePage() {
         <div
           style={{
             color: "#444466",
-            fontSize: 13,
+            fontSize: 10,
             lineHeight: 1.7,
             maxWidth: 300,
           }}
@@ -62,9 +62,9 @@ export default function OfflinePage() {
           background: "rgba(153,69,255,0.12)",
           border: "1px solid rgba(153,69,255,0.4)",
           color: "#9945FF",
-          fontSize: 13,
+          fontSize: 10,
           fontWeight: "bold",
-          fontFamily: '"Fira Code", monospace',
+          fontFamily: '"Press Start 2P", monospace',
           cursor: "pointer",
         }}
       >

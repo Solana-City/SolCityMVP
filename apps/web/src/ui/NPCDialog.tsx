@@ -137,7 +137,7 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
           width:        "calc(100vw - 20px)",
           maxWidth:     480,
           zIndex:       30,
-          fontFamily:   '"Fira Code", monospace',
+          fontFamily:   '"Press Start 2P", monospace',
           background:   "rgba(8,8,24,0.96)",
           border:       `1px solid ${color}55`,
           borderTop:    `3px solid ${color}`,
@@ -161,7 +161,7 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{
               fontFamily:    '"Press Start 2P", monospace',
-              fontSize:      "9px",
+              fontSize: "7px",
               color,
               overflow:      "hidden",
               textOverflow:  "ellipsis",
@@ -170,13 +170,13 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
             }}>
               {npc.name}
             </div>
-            <div style={{ fontSize: "11px", color: "#5a5a72" }}>{npc.role}</div>
+            <div style={{ fontSize: "8px", color: "#5a5a72" }}>{npc.role}</div>
           </div>
           <button
             onClick={(e) => { e.stopPropagation(); onClose(); }}
             style={{
               background: "none", border: "none", color: "#5a5a72",
-              fontSize: "24px", cursor: "pointer", padding: "0 4px",
+              fontSize: "17px", cursor: "pointer", padding: "0 4px",
               lineHeight: 1, flexShrink: 0, touchAction: "manipulation",
             }}
             aria-label="Close dialog"
@@ -187,7 +187,7 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
 
         {/* Dialog text */}
         <p style={{
-          fontSize:   "13px",
+          fontSize: "10px",
           color:      "#d0d0e8",
           margin:     "0 0 12px",
           lineHeight: 1.65,
@@ -210,7 +210,7 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
                 border:      "none",
                 color:       "#000",
                 fontFamily:  '"Press Start 2P", monospace',
-                fontSize:    "8px",
+                fontSize: "7px",
                 padding:     "9px 16px",
                 borderRadius: 8,
                 cursor:      "pointer",
@@ -222,7 +222,7 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
             </button>
           ) : (
             <span style={{
-              fontSize:  "10px",
+              fontSize: "8px",
               color:     "#3a3a52",
               animation: doneTyping ? "tapPulse 1.4s ease-in-out infinite" : "none",
             }}>
@@ -249,7 +249,7 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
   return (
     <div
       className="fixed left-1/2 -translate-x-1/2 z-30 w-full max-w-2xl px-4"
-      style={{ fontFamily: '"Fira Code", monospace', bottom: "96px" }}
+      style={{ fontFamily: '"Press Start 2P", monospace', bottom: "96px" }}
     >
       <div className={`flex items-end ${portraitVisible ? "gap-5" : ""}`}>
         {portraitVisible && (
@@ -298,19 +298,19 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
               <div className="flex-1 min-w-0">
                 <div style={{
                   fontFamily:   '"Press Start 2P", monospace',
-                  fontSize:     "11px",
+                  fontSize: "8px",
                   color,
                   marginBottom: 4,
                 }}>
                   {npc.name}
                 </div>
-                <div style={{ fontSize: "11px", color: "#5a5a72" }}>{npc.role}</div>
+                <div style={{ fontSize: "8px", color: "#5a5a72" }}>{npc.role}</div>
               </div>
               <button
                 onClick={(e) => { e.stopPropagation(); onClose(); }}
                 style={{
                   background: "none", border: "none", color: "#5a5a72",
-                  fontSize: "22px", cursor: "pointer", padding: "2px 6px",
+                  fontSize: "16px", cursor: "pointer", padding: "2px 6px",
                   lineHeight: 1,
                 }}
                 aria-label="Close dialog"
@@ -325,7 +325,7 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
 
           {/* Dialog text */}
           <p style={{
-            fontSize:   "15px",
+            fontSize: "11px",
             color:      "#d0d0e8",
             lineHeight: 1.7,
             minHeight:  "3.4em",
@@ -348,7 +348,7 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
           }}>
             <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
               <Dots />
-              <span style={{ fontSize: "11px", color: "#3a3a52" }}>
+              <span style={{ fontSize: "8px", color: "#3a3a52" }}>
                 {isTyping ? "..." : isLastLine
                   ? "[E/Space] Action · [ESC] Close"
                   : "[E/Space] Continue · [ESC] Close"}
@@ -362,7 +362,7 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
                   border:      "none",
                   color:       "#000",
                   fontFamily:  '"Press Start 2P", monospace',
-                  fontSize:    "9px",
+                  fontSize: "7px",
                   padding:     "10px 20px",
                   borderRadius: 8,
                   cursor:      "pointer",
