@@ -184,8 +184,8 @@ export default function WalletBar({ onWalletChange, layout = "default" }: Wallet
               border: "1px solid rgba(20,241,149,0.3)",
               fontFamily: '"Press Start 2P", monospace',
               fontSize: "8px",
-              padding: "10px 12px",
-              minHeight: 44,
+              padding: "8px 10px",
+              minHeight: 32,
               display: "flex",
               alignItems: "center",
               WebkitTapHighlightColor: "transparent",
@@ -194,7 +194,7 @@ export default function WalletBar({ onWalletChange, layout = "default" }: Wallet
             ●
           </button>
         ) : (
-          /* Pixel-art CONNECT button (90x30 source at 1.5x) */
+          /* Pixel-art CONNECT button at its native 90x30 size */
           <button
             onClick={handleClick}
             style={{
@@ -208,7 +208,7 @@ export default function WalletBar({ onWalletChange, layout = "default" }: Wallet
           >
             <img
               src="/assets/ui/btn_connect.png"
-              width={135} height={45} alt="Connect wallet" draggable={false}
+              width={90} height={30} alt="Connect wallet" draggable={false}
               style={{ imageRendering: "pixelated" }}
             />
           </button>

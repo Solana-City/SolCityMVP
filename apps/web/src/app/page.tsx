@@ -271,9 +271,9 @@ export default function Home() {
             {isTouch ? (
               /* ── Mobile: compact horizontal strip + zoom below ── */
               <div className="flex flex-col items-end gap-2">
-                <div className="flex items-center gap-2">
-                  <PfpButton gameRef={game} onClick={() => setProfileOpen(true)} />
-                  <WardrobeButton onClick={() => setWardrobeOpen(true)} />
+                <div className="flex items-center gap-1.5">
+                  <PfpButton gameRef={game} size={32} onClick={() => setProfileOpen(true)} />
+                  <WardrobeButton size={32} onClick={() => setWardrobeOpen(true)} />
                   <WalletBar onWalletChange={handleWalletChange} />
                 </div>
                 <ZoomControl />
@@ -371,7 +371,7 @@ function MobilePanelToggle({ iconSrc, label, active, onClick }: {
       title={label}
       style={{
         position: "relative",
-        width: 48, height: 48, padding: 0,
+        width: 36, height: 36, padding: 0,
         background: "transparent", border: "none",
         cursor: "pointer", flexShrink: 0,
         display: "flex", alignItems: "center", justifyContent: "center",
@@ -381,17 +381,17 @@ function MobilePanelToggle({ iconSrc, label, active, onClick }: {
     >
       <img
         src="/assets/ui/bg_ico.png"
-        width={48} height={48} alt="" draggable={false}
+        width={36} height={36} alt="" draggable={false}
         style={{ imageRendering: "pixelated", position: "absolute", inset: 0 }}
       />
       <img
         src={iconSrc}
-        width={36} height={36} alt={label} draggable={false}
+        width={24} height={24} alt={label} draggable={false}
         style={{ imageRendering: "pixelated", position: "relative" }}
       />
       {active && (
         <span style={{
-          position: "absolute", inset: 2, borderRadius: 8,
+          position: "absolute", inset: 1, borderRadius: 7,
           boxShadow: "0 0 0 2px rgba(20,241,149,0.75)",
           pointerEvents: "none",
         }} />
@@ -400,14 +400,14 @@ function MobilePanelToggle({ iconSrc, label, active, onClick }: {
   );
 }
 
-function WardrobeButton({ onClick }: { onClick: () => void }) {
+function WardrobeButton({ onClick, size = 36 }: { onClick: () => void; size?: number }) {
   return (
     <button
       onClick={onClick}
       title="Wardrobe"
       style={{
-        width: 36,
-        height: 36,
+        width: size,
+        height: size,
         borderRadius: 8,
         border: "1px solid rgba(20,241,149,0.35)",
         background: "rgba(20,241,149,0.07)",
@@ -424,14 +424,17 @@ function WardrobeButton({ onClick }: { onClick: () => void }) {
     >
       <img
         src="/assets/ui/ico_wardrop.png"
-        width={24} height={24} alt="Wardrobe" draggable={false}
+        width={size >= 36 ? 24 : 20} height={size >= 36 ? 24 : 20}
+        alt="Wardrobe" draggable={false}
         style={{ imageRendering: "pixelated" }}
       />
     </button>
   );
 }
 
-function PfpButton({ gameRef, onClick }: { gameRef: Phaser.Game | null; onClick: () => void }) {
+function PfpButton({ gameRef, onClick, size = 40 }: {
+  gameRef: Phaser.Game | null; onClick: () => void; size?: number;
+}) {
   const [pfp, setPfp] = useState<string | null>(null);
   const [initial, setInitial] = useState("C");
 
@@ -461,8 +464,8 @@ function PfpButton({ gameRef, onClick }: { gameRef: Phaser.Game | null; onClick:
       onClick={onClick}
       className="rounded-full cursor-pointer transition-transform hover:scale-105"
       style={{
-        width: 40,
-        height: 40,
+        width: size,
+        height: size,
         border: "2px solid #9945FF",
         background: pfp ? "transparent" : "rgba(153,69,255,0.15)",
         padding: 0,
@@ -476,7 +479,7 @@ function PfpButton({ gameRef, onClick }: { gameRef: Phaser.Game | null; onClick:
       {pfp ? (
         <img src={pfp} alt="PFP" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
       ) : (
-        <span style={{ color: "#9945FF", fontSize: "18px", fontWeight: "bold" }}>{initial}</span>
+        <span style={{ color: "#9945FF", fontSize: size >= 40 ? "18px" : "14px", fontWeight: "bold" }}>{initial}</span>
       )}
     </button>
   );
