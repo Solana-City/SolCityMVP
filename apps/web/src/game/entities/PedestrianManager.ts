@@ -1,6 +1,6 @@
 import * as Phaser from "phaser";
 import { TILE_SIZE, PLAYABLE_ZONE } from "../config/constants";
-import { PedestrianSprite, makePedestrianLoadout } from "./PedestrianSprite";
+import { PedestrianSprite, makePedestrianLoadout, type PedestrianContext } from "./PedestrianSprite";
 import { getTargetPedIndex, advanceFindSlot, getCurrentSlot, ROTATION_BATCH_MS } from "../minigames/whereIsNPC/WhereIsNPCGame";
 
 // The Canvas renderer on mobile redraws every sprite on the CPU each frame,
@@ -16,7 +16,9 @@ function getPedestrianCount(): number {
     : PEDESTRIAN_COUNT_DESKTOP;
 }
 
-const SPEED_BANDS = [18, 24, 24, 30, 30, 38, 44];
+// Narrow speed band: everyone strolls at a similar, believable pace —
+// no one sprints across the map or crawls.
+const SPEED_BANDS = [22, 24, 26, 28, 30];
 
 // 32 zones covering the full PLAYABLE_ZONE (col1:42 col2:162 row1:68 row2:130)
 const SPAWN_ZONES: [number, number, number, number][] = [
@@ -175,11 +177,31 @@ export class PedestrianManager {
   private isBlocked(col: number, row: number): boolean {
     const wx = col * TILE_SIZE + TILE_SIZE / 2;
     const wy = row * TILE_SIZE + TILE_SIZE / 2;
-    return this.collisionLayers.some(layer => {
+    return this.isBlockedWorld(wx, wy);
+  }
+
+  private isBlockedWorld = (wx: number, wy: number): boolean =>
+    this.collisionLayers.some(layer => {
       const tile = layer.getTileAtWorldXY(wx, wy);
       return tile !== null && tile.collides;
     });
-  }
+
+  private countPedsNear = (wx: number, wy: number, radius: number): number => {
+    const r2 = radius * radius;
+    let n = 0;
+    for (const p of this.pedestrians) {
+      const dx = p.x - wx;
+      const dy = p.y - wy;
+      if (dx * dx + dy * dy < r2) n++;
+    }
+    return n;
+  };
+
+  /** World-query callbacks each pedestrian uses to plan its strolls. */
+  private pedCtx: PedestrianContext = {
+    isBlocked: (wx, wy) => this.isBlockedWorld(wx, wy),
+    countNear: (wx, wy, r) => this.countPedsNear(wx, wy, r),
+  };
 
   private spawnOne(i: number): PedestrianSprite {
     const PZ = PLAYABLE_ZONE;
@@ -209,7 +231,29 @@ export class PedestrianManager {
     const loadout = makePedestrianLoadout(i * 31337 + 17);
     const speed   = SPEED_BANDS[Math.floor(Math.random() * SPEED_BANDS.length)];
 
-    return new PedestrianSprite(this.scene, wx, wy, loadout, speed, this.collisionLayers, i);
+    return new PedestrianSprite(this.scene, wx, wy, loadout, speed, this.pedCtx, i);
+  }
+
+  /** True when a world position falls inside the camera view (plus margin) —
+   *  recycling a visible pedestrian reads as a teleport, so those wait. */
+  private isOnScreen(wx: number, wy: number): boolean {
+    const cam = this.scene.cameras.main;
+    const halfW = cam.width / cam.zoom / 2 + TILE_SIZE * 4;
+    const halfH = cam.height / cam.zoom / 2 + TILE_SIZE * 4;
+    return Math.abs(wx - cam.midPoint.x) < halfW && Math.abs(wy - cam.midPoint.y) < halfH;
+  }
+
+  /** Least-crowded of three random zones — respawns drift toward empty
+   *  streets instead of piling onto already busy ones. */
+  private pickRespawnZone(): [number, number, number, number] {
+    let best = SPAWN_ZONES[Math.floor(Math.random() * SPAWN_ZONES.length)];
+    let bestCount = Infinity;
+    for (let k = 0; k < 3; k++) {
+      const zone = SPAWN_ZONES[Math.floor(Math.random() * SPAWN_ZONES.length)];
+      const n = this.countPedsNear(zone[0] * TILE_SIZE, zone[1] * TILE_SIZE, TILE_SIZE * 10);
+      if (n < bestCount) { bestCount = n; best = zone; }
+    }
+    return best;
   }
 
   private rotateBatch(): void {
@@ -222,15 +266,20 @@ export class PedestrianManager {
       const isTarget = i === this.currentTargetIndex;
       if (isTarget) continue;
 
-      this.pedGroup.remove(this.pedestrians[i].getContainer());
-      this.pedestrians[i].destroy();
+      // Never recycle a pedestrian the player can see — despawn+respawn
+      // reads as "changed position without walking". It gets its turn on a
+      // later batch, once it's off screen.
+      const current = this.pedestrians[i];
+      if (this.isOnScreen(current.x, current.y)) continue;
+
+      this.pedGroup.remove(current.getContainer());
+      current.destroy();
 
       const newSeed = i * 31337 + Date.now() % 9999;
       const loadout = makePedestrianLoadout(newSeed);
       const speed   = SPEED_BANDS[Math.floor(Math.random() * SPEED_BANDS.length)];
       const PZ = PLAYABLE_ZONE;
-      const zone = SPAWN_ZONES[i % SPAWN_ZONES.length];
-      const [zCol, zRow, rCol, rRow] = zone;
+      const [zCol, zRow, rCol, rRow] = this.pickRespawnZone();
       let col = Math.max(PZ.col1 + 2, Math.min(PZ.col2 - 2,
         Math.round(zCol + (Math.random() * 2 - 1) * rCol)));
       let row = Math.max(PZ.row1 + 2, Math.min(PZ.row2 - 2,
@@ -243,7 +292,7 @@ export class PedestrianManager {
         this.scene,
         col * TILE_SIZE + TILE_SIZE / 2,
         row * TILE_SIZE + TILE_SIZE / 2,
-        loadout, speed, this.collisionLayers, i,
+        loadout, speed, this.pedCtx, i,
       );
       this.pedGroup.add(newPed.getContainer());
       this.pedestrians[i] = newPed;
