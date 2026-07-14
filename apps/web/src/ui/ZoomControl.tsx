@@ -44,15 +44,15 @@ export default function ZoomControl() {
         background: "rgba(10,10,30,0.85)",
         border: "1px solid rgba(153,69,255,0.25)",
         backdropFilter: "blur(4px)",
-        fontFamily: '"Press Start 2P", monospace',
+        fontFamily: "monospace",
       }}
     >
       <ZBtn size={btnSize} disabled={!canDec} onClick={() => change(zooms[idx - 1])}>−</ZBtn>
 
       <span
         style={{
-          fontFamily: '"Press Start 2P", monospace',
-          fontSize: "7px",
+          fontFamily: "monospace",
+          fontSize: "10px",
           color: "#9945FF",
           minWidth: 36,
           textAlign: "center",

@@ -119,7 +119,7 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
       }}
     >
       {!isTouch && (
-        <div className="text-[10px] mb-1 px-1" style={{ color: "#7a7a9a" }}>
+        <div className="mb-1 px-1" style={{ color: "#7a7a9a", fontSize: 7 }}>
           Enter: chat • Esc: close input • 1-6: emotes
         </div>
       )}
@@ -171,12 +171,12 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
           }}
         >
           {messages.length === 0 && (
-            <div className="text-xs" style={{ color: "#333344" }}>
+            <div style={{ color: "#333344", fontSize: 8 }}>
               No messages yet. Press Enter to chat.
             </div>
           )}
           {messages.map((msg) => (
-            <div key={msg.id} className="text-xs leading-relaxed mb-0.5">
+            <div key={msg.id} className="leading-relaxed mb-0.5" style={{ fontSize: 8 }}>
               <span style={{ color: msg.color || channelColor }}>
                 {msg.senderName}
               </span>
@@ -248,12 +248,13 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
           onBlur={handleBlur}
           placeholder={`${getChannelLabel(activeChannel, dmChannels)} chat...`}
           maxLength={140}
-          className="flex-1 px-2 py-1.5 text-xs rounded outline-none"
+          className="flex-1 px-2 py-1.5 rounded outline-none"
           style={{
             background: "rgba(10,10,30,0.94)",
             color: "#d9d9ec",
             border: "1px solid rgba(153,69,255,0.2)",
             fontFamily: '"Press Start 2P", monospace',
+            fontSize: 8,
           }}
         />
       </div>
@@ -277,19 +278,20 @@ function TabButton({
   return (
     <button
       onClick={onClick}
-      className="px-2 py-1 text-xs rounded-t transition-colors relative"
+      className="px-2 py-1 rounded-t transition-colors relative"
       style={{
         background: active ? "rgba(10,10,30,0.92)" : "rgba(10,10,30,0.5)",
         color: active ? color : "#555566",
         border: "none",
         cursor: "pointer",
         borderBottom: active ? `2px solid ${color}` : "2px solid transparent",
+        fontSize: 8,
       }}
     >
       {label}
       {badge !== undefined && badge > 0 && (
         <span
-          className="absolute -top-1 -right-1 px-1 rounded-full text-xs"
+          className="absolute -top-1 -right-1 px-1 rounded-full"
           style={{
             background: color,
             color: "#000",

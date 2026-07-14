@@ -637,8 +637,8 @@ function EarnListingsStage({
           >
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ color: "#ccccdd", fontSize: "9px", marginBottom: 3 }}>
-                  {truncate(listing.title, 40)}
+                <div style={{ color: "#ccccdd", fontSize: "9px", marginBottom: 3, lineHeight: 1.5 }}>
+                  {truncate(listing.title, 70)}
                 </div>
                 <div style={{ fontSize: "8px", color: "#555566" }}>{listing.sponsorName}</div>
               </div>

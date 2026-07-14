@@ -161,7 +161,7 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{
               fontFamily:    '"Press Start 2P", monospace',
-              fontSize: "7px",
+              fontSize: "9px",
               color,
               overflow:      "hidden",
               textOverflow:  "ellipsis",
@@ -298,7 +298,7 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
               <div className="flex-1 min-w-0">
                 <div style={{
                   fontFamily:   '"Press Start 2P", monospace',
-                  fontSize: "8px",
+                  fontSize: "11px",
                   color,
                   marginBottom: 4,
                 }}>
