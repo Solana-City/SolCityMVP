@@ -285,7 +285,7 @@ export default function Home() {
                 border: "1px solid rgba(153,69,255,0.2)",
                 borderRadius: 14,
                 overflow: "hidden",
-                width: 210,
+                width: 250,
                 backdropFilter: "blur(16px)",
                 boxShadow: "0 4px 28px rgba(0,0,0,0.4)",
               }}>
