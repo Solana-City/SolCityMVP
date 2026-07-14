@@ -177,9 +177,12 @@ function ToggleButton({
     <button
       onClick={onClick}
       title="On-chain activity [T]"
-      className="rounded-lg cursor-pointer transition-colors flex items-center gap-2 px-3"
+      className="rounded-lg cursor-pointer transition-colors flex items-center gap-2 px-2"
       style={{
         height: 32,
+        width: "100%",
+        minWidth: 0,
+        overflow: "hidden",
         background: isOpen ? "rgba(153,69,255,0.2)" : "rgba(10,10,30,0.85)",
         border: `1.5px solid ${borderColor}`,
         color: "#ccccdd",
@@ -188,9 +191,9 @@ function ToggleButton({
       }}
     >
       <PulseDot color={borderColor} active={pendingCount > 0} />
-      <span>ON-CHAIN</span>
-      <span style={{ color: "#666677" }}>·</span>
-      <span style={{ color: borderColor }}>{entryCount}</span>
+      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>ONCHAIN</span>
+      <span style={{ color: "#666677", flexShrink: 0 }}>·</span>
+      <span style={{ color: borderColor, flexShrink: 0 }}>{entryCount}</span>
     </button>
   );
 }
@@ -237,7 +240,7 @@ function Header({
           letterSpacing: "0.05em",
         }}
       >
-        ON-CHAIN LOG
+        ONCHAIN LOG
       </div>
       <div className="flex gap-2 text-xs" style={{ color: "#777788" }}>
         <span>{total} total</span>

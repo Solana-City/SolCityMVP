@@ -311,20 +311,23 @@ export default function Home() {
                   <WalletBar layout="panel" onWalletChange={handleWalletChange} />
                 </div>
 
-                {/* Footer: tx log + zoom — stacked so neither has to share
-                    horizontal space with the other and get clipped by the
-                    card's fixed 210px width / overflow:hidden. */}
+                {/* Footer: tx log + zoom, side by side. The ONCHAIN badge is
+                    allowed to shrink/ellipsis (minWidth:0) so ZoomControl
+                    (flexShrink:0) always keeps its full size and never gets
+                    pushed past the card's edge. */}
                 <div style={{
-                  display: "flex", flexDirection: "column",
+                  display: "flex", alignItems: "center",
                   borderTop: "1px solid rgba(153,69,255,0.1)",
                   padding: "6px 10px",
                   gap: 6,
                 }}>
-                  <TransactionLogPanel
-                    isOpen={logOpen}
-                    onToggle={() => setLogOpen((v) => !v)}
-                  />
-                  <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <TransactionLogPanel
+                      isOpen={logOpen}
+                      onToggle={() => setLogOpen((v) => !v)}
+                    />
+                  </div>
+                  <div style={{ flexShrink: 0 }}>
                     <ZoomControl />
                   </div>
                 </div>

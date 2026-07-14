@@ -275,7 +275,7 @@ export default function WalletBar({ onWalletChange, layout = "default" }: Wallet
           display: "inline-block",
           background: connected ? "#14F195" : "#555566",
         }} />
-        {connected ? "ON-CHAIN" : "OFFLINE"}
+        {connected ? "ONCHAIN" : "OFFLINE"}
       </span>
       {connected && shortAddr && (
         <>
