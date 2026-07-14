@@ -12,6 +12,7 @@ import type { OpponentKiteProvider, WindDirection, WindTier } from "./types";
 import { LocalAIOpponentProvider } from "./LocalAIOpponentProvider";
 import { loadKiteAssets, ready, type KiteAssets } from "./assets";
 import {
+  RIVAL_SKIN_COLOR,
   KITE_MOVE_SPEED,
   KITE_TILT_MAX_DEG,
   KITE_TILT_LERP,
@@ -69,10 +70,36 @@ interface CutVfx {
   x: number;
   y: number;
   ageMs: number;
-  particles: { dx: number; dy: number }[];
+  particles: { dx: number; dy: number; color: string }[];
 }
 
 const VFX_LIFETIME_MS = 500;
+
+/** A kite whose line was just cut — drifts away with the wind, spinning,
+ * with a short piece of line fluttering under it. Pure presentation. */
+interface SeveredKite {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  rotationDeg: number;
+  spinDegPerSec: number;
+  scale: number;
+  isPlayer: boolean;
+  ageMs: number;
+}
+
+// ── Cut juice tuning (presentation only — no gameplay impact) ──────────────
+const SEVERED_KITE_LIFETIME_MS = 2600;
+const SEVERED_KITE_FADE_MS = 700;
+const SLOWMO_SCALE_MINOR = 0.35;
+const SLOWMO_SCALE_MAJOR = 0.25;
+const SLOWMO_DURATION_MINOR_MS = 350;
+const SLOWMO_DURATION_MAJOR_MS = 550;
+const SHAKE_DURATION_MINOR_MS = 300;
+const SHAKE_DURATION_MAJOR_MS = 450;
+const SHAKE_MAGNITUDE_MINOR = 5;
+const SHAKE_MAGNITUDE_MAJOR = 9;
 
 export class KiteClashEngine {
   private ctx: CanvasRenderingContext2D;
@@ -113,9 +140,18 @@ export class KiteClashEngine {
 
   private clouds: Cloud[] = [];
   private cutVfx: CutVfx[] = [];
+  private severedKites: SeveredKite[] = [];
   private assets: KiteAssets = loadKiteAssets();
   /** Sailboat drift position (world px, wraps around the screen). */
   private shipX = -40;
+
+  // Cut juice state — driven by the REAL clock (this.lastTs), not the
+  // scaled elapsedMs, so the slow-mo can't stretch its own duration.
+  private timeScale = 1;
+  private slowMoUntilTs = 0;
+  private shakeUntilTs = 0;
+  private shakeDurationMs = 1;
+  private shakeMagnitude = 0;
 
   private opponents: OpponentKiteProvider;
   private callbacks: KiteClashEngineCallbacks;
@@ -170,6 +206,11 @@ export class KiteClashEngine {
     this.cutMessage = null;
     this.nearbyOpponentId = null;
     this.crossingPoint = null;
+    this.severedKites = [];
+    this.cutVfx = [];
+    this.timeScale = 1;
+    this.slowMoUntilTs = 0;
+    this.shakeUntilTs = 0;
     this.opponents = new LocalAIOpponentProvider({ width: this.width, height: this.height * 0.7 });
     this.resetPlayer();
     this.phase = "ready";
@@ -226,8 +267,18 @@ export class KiteClashEngine {
   }
 
   private loop = (ts: number) => {
-    const dt = Math.min(0.05, (ts - this.lastTs) / 1000);
+    const rawDt = Math.min(0.05, (ts - this.lastTs) / 1000);
     this.lastTs = ts;
+
+    // Brief slow-motion right after a cut. Purely presentational: the whole
+    // simulation slows uniformly for half a second, so relative behavior,
+    // probabilities and scoring rates are unchanged.
+    if (ts < this.slowMoUntilTs) {
+      // timeScale was set by triggerCutJuice — hold it.
+    } else if (this.timeScale < 1) {
+      this.timeScale = Math.min(1, this.timeScale + rawDt * 3); // ease back to speed
+    }
+    const dt = rawDt * this.timeScale;
     this.elapsedMs += dt * 1000;
 
     this.update(dt);
@@ -248,6 +299,17 @@ export class KiteClashEngine {
     if (this.shipX > this.width + 40) this.shipX = -40;
     for (const v of this.cutVfx) v.ageMs += dt * 1000;
     this.cutVfx = this.cutVfx.filter((v) => v.ageMs < VFX_LIFETIME_MS);
+
+    // Severed kites tumble away with the wind: a small upward pop as the
+    // line tension releases, then gravity and flutter take over.
+    for (const k of this.severedKites) {
+      k.ageMs += dt * 1000;
+      k.vy += 55 * dt;
+      k.x += k.vx * dt + Math.sin(k.ageMs / 180) * 30 * dt;
+      k.y += k.vy * dt;
+      k.rotationDeg += k.spinDegPerSec * dt;
+    }
+    this.severedKites = this.severedKites.filter((k) => k.ageMs < SEVERED_KITE_LIFETIME_MS);
 
     if (this.phase === "ready" && this.elapsedMs >= this.readyUntilMs) this.phase = "playing";
     if (this.phase !== "playing") {
@@ -304,9 +366,10 @@ export class KiteClashEngine {
     // one let far out aren't really near each other even if their 2D
     // positions happen to overlap. ──
     const playerLine = this.playerLineSegment();
+    const activeOpponents = this.opponents.getActiveOpponents();
     let nearbyId: string | null = null;
     let crossing: { x: number; y: number } | null = null;
-    for (const o of this.opponents.getActiveOpponents()) {
+    for (const o of activeOpponents) {
       if (Math.abs(o.exposure - exposure) > CUT_DEPTH_TOLERANCE) continue;
       const opponentLine = this.opponentLineSegment(o.position);
       const hit = segmentIntersection(playerLine[0], playerLine[1], opponentLine[0], opponentLine[1]);
@@ -333,18 +396,29 @@ export class KiteClashEngine {
     if (rivalOutcome === "success") {
       this.endRun("The rival cut your line!", this.crossingPoint ?? undefined);
     } else if (rivalOutcome === "backfire") {
+      // The rival severed its own line — send its kite tumbling away.
+      const rival = activeOpponents.find((o) => o.id === nearbyId);
+      if (rival) {
+        this.spawnSeveredKite(rival.position, rival.exposure, false);
+        this.triggerCutJuice(this.crossingPoint ?? rival.position, false);
+      }
       this.flashCutMessage("The rival cut its own line trying to cut yours!");
     }
   }
 
   private tryResolveCutAttempt(opponentId: string, playerExposure: number): void {
+    // Capture the target's state BEFORE resolving — a successful cut kills
+    // it inside the provider, and the severed-kite animation needs its
+    // last position and exposure.
+    const target = this.opponents.getActiveOpponents().find((o) => o.id === opponentId);
     const result = this.opponents.attemptCut(opponentId, playerExposure);
     // The cut happens to the LINE, at the crossing point — not at the kite.
     const vfxOrigin = this.crossingPoint ?? this.playerPos;
     if (result.outcome === "success") {
       this.score += result.scoreBonus;
       this.multiplierIdx = Math.min(this.multiplierIdx + 1, MULTIPLIER_STEPS.length - 1);
-      this.spawnCutVfx(vfxOrigin);
+      if (target) this.spawnSeveredKite(target.position, target.exposure, false);
+      this.triggerCutJuice(vfxOrigin, false);
       this.flashCutMessage(`Line cut! +${result.scoreBonus}`);
     } else if (result.outcome === "backfire") {
       this.endRun("Your own line was cut!", vfxOrigin);
@@ -362,16 +436,48 @@ export class KiteClashEngine {
 
   private endRun(reason: string, vfxOrigin?: { x: number; y: number }): void {
     this.phase = "ended";
-    this.spawnCutVfx(vfxOrigin ?? this.playerPos);
+    // The player's kite tumbles away with the wind — the normal player kite
+    // stops being drawn during the "ended" phase, this replaces it.
+    this.spawnSeveredKite(this.playerPos, exposureFromLineLength(this.lineLength), true);
+    this.triggerCutJuice(vfxOrigin ?? this.playerPos, true);
     this.flashCutMessage(reason);
   }
 
   private spawnCutVfx(pos: { x: number; y: number }): void {
-    const particles = Array.from({ length: 8 }, () => ({
-      dx: (Math.random() - 0.5) * 80,
-      dy: (Math.random() - 0.5) * 80,
+    const colors = ["#FFD700", "#FFFFFF", "#FFA94D"];
+    const particles = Array.from({ length: 12 }, () => ({
+      dx: (Math.random() - 0.5) * 110,
+      dy: (Math.random() - 0.5) * 110,
+      color: colors[Math.floor(Math.random() * colors.length)],
     }));
     this.cutVfx.push({ x: pos.x, y: pos.y, ageMs: 0, particles });
+  }
+
+  /** One call bundles every presentation effect of a cut: snap VFX at the
+   * crossing point, a short slow-motion beat and a screen shake. `major`
+   * = the PLAYER's line was cut (bigger beat); minor = a rival's. */
+  private triggerCutJuice(origin: { x: number; y: number }, major: boolean): void {
+    this.spawnCutVfx(origin);
+    this.timeScale = major ? SLOWMO_SCALE_MAJOR : SLOWMO_SCALE_MINOR;
+    this.slowMoUntilTs = this.lastTs + (major ? SLOWMO_DURATION_MAJOR_MS : SLOWMO_DURATION_MINOR_MS);
+    this.shakeDurationMs = major ? SHAKE_DURATION_MAJOR_MS : SHAKE_DURATION_MINOR_MS;
+    this.shakeUntilTs = this.lastTs + this.shakeDurationMs;
+    this.shakeMagnitude = major ? SHAKE_MAGNITUDE_MAJOR : SHAKE_MAGNITUDE_MINOR;
+  }
+
+  private spawnSeveredKite(pos: { x: number; y: number }, exposure: number, isPlayer: boolean): void {
+    const windSign = this.windDirection === "right" ? 1 : -1;
+    this.severedKites.push({
+      x: pos.x,
+      y: pos.y,
+      vx: windSign * (60 + WIND_DRAG_BASE_PX_PER_SEC[this.windTier]),
+      vy: -35, // small upward pop as the line tension releases
+      rotationDeg: 0,
+      spinDegPerSec: windSign * (150 + Math.random() * 120),
+      scale: lerp(0.85, 0.34, exposure),
+      isPlayer,
+      ageMs: 0,
+    });
   }
 
   private emitSnapshot(): void {
@@ -397,6 +503,16 @@ export class KiteClashEngine {
     const ctx = this.ctx;
     ctx.clearRect(0, 0, this.width, this.height);
 
+    // Screen shake — the whole scene jitters briefly after a cut, fading out.
+    ctx.save();
+    if (this.lastTs < this.shakeUntilTs) {
+      const falloff = (this.shakeUntilTs - this.lastTs) / this.shakeDurationMs;
+      ctx.translate(
+        (Math.random() - 0.5) * 2 * this.shakeMagnitude * falloff,
+        (Math.random() - 0.5) * 2 * this.shakeMagnitude * falloff,
+      );
+    }
+
     this.renderSky(ctx);
     this.renderClouds(ctx);
     this.renderSea(ctx);
@@ -415,7 +531,12 @@ export class KiteClashEngine {
     for (const o of opponents) {
       this.renderKite(ctx, o.position, o.exposure, o.skinColor, 0, false);
     }
-    this.renderKite(ctx, this.playerPos, exposure, PLAYER_SKIN_COLOR, this.playerTiltDeg, true);
+    // While the run is over, the player's kite exists only as the severed
+    // one tumbling away — drawing both would duplicate it.
+    if (this.phase !== "ended") {
+      this.renderKite(ctx, this.playerPos, exposure, PLAYER_SKIN_COLOR, this.playerTiltDeg, true);
+    }
+    this.renderSeveredKites(ctx);
     // The cut targets the LINE near the kite, not the kite itself — the
     // highlight lives at the actual crossing point of the two lines.
     if (this.crossingPoint) this.renderCrossingHighlight(ctx, this.crossingPoint, this.isHoldingReelKey());
@@ -423,6 +544,37 @@ export class KiteClashEngine {
     this.renderCutVfx(ctx);
     this.renderRailing(ctx);
     this.renderHands(ctx);
+    ctx.restore();
+  }
+
+  /** Cut kites drifting off with the wind, spinning, a short piece of
+   * line fluttering under them — fading out near the end of their life. */
+  private renderSeveredKites(ctx: CanvasRenderingContext2D): void {
+    for (const k of this.severedKites) {
+      const remaining = SEVERED_KITE_LIFETIME_MS - k.ageMs;
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, Math.min(1, remaining / SEVERED_KITE_FADE_MS));
+
+      // Dangling stub of cut line, waving as the kite tumbles.
+      const sway = Math.sin(k.ageMs / 150);
+      ctx.strokeStyle = "rgba(255,255,255,0.6)";
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(k.x, k.y);
+      ctx.quadraticCurveTo(k.x - 16 * sway, k.y + 26, k.x + 12 * sway, k.y + 48);
+      ctx.stroke();
+
+      this.renderKite(
+        ctx,
+        { x: k.x, y: k.y },
+        0,
+        k.isPlayer ? PLAYER_SKIN_COLOR : RIVAL_SKIN_COLOR,
+        k.rotationDeg,
+        k.isPlayer,
+        k.scale,
+      );
+      ctx.restore();
+    }
   }
 
   /**
@@ -667,15 +819,23 @@ export class KiteClashEngine {
   }
 
   private renderCutVfx(ctx: CanvasRenderingContext2D): void {
-    // PLACEHOLDER: scattering squares standing in for a real "snap" VFX.
     for (const v of this.cutVfx) {
       const t = v.ageMs / VFX_LIFETIME_MS;
       ctx.globalAlpha = 1 - t;
-      ctx.fillStyle = "#FFD700";
+
+      // Expanding snap ring at the exact point the line broke.
+      ctx.strokeStyle = "#FFFFFF";
+      ctx.lineWidth = 2.5 * (1 - t) + 0.5;
+      ctx.beginPath();
+      ctx.arc(v.x, v.y, 6 + t * 36, 0, Math.PI * 2);
+      ctx.stroke();
+
+      // Scattering sparks with a touch of gravity.
       for (const p of v.particles) {
         const x = v.x + p.dx * t;
-        const y = v.y + p.dy * t;
-        ctx.fillRect(x - 3, y - 3, 6, 6);
+        const y = v.y + p.dy * t + 50 * t * t;
+        ctx.fillStyle = p.color;
+        ctx.fillRect(x - 2.5, y - 2.5, 5, 5);
       }
     }
     ctx.globalAlpha = 1;
