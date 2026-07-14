@@ -311,20 +311,22 @@ export default function Home() {
                   <WalletBar layout="panel" onWalletChange={handleWalletChange} />
                 </div>
 
-                {/* Footer: tx log + zoom */}
+                {/* Footer: tx log + zoom — stacked so neither has to share
+                    horizontal space with the other and get clipped by the
+                    card's fixed 210px width / overflow:hidden. */}
                 <div style={{
-                  display: "flex", alignItems: "center",
+                  display: "flex", flexDirection: "column",
                   borderTop: "1px solid rgba(153,69,255,0.1)",
                   padding: "6px 10px",
                   gap: 6,
                 }}>
-                  <div style={{ flex: 1 }}>
-                    <TransactionLogPanel
-                      isOpen={logOpen}
-                      onToggle={() => setLogOpen((v) => !v)}
-                    />
+                  <TransactionLogPanel
+                    isOpen={logOpen}
+                    onToggle={() => setLogOpen((v) => !v)}
+                  />
+                  <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                    <ZoomControl />
                   </div>
-                  <ZoomControl />
                 </div>
               </div>
             )}

@@ -120,23 +120,44 @@ export default function WalletBar({ onWalletChange, layout = "default" }: Wallet
         </div>
 
         {/* Action button */}
-        <button
-          onClick={handleClick}
-          style={{
-            background: connected ? "rgba(20,241,149,0.1)" : "rgba(153,69,255,0.8)",
-            color: connected ? "#14F195" : "#fff",
-            border: connected ? "1px solid rgba(20,241,149,0.3)" : "1px solid rgba(153,69,255,0.5)",
-            borderRadius: 6,
-            fontFamily: '"Press Start 2P", monospace',
-            fontSize: 7,
-            padding: "6px 9px",
-            cursor: "pointer",
-            whiteSpace: "nowrap",
-            flexShrink: 0,
-          }}
-        >
-          {connected ? "●" : "CONNECT"}
-        </button>
+        {connected ? (
+          <button
+            onClick={handleClick}
+            style={{
+              background: "rgba(20,241,149,0.1)",
+              color: "#14F195",
+              border: "1px solid rgba(20,241,149,0.3)",
+              borderRadius: 6,
+              fontFamily: '"Press Start 2P", monospace',
+              fontSize: 7,
+              padding: "6px 9px",
+              cursor: "pointer",
+              whiteSpace: "nowrap",
+              flexShrink: 0,
+            }}
+          >
+            ●
+          </button>
+        ) : (
+          /* Same pixel-art CONNECT button used on mobile, scaled down to fit the panel row */
+          <button
+            onClick={handleClick}
+            style={{
+              background: "transparent",
+              border: "none",
+              padding: 0,
+              cursor: "pointer",
+              flexShrink: 0,
+              lineHeight: 0,
+            }}
+          >
+            <img
+              src="/assets/ui/btn_connect.png"
+              width={72} height={24} alt="Connect wallet" draggable={false}
+              style={{ imageRendering: "pixelated" }}
+            />
+          </button>
+        )}
       </div>
     );
   }
