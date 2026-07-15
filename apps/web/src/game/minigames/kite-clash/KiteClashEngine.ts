@@ -10,7 +10,10 @@
  */
 import type { OpponentKiteProvider, WindDirection, WindTier } from "./types";
 import { LocalAIOpponentProvider } from "./LocalAIOpponentProvider";
-import { loadKiteAssets, ready, type KiteAssets } from "./assets";
+import {
+  loadKiteAssets, ready, type KiteAssets,
+  HANDS_SHEET_FRAMES, HANDS_SHEET_FRAME_W, HANDS_SHEET_FRAME_H,
+} from "./assets";
 import {
   RIVAL_SKIN_COLOR,
   KITE_MOVE_SPEED,
@@ -137,6 +140,9 @@ export class KiteClashEngine {
 
   private cutResolveTimerMs = 0;
   private spoolAngle = 0;
+  /** Spool animation cursor (float, wraps over HANDS_SHEET_FRAMES).
+   *  Advances forward while reeling in, backward while letting out. */
+  private handsFrame = 0;
 
   private clouds: Cloud[] = [];
   private cutVfx: CutVfx[] = [];
@@ -353,6 +359,16 @@ export class KiteClashEngine {
     this.lineLength = clamp(this.lineLength, MIN_LINE_LENGTH, MAX_LINE_LENGTH);
     this.spoolAngle += (reeling ? -1 : 1) * dt * 6;
 
+    // Spool animation follows the actual line motion: winds forward while
+    // reeling in, unwinds backward while letting out, freezes when the line
+    // is pinned at either end.
+    const lineMoving = reeling
+      ? this.lineLength > MIN_LINE_LENGTH
+      : this.lineLength < MAX_LINE_LENGTH;
+    if (lineMoving) {
+      this.handsFrame += (reeling ? 12 : -7) * dt;
+    }
+
     // ── Passive scoring ──
     this.score += scoreRatePerSecond(exposure) * this.currentMultiplier() * dt;
 
@@ -529,7 +545,10 @@ export class KiteClashEngine {
     }
     this.renderLine(ctx, this.playerPos);
     for (const o of opponents) {
-      this.renderKite(ctx, o.position, o.exposure, o.skinColor, 0, false);
+      // Test flight for the STB kite: rivals fly it whenever it's loaded
+      // (falls back to the Solana kite otherwise).
+      const rivalSprite = ready(this.assets.kiteStb) ? this.assets.kiteStb : undefined;
+      this.renderKite(ctx, o.position, o.exposure, o.skinColor, 0, false, undefined, rivalSprite);
     }
     // While the run is over, the player's kite exists only as the severed
     // one tumbling away — drawing both would duplicate it.
@@ -682,15 +701,19 @@ export class KiteClashEngine {
     color: string,
     tiltDeg: number,
     isPlayer: boolean,
-    forcedScale?: number
+    forcedScale?: number,
+    spriteOverride?: HTMLImageElement,
   ): void {
-    // Pixel-art kites: Brazil flag for the player, Solana for rivals.
-    const sprite = isPlayer ? this.assets.kitePlayer : this.assets.kiteRival;
+    // Pixel-art kites: Brazil flag for the player, Solana for rivals —
+    // unless a specific sprite is passed (e.g. the STB rival kite).
+    const sprite = spriteOverride ?? (isPlayer ? this.assets.kitePlayer : this.assets.kiteRival);
     if (ready(sprite)) {
-      // reeled-in = bigger/foreground, let-out = smaller/background
+      // reeled-in = bigger/foreground, let-out = smaller/background.
+      // Dimensions come from the sprite so differently-shaped kites
+      // (e.g. the 70x88 STB shield) keep their own proportions.
       const s = forcedScale ?? lerp(0.85, 0.34, exposure);
-      const w = 70 * s;
-      const h = 112 * s;
+      const w = sprite.naturalWidth * s;
+      const h = sprite.naturalHeight * s;
       ctx.save();
       ctx.translate(pos.x, pos.y);
       ctx.rotate((tiltDeg * Math.PI) / 180);
@@ -842,11 +865,26 @@ export class KiteClashEngine {
   }
 
   private renderHands(ctx: CanvasRenderingContext2D): void {
+    const hs = this.handsScale();
+    const w = 300 * hs;
+    const h = 100 * hs;
+
+    // Animated spool sheet (4 frames of 600x200, same on-screen size as the
+    // static) — the frame cursor is driven by the reel in update().
+    const sheet = this.assets.handsSheet;
+    if (ready(sheet)) {
+      const frame =
+        ((Math.floor(this.handsFrame) % HANDS_SHEET_FRAMES) + HANDS_SHEET_FRAMES) % HANDS_SHEET_FRAMES;
+      ctx.drawImage(
+        sheet,
+        frame * HANDS_SHEET_FRAME_W, 0, HANDS_SHEET_FRAME_W, HANDS_SHEET_FRAME_H,
+        this.width / 2 - w / 2, this.height - h, w, h,
+      );
+      return;
+    }
+
     const hands = this.assets.hands;
     if (ready(hands)) {
-      const hs = this.handsScale();
-      const w = 300 * hs;
-      const h = 100 * hs;
       ctx.drawImage(hands, this.width / 2 - w / 2, this.height - h, w, h);
       return;
     }

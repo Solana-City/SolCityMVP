@@ -19,6 +19,21 @@ const HANDS_BY_SKIN: Record<string, string> = {
   Radio:  "hands_radio.png",
 };
 
+// Animated spool spritesheets (2400x200 = 4 frames of 600x200, drawn at the
+// same on-screen size as the 300x100 static). Radio has no sheet yet — it
+// falls back to the static hands.
+const HANDS_SHEET_BY_SKIN: Record<string, string | null> = {
+  Human:  "hands_human_sheet.png",
+  Feyan:  "hands_feyan_sheet.png",
+  Laovai: "hands_laovai_sheet.png",
+  Pinki:  "hands_pinky_sheet.png",
+  Radio:  null,
+};
+
+export const HANDS_SHEET_FRAMES = 4;
+export const HANDS_SHEET_FRAME_W = 600;
+export const HANDS_SHEET_FRAME_H = 200;
+
 export interface KiteAssets {
   /** 704x384 sky + sea backdrop. */
   background: HTMLImageElement;
@@ -30,9 +45,12 @@ export interface KiteAssets {
   ship: HTMLImageElement;
   /** 300x100 first-person hands; spool center at (50%, 34%). */
   hands: HTMLImageElement;
-  /** 70x112 kites. */
+  /** Animated spool sheet for the same skin — null when not shipped yet. */
+  handsSheet: HTMLImageElement | null;
+  /** Kites (dimensions vary per sprite — read naturalWidth/Height). */
   kitePlayer: HTMLImageElement;
   kiteRival: HTMLImageElement;
+  kiteStb: HTMLImageElement;
   clouds: HTMLImageElement[];
 }
 
@@ -44,14 +62,17 @@ function img(path: string): HTMLImageElement {
 
 export function loadKiteAssets(): KiteAssets {
   const skin = loadSavedLoadout().skin ?? "Human";
+  const sheetFile = HANDS_SHEET_BY_SKIN[skin] ?? "hands_human_sheet.png";
   return {
     background: img("background.png"),
     border: img("details/border.png"),
     bird: img("details/bird1.png"),
     ship: img("details/ship_small1.png"),
     hands: img(`hands/${HANDS_BY_SKIN[skin] ?? "hands_human.png"}`),
+    handsSheet: sheetFile ? img(`hands/${sheetFile}`) : null,
     kitePlayer: img("kites/kite_brazil.png"),
     kiteRival: img("kites/kite_solana.png"),
+    kiteStb: img("kites/kite_stb.png"),
     clouds: [
       "cloud_small1.png", "cloud_small2.png", "cloud_small3.png",
       "cloud_small4.png", "cloud_small5.png", "cloud_small6.png",
@@ -61,6 +82,6 @@ export function loadKiteAssets(): KiteAssets {
   };
 }
 
-export function ready(i: HTMLImageElement | undefined): i is HTMLImageElement {
+export function ready(i: HTMLImageElement | null | undefined): i is HTMLImageElement {
   return !!i && i.complete && i.naturalWidth > 0;
 }
