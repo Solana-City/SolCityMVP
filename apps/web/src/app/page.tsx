@@ -225,7 +225,7 @@ export default function Home() {
             <>
               <div style={{
                 position: "fixed", zIndex: 20,
-                top: "max(env(safe-area-inset-top, 0px), 52px)",
+                top: "max(env(safe-area-inset-top, 0px), 12px)",
                 left: "max(env(safe-area-inset-left, 0px), 12px)",
                 display: "flex", flexDirection: "column", gap: 6,
               }}>
@@ -243,7 +243,10 @@ export default function Home() {
                     style={{
                       position: "absolute",
                       top: "max(env(safe-area-inset-top, 0px), 12px)",
-                      left: "max(env(safe-area-inset-left, 0px), 58px)",
+                      // To the right of the icon rail (rail left + 36px width
+                      // + gap), including on notched phones where the rail
+                      // itself is pushed in by the safe-area inset.
+                      left: "calc(max(env(safe-area-inset-left, 0px), 12px) + 46px)",
                       maxHeight: "calc(100dvh - 24px)", overflowY: "auto",
                     }}
                     onClick={e => e.stopPropagation()}

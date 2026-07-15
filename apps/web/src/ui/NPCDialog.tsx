@@ -96,6 +96,19 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
     return () => window.removeEventListener("keydown", handler);
   }, [npc, skipOrAdvance, onClose]);
 
+  // Mobile ACT button doubles as the dialog key: while a dialog is open,
+  // CityScene ignores touch:interact (interactionBlocked), so the press
+  // lands here and skips/advances exactly like E/Space on desktop.
+  useEffect(() => {
+    if (!npc) return;
+    const bus = (globalThis as any).__solCityGameEvents as
+      | { on: Function; off: Function } | undefined;
+    if (!bus) return;
+    const handler = () => skipOrAdvance();
+    bus.on("touch:interact", handler);
+    return () => { bus.off("touch:interact", handler); };
+  }, [npc, skipOrAdvance]);
+
   if (!npc) return null;
 
   const isLastLine  = lineIndex >= npc.dialog.length - 1;

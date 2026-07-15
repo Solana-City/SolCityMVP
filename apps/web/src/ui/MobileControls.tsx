@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { EMOJI_REGISTRY } from "@/game/chat/EmojiSystem";
 
 const JOYSTICK_RADIUS = 34; // px — max thumb travel from center
 
@@ -163,7 +162,6 @@ function SpriteButton({
 
 export default function MobileControls() {
   const [isTouch, setIsTouch] = useState(false);
-  const [showEmojis, setShowEmojis] = useState(false);
 
   useEffect(() => {
     const mq = window.matchMedia("(pointer: coarse)");
@@ -179,49 +177,9 @@ export default function MobileControls() {
     emitGame("touch:interact");
     if (typeof navigator.vibrate === "function") navigator.vibrate(18);
   };
-  const handleEmoji = (emoji: (typeof EMOJI_REGISTRY)[number]) => {
-    emitGame("emoji:trigger", emoji);
-    setShowEmojis(false);
-  };
 
   return (
     <>
-      {/* Emoji picker — above the action cluster */}
-      {showEmojis && (
-        <div
-          className="fixed z-30 flex flex-wrap gap-2 p-3 rounded-xl"
-          style={{
-            bottom: "calc(env(safe-area-inset-bottom, 0px) + 180px)",
-            right: "max(env(safe-area-inset-right, 0px), 16px)",
-            background: "rgba(10,10,30,0.94)",
-            border: "1px solid rgba(153,69,255,0.3)",
-            backdropFilter: "blur(6px)",
-            maxWidth: 200,
-          }}
-        >
-          {EMOJI_REGISTRY.map((em) => (
-            <button
-              key={em.id}
-              onPointerDown={(e) => { e.preventDefault(); handleEmoji(em); }}
-              style={{
-                background: `${em.color}20`,
-                border: `1px solid ${em.color}44`,
-                borderRadius: 8,
-                padding: "6px 8px",
-                color: em.color,
-                fontSize: "8px",
-                fontFamily: '"Press Start 2P", monospace',
-                cursor: "pointer",
-                touchAction: "none",
-              }}
-              title={em.label}
-            >
-              {em.uiSymbol}
-            </button>
-          ))}
-        </div>
-      )}
-
       {/* Bottom bar */}
       <div
         className="fixed z-30 bottom-0 left-0 right-0 flex justify-between items-end pointer-events-none"
@@ -236,21 +194,14 @@ export default function MobileControls() {
           <Joystick />
         </div>
 
-        {/* Right — action buttons */}
-        <div className="pointer-events-auto flex flex-col items-center gap-3">
+        {/* Right — ACT: interacts with NPCs and advances open dialogs */}
+        <div className="pointer-events-auto">
           <SpriteButton
             bg={`${UI}/btn_act_bg.png`}
             icon={`${UI}/btn_act.png`}
             size={87}
             alt="ACT"
             onPress={handleInteract}
-          />
-          <SpriteButton
-            bg={`${UI}/btn_emoji_bg.png`}
-            icon={showEmojis ? `${UI}/btn_emoji_X.png` : `${UI}/btn_emoji.png`}
-            size={63}
-            alt={showEmojis ? "Close emojis" : "Emojis"}
-            onPress={() => setShowEmojis((v) => !v)}
           />
         </div>
       </div>

@@ -246,6 +246,7 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
           onKeyDown={handleKeyDown}
           onFocus={handleFocus}
           onBlur={handleBlur}
+          enterKeyHint="send"
           placeholder={`${getChannelLabel(activeChannel, dmChannels)} chat...`}
           maxLength={140}
           className="flex-1 px-2 py-1.5 rounded outline-none"
@@ -257,6 +258,26 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
             fontSize: 8,
           }}
         />
+        {/* Touch keyboards don't always surface a reliable Enter — give
+            mobile an explicit send button. */}
+        {isTouch && (
+          <button
+            onClick={handleSend}
+            disabled={!input.trim()}
+            className="px-3 rounded cursor-pointer"
+            style={{
+              background: input.trim() ? "rgba(20,241,149,0.18)" : "rgba(10,10,30,0.94)",
+              color: input.trim() ? "#14F195" : "#555566",
+              border: `1px solid ${input.trim() ? "rgba(20,241,149,0.45)" : "rgba(153,69,255,0.2)"}`,
+              fontFamily: '"Press Start 2P", monospace',
+              fontSize: 10,
+              WebkitTapHighlightColor: "transparent",
+            }}
+            title="Send"
+          >
+            ▶
+          </button>
+        )}
       </div>
     </div>
   );
