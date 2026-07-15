@@ -91,12 +91,15 @@ module.exports = withPWA({
         handler: "NetworkOnly",
       },
       // Game static assets — cache aggressively (served from same origin /public)
-      // v4: bumped to bust old WebGL-era caches and force fresh asset loads
+      // v5: bumped again — desktop sessions that cached /assets/minigames/kite/
+      // before those files existed (or before they were wired up) were stuck
+      // serving the primitive-placeholder fallback indefinitely (CacheFirst
+      // never re-checks the network). New cache name forces a fresh fetch.
       {
         urlPattern: /\/assets\/(tilesets|sprites|maps|minigames|icons|ui)\//,
         handler: "CacheFirst",
         options: {
-          cacheName: "sc-game-assets-v4",
+          cacheName: "sc-game-assets-v5",
           expiration: {
             maxEntries: 200,
             maxAgeSeconds: 30 * 24 * 60 * 60, // 30 days
