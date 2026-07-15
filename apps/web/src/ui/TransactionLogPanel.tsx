@@ -242,7 +242,7 @@ function Header({
       >
         ONCHAIN LOG
       </div>
-      <div className="flex gap-2 text-xs" style={{ color: "#777788" }}>
+      <div className="flex gap-2" style={{ color: "#777788", fontSize: 7 }}>
         <span>{total} total</span>
         {pending > 0 && <span style={{ color: "#FFD700" }}>· {pending} pending</span>}
         {failed > 0 && <span style={{ color: "#F72585" }}>· {failed} failed</span>}
@@ -250,12 +250,13 @@ function Header({
       <div className="ml-auto flex items-center gap-3">
         <button
           onClick={onClear}
-          className="cursor-pointer text-xs"
+          className="cursor-pointer"
           style={{
             background: "none",
             border: "none",
             color: "#555566",
             textDecoration: "underline",
+            fontSize: 7,
           }}
           title="Clear log"
         >
@@ -263,8 +264,8 @@ function Header({
         </button>
         <button
           onClick={onClose}
-          className="cursor-pointer text-lg leading-none"
-          style={{ background: "none", border: "none", color: "#555566" }}
+          className="cursor-pointer leading-none"
+          style={{ background: "none", border: "none", color: "#555566", fontSize: 14 }}
           aria-label="Close log"
         >
           ×
@@ -337,7 +338,7 @@ function Filters({
 function FilterRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex items-center gap-2 flex-wrap">
-      <span className="text-xs" style={{ color: "#555566", width: 40 }}>
+      <span style={{ color: "#555566", width: 40, fontSize: 7 }}>
         {label}
       </span>
       {children}
@@ -378,8 +379,8 @@ function EntryList({ entries }: { entries: ReadonlyArray<TxEntry> }) {
   if (entries.length === 0) {
     return (
       <div
-        className="flex-1 flex items-center justify-center text-sm"
-        style={{ color: "#444455", padding: "24px" }}
+        className="flex-1 flex items-center justify-center"
+        style={{ color: "#444455", padding: "24px", fontSize: 9 }}
       >
         No transactions yet. Move around or interact with an NPC.
       </div>
@@ -420,7 +421,7 @@ function EntryRow({ entry }: { entry: TxEntry }) {
     >
       <PulseDot color={statusColor} active={entry.status === "pending"} />
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 text-xs">
+        <div className="flex items-center gap-2" style={{ fontSize: 8 }}>
           <span style={{ color: "#ccccdd" }}>{entry.label}</span>
           {entry.batchCount && entry.batchCount > 1 && (
             <span
@@ -469,8 +470,9 @@ function EntryRow({ entry }: { entry: TxEntry }) {
           href={explorerUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-xs flex-shrink-0"
+          className="flex-shrink-0"
           style={{
+            fontSize: 9,
             color: layerColor,
             textDecoration: "none",
             padding: "2px 6px",
