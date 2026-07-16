@@ -27,7 +27,7 @@ import {
   buildRecordMiniGameSessionIx,
   isProgramDeployed,
 } from "../solana/instructions";
-import { derivePlayerPDA, SOL_CITY_PROGRAM_ID } from "../solana/program";
+import { derivePlayerPDA, SOL_CITY_PROGRAM_ID, DELEGATION_PROGRAM_ID } from "../solana/program";
 import { transactionLog } from "../telemetry/transactionLog";
 
 // ── Endpoints ──────────────────────────────────────────────────────────
@@ -627,13 +627,16 @@ export class OnChainMultiplayer {
     try {
       const existing = await this.baseRpcWithRetry(() => this.baseConnection.getAccountInfo(playerPDA));
 
-      try {
-        const delegationRecord = delegationRecordPdaFromDelegatedAccount(playerPDA);
-        const recordInfo = await this.baseRpcWithRetry(() => this.baseConnection.getAccountInfo(delegationRecord));
-        isDelegated = recordInfo !== null;
-        console.log(`${isDelegated ? "✓ delegated" : "○ not delegated"} (on-chain check)`);
-      } catch (e: any) {
-        console.log("○ delegation check failed:", e?.message);
+      // Read delegation status straight off the account we already fetched
+      // (owner == delegation program while delegated) instead of a second,
+      // independently-fallible lookup. That second lookup used to swallow
+      // RPC errors (rate limits, network blips) and silently default to
+      // "not delegated" — which then sent authorize_session to the base
+      // layer against an account it no longer owns, failing every time with
+      // AccountOwnedByWrongProgram (custom 3007). One fetch, no failure mode.
+      if (existing) {
+        isDelegated = existing.owner.equals(DELEGATION_PROGRAM_ID);
+        console.log(`${isDelegated ? "✓ delegated" : "○ not delegated"} (owner check)`);
       }
 
       const sessionKey = this.sessionKeys.getSessionPublicKey();
