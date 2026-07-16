@@ -315,12 +315,32 @@ export class OnChainMultiplayer {
     if (!this.wallet) throw new Error("resetSession: not connected");
     const wallet = this.wallet;
     const displayName = this.knownPlayers.get(wallet.toBase58())?.displayName;
+    const [playerPDA] = derivePlayerPDA(wallet);
 
     this.disconnect();
-    // Give the ephemeral rollup a moment to land the undelegate tx before
-    // reconnecting — connecting too soon would still read the PDA as
-    // delegated and skip straight past the fresh delegate_pda flow again.
-    await new Promise((r) => setTimeout(r, 2500));
+
+    // Poll the BASE layer until ownership actually reverts to our program —
+    // a fixed sleep here previously reconnected before the ephemeral
+    // rollup's commit+undelegate had settled. Reconnecting too early reads
+    // the PDA as still delegated, so the client skips delegate_pda and
+    // re-authorizes on the (about to be torn down) old rollup session
+    // instead — moves work for a bit, then start failing once the rollup
+    // actually finishes undelegating out from under it.
+    const maxAttempts = 15; // ~12s worst case
+    for (let i = 0; i < maxAttempts; i++) {
+      await new Promise((r) => setTimeout(r, 800));
+      try {
+        const info = await this.baseRpcWithRetry(() => this.baseConnection.getAccountInfo(playerPDA));
+        if (info && !info.owner.equals(DELEGATION_PROGRAM_ID)) {
+          console.log(`[Multiplayer] undelegate settled on base layer after ${(i + 1) * 800}ms`);
+          break;
+        }
+      } catch { /* keep polling */ }
+      if (i === maxAttempts - 1) {
+        console.warn("[Multiplayer] undelegate didn't settle in time — reconnecting anyway");
+      }
+    }
+
     await this.connect(wallet, displayName);
   }
 
