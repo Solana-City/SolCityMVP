@@ -303,6 +303,27 @@ export class OnChainMultiplayer {
     this.knownPlayers.clear();
   }
 
+  /**
+   * Manual recovery: forces a fresh commit_and_undelegate + full reconnect,
+   * even mid-session. Use this to unstick a wallet whose PDA is delegated
+   * from a session that never cleanly undelegated (e.g. a closed tab) —
+   * without it, that wallet's every future connect attempt skips
+   * delegate_pda entirely (it already looks delegated) and never re-prompts
+   * for a fresh delegation signature.
+   */
+  async resetSession(): Promise<void> {
+    if (!this.wallet) throw new Error("resetSession: not connected");
+    const wallet = this.wallet;
+    const displayName = this.knownPlayers.get(wallet.toBase58())?.displayName;
+
+    this.disconnect();
+    // Give the ephemeral rollup a moment to land the undelegate tx before
+    // reconnecting — connecting too soon would still read the PDA as
+    // delegated and skip straight past the fresh delegate_pda flow again.
+    await new Promise((r) => setTimeout(r, 2500));
+    await this.connect(wallet, displayName);
+  }
+
   // ── Send input ────────────────────────────────────────────────────────
 
   sendInput(x: number, y: number, direction: string, isWalking: boolean): void {

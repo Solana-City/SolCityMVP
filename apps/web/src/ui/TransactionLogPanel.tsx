@@ -14,6 +14,7 @@ import {
 interface Props {
   isOpen: boolean;
   onToggle: () => void;
+  gameRef?: Phaser.Game | null;
 }
 
 /**
@@ -29,10 +30,34 @@ interface Props {
  *   - Filter chips are layered: kind AND status. This lets the player
  *     isolate "failed swaps" or "all moves in the last minute" quickly.
  */
-export default function TransactionLogPanel({ isOpen, onToggle }: Props) {
+export default function TransactionLogPanel({ isOpen, onToggle, gameRef }: Props) {
   const [entries, setEntries] = useState<ReadonlyArray<TxEntry>>([]);
   const [kindFilter, setKindFilter] = useState<TxKind | "all">("all");
   const [statusFilter, setStatusFilter] = useState<TxStatus | "all">("all");
+  const [resetting, setResetting] = useState(false);
+
+  // Manual recovery: force a fresh commit_and_undelegate + full reconnect.
+  // Unsticks a wallet whose PDA is delegated from a session that never
+  // cleanly undelegated (closed tab, crash) — without this, that wallet's
+  // future connects skip delegate_pda entirely since it already looks
+  // delegated, and never re-prompt for a fresh delegation signature.
+  const handleResetSession = async () => {
+    const scene = gameRef?.scene.getScene("CityScene") as
+      | (Phaser.Scene & { registry: Phaser.Data.DataManager })
+      | undefined;
+    const network = scene?.registry.get("network") as
+      | { resetSession: () => Promise<void> }
+      | undefined;
+    if (!network) return;
+    setResetting(true);
+    try {
+      await network.resetSession();
+    } catch (err: any) {
+      console.warn("[TransactionLogPanel] resetSession failed:", err?.message);
+    } finally {
+      setResetting(false);
+    }
+  };
 
   // Subscribe to log updates with throttled re-renders. We receive the
   // snapshot immediately and then coalesce further updates into animation
@@ -125,6 +150,8 @@ export default function TransactionLogPanel({ isOpen, onToggle }: Props) {
         failed={failedCount}
         onClear={() => transactionLog.clear()}
         onClose={onToggle}
+        onResetSession={gameRef ? handleResetSession : undefined}
+        resetting={resetting}
       />
       <Filters
         kindFilter={kindFilter}
@@ -220,12 +247,16 @@ function Header({
   failed,
   onClear,
   onClose,
+  onResetSession,
+  resetting,
 }: {
   total: number;
   pending: number;
   failed: number;
   onClear: () => void;
   onClose: () => void;
+  onResetSession?: () => void;
+  resetting?: boolean;
 }) {
   return (
     <div
@@ -248,6 +279,25 @@ function Header({
         {failed > 0 && <span style={{ color: "#F72585" }}>· {failed} failed</span>}
       </div>
       <div className="ml-auto flex items-center gap-3">
+        {onResetSession && (
+          <button
+            onClick={onResetSession}
+            disabled={resetting}
+            className="cursor-pointer"
+            style={{
+              background: "none",
+              border: "1px solid rgba(153,69,255,0.35)",
+              borderRadius: 4,
+              padding: "2px 6px",
+              color: resetting ? "#555566" : "#9945FF",
+              fontSize: 7,
+              opacity: resetting ? 0.6 : 1,
+            }}
+            title="Undelegate the current player PDA and reconnect from scratch — use this to force a fresh delegate_pda signature if your wallet's PDA is stuck delegated from a past session"
+          >
+            {resetting ? "resetting…" : "reset session"}
+          </button>
+        )}
         <button
           onClick={onClear}
           className="cursor-pointer"

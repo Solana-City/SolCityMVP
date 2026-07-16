@@ -324,6 +324,7 @@ export default function Home() {
                     <TransactionLogPanel
                       isOpen={logOpen}
                       onToggle={() => setLogOpen((v) => !v)}
+                      gameRef={game}
                     />
                   </div>
                   <div style={{ flexShrink: 0 }}>
