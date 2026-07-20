@@ -25,6 +25,25 @@ export const SHADOW_ALPHA = 0.28;
 /** Vertical squash of the mirrored silhouette (fraction of body height). */
 export const SHADOW_SQUASH = 0.45;
 
+/** Contact blob under the feet — the soft oval that grounds the character.
+ *  Layered UNDER the silhouette; where they overlap the shadow darkens
+ *  naturally, reading as contact occlusion. */
+export const BLOB_ALPHA = 0.16;
+/** Blob height as a fraction of its width. */
+export const BLOB_FLATNESS = 0.3;
+
+/**
+ * Creates the elliptical contact blob. `footY` is the container-local feet
+ * line; the ellipse centers there so its top half tucks behind the body.
+ */
+export function createContactBlob(
+  scene: Phaser.Scene,
+  footY: number,
+  widthPx: number,
+): Phaser.GameObjects.Ellipse {
+  return scene.add.ellipse(0, footY, widthPx, widthPx * BLOB_FLATNESS, 0x000000, BLOB_ALPHA);
+}
+
 const cache = new Map<string, { refs: number; bottomPad: number }>();
 
 function silhouetteKeyFor(textureKeys: string[]): string {

@@ -2,6 +2,7 @@ import * as Phaser from "phaser";
 import {
   acquireSilhouetteTexture,
   releaseSilhouetteTexture,
+  createContactBlob,
   SHADOW_ALPHA,
   SHADOW_SQUASH,
 } from "./characterShadow";
@@ -43,6 +44,8 @@ export class SimpleSprite {
   /** Mirrored silhouette under the feet — see characterShadow. */
   private shadowSprite: Phaser.GameObjects.Sprite | null = null;
   private shadowTextureKey: string | null = null;
+  /** Soft oval under the feet that grounds the character. */
+  private contactBlob: Phaser.GameObjects.Ellipse | null = null;
   private currentDirection: Direction = "down";
   private isWalking = false;
   private textureKey: string;
@@ -132,6 +135,14 @@ export class SimpleSprite {
   private buildShadow(): void {
     const frame = this.scene.textures.get(this.textureKey).get(0);
     if (!frame) return;
+
+    // Contact blob first (lowest layer) — oval hugging the feet, sized to
+    // roughly the body width at this sprite's render scale.
+    this.contactBlob = createContactBlob(
+      this.scene, this.sprite.y + 1, frame.width * this.sprite.scaleX * 0.62,
+    );
+    this.container.addAt(this.contactBlob, 0);
+
     const silhouette = acquireSilhouetteTexture(
       this.scene, [this.textureKey], frame.width, frame.height,
     );
@@ -150,7 +161,8 @@ export class SimpleSprite {
     // from the feet; X matches whatever scale the main sprite uses.
     shadow.setScale(base, -base * SHADOW_SQUASH);
     shadow.setAlpha(SHADOW_ALPHA);
-    this.container.addAt(shadow, 0);
+    // Above the blob, below the body sprite.
+    this.container.addAt(shadow, 1);
     this.shadowSprite = shadow;
     this.registerAnimations(silhouette.key);
 
@@ -166,6 +178,11 @@ export class SimpleSprite {
       this.container.remove(this.shadowSprite);
       this.shadowSprite.destroy();
       this.shadowSprite = null;
+    }
+    if (this.contactBlob) {
+      this.container.remove(this.contactBlob);
+      this.contactBlob.destroy();
+      this.contactBlob = null;
     }
     releaseSilhouetteTexture(this.scene, this.shadowTextureKey);
     this.shadowTextureKey = null;

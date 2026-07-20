@@ -2,6 +2,7 @@ import * as Phaser from "phaser";
 import {
   acquireSilhouetteTexture,
   releaseSilhouetteTexture,
+  createContactBlob,
   SHADOW_ALPHA,
   SHADOW_SQUASH,
 } from "./characterShadow";
@@ -221,6 +222,8 @@ export class AvatarSprite {
   /** Single silhouette sprite mirrored under the feet — see characterShadow. */
   private shadowSprite: Phaser.GameObjects.Sprite | null = null;
   private shadowTextureKey: string | null = null;
+  /** Soft oval under the feet that grounds the character. */
+  private contactBlob: Phaser.GameObjects.Ellipse | null = null;
   private currentDirection: Direction = "down";
   private currentLoadout: Loadout;
   private isWalking = false;
@@ -367,6 +370,13 @@ export class AvatarSprite {
    * the feet, squashed, translucent, animated with the same walk cycle.
    */
   private buildShadow(): void {
+    const FOOT_LINE = -2;
+    // Contact blob first (lowest layer): body is ~20 world px wide at the
+    // 0.5 render scale — the oval hugs the feet, top half hidden behind
+    // the body, bottom half visible as the ground contact.
+    this.contactBlob = createContactBlob(this.scene, FOOT_LINE + 1, 20);
+    this.container.addAt(this.contactBlob, 0);
+
     const layerKeys = [...this.layerSprites.values()].map((s) => s.texture.key);
     const silhouette = acquireSilhouetteTexture(
       this.scene, layerKeys, SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT,
@@ -388,7 +398,8 @@ export class AvatarSprite {
     // from the feet; X matches the 0.5 world scale of the 64px sheets.
     shadow.setScale(scale, -scale * SHADOW_SQUASH);
     shadow.setAlpha(SHADOW_ALPHA);
-    this.container.addAt(shadow, 0);
+    // Above the blob, below every body layer.
+    this.container.addAt(shadow, 1);
     this.shadowSprite = shadow;
     this.registerAnimations(silhouette.key);
   }
@@ -404,6 +415,11 @@ export class AvatarSprite {
       this.container.remove(this.shadowSprite);
       this.shadowSprite.destroy();
       this.shadowSprite = null;
+    }
+    if (this.contactBlob) {
+      this.container.remove(this.contactBlob);
+      this.contactBlob.destroy();
+      this.contactBlob = null;
     }
     releaseSilhouetteTexture(this.scene, this.shadowTextureKey);
     this.shadowTextureKey = null;
