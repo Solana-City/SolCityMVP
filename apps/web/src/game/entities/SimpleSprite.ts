@@ -38,17 +38,29 @@ export class SimpleSprite {
   private isWalking = false;
   private textureKey: string;
   private directionRow: DirectionRow;
+  /** Set for "static animated" NPCs — see registerAnimations() below. */
+  private idleLoopFrames?: number;
 
   constructor(
     scene: Phaser.Scene,
     x: number,
     y: number,
     textureKey: string,
-    directionRow: DirectionRow = PLAYER_DIRECTION_ROW
+    directionRow: DirectionRow = PLAYER_DIRECTION_ROW,
+    /**
+     * Frame count for a "static animated" sheet: a single row of N frames,
+     * always facing one direction, playing in a permanent loop. Used for
+     * NPCs that never wander (see NPCDefinition.spriteAnimation) — e.g. a
+     * kite-flyer whose arms/kite animate in place but who never turns or
+     * walks. When set, walk()/face()/idle() become no-ops and the 4-row
+     * walk-cycle contract (registerAnimations' default path) is skipped.
+     */
+    idleLoopFrames?: number,
   ) {
     this.scene = scene;
     this.textureKey = textureKey;
     this.directionRow = directionRow;
+    this.idleLoopFrames = idleLoopFrames;
 
     // Pixel-perfect anchoring with integer pixel mapping.
     //
@@ -80,7 +92,11 @@ export class SimpleSprite {
     this.container = scene.add.container(x, y, [this.sprite]);
 
     this.registerAnimations();
-    this.sprite.setFrame(0);
+    if (this.idleLoopFrames) {
+      this.sprite.anims.play({ key: `${textureKey}-idle-loop`, repeat: -1 });
+    } else {
+      this.sprite.setFrame(0);
+    }
   }
 
   get x(): number { return this.container.x; }
@@ -94,6 +110,7 @@ export class SimpleSprite {
   }
 
   walk(direction: Direction): void {
+    if (this.idleLoopFrames) return; // static animated NPC — never walks
     this.currentDirection = direction;
     const animKey = `${this.textureKey}-walk-${direction}`;
     const anim = this.scene.anims.get(animKey);
@@ -107,6 +124,7 @@ export class SimpleSprite {
 
   /** Stop walking and show the idle frame for the current direction. */
   idle(): void {
+    if (this.idleLoopFrames) return; // static animated NPC — always mid-loop
     if (!this.isWalking) return;
     this.isWalking = false;
     this.sprite.anims.stop();
@@ -116,6 +134,7 @@ export class SimpleSprite {
 
   /** Change facing direction instantly, no walk animation. */
   face(direction: Direction): void {
+    if (this.idleLoopFrames) return; // static animated NPC — always facing its one direction
     this.currentDirection = direction;
     this.isWalking = false;
     this.sprite.anims.stop();
@@ -141,6 +160,22 @@ export class SimpleSprite {
   }
 
   private registerAnimations(): void {
+    if (this.idleLoopFrames) {
+      // Static animated NPC: single row of N frames, always facing one
+      // direction, no walk cycle at all.
+      const key = `${this.textureKey}-idle-loop`;
+      if (!this.scene.anims.exists(key)) {
+        const frames = this.scene.anims.generateFrameNumbers(this.textureKey, {
+          start: 0,
+          end: this.idleLoopFrames - 1,
+        });
+        if (frames.length > 0) {
+          this.scene.anims.create({ key, frames, frameRate: 6, repeat: -1 });
+        }
+      }
+      return;
+    }
+
     const directions: Direction[] = ["down", "left", "right", "up"];
     const cols = 4;
 

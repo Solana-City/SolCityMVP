@@ -82,7 +82,10 @@ export class BootScene extends Phaser.Scene {
       const filename = npc.spriteKey.startsWith("avatar-")
         ? npc.spriteKey.replace(/^avatar-/, "")
         : npc.spriteKey.replace(/ /g, "%20");
-      SimpleSprite.load(this, npc.spriteKey, `assets/sprites/${filename}.png`, 64, 64);
+      // Static animated NPCs (idle-loop sheets) ship their own frame size —
+      // everyone else uses the standard 64×64 walk-cycle grid.
+      const { frameWidth, frameHeight } = npc.spriteAnimation ?? { frameWidth: 64, frameHeight: 64 };
+      SimpleSprite.load(this, npc.spriteKey, `assets/sprites/${filename}.png`, frameWidth, frameHeight);
     }
 
     // Paper doll sheets are small (256x256 each, ~5MB decoded in total) — load

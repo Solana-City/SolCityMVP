@@ -74,7 +74,10 @@ export class NPCSprite {
     const directionRow = spriteKey === "avatar-player" ? PLAYER_DIRECTION_ROW : NPC_DIRECTION_ROW;
 
     this.collisionLayers = collisionLayers ?? [];
-    this.avatar = new SimpleSprite(scene, x, y, spriteKey, directionRow);
+    this.avatar = new SimpleSprite(
+      scene, x, y, spriteKey, directionRow,
+      def.spriteAnimation?.frameCount,
+    );
 
     const container = this.getContainer();
     const colorHex = `#${def.color.toString(16).padStart(6, "0")}`;
@@ -173,7 +176,11 @@ export class NPCSprite {
     }
 
     container.setDepth(y);
-    this.startDeterministicBehavior();
+    // Static animated NPCs (spriteAnimation set) stay put, facing south,
+    // playing their idle-loop animation — no wandering to layer on top.
+    if (!def.spriteAnimation) {
+      this.startDeterministicBehavior();
+    }
   }
 
   get isInRange(): boolean {

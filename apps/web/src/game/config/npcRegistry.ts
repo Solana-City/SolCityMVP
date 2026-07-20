@@ -34,6 +34,20 @@ export interface NPCDefinition {
    * colored tile with the NPC's initial.
    */
   portrait?: string;
+  /**
+   * Set this for a "static animated" NPC: one that never wanders and
+   * always faces the same direction (typically south), but plays a
+   * looping animation in place (e.g. a kite flyer whose arms/kite move).
+   *
+   * The sprite sheet contract is different from the default 4-row walk
+   * grid: a single row of `frameCount` frames, all facing the same way.
+   * `spriteKey`'s file must match this layout when this is set.
+   */
+  spriteAnimation?: {
+    frameWidth: number;
+    frameHeight: number;
+    frameCount: number;
+  };
 }
 
 export const NPC_REGISTRY: NPCDefinition[] = [
