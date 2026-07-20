@@ -26,7 +26,10 @@ export function makePedestrianLoadout(seed: number): Loadout {
     ? "Human"
     : pick(LAYER_VARIANTS.skin.filter(v => v.id !== "Human"), rng).id;
 
-  const eyesFace = rng() < 0.95 ? "Happy" : "Terminator";
+  // 90% Happy, 10% spread across the other face variants
+  const eyesFace = rng() < 0.90
+    ? "Happy"
+    : pick(LAYER_VARIANTS.eyesFace.filter(v => v.id !== "Happy"), rng).id;
   // Avatar hair (blue arrow) is very rare — 2% of hair picks
   const commonHair = LAYER_VARIANTS.hair.filter(h => h.id !== "Avatar");
   const hair = rng() < 0.02 ? "Avatar" : pick(commonHair, rng).id;
