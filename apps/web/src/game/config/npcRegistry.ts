@@ -106,12 +106,12 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     action: { type: "minigame", label: "Launch Kite", miniGameId: "kite-clash" },
     spriteKey: "Kite Pro",
     // Idle-loop sheet: 8 frames, always facing south, never wanders.
-    // Character occupies roughly the bottom 100px of the 190px frame (the
-    // kite banner fills the rest, above the head) — 0.32 makes the character
-    // match other NPCs' usual on-screen height instead of the sheet's
-    // default 0.5 auto-scale, which rendered the whole (much taller) frame
-    // at nearly double size.
-    spriteAnimation: { frameWidth: 116, frameHeight: 190, frameCount: 8, scale: 0.32 },
+    // Pixel-measured (not eyeballed): a standard NPC's own character art
+    // (e.g. Sol.png) only fills ~56px of its 64px frame, displayed at 0.5
+    // scale -> 28px on screen. Kite Pro's character (excluding the kite
+    // banner above the head) measures ~101px within its 190px frame.
+    // 28 / 101 ≈ 0.28 matches that same on-screen height.
+    spriteAnimation: { frameWidth: 116, frameHeight: 190, frameCount: 8, scale: 0.28 },
   },
   {
     id: "swap-npc",

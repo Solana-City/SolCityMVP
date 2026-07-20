@@ -13,6 +13,7 @@ import {
   getVariant,
   SPRITE_FRAME_WIDTH,
   SPRITE_FRAME_HEIGHT,
+  DIRECTION_ROW,
 } from "@/game/config/paperDoll";
 
 const CHROMA_R = 215, CHROMA_G = 123, CHROMA_B = 186, CHROMA_TOL = 30;
@@ -30,11 +31,15 @@ function removeChroma(ctx: CanvasRenderingContext2D, w: number, h: number) {
   ctx.putImageData(d, 0, 0);
 }
 
-function AvatarPreview({ loadout }: { loadout: Loadout }) {
+function AvatarPreview({ loadout, facingUp }: { loadout: Loadout; facingUp?: boolean }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const SCALE = 3;
   const FW = SPRITE_FRAME_WIDTH * SCALE;
   const FH = SPRITE_FRAME_HEIGHT * SCALE;
+  // Backpacks are worn on the back — from the front only the strap tops
+  // peek over the shoulders, so browsing that category previews the
+  // character facing away (north) instead of the usual front-facing pose.
+  const rowY = (facingUp ? DIRECTION_ROW.up : DIRECTION_ROW.down) * SPRITE_FRAME_HEIGHT;
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -67,31 +72,41 @@ function AvatarPreview({ loadout }: { loadout: Loadout }) {
         offByCategory.set(cat, off);
       }
 
-      // Cap the hair to the hat's tallest point (this preview only ever
-      // shows the "down" idle frame, so only that single cell needs it).
+      // Cap the hair to the hat's tallest point across EVERY direction row
+      // (not just the row this preview happens to show) so switching
+      // direction later never reveals hair poking through — each row can
+      // have a different silhouette, so the cutoff must be the minimum
+      // (tallest-reaching) across all of them, not just the first one found.
       const hatOff = offByCategory.get("hat");
       const hairOff = offByCategory.get("hair");
       if (hatOff && hairOff) {
         const hatCtx = hatOff.getContext("2d")!;
-        const hatData = hatCtx.getImageData(0, 0, SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT).data;
+        const hatData = hatCtx.getImageData(0, 0, hatOff.width, hatOff.height).data;
         let cutoffRow = SPRITE_FRAME_HEIGHT;
-        outer:
-        for (let y = 0; y < SPRITE_FRAME_HEIGHT; y++) {
-          for (let x = 0; x < SPRITE_FRAME_WIDTH; x++) {
-            if (hatData[(y * SPRITE_FRAME_WIDTH + x) * 4 + 3] > 10) { cutoffRow = y; break outer; }
+        for (let rowStart = 0; rowStart < hatOff.height; rowStart += SPRITE_FRAME_HEIGHT) {
+          rowScan:
+          for (let y = 0; y < SPRITE_FRAME_HEIGHT; y++) {
+            for (let x = 0; x < hatOff.width; x++) {
+              if (hatData[((rowStart + y) * hatOff.width + x) * 4 + 3] > 10) {
+                cutoffRow = Math.min(cutoffRow, y);
+                break rowScan;
+              }
+            }
           }
         }
-        if (cutoffRow < SPRITE_FRAME_HEIGHT) {
+        if (cutoffRow < SPRITE_FRAME_HEIGHT && cutoffRow > 0) {
           const hairCtx = hairOff.getContext("2d")!;
-          const hairData = hairCtx.getImageData(0, 0, SPRITE_FRAME_WIDTH, cutoffRow);
-          hairData.data.fill(0);
-          hairCtx.putImageData(hairData, 0, 0);
+          for (let row = 0; row < hairOff.height; row += SPRITE_FRAME_HEIGHT) {
+            const hairData = hairCtx.getImageData(0, row, SPRITE_FRAME_WIDTH, cutoffRow);
+            hairData.data.fill(0);
+            hairCtx.putImageData(hairData, 0, row);
+          }
         }
       }
 
       for (const { cat } of imgs) {
         const off = offByCategory.get(cat)!;
-        ctx.drawImage(off, 0, 0, SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT, 0, 0, FW, FH);
+        ctx.drawImage(off, 0, rowY, SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT, 0, 0, FW, FH);
       }
     };
 
@@ -105,7 +120,7 @@ function AvatarPreview({ loadout }: { loadout: Loadout }) {
       imgs.push({ img, cat });
       img.onload = () => { loaded++; if (loaded === imgs.length) draw(); };
     }
-  }, [loadout, FW, FH]);
+  }, [loadout, FW, FH, rowY]);
 
   return (
     <canvas
@@ -302,7 +317,7 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
                 alignItems: "center",
                 justifyContent: "center",
               }}>
-                <AvatarPreview loadout={loadout} />
+                <AvatarPreview loadout={loadout} facingUp={activeCategory === "back"} />
               </div>
               <span style={{ fontSize: 7, color: "#444466", letterSpacing: 1 }}>PREVIEW</span>
             </div>

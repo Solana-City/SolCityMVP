@@ -3,23 +3,24 @@ export type Direction = "down" | "left" | "right" | "up";
 /**
  * Paper doll layer categories in render order (back to front).
  * Matches the spriter's numbered folders:
- *   4_Back  → back (jetpack/backpacks — rendered behind everything else,
- *             including skin, so the body/clothes overlap it and only the
- *             straps + the part wider than the body silhouette show)
  *   6_Base → skin
  *   3_Face → eyesFace
  *   5_Legs → pants
  *   4_Clothes → tshirt
+ *   4_Back  → back (jetpack/backpacks — worn OVER clothes: the "up" frame
+ *             shows the full pack on the back, "down" shows just the strap
+ *             tops over the shoulders. Rendering it before tshirt hid the
+ *             whole thing behind the shirt from every angle.)
  *   1_Accessory → accessory
  *   2_Hair → hair
  *   0_Head → hat
  */
 export const LAYER_ORDER = [
-  "back",
   "skin",
   "eyesFace",
   "pants",
   "tshirt",
+  "back",
   "accessory",
   "hair",
   "hat",

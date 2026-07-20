@@ -14,15 +14,18 @@ import {
 } from "../config/paperDoll";
 
 // Cache: hat textureKey -> topmost opaque row (0..SPRITE_FRAME_HEIGHT) found in
-// its "down" idle frame. SPRITE_FRAME_HEIGHT means "no ink found" (no masking).
+// any of its 4 direction rows. SPRITE_FRAME_HEIGHT means "no ink found" (no masking).
 const hatCoverageRowCache = new Map<string, number>();
 
 /**
- * Scans a hat sheet's "down, frame 0" cell for the highest row (smallest y)
- * containing any non-transparent pixel — i.e. the tallest point the hat's
- * art actually reaches. Hair above this row is only visible because the
- * artist drew it taller than any hat expects; it reads as poking out
- * through the hat, which is the bug getHairTextureFor() below corrects.
+ * Scans a hat sheet for the highest row (smallest row-relative y) containing
+ * any non-transparent pixel, checking all 4 direction rows and taking the
+ * minimum (tallest-reaching) — a hat can sit higher in one direction than
+ * another, so using just one row's cutoff for every direction under-masks
+ * whichever direction's hat art reaches higher than the sampled one. Hair
+ * above this row is only visible because the artist drew it taller than any
+ * hat expects; it reads as poking out through the hat, which is the bug
+ * getHairTextureFor() below corrects.
  */
 function getHatCoverageRow(scene: Phaser.Scene, hatTextureKey: string): number {
   const cached = hatCoverageRowCache.get(hatTextureKey);
@@ -33,25 +36,24 @@ function getHatCoverageRow(scene: Phaser.Scene, hatTextureKey: string): number {
     const texture = scene.textures.get(hatTextureKey);
     const source = texture.source[0];
     const img = source.image as CanvasImageSource;
+    const sheetW = source.width;
+    const sheetH = source.height;
 
     const canvas = document.createElement("canvas");
-    canvas.width = SPRITE_FRAME_WIDTH;
-    canvas.height = SPRITE_FRAME_HEIGHT;
+    canvas.width = sheetW;
+    canvas.height = sheetH;
     const ctx = canvas.getContext("2d")!;
-    const downRow = DIRECTION_ROW.down;
-    ctx.drawImage(
-      img as CanvasImageSource,
-      0, downRow * SPRITE_FRAME_HEIGHT, SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT,
-      0, 0, SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT,
-    );
-    const data = ctx.getImageData(0, 0, SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT).data;
+    ctx.drawImage(img, 0, 0);
+    const data = ctx.getImageData(0, 0, sheetW, sheetH).data;
 
-    outer:
-    for (let y = 0; y < SPRITE_FRAME_HEIGHT; y++) {
-      for (let x = 0; x < SPRITE_FRAME_WIDTH; x++) {
-        if (data[(y * SPRITE_FRAME_WIDTH + x) * 4 + 3] > 10) {
-          topRow = y;
-          break outer;
+    for (let rowStart = 0; rowStart < sheetH; rowStart += SPRITE_FRAME_HEIGHT) {
+      rowScan:
+      for (let y = 0; y < SPRITE_FRAME_HEIGHT; y++) {
+        for (let x = 0; x < sheetW; x++) {
+          if (data[((rowStart + y) * sheetW + x) * 4 + 3] > 10) {
+            topRow = Math.min(topRow, y);
+            break rowScan;
+          }
         }
       }
     }
