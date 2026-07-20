@@ -368,22 +368,27 @@ export class AvatarSprite {
    */
   private buildShadow(): void {
     const layerKeys = [...this.layerSprites.values()].map((s) => s.texture.key);
-    const key = acquireSilhouetteTexture(
+    const silhouette = acquireSilhouetteTexture(
       this.scene, layerKeys, SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT,
     );
-    if (!key) return;
-    this.shadowTextureKey = key;
+    if (!silhouette) return;
+    this.shadowTextureKey = silhouette.key;
 
     const FOOT_Y_LOCAL = -2;
-    const shadow = this.scene.add.sprite(0, FOOT_Y_LOCAL + 1, key);
+    const scale = 0.5;
+    // The sheet's empty margin below the feet doubles when mirrored — shift
+    // the shadow up by 2x the (scaled) margin so silhouette feet meet the
+    // character's feet, anchoring it to the ground instead of floating.
+    const shadowY = FOOT_Y_LOCAL - 2 * silhouette.bottomPad * scale + 1;
+    const shadow = this.scene.add.sprite(0, shadowY, silhouette.key);
     shadow.setOrigin(0.5, 1.0);
     // Negative Y scale with a bottom origin mirrors the silhouette downward
     // from the feet; X matches the 0.5 world scale of the 64px sheets.
-    shadow.setScale(0.5, -0.5 * SHADOW_SQUASH);
+    shadow.setScale(scale, -scale * SHADOW_SQUASH);
     shadow.setAlpha(SHADOW_ALPHA);
     this.container.addAt(shadow, 0);
     this.shadowSprite = shadow;
-    this.registerAnimations(key);
+    this.registerAnimations(silhouette.key);
   }
 
   private destroyLayers(): void {

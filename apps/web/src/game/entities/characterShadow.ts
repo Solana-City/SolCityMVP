@@ -25,10 +25,21 @@ export const SHADOW_ALPHA = 0.28;
 /** Vertical squash of the mirrored silhouette (fraction of body height). */
 export const SHADOW_SQUASH = 0.45;
 
-const cache = new Map<string, { refs: number }>();
+const cache = new Map<string, { refs: number; bottomPad: number }>();
 
 function silhouetteKeyFor(textureKeys: string[]): string {
   return `shadow--${textureKeys.join("+")}`;
+}
+
+export interface SilhouetteTexture {
+  key: string;
+  /**
+   * Empty source rows between the character's lowest inked pixel and the
+   * frame bottom. Mirroring doubles this margin into a visible gap between
+   * feet and shadow — callers shift the shadow up by 2x this (scaled) so
+   * the silhouette's feet meet the character's feet exactly.
+   */
+  bottomPad: number;
 }
 
 /**
@@ -40,14 +51,14 @@ export function acquireSilhouetteTexture(
   textureKeys: string[],
   frameWidth: number,
   frameHeight: number,
-): string | null {
+): SilhouetteTexture | null {
   if (textureKeys.length === 0) return null;
   const key = silhouetteKeyFor(textureKeys);
 
   const entry = cache.get(key);
   if (entry && scene.textures.exists(key)) {
     entry.refs++;
-    return key;
+    return { key, bottomPad: entry.bottomPad };
   }
 
   const first = scene.textures.get(textureKeys[0]);
@@ -72,13 +83,39 @@ export function acquireSilhouetteTexture(
   ctx.fillStyle = "#000000";
   ctx.fillRect(0, 0, w, h);
 
+  // Measure the empty margin below the feet: for each frame band, find the
+  // lowest inked row; the band whose art reaches furthest down defines the
+  // padding (min across bands), so the anchor never overshoots.
+  let bottomPad = 0;
+  try {
+    const data = ctx.getImageData(0, 0, w, h).data;
+    const bands = Math.max(1, Math.floor(h / frameHeight));
+    let minPad = frameHeight;
+    for (let band = 0; band < bands; band++) {
+      const rowStart = band * frameHeight;
+      let lastInked = -1;
+      for (let y = frameHeight - 1; y >= 0; y--) {
+        const rowOffset = (rowStart + y) * w * 4;
+        for (let x = 0; x < w; x++) {
+          if (data[rowOffset + x * 4 + 3] > 10) { lastInked = y; break; }
+        }
+        if (lastInked >= 0) break;
+      }
+      if (lastInked >= 0) minPad = Math.min(minPad, frameHeight - 1 - lastInked);
+    }
+    if (minPad < frameHeight) bottomPad = minPad;
+  } catch {
+    // Reading pixels can fail on exotic sources — a zero pad only costs a
+    // slightly lower shadow, never a crash.
+  }
+
   if (scene.textures.exists(key)) scene.textures.remove(key);
   const tex = scene.textures.addCanvas(key, canvas);
   if (!tex) return null;
   (Phaser.Textures.Parsers as any).SpriteSheet(tex, 0, 0, 0, w, h, { frameWidth, frameHeight });
 
-  cache.set(key, { refs: 1 });
-  return key;
+  cache.set(key, { refs: 1, bottomPad });
+  return { key, bottomPad };
 }
 
 /** Drops one reference; frees the texture once no character uses it. */

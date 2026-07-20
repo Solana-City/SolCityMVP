@@ -132,24 +132,29 @@ export class SimpleSprite {
   private buildShadow(): void {
     const frame = this.scene.textures.get(this.textureKey).get(0);
     if (!frame) return;
-    const key = acquireSilhouetteTexture(
+    const silhouette = acquireSilhouetteTexture(
       this.scene, [this.textureKey], frame.width, frame.height,
     );
-    if (!key) return;
-    this.shadowTextureKey = key;
+    if (!silhouette) return;
+    this.shadowTextureKey = silhouette.key;
 
-    const shadow = this.scene.add.sprite(0, this.sprite.y + 1, key);
+    const base = this.sprite.scaleX; // 0.5 for native 64px sheets, 1 otherwise
+    // Shift up by 2x the sheet's scaled below-feet margin (it doubles when
+    // mirrored) so the silhouette's feet meet the character's feet instead
+    // of floating a gap below them.
+    const shadowY = this.sprite.y - 2 * silhouette.bottomPad * base + 1;
+    const shadow = this.scene.add.sprite(0, shadowY, silhouette.key);
     shadow.setOrigin(0.5, 1.0);
     // Negative Y scale with a bottom origin mirrors the silhouette downward
     // from the feet; X matches whatever scale the main sprite uses.
-    shadow.setScale(this.sprite.scaleX, -this.sprite.scaleX * SHADOW_SQUASH);
+    shadow.setScale(base, -base * SHADOW_SQUASH);
     shadow.setAlpha(SHADOW_ALPHA);
     this.container.addAt(shadow, 0);
     this.shadowSprite = shadow;
-    this.registerAnimations(key);
+    this.registerAnimations(silhouette.key);
 
     if (this.idleLoopFrames) {
-      shadow.anims.play({ key: `${key}-idle-loop`, repeat: -1 });
+      shadow.anims.play({ key: `${silhouette.key}-idle-loop`, repeat: -1 });
     } else {
       shadow.setFrame(this.sprite.frame.name);
     }
