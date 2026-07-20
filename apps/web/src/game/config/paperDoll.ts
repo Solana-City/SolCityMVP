@@ -41,6 +41,18 @@ export interface LayerVariant {
    * skips loading its texture. Defaults to true (present) when omitted.
    */
   enabled?: boolean;
+  /**
+   * Only meaningful for the "hat" category — controls how hair masking
+   * treats this item (see AvatarSprite.ts's getHairTextureFor):
+   *   "full" (default) — a cap/helmet/crown that encloses the top of the
+   *     head. Hair is erased from the top of the frame down to wherever
+   *     this hat's own ink starts, per column, since a real hat like this
+   *     would hide everything above its brim.
+   *   "band"  — a headband/bandana that only wraps the forehead. Hair is
+   *     erased ONLY exactly where this item's own pixels are opaque —
+   *     the crown above it, and everything below it, must stay visible.
+   */
+  hatCoverage?: "full" | "band";
 }
 
 /**
@@ -133,7 +145,7 @@ export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
     { id: "Vizard_hat", name: "Vizard Hat", textureKey: "pd-hat-Vizard_hat", file: "hat/Vizard_hat.png" },
     { id: "hat_black",  name: "Black Hat",  textureKey: "pd-hat-hat_black",  file: "hat/hat_black.png" },
     { id: "hat_red",    name: "Red Hat",    textureKey: "pd-hat-hat_red",    file: "hat/hat_red.png" },
-    { id: "red_belt",   name: "Red Bandana",textureKey: "pd-hat-red_belt",   file: "hat/red_belt.png" },
+    { id: "red_belt",   name: "Red Bandana",textureKey: "pd-hat-red_belt",   file: "hat/red_belt.png", hatCoverage: "band" },
   ],
 };
 

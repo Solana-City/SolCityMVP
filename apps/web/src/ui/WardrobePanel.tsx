@@ -72,31 +72,45 @@ function AvatarPreview({ loadout, facingUp }: { loadout: Loadout; facingUp?: boo
         offByCategory.set(cat, off);
       }
 
-      // Cap the hair to the hat's own silhouette in the row this preview is
-      // showing (rowY) — per column, not a single row-wide cutoff, so hair
-      // wider than the hat (afros, mohawks) is masked exactly where the hat
-      // actually covers it and left alone where the hat doesn't reach at all.
+      // Cap the hair to the equipped hat's coverage in the row this preview
+      // is showing (rowY). Two styles (LayerVariant.hatCoverage):
+      //   "full" (default) — per-column cutoff from the hat's own silhouette,
+      //     so hair wider/taller than the hat is masked exactly where the
+      //     hat covers it and left alone where it doesn't reach at all.
+      //   "band" — a headband/bandana only wraps the forehead; mask ONLY
+      //     exactly where the band's own pixels are opaque, so the crown
+      //     above it and everything below stay visible.
       const hatOff = offByCategory.get("hat");
       const hairOff = offByCategory.get("hair");
+      const hatVariantVal = getVariant("hat", loadout.hat);
       if (hatOff && hairOff) {
         const hatCtx = hatOff.getContext("2d")!;
         const hatData = hatCtx.getImageData(0, rowY, SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT).data;
-        const cutoffs = new Array<number>(SPRITE_FRAME_WIDTH).fill(SPRITE_FRAME_HEIGHT);
-        for (let x = 0; x < SPRITE_FRAME_WIDTH; x++) {
-          for (let y = 0; y < SPRITE_FRAME_HEIGHT; y++) {
-            if (hatData[(y * SPRITE_FRAME_WIDTH + x) * 4 + 3] > 10) { cutoffs[x] = y; break; }
+        const hairCtx = hairOff.getContext("2d")!;
+        const hairData = hairCtx.getImageData(0, rowY, SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT);
+
+        if (hatVariantVal?.hatCoverage === "band") {
+          let masked = false;
+          for (let i = 0; i < hatData.length; i += 4) {
+            if (hatData[i + 3] > 10) { hairData.data[i + 3] = 0; masked = true; }
           }
-        }
-        if (cutoffs.some(c => c < SPRITE_FRAME_HEIGHT)) {
-          const hairCtx = hairOff.getContext("2d")!;
-          const hairData = hairCtx.getImageData(0, rowY, SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT);
+          if (masked) hairCtx.putImageData(hairData, 0, rowY);
+        } else {
+          const cutoffs = new Array<number>(SPRITE_FRAME_WIDTH).fill(SPRITE_FRAME_HEIGHT);
           for (let x = 0; x < SPRITE_FRAME_WIDTH; x++) {
-            const cutoff = cutoffs[x];
-            for (let y = 0; y < cutoff; y++) {
-              hairData.data[(y * SPRITE_FRAME_WIDTH + x) * 4 + 3] = 0;
+            for (let y = 0; y < SPRITE_FRAME_HEIGHT; y++) {
+              if (hatData[(y * SPRITE_FRAME_WIDTH + x) * 4 + 3] > 10) { cutoffs[x] = y; break; }
             }
           }
-          hairCtx.putImageData(hairData, 0, rowY);
+          if (cutoffs.some(c => c < SPRITE_FRAME_HEIGHT)) {
+            for (let x = 0; x < SPRITE_FRAME_WIDTH; x++) {
+              const cutoff = cutoffs[x];
+              for (let y = 0; y < cutoff; y++) {
+                hairData.data[(y * SPRITE_FRAME_WIDTH + x) * 4 + 3] = 0;
+              }
+            }
+            hairCtx.putImageData(hairData, 0, rowY);
+          }
         }
       }
 
