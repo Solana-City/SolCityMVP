@@ -102,6 +102,13 @@ export class BootScene extends Phaser.Scene {
 
     const isMobile = window.matchMedia("(pointer: coarse)").matches;
 
+    // Static animated NPCs (idle-loop sheets, e.g. Kite Pro) ship with the
+    // same pink chroma-key background as the paperdoll sheets — key each
+    // one out at its own frame size before either path below starts.
+    const animatedNpcSheets = NPC_REGISTRY.filter(
+      (npc) => npc.spriteKey && npc.spriteAnimation && this.textures.exists(npc.spriteKey)
+    );
+
     if (isMobile) {
       // Process chroma key one sprite per requestAnimationFrame so we
       // never block the main thread for more than ~30ms at a time
@@ -113,6 +120,11 @@ export class BootScene extends Phaser.Scene {
       const processNext = () => {
         if (i < variants.length) {
           applyChromaKey(this, variants[i].variant.textureKey);
+          i++;
+          requestAnimationFrame(processNext);
+        } else if (i < variants.length + animatedNpcSheets.length) {
+          const npc = animatedNpcSheets[i - variants.length];
+          applyChromaKey(this, npc.spriteKey!, npc.spriteAnimation!.frameWidth, npc.spriteAnimation!.frameHeight);
           i++;
           requestAnimationFrame(processNext);
         } else {
@@ -129,6 +141,9 @@ export class BootScene extends Phaser.Scene {
       if (this.textures.exists(variant.textureKey)) {
         applyChromaKey(this, variant.textureKey);
       }
+    }
+    for (const npc of animatedNpcSheets) {
+      applyChromaKey(this, npc.spriteKey!, npc.spriteAnimation!.frameWidth, npc.spriteAnimation!.frameHeight);
     }
 
     waitForGameFont(() => this.scene.start("CityScene"));
@@ -155,7 +170,12 @@ function waitForGameFont(onReady: () => void): void {
  * chroma-key color removed (set to alpha 0). Re-registers frame data so
  * Phaser treats it identically to the original spritesheet.
  */
-function applyChromaKey(scene: Phaser.Scene, key: string): void {
+function applyChromaKey(
+  scene: Phaser.Scene,
+  key: string,
+  frameWidth: number = SPRITE_FRAME_WIDTH,
+  frameHeight: number = SPRITE_FRAME_HEIGHT,
+): void {
   const texture = scene.textures.get(key);
   const source = texture.source[0];
   const img = source.image as HTMLImageElement;
@@ -189,6 +209,6 @@ function applyChromaKey(scene: Phaser.Scene, key: string): void {
   (Phaser.Textures.Parsers as any).SpriteSheet(
     newTex, 0,
     0, 0, w, h,
-    { frameWidth: SPRITE_FRAME_WIDTH, frameHeight: SPRITE_FRAME_HEIGHT }
+    { frameWidth, frameHeight }
   );
 }

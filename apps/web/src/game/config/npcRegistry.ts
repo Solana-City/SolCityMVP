@@ -95,6 +95,8 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     ],
     action: { type: "minigame", label: "Launch Kite", miniGameId: "kite-clash" },
     spriteKey: "Kite Pro",
+    // Idle-loop sheet: 8 frames, always facing south, never wanders.
+    spriteAnimation: { frameWidth: 116, frameHeight: 190, frameCount: 8 },
   },
   {
     id: "swap-npc",
