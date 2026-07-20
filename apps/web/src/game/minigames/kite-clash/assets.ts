@@ -12,7 +12,7 @@ const BASE = "/assets/minigames/kite";
 // Paper-doll skin id → first-person hands sprite. The spriter ships one
 // hands sheet per base skin so the minigame matches the player's avatar.
 const HANDS_BY_SKIN: Record<string, string> = {
-  Human:  "hands_human.png",
+  Light:  "hands_human.png",
   Feyan:  "hands_feyan.png",
   Laovai: "hands_laovai.png",
   Pinki:  "hands_pinky.png",
@@ -23,7 +23,7 @@ const HANDS_BY_SKIN: Record<string, string> = {
 // same on-screen size as the 300x100 static). Radio has no sheet yet — it
 // falls back to the static hands.
 const HANDS_SHEET_BY_SKIN: Record<string, string | null> = {
-  Human:  "hands_human_sheet.png",
+  Light:  "hands_human_sheet.png",
   Feyan:  "hands_feyan_sheet.png",
   Laovai: "hands_laovai_sheet.png",
   Pinki:  "hands_pinky_sheet.png",
@@ -61,7 +61,7 @@ function img(path: string): HTMLImageElement {
 }
 
 export function loadKiteAssets(): KiteAssets {
-  const skin = loadSavedLoadout().skin ?? "Human";
+  const skin = loadSavedLoadout().skin ?? "Light";
   const sheetFile = HANDS_SHEET_BY_SKIN[skin] ?? "hands_human_sheet.png";
   return {
     background: img("background.png"),

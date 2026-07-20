@@ -21,10 +21,10 @@ function pick<T>(arr: T[], rng: () => number): T {
 export function makePedestrianLoadout(seed: number): Loadout {
   const rng = mulberry32(seed);
 
-  // 90% Human, 10% spread equally across other skins
+  // 90% Light, 10% spread equally across other skins
   const skin = rng() < 0.90
-    ? "Human"
-    : pick(LAYER_VARIANTS.skin.filter(v => v.id !== "Human"), rng).id;
+    ? "Light"
+    : pick(LAYER_VARIANTS.skin.filter(v => v.id !== "Light"), rng).id;
 
   // 90% Happy, 10% spread across the other face variants
   const eyesFace = rng() < 0.90

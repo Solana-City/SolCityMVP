@@ -67,7 +67,7 @@ export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
     { id: "backpack_red",    name: "Red Backpack",   textureKey: "pd-back-backpack_red",    file: "back/backpack_red.png" },
   ],
   skin: [
-    { id: "Human",      name: "Human",      textureKey: "pd-skin-Human",      file: "skin/Human.png" },
+    { id: "Light",      name: "Light",      textureKey: "pd-skin-Light",      file: "skin/Light.png" },
     { id: "Feyan",      name: "Feyan",      textureKey: "pd-skin-Feyan",      file: "skin/Feyan.png" },
     { id: "Laovai",     name: "Laovai",     textureKey: "pd-skin-Laovai",     file: "skin/Laovai.png" },
     { id: "Pinki",      name: "Pinki",      textureKey: "pd-skin-Pinki",      file: "skin/Pinki.png" },
@@ -129,7 +129,7 @@ export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
 
 /** Default starter loadout. Hat, accessory start empty (optional). */
 export const DEFAULT_LOADOUT: Loadout = {
-  skin: "Human",
+  skin: "Light",
   eyesFace: "Happy",
   pants: "Blue_pants",
   tshirt: "Blue_tshirt",
@@ -168,7 +168,14 @@ export function saveLoadout(loadout: Loadout): void {
 export function loadSavedLoadout(): Loadout {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return JSON.parse(raw) as Loadout;
+    if (raw) {
+      const loadout = JSON.parse(raw) as Loadout;
+      // "Human" was renamed to "Light" (color-based skin names, no racial
+      // labeling) — remap existing saves so returning players don't lose
+      // their skin layer entirely.
+      if ((loadout.skin as string) === "Human") loadout.skin = "Light";
+      return loadout;
+    }
   } catch {}
   return { ...DEFAULT_LOADOUT };
 }
