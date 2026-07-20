@@ -371,10 +371,10 @@ export class AvatarSprite {
    */
   private buildShadow(): void {
     const FOOT_LINE = -2;
-    // Contact blob first (lowest layer): body is ~20 world px wide at the
-    // 0.5 render scale — the oval hugs the feet, top half hidden behind
-    // the body, bottom half visible as the ground contact.
-    this.contactBlob = createContactBlob(this.scene, FOOT_LINE + 1, 20);
+    // Contact blob first (lowest layer): narrower than the body and centered
+    // right on the feet line, so it reads as a subtle contact patch peeking
+    // out under the feet — not a puddle.
+    this.contactBlob = createContactBlob(this.scene, FOOT_LINE, 14);
     this.container.addAt(this.contactBlob, 0);
 
     const layerKeys = [...this.layerSprites.values()].map((s) => s.texture.key);

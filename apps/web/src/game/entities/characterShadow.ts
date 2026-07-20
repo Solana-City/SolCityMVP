@@ -28,9 +28,9 @@ export const SHADOW_SQUASH = 0.45;
 /** Contact blob under the feet — the soft oval that grounds the character.
  *  Layered UNDER the silhouette; where they overlap the shadow darkens
  *  naturally, reading as contact occlusion. */
-export const BLOB_ALPHA = 0.16;
+export const BLOB_ALPHA = 0.12;
 /** Blob height as a fraction of its width. */
-export const BLOB_FLATNESS = 0.3;
+export const BLOB_FLATNESS = 0.26;
 
 /**
  * Creates the elliptical contact blob. `footY` is the container-local feet

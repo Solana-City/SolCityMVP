@@ -136,10 +136,10 @@ export class SimpleSprite {
     const frame = this.scene.textures.get(this.textureKey).get(0);
     if (!frame) return;
 
-    // Contact blob first (lowest layer) — oval hugging the feet, sized to
-    // roughly the body width at this sprite's render scale.
+    // Contact blob first (lowest layer) — narrower than the body and
+    // centered on the feet line: a subtle contact patch, not a puddle.
     this.contactBlob = createContactBlob(
-      this.scene, this.sprite.y + 1, frame.width * this.sprite.scaleX * 0.62,
+      this.scene, this.sprite.y, frame.width * this.sprite.scaleX * 0.45,
     );
     this.container.addAt(this.contactBlob, 0);
 

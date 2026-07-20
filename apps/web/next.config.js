@@ -90,16 +90,33 @@ module.exports = withPWA({
         urlPattern: /magicblock/,
         handler: "NetworkOnly",
       },
-      // Game static assets — cache aggressively (served from same origin /public)
-      // v5: bumped again — desktop sessions that cached /assets/minigames/kite/
-      // before those files existed (or before they were wired up) were stuck
-      // serving the primitive-placeholder fallback indefinitely (CacheFirst
-      // never re-checks the network). New cache name forces a fresh fetch.
+      // Maps + tilesets are COUPLED to the code build: a stale map JSON (or
+      // a stale tileset PNG) against fresh code crashes tilemap parsing at
+      // boot ("Cannot read properties of undefined" in ParseTilesets).
+      // NetworkFirst keeps them always fresh online — Vercel answers cheap
+      // 304s — while the cache remains as an offline fallback. CacheFirst
+      // here required a manual cache-name bump on every map/tileset deploy,
+      // and every forgotten bump shipped a boot crash.
       {
-        urlPattern: /\/assets\/(tilesets|sprites|maps|minigames|icons|ui)\//,
+        urlPattern: /\/assets\/(tilesets|maps)\//,
+        handler: "NetworkFirst",
+        options: {
+          cacheName: "sc-map-data-v1",
+          networkTimeoutSeconds: 5,
+          expiration: {
+            maxEntries: 60,
+            maxAgeSeconds: 30 * 24 * 60 * 60, // 30 days
+          },
+        },
+      },
+      // Remaining game art (sprites, minigames, ui) — cache aggressively;
+      // a stale sprite is a visual nit, never a crash.
+      // v6: flush entries poisoned while maps/tilesets still lived here.
+      {
+        urlPattern: /\/assets\/(sprites|minigames|icons|ui)\//,
         handler: "CacheFirst",
         options: {
-          cacheName: "sc-game-assets-v5",
+          cacheName: "sc-game-assets-v6",
           expiration: {
             maxEntries: 200,
             maxAgeSeconds: 30 * 24 * 60 * 60, // 30 days
