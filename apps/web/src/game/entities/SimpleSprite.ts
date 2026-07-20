@@ -1,4 +1,10 @@
 import * as Phaser from "phaser";
+import {
+  acquireSilhouetteTexture,
+  releaseSilhouetteTexture,
+  SHADOW_ALPHA,
+  SHADOW_SQUASH,
+} from "./characterShadow";
 
 export type Direction = "down" | "left" | "right" | "up";
 export type DirectionRow = Record<Direction, number>;
@@ -34,6 +40,9 @@ export class SimpleSprite {
   private scene: Phaser.Scene;
   private sprite: Phaser.GameObjects.Sprite;
   private container: Phaser.GameObjects.Container;
+  /** Mirrored silhouette under the feet — see characterShadow. */
+  private shadowSprite: Phaser.GameObjects.Sprite | null = null;
+  private shadowTextureKey: string | null = null;
   private currentDirection: Direction = "down";
   private isWalking = false;
   private textureKey: string;
@@ -112,6 +121,48 @@ export class SimpleSprite {
     } else {
       this.sprite.setFrame(0);
     }
+    this.buildShadow();
+  }
+
+  /**
+   * Silhouette shadow: a black-ink copy of this character's sheet mirrored
+   * below the feet, squashed and translucent. It runs the same animations
+   * as the main sprite, so the projected outline always matches the pose.
+   */
+  private buildShadow(): void {
+    const frame = this.scene.textures.get(this.textureKey).get(0);
+    if (!frame) return;
+    const key = acquireSilhouetteTexture(
+      this.scene, [this.textureKey], frame.width, frame.height,
+    );
+    if (!key) return;
+    this.shadowTextureKey = key;
+
+    const shadow = this.scene.add.sprite(0, this.sprite.y + 1, key);
+    shadow.setOrigin(0.5, 1.0);
+    // Negative Y scale with a bottom origin mirrors the silhouette downward
+    // from the feet; X matches whatever scale the main sprite uses.
+    shadow.setScale(this.sprite.scaleX, -this.sprite.scaleX * SHADOW_SQUASH);
+    shadow.setAlpha(SHADOW_ALPHA);
+    this.container.addAt(shadow, 0);
+    this.shadowSprite = shadow;
+    this.registerAnimations(key);
+
+    if (this.idleLoopFrames) {
+      shadow.anims.play({ key: `${key}-idle-loop`, repeat: -1 });
+    } else {
+      shadow.setFrame(this.sprite.frame.name);
+    }
+  }
+
+  private destroyShadow(): void {
+    if (this.shadowSprite) {
+      this.container.remove(this.shadowSprite);
+      this.shadowSprite.destroy();
+      this.shadowSprite = null;
+    }
+    releaseSilhouetteTexture(this.scene, this.shadowTextureKey);
+    this.shadowTextureKey = null;
   }
 
   get x(): number { return this.container.x; }
@@ -147,7 +198,14 @@ export class SimpleSprite {
     if (this.sprite.anims.isPlaying && this.sprite.anims.currentAnim?.key === animKey) return;
     this.isWalking = true;
     // Start at frame 1 (mid-stride) so even a single-frame tap shows visible movement.
-    this.sprite.anims.play({ key: animKey, startFrame: Math.min(1, anim.frames.length - 1) });
+    const startFrame = Math.min(1, anim.frames.length - 1);
+    this.sprite.anims.play({ key: animKey, startFrame });
+    if (this.shadowSprite && this.shadowTextureKey) {
+      const shadowKey = `${this.shadowTextureKey}-walk-${direction}`;
+      if (this.scene.anims.exists(shadowKey)) {
+        this.shadowSprite.anims.play({ key: shadowKey, startFrame });
+      }
+    }
   }
 
   /** Stop walking and show the idle frame for the current direction. */
@@ -158,6 +216,7 @@ export class SimpleSprite {
     this.sprite.anims.stop();
     const row = this.directionRow[this.currentDirection];
     this.sprite.setFrame(row * 4);
+    this.syncShadowFrame(row * 4);
   }
 
   /** Change facing direction instantly, no walk animation. */
@@ -168,6 +227,13 @@ export class SimpleSprite {
     this.sprite.anims.stop();
     const row = this.directionRow[direction];
     this.sprite.setFrame(row * 4);
+    this.syncShadowFrame(row * 4);
+  }
+
+  private syncShadowFrame(frameIndex: number): void {
+    if (!this.shadowSprite) return;
+    this.shadowSprite.anims.stop();
+    this.shadowSprite.setFrame(frameIndex);
   }
 
   updateDepth(): void {
@@ -180,20 +246,28 @@ export class SimpleSprite {
     if (directionRow) this.directionRow = directionRow;
     this.sprite.setTexture(textureKey);
     this.registerAnimations();
+    this.destroyShadow();
+    this.buildShadow();
     this.idle();
   }
 
   destroy(): void {
+    // Container destruction takes the sprites with it — only the shared
+    // silhouette texture reference needs explicit release.
+    releaseSilhouetteTexture(this.scene, this.shadowTextureKey);
+    this.shadowTextureKey = null;
     this.container.destroy();
   }
 
-  private registerAnimations(): void {
+  /** Registers animations for a sheet. Defaults to the character's own
+   *  texture; also used for its silhouette shadow texture (same grid). */
+  private registerAnimations(textureKey: string = this.textureKey): void {
     if (this.idleLoopFrames) {
       // Static animated NPC: single row of N frames, always facing one
       // direction, no walk cycle at all.
-      const key = `${this.textureKey}-idle-loop`;
+      const key = `${textureKey}-idle-loop`;
       if (!this.scene.anims.exists(key)) {
-        const frames = this.scene.anims.generateFrameNumbers(this.textureKey, {
+        const frames = this.scene.anims.generateFrameNumbers(textureKey, {
           start: 0,
           end: this.idleLoopFrames - 1,
         });
@@ -209,10 +283,10 @@ export class SimpleSprite {
 
     for (const dir of directions) {
       const row = this.directionRow[dir];
-      const key = `${this.textureKey}-walk-${dir}`;
+      const key = `${textureKey}-walk-${dir}`;
 
       if (!this.scene.anims.exists(key)) {
-        const frames = this.scene.anims.generateFrameNumbers(this.textureKey, {
+        const frames = this.scene.anims.generateFrameNumbers(textureKey, {
           start: row * cols,
           end: row * cols + cols - 1,
         });

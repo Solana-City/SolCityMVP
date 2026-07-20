@@ -1,5 +1,11 @@
 import * as Phaser from "phaser";
 import {
+  acquireSilhouetteTexture,
+  releaseSilhouetteTexture,
+  SHADOW_ALPHA,
+  SHADOW_SQUASH,
+} from "./characterShadow";
+import {
   Direction,
   DIRECTION_ROW,
   SPRITE_FRAME_WIDTH,
@@ -212,6 +218,9 @@ export class AvatarSprite {
   private scene: Phaser.Scene;
   private container: Phaser.GameObjects.Container;
   private layerSprites: Map<LayerCategory, Phaser.GameObjects.Sprite> = new Map();
+  /** Single silhouette sprite mirrored under the feet — see characterShadow. */
+  private shadowSprite: Phaser.GameObjects.Sprite | null = null;
+  private shadowTextureKey: string | null = null;
   private currentDirection: Direction = "down";
   private currentLoadout: Loadout;
   private isWalking = false;
@@ -261,7 +270,7 @@ export class AvatarSprite {
   walk(direction: Direction): void {
     this.currentDirection = direction;
     this.isWalking = true;
-    for (const sprite of this.layerSprites.values()) {
+    for (const sprite of this.animatedSprites()) {
       const key = `${sprite.texture.key}-walk-${direction}`;
       const anim = this.scene.anims.get(key);
       if (!anim || anim.frames.length === 0) continue;
@@ -280,10 +289,17 @@ export class AvatarSprite {
     if (!this.isWalking) return;
     this.isWalking = false;
     const row = DIRECTION_ROW[this.currentDirection];
-    for (const sprite of this.layerSprites.values()) {
+    for (const sprite of this.animatedSprites()) {
       sprite.anims.stop();
       sprite.setFrame(row * SPRITE_COLS);
     }
+  }
+
+  /** All sprites that follow the walk cycle — the layers plus the shadow. */
+  private animatedSprites(): Phaser.GameObjects.Sprite[] {
+    const sprites: Phaser.GameObjects.Sprite[] = [...this.layerSprites.values()];
+    if (this.shadowSprite) sprites.push(this.shadowSprite);
+    return sprites;
   }
 
   /**
@@ -336,11 +352,38 @@ export class AvatarSprite {
       this.registerAnimations(textureKey);
     }
 
+    this.buildShadow();
+
     // Set initial idle frame
     const row = DIRECTION_ROW[this.currentDirection];
-    for (const sprite of this.layerSprites.values()) {
+    for (const sprite of this.animatedSprites()) {
       sprite.setFrame(row * SPRITE_COLS);
     }
+  }
+
+  /**
+   * One silhouette sprite composited from every equipped layer — the shadow
+   * matches the character's actual outline, traits included. Mirrored below
+   * the feet, squashed, translucent, animated with the same walk cycle.
+   */
+  private buildShadow(): void {
+    const layerKeys = [...this.layerSprites.values()].map((s) => s.texture.key);
+    const key = acquireSilhouetteTexture(
+      this.scene, layerKeys, SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT,
+    );
+    if (!key) return;
+    this.shadowTextureKey = key;
+
+    const FOOT_Y_LOCAL = -2;
+    const shadow = this.scene.add.sprite(0, FOOT_Y_LOCAL + 1, key);
+    shadow.setOrigin(0.5, 1.0);
+    // Negative Y scale with a bottom origin mirrors the silhouette downward
+    // from the feet; X matches the 0.5 world scale of the 64px sheets.
+    shadow.setScale(0.5, -0.5 * SHADOW_SQUASH);
+    shadow.setAlpha(SHADOW_ALPHA);
+    this.container.addAt(shadow, 0);
+    this.shadowSprite = shadow;
+    this.registerAnimations(key);
   }
 
   private destroyLayers(): void {
@@ -349,6 +392,14 @@ export class AvatarSprite {
       sprite.destroy();
     }
     this.layerSprites.clear();
+
+    if (this.shadowSprite) {
+      this.container.remove(this.shadowSprite);
+      this.shadowSprite.destroy();
+      this.shadowSprite = null;
+    }
+    releaseSilhouetteTexture(this.scene, this.shadowTextureKey);
+    this.shadowTextureKey = null;
   }
 
   private registerAnimations(textureKey: string): void {
