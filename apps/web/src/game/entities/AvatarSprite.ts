@@ -376,10 +376,12 @@ export class AvatarSprite {
 
     const FOOT_Y_LOCAL = -2;
     const scale = 0.5;
-    // The sheet's empty margin below the feet doubles when mirrored — shift
-    // the shadow up by 2x the (scaled) margin so silhouette feet meet the
-    // character's feet, anchoring it to the ground instead of floating.
-    const shadowY = FOOT_Y_LOCAL - 2 * silhouette.bottomPad * scale + 1;
+    // Exact mirror geometry: the character's feet ink sits bottomPad rows
+    // above the frame bottom (scaled by `scale`), and the mirrored copy adds
+    // that margin again (scaled by scale*SQUASH). Shift up by both, plus a
+    // fixed 2px tuck under the body, so the shadow always starts at the
+    // feet — never floating below them.
+    const shadowY = FOOT_Y_LOCAL - silhouette.bottomPad * scale * (1 + SHADOW_SQUASH) - 2;
     const shadow = this.scene.add.sprite(0, shadowY, silhouette.key);
     shadow.setOrigin(0.5, 1.0);
     // Negative Y scale with a bottom origin mirrors the silhouette downward

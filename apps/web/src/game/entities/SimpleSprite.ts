@@ -139,10 +139,11 @@ export class SimpleSprite {
     this.shadowTextureKey = silhouette.key;
 
     const base = this.sprite.scaleX; // 0.5 for native 64px sheets, 1 otherwise
-    // Shift up by 2x the sheet's scaled below-feet margin (it doubles when
-    // mirrored) so the silhouette's feet meet the character's feet instead
-    // of floating a gap below them.
-    const shadowY = this.sprite.y - 2 * silhouette.bottomPad * base + 1;
+    // Exact mirror geometry: feet ink sits bottomPad rows above the frame
+    // bottom (scaled by base) and the mirrored copy adds that margin again
+    // (scaled by base*SQUASH). Shift up by both plus a fixed 2px tuck under
+    // the body so the shadow always starts at the feet.
+    const shadowY = this.sprite.y - silhouette.bottomPad * base * (1 + SHADOW_SQUASH) - 2;
     const shadow = this.scene.add.sprite(0, shadowY, silhouette.key);
     shadow.setOrigin(0.5, 1.0);
     // Negative Y scale with a bottom origin mirrors the silhouette downward
