@@ -132,8 +132,12 @@ function AvatarPreview({ loadout, facingUp }: { loadout: Loadout; facingUp?: boo
   );
 }
 
-function ChromaPreview({ file, size }: { file: string; size: number }) {
+function ChromaPreview({ file, size, facingUp }: { file: string; size: number; facingUp?: boolean }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  // Backpacks are barely visible from the front (just the strap tops) —
+  // show the "up" (back) row instead so items are actually distinguishable
+  // in the selection grid.
+  const rowY = (facingUp ? DIRECTION_ROW.up : DIRECTION_ROW.down) * SPRITE_FRAME_HEIGHT;
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -149,9 +153,9 @@ function ChromaPreview({ file, size }: { file: string; size: number }) {
       const oc = off.getContext("2d")!;
       oc.drawImage(img, 0, 0);
       removeChroma(oc, img.naturalWidth, img.naturalHeight);
-      ctx.drawImage(off, 0, 0, SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT, 0, 0, size, size);
+      ctx.drawImage(off, 0, rowY, SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT, 0, 0, size, size);
     };
-  }, [file, size]);
+  }, [file, size, rowY]);
   return (
     <canvas
       ref={canvasRef}
@@ -425,7 +429,7 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
                       isFlashing={isFlashing}
                       onClick={() => selectVariant(activeCategory, v.id)}
                     >
-                      <ChromaPreview file={v.file} size={64} />
+                      <ChromaPreview file={v.file} size={64} facingUp={activeCategory === "back"} />
                       <span style={{
                         color: isSelected ? "#c084fc" : "#aaaacc",
                         lineHeight: 1.3,
