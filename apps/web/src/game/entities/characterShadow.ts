@@ -127,8 +127,19 @@ export function releaseSilhouetteTexture(scene: Phaser.Scene, key: string | null
   if (entry.refs > 0) return;
   cache.delete(key);
   try {
+    // The animations registered for this texture MUST die with it. They
+    // live in the global AnimationManager holding references to the
+    // texture's frames; if the same silhouette key is ever re-acquired
+    // (e.g. toggling outfits back and forth in the wardrobe), the consumer's
+    // "anims.exists(key) → skip create" check would happily reuse the stale
+    // animation whose frames point at the DESTROYED texture — crashing the
+    // next walk() with "Cannot read properties of null (reading
+    // 'sourceSize')".
+    for (const suffix of ["walk-down", "walk-left", "walk-right", "walk-up", "idle-loop"]) {
+      scene.anims.remove(`${key}-${suffix}`);
+    }
     scene.textures.remove(key);
   } catch {
-    // Scene teardown may have already destroyed the texture manager.
+    // Scene teardown may have already destroyed the managers.
   }
 }

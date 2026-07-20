@@ -258,11 +258,12 @@ export class SimpleSprite {
   }
 
   destroy(): void {
-    // Container destruction takes the sprites with it — only the shared
-    // silhouette texture reference needs explicit release.
+    // Destroy the sprites BEFORE releasing the shared silhouette texture —
+    // release may remove the texture and its animations, which must never
+    // happen while a live sprite still plays them.
+    this.container.destroy();
     releaseSilhouetteTexture(this.scene, this.shadowTextureKey);
     this.shadowTextureKey = null;
-    this.container.destroy();
   }
 
   /** Registers animations for a sheet. Defaults to the character's own
