@@ -88,18 +88,21 @@ export class NPCSprite {
 
     // ── Label stack (bottom → top) ──────────────────────────────────────────
     //
-    //   nameY - 18  →  [! bubble] or [interact prompt]
+    //   nameY - 21  →  [! bubble] or [interact prompt]
     //   nameY       →  [ Name ]
     //   y = 0       →  [feet]
     //
     // Anchored to the sprite's own rendered height (32 for a standard NPC,
-    // the same margins the old hardcoded -38/-56 implied) rather than fixed
+    // margins roughly matching the old hardcoded -38/-56) rather than fixed
     // pixels, so a taller sheet — e.g. Kite Pro's kite banner above the
     // head — doesn't have its name/prompt drawn over the top of the sprite.
     // The "!" and the prompt share the same slot (toggle visibility).
     const visualHeight = this.avatar.getVisualHeight();
     const nameY = -(visualHeight + 6);
-    const exclamationY = -(visualHeight + 24);
+    // A bit more headroom than name's own +6 (was +24) so the smaller
+    // balloon below still clears the name text at rest, not just at the
+    // top of its bounce.
+    const exclamationY = -(visualHeight + 27);
 
     // ── Name label ───────────────────────────────────────────────────────────
     this.nameText = scene.add.text(0, nameY, def.name, {
@@ -117,15 +120,16 @@ export class NPCSprite {
     const balloonKey = `attention-${attentionVariantFor(def.color)}`;
     if (scene.textures.exists(balloonKey)) {
       this.exclamationImg = scene.add.image(0, 0, balloonKey);
-      // 64x64 source rendered at 20px world — same footprint as the old
-      // 8px-radius circle, with room for the sprite's outline.
-      this.exclamationImg.setDisplaySize(20, 20);
+      // 64x64 source rendered at 16px world (20px reduced 20%) — still
+      // enough room for the sprite's outline, and clears the name below.
+      this.exclamationImg.setDisplaySize(16, 16);
       this.exclamation = scene.add.container(0, exclamationY, [this.exclamationImg]);
     } else {
-      // Fallback: primitive circle + "!" (texture failed to load).
-      this.exclamationBg = scene.add.circle(0, 0, 8, def.color);
+      // Fallback: primitive circle + "!" (texture failed to load), also
+      // reduced 20% (8 -> 6.4, 9px -> 7px) to match.
+      this.exclamationBg = scene.add.circle(0, 0, 6.4, def.color);
       this.exclamationText = scene.add.text(0, 0, "!", {
-        fontSize: "9px", fontFamily: "monospace",
+        fontSize: "7px", fontFamily: "monospace",
         color: "#ffffff", fontStyle: "bold",
         resolution: 2,
       }).setOrigin(0.5, 0.5);
