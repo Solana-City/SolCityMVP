@@ -30,9 +30,16 @@ export function makePedestrianLoadout(seed: number): Loadout {
   const eyesFace = rng() < 0.90
     ? "Happy"
     : pick(getEnabledVariants("eyesFace").filter(v => v.id !== "Happy"), rng).id;
-  // Avatar hair (blue arrow) is very rare — 2% of hair picks
-  const commonHair = getEnabledVariants("hair").filter(h => h.id !== "Avatar");
-  const hair = rng() < 0.02 ? "Avatar" : pick(commonHair, rng).id;
+  // Avatar hair (blue arrow) is very rare — 2% of hair picks. The 3 Magawk
+  // colors are treated as one rare 6%-total bucket rather than 3 slots in
+  // the common pool — otherwise having 3 color variants of the same
+  // hairstyle made mohawks collectively as common as a whole extra
+  // hairstyle, so they felt overrepresented in a crowd.
+  const mohawks = getEnabledVariants("hair").filter(h => h.id.startsWith("Magawk"));
+  const commonHair = getEnabledVariants("hair").filter(h => h.id !== "Avatar" && !h.id.startsWith("Magawk"));
+  const hair = rng() < 0.02 ? "Avatar"
+    : rng() < 0.06 ? pick(mohawks, rng).id
+    : pick(commonHair, rng).id;
   const tshirt   = pick(getEnabledVariants("tshirt"), rng).id;
   const pants    = pick(getEnabledVariants("pants"),  rng).id;
 
