@@ -13,25 +13,29 @@ import {
   getVariant,
 } from "../config/paperDoll";
 
-// Cache: hat textureKey -> topmost opaque row (0..SPRITE_FRAME_HEIGHT) found in
-// any of its 4 direction rows. SPRITE_FRAME_HEIGHT means "no ink found" (no masking).
-const hatCoverageRowCache = new Map<string, number>();
+// Cache: hat textureKey -> per-direction-row array of per-column topmost
+// opaque row (row-relative y, 0..SPRITE_FRAME_HEIGHT). SPRITE_FRAME_HEIGHT
+// in a given column means "the hat has no ink in that column for that
+// direction" — i.e. don't mask hair there at all.
+const hatColumnCutoffsCache = new Map<string, number[][]>();
 
 /**
- * Scans a hat sheet for the highest row (smallest row-relative y) containing
- * any non-transparent pixel, checking all 4 direction rows and taking the
- * minimum (tallest-reaching) — a hat can sit higher in one direction than
- * another, so using just one row's cutoff for every direction under-masks
- * whichever direction's hat art reaches higher than the sampled one. Hair
- * above this row is only visible because the artist drew it taller than any
- * hat expects; it reads as poking out through the hat, which is the bug
- * getHairTextureFor() below corrects.
+ * Per-column, per-direction hat silhouette scan — for every column x (across
+ * the full sheet width, so all 4 walk frames are covered independently) and
+ * every direction row, finds the topmost row containing any non-transparent
+ * pixel. A flat row-wide cutoff (this function's previous version) only
+ * handles hair that's taller than the hat; it can't stop hair from showing
+ * past the hat's left/right edges — a bare/skinny hat column next to a wide
+ * afro or mohawk left hair visible at the same height the hat sits, just to
+ * the side of it. Masking per column instead follows the hat's actual
+ * silhouette, which is the standard technique for this in sprite-layered
+ * games (occluder's own shape, not just its bounding height).
  */
-function getHatCoverageRow(scene: Phaser.Scene, hatTextureKey: string): number {
-  const cached = hatCoverageRowCache.get(hatTextureKey);
+function getHatColumnCutoffs(scene: Phaser.Scene, hatTextureKey: string): number[][] {
+  const cached = hatColumnCutoffsCache.get(hatTextureKey);
   if (cached !== undefined) return cached;
 
-  let topRow = SPRITE_FRAME_HEIGHT;
+  const bands: number[][] = [[], [], [], []];
   try {
     const texture = scene.textures.get(hatTextureKey);
     const source = texture.source[0];
@@ -46,21 +50,23 @@ function getHatCoverageRow(scene: Phaser.Scene, hatTextureKey: string): number {
     ctx.drawImage(img, 0, 0);
     const data = ctx.getImageData(0, 0, sheetW, sheetH).data;
 
-    for (let rowStart = 0; rowStart < sheetH; rowStart += SPRITE_FRAME_HEIGHT) {
-      rowScan:
-      for (let y = 0; y < SPRITE_FRAME_HEIGHT; y++) {
-        for (let x = 0; x < sheetW; x++) {
+    for (let band = 0; band < SPRITE_ROWS; band++) {
+      const rowStart = band * SPRITE_FRAME_HEIGHT;
+      const cutoffs = new Array<number>(sheetW).fill(SPRITE_FRAME_HEIGHT);
+      for (let x = 0; x < sheetW; x++) {
+        for (let y = 0; y < SPRITE_FRAME_HEIGHT; y++) {
           if (data[((rowStart + y) * sheetW + x) * 4 + 3] > 10) {
-            topRow = Math.min(topRow, y);
-            break rowScan;
+            cutoffs[x] = y;
+            break;
           }
         }
       }
+      bands[band] = cutoffs;
     }
-  } catch { /* leave topRow at "no masking" default */ }
+  } catch { /* bands stay all-SPRITE_FRAME_HEIGHT ("no masking") on failure */ }
 
-  hatCoverageRowCache.set(hatTextureKey, topRow);
-  return topRow;
+  hatColumnCutoffsCache.set(hatTextureKey, bands);
+  return bands;
 }
 
 // Cache: `${hairTextureKey}--${hatTextureKey}` -> derived, capped-hair texture key.
@@ -68,17 +74,19 @@ const cappedHairTextureCache = new Map<string, string>();
 
 /**
  * Returns a texture key for the hair sheet with anything above the
- * equipped hat's tallest point erased, so tall hairstyles (afros,
- * mohawks) don't poke out through/above the hat. Generates the derived
- * texture once per (hair, hat) pair and reuses it after; returns the
- * original hairTextureKey unchanged if the hat has no measurable coverage
- * (e.g. its texture failed to load) or no hat is equipped.
+ * equipped hat's silhouette (per column, per direction) erased, so tall or
+ * wide hairstyles (afros, mohawks) don't poke out through/above/beside the
+ * hat. Generates the derived texture once per (hair, hat) pair and reuses
+ * it after; returns the original hairTextureKey unchanged if the hat has no
+ * measurable coverage (e.g. its texture failed to load) or no hat is
+ * equipped.
  */
 function getHairTextureFor(scene: Phaser.Scene, hairTextureKey: string, hatTextureKey: string | undefined): string {
   if (!hatTextureKey || !scene.textures.exists(hatTextureKey)) return hairTextureKey;
 
-  const cutoffRow = getHatCoverageRow(scene, hatTextureKey);
-  if (cutoffRow >= SPRITE_FRAME_HEIGHT) return hairTextureKey; // no ink found — nothing to mask against
+  const bands = getHatColumnCutoffs(scene, hatTextureKey);
+  const hasAnyCoverage = bands.some(cutoffs => cutoffs.some(c => c < SPRITE_FRAME_HEIGHT));
+  if (!hasAnyCoverage) return hairTextureKey; // no ink found anywhere — nothing to mask against
 
   const cacheKey = `${hairTextureKey}--capped--${hatTextureKey}`;
   if (cappedHairTextureCache.has(cacheKey)) return cappedHairTextureCache.get(cacheKey)!;
@@ -99,16 +107,18 @@ function getHairTextureFor(scene: Phaser.Scene, hairTextureKey: string, hatTextu
   const ctx = canvas.getContext("2d")!;
   ctx.drawImage(img, 0, 0);
 
-  // Erase rows [0, cutoffRow) within every direction row of the sheet —
-  // same absolute cutoff for all four directions (an approximation; the
-  // hat's silhouette is measured from its "down" frame only, but its peak
-  // height doesn't vary enough between directions to be worth 4x the work).
+  // For every direction band, erase each column's hair pixels from the top
+  // of the frame down to that column's own hat cutoff — columns the hat
+  // doesn't cover at all (cutoff === SPRITE_FRAME_HEIGHT) are left untouched,
+  // so hair beside a narrower hat still shows normally.
   const imageData = ctx.getImageData(0, 0, w, h);
   const data = imageData.data;
-  for (let row = 0; row < SPRITE_ROWS; row++) {
-    const rowYStart = row * SPRITE_FRAME_HEIGHT;
-    for (let y = rowYStart; y < rowYStart + cutoffRow; y++) {
-      for (let x = 0; x < w; x++) {
+  for (let band = 0; band < SPRITE_ROWS && band < bands.length; band++) {
+    const rowStart = band * SPRITE_FRAME_HEIGHT;
+    const cutoffs = bands[band];
+    for (let x = 0; x < w; x++) {
+      const cutoff = cutoffs[x] ?? SPRITE_FRAME_HEIGHT;
+      for (let y = rowStart; y < rowStart + cutoff; y++) {
         data[(y * w + x) * 4 + 3] = 0;
       }
     }

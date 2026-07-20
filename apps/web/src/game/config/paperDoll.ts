@@ -111,18 +111,14 @@ export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
     { id: "Avatar",      name: "Avatar",      textureKey: "pd-hair-Avatar",      file: "hair/Avatar.png" },
     { id: "Black_hair",  name: "Black Hair",  textureKey: "pd-hair-Black_hair",  file: "hair/Black_hair.png" },
     { id: "Brown_hair",  name: "Brown Hair",  textureKey: "pd-hair-Brown_hair",  file: "hair/Brown_hair.png" },
-    // Afro + the three Magawks are temporarily disabled: they're taller/
-    // wider than a normal head silhouette, so they still poke out past
-    // hats even with per-direction cutoff masking (see AvatarSprite.ts's
-    // getHatCoverageRow/getHairTextureFor — that logic only clips a
-    // horizontal band, it can't account for hair that's wider than the
-    // hat too). Files are kept on disk; flip enabled back to true once
-    // there's a real fix (see chat/commit history for options discussed).
-    { id: "Afro",        name: "Afro",        textureKey: "pd-hair-Afro",        file: "hair/Afro.png",        enabled: false },
+    // Re-enabled: AvatarSprite.ts's hair masking now clips per column against
+    // the hat's own silhouette (not just a single row-wide cutoff), which
+    // handles hair wider than the hat too, not only taller.
+    { id: "Afro",        name: "Afro",        textureKey: "pd-hair-Afro",        file: "hair/Afro.png" },
     { id: "Anime",       name: "Anime",       textureKey: "pd-hair-Anime",       file: "hair/Anime.png" },
-    { id: "Magawk_blue", name: "Magawk Blue", textureKey: "pd-hair-Magawk_blue", file: "hair/Magawk_blue.png", enabled: false },
-    { id: "Magawk_green",name: "Magawk Green",textureKey: "pd-hair-Magawk_green",file: "hair/Magawk_green.png",enabled: false },
-    { id: "Magawk_red",  name: "Magawk Red",  textureKey: "pd-hair-Magawk_red",  file: "hair/Magawk_red.png",  enabled: false },
+    { id: "Magawk_blue", name: "Magawk Blue", textureKey: "pd-hair-Magawk_blue", file: "hair/Magawk_blue.png" },
+    { id: "Magawk_green",name: "Magawk Green",textureKey: "pd-hair-Magawk_green",file: "hair/Magawk_green.png" },
+    { id: "Magawk_red",  name: "Magawk Red",  textureKey: "pd-hair-Magawk_red",  file: "hair/Magawk_red.png" },
   ],
   hat: [
     { id: "Cap_Sol",    name: "Cap Sol",    textureKey: "pd-hat-Cap_Sol",    file: "hat/Cap_Sol.png" },

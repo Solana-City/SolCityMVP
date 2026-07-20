@@ -72,35 +72,31 @@ function AvatarPreview({ loadout, facingUp }: { loadout: Loadout; facingUp?: boo
         offByCategory.set(cat, off);
       }
 
-      // Cap the hair to the hat's tallest point across EVERY direction row
-      // (not just the row this preview happens to show) so switching
-      // direction later never reveals hair poking through — each row can
-      // have a different silhouette, so the cutoff must be the minimum
-      // (tallest-reaching) across all of them, not just the first one found.
+      // Cap the hair to the hat's own silhouette in the row this preview is
+      // showing (rowY) — per column, not a single row-wide cutoff, so hair
+      // wider than the hat (afros, mohawks) is masked exactly where the hat
+      // actually covers it and left alone where the hat doesn't reach at all.
       const hatOff = offByCategory.get("hat");
       const hairOff = offByCategory.get("hair");
       if (hatOff && hairOff) {
         const hatCtx = hatOff.getContext("2d")!;
-        const hatData = hatCtx.getImageData(0, 0, hatOff.width, hatOff.height).data;
-        let cutoffRow = SPRITE_FRAME_HEIGHT;
-        for (let rowStart = 0; rowStart < hatOff.height; rowStart += SPRITE_FRAME_HEIGHT) {
-          rowScan:
+        const hatData = hatCtx.getImageData(0, rowY, SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT).data;
+        const cutoffs = new Array<number>(SPRITE_FRAME_WIDTH).fill(SPRITE_FRAME_HEIGHT);
+        for (let x = 0; x < SPRITE_FRAME_WIDTH; x++) {
           for (let y = 0; y < SPRITE_FRAME_HEIGHT; y++) {
-            for (let x = 0; x < hatOff.width; x++) {
-              if (hatData[((rowStart + y) * hatOff.width + x) * 4 + 3] > 10) {
-                cutoffRow = Math.min(cutoffRow, y);
-                break rowScan;
-              }
-            }
+            if (hatData[(y * SPRITE_FRAME_WIDTH + x) * 4 + 3] > 10) { cutoffs[x] = y; break; }
           }
         }
-        if (cutoffRow < SPRITE_FRAME_HEIGHT && cutoffRow > 0) {
+        if (cutoffs.some(c => c < SPRITE_FRAME_HEIGHT)) {
           const hairCtx = hairOff.getContext("2d")!;
-          for (let row = 0; row < hairOff.height; row += SPRITE_FRAME_HEIGHT) {
-            const hairData = hairCtx.getImageData(0, row, SPRITE_FRAME_WIDTH, cutoffRow);
-            hairData.data.fill(0);
-            hairCtx.putImageData(hairData, 0, row);
+          const hairData = hairCtx.getImageData(0, rowY, SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT);
+          for (let x = 0; x < SPRITE_FRAME_WIDTH; x++) {
+            const cutoff = cutoffs[x];
+            for (let y = 0; y < cutoff; y++) {
+              hairData.data[(y * SPRITE_FRAME_WIDTH + x) * 4 + 3] = 0;
+            }
           }
+          hairCtx.putImageData(hairData, 0, rowY);
         }
       }
 
