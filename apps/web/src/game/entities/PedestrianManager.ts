@@ -131,14 +131,19 @@ export class PedestrianManager {
     a?.haltFromContact();
     b?.haltFromContact();
 
-    // Deep interpenetration (e.g. two spawns landing on the same tile, or a
-    // player shove sliding one into a neighbor) is resolved with a static
-    // position nudge along the shallow axis — a placement fix, not a push.
+    // Any interpenetration — not just deep overlaps — is resolved with a
+    // static position nudge along the shallow axis (a placement fix, not a
+    // push). This used to only fire past a 3px-on-both-axes threshold, so
+    // shallow/grazing contacts (the common case) never got separated: both
+    // pedestrians would halt and just sit there overlapping until their own
+    // independent random move timer fired again, which often picked a
+    // direction right back into the same neighbor — reading as two peds
+    // stuck glued to each other for a while.
     const ba = aObj.body as Phaser.Physics.Arcade.Body;
     const bb = bObj.body as Phaser.Physics.Arcade.Body;
     const overlapX = Math.min(ba.right, bb.right) - Math.max(ba.left, bb.left);
     const overlapY = Math.min(ba.bottom, bb.bottom) - Math.max(ba.top, bb.top);
-    if (overlapX <= 3 || overlapY <= 3) return;
+    if (overlapX <= 0 || overlapY <= 0) return;
 
     const ca = aObj as unknown as Phaser.GameObjects.Container;
     const cb = bObj as unknown as Phaser.GameObjects.Container;

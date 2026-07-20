@@ -43,10 +43,15 @@ export function makePedestrianLoadout(seed: number): Loadout {
   const tshirt   = pick(getEnabledVariants("tshirt"), rng).id;
   const pants    = pick(getEnabledVariants("pants"),  rng).id;
 
-  // 50% chance of a hat; within hats, Cap_blue (blue arrow) is very rare (3%)
+  // 50% chance of a hat. Cap_blue (blue arrow) and Ninja are rarer than the
+  // rest of the pool (was uniform — Ninja stood out too often at ~1/13).
   const hat = (() => {
     if (rng() >= 0.50) return undefined;
-    return pick(getEnabledVariants("hat"), rng).id;
+    const allHats = getEnabledVariants("hat");
+    if (allHats.some(h => h.id === "Cap_blue") && rng() < 0.03) return "Cap_blue";
+    if (allHats.some(h => h.id === "Ninja") && rng() < 0.04) return "Ninja";
+    const commonHats = allHats.filter(h => h.id !== "Cap_blue" && h.id !== "Ninja");
+    return pick(commonHats, rng).id;
   })();
 
   const accessory = rng() < 0.08 ? pick(getEnabledVariants("accessory"), rng).id : undefined;
