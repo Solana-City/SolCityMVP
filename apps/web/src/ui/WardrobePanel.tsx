@@ -73,17 +73,23 @@ function AvatarPreview({ loadout, facingUp }: { loadout: Loadout; facingUp?: boo
       }
 
       // Cap the hair to the equipped hat's coverage in the row this preview
-      // is showing (rowY). Two styles (LayerVariant.hatCoverage):
+      // is showing (rowY). Three styles (LayerVariant.hatCoverage):
       //   "full" (default) — per-column cutoff from the hat's own silhouette,
       //     so hair wider/taller than the hat is masked exactly where the
       //     hat covers it and left alone where it doesn't reach at all.
       //   "band" — a headband/bandana only wraps the forehead; mask ONLY
       //     exactly where the band's own pixels are opaque, so the crown
       //     above it and everything below stay visible.
+      //   "suppress" — a full head-covering mask (e.g. Ninja) narrower than
+      //     some wide hairstyles; hides hair entirely rather than leaving a
+      //     sliver visible past its edges.
       const hatOff = offByCategory.get("hat");
       const hairOff = offByCategory.get("hair");
       const hatVariantVal = getVariant("hat", loadout.hat);
-      if (hatOff && hairOff) {
+      if (hatOff && hairOff && hatVariantVal?.hatCoverage === "suppress") {
+        const hairCtx = hairOff.getContext("2d")!;
+        hairCtx.clearRect(0, rowY, SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT);
+      } else if (hatOff && hairOff) {
         const hatCtx = hatOff.getContext("2d")!;
         const hatData = hatCtx.getImageData(0, rowY, SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT).data;
         const hairCtx = hairOff.getContext("2d")!;

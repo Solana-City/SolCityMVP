@@ -51,8 +51,17 @@ export interface LayerVariant {
    *   "band"  — a headband/bandana that only wraps the forehead. Hair is
    *     erased ONLY exactly where this item's own pixels are opaque —
    *     the crown above it, and everything below it, must stay visible.
+   *   "suppress" — a full head-covering mask/hood (e.g. Ninja) narrower
+   *     than some wide hairstyles (afro, anime), where per-column masking
+   *     still leaves a sliver of hair visible past its edges and looks
+   *     wrong for something meant to enclose the whole head. Hides the
+   *     ENTIRE hair layer whenever this hat is equipped, regardless of the
+   *     hat's own silhouette width. Use sparingly — this is heavier-handed
+   *     than "full" and will hide hair that would otherwise legitimately
+   *     show below/beside a smaller hat (that's why Viking_hat, which only
+   *     covers the crown, stays on "full" rather than this).
    */
-  hatCoverage?: "full" | "band";
+  hatCoverage?: "full" | "band" | "suppress";
 }
 
 /**
@@ -139,7 +148,7 @@ export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
     { id: "Crown",      name: "Crown",      textureKey: "pd-hat-Crown",      file: "hat/Crown.png" },
     { id: "Cylinder",   name: "Cylinder",   textureKey: "pd-hat-Cylinder",   file: "hat/Cylinder.png" },
     { id: "Viking_hat", name: "Viking Hat", textureKey: "pd-hat-Viking_hat", file: "hat/Viking_hat.png" },
-    { id: "Ninja",      name: "Ninja",      textureKey: "pd-hat-Ninja",      file: "hat/Ninja.png" },
+    { id: "Ninja",      name: "Ninja",      textureKey: "pd-hat-Ninja",      file: "hat/Ninja.png", hatCoverage: "suppress" },
     { id: "Pirate",     name: "Pirate",     textureKey: "pd-hat-Pirate",     file: "hat/Pirate.png" },
     { id: "Straw_hat",  name: "Straw Hat",  textureKey: "pd-hat-Straw_hat",  file: "hat/Straw_hat.png" },
     { id: "Vizard_hat", name: "Vizard Hat", textureKey: "pd-hat-Vizard_hat", file: "hat/Vizard_hat.png" },

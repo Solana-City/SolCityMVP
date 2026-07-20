@@ -126,7 +126,10 @@ function getHairTextureFor(
   scene: Phaser.Scene,
   hairTextureKey: string,
   hatTextureKey: string | undefined,
-  hatCoverage: "full" | "band" = "full",
+  // "suppress" is handled by the caller (skips the hair layer outright) —
+  // never actually reaches here, but accepted in the type since callers
+  // pass a hat variant's hatCoverage straight through.
+  hatCoverage: "full" | "band" | "suppress" = "full",
 ): string {
   if (!hatTextureKey || !scene.textures.exists(hatTextureKey)) return hairTextureKey;
 
@@ -305,9 +308,15 @@ export class AvatarSprite {
       const variant = getVariant(category, this.currentLoadout[category]);
       if (!variant || !this.scene.textures.exists(variant.textureKey)) continue;
 
-      // Hair is capped to the equipped hat's coverage so hair doesn't show
-      // where the hat should hide it (see getHairTextureFor for the two
-      // coverage styles — a full cap vs. a forehead-only band).
+      // A "suppress" hat (e.g. Ninja) hides hair entirely — its own
+      // silhouette is narrower than some wide hairstyles, and per-column
+      // masking still leaves a sliver visible past its edges, which looks
+      // wrong for something meant to enclose the whole head.
+      if (category === "hair" && hatVariant?.hatCoverage === "suppress") continue;
+
+      // Hair is otherwise capped to the equipped hat's coverage so it
+      // doesn't show where the hat should hide it (see getHairTextureFor
+      // for the two remaining styles — a full cap vs. a forehead-only band).
       const textureKey = category === "hair"
         ? getHairTextureFor(this.scene, variant.textureKey, hatVariant?.textureKey, hatVariant?.hatCoverage)
         : variant.textureKey;
