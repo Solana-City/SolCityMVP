@@ -3,6 +3,9 @@ export type Direction = "down" | "left" | "right" | "up";
 /**
  * Paper doll layer categories in render order (back to front).
  * Matches the spriter's numbered folders:
+ *   4_Back  → back (jetpack/backpacks — rendered behind everything else,
+ *             including skin, so the body/clothes overlap it and only the
+ *             straps + the part wider than the body silhouette show)
  *   6_Base → skin
  *   3_Face → eyesFace
  *   5_Legs → pants
@@ -12,6 +15,7 @@ export type Direction = "down" | "left" | "right" | "up";
  *   0_Head → hat
  */
 export const LAYER_ORDER = [
+  "back",
   "skin",
   "eyesFace",
   "pants",
@@ -57,6 +61,11 @@ export const DIRECTION_ROW: Record<Direction, number> = {
 export type Loadout = Partial<Record<LayerCategory, string>>;
 
 export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
+  back: [
+    { id: "Jetpack",         name: "Jetpack",        textureKey: "pd-back-Jetpack",         file: "back/Jetpack.png" },
+    { id: "backpack_brown",  name: "Brown Backpack", textureKey: "pd-back-backpack_brown",  file: "back/backpack_brown.png" },
+    { id: "backpack_red",    name: "Red Backpack",   textureKey: "pd-back-backpack_red",    file: "back/backpack_red.png" },
+  ],
   skin: [
     { id: "Human",      name: "Human",      textureKey: "pd-skin-Human",      file: "skin/Human.png" },
     { id: "Feyan",      name: "Feyan",      textureKey: "pd-skin-Feyan",      file: "skin/Feyan.png" },
@@ -128,6 +137,7 @@ export const DEFAULT_LOADOUT: Loadout = {
 };
 
 export const CATEGORY_LABELS: Record<LayerCategory, string> = {
+  back:      "Back",
   skin:      "Base",
   eyesFace:  "Face",
   pants:     "Legs",

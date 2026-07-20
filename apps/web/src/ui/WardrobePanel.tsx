@@ -115,6 +115,7 @@ function ChromaPreview({ file, size }: { file: string; size: number }) {
 }
 
 const CATEGORY_ICONS: Record<LayerCategory, string> = {
+  back:      "🎒",
   skin:      "🧬",
   eyesFace:  "👁",
   pants:     "👖",
@@ -124,7 +125,7 @@ const CATEGORY_ICONS: Record<LayerCategory, string> = {
   hat:       "🎩",
 };
 
-const OPTIONAL: LayerCategory[] = ["hat", "accessory"];
+const OPTIONAL: LayerCategory[] = ["hat", "accessory", "back"];
 
 function randomLoadout(): Loadout {
   const out: Loadout = {};

@@ -44,7 +44,10 @@ export function makePedestrianLoadout(seed: number): Loadout {
 
   const accessory = rng() < 0.08 ? pick(LAYER_VARIANTS.accessory, rng).id : undefined;
 
-  return { skin, eyesFace, hair, tshirt, pants, hat, accessory };
+  // 25% chance of a backpack/jetpack — only some pedestrians wear one
+  const back = rng() < 0.25 ? pick(LAYER_VARIANTS.back, rng).id : undefined;
+
+  return { skin, eyesFace, hair, tshirt, pants, hat, accessory, back };
 }
 
 type Direction = "up" | "down" | "left" | "right";
