@@ -329,12 +329,14 @@ export default function KiteClashGame({ onResult, onClose }: MiniGameComponentPr
             onPointerMove={onJoyMove}
             onPointerUp={onJoyRelease}
             onPointerCancel={onJoyRelease}
+            onContextMenu={(e) => e.preventDefault()}
             style={{
               width: 110, height: 110, borderRadius: "50%",
               background: "rgba(153,69,255,0.12)",
               border: "2px solid rgba(153,69,255,0.35)",
               display: "flex", alignItems: "center", justifyContent: "center",
               touchAction: "none", userSelect: "none", pointerEvents: "auto",
+              WebkitUserSelect: "none", WebkitTouchCallout: "none",
             }}
           >
             <div ref={joystickThumbRef} style={{
@@ -345,11 +347,20 @@ export default function KiteClashGame({ onResult, onClose }: MiniGameComponentPr
             }} />
           </div>
 
-          {/* Right — REEL / CUT hold button */}
+          {/* Right — REEL / CUT hold button. Pointer capture keeps the hold
+              alive when the finger drifts off the button, and suppressing the
+              context menu / touch callout stops the OS long-press gesture
+              from firing pointercancel mid-hold — which silently dropped the
+              reel before the 500ms cut roll could ever resolve on mobile. */}
           <button
-            onPointerDown={(e) => { e.preventDefault(); engineRef.current?.setTouchReel(true); }}
+            onPointerDown={(e) => {
+              e.preventDefault();
+              e.currentTarget.setPointerCapture(e.pointerId);
+              engineRef.current?.setTouchReel(true);
+            }}
             onPointerUp={() => engineRef.current?.setTouchReel(false)}
             onPointerCancel={() => engineRef.current?.setTouchReel(false)}
+            onContextMenu={(e) => e.preventDefault()}
             style={{
               width: 90, height: 90, borderRadius: "50%",
               background: snapshot?.nearbyOpponent
@@ -362,6 +373,8 @@ export default function KiteClashGame({ onResult, onClose }: MiniGameComponentPr
               cursor: "pointer",
               touchAction: "none",
               userSelect: "none",
+              WebkitUserSelect: "none",
+              WebkitTouchCallout: "none",
               pointerEvents: "auto",
               display: "flex", alignItems: "center", justifyContent: "center",
               textAlign: "center", lineHeight: 1.4,

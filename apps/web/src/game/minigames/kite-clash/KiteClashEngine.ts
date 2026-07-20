@@ -89,6 +89,9 @@ interface SeveredKite {
   spinDegPerSec: number;
   scale: number;
   isPlayer: boolean;
+  /** The exact sprite this kite was flying when cut — a rival flying the
+   *  STB kite must tumble away as the STB kite, not the default Solana. */
+  sprite: HTMLImageElement | null;
   ageMs: number;
 }
 
@@ -481,6 +484,12 @@ export class KiteClashEngine {
     this.shakeMagnitude = major ? SHAKE_MAGNITUDE_MAJOR : SHAKE_MAGNITUDE_MINOR;
   }
 
+  /** The sprite rivals currently fly — STB while its test flight lasts. */
+  private rivalKiteSprite(): HTMLImageElement | undefined {
+    if (ready(this.assets.kiteStb)) return this.assets.kiteStb;
+    return ready(this.assets.kiteRival) ? this.assets.kiteRival : undefined;
+  }
+
   private spawnSeveredKite(pos: { x: number; y: number }, exposure: number, isPlayer: boolean): void {
     const windSign = this.windDirection === "right" ? 1 : -1;
     this.severedKites.push({
@@ -492,6 +501,9 @@ export class KiteClashEngine {
       spinDegPerSec: windSign * (150 + Math.random() * 120),
       scale: lerp(0.85, 0.34, exposure),
       isPlayer,
+      sprite: isPlayer
+        ? (ready(this.assets.kitePlayer) ? this.assets.kitePlayer : null)
+        : (this.rivalKiteSprite() ?? null),
       ageMs: 0,
     });
   }
@@ -547,8 +559,7 @@ export class KiteClashEngine {
     for (const o of opponents) {
       // Test flight for the STB kite: rivals fly it whenever it's loaded
       // (falls back to the Solana kite otherwise).
-      const rivalSprite = ready(this.assets.kiteStb) ? this.assets.kiteStb : undefined;
-      this.renderKite(ctx, o.position, o.exposure, o.skinColor, 0, false, undefined, rivalSprite);
+      this.renderKite(ctx, o.position, o.exposure, o.skinColor, 0, false, undefined, this.rivalKiteSprite());
     }
     // While the run is over, the player's kite exists only as the severed
     // one tumbling away — drawing both would duplicate it.
@@ -591,6 +602,7 @@ export class KiteClashEngine {
         k.rotationDeg,
         k.isPlayer,
         k.scale,
+        k.sprite ?? undefined,
       );
       ctx.restore();
     }

@@ -1,6 +1,6 @@
 import * as Phaser from "phaser";
 import { TILE_SIZE } from "../config/constants";
-import { SimpleSprite, NPC_DIRECTION_ROW, type Direction } from "./SimpleSprite";
+import { SimpleSprite, NPC_DIRECTION_ROW, PLAYER_DIRECTION_ROW, type Direction } from "./SimpleSprite";
 import type { NPCDefinition } from "../config/npcRegistry";
 import { profileManager } from "../config/profileManager";
 import { progressionBus } from "../progression/progressionBus";
@@ -66,9 +66,15 @@ export class NPCSprite {
 
     const desiredKey = def.spriteKey ?? "avatar-player";
     const spriteKey = scene.textures.exists(desiredKey) ? desiredKey : "avatar-player";
+    // Row order belongs to the TEXTURE, not the NPC: Dom's NPC sheets are
+    // down/up/right/left, but the main_char fallback sheet is the player
+    // order down/right/up/left. Using the NPC mapping on the fallback made
+    // missing-sprite NPCs (e.g. Kite Pro) play the right-walk animation
+    // while moving up — the classic moonwalk.
+    const directionRow = spriteKey === "avatar-player" ? PLAYER_DIRECTION_ROW : NPC_DIRECTION_ROW;
 
     this.collisionLayers = collisionLayers ?? [];
-    this.avatar = new SimpleSprite(scene, x, y, spriteKey, NPC_DIRECTION_ROW);
+    this.avatar = new SimpleSprite(scene, x, y, spriteKey, directionRow);
 
     const container = this.getContainer();
     const colorHex = `#${def.color.toString(16).padStart(6, "0")}`;
