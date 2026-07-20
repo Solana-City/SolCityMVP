@@ -3,7 +3,6 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import {
   LAYER_ORDER,
-  LAYER_VARIANTS,
   CATEGORY_LABELS,
   LayerCategory,
   Loadout,
@@ -11,6 +10,7 @@ import {
   saveLoadout,
   loadSavedLoadout,
   getVariant,
+  getEnabledVariants,
   SPRITE_FRAME_WIDTH,
   SPRITE_FRAME_HEIGHT,
   DIRECTION_ROW,
@@ -182,7 +182,7 @@ const OPTIONAL: LayerCategory[] = ["hat", "accessory", "back"];
 function randomLoadout(): Loadout {
   const out: Loadout = {};
   for (const cat of LAYER_ORDER) {
-    const variants = LAYER_VARIANTS[cat];
+    const variants = getEnabledVariants(cat);
     if (OPTIONAL.includes(cat) && Math.random() < 0.4) continue;
     out[cat] = variants[Math.floor(Math.random() * variants.length)].id;
   }
@@ -222,7 +222,7 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
 
   const handleReset = useCallback(() => setLoadout({ ...DEFAULT_LOADOUT }), []);
 
-  const variants = LAYER_VARIANTS[activeCategory];
+  const variants = getEnabledVariants(activeCategory);
   const currentVariantId = loadout[activeCategory];
 
   // Reverse so topmost layer (hat) appears first in the tab list

@@ -35,6 +35,12 @@ export interface LayerVariant {
   textureKey: string;
   /** Path relative to public/assets/sprites/paperdoll/. */
   file: string;
+  /**
+   * Set to false to pull a variant out of the wardrobe selection and
+   * random-pedestrian pool without deleting its file — BootScene also
+   * skips loading its texture. Defaults to true (present) when omitted.
+   */
+  enabled?: boolean;
 }
 
 /**
@@ -105,11 +111,18 @@ export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
     { id: "Avatar",      name: "Avatar",      textureKey: "pd-hair-Avatar",      file: "hair/Avatar.png" },
     { id: "Black_hair",  name: "Black Hair",  textureKey: "pd-hair-Black_hair",  file: "hair/Black_hair.png" },
     { id: "Brown_hair",  name: "Brown Hair",  textureKey: "pd-hair-Brown_hair",  file: "hair/Brown_hair.png" },
-    { id: "Afro",        name: "Afro",        textureKey: "pd-hair-Afro",        file: "hair/Afro.png" },
+    // Afro + the three Magawks are temporarily disabled: they're taller/
+    // wider than a normal head silhouette, so they still poke out past
+    // hats even with per-direction cutoff masking (see AvatarSprite.ts's
+    // getHatCoverageRow/getHairTextureFor — that logic only clips a
+    // horizontal band, it can't account for hair that's wider than the
+    // hat too). Files are kept on disk; flip enabled back to true once
+    // there's a real fix (see chat/commit history for options discussed).
+    { id: "Afro",        name: "Afro",        textureKey: "pd-hair-Afro",        file: "hair/Afro.png",        enabled: false },
     { id: "Anime",       name: "Anime",       textureKey: "pd-hair-Anime",       file: "hair/Anime.png" },
-    { id: "Magawk_blue", name: "Magawk Blue", textureKey: "pd-hair-Magawk_blue", file: "hair/Magawk_blue.png" },
-    { id: "Magawk_green",name: "Magawk Green",textureKey: "pd-hair-Magawk_green",file: "hair/Magawk_green.png" },
-    { id: "Magawk_red",  name: "Magawk Red",  textureKey: "pd-hair-Magawk_red",  file: "hair/Magawk_red.png" },
+    { id: "Magawk_blue", name: "Magawk Blue", textureKey: "pd-hair-Magawk_blue", file: "hair/Magawk_blue.png", enabled: false },
+    { id: "Magawk_green",name: "Magawk Green",textureKey: "pd-hair-Magawk_green",file: "hair/Magawk_green.png",enabled: false },
+    { id: "Magawk_red",  name: "Magawk Red",  textureKey: "pd-hair-Magawk_red",  file: "hair/Magawk_red.png",  enabled: false },
   ],
   hat: [
     { id: "Cap_Sol",    name: "Cap Sol",    textureKey: "pd-hat-Cap_Sol",    file: "hat/Cap_Sol.png" },
@@ -153,10 +166,19 @@ export function getVariant(category: LayerCategory, variantId?: string): LayerVa
   return LAYER_VARIANTS[category].find((v) => v.id === variantId);
 }
 
-/** All (category, variant) pairs — used by BootScene to preload every spritesheet. */
+/** A category's variants with any enabled:false entries filtered out — use
+ *  this instead of indexing LAYER_VARIANTS directly for anything the player
+ *  can pick from or that a random pedestrian could roll. */
+export function getEnabledVariants(category: LayerCategory): LayerVariant[] {
+  return LAYER_VARIANTS[category].filter((v) => v.enabled !== false);
+}
+
+/** All (category, variant) pairs — used by BootScene to preload every
+ *  spritesheet. Excludes disabled variants so their textures aren't even
+ *  fetched. */
 export function getAllLayerVariants(): { category: LayerCategory; variant: LayerVariant }[] {
   return LAYER_ORDER.flatMap((category) =>
-    LAYER_VARIANTS[category].map((variant) => ({ category, variant }))
+    getEnabledVariants(category).map((variant) => ({ category, variant }))
   );
 }
 

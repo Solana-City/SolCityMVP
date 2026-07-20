@@ -1,7 +1,7 @@
 import * as Phaser from "phaser";
 import { AvatarSprite } from "./AvatarSprite";
 import { TILE_SIZE, PLAYABLE_ZONE } from "../config/constants";
-import { LAYER_VARIANTS, type Loadout, DIRECTION_ROW, SPRITE_COLS } from "../config/paperDoll";
+import { getEnabledVariants, type Loadout, DIRECTION_ROW, SPRITE_COLS } from "../config/paperDoll";
 
 // Fast seeded PRNG (mulberry32)
 function mulberry32(seed: number) {
@@ -24,28 +24,28 @@ export function makePedestrianLoadout(seed: number): Loadout {
   // 90% Light, 10% spread equally across other skins
   const skin = rng() < 0.90
     ? "Light"
-    : pick(LAYER_VARIANTS.skin.filter(v => v.id !== "Light"), rng).id;
+    : pick(getEnabledVariants("skin").filter(v => v.id !== "Light"), rng).id;
 
   // 90% Happy, 10% spread across the other face variants
   const eyesFace = rng() < 0.90
     ? "Happy"
-    : pick(LAYER_VARIANTS.eyesFace.filter(v => v.id !== "Happy"), rng).id;
+    : pick(getEnabledVariants("eyesFace").filter(v => v.id !== "Happy"), rng).id;
   // Avatar hair (blue arrow) is very rare — 2% of hair picks
-  const commonHair = LAYER_VARIANTS.hair.filter(h => h.id !== "Avatar");
+  const commonHair = getEnabledVariants("hair").filter(h => h.id !== "Avatar");
   const hair = rng() < 0.02 ? "Avatar" : pick(commonHair, rng).id;
-  const tshirt   = pick(LAYER_VARIANTS.tshirt, rng).id;
-  const pants    = pick(LAYER_VARIANTS.pants,  rng).id;
+  const tshirt   = pick(getEnabledVariants("tshirt"), rng).id;
+  const pants    = pick(getEnabledVariants("pants"),  rng).id;
 
   // 50% chance of a hat; within hats, Cap_blue (blue arrow) is very rare (3%)
   const hat = (() => {
     if (rng() >= 0.50) return undefined;
-    return pick(LAYER_VARIANTS.hat, rng).id;
+    return pick(getEnabledVariants("hat"), rng).id;
   })();
 
-  const accessory = rng() < 0.08 ? pick(LAYER_VARIANTS.accessory, rng).id : undefined;
+  const accessory = rng() < 0.08 ? pick(getEnabledVariants("accessory"), rng).id : undefined;
 
   // 25% chance of a backpack/jetpack — only some pedestrians wear one
-  const back = rng() < 0.25 ? pick(LAYER_VARIANTS.back, rng).id : undefined;
+  const back = rng() < 0.25 ? pick(getEnabledVariants("back"), rng).id : undefined;
 
   return { skin, eyesFace, hair, tshirt, pants, hat, accessory, back };
 }
