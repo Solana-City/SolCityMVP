@@ -77,6 +77,7 @@ export class NPCSprite {
     this.avatar = new SimpleSprite(
       scene, x, y, spriteKey, directionRow,
       def.spriteAnimation?.frameCount,
+      def.spriteAnimation?.scale,
     );
 
     const container = this.getContainer();

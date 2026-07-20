@@ -5,12 +5,123 @@ import {
   SPRITE_FRAME_WIDTH,
   SPRITE_FRAME_HEIGHT,
   SPRITE_COLS,
+  SPRITE_ROWS,
   LAYER_ORDER,
   LayerCategory,
   Loadout,
   DEFAULT_LOADOUT,
   getVariant,
 } from "../config/paperDoll";
+
+// Cache: hat textureKey -> topmost opaque row (0..SPRITE_FRAME_HEIGHT) found in
+// its "down" idle frame. SPRITE_FRAME_HEIGHT means "no ink found" (no masking).
+const hatCoverageRowCache = new Map<string, number>();
+
+/**
+ * Scans a hat sheet's "down, frame 0" cell for the highest row (smallest y)
+ * containing any non-transparent pixel — i.e. the tallest point the hat's
+ * art actually reaches. Hair above this row is only visible because the
+ * artist drew it taller than any hat expects; it reads as poking out
+ * through the hat, which is the bug getHairTextureFor() below corrects.
+ */
+function getHatCoverageRow(scene: Phaser.Scene, hatTextureKey: string): number {
+  const cached = hatCoverageRowCache.get(hatTextureKey);
+  if (cached !== undefined) return cached;
+
+  let topRow = SPRITE_FRAME_HEIGHT;
+  try {
+    const texture = scene.textures.get(hatTextureKey);
+    const source = texture.source[0];
+    const img = source.image as CanvasImageSource;
+
+    const canvas = document.createElement("canvas");
+    canvas.width = SPRITE_FRAME_WIDTH;
+    canvas.height = SPRITE_FRAME_HEIGHT;
+    const ctx = canvas.getContext("2d")!;
+    const downRow = DIRECTION_ROW.down;
+    ctx.drawImage(
+      img as CanvasImageSource,
+      0, downRow * SPRITE_FRAME_HEIGHT, SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT,
+      0, 0, SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT,
+    );
+    const data = ctx.getImageData(0, 0, SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT).data;
+
+    outer:
+    for (let y = 0; y < SPRITE_FRAME_HEIGHT; y++) {
+      for (let x = 0; x < SPRITE_FRAME_WIDTH; x++) {
+        if (data[(y * SPRITE_FRAME_WIDTH + x) * 4 + 3] > 10) {
+          topRow = y;
+          break outer;
+        }
+      }
+    }
+  } catch { /* leave topRow at "no masking" default */ }
+
+  hatCoverageRowCache.set(hatTextureKey, topRow);
+  return topRow;
+}
+
+// Cache: `${hairTextureKey}--${hatTextureKey}` -> derived, capped-hair texture key.
+const cappedHairTextureCache = new Map<string, string>();
+
+/**
+ * Returns a texture key for the hair sheet with anything above the
+ * equipped hat's tallest point erased, so tall hairstyles (afros,
+ * mohawks) don't poke out through/above the hat. Generates the derived
+ * texture once per (hair, hat) pair and reuses it after; returns the
+ * original hairTextureKey unchanged if the hat has no measurable coverage
+ * (e.g. its texture failed to load) or no hat is equipped.
+ */
+function getHairTextureFor(scene: Phaser.Scene, hairTextureKey: string, hatTextureKey: string | undefined): string {
+  if (!hatTextureKey || !scene.textures.exists(hatTextureKey)) return hairTextureKey;
+
+  const cutoffRow = getHatCoverageRow(scene, hatTextureKey);
+  if (cutoffRow >= SPRITE_FRAME_HEIGHT) return hairTextureKey; // no ink found — nothing to mask against
+
+  const cacheKey = `${hairTextureKey}--capped--${hatTextureKey}`;
+  if (cappedHairTextureCache.has(cacheKey)) return cappedHairTextureCache.get(cacheKey)!;
+  if (scene.textures.exists(cacheKey)) {
+    cappedHairTextureCache.set(cacheKey, cacheKey);
+    return cacheKey;
+  }
+
+  const hairTexture = scene.textures.get(hairTextureKey);
+  const source = hairTexture.source[0];
+  const img = source.image as CanvasImageSource;
+  const w = source.width;
+  const h = source.height;
+
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext("2d")!;
+  ctx.drawImage(img, 0, 0);
+
+  // Erase rows [0, cutoffRow) within every direction row of the sheet —
+  // same absolute cutoff for all four directions (an approximation; the
+  // hat's silhouette is measured from its "down" frame only, but its peak
+  // height doesn't vary enough between directions to be worth 4x the work).
+  const imageData = ctx.getImageData(0, 0, w, h);
+  const data = imageData.data;
+  for (let row = 0; row < SPRITE_ROWS; row++) {
+    const rowYStart = row * SPRITE_FRAME_HEIGHT;
+    for (let y = rowYStart; y < rowYStart + cutoffRow; y++) {
+      for (let x = 0; x < w; x++) {
+        data[(y * w + x) * 4 + 3] = 0;
+      }
+    }
+  }
+  ctx.putImageData(imageData, 0, 0);
+
+  const newTex = scene.textures.addCanvas(cacheKey, canvas);
+  (Phaser.Textures.Parsers as any).SpriteSheet(
+    newTex, 0, 0, 0, w, h,
+    { frameWidth: SPRITE_FRAME_WIDTH, frameHeight: SPRITE_FRAME_HEIGHT }
+  );
+
+  cappedHairTextureCache.set(cacheKey, cacheKey);
+  return cacheKey;
+}
 
 /**
  * A paper doll avatar made of stacked sprite layers (skin, eyes/face, hair,
@@ -117,24 +228,31 @@ export class AvatarSprite {
 
   private buildLayers(): void {
     const FOOT_Y_LOCAL = -2;
+    const hatVariant = getVariant("hat", this.currentLoadout.hat);
 
     for (const category of LAYER_ORDER) {
       const variant = getVariant(category, this.currentLoadout[category]);
       if (!variant || !this.scene.textures.exists(variant.textureKey)) continue;
 
-      const sprite = this.scene.add.sprite(0, FOOT_Y_LOCAL, variant.textureKey);
+      // Hair is capped to the equipped hat's tallest point so tall
+      // hairstyles (afros, mohawks) don't poke out above/through it.
+      const textureKey = category === "hair"
+        ? getHairTextureFor(this.scene, variant.textureKey, hatVariant?.textureKey)
+        : variant.textureKey;
+
+      const sprite = this.scene.add.sprite(0, FOOT_Y_LOCAL, textureKey);
       sprite.setOrigin(0.5, 1.0);
 
       // Native 64x64 sheets render at 0.5x world scale (2x camera zoom cancels to 1:1),
       // matching SimpleSprite's pixel-perfect convention.
-      const frame = this.scene.textures.get(variant.textureKey).get(0);
+      const frame = this.scene.textures.get(textureKey).get(0);
       if ((frame.height || SPRITE_FRAME_HEIGHT) >= 56) {
         sprite.setScale(0.5);
       }
 
       this.container.add(sprite);
       this.layerSprites.set(category, sprite);
-      this.registerAnimations(variant.textureKey);
+      this.registerAnimations(textureKey);
     }
 
     // Set initial idle frame

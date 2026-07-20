@@ -47,6 +47,16 @@ export interface NPCDefinition {
     frameWidth: number;
     frameHeight: number;
     frameCount: number;
+    /**
+     * Render scale override. The default 64x64 walk-grid NPCs auto-scale
+     * to 0.5 (world px = half the source sheet), but a static-animated
+     * sheet often includes a prop above the character's head (e.g. a kite)
+     * that inflates the frame well past the character's own height — using
+     * the same auto-scale then renders it far bigger than other NPCs.
+     * Set this to whatever makes the character (not the prop) match the
+     * usual NPC size.
+     */
+    scale?: number;
   };
 }
 
@@ -96,7 +106,12 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     action: { type: "minigame", label: "Launch Kite", miniGameId: "kite-clash" },
     spriteKey: "Kite Pro",
     // Idle-loop sheet: 8 frames, always facing south, never wanders.
-    spriteAnimation: { frameWidth: 116, frameHeight: 190, frameCount: 8 },
+    // Character occupies roughly the bottom 100px of the 190px frame (the
+    // kite banner fills the rest, above the head) — 0.32 makes the character
+    // match other NPCs' usual on-screen height instead of the sheet's
+    // default 0.5 auto-scale, which rendered the whole (much taller) frame
+    // at nearly double size.
+    spriteAnimation: { frameWidth: 116, frameHeight: 190, frameCount: 8, scale: 0.32 },
   },
   {
     id: "swap-npc",

@@ -56,6 +56,14 @@ export class SimpleSprite {
      * walk-cycle contract (registerAnimations' default path) is skipped.
      */
     idleLoopFrames?: number,
+    /**
+     * Explicit render scale override — bypasses the frameHeight>=56 → 0.5
+     * auto-scale heuristic. Needed when a sheet's frame is much taller than
+     * the character itself (e.g. a prop drawn above the head), where
+     * auto-scaling the whole frame would render the character far bigger
+     * than other NPCs.
+     */
+    scaleOverride?: number,
   ) {
     this.scene = scene;
     this.textureKey = textureKey;
@@ -82,11 +90,15 @@ export class SimpleSprite {
     this.sprite = scene.add.sprite(0, FOOT_Y_LOCAL, textureKey);
     this.sprite.setOrigin(0.5, 1.0);
 
-    const frame = scene.textures.get(textureKey).get(0);
-    const frameHeight = frame.height || 48;
-    if (frameHeight >= 56) {
-      // Native 64×64 sheet → render at 0.5× world, 2× zoom cancels to 1:1.
-      this.sprite.setScale(0.5);
+    if (scaleOverride !== undefined) {
+      this.sprite.setScale(scaleOverride);
+    } else {
+      const frame = scene.textures.get(textureKey).get(0);
+      const frameHeight = frame.height || 48;
+      if (frameHeight >= 56) {
+        // Native 64×64 sheet → render at 0.5× world, 2× zoom cancels to 1:1.
+        this.sprite.setScale(0.5);
+      }
     }
 
     this.container = scene.add.container(x, y, [this.sprite]);

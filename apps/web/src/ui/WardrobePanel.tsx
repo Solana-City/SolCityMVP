@@ -51,13 +51,46 @@ function AvatarPreview({ loadout }: { loadout: Loadout }) {
 
     const draw = () => {
       ctx.clearRect(0, 0, FW, FH);
-      for (const { img } of imgs) {
+
+      // Chroma-remove every layer first (into its own off-canvas) before
+      // drawing any of them, so the hat's silhouette is available in time
+      // to mask the hair layer — hat is last in LAYER_ORDER but the mask
+      // needs to be computed before hair gets drawn.
+      const offByCategory = new Map<LayerCategory, HTMLCanvasElement>();
+      for (const { img, cat } of imgs) {
         const off = document.createElement("canvas");
         off.width = img.naturalWidth;
         off.height = img.naturalHeight;
         const oc = off.getContext("2d")!;
         oc.drawImage(img, 0, 0);
         removeChroma(oc, img.naturalWidth, img.naturalHeight);
+        offByCategory.set(cat, off);
+      }
+
+      // Cap the hair to the hat's tallest point (this preview only ever
+      // shows the "down" idle frame, so only that single cell needs it).
+      const hatOff = offByCategory.get("hat");
+      const hairOff = offByCategory.get("hair");
+      if (hatOff && hairOff) {
+        const hatCtx = hatOff.getContext("2d")!;
+        const hatData = hatCtx.getImageData(0, 0, SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT).data;
+        let cutoffRow = SPRITE_FRAME_HEIGHT;
+        outer:
+        for (let y = 0; y < SPRITE_FRAME_HEIGHT; y++) {
+          for (let x = 0; x < SPRITE_FRAME_WIDTH; x++) {
+            if (hatData[(y * SPRITE_FRAME_WIDTH + x) * 4 + 3] > 10) { cutoffRow = y; break outer; }
+          }
+        }
+        if (cutoffRow < SPRITE_FRAME_HEIGHT) {
+          const hairCtx = hairOff.getContext("2d")!;
+          const hairData = hairCtx.getImageData(0, 0, SPRITE_FRAME_WIDTH, cutoffRow);
+          hairData.data.fill(0);
+          hairCtx.putImageData(hairData, 0, 0);
+        }
+      }
+
+      for (const { cat } of imgs) {
+        const off = offByCategory.get(cat)!;
         ctx.drawImage(off, 0, 0, SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT, 0, 0, FW, FH);
       }
     };
