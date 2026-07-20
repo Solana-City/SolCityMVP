@@ -40,6 +40,8 @@ export class SimpleSprite {
   private directionRow: DirectionRow;
   /** Set for "static animated" NPCs — see registerAnimations() below. */
   private idleLoopFrames?: number;
+  /** frameHeight × applied scale — how tall the sprite renders, feet to top. */
+  private visualHeight = 32;
 
   constructor(
     scene: Phaser.Scene,
@@ -90,15 +92,16 @@ export class SimpleSprite {
     this.sprite = scene.add.sprite(0, FOOT_Y_LOCAL, textureKey);
     this.sprite.setOrigin(0.5, 1.0);
 
+    const frameHeight = scene.textures.get(textureKey).get(0).height || 48;
     if (scaleOverride !== undefined) {
       this.sprite.setScale(scaleOverride);
+      this.visualHeight = frameHeight * scaleOverride;
+    } else if (frameHeight >= 56) {
+      // Native 64×64 sheet → render at 0.5× world, 2× zoom cancels to 1:1.
+      this.sprite.setScale(0.5);
+      this.visualHeight = frameHeight * 0.5;
     } else {
-      const frame = scene.textures.get(textureKey).get(0);
-      const frameHeight = frame.height || 48;
-      if (frameHeight >= 56) {
-        // Native 64×64 sheet → render at 0.5× world, 2× zoom cancels to 1:1.
-        this.sprite.setScale(0.5);
-      }
+      this.visualHeight = frameHeight;
     }
 
     this.container = scene.add.container(x, y, [this.sprite]);
@@ -119,6 +122,19 @@ export class SimpleSprite {
 
   getContainer(): Phaser.GameObjects.Container {
     return this.container;
+  }
+
+  /**
+   * Distance from the sprite's feet (its anchor) up to the top of its
+   * rendered frame. Standard NPCs are 32 (64px frame × 0.5 scale) — used as
+   * the default so label-stacking math elsewhere doesn't need a special
+   * case for them. Sheets with a scaleOverride (e.g. a tall sheet with a
+   * prop above the head) report their own, usually larger, height so
+   * name/prompt labels can sit above the whole sprite instead of the
+   * standard-NPC assumption.
+   */
+  getVisualHeight(): number {
+    return this.visualHeight;
   }
 
   walk(direction: Direction): void {

@@ -88,14 +88,21 @@ export class NPCSprite {
 
     // ── Label stack (bottom → top) ──────────────────────────────────────────
     //
-    //   y = -70 … -64  →  [! bubble] or [interact prompt]
-    //   y = -46         →  [ Name ]
-    //   y =   0         →  [head]
+    //   nameY - 18  →  [! bubble] or [interact prompt]
+    //   nameY       →  [ Name ]
+    //   y = 0       →  [feet]
     //
+    // Anchored to the sprite's own rendered height (32 for a standard NPC,
+    // the same margins the old hardcoded -38/-56 implied) rather than fixed
+    // pixels, so a taller sheet — e.g. Kite Pro's kite banner above the
+    // head — doesn't have its name/prompt drawn over the top of the sprite.
     // The "!" and the prompt share the same slot (toggle visibility).
+    const visualHeight = this.avatar.getVisualHeight();
+    const nameY = -(visualHeight + 6);
+    const exclamationY = -(visualHeight + 24);
 
     // ── Name label ───────────────────────────────────────────────────────────
-    this.nameText = scene.add.text(0, -38, def.name, {
+    this.nameText = scene.add.text(0, nameY, def.name, {
       fontSize: "8px",
       fontFamily: '"Press Start 2P", monospace',
       color: colorHex,
@@ -113,7 +120,7 @@ export class NPCSprite {
       // 64x64 source rendered at 20px world — same footprint as the old
       // 8px-radius circle, with room for the sprite's outline.
       this.exclamationImg.setDisplaySize(20, 20);
-      this.exclamation = scene.add.container(0, -56, [this.exclamationImg]);
+      this.exclamation = scene.add.container(0, exclamationY, [this.exclamationImg]);
     } else {
       // Fallback: primitive circle + "!" (texture failed to load).
       this.exclamationBg = scene.add.circle(0, 0, 8, def.color);
@@ -122,13 +129,13 @@ export class NPCSprite {
         color: "#ffffff", fontStyle: "bold",
         resolution: 2,
       }).setOrigin(0.5, 0.5);
-      this.exclamation = scene.add.container(0, -56, [this.exclamationBg, this.exclamationText]);
+      this.exclamation = scene.add.container(0, exclamationY, [this.exclamationBg, this.exclamationText]);
     }
     container.add(this.exclamation);
 
     scene.tweens.add({
       targets: this.exclamation,
-      y: -61,
+      y: exclamationY - 5,
       duration: 900,
       yoyo: true,
       repeat: -1,
@@ -150,7 +157,7 @@ export class NPCSprite {
     // Shown instead of the "!" when the player is in range.
     // Desktop: "[E] Talk"   Mobile/touch: "Tap to talk"
     const promptLabel = isTouch ? "Tap to talk" : "[E] Talk";
-    this.promptText = scene.add.text(0, -56, promptLabel, {
+    this.promptText = scene.add.text(0, exclamationY, promptLabel, {
       fontSize: "7px",
       fontFamily: '"Press Start 2P", monospace',
       color: "#14F195",
@@ -165,7 +172,9 @@ export class NPCSprite {
     // Transparent rectangle covering the NPC sprite + name area.
     // On touch devices, tapping the NPC while in range triggers interaction.
     if (isTouch) {
-      const hitZone = scene.add.rectangle(0, -24, 48, 72, 0x000000, 0);
+      // Same proportions the old fixed 48x72 @ y=-24 used for a standard
+      // NPC (visualHeight 32): y = -0.75×height, height = 2.25×height.
+      const hitZone = scene.add.rectangle(0, -visualHeight * 0.75, 48, visualHeight * 2.25, 0x000000, 0);
       hitZone.setInteractive({ useHandCursor: false });
       hitZone.on("pointerdown", () => {
         if (this._isInRange) {
