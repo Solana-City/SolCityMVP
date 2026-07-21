@@ -54,6 +54,9 @@ export class SimpleSprite {
   private idleLoopFrames?: number;
   /** frameHeight × applied scale — how tall the sprite renders, feet to top. */
   private visualHeight = 32;
+  /** Horizontal shift (source px) of the contact blob, for sprites whose
+   *  character isn't centered in its frame (e.g. Kite Pro). */
+  private blobOffsetX = 0;
 
   constructor(
     scene: Phaser.Scene,
@@ -78,11 +81,14 @@ export class SimpleSprite {
      * than other NPCs.
      */
     scaleOverride?: number,
+    /** Horizontal blob shift (source px) for off-center characters. */
+    blobOffsetX = 0,
   ) {
     this.scene = scene;
     this.textureKey = textureKey;
     this.directionRow = directionRow;
     this.idleLoopFrames = idleLoopFrames;
+    this.blobOffsetX = blobOffsetX;
 
     // Pixel-perfect anchoring with integer pixel mapping.
     //
@@ -108,6 +114,13 @@ export class SimpleSprite {
     if (scaleOverride !== undefined) {
       this.sprite.setScale(scaleOverride);
       this.visualHeight = frameHeight * scaleOverride;
+      // A fractional downscale (e.g. 0.28) samples pixel art on non-integer
+      // boundaries; nearest-neighbor then drops rows unevenly and the sprite
+      // looks "cracked" at anything but full zoom. LINEAR filtering averages
+      // instead, giving a clean (very slightly soft) shrink with no shimmer —
+      // the correct filter for downscaling, vs NEAREST which only wins when
+      // upscaling by whole multiples.
+      this.sprite.texture.setFilter(Phaser.Textures.FilterMode.LINEAR);
     } else if (frameHeight >= 56) {
       // Native 64×64 sheet → render at 0.5× world, 2× zoom cancels to 1:1.
       this.sprite.setScale(0.5);
@@ -154,6 +167,12 @@ export class SimpleSprite {
     this.contactBlob = createContactBlob(
       this.scene, feetY - 2, frame.width * base * 0.45,
     );
+    // Characters drawn off-center in their frame (Kite Pro sits right of
+    // center to counterbalance the kite string) would otherwise have the
+    // container-centered blob sit beside their feet. blobOffsetX (source px)
+    // shifts it under the actual feet; the mirrored silhouette already lines
+    // up because it's the whole frame, so it's untouched.
+    this.contactBlob.x = this.blobOffsetX * base;
     this.container.addAt(this.contactBlob, 0);
 
     // Mirrored silhouette: its own copy of the margin (scaled by squash)

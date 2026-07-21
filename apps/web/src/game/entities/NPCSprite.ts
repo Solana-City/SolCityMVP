@@ -78,6 +78,7 @@ export class NPCSprite {
       scene, x, y, spriteKey, directionRow,
       def.spriteAnimation?.frameCount,
       def.spriteAnimation?.scale,
+      def.spriteAnimation?.blobOffsetX,
     );
 
     const container = this.getContainer();

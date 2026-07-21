@@ -31,9 +31,9 @@ function removeChroma(ctx: CanvasRenderingContext2D, w: number, h: number) {
   ctx.putImageData(d, 0, 0);
 }
 
-function AvatarPreview({ loadout, facingUp }: { loadout: Loadout; facingUp?: boolean }) {
+function AvatarPreview({ loadout, facingUp, scale = 3 }: { loadout: Loadout; facingUp?: boolean; scale?: number }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const SCALE = 3;
+  const SCALE = scale;
   const FW = SPRITE_FRAME_WIDTH * SCALE;
   const FH = SPRITE_FRAME_HEIGHT * SCALE;
   // Backpacks are worn on the back — from the front only the strap tops
@@ -214,6 +214,15 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
   const [loadout, setLoadout] = useState<Loadout>(() => loadSavedLoadout());
   const [activeCategory, setActiveCategory] = useState<LayerCategory>("skin");
   const [flash, setFlash] = useState<string | null>(null);
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 720px), (pointer: coarse)");
+    setIsMobile(mq.matches);
+    const on = (e: MediaQueryListEvent) => setIsMobile(e.matches);
+    mq.addEventListener("change", on);
+    return () => mq.removeEventListener("change", on);
+  }, []);
 
   useEffect(() => {
     gameRef?.events.emit("wardrobe:loadout", loadout);
@@ -252,17 +261,18 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
     >
       <div style={{
         background: "#0b0e1c",
-        border: "1px solid rgba(153,69,255,0.3)",
-        borderRadius: 16,
-        width: 700,
-        maxWidth: "96vw",
-        maxHeight: "92vh",
+        border: isMobile ? "none" : "1px solid rgba(153,69,255,0.3)",
+        borderRadius: isMobile ? 0 : 16,
+        width: isMobile ? "100vw" : 700,
+        maxWidth: isMobile ? "100vw" : "96vw",
+        height: isMobile ? "100dvh" : undefined,
+        maxHeight: isMobile ? "100dvh" : "92vh",
         display: "flex",
         flexDirection: "column",
         overflow: "hidden",
         fontFamily: '"Press Start 2P", monospace',
         color: "#d0d0f0",
-        boxShadow: "0 0 60px rgba(153,69,255,0.15), 0 24px 64px rgba(0,0,0,0.6)",
+        boxShadow: isMobile ? "none" : "0 0 60px rgba(153,69,255,0.15), 0 24px 64px rgba(0,0,0,0.6)",
       }}>
 
         {/* ── Header ── */}
@@ -310,14 +320,17 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
           </div>
         </div>
 
-        <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
+        <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", flex: 1, overflow: "hidden" }}>
 
-          {/* ── LEFT: preview + category tabs ── */}
+          {/* ── LEFT (desktop) / TOP (mobile): preview + category tabs ── */}
           <div style={{
-            width: 168,
-            borderRight: "1px solid rgba(153,69,255,0.1)",
+            width: isMobile ? "100%" : 168,
+            flexShrink: 0,
+            borderRight: isMobile ? "none" : "1px solid rgba(153,69,255,0.1)",
+            borderBottom: isMobile ? "1px solid rgba(153,69,255,0.1)" : "none",
             display: "flex",
-            flexDirection: "column",
+            flexDirection: isMobile ? "row" : "column",
+            alignItems: isMobile ? "center" : "stretch",
             background: "rgba(0,0,0,0.2)",
           }}>
             {/* Avatar preview */}
@@ -325,28 +338,39 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
               display: "flex",
               flexDirection: "column",
               alignItems: "center",
-              padding: "16px 12px 10px",
-              gap: 6,
+              padding: isMobile ? "8px 10px" : "16px 12px 10px",
+              gap: isMobile ? 2 : 6,
+              flexShrink: 0,
             }}>
               <div style={{
                 background: "rgba(153,69,255,0.06)",
                 border: "1px solid rgba(153,69,255,0.14)",
                 borderRadius: 10,
-                padding: 10,
+                padding: isMobile ? 4 : 10,
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
               }}>
-                <AvatarPreview loadout={loadout} facingUp={activeCategory === "back"} />
+                <AvatarPreview loadout={loadout} facingUp={activeCategory === "back"} scale={isMobile ? 1.4 : 3} />
               </div>
-              <span style={{ fontSize: 7, color: "#444466", letterSpacing: 1 }}>PREVIEW</span>
+              {!isMobile && <span style={{ fontSize: 7, color: "#444466", letterSpacing: 1 }}>PREVIEW</span>}
             </div>
 
-            {/* Divider */}
-            <div style={{ height: 1, background: "rgba(153,69,255,0.1)", margin: "0 12px" }} />
+            {/* Divider (desktop only — horizontal on mobile isn't needed) */}
+            {!isMobile && <div style={{ height: 1, background: "rgba(153,69,255,0.1)", margin: "0 12px" }} />}
 
-            {/* Category tabs */}
-            <div style={{ flex: 1, overflowY: "auto", padding: "8px 8px" }}>
+            {/* Category tabs — vertical list on desktop, horizontal scroll strip on mobile */}
+            <div style={{
+              flex: 1,
+              minWidth: 0,
+              overflowY: isMobile ? "hidden" : "auto",
+              overflowX: isMobile ? "auto" : "hidden",
+              display: "flex",
+              flexDirection: isMobile ? "row" : "column",
+              gap: isMobile ? 6 : 0,
+              padding: "8px 8px",
+              WebkitOverflowScrolling: "touch",
+            }}>
               {tabOrder.map(cat => {
                 const isActive = activeCategory === cat;
                 const hasItem = !!loadout[cat];
@@ -357,31 +381,45 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
                     onClick={() => setActiveCategory(cat)}
                     style={{
                       display: "flex",
+                      flexDirection: isMobile ? "column" : "row",
                       alignItems: "center",
-                      gap: 8,
-                      width: "100%",
-                      padding: "9px 10px",
-                      marginBottom: 2,
+                      gap: isMobile ? 3 : 8,
+                      width: isMobile ? "auto" : "100%",
+                      flexShrink: 0,
+                      padding: isMobile ? "6px 8px" : "9px 10px",
+                      marginBottom: isMobile ? 0 : 2,
                       background: isActive ? "rgba(153,69,255,0.18)" : "transparent",
                       border: isActive ? "1px solid rgba(153,69,255,0.4)" : "1px solid transparent",
                       borderRadius: 8,
                       cursor: "pointer",
                       color: isActive ? "#e0d0ff" : "#666688",
-                      textAlign: "left",
+                      textAlign: isMobile ? "center" : "left",
                       transition: "background 0.12s, color 0.12s",
                     }}
                     onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = "rgba(153,69,255,0.08)"; }}
                     onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = "transparent"; }}
                   >
-                    <span style={{ fontSize: 11, flexShrink: 0 }}>{CATEGORY_ICONS[cat]}</span>
-                    <span style={{ fontSize: 8, flex: 1, fontFamily: '"Press Start 2P", monospace' }}>
+                    <span style={{ fontSize: isMobile ? 14 : 11, flexShrink: 0, position: "relative" }}>
+                      {CATEGORY_ICONS[cat]}
+                      {isMobile && (
+                        <span style={{
+                          position: "absolute", top: -2, right: -4,
+                          width: 5, height: 5, borderRadius: "50%",
+                          background: hasItem ? "#14F195" : isOptional ? "#333344" : "#ff4444",
+                          opacity: hasItem ? 1 : 0.6,
+                        }} />
+                      )}
+                    </span>
+                    <span style={{ fontSize: isMobile ? 6 : 8, flex: isMobile ? undefined : 1, fontFamily: '"Press Start 2P", monospace', whiteSpace: "nowrap" }}>
                       {CATEGORY_LABELS[cat]}
                     </span>
-                    <span style={{
-                      width: 6, height: 6, borderRadius: "50%", flexShrink: 0,
-                      background: hasItem ? "#14F195" : isOptional ? "#333344" : "#ff4444",
-                      opacity: hasItem ? 1 : 0.5,
-                    }} />
+                    {!isMobile && (
+                      <span style={{
+                        width: 6, height: 6, borderRadius: "50%", flexShrink: 0,
+                        background: hasItem ? "#14F195" : isOptional ? "#333344" : "#ff4444",
+                        opacity: hasItem ? 1 : 0.5,
+                      }} />
+                    )}
                   </button>
                 );
               })}
@@ -415,8 +453,8 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
             <div style={{ flex: 1, overflowY: "auto", padding: "14px 16px" }}>
               <div style={{
                 display: "grid",
-                gridTemplateColumns: "repeat(auto-fill, minmax(100px, 1fr))",
-                gap: 10,
+                gridTemplateColumns: `repeat(auto-fill, minmax(${isMobile ? 84 : 100}px, 1fr))`,
+                gap: isMobile ? 8 : 10,
               }}>
                 {/* None option for optional categories */}
                 {OPTIONAL.includes(activeCategory) && (

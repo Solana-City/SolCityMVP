@@ -57,6 +57,14 @@ export interface NPCDefinition {
      * usual NPC size.
      */
     scale?: number;
+    /**
+     * Horizontal shift (source px) of the ground contact blob, for sheets
+     * whose character isn't centered in its frame — e.g. Kite Pro sits
+     * right of center to counterbalance the kite string, so its blob needs
+     * nudging right to sit under the feet. The mirrored silhouette already
+     * lines up (it's the whole frame) and is unaffected.
+     */
+    blobOffsetX?: number;
   };
 }
 
@@ -111,7 +119,10 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     // scale -> 28px on screen. Kite Pro's character (excluding the kite
     // banner above the head) measures ~101px within its 190px frame.
     // 28 / 101 ≈ 0.28 matches that same on-screen height.
-    spriteAnimation: { frameWidth: 116, frameHeight: 190, frameCount: 8, scale: 0.28 },
+    // blobOffsetX: the character's feet sit at x≈80 in the 116px frame
+    // (right of center 58) to balance the kite string — shift the blob +22
+    // source px to land it under the feet.
+    spriteAnimation: { frameWidth: 116, frameHeight: 190, frameCount: 8, scale: 0.28, blobOffsetX: 22 },
   },
   {
     id: "swap-npc",
