@@ -38,6 +38,11 @@ export class CityScene extends Phaser.Scene {
   private recentJoins = new Map<string, number>();
   private currentDirection: Direction = "down";
   private idleDelay = 0;
+  // Footstep dust — kicked up behind the feet while walking, ramping in
+  // intensity the longer you keep moving.
+  private dustEmitter: Phaser.GameObjects.Particles.ParticleEmitter | null = null;
+  private walkStartAt = 0;   // time.now the current unbroken walk began (0 = idle)
+  private lastDustAt = 0;
   private chatInputActive = false;
   private npcSprites: NPCSprite[] = [];
   private pedestrians!: PedestrianManager;
@@ -177,6 +182,8 @@ export class CityScene extends Phaser.Scene {
     for (const cl of this.collisionLayers) {
       this.physics.add.collider(container, cl);
     }
+
+    this.createFootDust();
 
     // Invisible walls — MagicBlock building outer columns patch.
     //
@@ -527,6 +534,54 @@ export class CityScene extends Phaser.Scene {
     });
   }
 
+  /** One-time setup: a tiny dust dot texture + a manual particle emitter. */
+  private createFootDust(): void {
+    if (!this.textures.exists("foot-dust")) {
+      const g = this.add.graphics();
+      // Dusty tan, close to the path/sand palette so it reads as ground kick-up.
+      g.fillStyle(0xbfae8e, 1);
+      g.fillCircle(3, 3, 3);
+      g.generateTexture("foot-dust", 6, 6);
+      g.destroy();
+    }
+
+    this.dustEmitter = this.add.particles(0, 0, "foot-dust", {
+      lifespan: 460,
+      speed: { min: 4, max: 16 },
+      angle: { min: 0, max: 360 },
+      scale: { start: 0.9, end: 0 },
+      alpha: { start: 0.5, end: 0 },
+      gravityY: -8,          // drifts up a touch as it fades, like settling dust
+      frequency: -1,         // manual emission only (emitParticleAt)
+      emitting: false,
+    });
+  }
+
+  /**
+   * Emits a small puff of dust behind the feet. Cadence + particle count
+   * ramp up the longer the player walks unbroken, so a long stroll kicks up
+   * progressively more than a single step.
+   */
+  private emitFootDust(now: number, vx: number, vy: number): void {
+    if (!this.dustEmitter) return;
+    const streak = now - this.walkStartAt;
+    const interval = streak > 1500 ? 115 : 150;
+    if (now - this.lastDustAt < interval) return;
+    this.lastDustAt = now;
+
+    // 2 particles per puff, +1 per ~0.9s of continuous walking, capped at 4.
+    const count = Math.min(4, 2 + Math.floor(streak / 900));
+
+    // Position at the feet, nudged backward (opposite the movement vector).
+    const c = this.avatar.getContainer();
+    const len = Math.hypot(vx, vy) || 1;
+    const fx = c.x - (vx / len) * 6;
+    const fy = c.y - (vy / len) * 2 + 1;
+    // Just under the player in the depth sort so the puff sits behind them.
+    this.dustEmitter.setDepth(c.depth - 1);
+    this.dustEmitter.emitParticleAt(fx, fy, count);
+  }
+
   update(): void {
     if (this.chatInputActive || this.interactionBlocked) {
       this.playerBody.setVelocity(0);
@@ -579,7 +634,12 @@ export class CityScene extends Phaser.Scene {
       // Footstep tick — SoundManager throttles to a natural walk cadence,
       // so calling every frame is fine. Local player only (never the crowd).
       soundManager.playFootstep();
+      // Footstep dust — track the unbroken-walk streak so it ramps up.
+      const now = this.time.now;
+      if (this.walkStartAt === 0) this.walkStartAt = now;
+      this.emitFootDust(now, vx, vy);
     } else {
+      this.walkStartAt = 0; // stopped — reset the intensity ramp
       // Delay idle by ~8 frames so a brief tap shows at least 1 walk animation
       // frame (frameRate=8 → 125ms/frame; 8 game frames ≈ 133ms at 60fps).
       if (this.idleDelay < 8) {
