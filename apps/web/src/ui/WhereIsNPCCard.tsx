@@ -27,48 +27,123 @@ function removeChroma(ctx: CanvasRenderingContext2D, w: number, h: number) {
 }
 
 // ── Mini avatar ───────────────────────────────────────────────────────────────
-function MiniAvatar({ loadout, size = 80 }: { loadout: Loadout; size?: number }) {
+
+/**
+ * Applies the same hat-coverage hair masking the overworld uses (see
+ * AvatarSprite.getHairTextureFor), on the single idle-down frame:
+ *   "band"  — erase hair only exactly under the band's own ink;
+ *   "full"  — per column, erase hair above the hat's topmost opaque pixel;
+ *             columns with no hat ink lose their hair entirely (stops wide
+ *             hairstyles poking out past the hat's sides).
+ * ("suppress" never reaches here — the hair layer is skipped outright.)
+ */
+function maskHairWithHat(
+  hair: HTMLCanvasElement,
+  hat: HTMLCanvasElement,
+  coverage: "full" | "band" | "suppress",
+) {
+  const w = hair.width, h = hair.height;
+  const hairCtx = hair.getContext("2d")!;
+  const hatData = hat.getContext("2d")!.getImageData(0, 0, w, h).data;
+  const hairImage = hairCtx.getImageData(0, 0, w, h);
+  const hd = hairImage.data;
+
+  if (coverage === "band") {
+    for (let i = 0; i < w * h; i++) {
+      if (hatData[i * 4 + 3] > 10) hd[i * 4 + 3] = 0;
+    }
+  } else {
+    for (let x = 0; x < w; x++) {
+      let cutoff = h; // no hat ink in this column → whole column erased
+      for (let y = 0; y < h; y++) {
+        if (hatData[(y * w + x) * 4 + 3] > 10) { cutoff = y; break; }
+      }
+      for (let y = 0; y < cutoff; y++) hd[(y * w + x) * 4 + 3] = 0;
+    }
+  }
+  hairCtx.putImageData(hairImage, 0, 0);
+}
+
+function MiniAvatar({ loadout, size = 64 }: { loadout: Loadout; size?: number }) {
   const ref = useRef<HTMLCanvasElement>(null);
-  const SCALE = size / SPRITE_FRAME_WIDTH;
+  // The canvas composites at the NATIVE 64x64 frame size and is displayed
+  // at an integer multiple only — fractional scaling shears the pixel grid
+  // (the old size/64 stretch is what looked cracked).
+  const displaySize = size >= 96 ? SPRITE_FRAME_WIDTH * 2 : SPRITE_FRAME_WIDTH;
 
   useEffect(() => {
     const canvas = ref.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d")!;
-    ctx.clearRect(0, 0, size, size);
     ctx.imageSmoothingEnabled = false;
 
-    let loaded = 0;
-    const imgs: { img: HTMLImageElement }[] = [];
+    const hatVariant = getVariant("hat", loadout.hat);
 
-    for (const cat of LAYER_ORDER) {
+    // Same layer rules as the overworld: a "suppress" hat hides hair entirely.
+    const cats = LAYER_ORDER.filter((cat) => {
       const variantId = loadout[cat];
-      if (!variantId) continue;
-      const variant = getVariant(cat, variantId);
-      if (!variant) continue;
-      const img = new Image();
-      img.src = `/assets/sprites/paperdoll/${variant.file}`;
-      imgs.push({ img });
-      img.onload = () => {
-        loaded++;
-        if (loaded === imgs.length) {
-          ctx.clearRect(0, 0, size, size);
-          for (const { img } of imgs) {
-            const off = document.createElement("canvas");
-            off.width = img.naturalWidth; off.height = img.naturalHeight;
-            const oc = off.getContext("2d")!;
-            oc.drawImage(img, 0, 0);
-            removeChroma(oc, img.naturalWidth, img.naturalHeight);
-            ctx.drawImage(off, 0, 0, SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT, 0, 0, size, size);
-          }
-        }
-      };
-    }
-  }, [loadout, size, SCALE]);
+      if (!variantId) return false;
+      if (cat === "hair" && hatVariant?.hatCoverage === "suppress") return false;
+      return getVariant(cat, variantId) !== undefined;
+    });
+
+    let cancelled = false;
+
+    Promise.all(
+      cats.map((cat) => new Promise<{ cat: string; frame: HTMLCanvasElement } | null>((resolve) => {
+        const variant = getVariant(cat, loadout[cat])!;
+        const img = new Image();
+        img.onload = () => {
+          // Crop the idle-down frame and de-chroma it.
+          const off = document.createElement("canvas");
+          off.width = SPRITE_FRAME_WIDTH;
+          off.height = SPRITE_FRAME_HEIGHT;
+          const oc = off.getContext("2d")!;
+          oc.drawImage(
+            img, 0, 0, SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT,
+            0, 0, SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT,
+          );
+          removeChroma(oc, SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT);
+          resolve({ cat, frame: off });
+        };
+        img.onerror = () => resolve(null);
+        img.src = `/assets/sprites/paperdoll/${variant.file}`;
+      })),
+    ).then((results) => {
+      if (cancelled || !ref.current) return;
+      const byCat = new Map(
+        results.filter((r): r is { cat: string; frame: HTMLCanvasElement } => r !== null)
+          .map((r) => [r.cat, r.frame]),
+      );
+
+      const hairFrame = byCat.get("hair");
+      const hatFrame = byCat.get("hat");
+      if (hairFrame && hatFrame) {
+        maskHairWithHat(hairFrame, hatFrame, hatVariant?.hatCoverage ?? "full");
+      }
+
+      ctx.clearRect(0, 0, SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT);
+      for (const cat of cats) {
+        const frame = byCat.get(cat);
+        if (frame) ctx.drawImage(frame, 0, 0);
+      }
+    });
+
+    return () => { cancelled = true; };
+  }, [loadout]);
 
   return (
-    <canvas ref={ref} width={size} height={size}
-      style={{ imageRendering: "pixelated", display: "block" }} />
+    <canvas
+      ref={ref}
+      width={SPRITE_FRAME_WIDTH}
+      height={SPRITE_FRAME_HEIGHT}
+      style={{
+        imageRendering: "pixelated",
+        display: "block",
+        width: displaySize,
+        height: displaySize,
+      }}
+    />
   );
 }
 

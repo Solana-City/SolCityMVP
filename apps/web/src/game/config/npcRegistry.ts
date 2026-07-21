@@ -148,8 +148,10 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     id: "pratik",
     name: "Pratik",
     role: "Superteam Earn",
-    tileX: 116,
-    tileY: 105,
+    // Front-left of the STEarn tent, on open grass — visible from the path,
+    // never hidden behind the greenhouse or inside the tent itself.
+    tileX: 115,
+    tileY: 103,
     color: 0x9945ff,
     dialog: [
       "Hey! I run the Superteam Earn hub, where builders get paid to work on Solana.",
