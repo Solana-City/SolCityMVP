@@ -28,19 +28,32 @@ export type Sfx =
   | "error";     // minigame lost / action failed
 
 const MUTE_KEY = "solcity:muted";
+const VOLUME_KEY = "solcity:volume";
+/** Master volume default — deliberately low; the Settings slider raises it. */
+const DEFAULT_VOLUME = 0.35;
 
 class SoundManager {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
   private muted = false;
+  private volume = DEFAULT_VOLUME;
   /** Guards footstep spam — the walk loop can call every frame. */
   private lastFootstepAt = 0;
   private footstepToggle = false;
 
   constructor() {
     if (typeof window !== "undefined") {
-      try { this.muted = localStorage.getItem(MUTE_KEY) === "1"; } catch { /* ignore */ }
+      try {
+        this.muted = localStorage.getItem(MUTE_KEY) === "1";
+        const v = parseFloat(localStorage.getItem(VOLUME_KEY) ?? "");
+        if (!Number.isNaN(v)) this.volume = Math.min(1, Math.max(0, v));
+      } catch { /* ignore */ }
     }
+  }
+
+  /** Effective master gain = volume unless muted. */
+  private effectiveGain(): number {
+    return this.muted ? 0 : this.volume;
   }
 
   /**
@@ -56,7 +69,7 @@ class SoundManager {
       if (!AC) return null;
       this.ctx = new AC();
       this.master = this.ctx.createGain();
-      this.master.gain.value = this.muted ? 0 : 0.5;
+      this.master.gain.value = this.effectiveGain();
       this.master.connect(this.ctx.destination);
     }
     if (this.ctx.state === "suspended") this.ctx.resume().catch(() => {});
@@ -73,12 +86,23 @@ class SoundManager {
   setMuted(muted: boolean): void {
     this.muted = muted;
     try { localStorage.setItem(MUTE_KEY, muted ? "1" : "0"); } catch { /* ignore */ }
-    if (this.master) this.master.gain.value = muted ? 0 : 0.5;
+    if (this.master) this.master.gain.value = this.effectiveGain();
   }
 
   toggleMuted(): boolean {
     this.setMuted(!this.muted);
     return this.muted;
+  }
+
+  /** 0..1 master volume. */
+  getVolume(): number { return this.volume; }
+
+  setVolume(v: number): void {
+    this.volume = Math.min(1, Math.max(0, v));
+    try { localStorage.setItem(VOLUME_KEY, String(this.volume)); } catch { /* ignore */ }
+    // Raising the slider off zero implies "I want sound" — clear mute too.
+    if (this.volume > 0 && this.muted) this.setMuted(false);
+    if (this.master) this.master.gain.value = this.effectiveGain();
   }
 
   // ── Synthesis primitives ──────────────────────────────────────────────

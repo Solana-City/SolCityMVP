@@ -8,6 +8,7 @@ import type { ProfileManager } from "@/game/config/profileManager";
 import type { OnChainPlayer } from "@/game/multiplayer/OnChainMultiplayer";
 import { ACHIEVEMENTS, TIER_COLORS } from "@/game/progression/achievementRegistry";
 import { fetchLeaderboard, type LeaderboardEntry } from "@/game/solana/leaderboard";
+import { soundManager } from "@/game/audio/SoundManager";
 
 interface ProfilePanelProps {
   gameRef: Phaser.Game | null;
@@ -22,6 +23,7 @@ export default function ProfilePanel({ gameRef, isOpen, onClose }: ProfilePanelP
   const [nameInput, setNameInput] = useState("");
   const [onlinePlayers, setOnlinePlayers] = useState<OnChainPlayer[]>([]);
   const [lbTab, setLbTab] = useState<"online" | "alltime">("online");
+  const [panelTab, setPanelTab] = useState<"profile" | "settings">("profile");
   const [allTimeEntries, setAllTimeEntries] = useState<LeaderboardEntry[]>([]);
   const [allTimeLoading, setAllTimeLoading] = useState(false);
   const [allTimeError, setAllTimeError] = useState<string | null>(null);
@@ -255,6 +257,32 @@ export default function ProfilePanel({ gameRef, isOpen, onClose }: ProfilePanelP
           </div>
         </div>
 
+        {/* Profile / Settings tab bar */}
+        <div className="flex items-center gap-0 mb-4" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+          {(["profile", "settings"] as const).map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setPanelTab(tab)}
+              className="px-3 py-1.5 cursor-pointer"
+              style={{
+                background: "none",
+                border: "none",
+                borderBottom: panelTab === tab ? "2px solid #9945FF" : "2px solid transparent",
+                color: panelTab === tab ? "#c084fc" : "#555566",
+                fontFamily: '"Press Start 2P", monospace',
+                fontSize: 8,
+                marginBottom: -1,
+                textTransform: "uppercase",
+              }}
+            >
+              {tab}
+            </button>
+          ))}
+        </div>
+
+        {panelTab === "settings" && <SettingsTab />}
+
+        {panelTab === "profile" && (<>
         {/* Wallet */}
         <div className="mb-4">
           <div className="text-xs mb-1" style={{ color: "#555566" }}>
@@ -554,6 +582,67 @@ export default function ProfilePanel({ gameRef, isOpen, onClose }: ProfilePanelP
         <div className="flex justify-between text-xs mt-2" style={{ color: "#333344" }}>
           <span>Member since {new Date(profile.joinedAt).toLocaleDateString()}</span>
           <span>Last active {new Date(profile.lastActive).toLocaleDateString()}</span>
+        </div>
+        </>)}
+      </div>
+    </div>
+  );
+}
+
+function SettingsTab() {
+  const [volume, setVolume] = useState(0);
+  const [muted, setMuted] = useState(false);
+  useEffect(() => {
+    setVolume(soundManager.getVolume());
+    setMuted(soundManager.isMuted());
+  }, []);
+
+  const onVolume = (v: number) => {
+    setVolume(v);
+    soundManager.setVolume(v);
+    setMuted(soundManager.isMuted()); // setVolume clears mute when raised off 0
+  };
+
+  return (
+    <div className="mb-2">
+      <div className="text-xs mb-3" style={{ color: "#555566" }}>
+        Sound
+      </div>
+      <div
+        className="rounded-lg p-3"
+        style={{ background: "#12122a", border: "1px solid rgba(255,255,255,0.04)" }}
+      >
+        <div className="flex items-center justify-between mb-3">
+          <span className="text-xs" style={{ color: "#aaaacc" }}>Effects volume</span>
+          <button
+            onClick={() => { const m = soundManager.toggleMuted(); setMuted(m); }}
+            title={muted ? "Unmute" : "Mute"}
+            style={{
+              background: "none", border: "none", cursor: "pointer",
+              fontSize: 15, lineHeight: 1, padding: 0,
+            }}
+          >
+            {muted ? "🔇" : "🔊"}
+          </button>
+        </div>
+        <div className="flex items-center gap-2">
+          <input
+            type="range"
+            min={0}
+            max={100}
+            value={Math.round((muted ? 0 : volume) * 100)}
+            onChange={(e) => onVolume(parseInt(e.target.value, 10) / 100)}
+            // Play a preview tick on release so the level is audible immediately.
+            onMouseUp={() => soundManager.play("click")}
+            onTouchEnd={() => soundManager.play("click")}
+            style={{ flex: 1, accentColor: "#9945FF", cursor: "pointer" }}
+          />
+          <span className="text-xs" style={{ color: "#888899", width: 34, textAlign: "right", fontFamily: "monospace" }}>
+            {Math.round((muted ? 0 : volume) * 100)}%
+          </span>
+        </div>
+        <div className="text-xs mt-3" style={{ color: "#444455", lineHeight: 1.5, fontSize: 8 }}>
+          All in-game effects — clicks, chimes, footsteps. Saved on this device.
         </div>
       </div>
     </div>
