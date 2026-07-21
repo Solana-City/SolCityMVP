@@ -13,6 +13,7 @@ import { hasAlreadyFoundCurrent, markCurrentFound } from "../minigames/whereIsNP
 import { ProfileManager, profileManager } from "../config/profileManager";
 import { AchievementEngine } from "../progression/achievementEngine";
 import { setupEmojiKeys, showEmoji, EMOJI_REGISTRY, EmojiDef } from "../chat/EmojiSystem";
+import { soundManager } from "../audio/SoundManager";
 
 // Pixel-perfect zoom values and snapping live in config/zoomConfig.ts —
 // shared with ZoomControl and the pinch-zoom hook.
@@ -575,6 +576,9 @@ export class CityScene extends Phaser.Scene {
       this.idleDelay = 0;
       this.avatar.walk(direction);
       this.currentDirection = direction;
+      // Footstep tick — SoundManager throttles to a natural walk cadence,
+      // so calling every frame is fine. Local player only (never the crowd).
+      soundManager.playFootstep();
     } else {
       // Delay idle by ~8 frames so a brief tap shows at least 1 walk animation
       // frame (frameRate=8 → 125ms/frame; 8 game frames ≈ 133ms at 60fps).

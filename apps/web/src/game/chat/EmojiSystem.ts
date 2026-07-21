@@ -1,4 +1,5 @@
 import * as Phaser from "phaser";
+import { soundManager } from "../audio/SoundManager";
 
 export interface EmojiDef {
   id: string;
@@ -31,6 +32,11 @@ export function showEmoji(
   target: Phaser.GameObjects.Container,
   emoji: EmojiDef
 ): void {
+  // Both the hotkey (1-6) and chat-button paths converge here, and both
+  // target the local player, so this is the single spot that covers every
+  // local emote without sounding for remote players.
+  soundManager.play("emote");
+
   const bubble = scene.add.container(0, -30);
 
   // Soft dark pill background

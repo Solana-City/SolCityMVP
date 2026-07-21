@@ -7,6 +7,7 @@ import type { MiniGameContext, MiniGameResult } from "@/game/minigames/types";
 import { launch as launchMiniGame } from "@/game/minigames";
 import { usePinchZoom } from "@/ui/usePinchZoom";
 import { incrementQuest } from "@/game/quests/QuestManager";
+import { soundManager } from "@/game/audio/SoundManager";
 
 // All Solana/wallet-adapter code must be client-only — these packages
 // access `window`/`navigator` at module-load time and crash the SSR pass.
@@ -30,6 +31,7 @@ const ConnectScreen       = dynamic(() => import("@/ui/ConnectScreen"),       { 
 const WhereIsNPCCard      = dynamic(() => import("@/ui/WhereIsNPCCard"),      { ssr: false });
 const QuestPanel          = dynamic(() => import("@/ui/QuestPanel"),          { ssr: false });
 const PlayerCard          = dynamic(() => import("@/ui/PlayerCard"),          { ssr: false });
+const AudioBridge         = dynamic(() => import("@/ui/AudioBridge"),         { ssr: false });
 
 import ErrorBoundary from "@/ui/ErrorBoundary";
 
@@ -271,6 +273,7 @@ export default function Home() {
               /* ── Mobile: compact horizontal strip + zoom below ── */
               <div className="flex flex-col items-end gap-2">
                 <div className="flex items-center gap-1.5">
+                  <SoundToggle size={32} />
                   <PfpButton gameRef={game} size={32} onClick={() => setProfileOpen(true)} />
                   <WardrobeButton size={32} onClick={() => setWardrobeOpen(true)} />
                   <WalletBar onWalletChange={handleWalletChange} />
@@ -301,6 +304,7 @@ export default function Home() {
                     onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
                   />
                   <div style={{ flex: 1 }} />
+                  <SoundToggle />
                   <WardrobeButton onClick={() => setWardrobeOpen(true)} />
                   <PfpButton gameRef={game} onClick={() => setProfileOpen(true)} />
                 </div>
@@ -336,6 +340,7 @@ export default function Home() {
           </div>
 
           <ToastStack />
+          <AudioBridge game={game} />
           {playerCardTarget && (
             <PlayerCard
               gameRef={game}
@@ -401,6 +406,35 @@ function MobilePanelToggle({ iconSrc, label, active, onClick }: {
           pointerEvents: "none",
         }} />
       )}
+    </button>
+  );
+}
+
+function SoundToggle({ size = 36 }: { size?: number }) {
+  const [muted, setMuted] = useState(false);
+  useEffect(() => { setMuted(soundManager.isMuted()); }, []);
+  return (
+    <button
+      onClick={() => setMuted(soundManager.toggleMuted())}
+      title={muted ? "Unmute sound" : "Mute sound"}
+      style={{
+        width: size,
+        height: size,
+        borderRadius: 8,
+        border: "1px solid rgba(153,69,255,0.35)",
+        background: "rgba(153,69,255,0.07)",
+        cursor: "pointer",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        fontSize: size >= 36 ? 16 : 14,
+        transition: "background 0.15s",
+        flexShrink: 0,
+      }}
+      onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(153,69,255,0.18)")}
+      onMouseLeave={(e) => (e.currentTarget.style.background = "rgba(153,69,255,0.07)")}
+    >
+      {muted ? "🔇" : "🔊"}
     </button>
   );
 }
