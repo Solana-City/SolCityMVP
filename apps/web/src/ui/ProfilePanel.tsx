@@ -328,6 +328,7 @@ export default function ProfilePanel({ gameRef, isOpen, onClose }: ProfilePanelP
             {profile.unlockedOutfits.map((id) => (
               <button
                 key={id}
+                data-sfx="outfit"
                 onClick={() => selectOutfit(id)}
                 className="px-2 py-1 rounded text-xs cursor-pointer"
                 style={{

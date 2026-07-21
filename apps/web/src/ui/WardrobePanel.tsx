@@ -516,6 +516,7 @@ function VariantCard({
   return (
     <button
       onClick={onClick}
+      data-sfx="outfit"
       style={{
         display: "flex",
         flexDirection: "column",

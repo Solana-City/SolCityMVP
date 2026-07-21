@@ -18,13 +18,14 @@
  */
 
 export type Sfx =
-  | "click"      // UI button press
+  | "click"      // UI button press / minigame buttons
+  | "outfit"     // outfit selection — dry, slightly varied
   | "dialog"     // NPC dialog opens
   | "emote"      // player emote / chat emoji
   | "chime"      // discrete on-chain tx confirmed (swap / transfer / bounty)
   | "reward"     // score / outfit unlock
   | "achievement"// achievement unlocked (bigger than reward)
-  | "success"    // minigame won
+  | "victory"    // minigame won — brief triumphant sting
   | "error";     // minigame lost / action failed
 
 const MUTE_KEY = "solcity:muted";
@@ -194,8 +195,20 @@ class SoundManager {
     if (this.muted) return;
     switch (sfx) {
       case "click":
-        this.tone({ freq: 660, dur: 0.05, type: "square", gain: 0.18, release: 0.03 });
+        // Soft "pip" — a triangle (not square) with a gentle downward
+        // glide and a filtered noise transient for a tactile tap, rather
+        // than the flat square beep that read as a calculator.
+        this.sweep({ from: 560, to: 470, dur: 0.05, type: "triangle", gain: 0.12 });
+        this.noiseBurst({ dur: 0.012, gain: 0.03, freq: 2600, q: 1.2 });
         break;
+      case "outfit": {
+        // Dry, percussive "tok" with a touch of random pitch so repeated
+        // selections don't sound identical. No ring — short decays only.
+        const j = (Math.random() - 0.5) * 2; // -1..1
+        this.noiseBurst({ dur: 0.02, gain: 0.06, freq: 480 + j * 60, q: 1.6 });
+        this.tone({ freq: 320 + j * 30, dur: 0.03, type: "triangle", gain: 0.11, attack: 0.001, release: 0.024 });
+        break;
+      }
       case "dialog":
         this.tone({ freq: 440, dur: 0.06, type: "triangle", gain: 0.2 });
         this.tone({ freq: 660, dur: 0.07, type: "triangle", gain: 0.2, delay: 0.05 });
@@ -222,10 +235,17 @@ class SoundManager {
         this.tone({ freq: 1047, dur: 0.22, type: "triangle", gain: 0.24, delay: 0.27 });
         this.tone({ freq: 1568, dur: 0.10, type: "sine", gain: 0.10, delay: 0.30 });
         break;
-      case "success":
-        this.tone({ freq: 784, dur: 0.09, type: "square", gain: 0.2 });
-        this.tone({ freq: 1047, dur: 0.16, type: "square", gain: 0.2, delay: 0.08 });
+      case "victory": {
+        // Brief triumphant "ta-da!" — quick ascending G-C-E landing on a
+        // held high note with a sparkle, snappier than the achievement
+        // fanfare so a minigame win reads as a punchy sting, not a jingle.
+        this.tone({ freq: 784, dur: 0.07, type: "square", gain: 0.2 });                      // G5
+        this.tone({ freq: 1047, dur: 0.07, type: "square", gain: 0.2, delay: 0.07 });          // C6
+        this.tone({ freq: 1319, dur: 0.26, type: "triangle", gain: 0.24, delay: 0.14 });       // E6 (held)
+        this.tone({ freq: 784, dur: 0.20, type: "sine", gain: 0.08, delay: 0.14 });            // body under the E
+        this.tone({ freq: 1976, dur: 0.12, type: "sine", gain: 0.08, delay: 0.18 });           // sparkle
         break;
+      }
       case "error":
         this.sweep({ from: 300, to: 120, dur: 0.28, type: "sawtooth", gain: 0.18 });
         break;

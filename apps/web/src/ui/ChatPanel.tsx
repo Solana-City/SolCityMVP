@@ -200,6 +200,9 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
           {EMOJI_REGISTRY.map((em) => (
             <button
               key={em.id}
+              // The emote itself makes a sound (in showEmoji); opt out of the
+              // generic UI click so they don't overlap.
+              data-sfx="off"
               onClick={() => {
                 gameRef?.events.emit("emoji:trigger", em);
                 setShowEmojis(false);
