@@ -136,13 +136,6 @@ export class SimpleSprite {
     const frame = this.scene.textures.get(this.textureKey).get(0);
     if (!frame) return;
 
-    // Contact blob first (lowest layer) — narrower than the body and
-    // centered on the feet line: a subtle contact patch, not a puddle.
-    this.contactBlob = createContactBlob(
-      this.scene, this.sprite.y, frame.width * this.sprite.scaleX * 0.45,
-    );
-    this.container.addAt(this.contactBlob, 0);
-
     const silhouette = acquireSilhouetteTexture(
       this.scene, [this.textureKey], frame.width, frame.height,
     );
@@ -150,11 +143,20 @@ export class SimpleSprite {
     this.shadowTextureKey = silhouette.key;
 
     const base = this.sprite.scaleX; // 0.5 for native 64px sheets, 1 otherwise
-    // Exact mirror geometry: feet ink sits bottomPad rows above the frame
-    // bottom (scaled by base) and the mirrored copy adds that margin again
-    // (scaled by base*SQUASH). Shift up by both plus a fixed 2px tuck under
-    // the body so the shadow always starts at the feet.
-    const shadowY = this.sprite.y - silhouette.bottomPad * base * (1 + SHADOW_SQUASH) - 2;
+    // Where the feet INK actually sits: frame anchor minus the measured
+    // below-feet margin. Blob and silhouette both anchor to this line.
+    const feetY = this.sprite.y - silhouette.bottomPad * base;
+
+    // Contact blob (lowest layer) — narrower than the body, centered on the
+    // feet ink: a subtle contact patch, not a puddle.
+    this.contactBlob = createContactBlob(
+      this.scene, feetY, frame.width * base * 0.45,
+    );
+    this.container.addAt(this.contactBlob, 0);
+
+    // Mirrored silhouette: its own copy of the margin (scaled by squash)
+    // plus a 4px tuck under the body glue it to the feet.
+    const shadowY = feetY - silhouette.bottomPad * base * SHADOW_SQUASH - 4;
     const shadow = this.scene.add.sprite(0, shadowY, silhouette.key);
     shadow.setOrigin(0.5, 1.0);
     // Negative Y scale with a bottom origin mirrors the silhouette downward

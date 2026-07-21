@@ -370,13 +370,6 @@ export class AvatarSprite {
    * the feet, squashed, translucent, animated with the same walk cycle.
    */
   private buildShadow(): void {
-    const FOOT_LINE = -2;
-    // Contact blob first (lowest layer): narrower than the body and centered
-    // right on the feet line, so it reads as a subtle contact patch peeking
-    // out under the feet — not a puddle.
-    this.contactBlob = createContactBlob(this.scene, FOOT_LINE, 14);
-    this.container.addAt(this.contactBlob, 0);
-
     const layerKeys = [...this.layerSprites.values()].map((s) => s.texture.key);
     const silhouette = acquireSilhouetteTexture(
       this.scene, layerKeys, SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT,
@@ -386,19 +379,27 @@ export class AvatarSprite {
 
     const FOOT_Y_LOCAL = -2;
     const scale = 0.5;
-    // Exact mirror geometry: the character's feet ink sits bottomPad rows
-    // above the frame bottom (scaled by `scale`), and the mirrored copy adds
-    // that margin again (scaled by scale*SQUASH). Shift up by both, plus a
-    // fixed 2px tuck under the body, so the shadow always starts at the
-    // feet — never floating below them.
-    const shadowY = FOOT_Y_LOCAL - silhouette.bottomPad * scale * (1 + SHADOW_SQUASH) - 2;
+    // Where the feet INK actually sits: the frame anchor minus the sheet's
+    // measured below-feet margin. Both the blob and the silhouette anchor
+    // to this line, not to the frame edge — otherwise the whole shadow
+    // cluster floats by exactly that margin.
+    const feetY = FOOT_Y_LOCAL - silhouette.bottomPad * scale;
+
+    // Contact blob (lowest layer): narrower than the body, centered on the
+    // feet ink so its top half tucks behind the shoes.
+    this.contactBlob = createContactBlob(this.scene, feetY, 14);
+    this.container.addAt(this.contactBlob, 0);
+
+    // Mirrored silhouette: its own copy of the margin (scaled by the
+    // squash) plus a 4px tuck under the body glue it to the feet.
+    const shadowY = feetY - silhouette.bottomPad * scale * SHADOW_SQUASH - 4;
     const shadow = this.scene.add.sprite(0, shadowY, silhouette.key);
     shadow.setOrigin(0.5, 1.0);
     // Negative Y scale with a bottom origin mirrors the silhouette downward
     // from the feet; X matches the 0.5 world scale of the 64px sheets.
     shadow.setScale(scale, -scale * SHADOW_SQUASH);
     shadow.setAlpha(SHADOW_ALPHA);
-    // Above the blob, below every body layer.
+    // Above the blob, below every body layer (blob sits at index 0).
     this.container.addAt(shadow, 1);
     this.shadowSprite = shadow;
     this.registerAnimations(silhouette.key);
