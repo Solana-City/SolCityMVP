@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import type { ChatManager, ChatMessage, ChatChannel, DMChannel } from "@/game/chat/ChatManager";
 import { getChannelColor, getChannelLabel } from "@/game/chat/ChatManager";
 import { EMOJI_REGISTRY } from "@/game/chat/EmojiSystem";
+import { EXPRESSIONS } from "@/game/config/paperDoll";
 
 interface ChatPanelProps {
   gameRef: Phaser.Game | null;
@@ -18,6 +19,7 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
   const [isTouch, setIsTouch] = useState(false);
   const [isExpanded, setIsExpanded] = useState(true);
   const [showEmojis, setShowEmojis] = useState(false);
+  const [showExpressions, setShowExpressions] = useState(false);
 
   useEffect(() => {
     const mq = window.matchMedia("(pointer: coarse)");
@@ -187,6 +189,44 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
         </div>
       )}
 
+      {/* Expressions bar — swaps the player's face for a few seconds */}
+      {showExpressions && (
+        <div
+          className="flex gap-1 p-1.5 rounded mb-0.5"
+          style={{
+            background: "rgba(10,10,30,0.92)",
+            border: "1px solid rgba(153,69,255,0.2)",
+            backdropFilter: "blur(2px)",
+          }}
+        >
+          {EXPRESSIONS.map((ex) => (
+            <button
+              key={ex.id}
+              data-sfx="off"
+              onClick={() => {
+                gameRef?.events.emit("expression:trigger", ex);
+                setShowExpressions(false);
+              }}
+              className="px-2 py-1 rounded text-xs cursor-pointer"
+              style={{
+                background: "rgba(153,69,255,0.12)",
+                color: "#c9b8ff",
+                border: "1px solid rgba(153,69,255,0.3)",
+                fontFamily: '"Press Start 2P", monospace',
+                fontSize: "7px",
+                display: "flex",
+                alignItems: "center",
+                gap: 4,
+              }}
+              title={ex.name}
+            >
+              <span>{ex.uiSymbol}</span>
+              <span>{ex.name}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Emoji bar */}
       {showEmojis && (
         <div
@@ -230,16 +270,28 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
       {/* Input row */}
       <div className="flex gap-1">
         <button
-          onClick={() => setShowEmojis(!showEmojis)}
+          onClick={() => { setShowEmojis(v => !v); setShowExpressions(false); }}
           className="px-2 rounded text-sm cursor-pointer"
           style={{
             background: "rgba(10,10,30,0.94)",
             color: showEmojis ? "#14F195" : "#555566",
             border: "1px solid rgba(153,69,255,0.2)",
           }}
-          title="Emojis"
+          title="Emotes"
         >
           🎭
+        </button>
+        <button
+          onClick={() => { setShowExpressions(v => !v); setShowEmojis(false); }}
+          className="px-2 rounded text-sm cursor-pointer"
+          style={{
+            background: "rgba(10,10,30,0.94)",
+            color: showExpressions ? "#c084fc" : "#555566",
+            border: "1px solid rgba(153,69,255,0.2)",
+          }}
+          title="Face expressions"
+        >
+          😀
         </button>
         <input
           ref={inputRef}

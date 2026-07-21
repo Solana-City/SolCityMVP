@@ -3,7 +3,7 @@ import { generateTileset } from "../utils/tilesetGenerator";
 import { SimpleSprite } from "../entities/SimpleSprite";
 import { AvatarSprite } from "../entities/AvatarSprite";
 import { NPC_REGISTRY } from "../config/npcRegistry";
-import { getAllLayerVariants, SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT } from "../config/paperDoll";
+import { getAllLayerVariants, EXPRESSIONS, SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT } from "../config/paperDoll";
 
 // Background color used in the spriter's sheets — treated as transparent.
 const CHROMA_R = 215;
@@ -95,6 +95,11 @@ export class BootScene extends Phaser.Scene {
     for (const { variant } of getAllLayerVariants()) {
       AvatarSprite.loadSpriteSheet(this, variant.textureKey, `assets/sprites/paperdoll/${variant.file}`);
     }
+
+    // Expression face sheets — same paper-doll format, own texture keys.
+    for (const expr of EXPRESSIONS) {
+      AvatarSprite.loadSpriteSheet(this, expr.textureKey, `assets/sprites/paperdoll/${expr.file}`);
+    }
   }
 
   create(): void {
@@ -108,6 +113,10 @@ export class BootScene extends Phaser.Scene {
     const animatedNpcSheets = NPC_REGISTRY.filter(
       (npc) => npc.spriteKey && npc.spriteAnimation && this.textures.exists(npc.spriteKey)
     );
+    // Expression face sheets carry the same pink background too.
+    const exprKeys = EXPRESSIONS
+      .map((e) => e.textureKey)
+      .filter((k) => this.textures.exists(k));
 
     if (isMobile) {
       // Process chroma key one sprite per requestAnimationFrame so we
@@ -116,20 +125,24 @@ export class BootScene extends Phaser.Scene {
       const variants = getAllLayerVariants().filter(
         ({ variant }) => this.textures.exists(variant.textureKey)
       );
+      const npcStart = variants.length;
+      const exprStart = npcStart + animatedNpcSheets.length;
+      const total = exprStart + exprKeys.length;
       let i = 0;
       const processNext = () => {
-        if (i < variants.length) {
+        if (i < npcStart) {
           applyChromaKey(this, variants[i].variant.textureKey);
-          i++;
-          requestAnimationFrame(processNext);
-        } else if (i < variants.length + animatedNpcSheets.length) {
-          const npc = animatedNpcSheets[i - variants.length];
+        } else if (i < exprStart) {
+          const npc = animatedNpcSheets[i - npcStart];
           applyChromaKey(this, npc.spriteKey!, npc.spriteAnimation!.frameWidth, npc.spriteAnimation!.frameHeight);
-          i++;
-          requestAnimationFrame(processNext);
+        } else if (i < total) {
+          applyChromaKey(this, exprKeys[i - exprStart]);
         } else {
           waitForGameFont(() => this.scene.start("CityScene"));
+          return;
         }
+        i++;
+        requestAnimationFrame(processNext);
       };
       requestAnimationFrame(processNext);
       return;
@@ -144,6 +157,9 @@ export class BootScene extends Phaser.Scene {
     }
     for (const npc of animatedNpcSheets) {
       applyChromaKey(this, npc.spriteKey!, npc.spriteAnimation!.frameWidth, npc.spriteAnimation!.frameHeight);
+    }
+    for (const key of exprKeys) {
+      applyChromaKey(this, key);
     }
 
     waitForGameFont(() => this.scene.start("CityScene"));

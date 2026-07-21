@@ -43,6 +43,8 @@ export class CityScene extends Phaser.Scene {
   private dustEmitter: Phaser.GameObjects.Particles.ParticleEmitter | null = null;
   private walkStartAt = 0;   // time.now the current unbroken walk began (0 = idle)
   private lastDustAt = 0;
+  /** Auto-revert timer for the current facial expression (null = none active). */
+  private expressionTimer: Phaser.Time.TimerEvent | null = null;
   private chatInputActive = false;
   private npcSprites: NPCSprite[] = [];
   private pedestrians!: PedestrianManager;
@@ -344,6 +346,18 @@ export class CityScene extends Phaser.Scene {
     this.game.events.on("emoji:trigger", (emoji: EmojiDef) => {
       showEmoji(this, this.avatar.getContainer(), emoji);
       this.chat.addMessage("local", "local", this.profile.get().displayName, emoji.symbol, emoji.color);
+    });
+
+    // Facial expression trigger from the React expressions picker. Swaps the
+    // player's own face for a few seconds, then auto-reverts. Local only.
+    this.game.events.on("expression:trigger", (expr: { textureKey: string }) => {
+      this.avatar.setExpression(expr.textureKey);
+      soundManager.play("emote");
+      this.expressionTimer?.remove(false);
+      this.expressionTimer = this.time.delayedCall(2500, () => {
+        this.avatar.setExpression(null);
+        this.expressionTimer = null;
+      });
     });
 
     // Wardrobe panel — live preview while panel is open, persisted on Save.

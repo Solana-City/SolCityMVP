@@ -268,6 +268,36 @@ export class AvatarSprite {
   }
 
   /**
+   * Temporarily swaps the eyesFace layer to an expression sheet (pass its
+   * texture key) or reverts to the loadout's chosen face (pass null). Only
+   * the face-layer sprite is touched — a face swap doesn't change the body
+   * outline, so the silhouette shadow is left alone. Auto-revert timing is
+   * the caller's responsibility (see CityScene).
+   */
+  setExpression(exprTextureKey: string | null): void {
+    const sprite = this.layerSprites.get("eyesFace");
+    if (!sprite) return;
+    const baseKey = getVariant("eyesFace", this.currentLoadout.eyesFace)?.textureKey;
+    const targetKey = exprTextureKey ?? baseKey;
+    if (!targetKey || !this.scene.textures.exists(targetKey)) return;
+    if (sprite.texture.key === targetKey) return;
+
+    sprite.setTexture(targetKey);
+    this.registerAnimations(targetKey);
+    // Re-sync the face to the current walk/idle pose after the swap.
+    if (this.isWalking) {
+      const key = `${targetKey}-walk-${this.currentDirection}`;
+      const anim = this.scene.anims.get(key);
+      if (anim && anim.frames.length) {
+        sprite.anims.play({ key, startFrame: Math.min(1, anim.frames.length - 1) });
+      }
+    } else {
+      sprite.anims.stop();
+      sprite.setFrame(DIRECTION_ROW[this.currentDirection] * SPRITE_COLS);
+    }
+  }
+
+  /**
    * Plays the walk animation for the given direction.
    */
   walk(direction: Direction): void {

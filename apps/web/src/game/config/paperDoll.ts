@@ -111,8 +111,8 @@ export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
     { id: "Normal_grey",  name: "Normal Grey",  textureKey: "pd-eyesFace-Normal_grey",  file: "eyesFace/Normal_grey.png" },
     { id: "Normal_orange",name: "Normal Orange",textureKey: "pd-eyesFace-Normal_orange",file: "eyesFace/Normal_orange.png" },
     { id: "Normal_red",   name: "Normal Red",   textureKey: "pd-eyesFace-Normal_red",   file: "eyesFace/Normal_red.png" },
-    { id: "Nya",          name: "Nya",          textureKey: "pd-eyesFace-Nya",          file: "eyesFace/Nya.png" },
-    { id: "Sleepy",       name: "Sleepy",       textureKey: "pd-eyesFace-Sleepy",       file: "eyesFace/Sleepy.png" },
+    // Nya + Sleepy were static faces; they're now triggerable expressions
+    // (see EXPRESSIONS below), so they no longer appear in the wardrobe.
   ],
   pants: [
     { id: "Blue_pants",       name: "Blue Pants",       textureKey: "pd-pants-Blue_pants",       file: "pants/Blue_pants.png" },
@@ -167,6 +167,30 @@ export const DEFAULT_LOADOUT: Loadout = {
   hair: "Black_hair",
 };
 
+/**
+ * Facial expressions — MapleStory-style. Triggering one temporarily swaps
+ * the player's own eyesFace layer to the expression sheet (same 4x4 64px
+ * paper-doll format as any face), then reverts to their chosen face after a
+ * few seconds. These sheets live under eyesFace/ but are loaded under their
+ * own `pd-expr-*` texture keys so they're available for expressions without
+ * being selectable static faces in the wardrobe.
+ */
+export interface Expression {
+  id: string;
+  name: string;
+  /** Emoji shown on the picker button. */
+  uiSymbol: string;
+  /** Phaser texture key (distinct from any pd-eyesFace-* key). */
+  textureKey: string;
+  /** Path relative to public/assets/sprites/paperdoll/. */
+  file: string;
+}
+
+export const EXPRESSIONS: Expression[] = [
+  { id: "nya",    name: "Nya",    uiSymbol: "😸", textureKey: "pd-expr-Nya",    file: "eyesFace/Nya.png" },
+  { id: "sleepy", name: "Sleepy", uiSymbol: "😴", textureKey: "pd-expr-Sleepy", file: "eyesFace/Sleepy.png" },
+];
+
 export const CATEGORY_LABELS: Record<LayerCategory, string> = {
   back:      "Back",
   skin:      "Base",
@@ -214,6 +238,9 @@ export function loadSavedLoadout(): Loadout {
       // labeling) — remap existing saves so returning players don't lose
       // their skin layer entirely.
       if ((loadout.skin as string) === "Human") loadout.skin = "Light";
+      // Nya/Sleepy became expressions, not selectable faces — anyone who had
+      // one saved as their static face falls back to Happy so they keep a face.
+      if (loadout.eyesFace === "Nya" || loadout.eyesFace === "Sleepy") loadout.eyesFace = "Happy";
       return loadout;
     }
   } catch {}
