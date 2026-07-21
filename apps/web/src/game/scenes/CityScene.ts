@@ -538,19 +538,21 @@ export class CityScene extends Phaser.Scene {
   private createFootDust(): void {
     if (!this.textures.exists("foot-dust")) {
       const g = this.add.graphics();
-      // Dusty tan, close to the path/sand palette so it reads as ground kick-up.
-      g.fillStyle(0xbfae8e, 1);
-      g.fillCircle(3, 3, 3);
-      g.generateTexture("foot-dust", 6, 6);
+      // Light dusty gray — reads as a soft kick-up puff, not dirt.
+      g.fillStyle(0xd8d8d8, 1);
+      g.fillCircle(2, 2, 2);
+      g.generateTexture("foot-dust", 4, 4);
       g.destroy();
     }
 
     this.dustEmitter = this.add.particles(0, 0, "foot-dust", {
-      lifespan: 460,
-      speed: { min: 4, max: 16 },
+      lifespan: 440,
+      speed: { min: 4, max: 14 },
       angle: { min: 0, max: 360 },
-      scale: { start: 0.9, end: 0 },
-      alpha: { start: 0.5, end: 0 },
+      // Small puffs that shrink to nothing; the stagger of emit times gives
+      // a natural range of on-screen sizes without one big lead particle.
+      scale: { start: 0.5, end: 0 },
+      alpha: { start: 0.4, end: 0 },
       gravityY: -8,          // drifts up a touch as it fades, like settling dust
       frequency: -1,         // manual emission only (emitParticleAt)
       emitting: false,
