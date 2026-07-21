@@ -354,7 +354,7 @@ export class CityScene extends Phaser.Scene {
       this.avatar.setExpression(expr.textureKey);
       soundManager.play("emote");
       this.expressionTimer?.remove(false);
-      this.expressionTimer = this.time.delayedCall(2500, () => {
+      this.expressionTimer = this.time.delayedCall(3500, () => {
         this.avatar.setExpression(null);
         this.expressionTimer = null;
       });
