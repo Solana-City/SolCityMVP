@@ -147,10 +147,12 @@ export class SimpleSprite {
     // below-feet margin. Blob and silhouette both anchor to this line.
     const feetY = this.sprite.y - silhouette.bottomPad * base;
 
-    // Contact blob (lowest layer) — narrower than the body, centered on the
-    // feet ink: a subtle contact patch, not a puddle.
+    // Contact blob (lowest layer) — narrower than the body and centered
+    // slightly ABOVE the feet-ink bottom (mid-foot), so the character
+    // stands in the middle of the oval: half behind the shoes, half
+    // peeking below.
     this.contactBlob = createContactBlob(
-      this.scene, feetY, frame.width * base * 0.45,
+      this.scene, feetY - 2, frame.width * base * 0.45,
     );
     this.container.addAt(this.contactBlob, 0);
 

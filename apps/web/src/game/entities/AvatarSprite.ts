@@ -385,9 +385,11 @@ export class AvatarSprite {
     // cluster floats by exactly that margin.
     const feetY = FOOT_Y_LOCAL - silhouette.bottomPad * scale;
 
-    // Contact blob (lowest layer): narrower than the body, centered on the
-    // feet ink so its top half tucks behind the shoes.
-    this.contactBlob = createContactBlob(this.scene, feetY, 14);
+    // Contact blob (lowest layer): narrower than the body and centered
+    // slightly ABOVE the feet-ink bottom (mid-foot), so the character
+    // stands in the middle of the oval — half of it behind the shoes,
+    // half peeking below.
+    this.contactBlob = createContactBlob(this.scene, feetY - 2, 14);
     this.container.addAt(this.contactBlob, 0);
 
     // Mirrored silhouette: its own copy of the margin (scaled by the
