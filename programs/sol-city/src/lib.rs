@@ -12,6 +12,10 @@ declare_id!("HPvDFVnruSXHwKKP44eUvRh8oYqBaHCeQbK1sKWT1aU2");
 
 pub const PLAYER_SEED: &[u8] = b"player";
 pub const BUFFER_SEED: &[u8] = b"buffer";
+/// Global "Find Someone" hunt state — one account for the whole city.
+pub const HUNT_SEED: &[u8] = b"hunt";
+/// How long a citizen sticks around before it rotates unfound (seconds).
+pub const CITIZEN_DURATION_SECS: i64 = 300;
 
 /// MagicBlock delegation program on devnet.
 pub const DELEGATION_PROGRAM_ID: Pubkey =
@@ -23,6 +27,10 @@ pub enum SolCityError {
     InvalidSessionKey,
     #[msg("Authority mismatch — wrong wallet for this player")]
     InvalidAuthority,
+    #[msg("Hunt round is stale — someone already advanced it")]
+    HuntRoundStale,
+    #[msg("Hunt citizen has not expired yet")]
+    HuntNotExpired,
 }
 
 #[program]
@@ -285,6 +293,56 @@ pub mod sol_city {
 
         Ok(())
     }
+
+    // ── "Find Someone" global hunt ─────────────────────────────────────────
+    //
+    // One global HuntState account is the shared source of truth for the
+    // city-wide hide-and-seek: its `round` deterministically seeds the target
+    // citizen (every client derives the same pedestrian from it), and its
+    // `deadline` drives the countdown. Advancing the round — on a find or on
+    // expiry — is the universal "next citizen + reset timer" signal every
+    // client reads. All writes are signed by a session key (seamless, no
+    // wallet popup) and are first-writer-wins via the `round` guard, so the
+    // first player to land a claim for a given round is the sole winner.
+
+    /// Creates the global hunt account (call once, ever, after deploy).
+    pub fn initialize_hunt(ctx: Context<InitializeHunt>) -> Result<()> {
+        let hunt = &mut ctx.accounts.hunt;
+        let now = Clock::get()?.unix_timestamp;
+        hunt.round = 0;
+        hunt.winner = Pubkey::default();
+        hunt.found_at = now;
+        hunt.deadline = now + CITIZEN_DURATION_SECS;
+        Ok(())
+    }
+
+    /// First finder of `round` wins it and advances the hunt to the next
+    /// citizen. A concurrent claim for the same round fails the guard once
+    /// the round has moved on, so exactly one winner is recorded per round.
+    pub fn claim_find(ctx: Context<ClaimFind>, round: u32) -> Result<()> {
+        let hunt = &mut ctx.accounts.hunt;
+        require!(hunt.round == round, SolCityError::HuntRoundStale);
+        let now = Clock::get()?.unix_timestamp;
+        hunt.winner = ctx.accounts.finder.key(); // session key of the finder
+        hunt.round = hunt.round.wrapping_add(1);
+        hunt.found_at = now;
+        hunt.deadline = now + CITIZEN_DURATION_SECS;
+        Ok(())
+    }
+
+    /// Rolls a citizen nobody found once its deadline has passed. Any client
+    /// can crank it; first-writer-wins keeps it to a single advance.
+    pub fn expire_round(ctx: Context<ExpireRound>, round: u32) -> Result<()> {
+        let hunt = &mut ctx.accounts.hunt;
+        require!(hunt.round == round, SolCityError::HuntRoundStale);
+        let now = Clock::get()?.unix_timestamp;
+        require!(now >= hunt.deadline, SolCityError::HuntNotExpired);
+        hunt.winner = Pubkey::default(); // expired — no winner this round
+        hunt.round = hunt.round.wrapping_add(1);
+        hunt.found_at = now;
+        hunt.deadline = now + CITIZEN_DURATION_SECS;
+        Ok(())
+    }
 }
 
 #[derive(Accounts)]
@@ -364,6 +422,50 @@ pub struct DelegatePlayer<'info> {
     /// CHECK: MagicBlock delegation program
     pub delegation_program: UncheckedAccount<'info>,
     pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct InitializeHunt<'info> {
+    #[account(
+        init,
+        payer = payer,
+        space = 8 + HuntState::INIT_SPACE,
+        seeds = [HUNT_SEED],
+        bump,
+    )]
+    pub hunt: Account<'info, HuntState>,
+    #[account(mut)]
+    pub payer: Signer<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct ClaimFind<'info> {
+    #[account(mut, seeds = [HUNT_SEED], bump)]
+    pub hunt: Account<'info, HuntState>,
+    /// Session key — seamless, no wallet popup. Recorded as the round winner.
+    pub finder: Signer<'info>,
+}
+
+#[derive(Accounts)]
+pub struct ExpireRound<'info> {
+    #[account(mut, seeds = [HUNT_SEED], bump)]
+    pub hunt: Account<'info, HuntState>,
+    /// Any session key may crank an expired round forward.
+    pub cranker: Signer<'info>,
+}
+
+#[account]
+#[derive(InitSpace)]
+pub struct HuntState {
+    /// Increments on every find or expiry — deterministically seeds the target.
+    pub round: u32,
+    /// Session key of the current round's finder (default = expired/unfound).
+    pub winner: Pubkey,
+    /// Unix ts of the last round advance.
+    pub found_at: i64,
+    /// Unix ts the current citizen rotates if still unfound.
+    pub deadline: i64,
 }
 
 #[account]

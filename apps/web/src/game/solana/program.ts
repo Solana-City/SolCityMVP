@@ -39,6 +39,7 @@ export const DELEGATION_PROGRAM_ID = new PublicKey(
 );
 
 export const PLAYER_SEED = "player";
+export const HUNT_SEED = "hunt";
 
 /**
  * Derives the player state PDA for a given wallet.
@@ -51,6 +52,39 @@ export function derivePlayerPDA(
     [Buffer.from(PLAYER_SEED), wallet.toBuffer()],
     programId
   );
+}
+
+/**
+ * Derives the single global "Find Someone" hunt PDA (seed = ["hunt"]).
+ * Shared source of truth for the city-wide hide-and-seek.
+ */
+export function deriveHuntPDA(
+  programId: PublicKey = SOL_CITY_PROGRAM_ID
+): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync([Buffer.from(HUNT_SEED)], programId);
+}
+
+/**
+ * On-chain HuntState — matches the account in programs/sol-city/src/lib.rs.
+ * Layout after the 8-byte discriminator:
+ *   round: u32 (4) | winner: Pubkey (32) | found_at: i64 (8) | deadline: i64 (8)
+ */
+export interface HuntState {
+  round: number;
+  winner: PublicKey;
+  foundAt: number;   // unix seconds
+  deadline: number;  // unix seconds
+}
+
+export function decodeHuntState(data: Uint8Array): HuntState | null {
+  if (data.length < 8 + 4 + 32 + 8 + 8) return null;
+  const buf = Buffer.from(data);
+  let o = 8; // skip discriminator
+  const round = buf.readUInt32LE(o); o += 4;
+  const winner = new PublicKey(buf.subarray(o, o + 32)); o += 32;
+  const foundAt = Number(buf.readBigInt64LE(o)); o += 8;
+  const deadline = Number(buf.readBigInt64LE(o)); o += 8;
+  return { round, winner, foundAt, deadline };
 }
 
 /**

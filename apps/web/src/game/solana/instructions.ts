@@ -24,7 +24,7 @@ import {
   delegationRecordPdaFromDelegatedAccount,
   delegationMetadataPdaFromDelegatedAccount,
 } from "@magicblock-labs/ephemeral-rollups-sdk";
-import { SOL_CITY_PROGRAM_ID, DELEGATION_PROGRAM_ID, derivePlayerPDA } from "./program";
+import { SOL_CITY_PROGRAM_ID, DELEGATION_PROGRAM_ID, derivePlayerPDA, deriveHuntPDA } from "./program";
 import { sha256 } from "@noble/hashes/sha256";
 
 // ── Discriminator helper ────────────────────────────────────────────────
@@ -52,6 +52,9 @@ const DISC = {
   recordMiniGameSession:   ixDiscriminator("record_mini_game_session"),
   changeOutfit:            ixDiscriminator("change_outfit"),
   delegate:                ixDiscriminator("delegate"),
+  initializeHunt:          ixDiscriminator("initialize_hunt"),
+  claimFind:               ixDiscriminator("claim_find"),
+  expireRound:             ixDiscriminator("expire_round"),
 } as const;
 
 // ── Argument packers ────────────────────────────────────────────────────
@@ -313,6 +316,59 @@ export function buildDelegateIx(authority: PublicKey): TransactionInstruction {
       { pubkey: SystemProgram.programId, isSigner: false, isWritable: false }, // system_program
     ],
     data: DISC.delegate,
+  });
+}
+
+// ── "Find Someone" global hunt ──────────────────────────────────────────
+
+/**
+ * Builds `initialize_hunt` — creates the single global HuntState account.
+ * Call ONCE ever, after deploy (any funded signer as payer). `init` makes
+ * a second call fail harmlessly.
+ */
+export function buildInitializeHuntIx(payer: PublicKey): TransactionInstruction {
+  const [huntPda] = deriveHuntPDA();
+  return new TransactionInstruction({
+    programId: SOL_CITY_PROGRAM_ID,
+    keys: [
+      { pubkey: huntPda,                 isSigner: false, isWritable: true },
+      { pubkey: payer,                   isSigner: true,  isWritable: true },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+    ],
+    data: DISC.initializeHunt,
+  });
+}
+
+/**
+ * Builds `claim_find(round)` — the finder (session key) claims the current
+ * round and advances the hunt. Signed by the session key = seamless. Fails
+ * on-chain if `round` is stale (someone else claimed first).
+ */
+export function buildClaimFindIx(finder: PublicKey, round: number): TransactionInstruction {
+  const [huntPda] = deriveHuntPDA();
+  return new TransactionInstruction({
+    programId: SOL_CITY_PROGRAM_ID,
+    keys: [
+      { pubkey: huntPda, isSigner: false, isWritable: true },
+      { pubkey: finder,  isSigner: true,  isWritable: false },
+    ],
+    data: Buffer.concat([DISC.claimFind, packU32LE(round)]),
+  });
+}
+
+/**
+ * Builds `expire_round(round)` — cranks a citizen nobody found forward once
+ * its deadline has passed. Signed by any session key.
+ */
+export function buildExpireRoundIx(cranker: PublicKey, round: number): TransactionInstruction {
+  const [huntPda] = deriveHuntPDA();
+  return new TransactionInstruction({
+    programId: SOL_CITY_PROGRAM_ID,
+    keys: [
+      { pubkey: huntPda,  isSigner: false, isWritable: true },
+      { pubkey: cranker,  isSigner: true,  isWritable: false },
+    ],
+    data: Buffer.concat([DISC.expireRound, packU32LE(round)]),
   });
 }
 
