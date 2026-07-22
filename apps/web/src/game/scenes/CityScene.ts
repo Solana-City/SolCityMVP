@@ -9,7 +9,7 @@ import { ChatBubble } from "../chat/ChatBubble";
 import { NPCSprite } from "../entities/NPCSprite";
 import { NPC_REGISTRY } from "../config/npcRegistry";
 import { PedestrianManager } from "../entities/PedestrianManager";
-import { hasAlreadyFoundCurrent, markCurrentFound } from "../minigames/whereIsNPC/WhereIsNPCGame";
+import { hasAlreadyFoundCurrent, markCurrentFound, isCitizenExpired, advanceFindSlot, resetCitizenTimer } from "../minigames/whereIsNPC/WhereIsNPCGame";
 import { ProfileManager, profileManager } from "../config/profileManager";
 import { AchievementEngine } from "../progression/achievementEngine";
 import { setupEmojiKeys, showEmoji, EMOJI_REGISTRY, EmojiDef } from "../chat/EmojiSystem";
@@ -394,11 +394,18 @@ export class CityScene extends Phaser.Scene {
     this.physics.add.collider(pedGroup, zoneWalls);
     this.physics.add.collider(pedGroup, mbWalls);
 
-    // Sync target when round changes (check every 10 s)
+    // Citizen expiry + target sync. When the current citizen's per-citizen
+    // countdown runs out unfound, rotate to the next one and reset the
+    // timer (a find does the same via onTargetFound). Checked often so the
+    // swap is prompt rather than lagging the 0:00 mark.
     this.time.addEvent({
-      delay: 10_000,
+      delay: 2_000,
       loop: true,
       callback: () => {
+        if (isCitizenExpired()) {
+          advanceFindSlot();
+          resetCitizenTimer();
+        }
         this.pedestrians.refreshTarget();
         this.game.events.emit("whereIsNPC:roundCheck");
       },

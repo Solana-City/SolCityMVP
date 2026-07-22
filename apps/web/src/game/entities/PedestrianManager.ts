@@ -1,7 +1,7 @@
 import * as Phaser from "phaser";
 import { TILE_SIZE, PLAYABLE_ZONE } from "../config/constants";
 import { PedestrianSprite, makePedestrianLoadout, type PedestrianContext } from "./PedestrianSprite";
-import { getTargetPedIndex, advanceFindSlot, getCurrentSlot, ROTATION_BATCH_MS } from "../minigames/whereIsNPC/WhereIsNPCGame";
+import { getTargetPedIndex, advanceFindSlot, getCurrentSlot, resetCitizenTimer, ROTATION_BATCH_MS } from "../minigames/whereIsNPC/WhereIsNPCGame";
 
 // The Canvas renderer on mobile redraws every sprite on the CPU each frame,
 // and each pedestrian is up to 7 layered sprites — a 96-strong crowd is
@@ -306,9 +306,8 @@ export class PedestrianManager {
 
   refreshTarget(): void {
     const newIndex = getTargetPedIndex(
-      Math.floor(Date.now() / (5 * 60 * 1000)),
-      this.pedestrians.length || this.count,
       getCurrentSlot(),
+      this.pedestrians.length || this.count,
     );
     if (newIndex === this.currentTargetIndex) return;
 
@@ -333,6 +332,7 @@ export class PedestrianManager {
     this.pedestrians[this.currentTargetIndex]?.celebrateFound();
     this.currentTargetIndex = -1;
     advanceFindSlot(); // advance slot so other wallets can still find the next target
+    resetCitizenTimer(); // the next citizen gets a fresh full countdown
     this.scene.time.delayedCall(800, () => this.refreshTarget());
   }
 

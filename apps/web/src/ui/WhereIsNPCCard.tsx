@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import {
-  getRoundIndex, getMsRemaining, recordFind, getMyScore,
+  getRoundIndex, getCitizenMsRemaining, CITIZEN_MS, recordFind, getMyScore,
   getLeaderboard, recordRoundWinner,
   type ScoreEntry,
 } from "@/game/minigames/whereIsNPC/WhereIsNPCGame";
@@ -230,13 +230,13 @@ export default function WhereIsNPCCard({ gameRef, wallet }: Props) {
   const [showLeaderboard, setShowLeaderboard] = useState(false);
   const [targetLoadout, setTargetLoadout] = useState<Loadout | null>(null);
   const [myScore, setMyScore] = useState(0);
-  const [msLeft, setMsLeft] = useState(getMsRemaining());
+  const [msLeft, setMsLeft] = useState(getCitizenMsRemaining());
   const [foundMsg, setFoundMsg] = useState<string | null>(null);
   const [round, setRound] = useState(getRoundIndex());
 
   useEffect(() => {
     const id = setInterval(() => {
-      setMsLeft(getMsRemaining());
+      setMsLeft(getCitizenMsRemaining());
       const newRound = getRoundIndex();
       if (newRound !== round) { setRound(newRound); setFoundMsg(null); }
     }, 1000);
@@ -254,9 +254,12 @@ export default function WhereIsNPCCard({ gameRef, wallet }: Props) {
       setFoundMsg(isMe ? `You found them! ★ ${newScore}` : `${short} found them!`);
       if (isMe) setMyScore(newScore);
       setTargetLoadout(null);
+      // The game layer reset the per-citizen timer before firing this event,
+      // so reflect the fresh full countdown immediately.
+      setMsLeft(getCitizenMsRemaining());
     };
     const onRoundCheck = () => {
-      setMsLeft(getMsRemaining());
+      setMsLeft(getCitizenMsRemaining());
       gameRef.events.emit("whereIsNPC:requestTarget");
     };
     const onTargetInfo = (loadout: Loadout) => setTargetLoadout(loadout);
@@ -276,7 +279,7 @@ export default function WhereIsNPCCard({ gameRef, wallet }: Props) {
 
   const mm = Math.floor(msLeft / 60000);
   const ss = String(Math.floor((msLeft % 60000) / 1000)).padStart(2, "0");
-  const pct = Math.round((msLeft / (5 * 60 * 1000)) * 100);
+  const pct = Math.round((msLeft / CITIZEN_MS) * 100);
 
   return (
     <>

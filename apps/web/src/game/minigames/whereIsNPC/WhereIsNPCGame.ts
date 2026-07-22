@@ -42,12 +42,41 @@ export function getRoundIndex(): number {
   return Math.floor(Date.now() / ROUND_MS);
 }
 
-export function getTargetPedIndex(round: number, pedCount: number, slot = 0): number {
-  return Math.floor(rng((round ^ 0xc0ffee) + slot * 0x9e3779b9) * pedCount);
+/** Target pedestrian for a given citizen sequence number. Selection is
+ *  driven ONLY by the monotonic citizenSeq (see below), so the target
+ *  changes exactly when a citizen is found or expires — never on a
+ *  wall-clock boundary that wouldn't reset the countdown. */
+export function getTargetPedIndex(seq: number, pedCount: number): number {
+  return Math.floor(rng((seq * 0x9e3779b9) ^ 0xc0ffee) * pedCount);
 }
 
 export function getMsRemaining(): number {
   return ROUND_MS - (Date.now() % ROUND_MS);
+}
+
+// ── Per-citizen countdown ─────────────────────────────────────────────────
+// The "next citizen" timer is per-citizen: it resets to a full CITIZEN_MS
+// every time the current target is found OR expires unfound, rather than
+// counting down to a shared wall-clock boundary (which left the next citizen
+// with only the leftover time). Client-local — finds aren't networked anyway.
+
+export const CITIZEN_MS = ROUND_MS; // each citizen sticks around up to this long
+
+let citizenDeadline = Date.now() + CITIZEN_MS;
+
+/** Time left before the current citizen rotates if not found. */
+export function getCitizenMsRemaining(): number {
+  return Math.max(0, citizenDeadline - Date.now());
+}
+
+/** Start a fresh full countdown — call whenever a new citizen becomes active. */
+export function resetCitizenTimer(): void {
+  citizenDeadline = Date.now() + CITIZEN_MS;
+}
+
+/** True once the current citizen's countdown has run out. */
+export function isCitizenExpired(): boolean {
+  return Date.now() >= citizenDeadline;
 }
 
 // ── Score storage ────────────────────────────────────────────────────────────
@@ -98,12 +127,17 @@ export function getRoundWinner(round: number): string | null {
   return roundWinners.get(round) ?? null;
 }
 
-// ── Per-wallet "already found this NPC" guard ─────────────────────────────
-// Tracks which (round, findIndex) combos each wallet has claimed.
-// Within a single round the target can change multiple times (each find
-// spawns a new target), so we track a monotonic find counter per round.
+// ── Citizen sequence + "already found this NPC" guard ─────────────────────
+//
+// A single monotonic counter identifies the active citizen. It's the sole
+// seed for target selection (getTargetPedIndex) AND the key for the
+// per-wallet found-log, so the target changes exactly when this bumps — and
+// every bump (on find or on expiry) is paired with a citizen-timer reset.
+//
+// Seeded from epoch seconds at load so the found-log keys are unique per
+// session and don't collide with a prior session's after a reload.
 
-const FIND_LOG_KEY = "solcity:whereIsNPC:findLog"; // { wallet: { roundStr: count } }
+const FIND_LOG_KEY = "solcity:whereIsNPC:findLog"; // { wallet: { seqStr: 1 } }
 
 function loadFindLog(): Record<string, Record<string, number>> {
   try { return JSON.parse(localStorage.getItem(FIND_LOG_KEY) ?? "{}"); } catch { return {}; }
@@ -112,40 +146,35 @@ function saveFindLog(log: Record<string, Record<string, number>>) {
   try { localStorage.setItem(FIND_LOG_KEY, JSON.stringify(log)); } catch {}
 }
 
-// Internal find counter per round (how many targets have been found this round globally)
-const roundFindCounts = new Map<number, number>();
+let citizenSeq = Math.floor(Date.now() / 1000);
 
-/**
- * Returns true if this wallet has already found the CURRENT target in the
- * current round (i.e. the same find-sequence slot).
- */
+/** True if this wallet already claimed the CURRENT citizen. */
 export function hasAlreadyFoundCurrent(wallet: string): boolean {
-  const round = getRoundIndex();
-  const slot = roundFindCounts.get(round) ?? 0;
   const log = loadFindLog();
-  return (log[wallet]?.[`${round}:${slot}`] ?? 0) > 0;
+  return (log[wallet]?.[String(citizenSeq)] ?? 0) > 0;
 }
 
-/**
- * Record that this wallet found the current target. Must be called BEFORE
- * advanceFindSlot() so the slot number matches hasAlreadyFoundCurrent().
- */
+/** Record that this wallet found the current citizen (call before advanceFindSlot). */
 export function markCurrentFound(wallet: string): void {
-  const round = getRoundIndex();
-  const slot = roundFindCounts.get(round) ?? 0;
   const log = loadFindLog();
-  if (!log[wallet]) log[wallet] = {};
-  log[wallet][`${round}:${slot}`] = 1;
+  const w = log[wallet] ?? (log[wallet] = {});
+  w[String(citizenSeq)] = 1;
+  // Bound growth over long sessions — keep only the most recent claims.
+  const keys = Object.keys(w);
+  if (keys.length > 100) {
+    for (const k of keys.sort((a, b) => Number(a) - Number(b)).slice(0, keys.length - 100)) {
+      delete w[k];
+    }
+  }
   saveFindLog(log);
 }
 
-/** Advance the find slot when a new target is selected after a find. */
+/** Advance to the next citizen (called on a find or an expiry). */
 export function advanceFindSlot(): void {
-  const round = getRoundIndex();
-  roundFindCounts.set(round, (roundFindCounts.get(round) ?? 0) + 1);
+  citizenSeq += 1;
 }
 
-/** Current find slot within the active round (how many targets already found). */
+/** The active citizen's sequence number — the seed for target selection. */
 export function getCurrentSlot(): number {
-  return roundFindCounts.get(getRoundIndex()) ?? 0;
+  return citizenSeq;
 }
