@@ -109,16 +109,32 @@ module.exports = withPWA({
           },
         },
       },
-      // Remaining game art (sprites, minigames, ui) — cache aggressively;
-      // a stale sprite is a visual nit, never a crash.
-      // v6: flush entries poisoned while maps/tilesets still lived here.
+      // Sprites + minigame art — NetworkFirst. During active art iteration a
+      // CacheFirst rule served stale sheets across deploys until someone
+      // remembered to bump the cache name; a forgotten bump shipped a broken
+      // sprite (e.g. a re-exported Kite Pro sliced at new frame dims against
+      // the old cached image = garbage). NetworkFirst keeps them fresh online
+      // (Vercel answers cheap 304s for unchanged files) with the cache as an
+      // offline fallback — same reasoning already applied to maps/tilesets.
       {
-        urlPattern: /\/assets\/(sprites|minigames|icons|ui)\//,
+        urlPattern: /\/assets\/(sprites|minigames)\//,
+        handler: "NetworkFirst",
+        options: {
+          cacheName: "sc-sprites-v1",
+          expiration: {
+            maxEntries: 300,
+            maxAgeSeconds: 30 * 24 * 60 * 60, // 30 days (offline fallback)
+          },
+        },
+      },
+      // UI chrome (icons, buttons) — stable and few, cache aggressively.
+      {
+        urlPattern: /\/assets\/(icons|ui)\//,
         handler: "CacheFirst",
         options: {
-          cacheName: "sc-game-assets-v6",
+          cacheName: "sc-ui-v1",
           expiration: {
-            maxEntries: 200,
+            maxEntries: 80,
             maxAgeSeconds: 30 * 24 * 60 * 60, // 30 days
           },
         },
