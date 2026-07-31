@@ -114,13 +114,14 @@ export class SimpleSprite {
     if (scaleOverride !== undefined) {
       this.sprite.setScale(scaleOverride);
       this.visualHeight = frameHeight * scaleOverride;
-      // A fractional downscale (e.g. 0.28) samples pixel art on non-integer
+      // A FRACTIONAL downscale (e.g. 0.28) samples pixel art on non-integer
       // boundaries; nearest-neighbor then drops rows unevenly and the sprite
-      // looks "cracked" at anything but full zoom. LINEAR filtering averages
-      // instead, giving a clean (very slightly soft) shrink with no shimmer —
-      // the correct filter for downscaling, vs NEAREST which only wins when
-      // upscaling by whole multiples.
-      this.sprite.texture.setFilter(Phaser.Textures.FilterMode.LINEAR);
+      // looks "cracked" at anything but full zoom, so LINEAR filtering gives a
+      // clean shrink. But 0.5 is the pixel-perfect baseline (0.5 × the zoom
+      // set = integer), so it stays crisp on NEAREST — don't soften it.
+      if (scaleOverride !== 0.5) {
+        this.sprite.texture.setFilter(Phaser.Textures.FilterMode.LINEAR);
+      }
     } else if (frameHeight >= 56) {
       // Native 64×64 sheet → render at 0.5× world, 2× zoom cancels to 1:1.
       this.sprite.setScale(0.5);

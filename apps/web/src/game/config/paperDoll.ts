@@ -171,9 +171,11 @@ export const DEFAULT_LOADOUT: Loadout = {
  * Facial expressions — MapleStory-style. Triggering one temporarily swaps
  * the player's own eyesFace layer to the expression sheet (same 4x4 64px
  * paper-doll format as any face), then reverts to their chosen face after a
- * few seconds. These sheets live under eyesFace/ but are loaded under their
- * own `pd-expr-*` texture keys so they're available for expressions without
- * being selectable static faces in the wardrobe.
+ * few seconds. The sheets live under paperdoll/expressions/ (DOM's set),
+ * loaded under their own `pd-expr-*` texture keys so they're available for
+ * expressions without being selectable static faces in the wardrobe.
+ * Adding one is a single entry here — it auto-loads, chroma-keys, and shows
+ * up as a clickable button in the expressions picker.
  */
 export interface Expression {
   id: string;
@@ -187,8 +189,14 @@ export interface Expression {
 }
 
 export const EXPRESSIONS: Expression[] = [
-  { id: "nya",    name: "Nya",    uiSymbol: "😸", textureKey: "pd-expr-Nya",    file: "eyesFace/Nya.png" },
-  { id: "sleepy", name: "Sleepy", uiSymbol: "😴", textureKey: "pd-expr-Sleepy", file: "eyesFace/Sleepy.png" },
+  { id: "nya",   name: "Nya",   uiSymbol: "😸", textureKey: "pd-expr-Nya",   file: "expressions/Nya.png" },
+  { id: "sleep", name: "Sleep", uiSymbol: "😴", textureKey: "pd-expr-Sleep", file: "expressions/Sleep.png" },
+  { id: "angry", name: "Angry", uiSymbol: "😠", textureKey: "pd-expr-Angry", file: "expressions/Angry.png" },
+  { id: "cry",   name: "Cry",   uiSymbol: "😢", textureKey: "pd-expr-Cry",   file: "expressions/Cry.png" },
+  { id: "lol",   name: "LOL",   uiSymbol: "😂", textureKey: "pd-expr-LOL",   file: "expressions/LOL.png" },
+  { id: "love",  name: "Love",  uiSymbol: "😍", textureKey: "pd-expr-Love",  file: "expressions/Love.png" },
+  { id: "shy",   name: "Shy",   uiSymbol: "😳", textureKey: "pd-expr-Shy",   file: "expressions/Shy.png" },
+  { id: "stars", name: "Stars", uiSymbol: "🤩", textureKey: "pd-expr-Stars", file: "expressions/Stars.png" },
 ];
 
 export const CATEGORY_LABELS: Record<LayerCategory, string> = {

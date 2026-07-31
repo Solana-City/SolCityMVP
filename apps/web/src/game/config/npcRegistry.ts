@@ -113,14 +113,13 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     ],
     action: { type: "minigame", label: "Launch Kite", miniGameId: "kite-clash" },
     spriteKey: "Kite Pro",
-    // Idle-loop sheet: 8 frames, always facing south, never wanders.
-    // Pixel-measured starting point was 0.28 (28px screen char / ~101px
-    // frame char); nudged down to 0.26 so the body matches other NPCs
-    // exactly — the measurement was a hair generous in practice.
-    // blobOffsetX: the character's feet sit at x≈80 in the 116px frame
-    // (right of center 58) to balance the kite string — shift the blob +22
-    // source px to land it under the feet (in source px, so scale-agnostic).
-    spriteAnimation: { frameWidth: 116, frameHeight: 190, frameCount: 8, scale: 0.26, blobOffsetX: 22 },
+    // Idle-loop sheet: 8 frames (57x97 each), always facing south, never
+    // wanders. DOM re-exported at ~half the old resolution, so scale 0.5
+    // renders the character at ~the same on-screen size as before AND is
+    // pixel-perfect (0.5 x zoom = integer → crisp, no downscale cracking).
+    // blobOffsetX: feet center sits at x≈39 in the 57px frame (right of
+    // center 28.5, to balance the kite string) — shift the blob +11 src px.
+    spriteAnimation: { frameWidth: 57, frameHeight: 97, frameCount: 8, scale: 0.5, blobOffsetX: 11 },
   },
   {
     id: "swap-npc",

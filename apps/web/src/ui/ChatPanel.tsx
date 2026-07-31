@@ -192,11 +192,12 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
       {/* Expressions bar — swaps the player's face for a few seconds */}
       {showExpressions && (
         <div
-          className="flex gap-1 p-1.5 rounded mb-0.5"
+          className="flex flex-wrap gap-1 p-1.5 rounded mb-0.5"
           style={{
             background: "rgba(10,10,30,0.92)",
             border: "1px solid rgba(153,69,255,0.2)",
             backdropFilter: "blur(2px)",
+            maxWidth: isTouch ? "min(280px, calc(100vw - 180px))" : 360,
           }}
         >
           {EXPRESSIONS.map((ex) => (

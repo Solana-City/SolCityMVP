@@ -12,22 +12,25 @@ const BASE = "/assets/minigames/kite";
 // Paper-doll skin id → first-person hands sprite. The spriter ships one
 // hands sheet per base skin so the minigame matches the player's avatar.
 const HANDS_BY_SKIN: Record<string, string> = {
-  Light:  "hands_human.png",
-  Feyan:  "hands_feyan.png",
-  Laovai: "hands_laovai.png",
-  Pinki:  "hands_pinky.png",
-  Radio:  "hands_radio.png",
+  Light:      "hands_human.png",
+  Feyan:      "hands_feyan.png",
+  Laovai:     "hands_laovai.png",
+  Pinki:      "hands_pinky.png",
+  Radio:      "hands_radio.png",
+  Brown:      "hands_brown.png",
+  Dark_brown: "hands_dark_brown.png",
 };
 
 // Animated spool spritesheets (2400x200 = 4 frames of 600x200, drawn at the
-// same on-screen size as the 300x100 static). Radio has no sheet yet — it
-// falls back to the static hands.
+// same on-screen size as the 300x100 static). Every base skin now ships one.
 const HANDS_SHEET_BY_SKIN: Record<string, string | null> = {
-  Light:  "hands_human_sheet.png",
-  Feyan:  "hands_feyan_sheet.png",
-  Laovai: "hands_laovai_sheet.png",
-  Pinki:  "hands_pinky_sheet.png",
-  Radio:  null,
+  Light:      "hands_human_sheet.png",
+  Feyan:      "hands_feyan_sheet.png",
+  Laovai:     "hands_laovai_sheet.png",
+  Pinki:      "hands_pinky_sheet.png",
+  Radio:      "hands_radio_sheet.png",
+  Brown:      "hands_brown_sheet.png",
+  Dark_brown: "hands_dark_brown_sheet.png",
 };
 
 export const HANDS_SHEET_FRAMES = 4;
