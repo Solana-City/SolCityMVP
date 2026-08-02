@@ -234,6 +234,7 @@ export default function Home() {
                 <MobilePanelToggle iconSrc="/assets/ui/ico_achievements.png" label="Find someone" active={mobilePanel === "hunt"} onClick={() => toggleMobilePanel("hunt")} />
                 <MobilePanelToggle iconSrc="/assets/ui/ico_tasks.png" label="Daily quests" active={mobilePanel === "quests"} onClick={() => toggleMobilePanel("quests")} />
                 <MobilePanelToggle iconSrc="/assets/ui/ico_chat.png" label="Chat" active={chatOpen} onClick={toggleMobileChat} />
+                <ExpressionToggle />
               </div>
               {mobilePanel !== null && (
                 /* Full-screen transparent backdrop — tap anywhere outside the panel to close */
@@ -273,7 +274,6 @@ export default function Home() {
               /* ── Mobile: compact horizontal strip + zoom below ── */
               <div className="flex flex-col items-end gap-2">
                 <div className="flex items-center gap-1.5">
-                  <ExpressionButton size={32} />
                   <PfpButton gameRef={game} size={32} onClick={() => setProfileOpen(true)} />
                   <WardrobeButton size={32} onClick={() => setWardrobeOpen(true)} />
                   <WalletBar onWalletChange={handleWalletChange} />
@@ -410,28 +410,29 @@ function MobilePanelToggle({ iconSrc, label, active, onClick }: {
   );
 }
 
-/** Opens the expression wheel (touch entry point; desktop uses hold-Q). */
-function ExpressionButton({ size = 36 }: { size?: number }) {
+/** Rail button (below Chat) that opens the expression wheel on touch.
+    Matches the MobilePanelToggle chrome but shows the 😀 glyph — the wheel
+    isn't a panel, so it just fires the open event. */
+function ExpressionToggle() {
   return (
     <button
       onClick={() => window.dispatchEvent(new Event("solcity:openExpressionWheel"))}
       title="Expressions"
       style={{
-        width: size,
-        height: size,
-        borderRadius: 8,
-        border: "1px solid rgba(153,69,255,0.35)",
-        background: "rgba(153,69,255,0.09)",
-        cursor: "pointer",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        fontSize: size >= 36 ? 18 : 16,
-        flexShrink: 0,
+        position: "relative",
+        width: 36, height: 36, padding: 0,
+        background: "transparent", border: "none",
+        cursor: "pointer", flexShrink: 0,
+        display: "flex", alignItems: "center", justifyContent: "center",
         WebkitTapHighlightColor: "transparent",
       }}
     >
-      😀
+      <img
+        src="/assets/ui/bg_ico.png"
+        width={36} height={36} alt="" draggable={false}
+        style={{ imageRendering: "pixelated", position: "absolute", inset: 0 }}
+      />
+      <span style={{ position: "relative", fontSize: 20, lineHeight: 1 }}>😀</span>
     </button>
   );
 }

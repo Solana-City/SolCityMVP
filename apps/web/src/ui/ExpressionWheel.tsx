@@ -217,8 +217,8 @@ export default function ExpressionWheel({ gameRef }: { gameRef: Phaser.Game | nu
   if (!open || !loadout) return null;
 
   const N = EXPRESSIONS.length;
-  const radius = isTouch ? 104 : 120;
-  const node = isTouch ? 60 : 64;
+  const radius = isTouch ? 136 : 158;
+  const node = isTouch ? 88 : 98;
 
   return (
     <div
@@ -266,11 +266,12 @@ export default function ExpressionWheel({ gameRef }: { gameRef: Phaser.Game | nu
               display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden",
               transition: "background 0.08s, border-color 0.08s, box-shadow 0.08s",
             }}>
-              <HeadPreview loadout={loadout} expr={expr} size={node - 12} active={active} />
+              <HeadPreview loadout={loadout} expr={expr} size={node - 14} active={active} />
             </div>
             <span style={{
-              marginTop: 3, fontFamily: '"Press Start 2P", monospace', fontSize: 6,
-              color: active ? "#e0d0ff" : "#6a6a9a", whiteSpace: "nowrap",
+              marginTop: 4, fontFamily: '"Press Start 2P", monospace', fontSize: 7,
+              color: active ? "#e0d0ff" : "#7a7aaa", whiteSpace: "nowrap",
+              textShadow: "0 1px 2px rgba(0,0,0,0.9)",
             }}>{expr.name}</span>
           </div>
         );
