@@ -31,6 +31,7 @@ const WhereIsNPCCard      = dynamic(() => import("@/ui/WhereIsNPCCard"),      { 
 const QuestPanel          = dynamic(() => import("@/ui/QuestPanel"),          { ssr: false });
 const PlayerCard          = dynamic(() => import("@/ui/PlayerCard"),          { ssr: false });
 const AudioBridge         = dynamic(() => import("@/ui/AudioBridge"),         { ssr: false });
+const ExpressionWheel     = dynamic(() => import("@/ui/ExpressionWheel"),     { ssr: false });
 
 import ErrorBoundary from "@/ui/ErrorBoundary";
 
@@ -272,6 +273,7 @@ export default function Home() {
               /* ── Mobile: compact horizontal strip + zoom below ── */
               <div className="flex flex-col items-end gap-2">
                 <div className="flex items-center gap-1.5">
+                  <ExpressionButton size={32} />
                   <PfpButton gameRef={game} size={32} onClick={() => setProfileOpen(true)} />
                   <WardrobeButton size={32} onClick={() => setWardrobeOpen(true)} />
                   <WalletBar onWalletChange={handleWalletChange} />
@@ -348,6 +350,7 @@ export default function Home() {
             />
           )}
           <MobileControls />
+          <ExpressionWheel gameRef={game} />
           <ChatPanel gameRef={game} visible={chatOpen} />
           <NPCDialog npc={activeNPC} onClose={handleDialogClose} onAction={handleAction} />
           <ActionPanel action={activeAction} onClose={handleActionClose} />
@@ -403,6 +406,32 @@ function MobilePanelToggle({ iconSrc, label, active, onClick }: {
           pointerEvents: "none",
         }} />
       )}
+    </button>
+  );
+}
+
+/** Opens the expression wheel (touch entry point; desktop uses hold-Q). */
+function ExpressionButton({ size = 36 }: { size?: number }) {
+  return (
+    <button
+      onClick={() => window.dispatchEvent(new Event("solcity:openExpressionWheel"))}
+      title="Expressions"
+      style={{
+        width: size,
+        height: size,
+        borderRadius: 8,
+        border: "1px solid rgba(153,69,255,0.35)",
+        background: "rgba(153,69,255,0.09)",
+        cursor: "pointer",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        fontSize: size >= 36 ? 18 : 16,
+        flexShrink: 0,
+        WebkitTapHighlightColor: "transparent",
+      }}
+    >
+      😀
     </button>
   );
 }

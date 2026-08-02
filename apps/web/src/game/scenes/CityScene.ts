@@ -12,7 +12,7 @@ import { PedestrianManager } from "../entities/PedestrianManager";
 import { hasAlreadyFoundCurrent, markCurrentFound, isCitizenExpired, advanceFindSlot, resetCitizenTimer } from "../minigames/whereIsNPC/WhereIsNPCGame";
 import { ProfileManager, profileManager } from "../config/profileManager";
 import { AchievementEngine } from "../progression/achievementEngine";
-import { setupEmojiKeys, showEmoji, EMOJI_REGISTRY, EmojiDef } from "../chat/EmojiSystem";
+import { showEmoji, EmojiDef } from "../chat/EmojiSystem";
 import { soundManager } from "../audio/SoundManager";
 
 // Pixel-perfect zoom values and snapping live in config/zoomConfig.ts —
@@ -332,15 +332,10 @@ export class CityScene extends Phaser.Scene {
       }
     });
 
-    // Emoji system: keys 1-6 trigger emotes
-    setupEmojiKeys(
-      this,
-      () => this.avatar.getContainer(),
-      () => this.chatInputActive,
-      (emoji) => {
-        this.chat.addMessage("local", "local", this.profile.get().displayName, emoji.symbol, emoji.color);
-      }
-    );
+    // Emoji hotkeys (1-6) are disabled for now — the emotes are underused
+    // and lack final art, and freeing 1-6 keeps them clear for the
+    // expression wheel. The chat 🎭 picker still works via emoji:trigger.
+    // (setupEmojiKeys intentionally not called.)
 
     // Emoji trigger from React UI button
     this.game.events.on("emoji:trigger", (emoji: EmojiDef) => {
