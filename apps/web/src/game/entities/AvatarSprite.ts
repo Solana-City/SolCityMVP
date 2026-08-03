@@ -20,14 +20,6 @@ import {
   getVariant,
 } from "../config/paperDoll";
 
-// Idle "breathing": while standing still, every layer is gently squashed and
-// stretched around its bottom (feet) origin, so the head bobs the most and the
-// feet stay planted — a code-only idle for a paper doll that can't ship a
-// per-trait idle animation. Symmetric sine around each sprite's rest scale.
-const IDLE_BREATH_AMP = 0.05;                     // ±5% height at the peak of a breath
-const IDLE_BREATH_OMEGA = (Math.PI * 2) / 2.6;    // ~2.6s per breath cycle
-const IDLE_BREATH_XRATIO = 0.35;                  // width counter-scales a touch (volume feel)
-
 /** Reads a loaded texture's pixel data onto a throwaway canvas once. */
 function readTexturePixels(scene: Phaser.Scene, textureKey: string): { data: Uint8ClampedArray; w: number; h: number } | null {
   try {
@@ -235,17 +227,12 @@ export class AvatarSprite {
   private currentDirection: Direction = "down";
   private currentLoadout: Loadout;
   private isWalking = false;
-  /** Random phase so a crowd of avatars doesn't breathe in lockstep. */
-  private readonly idlePhase = Math.random() * Math.PI * 2;
 
   constructor(scene: Phaser.Scene, x: number, y: number, loadout: Loadout = DEFAULT_LOADOUT) {
     this.scene = scene;
     this.currentLoadout = { ...loadout };
     this.container = scene.add.container(x, y);
     this.buildLayers();
-    // Drive the idle breathing after the scene's update() has decided this
-    // frame's walk/idle state, so the flag we read is current.
-    this.scene.events.on(Phaser.Scenes.Events.POST_UPDATE, this.breathe, this);
   }
 
   get x(): number { return this.container.x; }
@@ -356,39 +343,9 @@ export class AvatarSprite {
   }
 
   destroy(): void {
-    this.scene.events.off(Phaser.Scenes.Events.POST_UPDATE, this.breathe, this);
     this.destroyLayers();
     this.container.destroy();
   }
-
-  /**
-   * Idle breathing — runs every frame (POST_UPDATE). While standing still,
-   * each layer is squashed/stretched vertically around its feet origin so the
-   * head bobs and the feet stay planted; a small inverse on X sells the
-   * volume. While walking, scales are held at their rest values so the walk
-   * cycle plays untouched. Applies to layers only — the ground shadow and
-   * contact blob are left alone.
-   */
-  private breathe = (time: number): void => {
-    if (this.layerSprites.size === 0) return;
-
-    if (this.isWalking) {
-      for (const s of this.layerSprites.values()) {
-        const bsx = s.getData("bsx") as number, bsy = s.getData("bsy") as number;
-        if (s.scaleX !== bsx) s.scaleX = bsx;
-        if (s.scaleY !== bsy) s.scaleY = bsy;
-      }
-      return;
-    }
-
-    const breath = Math.sin((time / 1000) * IDLE_BREATH_OMEGA + this.idlePhase);
-    const sy = 1 + IDLE_BREATH_AMP * breath;
-    const sx = 1 - IDLE_BREATH_AMP * IDLE_BREATH_XRATIO * breath;
-    for (const s of this.layerSprites.values()) {
-      s.scaleX = (s.getData("bsx") as number) * sx;
-      s.scaleY = (s.getData("bsy") as number) * sy;
-    }
-  };
 
   // ── Internal ──────────────────────────────────────────
 
@@ -422,9 +379,6 @@ export class AvatarSprite {
       if ((frame.height || SPRITE_FRAME_HEIGHT) >= 56) {
         sprite.setScale(0.5);
       }
-      // Remember the rest scale so the idle breathing modulates around it.
-      sprite.setData("bsx", sprite.scaleX);
-      sprite.setData("bsy", sprite.scaleY);
 
       this.container.add(sprite);
       this.layerSprites.set(category, sprite);
