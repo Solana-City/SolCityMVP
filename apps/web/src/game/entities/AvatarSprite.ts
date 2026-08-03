@@ -20,6 +20,21 @@ import {
   getVariant,
 } from "../config/paperDoll";
 
+// Local y of every layer sprite's (bottom) origin inside the container — the
+// feet line. Shared by the layers, the shadow, and the idle bob.
+const FOOT_Y_LOCAL = -2;
+
+// Idle bob (whole-body, pixel-snapped): while standing still every layer is
+// nudged UP together by a whole number of screen pixels on a slow eased cycle,
+// then back down. Nothing separates → no seam anywhere; and because the step is
+// an exact pixel (never a fraction) there's no sub-pixel shimmer. The ground
+// shadow stays put, so the feet lift a hair off it as the "breath". Tunables:
+const BOB_PIXELS = 1;                     // peak lift, in art/screen pixels (bump to 2 for a bigger breath)
+const BOB_OMEGA = (Math.PI * 2) / 2.6;    // ~2.6s per breath cycle
+// 1 art pixel = 0.5 world units here (sprites render at 0.5 scale, camera at 2x
+// zoom → 1:1 on screen), so a whole-pixel step is a 0.5-world-unit step.
+const WORLD_PER_PIXEL = 0.5;
+
 /** Reads a loaded texture's pixel data onto a throwaway canvas once. */
 function readTexturePixels(scene: Phaser.Scene, textureKey: string): { data: Uint8ClampedArray; w: number; h: number } | null {
   try {
@@ -227,12 +242,17 @@ export class AvatarSprite {
   private currentDirection: Direction = "down";
   private currentLoadout: Loadout;
   private isWalking = false;
+  /** Random phase so a crowd of avatars doesn't bob in lockstep. */
+  private readonly bobPhase = Math.random() * Math.PI * 2;
 
   constructor(scene: Phaser.Scene, x: number, y: number, loadout: Loadout = DEFAULT_LOADOUT) {
     this.scene = scene;
     this.currentLoadout = { ...loadout };
     this.container = scene.add.container(x, y);
     this.buildLayers();
+    // Drive the idle bob after the scene's update() has set this frame's
+    // walk/idle state, so the flag the bob reads is current.
+    this.scene.events.on(Phaser.Scenes.Events.POST_UPDATE, this.bobBody, this);
   }
 
   get x(): number { return this.container.x; }
@@ -336,6 +356,28 @@ export class AvatarSprite {
   }
 
   /**
+   * Idle bob — runs every frame (POST_UPDATE). While standing still, every
+   * layer sprite is lifted together by a whole number of pixels on a slow
+   * eased cycle; while walking they're pinned to the feet line so the walk
+   * cycle is untouched. The shadow/blob aren't moved, so the feet lift off
+   * the ground a touch as the breath. Whole-pixel steps only → no shimmer.
+   */
+  private bobBody = (time: number): void => {
+    if (this.layerSprites.size === 0) return;
+    let offset = 0;
+    if (!this.isWalking) {
+      // Eased 0..1 that dwells at the extremes like a breath, snapped to a
+      // whole pixel so the sprite never lands between pixels (that shimmers).
+      const phase = 0.5 - 0.5 * Math.cos((time / 1000) * BOB_OMEGA + this.bobPhase);
+      offset = -Math.round(phase * BOB_PIXELS) * WORLD_PER_PIXEL;
+    }
+    const y = FOOT_Y_LOCAL + offset;
+    for (const s of this.layerSprites.values()) {
+      if (s.y !== y) s.y = y;
+    }
+  };
+
+  /**
    * Sets the depth based on the Y position (for depth sorting).
    */
   updateDepth(): void {
@@ -343,6 +385,7 @@ export class AvatarSprite {
   }
 
   destroy(): void {
+    this.scene.events.off(Phaser.Scenes.Events.POST_UPDATE, this.bobBody, this);
     this.destroyLayers();
     this.container.destroy();
   }
@@ -350,7 +393,6 @@ export class AvatarSprite {
   // ── Internal ──────────────────────────────────────────
 
   private buildLayers(): void {
-    const FOOT_Y_LOCAL = -2;
     const hatVariant = getVariant("hat", this.currentLoadout.hat);
 
     for (const category of LAYER_ORDER) {
@@ -407,7 +449,6 @@ export class AvatarSprite {
     if (!silhouette) return;
     this.shadowTextureKey = silhouette.key;
 
-    const FOOT_Y_LOCAL = -2;
     const scale = 0.5;
     // Where the feet INK actually sits: the frame anchor minus the sheet's
     // measured below-feet margin. Both the blob and the silhouette anchor
