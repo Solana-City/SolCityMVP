@@ -20,6 +20,20 @@ import {
   getVariant,
 } from "../config/paperDoll";
 
+// Local y of every layer sprite's (bottom) origin inside the container — the
+// feet line. Shared by the layers, the shadow and the idle head-bob.
+const FOOT_Y_LOCAL = -2;
+
+// Idle head bob (segmented, no squash): while standing still the head is a
+// separate sprite group that gently rises and falls a couple of pixels. The
+// skin sheet is the only layer spanning head+body, so it's split by crop into
+// a static body part and a bobbing head part; the head-only layers (eyes,
+// hair, hat) bob as whole sprites. Tunables:
+const HEAD_SPLIT_ROW = 30;        // texture row (0..64) where head+neck ends and the torso begins
+const HEAD_BODY_OVERLAP = 5;      // rows the body-crop extends up under the head, so a lifted head never opens a neck gap
+const HEAD_BOB_AMP = 0.9;         // head travel in world units at the peak (~1.8 screen px at 2x zoom)
+const HEAD_BOB_OMEGA = (Math.PI * 2) / 2.4; // ~2.4s per bob cycle
+
 /** Reads a loaded texture's pixel data onto a throwaway canvas once. */
 function readTexturePixels(scene: Phaser.Scene, textureKey: string): { data: Uint8ClampedArray; w: number; h: number } | null {
   try {
@@ -227,12 +241,21 @@ export class AvatarSprite {
   private currentDirection: Direction = "down";
   private currentLoadout: Loadout;
   private isWalking = false;
+  /** Sprites that bob together as the "head": the skin head-crop + eyes/hair/hat. */
+  private headSprites: Phaser.GameObjects.Sprite[] = [];
+  /** The skin's head-crop sprite (the body-crop stays in layerSprites as "skin"). */
+  private skinHeadSprite: Phaser.GameObjects.Sprite | null = null;
+  /** Random phase so a crowd of avatars doesn't bob in lockstep. */
+  private readonly bobPhase = Math.random() * Math.PI * 2;
 
   constructor(scene: Phaser.Scene, x: number, y: number, loadout: Loadout = DEFAULT_LOADOUT) {
     this.scene = scene;
     this.currentLoadout = { ...loadout };
     this.container = scene.add.container(x, y);
     this.buildLayers();
+    // Drive the idle head bob after the scene's update() has set this frame's
+    // walk/idle state, so the flag the bob reads is current.
+    this.scene.events.on(Phaser.Scenes.Events.POST_UPDATE, this.bobHead, this);
   }
 
   get x(): number { return this.container.x; }
@@ -328,12 +351,31 @@ export class AvatarSprite {
     }
   }
 
-  /** All sprites that follow the walk cycle — the layers plus the shadow. */
+  /** All sprites that follow the walk cycle — the layers, the skin head-crop, plus the shadow. */
   private animatedSprites(): Phaser.GameObjects.Sprite[] {
     const sprites: Phaser.GameObjects.Sprite[] = [...this.layerSprites.values()];
+    if (this.skinHeadSprite) sprites.push(this.skinHeadSprite);
     if (this.shadowSprite) sprites.push(this.shadowSprite);
     return sprites;
   }
+
+  /**
+   * Idle head bob — runs every frame (POST_UPDATE). While standing still the
+   * head sprite group is nudged up/down a couple pixels on a gentle sine; the
+   * body stays put. The skin body-crop extends a few rows up under the head
+   * (HEAD_BODY_OVERLAP), so a raised head never opens a gap at the neck. While
+   * walking the head is pinned to the feet line so the walk cycle is untouched.
+   */
+  private bobHead = (time: number): void => {
+    if (this.headSprites.length === 0) return;
+    const offset = this.isWalking
+      ? 0
+      : HEAD_BOB_AMP * Math.sin((time / 1000) * HEAD_BOB_OMEGA + this.bobPhase);
+    const y = FOOT_Y_LOCAL + offset;
+    for (const s of this.headSprites) {
+      if (s.y !== y) s.y = y;
+    }
+  };
 
   /**
    * Sets the depth based on the Y position (for depth sorting).
@@ -343,15 +385,27 @@ export class AvatarSprite {
   }
 
   destroy(): void {
+    this.scene.events.off(Phaser.Scenes.Events.POST_UPDATE, this.bobHead, this);
     this.destroyLayers();
     this.container.destroy();
   }
 
   // ── Internal ──────────────────────────────────────────
 
+  /** Creates one layer sprite anchored at the feet, at the sheets' 0.5 scale. */
+  private makeLayerSprite(textureKey: string): Phaser.GameObjects.Sprite {
+    const sprite = this.scene.add.sprite(0, FOOT_Y_LOCAL, textureKey);
+    sprite.setOrigin(0.5, 1.0);
+    // Native 64x64 sheets render at 0.5x world scale (2x camera zoom cancels to 1:1),
+    // matching SimpleSprite's pixel-perfect convention.
+    const frame = this.scene.textures.get(textureKey).get(0);
+    if ((frame.height || SPRITE_FRAME_HEIGHT) >= 56) sprite.setScale(0.5);
+    return sprite;
+  }
+
   private buildLayers(): void {
-    const FOOT_Y_LOCAL = -2;
     const hatVariant = getVariant("hat", this.currentLoadout.hat);
+    this.headSprites = [];
 
     for (const category of LAYER_ORDER) {
       const variant = getVariant(category, this.currentLoadout[category]);
@@ -370,18 +424,35 @@ export class AvatarSprite {
         ? getHairTextureFor(this.scene, variant.textureKey, hatVariant?.textureKey, hatVariant?.hatCoverage)
         : variant.textureKey;
 
-      const sprite = this.scene.add.sprite(0, FOOT_Y_LOCAL, textureKey);
-      sprite.setOrigin(0.5, 1.0);
+      if (category === "skin") {
+        // Skin is the only layer that spans head AND body, so split it into a
+        // static body-crop and a head-crop that bobs. Both share the sheet and
+        // transform; crops are frame-local, so they hold across the walk cycle.
+        // The body-crop starts a few rows ABOVE the split (HEAD_BODY_OVERLAP) so
+        // that when the head lifts, body pixels sit behind the neck — no gap.
+        const bodyTop = HEAD_SPLIT_ROW - HEAD_BODY_OVERLAP;
+        const body = this.makeLayerSprite(textureKey);
+        body.setCrop(0, bodyTop, SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT - bodyTop);
+        this.container.add(body);
+        this.layerSprites.set("skin", body);
 
-      // Native 64x64 sheets render at 0.5x world scale (2x camera zoom cancels to 1:1),
-      // matching SimpleSprite's pixel-perfect convention.
-      const frame = this.scene.textures.get(textureKey).get(0);
-      if ((frame.height || SPRITE_FRAME_HEIGHT) >= 56) {
-        sprite.setScale(0.5);
+        const head = this.makeLayerSprite(textureKey);
+        head.setCrop(0, 0, SPRITE_FRAME_WIDTH, HEAD_SPLIT_ROW);
+        this.container.add(head); // above the body-crop, below eyes/hair/hat
+        this.skinHeadSprite = head;
+        this.headSprites.push(head);
+
+        this.registerAnimations(textureKey);
+        continue;
       }
 
+      const sprite = this.makeLayerSprite(textureKey);
       this.container.add(sprite);
       this.layerSprites.set(category, sprite);
+      // Head-only layers bob with the head; the rest stay on the body.
+      if (category === "eyesFace" || category === "hair" || category === "hat") {
+        this.headSprites.push(sprite);
+      }
       this.registerAnimations(textureKey);
     }
 
@@ -407,7 +478,6 @@ export class AvatarSprite {
     if (!silhouette) return;
     this.shadowTextureKey = silhouette.key;
 
-    const FOOT_Y_LOCAL = -2;
     const scale = 0.5;
     // Where the feet INK actually sits: the frame anchor minus the sheet's
     // measured below-feet margin. Both the blob and the silhouette anchor
@@ -443,6 +513,13 @@ export class AvatarSprite {
       sprite.destroy();
     }
     this.layerSprites.clear();
+
+    if (this.skinHeadSprite) {
+      this.container.remove(this.skinHeadSprite);
+      this.skinHeadSprite.destroy();
+      this.skinHeadSprite = null;
+    }
+    this.headSprites = [];
 
     if (this.shadowSprite) {
       this.container.remove(this.shadowSprite);
