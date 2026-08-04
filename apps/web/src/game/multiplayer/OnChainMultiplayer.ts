@@ -346,6 +346,14 @@ export class OnChainMultiplayer {
 
     this._connected = false;
     this.sessionKeys.revoke(this.routerConnection);
+    // Tell the scene to tear down every remote avatar before wiping the
+    // registry, so a reconnect re-adds fresh ones instead of stacking new
+    // sprites over orphaned ones (the "2-3 copies of the same player" bug).
+    const selfStr = this.wallet?.toBase58();
+    for (const w of this.knownPlayers.keys()) {
+      if (w === selfStr) continue;
+      for (const cb of this.removeCallbacks) cb(w);
+    }
     this.knownPlayers.clear();
   }
 

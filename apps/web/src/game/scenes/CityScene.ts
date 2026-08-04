@@ -793,6 +793,13 @@ export class CityScene extends Phaser.Scene {
   }
 
   private addRemotePlayer(wallet: string, player: OnChainPlayer): void {
+    // Idempotent — if this wallet already has an avatar (e.g. a reconnect
+    // re-discovered them), refresh it instead of stacking a second sprite over
+    // the first, which would orphan the old one and show a duplicate.
+    if (this.remotePlayers.has(wallet)) {
+      this.updateRemotePlayer(wallet, player);
+      return;
+    }
     const avatar = new AvatarSprite(this, player.x, player.y, player.loadout ?? DEFAULT_LOADOUT);
     this.remotePlayers.set(wallet, avatar);
     this.remoteLoadoutKey.set(wallet, JSON.stringify(player.loadout ?? {}));
