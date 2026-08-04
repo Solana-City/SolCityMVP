@@ -783,12 +783,12 @@ export class OnChainMultiplayer {
     //    (One getMultipleAccountsInfo call per tick, not N getAccountInfo.)
     for (const t of this.discoveryTimers) clearInterval(t);
     this.discoveryTimers = [
-      setInterval(() => this.pollKnownPlayerPDAs(wallet), 5_000),
-      // 5. Full discovery every 30s to catch players who joined after initial
-      //    connect. getProgramAccounts is the most expensive call the public
-      //    RPC allows — keep it rare; the WebSocket subscription and the PDA
-      //    poll carry the real-time load.
-      setInterval(() => this.discoverPlayersFromBase(wallet), 30_000),
+      // Poll live positions from the ER (fast, sub-100ms) — this is the
+      // real-time load now that reads come off the rollup, not frozen base.
+      setInterval(() => this.pollKnownPlayerPDAs(wallet), 1_500),
+      // Refresh the online roster from the ER. getProgramAccounts on the ER is
+      // cheap (~20ms) and returns exactly the delegated (online) players.
+      setInterval(() => this.discoverPlayersFromBase(wallet), 12_000),
     ];
 
     // 6. Cross-browser chat via Solana Memo + onLogs
@@ -798,26 +798,29 @@ export class OnChainMultiplayer {
     this.lastPos = { x: -1, y: -1, direction: -1, isWalking: false };
   }
 
-  /** Discover players whose PDAs exist on devnet base layer. */
-  private async discoverPlayersFromBase(self: PublicKey): Promise<void> {
-    if (!this.rpcAvailable()) return; // rate-limited — skip this tick
+  /**
+   * Discovers the ONLINE roster from the ER. Delegated player PDAs live on the
+   * rollup with fresh positions; the base copy of a delegated account is frozen
+   * at its pre-delegation state (spawn) — base discovery is why everyone showed
+   * up stuck at 512,288. The ER is the authoritative live view.
+   * (Method name kept for its callers.)
+   */
+  private async discoverPlayersFromBase(_self: PublicKey): Promise<void> {
     try {
-      const accounts = await this.baseConnection.getProgramAccounts(
+      const accounts = await this.ephemeralConnection.getProgramAccounts(
         SOL_CITY_PROGRAM_ID,
         { commitment: "confirmed" }
       );
-      this.noteRpcSuccess();
-      console.log(`[Multiplayer] getProgramAccounts: ${accounts.length} account(s) on base layer`);
+      console.log(`[Multiplayer] ER getProgramAccounts: ${accounts.length} online player(s)`);
       let added = 0;
       for (const { pubkey, account } of accounts) {
         const before = this.knownPlayers.size;
         this.decodeAndUpdatePlayer(pubkey.toBase58(), account.data);
         if (this.knownPlayers.size > before) added++;
       }
-      if (added > 0) console.log(`[Multiplayer] discovery: ${added} new player(s) added`);
+      if (added > 0) console.log(`[Multiplayer] discovery: ${added} new player(s)`);
     } catch (err: any) {
-      this.noteRpcError(err);
-      console.warn("[Multiplayer] base discovery FAILED:", err?.message);
+      console.warn("[Multiplayer] ER discovery failed:", err?.message);
     }
   }
 
@@ -829,21 +832,19 @@ export class OnChainMultiplayer {
    * the number of players every 2 seconds.
    */
   private async pollKnownPlayerPDAs(self: PublicKey): Promise<void> {
-    if (!this.rpcAvailable()) return; // rate-limited — skip this tick
     const selfStr = self.toBase58();
     const wallets = [...this.knownPlayers.keys()].filter(w => w !== selfStr);
     if (wallets.length === 0) return;
 
     try {
+      // Read from the ER, not base: the ER copy carries live positions; the
+      // base copy of a delegated PDA is frozen at spawn.
       const pdas = wallets.map(w => derivePlayerPDA(new PublicKey(w))[0]);
-      const infos = await this.baseConnection.getMultipleAccountsInfo(pdas, "confirmed");
-      this.noteRpcSuccess();
+      const infos = await this.ephemeralConnection.getMultipleAccountsInfo(pdas, "confirmed");
       infos.forEach((info, i) => {
         if (info) this.decodeAndUpdatePlayer(pdas[i].toBase58(), info.data);
       });
-    } catch (err) {
-      this.noteRpcError(err);
-    }
+    } catch { /* transient ER read error — next tick retries */ }
   }
 
   // Only one move verification runs at a time, and after a verified success
