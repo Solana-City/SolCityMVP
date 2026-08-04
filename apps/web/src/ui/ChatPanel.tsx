@@ -168,6 +168,7 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
             border: "1px solid rgba(153,69,255,0.2)",
             borderTop: "none",
             backdropFilter: "blur(3px)",
+            overflowX: "hidden", // long words wrap (below) instead of scrolling sideways
           }}
         >
           {messages.length === 0 && (
@@ -176,7 +177,7 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
             </div>
           )}
           {messages.map((msg) => (
-            <div key={msg.id} className="leading-relaxed mb-0.5" style={{ fontSize: 8 }}>
+            <div key={msg.id} className="leading-relaxed mb-0.5" style={{ fontSize: 8, overflowWrap: "anywhere", wordBreak: "break-word" }}>
               <span style={{ color: msg.color || channelColor }}>
                 {msg.senderName}
               </span>

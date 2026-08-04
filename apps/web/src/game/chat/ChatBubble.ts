@@ -4,6 +4,8 @@ const BUBBLE_DURATION = 4000;
 const BUBBLE_PADDING = 6;
 const BUBBLE_FONT_SIZE = 8;
 const BUBBLE_MAX_WIDTH = 150;
+const BUBBLE_MAX_CHARS = 140;   // guard against spam blowing the bubble up
+const BUBBLE_Y = -44;           // pointer tip sits just above the head/name label
 
 /**
  * A temporary text bubble that appears above a game object.
@@ -19,11 +21,14 @@ export class ChatBubble {
     text: string,
     color: string = "#14F195"
   ) {
-    const bubbleText = scene.add.text(0, 0, text, {
+    const clipped = text.length > BUBBLE_MAX_CHARS ? text.slice(0, BUBBLE_MAX_CHARS) + "…" : text;
+    const bubbleText = scene.add.text(0, 0, clipped, {
       fontSize: `${BUBBLE_FONT_SIZE}px`,
       fontFamily: '"Press Start 2P", monospace',
       color: "#ffffff",
-      wordWrap: { width: BUBBLE_MAX_WIDTH },
+      // useAdvancedWrap breaks long unbroken strings (e.g. "waaaa…") by
+      // character so the bubble grows in HEIGHT, not off the screen width.
+      wordWrap: { width: BUBBLE_MAX_WIDTH, useAdvancedWrap: true },
       align: "center",
       resolution: 2,
     });
@@ -44,7 +49,7 @@ export class ChatBubble {
 
     bubbleText.setPosition(0, -BUBBLE_PADDING);
 
-    this.container = scene.add.container(0, -72, [bg, bubbleText]);
+    this.container = scene.add.container(0, BUBBLE_Y, [bg, bubbleText]);
     target.add(this.container);
 
     // Fade out and destroy
