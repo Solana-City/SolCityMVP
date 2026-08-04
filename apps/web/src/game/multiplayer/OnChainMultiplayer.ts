@@ -527,12 +527,14 @@ export class OnChainMultiplayer {
   private async sendMemo(memoText: string): Promise<string> {
     if (!this.wallet) throw new Error("sendMemo: no wallet");
     const sessionKey = this.sessionKeys.getSessionPublicKey();
-    const [pda] = derivePlayerPDA(this.wallet);
+    // NO accounts on the memo instruction. The SPL Memo program requires that
+    // EVERY account passed to it be a signer — attaching the player PDA (a
+    // non-signer, "for signature lookup") made every memo fail simulation with
+    // "missing required signature for instruction", which is why chat, outfit
+    // and expression never crossed devices. The memo text is logged regardless
+    // of accounts, and attribution already rides in the payload (the wallet).
     const ix = new TransactionInstruction({
-      keys: [
-        { pubkey: sessionKey, isSigner: true,  isWritable: false },
-        { pubkey: pda,        isSigner: false, isWritable: false }, // for signature lookup
-      ],
+      keys: [],
       programId: MEMO_PROGRAM_ID,
       data: Buffer.from(memoText, "utf-8"),
     });
