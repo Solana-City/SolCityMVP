@@ -29,6 +29,7 @@ import {
 } from "../solana/instructions";
 import { derivePlayerPDA, SOL_CITY_PROGRAM_ID, DELEGATION_PROGRAM_ID } from "../solana/program";
 import { transactionLog } from "../telemetry/transactionLog";
+import type { Loadout } from "../config/paperDoll";
 
 // ── Endpoints ──────────────────────────────────────────────────────────
 
@@ -45,9 +46,11 @@ const BROADCAST_CHANNEL = "sol-city-v1";
 
 // BroadcastChannel message types
 type BCMsg =
-  | { t: "join";  w: string; x: number; y: number; d: number; m: boolean; name?: string; score?: number }
+  | { t: "join";  w: string; x: number; y: number; d: number; m: boolean; name?: string; score?: number; l?: Loadout }
   | { t: "pos";   w: string; x: number; y: number; d: number; m: boolean }
   | { t: "chat";  w: string; text: string }
+  | { t: "look";  w: string; l: Loadout }
+  | { t: "expr";  w: string; e: string }
   | { t: "leave"; w: string };
 
 // Throttle position broadcasts. 500ms = 2 tx/s — stays under devnet ER rate limits.
@@ -64,10 +67,12 @@ export interface OnChainPlayer {
   lastUpdate: number;
   displayName?: string;
   score?: number;
+  loadout?: Loadout;
 }
 
 type PlayerCallback  = (wallet: string, player: OnChainPlayer) => void;
 type RemoveCallback  = (wallet: string) => void;
+type ExprCallback    = (wallet: string, textureKey: string) => void;
 
 // ── OnChainMultiplayer ─────────────────────────────────────────────────
 
@@ -108,6 +113,13 @@ export class OnChainMultiplayer {
   private addCallbacks:    PlayerCallback[] = [];
   private removeCallbacks: RemoveCallback[] = [];
   private changeCallbacks: PlayerCallback[] = [];
+  private exprCallbacks:   ExprCallback[]   = [];
+
+  // Local player's current paper-doll loadout, broadcast so others render the
+  // real look instead of a placeholder. Debounced so wardrobe live-preview
+  // churn doesn't spam the channel.
+  private localLoadout: Loadout | undefined;
+  private lookDebounce: ReturnType<typeof setTimeout> | null = null;
 
   // Throttling
   private lastPosSent = 0;
@@ -207,9 +219,10 @@ export class OnChainMultiplayer {
 
   // ── Connect ──────────────────────────────────────────────────────────
 
-  async connect(walletPublicKey: PublicKey, displayName?: string): Promise<void> {
+  async connect(walletPublicKey: PublicKey, displayName?: string, loadout?: Loadout): Promise<void> {
     if (this._connected) return; // prevent duplicate initialization from wallet adapter re-fires
     this.wallet = walletPublicKey;
+    this.localLoadout = loadout;
     const walletStr = walletPublicKey.toBase58();
 
     // Session key authorization happens inside startMagicBlockMultiplayer (real)
@@ -225,6 +238,7 @@ export class OnChainMultiplayer {
       isWalking: false,
       lastUpdate: Date.now(),
       displayName,
+      loadout,
     });
 
     // Layer 1: BroadcastChannel (immediate, zero-infra)
@@ -569,6 +583,7 @@ export class OnChainMultiplayer {
   onPlayerAdd(cb: PlayerCallback):    void { this.addCallbacks.push(cb); }
   onPlayerRemove(cb: RemoveCallback): void { this.removeCallbacks.push(cb); }
   onPlayerChange(cb: PlayerCallback): void { this.changeCallbacks.push(cb); }
+  onPlayerExpression(cb: ExprCallback): void { this.exprCallbacks.push(cb); }
 
   /** Returns all currently known players (self included). */
   getActivePlayers(): OnChainPlayer[] {
@@ -590,6 +605,30 @@ export class OnChainMultiplayer {
     }
   }
 
+  /** Broadcast a new paper-doll loadout so others re-render our avatar. */
+  updateLoadout(loadout: Loadout): void {
+    this.localLoadout = loadout;
+    const walletStr = this.wallet?.toBase58();
+    if (walletStr) {
+      const local = this.knownPlayers.get(walletStr);
+      if (local) local.loadout = loadout;
+    }
+    // Debounce: the wardrobe fires this on every live-preview tweak; only the
+    // settled look needs to go out to others.
+    if (this.lookDebounce) clearTimeout(this.lookDebounce);
+    this.lookDebounce = setTimeout(() => {
+      this.lookDebounce = null;
+      if (walletStr) this.bc?.postMessage({ t: "look", w: walletStr, l: loadout } satisfies BCMsg);
+    }, 250);
+  }
+
+  /** Broadcast a facial expression (texture key) so others animate our avatar. */
+  sendExpression(textureKey: string): void {
+    const walletStr = this.wallet?.toBase58();
+    if (!walletStr) return;
+    this.bc?.postMessage({ t: "expr", w: walletStr, e: textureKey } satisfies BCMsg);
+  }
+
   // ── Layer 1: BroadcastChannel ─────────────────────────────────────────
 
   private startBroadcastChannel(walletStr: string, displayName?: string): void {
@@ -606,8 +645,8 @@ export class OnChainMultiplayer {
 
       switch (msg.t) {
         case "join":
-          this.handlePlayerJoin(msg.w, msg.x, msg.y, msg.d, msg.m, msg.name, msg.score);
-          // Reply with our position so the new joiner sees us
+          this.handlePlayerJoin(msg.w, msg.x, msg.y, msg.d, msg.m, msg.name, msg.score, msg.l);
+          // Reply with our position + look so the new joiner sees us correctly
           this.bc?.postMessage({
             t: "join",
             w: walletStr,
@@ -617,10 +656,17 @@ export class OnChainMultiplayer {
             m: this.lastPos.isWalking,
             name: displayName,
             score: this.localScore,
+            l: this.localLoadout,
           } satisfies BCMsg);
           break;
         case "pos":
           this.handlePlayerMove(msg.w, msg.x, msg.y, msg.d, msg.m);
+          break;
+        case "look":
+          this.handleLook(msg.w, msg.l);
+          break;
+        case "expr":
+          this.handleExpr(msg.w, msg.e);
           break;
         case "leave":
           this.handlePlayerLeave(msg.w);
@@ -635,6 +681,7 @@ export class OnChainMultiplayer {
       x: 512, y: 288, d: 0, m: false,
       name: displayName,
       score: this.localScore,
+      l: this.localLoadout,
     } satisfies BCMsg);
 
     // Ensure clean broadcast on tab close
@@ -1371,19 +1418,34 @@ export class OnChainMultiplayer {
   // ── Player state machine ──────────────────────────────────────────────
 
   private handlePlayerJoin(
-    wallet: string, x: number, y: number, d: number, m: boolean, name?: string, score?: number
+    wallet: string, x: number, y: number, d: number, m: boolean,
+    name?: string, score?: number, loadout?: Loadout,
   ): void {
     if (this.knownPlayers.has(wallet)) {
       this.handlePlayerMove(wallet, x, y, d, m, name, score);
+      if (loadout) this.handleLook(wallet, loadout);
       return;
     }
     const player: OnChainPlayer = {
       wallet, x, y, direction: d, isWalking: m,
-      lastUpdate: Date.now(), displayName: name, score,
+      lastUpdate: Date.now(), displayName: name, score, loadout,
     };
     this.knownPlayers.set(wallet, player);
     for (const cb of this.addCallbacks) cb(wallet, player);
     this.subscribeToPlayerWallet(wallet);
+  }
+
+  private handleLook(wallet: string, loadout: Loadout): void {
+    if (wallet === this.wallet?.toBase58()) return;
+    const player = this.knownPlayers.get(wallet);
+    if (!player) return;
+    player.loadout = loadout;
+    for (const cb of this.changeCallbacks) cb(wallet, player);
+  }
+
+  private handleExpr(wallet: string, textureKey: string): void {
+    if (wallet === this.wallet?.toBase58()) return;
+    for (const cb of this.exprCallbacks) cb(wallet, textureKey);
   }
 
   private handlePlayerMove(

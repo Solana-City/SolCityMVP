@@ -1,8 +1,8 @@
 import * as Phaser from "phaser";
 import { PLAYER_SPEED, TILE_SIZE, PLAYABLE_ZONE } from "../config/constants";
-import { SimpleSprite, Direction } from "../entities/SimpleSprite";
+import { Direction } from "../entities/SimpleSprite";
 import { AvatarSprite } from "../entities/AvatarSprite";
-import { loadSavedLoadout, type Loadout } from "../config/paperDoll";
+import { loadSavedLoadout, DEFAULT_LOADOUT, type Loadout } from "../config/paperDoll";
 import { OnChainMultiplayer, OnChainPlayer } from "../multiplayer/OnChainMultiplayer";
 import { ChatManager, getChannelColor } from "../chat/ChatManager";
 import { ChatBubble } from "../chat/ChatBubble";
@@ -30,7 +30,11 @@ export class CityScene extends Phaser.Scene {
 
   private network!: OnChainMultiplayer;
   private chat!: ChatManager;
-  private remotePlayers = new Map<string, SimpleSprite>();
+  private remotePlayers = new Map<string, AvatarSprite>();
+  /** JSON of the loadout last applied to each remote avatar — to skip rebuilds. */
+  private remoteLoadoutKey = new Map<string, string>();
+  /** Per-remote expression auto-revert timers. */
+  private remoteExprTimers = new Map<string, Phaser.Time.TimerEvent>();
   private nameLabels = new Map<string, Phaser.GameObjects.Text>();
   private activeBubbles = new Map<string, ChatBubble>();
   // Debounce "entered the city" — wallet reconnects clear knownPlayers and
@@ -348,6 +352,7 @@ export class CityScene extends Phaser.Scene {
     this.game.events.on("expression:trigger", (expr: { textureKey: string }) => {
       this.avatar.setExpression(expr.textureKey);
       soundManager.play("emote");
+      this.network.sendExpression(expr.textureKey); // let others see the reaction
       this.expressionTimer?.remove(false);
       this.expressionTimer = this.time.delayedCall(3500, () => {
         this.avatar.setExpression(null);
@@ -358,6 +363,7 @@ export class CityScene extends Phaser.Scene {
     // Wardrobe panel — live preview while panel is open, persisted on Save.
     this.game.events.on("wardrobe:loadout", (loadout: Loadout) => {
       this.avatar.setLoadout(loadout);
+      this.network.updateLoadout(loadout); // broadcast so others re-render our look
     });
 
     // NPCs — position read from Tiled NPC layer, scanned to first walkable row
@@ -502,7 +508,7 @@ export class CityScene extends Phaser.Scene {
           bus?.once("walletBridge:ready", () => { clearTimeout(fallback); resolve(); });
         });
 
-        await this.network.connect(new PublicKey(walletAddress), displayName);
+        await this.network.connect(new PublicKey(walletAddress), displayName, loadSavedLoadout());
         this.chat.addSystemMessage("Multiplayer session started.");
 
         // Warnings from multiplayer (e.g. delegated PDA detected)
@@ -776,11 +782,17 @@ export class CityScene extends Phaser.Scene {
       if (wallet === this.network.sessionId) return;
       this.updateRemotePlayer(wallet, player);
     });
+
+    this.network.onPlayerExpression((wallet, textureKey) => {
+      if (wallet === this.network.sessionId) return;
+      this.applyRemoteExpression(wallet, textureKey);
+    });
   }
 
   private addRemotePlayer(wallet: string, player: OnChainPlayer): void {
-    const avatar = new SimpleSprite(this, player.x, player.y, "avatar-player");
+    const avatar = new AvatarSprite(this, player.x, player.y, player.loadout ?? DEFAULT_LOADOUT);
     this.remotePlayers.set(wallet, avatar);
+    this.remoteLoadoutKey.set(wallet, JSON.stringify(player.loadout ?? {}));
 
     const shortAddr = `${wallet.slice(0, 4)}…${wallet.slice(-4)}`;
     const displayName = player.displayName ?? shortAddr;
@@ -818,6 +830,9 @@ export class CityScene extends Phaser.Scene {
       avatar.destroy();
       this.remotePlayers.delete(wallet);
     }
+    this.remoteLoadoutKey.delete(wallet);
+    const exprTimer = this.remoteExprTimers.get(wallet);
+    if (exprTimer) { exprTimer.remove(false); this.remoteExprTimers.delete(wallet); }
 
     const label = this.nameLabels.get(wallet);
     if (label) {
@@ -867,12 +882,35 @@ export class CityScene extends Phaser.Scene {
       });
     }
 
+    // Apply a changed outfit (only when it actually differs — setLoadout
+    // rebuilds every layer, so guard against per-move churn).
+    if (player.loadout) {
+      const lkey = JSON.stringify(player.loadout);
+      if (lkey !== this.remoteLoadoutKey.get(wallet)) {
+        avatar.setLoadout(player.loadout);
+        this.remoteLoadoutKey.set(wallet, lkey);
+      }
+    }
+
     const dirs: Direction[] = ["down", "left", "right", "up"];
     if (player.isWalking && dirs[player.direction]) {
       avatar.walk(dirs[player.direction]);
     } else {
       avatar.idle();
     }
+  }
+
+  /** Plays a remote player's facial expression, auto-reverting after 3.5s. */
+  private applyRemoteExpression(wallet: string, textureKey: string): void {
+    const avatar = this.remotePlayers.get(wallet);
+    if (!avatar) return;
+    avatar.setExpression(textureKey);
+    soundManager.play("emote");
+    this.remoteExprTimers.get(wallet)?.remove(false);
+    this.remoteExprTimers.set(wallet, this.time.delayedCall(3500, () => {
+      avatar.setExpression(null);
+      this.remoteExprTimers.delete(wallet);
+    }));
   }
 
   private showBubble(
