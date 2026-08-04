@@ -1,5 +1,5 @@
 /**
- * "Onde Está o NPC?" — global hide-and-seek mini-game.
+ * "Where Is the NPC?" — global hide-and-seek mini-game.
  *
  * Deterministic round system: every ROUND_MS all clients independently
  * compute the same target pedestrian index from the Unix timestamp.
