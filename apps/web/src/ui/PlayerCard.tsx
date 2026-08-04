@@ -20,6 +20,14 @@ interface Props {
 
 export default function PlayerCard({ gameRef, wallet, displayName, myWallet, onClose }: Props) {
   const [player, setPlayer] = useState<OnChainPlayer | undefined>(undefined);
+  const [copied, setCopied] = useState(false);
+
+  const copyWallet = () => {
+    if (!wallet) return;
+    navigator.clipboard?.writeText(wallet)
+      .then(() => { setCopied(true); setTimeout(() => setCopied(false), 1200); })
+      .catch(() => {});
+  };
 
   const network = useMemo<OnChainMultiplayer | null>(() => {
     if (!gameRef) return null;
@@ -71,14 +79,36 @@ export default function PlayerCard({ gameRef, wallet, displayName, myWallet, onC
           </button>
         </div>
 
-        <div style={{ fontSize: 8, color: "#6060aa", marginBottom: 4 }}>{short}{isSelf ? " (você)" : ""}</div>
+        {/* Wallet + copy */}
+        <div style={{ fontSize: 7, color: "#555577", marginBottom: 5 }}>
+          WALLET{isSelf ? " (you)" : ""}
+        </div>
+        <div style={{
+          display: "flex", alignItems: "center", gap: 8,
+          background: "rgba(255,255,255,0.03)", borderRadius: 8, padding: "8px 10px",
+        }}>
+          <span style={{ fontSize: 9, color: "#9a9ad0", flex: 1, minWidth: 0 }}>{short}</span>
+          <button
+            onClick={copyWallet}
+            style={{
+              fontFamily: '"Press Start 2P", monospace', fontSize: 7,
+              color: copied ? "#14F195" : "#c084fc",
+              background: "rgba(153,69,255,0.12)",
+              border: "1px solid rgba(153,69,255,0.3)",
+              borderRadius: 6, padding: "5px 8px", cursor: "pointer", flexShrink: 0,
+            }}
+            title="Copy wallet address"
+          >
+            {copied ? "Copied" : "Copy"}
+          </button>
+        </div>
 
         <div style={{ margin: "12px 0 4px" }}>
           <Stat label="Score" value={player?.score ?? 0} color="#14F195" />
         </div>
-        <div style={{ fontSize: 8, color: "#3a3a5a", lineHeight: 1.4 }}>
-          Só o score de presença é compartilhado entre players hoje —
-          conquistas e pontuações de mini-games ainda ficam locais.
+        <div style={{ fontSize: 7, color: "#3a3a5a", lineHeight: 1.5 }}>
+          Presence score is shared live. Achievements and mini-game scores are
+          still local for now.
         </div>
       </div>
     </div>

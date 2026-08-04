@@ -11,7 +11,7 @@ interface State {
   suppressedCount: number;
 }
 
-/** Messages that indicate a wallet / EVM extension error (non-fatal). */
+/** Messages for non-fatal errors that must never take down the whole game. */
 function isWalletError(msg: string): boolean {
   const lower = msg.toLowerCase();
   return (
@@ -22,6 +22,12 @@ function isWalletError(msg: string): boolean {
     lower.includes("session offline") ||
     lower.includes("metamask") ||
     lower.includes("walletconnect") ||
+    // Transient RPC rate limiting — the game polls/retries; a stray 429 from a
+    // fire-and-forget promise must not crash the app (it was doing exactly that
+    // on a busy fresh login).
+    lower.includes("429") ||
+    lower.includes("too many requests") ||
+    lower.includes("rate limit") ||
     msg === "Assertion failed"
     // NOTE: do NOT add generic "wallet" — too broad, masks real game errors
   );

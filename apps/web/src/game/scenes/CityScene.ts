@@ -902,16 +902,14 @@ export class CityScene extends Phaser.Scene {
       this.tweens.killTweensOf(container);
       container.setPosition(player.x, player.y);
     } else if (dist > 2) {
-      // Interpolate to the new position. Duration slightly above the ~400ms
-      // write cadence so motion stays continuous (never reaches the target and
-      // stalls before the next sample), now that the router push delivers
-      // updates with low latency.
+      // Interpolate over 600ms so motion between the ~500ms position samples
+      // stays continuous (never reaches the target and stalls before the next).
       this.tweens.killTweensOf(container);
       this.tweens.add({
         targets: container,
         x: player.x,
         y: player.y,
-        duration: 450,
+        duration: 600,
         ease: "Linear",
       });
     }

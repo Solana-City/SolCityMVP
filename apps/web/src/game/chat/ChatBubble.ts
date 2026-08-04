@@ -6,6 +6,8 @@ const BUBBLE_FONT_SIZE = 8;
 const BUBBLE_MAX_WIDTH = 150;
 const BUBBLE_MAX_CHARS = 140;   // guard against spam blowing the bubble up
 const BUBBLE_Y = -44;           // pointer tip sits just above the head/name label
+const BUBBLE_BG = 0xe6e6ee;     // light gray
+const BUBBLE_BG_ALPHA = 0.5;    // translucent so it doesn't block the scene behind it
 
 /**
  * A temporary text bubble that appears above a game object.
@@ -25,7 +27,11 @@ export class ChatBubble {
     const bubbleText = scene.add.text(0, 0, clipped, {
       fontSize: `${BUBBLE_FONT_SIZE}px`,
       fontFamily: '"Press Start 2P", monospace',
-      color: "#ffffff",
+      // Dark text on the light translucent bubble, with a soft light halo so it
+      // stays legible over any scene color.
+      color: "#14142a",
+      stroke: "#f2f2f7",
+      strokeThickness: 2,
       // useAdvancedWrap breaks long unbroken strings (e.g. "waaaa…") by
       // character so the bubble grows in HEIGHT, not off the screen width.
       wordWrap: { width: BUBBLE_MAX_WIDTH, useAdvancedWrap: true },
@@ -37,14 +43,16 @@ export class ChatBubble {
     const tw = bubbleText.width + BUBBLE_PADDING * 2;
     const th = bubbleText.height + BUBBLE_PADDING * 2;
 
+    // Light gray, translucent — reads as a soft frosted bubble that doesn't
+    // block what's behind it.
     const bg = scene.add.graphics();
-    bg.fillStyle(0x0a0a1e, 0.88);
+    bg.fillStyle(BUBBLE_BG, BUBBLE_BG_ALPHA);
     bg.fillRoundedRect(-tw / 2, -th, tw, th, 4);
-    bg.lineStyle(1, Phaser.Display.Color.HexStringToColor(color).color, 0.6);
+    bg.lineStyle(1, Phaser.Display.Color.HexStringToColor(color).color, 0.4);
     bg.strokeRoundedRect(-tw / 2, -th, tw, th, 4);
 
     // Triangle pointer
-    bg.fillStyle(0x0a0a1e, 0.88);
+    bg.fillStyle(BUBBLE_BG, BUBBLE_BG_ALPHA);
     bg.fillTriangle(-3, 0, 3, 0, 0, 5);
 
     bubbleText.setPosition(0, -BUBBLE_PADDING);

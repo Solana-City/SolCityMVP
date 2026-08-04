@@ -75,9 +75,8 @@ type BCMsg =
   | { t: "expr";  w: string; e: string }
   | { t: "leave"; w: string };
 
-// Throttle position broadcasts. 400ms ≈ 2.5 tx/s — a touch more samples than
-// 500ms for smoother remote motion, still comfortably under ER rate limits.
-const POS_THROTTLE_MS = 400;
+// Throttle position broadcasts. 500ms = 2 tx/s — stays under devnet ER rate limits.
+const POS_THROTTLE_MS = 500;
 
 // ── Types ──────────────────────────────────────────────────────────────
 
@@ -120,11 +119,6 @@ export class OnChainMultiplayer {
   private routerConnection:    ConnectionMagicRouter;
   private ephemeralConnection: Connection;
   private baseConnection:      Connection;
-  // Plain connection to the Magic Router purely for websocket subscriptions.
-  // The router's accountSubscribe PUSHES live ER account changes (proven via
-  // diagnostic), unlike the raw ephemeral endpoint's ws, which never fired — so
-  // remote positions arrive with low latency instead of waiting for a poll tick.
-  private routerSubConnection: Connection;
 
   // Session
   private sessionKeys: SessionKeyManager;
@@ -191,7 +185,6 @@ export class OnChainMultiplayer {
       commitment: "confirmed",
       disableRetryOnRateLimit: true,
     });
-    this.routerSubConnection = new Connection(ENDPOINTS.magicRouter, "processed");
     this.sessionKeys         = new SessionKeyManager();
   }
 
@@ -318,7 +311,6 @@ export class OnChainMultiplayer {
     // base connection (subscribeToPlayerWallet) or the ephemeral one
     // (subscribeToPlayer) — try both; removing an unknown id is a no-op.
     for (const subId of this.accountSubs.values()) {
-      this.routerSubConnection.removeAccountChangeListener(subId).catch(() => {});
       this.baseConnection.removeAccountChangeListener(subId).catch(() => {});
       this.ephemeralConnection.removeAccountChangeListener(subId).catch(() => {});
     }
@@ -556,10 +548,13 @@ export class OnChainMultiplayer {
     });
     const tx = new Transaction().add(ix);
     tx.feePayer = sessionKey;
-    const { blockhash } = await this.baseConnection.getLatestBlockhash();
-    tx.recentBlockhash = blockhash;
+    // Reuse the cached base blockhash (shared with base moves, ~20s TTL).
+    // Fetching a fresh one per memo was hammering the public devnet RPC into
+    // 429s ("failed to get recent blockhash"). skipPreflight avoids the extra
+    // simulate call — the no-account memo is a fixed, known-good instruction.
+    tx.recentBlockhash = await this.getMoveBlockhash("base");
     this.sessionKeys.signTransaction(tx);
-    return await this.baseConnection.sendRawTransaction(tx.serialize(), { skipPreflight: false });
+    return await this.baseConnection.sendRawTransaction(tx.serialize(), { skipPreflight: true });
   }
 
   /** Subscribe to Memo program logs for real-time cross-browser chat. */
@@ -970,9 +965,12 @@ export class OnChainMultiplayer {
     // 7. Force a presence broadcast on next sendInput tick
     this.lastPos = { x: -1, y: -1, direction: -1, isWalking: false };
 
-    // 8. Announce our look cross-device so players already in the city render us
-    //    with the right outfit (they re-announce theirs when they see us join).
-    if (this.localLoadout) this.sendLookMemo(this.localLoadout).catch(() => {});
+    // 8. Announce our look cross-device — deferred a few seconds so the memo
+    //    doesn't pile onto the base-RPC burst the connect sequence just made
+    //    (players already here also re-announce theirs when they see us join).
+    setTimeout(() => {
+      if (this._connected && this.localLoadout) this.sendLookMemo(this.localLoadout).catch(() => {});
+    }, 3_000);
   }
 
   /**
@@ -1635,23 +1633,12 @@ export class OnChainMultiplayer {
   }
 
   /** Subscribe to base layer onAccountChange for a specific player's PDA. */
-  private subscribeToPlayerWallet(wallet: string): void {
-    try {
-      const walletPub = new PublicKey(wallet);
-      const [pda] = derivePlayerPDA(walletPub);
-      const key = pda.toBase58();
-      if (!this.accountSubs.has(key)) {
-        // Subscribe on the Magic Router — it pushes the ER copy's changes in
-        // near real-time (the base copy is frozen while delegated, and the raw
-        // ephemeral ws doesn't fire). The 400ms poll stays as a fallback.
-        const subId = this.routerSubConnection.onAccountChange(
-          pda,
-          (info) => this.decodeAndUpdatePlayer(key, info.data),
-          "processed",
-        );
-        this.accountSubs.set(key, subId);
-      }
-    } catch { /* ignore invalid wallet */ }
+  private subscribeToPlayerWallet(_wallet: string): void {
+    // Intentionally no per-player websocket subscription. Creating one per
+    // discovered player flooded the RPC with connections ("Connection rate
+    // limits exceeded") on a busy fresh login and cascaded into 429s that
+    // crashed the app. The 500ms ER poll (pollKnownPlayerPDAs) carries remote
+    // position reads reliably instead.
   }
 
   private handlePlayerLeave(wallet: string): void {
