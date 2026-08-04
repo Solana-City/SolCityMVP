@@ -35,6 +35,8 @@ export class CityScene extends Phaser.Scene {
   private remoteLoadoutKey = new Map<string, string>();
   /** Per-remote expression auto-revert timers. */
   private remoteExprTimers = new Map<string, Phaser.Time.TimerEvent>();
+  /** Per-remote last position + last dust time, so remotes kick up foot dust too. */
+  private remoteDust = new Map<string, { lastX: number; lastY: number; lastDustAt: number }>();
   private nameLabels = new Map<string, Phaser.GameObjects.Text>();
   private activeBubbles = new Map<string, ChatBubble>();
   // Debounce "entered the city" — wallet reconnects clear knownPlayers and
@@ -598,9 +600,14 @@ export class CityScene extends Phaser.Scene {
 
     // 2 particles per puff, +1 per ~0.9s of continuous walking, capped at 4.
     const count = Math.min(4, 2 + Math.floor(streak / 900));
+    this.emitDustPuff(this.avatar.getContainer(), vx, vy, count);
+  }
 
+  /** Kicks up a dust puff behind a container's feet — shared by the local
+   *  player and every remote player so the whole crowd leaves footfalls. */
+  private emitDustPuff(c: Phaser.GameObjects.Container, vx: number, vy: number, count: number): void {
+    if (!this.dustEmitter) return;
     // Position at the feet, nudged backward (opposite the movement vector).
-    const c = this.avatar.getContainer();
     const len = Math.hypot(vx, vy) || 1;
     const fx = c.x - (vx / len) * 6;
     const fy = c.y - (vy / len) * 2 + 1;
@@ -714,9 +721,24 @@ export class CityScene extends Phaser.Scene {
     // Pedestrian depth sorting
     this.pedestrians.updateDepths();
 
-    // Interpolate remote players
-    this.remotePlayers.forEach((remote, sessionId) => {
+    // Interpolate remote players + kick up their foot dust as they move.
+    const dustNow = this.time.now;
+    this.remotePlayers.forEach((remote, wallet) => {
       remote.updateDepth();
+      const c = remote.getContainer();
+      const prev = this.remoteDust.get(wallet);
+      if (prev) {
+        const rvx = c.x - prev.lastX;
+        const rvy = c.y - prev.lastY;
+        if (Math.hypot(rvx, rvy) > 0.4 && dustNow - prev.lastDustAt > 140) {
+          this.emitDustPuff(c, rvx, rvy, 2);
+          prev.lastDustAt = dustNow;
+        }
+        prev.lastX = c.x;
+        prev.lastY = c.y;
+      } else {
+        this.remoteDust.set(wallet, { lastX: c.x, lastY: c.y, lastDustAt: 0 });
+      }
     });
   }
 
@@ -841,6 +863,7 @@ export class CityScene extends Phaser.Scene {
       this.remotePlayers.delete(wallet);
     }
     this.remoteLoadoutKey.delete(wallet);
+    this.remoteDust.delete(wallet);
     const exprTimer = this.remoteExprTimers.get(wallet);
     if (exprTimer) { exprTimer.remove(false); this.remoteExprTimers.delete(wallet); }
 
@@ -879,15 +902,16 @@ export class CityScene extends Phaser.Scene {
       this.tweens.killTweensOf(container);
       container.setPosition(player.x, player.y);
     } else if (dist > 2) {
-      // Interpolate over 600ms — covers ~500ms devnet write-to-read latency.
-      // onAccountChange fires ~100-200ms after tx confirms (~400ms slot).
-      // Result: movement looks smooth and near-realtime.
+      // Interpolate to the new position. Duration slightly above the ~400ms
+      // write cadence so motion stays continuous (never reaches the target and
+      // stalls before the next sample), now that the router push delivers
+      // updates with low latency.
       this.tweens.killTweensOf(container);
       this.tweens.add({
         targets: container,
         x: player.x,
         y: player.y,
-        duration: 600,
+        duration: 450,
         ease: "Linear",
       });
     }

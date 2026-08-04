@@ -75,8 +75,9 @@ type BCMsg =
   | { t: "expr";  w: string; e: string }
   | { t: "leave"; w: string };
 
-// Throttle position broadcasts. 500ms = 2 tx/s — stays under devnet ER rate limits.
-const POS_THROTTLE_MS = 500;
+// Throttle position broadcasts. 400ms ≈ 2.5 tx/s — a touch more samples than
+// 500ms for smoother remote motion, still comfortably under ER rate limits.
+const POS_THROTTLE_MS = 400;
 
 // ── Types ──────────────────────────────────────────────────────────────
 
@@ -119,6 +120,11 @@ export class OnChainMultiplayer {
   private routerConnection:    ConnectionMagicRouter;
   private ephemeralConnection: Connection;
   private baseConnection:      Connection;
+  // Plain connection to the Magic Router purely for websocket subscriptions.
+  // The router's accountSubscribe PUSHES live ER account changes (proven via
+  // diagnostic), unlike the raw ephemeral endpoint's ws, which never fired — so
+  // remote positions arrive with low latency instead of waiting for a poll tick.
+  private routerSubConnection: Connection;
 
   // Session
   private sessionKeys: SessionKeyManager;
@@ -185,6 +191,7 @@ export class OnChainMultiplayer {
       commitment: "confirmed",
       disableRetryOnRateLimit: true,
     });
+    this.routerSubConnection = new Connection(ENDPOINTS.magicRouter, "processed");
     this.sessionKeys         = new SessionKeyManager();
   }
 
@@ -311,6 +318,7 @@ export class OnChainMultiplayer {
     // base connection (subscribeToPlayerWallet) or the ephemeral one
     // (subscribeToPlayer) — try both; removing an unknown id is a no-op.
     for (const subId of this.accountSubs.values()) {
+      this.routerSubConnection.removeAccountChangeListener(subId).catch(() => {});
       this.baseConnection.removeAccountChangeListener(subId).catch(() => {});
       this.ephemeralConnection.removeAccountChangeListener(subId).catch(() => {});
     }
@@ -1633,10 +1641,13 @@ export class OnChainMultiplayer {
       const [pda] = derivePlayerPDA(walletPub);
       const key = pda.toBase58();
       if (!this.accountSubs.has(key)) {
-        const subId = this.baseConnection.onAccountChange(
+        // Subscribe on the Magic Router — it pushes the ER copy's changes in
+        // near real-time (the base copy is frozen while delegated, and the raw
+        // ephemeral ws doesn't fire). The 400ms poll stays as a fallback.
+        const subId = this.routerSubConnection.onAccountChange(
           pda,
           (info) => this.decodeAndUpdatePlayer(key, info.data),
-          "confirmed",
+          "processed",
         );
         this.accountSubs.set(key, subId);
       }
