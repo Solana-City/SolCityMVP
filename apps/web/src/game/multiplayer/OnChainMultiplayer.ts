@@ -8,8 +8,13 @@ import {
 
 // Solana Memo program — same address on mainnet and devnet
 const MEMO_PROGRAM_ID = new PublicKey("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr");
-// Chat message prefix in memo data
+// Memo data prefixes for the cross-device (cross-wallet) presence channel.
+// Position rides the ER; these low-frequency signals ride Solana Memo + onLogs
+// (session-key signed = seamless), the same transport chat already uses, so
+// players on different devices see each other's outfit and reactions.
 const CHAT_PREFIX = "solcity-chat:";
+const LOOK_PREFIX = "solcity-look:"; // solcity-look:<wallet>:<loadoutJSON>
+const EXPR_PREFIX = "solcity-expr:"; // solcity-expr:<wallet>:<textureKey>
 import {
   ConnectionMagicRouter,
   createCommitAndUndelegateInstruction,
@@ -120,6 +125,13 @@ export class OnChainMultiplayer {
   // churn doesn't spam the channel.
   private localLoadout: Loadout | undefined;
   private lookDebounce: ReturnType<typeof setTimeout> | null = null;
+  // Looks that arrived (via memo) before we'd discovered that player — applied
+  // once their avatar exists.
+  private pendingLoadouts = new Map<string, Loadout>();
+  // Coalesces "re-announce my look" when new players appear (cross-device).
+  private lookRebroadcastTimer: ReturnType<typeof setTimeout> | null = null;
+  // Rate-limits expression memos so the base layer isn't spammed.
+  private lastExprMemoAt = 0;
 
   // Throttling
   private lastPosSent = 0;
@@ -299,6 +311,9 @@ export class OnChainMultiplayer {
     }
 
     if (this.cleanupInterval) { clearInterval(this.cleanupInterval); this.cleanupInterval = null; }
+    if (this.lookDebounce) { clearTimeout(this.lookDebounce); this.lookDebounce = null; }
+    if (this.lookRebroadcastTimer) { clearTimeout(this.lookRebroadcastTimer); this.lookRebroadcastTimer = null; }
+    this.pendingLoadouts.clear();
     for (const t of this.discoveryTimers) clearInterval(t);
     this.discoveryTimers = [];
 
@@ -450,12 +465,34 @@ export class OnChainMultiplayer {
    */
   private async sendChatMemo(text: string): Promise<void> {
     if (!this.wallet) return;
-    const sessionKey = this.sessionKeys.getSessionPublicKey();
-    const [pda] = derivePlayerPDA(this.wallet);
     const displayName = this.knownPlayers.get(this.wallet.toBase58())?.displayName
       ?? this.wallet.toBase58().slice(0, 8);
+    await this.sendMemo(`${CHAT_PREFIX}${displayName}:${text.slice(0, 200)}`);
+  }
 
-    const memoText = `${CHAT_PREFIX}${displayName}:${text.slice(0, 200)}`;
+  /** Broadcasts our loadout cross-device so others render our real avatar. */
+  private async sendLookMemo(loadout: Loadout): Promise<void> {
+    const w = this.wallet?.toBase58();
+    if (!w) return;
+    await this.sendMemo(`${LOOK_PREFIX}${w}:${JSON.stringify(loadout)}`);
+  }
+
+  /** Broadcasts a facial expression cross-device. */
+  private async sendExprMemo(textureKey: string): Promise<void> {
+    const w = this.wallet?.toBase58();
+    if (!w) return;
+    await this.sendMemo(`${EXPR_PREFIX}${w}:${textureKey}`);
+  }
+
+  /**
+   * Sends a Solana Memo signed by the session key (no wallet popup). The player
+   * PDA is attached readonly so getSignaturesForAddress on it finds the tx; the
+   * primary delivery is the onLogs subscription (near real-time, cross-device).
+   */
+  private async sendMemo(memoText: string): Promise<void> {
+    if (!this.wallet) return;
+    const sessionKey = this.sessionKeys.getSessionPublicKey();
+    const [pda] = derivePlayerPDA(this.wallet);
     const ix = new TransactionInstruction({
       keys: [
         { pubkey: sessionKey, isSigner: true,  isWritable: false },
@@ -485,6 +522,25 @@ export class OnChainMultiplayer {
             const match = log.match(/Memo \(\d+ bytes\):\s*"(.+)"/);
             if (!match) continue;
             const raw = match[1];
+
+            // Cross-device look: "solcity-look:<wallet>:<loadoutJSON>"
+            if (raw.startsWith(LOOK_PREFIX)) {
+              const body = raw.slice(LOOK_PREFIX.length);
+              const i = body.indexOf(":");
+              if (i !== -1) {
+                try { this.handleLook(body.slice(0, i), JSON.parse(body.slice(i + 1)) as Loadout); }
+                catch { /* malformed loadout json — ignore */ }
+              }
+              continue;
+            }
+            // Cross-device expression: "solcity-expr:<wallet>:<textureKey>"
+            if (raw.startsWith(EXPR_PREFIX)) {
+              const body = raw.slice(EXPR_PREFIX.length);
+              const i = body.indexOf(":");
+              if (i !== -1) this.handleExpr(body.slice(0, i), body.slice(i + 1));
+              continue;
+            }
+
             if (!raw.startsWith(CHAT_PREFIX)) continue;
 
             const withoutPrefix = raw.slice(CHAT_PREFIX.length);
@@ -618,7 +674,9 @@ export class OnChainMultiplayer {
     if (this.lookDebounce) clearTimeout(this.lookDebounce);
     this.lookDebounce = setTimeout(() => {
       this.lookDebounce = null;
-      if (walletStr) this.bc?.postMessage({ t: "look", w: walletStr, l: loadout } satisfies BCMsg);
+      if (!walletStr) return;
+      this.bc?.postMessage({ t: "look", w: walletStr, l: loadout } satisfies BCMsg); // same-tab
+      if (isProgramDeployed()) this.sendLookMemo(loadout).catch(() => {});           // cross-device
     }, 250);
   }
 
@@ -626,7 +684,15 @@ export class OnChainMultiplayer {
   sendExpression(textureKey: string): void {
     const walletStr = this.wallet?.toBase58();
     if (!walletStr) return;
-    this.bc?.postMessage({ t: "expr", w: walletStr, e: textureKey } satisfies BCMsg);
+    this.bc?.postMessage({ t: "expr", w: walletStr, e: textureKey } satisfies BCMsg); // same-tab
+    // Cross-device via memo, rate-limited so the base layer isn't spammed.
+    if (isProgramDeployed()) {
+      const now = Date.now();
+      if (now - this.lastExprMemoAt > 1_000) {
+        this.lastExprMemoAt = now;
+        this.sendExprMemo(textureKey).catch(() => {});
+      }
+    }
   }
 
   // ── Layer 1: BroadcastChannel ─────────────────────────────────────────
@@ -843,6 +909,10 @@ export class OnChainMultiplayer {
 
     // 7. Force a presence broadcast on next sendInput tick
     this.lastPos = { x: -1, y: -1, direction: -1, isWalking: false };
+
+    // 8. Announce our look cross-device so players already in the city render us
+    //    with the right outfit (they re-announce theirs when they see us join).
+    if (this.localLoadout) this.sendLookMemo(this.localLoadout).catch(() => {});
   }
 
   /**
@@ -1428,19 +1498,39 @@ export class OnChainMultiplayer {
     }
     const player: OnChainPlayer = {
       wallet, x, y, direction: d, isWalking: m,
-      lastUpdate: Date.now(), displayName: name, score, loadout,
+      lastUpdate: Date.now(), displayName: name, score,
+      loadout: loadout ?? this.pendingLoadouts.get(wallet),
     };
     this.knownPlayers.set(wallet, player);
+    this.pendingLoadouts.delete(wallet);
     for (const cb of this.addCallbacks) cb(wallet, player);
     this.subscribeToPlayerWallet(wallet);
+    this.scheduleLookRebroadcast();
   }
 
   private handleLook(wallet: string, loadout: Loadout): void {
     if (wallet === this.wallet?.toBase58()) return;
     const player = this.knownPlayers.get(wallet);
-    if (!player) return;
+    if (!player) {
+      // Look arrived before we discovered this player — apply it on add.
+      this.pendingLoadouts.set(wallet, loadout);
+      return;
+    }
     player.loadout = loadout;
     for (const cb of this.changeCallbacks) cb(wallet, player);
+  }
+
+  /**
+   * Re-announces our own look cross-device (memo) shortly after a new player
+   * appears, so late joiners on other devices render us correctly. Coalesced —
+   * many arrivals in a burst produce a single memo.
+   */
+  private scheduleLookRebroadcast(): void {
+    if (!isProgramDeployed() || !this.localLoadout || this.lookRebroadcastTimer) return;
+    this.lookRebroadcastTimer = setTimeout(() => {
+      this.lookRebroadcastTimer = null;
+      if (this.localLoadout) this.sendLookMemo(this.localLoadout).catch(() => {});
+    }, 2_500);
   }
 
   private handleExpr(wallet: string, textureKey: string): void {
@@ -1459,10 +1549,13 @@ export class OnChainMultiplayer {
 
     let player = this.knownPlayers.get(wallet);
     if (!player) {
-      player = { wallet, x, y, direction: d, isWalking: m, lastUpdate, displayName: name, score };
+      const pend = this.pendingLoadouts.get(wallet);
+      player = { wallet, x, y, direction: d, isWalking: m, lastUpdate, displayName: name, score, loadout: pend };
       this.knownPlayers.set(wallet, player);
+      this.pendingLoadouts.delete(wallet);
       for (const cb of this.addCallbacks) cb(wallet, player);
       this.subscribeToPlayerWallet(wallet);
+      this.scheduleLookRebroadcast(); // re-announce our look so the newcomer sees us
       return;
     }
     player.x = x; player.y = y; player.direction = d; player.isWalking = m;
