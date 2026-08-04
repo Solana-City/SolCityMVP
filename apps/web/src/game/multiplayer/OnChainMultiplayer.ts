@@ -49,7 +49,7 @@ import {
   buildRecordMiniGameSessionIx,
   isProgramDeployed,
 } from "../solana/instructions";
-import { derivePlayerPDA, SOL_CITY_PROGRAM_ID, DELEGATION_PROGRAM_ID } from "../solana/program";
+import { derivePlayerPDA, SOL_CITY_PROGRAM_ID } from "../solana/program";
 import { transactionLog } from "../telemetry/transactionLog";
 import type { Loadout } from "../config/paperDoll";
 
@@ -118,7 +118,18 @@ export class OnChainMultiplayer {
   // Connections
   private routerConnection:    ConnectionMagicRouter;
   private ephemeralConnection: Connection;
+  // "base" HTTP ops (getAccountInfo / getBalance / blockhash / sendRawTransaction
+  // / confirm) go through the Magic Router, NOT api.devnet.solana.com — the
+  // public devnet RPC rate-limits hard (a connection storm from an earlier
+  // build got the whole IP 429-banned, which took everyone offline). The router
+  // is MagicBlock infra and stays healthy. It routes base txs to base and
+  // returns the live copy for reads.
   private baseConnection:      Connection;
+  // logsSubscribe is NOT supported by the router, so the Memo receive channel
+  // (outfit/expression/chat) keeps its own api.devnet connection. Reads/writes
+  // don't depend on it, so a base-RPC hiccup only delays cosmetic memos, never
+  // presence or movement.
+  private logsConnection:      Connection;
 
   // Session
   private sessionKeys: SessionKeyManager;
@@ -177,11 +188,12 @@ export class OnChainMultiplayer {
   constructor() {
     this.routerConnection    = new ConnectionMagicRouter(ENDPOINTS.magicRouter,  "confirmed");
     this.ephemeralConnection = new Connection(ENDPOINTS.ephemeral,    "confirmed");
-    // disableRetryOnRateLimit: web3.js otherwise auto-retries 429s with its
-    // own delays ("Retrying after 2000ms..." console spam), stacking on top
-    // of our polling intervals and extending the rate-limit window. Our
-    // exponential backoff below is the single retry authority.
-    this.baseConnection      = new Connection(ENDPOINTS.solanaDevnet, {
+    // Base HTTP ops via the router (healthy) instead of api.devnet (rate-limited).
+    this.baseConnection      = new Connection(ENDPOINTS.magicRouter, "confirmed");
+    // disableRetryOnRateLimit: web3.js otherwise auto-retries 429s with its own
+    // delays, extending the rate-limit window. Only the memo-log subscription
+    // uses this connection.
+    this.logsConnection      = new Connection(ENDPOINTS.solanaDevnet, {
       commitment: "confirmed",
       disableRetryOnRateLimit: true,
     });
@@ -245,6 +257,23 @@ export class OnChainMultiplayer {
   get connected(): boolean { return this._connected; }
   get sessionId(): string  { return this.wallet?.toBase58() ?? ""; }
   getSessionKeys(): SessionKeyManager { return this.sessionKeys; }
+
+  /**
+   * Whether a player PDA is delegated to the ER, checked via the delegation
+   * RECORD account (owned by the delegation program, always on base — never
+   * delegated itself), so it reads correctly through the router. The player
+   * PDA's own owner can't be used here: the router serves the ER copy of a
+   * delegated account, whose owner is our program either way.
+   */
+  private async isPdaDelegated(playerPDA: PublicKey): Promise<boolean> {
+    try {
+      const record = delegationRecordPdaFromDelegatedAccount(playerPDA);
+      const info = await this.baseConnection.getAccountInfo(record);
+      return info !== null;
+    } catch {
+      return false;
+    }
+  }
 
   // ── Connect ──────────────────────────────────────────────────────────
 
@@ -323,7 +352,7 @@ export class OnChainMultiplayer {
       this.programSubId = null;
     }
     if (this.logsSubId !== null) {
-      this.baseConnection.removeOnLogsListener(this.logsSubId).catch(() => {});
+      this.logsConnection.removeOnLogsListener(this.logsSubId).catch(() => {});
       this.logsSubId = null;
     }
 
@@ -384,9 +413,9 @@ export class OnChainMultiplayer {
     for (let i = 0; i < maxAttempts; i++) {
       await new Promise((r) => setTimeout(r, 800));
       try {
-        const info = await this.baseRpcWithRetry(() => this.baseConnection.getAccountInfo(playerPDA));
-        if (info && !info.owner.equals(DELEGATION_PROGRAM_ID)) {
-          console.log(`[Multiplayer] undelegate settled on base layer after ${(i + 1) * 800}ms`);
+        // Undelegate is settled once the delegation record is gone.
+        if (!(await this.isPdaDelegated(playerPDA))) {
+          console.log(`[Multiplayer] undelegate settled after ${(i + 1) * 800}ms`);
           break;
         }
       } catch { /* keep polling */ }
@@ -561,7 +590,7 @@ export class OnChainMultiplayer {
   private subscribeCrossNetworkChat(): void {
     if (this.logsSubId !== null) return; // already subscribed — don't stack
     try {
-      this.logsSubId = this.baseConnection.onLogs(
+      this.logsSubId = this.logsConnection.onLogs(
         MEMO_PROGRAM_ID,
         (logs) => {
           if (logs.err) return;
@@ -835,16 +864,11 @@ export class OnChainMultiplayer {
     try {
       const existing = await this.baseRpcWithRetry(() => this.baseConnection.getAccountInfo(playerPDA));
 
-      // Read delegation status straight off the account we already fetched
-      // (owner == delegation program while delegated) instead of a second,
-      // independently-fallible lookup. That second lookup used to swallow
-      // RPC errors (rate limits, network blips) and silently default to
-      // "not delegated" — which then sent authorize_session to the base
-      // layer against an account it no longer owns, failing every time with
-      // AccountOwnedByWrongProgram (custom 3007). One fetch, no failure mode.
+      // A brand-new player has no PDA yet; otherwise check delegation via the
+      // delegation record (router-safe — see isPdaDelegated).
       if (existing) {
-        isDelegated = existing.owner.equals(DELEGATION_PROGRAM_ID);
-        console.log(`${isDelegated ? "✓ delegated" : "○ not delegated"} (owner check)`);
+        isDelegated = await this.isPdaDelegated(playerPDA);
+        console.log(`${isDelegated ? "✓ delegated" : "○ not delegated"} (delegation record)`);
       }
 
       const sessionKey = this.sessionKeys.getSessionPublicKey();
@@ -906,15 +930,11 @@ export class OnChainMultiplayer {
       this.useEphemeral = false;
     }
 
-    // Source of truth for the write layer is the account OWNER, not the
-    // delegation-record probe above (which can 429 and wrongly leave
-    // useEphemeral=false). A delegated PDA is owned by the delegation program
-    // and can ONLY be written on the ER — a base write always fails with
-    // AccountOwnedByWrongProgram (custom 3007), which is exactly the "dropped"
-    // base moves we saw. If the PDA is delegated on-chain, force ER.
+    // A delegated PDA can ONLY be written on the ER — a base write always fails
+    // with AccountOwnedByWrongProgram (custom 3007). If it's delegated on-chain
+    // (per the delegation record), force ER regardless of the branch above.
     try {
-      const owner = (await this.baseConnection.getAccountInfo(playerPDA))?.owner;
-      if (owner && owner.equals(DELEGATION_PROGRAM_ID) && !this.useEphemeral) {
+      if (!this.useEphemeral && await this.isPdaDelegated(playerPDA)) {
         console.log("✓ PDA delegated on-chain — forcing ER writes (base would 3007)");
         this.useEphemeral = true;
       }
@@ -923,31 +943,14 @@ export class OnChainMultiplayer {
     console.log(`→ position layer: ${this.useEphemeral ? "🚀 EPHEMERAL ROLLUP" : "📡 BASE DEVNET"}`);
     console.groupEnd();
 
-    // 2. Discover existing players via base layer getProgramAccounts.
-    //    Deferred a few seconds: the connect sequence just fired a burst of
-    //    base-layer calls, and getProgramAccounts on top of it is what tips
-    //    the public RPC into 429 — which used to kill delegation itself.
-    setTimeout(() => this.discoverPlayersFromBase(wallet), 3_000);
+    // 2. Discover existing players from the ER (getProgramAccounts on the
+    //    ephemeral endpoint — returns exactly the delegated/online players).
+    setTimeout(() => this.discoverPlayersFromBase(wallet), 1_500);
 
-    // 3. Subscribe to base layer program account changes (standard Solana devnet WebSocket)
-    try {
-      if (this.programSubId === null) {
-        this.programSubId = this.baseConnection.onProgramAccountChange(
-          SOL_CITY_PROGRAM_ID,
-          (keyedInfo) => {
-            this.decodeAndUpdatePlayer(keyedInfo.accountId.toBase58(), keyedInfo.accountInfo.data);
-          },
-          "confirmed",
-        );
-        console.log("[Multiplayer] base layer subscription active");
-      }
-    } catch (err) {
-      console.warn("[Multiplayer] subscription failed:", err);
-    }
+    // (No program-account websocket subscription: the router doesn't support
+    //  onProgramAccountChange, and the ER poll below carries reads reliably.)
 
-    // 4. Batched PDA polling every 5s — fallback for when
-    //    onProgramAccountChange doesn't fire on the RPC node.
-    //    (One getMultipleAccountsInfo call per tick, not N getAccountInfo.)
+    // 3. Batched ER PDA polling — the real-time read load.
     for (const t of this.discoveryTimers) clearInterval(t);
     this.discoveryTimers = [
       // Poll live positions from the ER (fast, sub-100ms) — this is the
