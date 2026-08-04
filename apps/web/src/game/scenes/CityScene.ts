@@ -517,9 +517,12 @@ export class CityScene extends Phaser.Scene {
         });
 
         // Cross-browser chat messages received via Solana Memo / onLogs
-        this.game.events.on("chat:network", ({ name, text }: { name: string; text: string }) => {
+        this.game.events.on("chat:network", ({ wallet, name, text }: { wallet?: string; name: string; text: string }) => {
           const color = getChannelColor("global");
           this.chat.addMessage("global", name, name, text, color);
+          // Float the message over the sender's avatar, if they're in view.
+          const avatar = wallet ? this.remotePlayers.get(wallet) : undefined;
+          if (avatar) this.showBubble(avatar.getContainer(), text, color);
         });
       } catch (err: any) {
         console.error("[CityScene] session error:", err);

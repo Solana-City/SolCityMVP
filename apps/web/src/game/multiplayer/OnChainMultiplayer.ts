@@ -467,7 +467,8 @@ export class OnChainMultiplayer {
     if (!this.wallet) return;
     const displayName = this.knownPlayers.get(this.wallet.toBase58())?.displayName
       ?? this.wallet.toBase58().slice(0, 8);
-    await this.sendMemo(`${CHAT_PREFIX}${displayName}:${text.slice(0, 200)}`);
+    // Wallet is included so receivers can float the bubble over the right avatar.
+    await this.sendMemo(`${CHAT_PREFIX}${this.wallet.toBase58()}:${displayName}:${text.slice(0, 200)}`);
   }
 
   /** Broadcasts our loadout cross-device so others render our real avatar. */
@@ -543,15 +544,21 @@ export class OnChainMultiplayer {
 
             if (!raw.startsWith(CHAT_PREFIX)) continue;
 
+            // Format: "solcity-chat:<wallet>:<displayName>:<message>"
             const withoutPrefix = raw.slice(CHAT_PREFIX.length);
-            const colon = withoutPrefix.indexOf(":");
-            if (colon === -1) continue;
-            const senderName = withoutPrefix.slice(0, colon);
-            const message    = withoutPrefix.slice(colon + 1);
+            const c1 = withoutPrefix.indexOf(":");
+            if (c1 === -1) continue;
+            const senderWallet = withoutPrefix.slice(0, c1);
+            if (senderWallet === this.wallet?.toBase58()) continue; // our own memo
+            const rest = withoutPrefix.slice(c1 + 1);
+            const c2 = rest.indexOf(":");
+            if (c2 === -1) continue;
+            const senderName = rest.slice(0, c2);
+            const message    = rest.slice(c2 + 1);
 
-            // Emit as a chat event so CityScene handles it
+            // Emit as a chat event so CityScene logs it + floats a bubble.
             const bus = (globalThis as any).__solCityGameEvents;
-            bus?.emit("chat:network", { name: senderName, text: message });
+            bus?.emit("chat:network", { wallet: senderWallet, name: senderName, text: message });
           }
         },
         "confirmed",
@@ -1302,13 +1309,20 @@ export class OnChainMultiplayer {
         this.blockedPlayers.delete(walletStr); // block expired — allow re-discovery
       }
 
-      const GHOST_THRESHOLD_MS = 120_000; // 2 minutes on-chain inactivity
-      const BLOCK_DURATION_MS  = 600_000; // 10 minutes before we try again
+      // Freshness gate — surface only accounts active recently. A delegated PDA
+      // whose owner closed the tab without undelegating stays on the ER forever
+      // with a months-old last_active (the "9592…/7q8m…" ghosts); and a player
+      // standing still stops writing position. Both are filtered here on EVERY
+      // sighting (not just when already known), so ghosts never enter the city
+      // and idle players are dropped. A player who moves writes a fresh
+      // last_active and passes the gate again — no block map needed.
+      const IDLE_TIMEOUT_MS = 120_000; // 2 min of on-chain inactivity
       const isKnown = this.knownPlayers.has(walletStr);
-      if (isKnown && now - lastActiveMs > GHOST_THRESHOLD_MS) {
-        console.log(`[Multiplayer] ghost-pruning ${walletStr.slice(0,8)} (${Math.round((now - lastActiveMs) / 60_000)}min stale) — blocked for 10 min`);
-        this.handlePlayerLeave(walletStr);
-        this.blockedPlayers.set(walletStr, now + BLOCK_DURATION_MS);
+      if (now - lastActiveMs > IDLE_TIMEOUT_MS) {
+        if (isKnown) {
+          console.log(`[Multiplayer] dropping idle/stale ${walletStr.slice(0,8)} (${Math.round((now - lastActiveMs) / 60_000)}min inactive)`);
+          this.handlePlayerLeave(walletStr);
+        }
         return;
       }
 
