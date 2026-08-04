@@ -184,6 +184,9 @@ export class OnChainMultiplayer {
    *  limit ("Connection rate limits exceeded"). */
   private programSubId: number | null = null;
   private logsSubId: number | null = null;
+  /** Last time ANY memo log arrived — devnet always has memo traffic, so a long
+   *  gap means our logsSubscribe died and needs re-establishing (watchdog). */
+  private lastMemoLogAt = 0;
 
   constructor() {
     this.routerConnection    = new ConnectionMagicRouter(ENDPOINTS.magicRouter,  "confirmed");
@@ -586,21 +589,28 @@ export class OnChainMultiplayer {
     return await this.baseConnection.sendRawTransaction(tx.serialize(), { skipPreflight: true });
   }
 
-  /** Subscribe to Memo program logs for real-time cross-browser chat. */
+  /** Subscribe to Memo program logs for real-time cross-device chat/outfit/expr.
+   *  Re-callable: tears down any existing subscription first, so a stuck one
+   *  (e.g. created while api.devnet was rate-limited and never recovered) is
+   *  healed by simply calling this again — see the staleness watchdog. */
   private subscribeCrossNetworkChat(): void {
-    if (this.logsSubId !== null) return; // already subscribed — don't stack
+    if (this.logsSubId !== null) {
+      this.logsConnection.removeOnLogsListener(this.logsSubId).catch(() => {});
+      this.logsSubId = null;
+    }
+    this.lastMemoLogAt = Date.now();
     try {
       this.logsSubId = this.logsConnection.onLogs(
         MEMO_PROGRAM_ID,
         (logs) => {
           if (logs.err) return;
           for (const log of logs.logs) {
-            // Memo program emits: 'Program log: Memo (len N): "TEXT"'
             // The Memo program logs `Program log: Memo (len N): "<text>"` — the
             // parenthetical is "len N" (NOT "N bytes"); match it flexibly so any
             // wording works, and grab everything between the outer quotes.
             const match = log.match(/Memo \([^)]*\):\s*"([\s\S]*)"/);
             if (!match) continue;
+            this.lastMemoLogAt = Date.now(); // any memo proves the stream is alive
             const raw = match[1];
 
             // Cross-device look: "solcity-look:<wallet>:<loadoutJSON>"
@@ -960,6 +970,16 @@ export class OnChainMultiplayer {
       // Refresh the online roster from the ER. getProgramAccounts on the ER is
       // cheap (~20ms) and returns exactly the delegated (online) players.
       setInterval(() => this.discoverPlayersFromBase(wallet), 12_000),
+      // Memo-stream watchdog: devnet always has memo traffic, so if we've heard
+      // nothing for a while our logsSubscribe is dead (e.g. it was created while
+      // api.devnet was rate-limited) — re-subscribe to heal cross-device
+      // outfit/expression/chat receive.
+      setInterval(() => {
+        if (this._connected && isProgramDeployed() && Date.now() - this.lastMemoLogAt > 25_000) {
+          console.log("[Multiplayer] memo stream stale — re-subscribing");
+          this.subscribeCrossNetworkChat();
+        }
+      }, 15_000),
     ];
 
     // 6. Cross-browser chat via Solana Memo + onLogs
