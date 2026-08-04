@@ -13,8 +13,25 @@ const MEMO_PROGRAM_ID = new PublicKey("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfc
 // (session-key signed = seamless), the same transport chat already uses, so
 // players on different devices see each other's outfit and reactions.
 const CHAT_PREFIX = "solcity-chat:";
-const LOOK_PREFIX = "solcity-look:"; // solcity-look:<wallet>:<loadoutJSON>
+const LOOK_PREFIX = "solcity-look:"; // solcity-look:<wallet>:<k=v|k=v...>
 const EXPR_PREFIX = "solcity-expr:"; // solcity-expr:<wallet>:<textureKey>
+
+// Loadout is encoded pipe/eq (NO quotes) for the memo channel — the memo log is
+// `Memo (len N): "<text>"`, and other apps on devnet avoid quotes in the payload
+// for exactly this reason. JSON would embed quotes and risk log-escaping.
+function encodeLoadout(l: Loadout): string {
+  return Object.entries(l).filter(([, v]) => v).map(([k, v]) => `${k}=${v}`).join("|");
+}
+function decodeLoadout(s: string): Loadout {
+  const out: Loadout = {};
+  for (const part of s.split("|")) {
+    const i = part.indexOf("=");
+    if (i === -1) continue;
+    const k = part.slice(0, i), v = part.slice(i + 1);
+    if (k && v) (out as Record<string, string>)[k] = v;
+  }
+  return out;
+}
 import {
   ConnectionMagicRouter,
   createCommitAndUndelegateInstruction,
@@ -475,7 +492,7 @@ export class OnChainMultiplayer {
   private async sendLookMemo(loadout: Loadout): Promise<void> {
     const w = this.wallet?.toBase58();
     if (!w) return;
-    await this.sendMemo(`${LOOK_PREFIX}${w}:${JSON.stringify(loadout)}`);
+    await this.sendMemo(`${LOOK_PREFIX}${w}:${encodeLoadout(loadout)}`);
   }
 
   /** Broadcasts a facial expression cross-device. */
@@ -520,7 +537,10 @@ export class OnChainMultiplayer {
           if (logs.err) return;
           for (const log of logs.logs) {
             // Memo program emits: 'Program log: Memo (len N): "TEXT"'
-            const match = log.match(/Memo \(\d+ bytes\):\s*"(.+)"/);
+            // The Memo program logs `Program log: Memo (len N): "<text>"` — the
+            // parenthetical is "len N" (NOT "N bytes"); match it flexibly so any
+            // wording works, and grab everything between the outer quotes.
+            const match = log.match(/Memo \([^)]*\):\s*"([\s\S]*)"/);
             if (!match) continue;
             const raw = match[1];
 
@@ -528,10 +548,7 @@ export class OnChainMultiplayer {
             if (raw.startsWith(LOOK_PREFIX)) {
               const body = raw.slice(LOOK_PREFIX.length);
               const i = body.indexOf(":");
-              if (i !== -1) {
-                try { this.handleLook(body.slice(0, i), JSON.parse(body.slice(i + 1)) as Loadout); }
-                catch { /* malformed loadout json — ignore */ }
-              }
+              if (i !== -1) this.handleLook(body.slice(0, i), decodeLoadout(body.slice(i + 1)));
               continue;
             }
             // Cross-device expression: "solcity-expr:<wallet>:<textureKey>"
@@ -905,7 +922,8 @@ export class OnChainMultiplayer {
     this.discoveryTimers = [
       // Poll live positions from the ER (fast, sub-100ms) — this is the
       // real-time load now that reads come off the rollup, not frozen base.
-      setInterval(() => this.pollKnownPlayerPDAs(wallet), 1_500),
+      // 500ms matches the position-write throttle so motion stays continuous.
+      setInterval(() => this.pollKnownPlayerPDAs(wallet), 500),
       // Refresh the online roster from the ER. getProgramAccounts on the ER is
       // cheap (~20ms) and returns exactly the delegated (online) players.
       setInterval(() => this.discoverPlayersFromBase(wallet), 12_000),
@@ -964,7 +982,9 @@ export class OnChainMultiplayer {
       // Read from the ER, not base: the ER copy carries live positions; the
       // base copy of a delegated PDA is frozen at spawn.
       const pdas = wallets.map(w => derivePlayerPDA(new PublicKey(w))[0]);
-      const infos = await this.ephemeralConnection.getMultipleAccountsInfo(pdas, "confirmed");
+      // "processed" — lowest-latency ER read; positions are cosmetic so we don't
+      // need "confirmed" and the extra latency it adds.
+      const infos = await this.ephemeralConnection.getMultipleAccountsInfo(pdas, "processed");
       infos.forEach((info, i) => {
         if (info) this.decodeAndUpdatePlayer(pdas[i].toBase58(), info.data);
       });
