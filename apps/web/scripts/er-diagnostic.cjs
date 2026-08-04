@@ -94,30 +94,39 @@ async function testDelegatedAccountReads(seconds = 15) {
   } catch (e) { console.log(`  getProgramAccounts (ephemeral): FAIL ${e.message}`); return; }
   if (!accts.length) { console.log("  No delegated accounts on the ER to test. Connect + walk in a tab, then re-run."); return; }
 
-  const target = accts[0].pubkey;
-  console.log(`  watching ${accts.length} delegated account(s); target = ${target.toBase58()}`);
+  console.log(`  watching ALL ${accts.length} delegated account(s) — walk around now if you can`);
 
   const router = new Connection(ENDPOINTS.router, "confirmed");
   let routerHits = 0, ephHits = 0, dataChanges = 0;
-  let lastLen = accts[0].account.data.length, lastSum = checksum(accts[0].account.data);
-
-  let rSub = null, eSub = null;
-  try { rSub = router.onAccountChange(target, () => { routerHits++; }, "confirmed"); } catch (e) { console.log(`  router sub FAIL ${e.message}`); }
-  try { eSub = eph.onAccountChange(target, () => { ephHits++; }, "confirmed"); } catch (e) { console.log(`  ephemeral sub FAIL ${e.message}`); }
+  const subs = [];
+  const sums = new Map(); // pubkey -> {len, sum}
+  for (const { pubkey, account } of accts) {
+    sums.set(pubkey.toBase58(), { len: account.data.length, sum: checksum(account.data) });
+    try { subs.push(["router", router.onAccountChange(pubkey, () => { routerHits++; }, "confirmed")]); } catch (e) { console.log(`  router sub FAIL ${e.message}`); }
+    try { subs.push(["eph", eph.onAccountChange(pubkey, () => { ephHits++; }, "confirmed")]); } catch (e) { console.log(`  ephemeral sub FAIL ${e.message}`); }
+  }
 
   const poll = setInterval(async () => {
-    try {
-      const info = await eph.getAccountInfo(target, "confirmed");
-      if (!info) return;
-      const sum = checksum(info.data);
-      if (info.data.length !== lastLen || sum !== lastSum) { dataChanges++; lastLen = info.data.length; lastSum = sum; }
-    } catch { /* ignore */ }
+    for (const { pubkey } of accts) {
+      try {
+        const info = await eph.getAccountInfo(pubkey, "confirmed");
+        if (!info) continue;
+        const key = pubkey.toBase58();
+        const prev = sums.get(key);
+        const sum = checksum(info.data);
+        if (!prev || info.data.length !== prev.len || sum !== prev.sum) {
+          dataChanges++;
+          sums.set(key, { len: info.data.length, sum });
+        }
+      } catch { /* ignore */ }
+    }
   }, 1500);
 
   await new Promise((r) => setTimeout(r, seconds * 1000));
   clearInterval(poll);
-  try { if (rSub !== null) await router.removeAccountChangeListener(rSub); } catch {}
-  try { if (eSub !== null) await eph.removeAccountChangeListener(eSub); } catch {}
+  for (const [which, id] of subs) {
+    try { await (which === "router" ? router : eph).removeAccountChangeListener(id); } catch {}
+  }
 
   console.log(`  data mutated (poll)      : ${dataChanges} change(s) ${dataChanges === 0 ? "(account idle — inconclusive; re-run while moving)" : ""}`);
   console.log(`  router  accountSubscribe : ${routerHits} update(s)`);

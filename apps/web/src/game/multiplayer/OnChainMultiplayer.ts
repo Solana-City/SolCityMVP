@@ -738,6 +738,21 @@ export class OnChainMultiplayer {
       console.warn("○ delegation skipped:", err?.message);
       this.useEphemeral = false;
     }
+
+    // Source of truth for the write layer is the account OWNER, not the
+    // delegation-record probe above (which can 429 and wrongly leave
+    // useEphemeral=false). A delegated PDA is owned by the delegation program
+    // and can ONLY be written on the ER — a base write always fails with
+    // AccountOwnedByWrongProgram (custom 3007), which is exactly the "dropped"
+    // base moves we saw. If the PDA is delegated on-chain, force ER.
+    try {
+      const owner = (await this.baseConnection.getAccountInfo(playerPDA))?.owner;
+      if (owner && owner.equals(DELEGATION_PROGRAM_ID) && !this.useEphemeral) {
+        console.log("✓ PDA delegated on-chain — forcing ER writes (base would 3007)");
+        this.useEphemeral = true;
+      }
+    } catch { /* keep the decision above */ }
+
     console.log(`→ position layer: ${this.useEphemeral ? "🚀 EPHEMERAL ROLLUP" : "📡 BASE DEVNET"}`);
     console.groupEnd();
 
@@ -1239,33 +1254,44 @@ export class OnChainMultiplayer {
       this.wallet, sessionKey,
       Math.round(x), Math.round(y), direction,
     );
-    const tx = new Transaction().add(ix);
-    tx.feePayer = sessionKey;
 
     if (this.useEphemeral) {
-      // Direct path to ephemeral RPC — returns a real ER tx hash.
-      try {
-        tx.recentBlockhash = await this.getMoveBlockhash("ephemeral");
-        this.sessionKeys.signTransaction(tx);
-        const sig = await OnChainMultiplayer.withTimeout(
-          this.ephemeralConnection.sendRawTransaction(tx.serialize(), { skipPreflight: true }),
-          6_000,
-        );
-        // Actual execution outcome is verified by trackMoveConfirmation
-        // (sampled getSignatureStatuses) in the caller.
-        return sig;
-      } catch (err: any) {
-        // Don't permanently disable ER — rate limits and transient errors clear up.
-        // Drop the cached blockhash (it may be the stale part) and return null
-        // so the log entry is marked failed; next throttle interval retries.
-        this.cachedMoveBlockhash = null;
-        console.warn("[Multiplayer] ephemeral tx skipped:", err?.message);
-        return null;
+      // Direct path to ephemeral RPC — returns a real ER tx hash. A single
+      // retry with a FRESH blockhash covers the dominant failure ("null
+      // signature"): the 3s-cached ER blockhash occasionally expires between
+      // reuse, so the first send throws — the retry rebuilds+re-signs against a
+      // new hash instead of dropping the move outright.
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          if (attempt === 1) this.cachedMoveBlockhash = null; // force a fresh hash on the retry
+          const tx = new Transaction().add(ix);
+          tx.feePayer = sessionKey;
+          tx.recentBlockhash = await this.getMoveBlockhash("ephemeral");
+          this.sessionKeys.signTransaction(tx);
+          // Actual execution outcome is verified by trackMoveConfirmation
+          // (sampled getSignatureStatuses) in the caller.
+          return await OnChainMultiplayer.withTimeout(
+            this.ephemeralConnection.sendRawTransaction(tx.serialize(), { skipPreflight: true }),
+            6_000,
+          );
+        } catch (err: any) {
+          // Don't permanently disable ER — rate limits and transient errors clear up.
+          this.cachedMoveBlockhash = null;
+          if (attempt === 1) {
+            console.warn("[Multiplayer] ephemeral tx skipped:", err?.message);
+            return null;
+          }
+        }
       }
+      return null;
     }
 
-    // Base layer path — only used when delegation is not active.
+    // Base layer path — only used when the PDA is genuinely NOT delegated.
+    // (A delegated PDA is forced onto the ER path above, since a base write to
+    // it always fails with AccountOwnedByWrongProgram / custom 3007.)
     try {
+      const tx = new Transaction().add(ix);
+      tx.feePayer = sessionKey;
       tx.recentBlockhash = await this.getMoveBlockhash("base");
       this.sessionKeys.signTransaction(tx);
       return await OnChainMultiplayer.withTimeout(
