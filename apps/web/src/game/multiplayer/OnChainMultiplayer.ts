@@ -492,23 +492,40 @@ export class OnChainMultiplayer {
   private async sendLookMemo(loadout: Loadout): Promise<void> {
     const w = this.wallet?.toBase58();
     if (!w) return;
-    await this.sendMemo(`${LOOK_PREFIX}${w}:${encodeLoadout(loadout)}`);
+    const entry = transactionLog.record({ kind: "system", layer: "base", label: "Outfit broadcast", status: "pending" });
+    try {
+      const sig = await this.sendMemo(`${LOOK_PREFIX}${w}:${encodeLoadout(loadout)}`);
+      transactionLog.markConfirmed(entry.id, sig);
+    } catch (e: any) {
+      transactionLog.markFailed(entry.id, e?.message ?? "look memo failed");
+      console.warn("[Multiplayer] look memo failed:", e?.message);
+    }
   }
 
   /** Broadcasts a facial expression cross-device. */
   private async sendExprMemo(textureKey: string): Promise<void> {
     const w = this.wallet?.toBase58();
     if (!w) return;
-    await this.sendMemo(`${EXPR_PREFIX}${w}:${textureKey}`);
+    const entry = transactionLog.record({ kind: "system", layer: "base", label: "Expression broadcast", status: "pending" });
+    try {
+      const sig = await this.sendMemo(`${EXPR_PREFIX}${w}:${textureKey}`);
+      transactionLog.markConfirmed(entry.id, sig);
+    } catch (e: any) {
+      transactionLog.markFailed(entry.id, e?.message ?? "expr memo failed");
+      console.warn("[Multiplayer] expr memo failed:", e?.message);
+    }
   }
 
   /**
    * Sends a Solana Memo signed by the session key (no wallet popup). The player
    * PDA is attached readonly so getSignaturesForAddress on it finds the tx; the
    * primary delivery is the onLogs subscription (near real-time, cross-device).
+   * Returns the signature. Uses preflight so a real failure (e.g. the session
+   * key having no base-layer SOL for the fee) throws with a clear reason instead
+   * of silently never landing.
    */
-  private async sendMemo(memoText: string): Promise<void> {
-    if (!this.wallet) return;
+  private async sendMemo(memoText: string): Promise<string> {
+    if (!this.wallet) throw new Error("sendMemo: no wallet");
     const sessionKey = this.sessionKeys.getSessionPublicKey();
     const [pda] = derivePlayerPDA(this.wallet);
     const ix = new TransactionInstruction({
@@ -524,7 +541,7 @@ export class OnChainMultiplayer {
     const { blockhash } = await this.baseConnection.getLatestBlockhash();
     tx.recentBlockhash = blockhash;
     this.sessionKeys.signTransaction(tx);
-    await this.baseConnection.sendRawTransaction(tx.serialize(), { skipPreflight: true });
+    return await this.baseConnection.sendRawTransaction(tx.serialize(), { skipPreflight: false });
   }
 
   /** Subscribe to Memo program logs for real-time cross-browser chat. */
