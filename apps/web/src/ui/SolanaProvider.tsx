@@ -10,11 +10,15 @@ import {
   PhantomWalletAdapter,
   SolflareWalletAdapter,
 } from "@solana/wallet-adapter-wallets";
-import { clusterApiUrl } from "@solana/web3.js";
-
 import "@solana/wallet-adapter-react-ui/styles.css";
 
-const NETWORK = "devnet";
+// The wallet adapter's ConnectionProvider is what WalletSignBridge hands to
+// `sendTransaction`, so every wallet-signed base-layer tx (init / authorize /
+// delegate) is broadcast through THIS endpoint. It must be the Magic Router,
+// not api.devnet.solana.com: the public devnet RPC rate-bans (429) under load,
+// which made the delegate send hang until the 60s "wallet sign timeout". The
+// router is healthy and forwards base-layer txs to devnet transparently.
+const RPC_ENDPOINT = "https://devnet-router.magicblock.app";
 
 // Solana-native wallets allowed to auto-connect.
 // Includes MWA names used by Android/Seeker mobile wallets.
@@ -39,7 +43,7 @@ export default function SolanaProvider({
 }: {
   children: React.ReactNode;
 }) {
-  const endpoint = useMemo(() => clusterApiUrl(NETWORK), []);
+  const endpoint = useMemo(() => RPC_ENDPOINT, []);
 
   const wallets = useMemo(
     () => [

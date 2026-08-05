@@ -499,7 +499,10 @@ export class OnChainMultiplayer {
     // last_message + message_at off the poll (bubble + log). No base memo.
     if (isProgramDeployed() && this.wallet) {
       const sk = this.sessionKeys.getSessionPublicKey();
-      this.sendSessionIx(buildSendChatSessionIx(this.wallet, sk, text));
+      const preview = text.length > 24 ? text.slice(0, 24) + "…" : text;
+      this.sendSessionIx(buildSendChatSessionIx(this.wallet, sk, text), {
+        kind: "chat", label: `Chat → "${preview}"`,
+      });
     }
   }
 
@@ -753,7 +756,9 @@ export class OnChainMultiplayer {
       // pick it up from the same position poll (no base-layer memo).
       if (isProgramDeployed() && this.wallet) {
         const sk = this.sessionKeys.getSessionPublicKey();
-        this.sendSessionIx(buildUpdateLookSessionIx(this.wallet, sk, encodeLoadout(loadout)));
+        this.sendSessionIx(buildUpdateLookSessionIx(this.wallet, sk, encodeLoadout(loadout)), {
+          kind: "outfit", label: "Outfit change",
+        });
       }
     }, 250);
   }
@@ -770,7 +775,9 @@ export class OnChainMultiplayer {
       if (now - this.lastExprMemoAt > 500) {
         this.lastExprMemoAt = now;
         const sk = this.sessionKeys.getSessionPublicKey();
-        this.sendSessionIx(buildSetExpressionSessionIx(this.wallet, sk, textureKey));
+        this.sendSessionIx(buildSetExpressionSessionIx(this.wallet, sk, textureKey), {
+          kind: "expression", label: "Expression",
+        });
       }
     }
   }
@@ -1550,11 +1557,21 @@ export class OnChainMultiplayer {
    * shared-world writes (loadout / expression / chat). Same seamless path as
    * position, fire-and-forget, one fresh-blockhash retry.
    */
-  private async sendSessionIx(ix: TransactionInstruction): Promise<void> {
+  private async sendSessionIx(
+    ix: TransactionInstruction,
+    log?: { kind: "outfit" | "chat" | "expression"; label: string },
+  ): Promise<void> {
     if (!this.wallet || !isProgramDeployed()) return;
     const sessionKey = this.sessionKeys.getSessionPublicKey();
     const conn = this.useEphemeral ? this.ephemeralConnection : this.baseConnection;
     const layer = this.useEphemeral ? "ephemeral" : "base";
+    // Surface these ER writes in the ONCHAIN LOG too — same as position/swap —
+    // so the shared-world sync is visibly on-chain (matters for the demo). The
+    // TxKind is "outfit" for looks; expression/chat map to it as well since the
+    // label already says what it is and the log groups by label, not just kind.
+    const entry = log
+      ? transactionLog.record({ kind: "outfit", layer, label: log.label, status: "pending" })
+      : null;
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
         if (attempt === 1) this.cachedMoveBlockhash = null;
@@ -1562,13 +1579,17 @@ export class OnChainMultiplayer {
         tx.feePayer = sessionKey;
         tx.recentBlockhash = await this.getMoveBlockhash(layer);
         this.sessionKeys.signTransaction(tx);
-        await OnChainMultiplayer.withTimeout(
+        const sig = await OnChainMultiplayer.withTimeout(
           conn.sendRawTransaction(tx.serialize(), { skipPreflight: true }), 6_000,
         );
+        if (entry) transactionLog.markConfirmed(entry.id, sig);
         return;
       } catch (err: any) {
         this.cachedMoveBlockhash = null;
-        if (attempt === 1) console.warn("[Multiplayer] session ix skipped:", err?.message);
+        if (attempt === 1) {
+          console.warn("[Multiplayer] session ix skipped:", err?.message);
+          if (entry) transactionLog.markFailed(entry.id, err?.message ?? "not sent");
+        }
       }
     }
   }
