@@ -10,7 +10,11 @@ use anchor_lang::solana_program::{
 
 declare_id!("HPvDFVnruSXHwKKP44eUvRh8oYqBaHCeQbK1sKWT1aU2");
 
-pub const PLAYER_SEED: &[u8] = b"player";
+// Bumped to "player_v2" when the PlayerState layout grew (loadout / expression
+// / chat fields). New PDAs are fresh at the new size, so existing accounts are
+// simply ignored — no on-chain migration/realloc needed. The client's
+// derivePlayerPDA uses the same seed.
+pub const PLAYER_SEED: &[u8] = b"player_v2";
 pub const BUFFER_SEED: &[u8] = b"buffer";
 /// Global "Find Someone" hunt state — one account for the whole city.
 pub const HUNT_SEED: &[u8] = b"hunt";
@@ -33,6 +37,19 @@ pub enum SolCityError {
     HuntNotExpired,
 }
 
+/// Truncates a string to at most `max` BYTES on a char boundary, so a
+/// multi-byte char (emoji in chat) never overflows a fixed-size account field.
+fn cap_bytes(s: String, max: usize) -> String {
+    if s.len() <= max {
+        return s;
+    }
+    let mut end = max;
+    while end > 0 && !s.is_char_boundary(end) {
+        end -= 1;
+    }
+    s[..end].to_string()
+}
+
 #[program]
 pub mod sol_city {
     use super::*;
@@ -50,6 +67,11 @@ pub mod sol_city {
         player.swap_count = 0;
         player.transfer_count = 0;
         player.bounty_count = 0;
+        player.loadout = String::new();
+        player.expression = String::new();
+        player.expression_at = 0;
+        player.last_message = String::new();
+        player.message_at = 0;
         player.last_active = Clock::get()?.unix_timestamp;
         player.created_at = Clock::get()?.unix_timestamp;
         Ok(())
@@ -136,6 +158,42 @@ pub mod sol_city {
         let player = &mut ctx.accounts.player;
         player.outfit_id = outfit_id;
         player.last_active = Clock::get()?.unix_timestamp;
+        Ok(())
+    }
+
+    // ── Shared-world signals on the ER (replace the base-layer Memo channel) ──
+    // All session-signed (seamless), all written to the delegated PDA on the
+    // rollup, and read by everyone off the same position poll — no base RPC,
+    // near-zero fee.
+
+    /// Broadcasts the full paper-doll loadout (pipe-encoded, e.g.
+    /// "skin=Light|hair=Afro"). Others render the real avatar from the poll.
+    pub fn update_look_session(ctx: Context<UpdatePlayerSession>, loadout: String) -> Result<()> {
+        let player = &mut ctx.accounts.player;
+        player.loadout = cap_bytes(loadout, 120);
+        player.last_active = Clock::get()?.unix_timestamp;
+        Ok(())
+    }
+
+    /// Sets the current facial expression (id/textureKey) + timestamp. Readers
+    /// play it when `expression_at` advances, with the usual auto-revert.
+    pub fn set_expression_session(ctx: Context<UpdatePlayerSession>, expression: String) -> Result<()> {
+        let player = &mut ctx.accounts.player;
+        let now = Clock::get()?.unix_timestamp;
+        player.expression = cap_bytes(expression, 24);
+        player.expression_at = now;
+        player.last_active = now;
+        Ok(())
+    }
+
+    /// Stores the latest chat message + timestamp — a bubble/last-message
+    /// channel on the ER, replacing the base-layer memo.
+    pub fn send_chat_session(ctx: Context<UpdatePlayerSession>, message: String) -> Result<()> {
+        let player = &mut ctx.accounts.player;
+        let now = Clock::get()?.unix_timestamp;
+        player.last_message = cap_bytes(message, 200);
+        player.message_at = now;
+        player.last_active = now;
         Ok(())
     }
 
@@ -485,4 +543,18 @@ pub struct PlayerState {
     pub bounty_count: u16,
     pub last_active: i64,
     pub created_at: i64,
+    // ── Shared-world signals (read off the same ER poll as position) ──────
+    /// Pipe-encoded paper-doll loadout ("skin=Light|hair=Afro|..."). "" = none.
+    #[max_len(120)]
+    pub loadout: String,
+    /// Current facial expression id/textureKey. "" = none.
+    #[max_len(24)]
+    pub expression: String,
+    /// Unix ts the expression was set — drives newness + auto-revert on readers.
+    pub expression_at: i64,
+    /// Latest chat message.
+    #[max_len(200)]
+    pub last_message: String,
+    /// Unix ts the last message was sent.
+    pub message_at: i64,
 }
