@@ -38,7 +38,10 @@ export const DELEGATION_PROGRAM_ID = new PublicKey(
   "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh"
 );
 
-export const PLAYER_SEED = "player";
+// Bumped to "player_v2" alongside the program's PLAYER_SEED when the
+// PlayerState layout grew (loadout / expression / chat fields). Must match
+// programs/sol-city/src/lib.rs.
+export const PLAYER_SEED = "player_v2";
 export const HUNT_SEED = "hunt";
 
 /**

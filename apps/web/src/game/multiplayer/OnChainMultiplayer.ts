@@ -43,6 +43,9 @@ import {
   buildAuthorizeSessionIx,
   buildDelegateIx,
   buildUpdatePositionSessionIx,
+  buildUpdateLookSessionIx,
+  buildSetExpressionSessionIx,
+  buildSendChatSessionIx,
   buildRecordSwapIx,
   buildRecordTransferIx,
   buildRecordBountyIx,
@@ -475,9 +478,11 @@ export class OnChainMultiplayer {
     if (!this.wallet) return;
     // Layer 1: BroadcastChannel (same browser, instant)
     this.bc?.postMessage({ t: "chat", w: this.wallet.toBase58(), text } satisfies BCMsg);
-    // Layer 2: Solana Memo (cross-browser, ~500ms latency)
-    if (isProgramDeployed()) {
-      this.sendChatMemo(text).catch(() => {}); // fire-and-forget
+    // Layer 2: cross-device — write the message onto our ER PDA. Others read
+    // last_message + message_at off the poll (bubble + log). No base memo.
+    if (isProgramDeployed() && this.wallet) {
+      const sk = this.sessionKeys.getSessionPublicKey();
+      this.sendSessionIx(buildSendChatSessionIx(this.wallet, sk, text));
     }
   }
 
@@ -727,7 +732,12 @@ export class OnChainMultiplayer {
       this.lookDebounce = null;
       if (!walletStr) return;
       this.bc?.postMessage({ t: "look", w: walletStr, l: loadout } satisfies BCMsg); // same-tab
-      if (isProgramDeployed()) this.sendLookMemo(loadout).catch(() => {});           // cross-device
+      // cross-device: write the loadout onto our delegated PDA on the ER; others
+      // pick it up from the same position poll (no base-layer memo).
+      if (isProgramDeployed() && this.wallet) {
+        const sk = this.sessionKeys.getSessionPublicKey();
+        this.sendSessionIx(buildUpdateLookSessionIx(this.wallet, sk, encodeLoadout(loadout)));
+      }
     }, 250);
   }
 
@@ -736,12 +746,14 @@ export class OnChainMultiplayer {
     const walletStr = this.wallet?.toBase58();
     if (!walletStr) return;
     this.bc?.postMessage({ t: "expr", w: walletStr, e: textureKey } satisfies BCMsg); // same-tab
-    // Cross-device via memo, rate-limited so the base layer isn't spammed.
-    if (isProgramDeployed()) {
+    // Cross-device: write the expression onto our ER PDA (session key, seamless),
+    // lightly throttled. Others read expression + expression_at off the poll.
+    if (isProgramDeployed() && this.wallet) {
       const now = Date.now();
-      if (now - this.lastExprMemoAt > 1_000) {
+      if (now - this.lastExprMemoAt > 500) {
         this.lastExprMemoAt = now;
-        this.sendExprMemo(textureKey).catch(() => {});
+        const sk = this.sessionKeys.getSessionPublicKey();
+        this.sendSessionIx(buildSetExpressionSessionIx(this.wallet, sk, textureKey));
       }
     }
   }
@@ -956,15 +968,20 @@ export class OnChainMultiplayer {
       setInterval(() => this.discoverPlayersFromBase(wallet), 12_000),
     ];
 
-    // 6. Cross-browser chat via Solana Memo + onLogs
-    this.subscribeCrossNetworkChat();
+    // 6. Cross-device chat/outfit/expression now ride the ER PlayerState fields
+    //    (read off the position poll), so the base-layer Memo + onLogs channel
+    //    is no longer used. (subscribeCrossNetworkChat intentionally not called.)
 
     // 7. Force a presence broadcast on next sendInput tick
     this.lastPos = { x: -1, y: -1, direction: -1, isWalking: false };
 
-    // 8. Announce our look cross-device so players already in the city render us
-    //    with the right outfit (they re-announce theirs when they see us join).
-    if (this.localLoadout) this.sendLookMemo(this.localLoadout).catch(() => {});
+    // 8. Seed our loadout onto the ER PlayerState so players already in the city
+    //    render our real outfit from their next poll (the field persists, so no
+    //    re-announce is needed when someone new joins).
+    if (this.localLoadout && this.wallet) {
+      const sk = this.sessionKeys.getSessionPublicKey();
+      this.sendSessionIx(buildUpdateLookSessionIx(this.wallet, sk, encodeLoadout(this.localLoadout)));
+    }
   }
 
   /**
@@ -1343,6 +1360,27 @@ export class OnChainMultiplayer {
       const lastActiveLo = buf.readUInt32LE(offset);
       const lastActiveMs = lastActiveLo * 1000; // on-chain Unix seconds → ms
 
+      // ── v2 shared-world fields (appended after created_at): loadout, expression
+      //    + expression_at, last_message + message_at. Parsed defensively so old
+      //    v1 accounts (no fields, shorter buffer) decode fine as empty/0.
+      offset += 8; // rest of last_active (i64)
+      offset += 8; // created_at (i64)
+      const readStr = (): string => {
+        if (offset + 4 > buf.length) { offset = buf.length + 1; return ""; }
+        const len = buf.readUInt32LE(offset); offset += 4;
+        if (len > 4096 || offset + len > buf.length) { offset = buf.length + 1; return ""; }
+        const s = buf.slice(offset, offset + len).toString("utf-8"); offset += len; return s;
+      };
+      const readTsLo = (): number => {
+        if (offset + 8 > buf.length) { offset = buf.length + 1; return 0; }
+        const v = buf.readUInt32LE(offset); offset += 8; return v;
+      };
+      const loadoutStr   = readStr();
+      const expression   = readStr();
+      const expressionAt = readTsLo();
+      const lastMessage  = readStr();
+      const messageAt    = readTsLo();
+
       if (walletStr === this.wallet?.toBase58()) return; // skip self
       const now = Date.now();
 
@@ -1380,10 +1418,41 @@ export class OnChainMultiplayer {
         if (onChainTs < (existing as any)._onChainTs) return; // stale — skip
       }
 
+      const wasKnown = existing !== undefined;
       const isWalking = existing !== undefined && (x !== existing.x || y !== existing.y);
       this.handlePlayerMove(walletStr, x, y, direction, isWalking, displayName);
       const updated = this.knownPlayers.get(walletStr);
-      if (updated) (updated as any)._onChainTs = onChainTs;
+      if (updated) {
+        (updated as any)._onChainTs = onChainTs;
+
+        // Loadout — apply on first sight AND on change (it's a persistent field).
+        if (loadoutStr && loadoutStr !== (updated as any)._loadoutStr) {
+          (updated as any)._loadoutStr = loadoutStr;
+          updated.loadout = decodeLoadout(loadoutStr);
+          for (const cb of this.changeCallbacks) cb(walletStr, updated);
+        }
+
+        // Expression + chat — fired only on a genuine change, never replayed on
+        // first sight (so joining doesn't replay someone's stale expression/msg).
+        if (!wasKnown) {
+          (updated as any)._exprAt = expressionAt;
+          (updated as any)._msgAt = messageAt;
+        } else {
+          if (expression && expressionAt > ((updated as any)._exprAt ?? 0)) {
+            (updated as any)._exprAt = expressionAt;
+            for (const cb of this.exprCallbacks) cb(walletStr, expression);
+          }
+          if (lastMessage && messageAt > ((updated as any)._msgAt ?? 0)) {
+            (updated as any)._msgAt = messageAt;
+            const bus = (globalThis as any).__solCityGameEvents;
+            bus?.emit("chat:network", {
+              wallet: walletStr,
+              name: updated.displayName ?? walletStr.slice(0, 8),
+              text: lastMessage,
+            });
+          }
+        }
+      }
     } catch {
       // Corrupt or unrecognized account — skip silently
     }
@@ -1480,6 +1549,35 @@ export class OnChainMultiplayer {
     } catch (err) {
       this.cachedMoveBlockhash = null;
       throw err;
+    }
+  }
+
+  /**
+   * Sends a session-key-signed instruction to the player's delegated PDA on
+   * the ER (base fallback if not delegated) — used for the low-frequency
+   * shared-world writes (loadout / expression / chat). Same seamless path as
+   * position, fire-and-forget, one fresh-blockhash retry.
+   */
+  private async sendSessionIx(ix: TransactionInstruction): Promise<void> {
+    if (!this.wallet || !isProgramDeployed()) return;
+    const sessionKey = this.sessionKeys.getSessionPublicKey();
+    const conn = this.useEphemeral ? this.ephemeralConnection : this.baseConnection;
+    const layer = this.useEphemeral ? "ephemeral" : "base";
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        if (attempt === 1) this.cachedMoveBlockhash = null;
+        const tx = new Transaction().add(ix);
+        tx.feePayer = sessionKey;
+        tx.recentBlockhash = await this.getMoveBlockhash(layer);
+        this.sessionKeys.signTransaction(tx);
+        await OnChainMultiplayer.withTimeout(
+          conn.sendRawTransaction(tx.serialize(), { skipPreflight: true }), 6_000,
+        );
+        return;
+      } catch (err: any) {
+        this.cachedMoveBlockhash = null;
+        if (attempt === 1) console.warn("[Multiplayer] session ix skipped:", err?.message);
+      }
     }
   }
 
@@ -1582,16 +1680,12 @@ export class OnChainMultiplayer {
   }
 
   /**
-   * Re-announces our own look cross-device (memo) shortly after a new player
-   * appears, so late joiners on other devices render us correctly. Coalesced —
-   * many arrivals in a burst produce a single memo.
+   * No-op since the loadout lives in the ER PlayerState (a persistent field
+   * others read off the poll). Late joiners see our outfit on their next poll,
+   * so there's nothing to re-announce. Kept as a stub for its call sites.
    */
   private scheduleLookRebroadcast(): void {
-    if (!isProgramDeployed() || !this.localLoadout || this.lookRebroadcastTimer) return;
-    this.lookRebroadcastTimer = setTimeout(() => {
-      this.lookRebroadcastTimer = null;
-      if (this.localLoadout) this.sendLookMemo(this.localLoadout).catch(() => {});
-    }, 2_500);
+    /* intentionally empty — see doc comment */
   }
 
   private handleExpr(wallet: string, textureKey: string): void {

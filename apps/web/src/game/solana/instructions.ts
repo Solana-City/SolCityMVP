@@ -51,6 +51,9 @@ const DISC = {
   recordBounty:            ixDiscriminator("record_bounty"),
   recordMiniGameSession:   ixDiscriminator("record_mini_game_session"),
   changeOutfit:            ixDiscriminator("change_outfit"),
+  updateLookSession:       ixDiscriminator("update_look_session"),
+  setExpressionSession:    ixDiscriminator("set_expression_session"),
+  sendChatSession:         ixDiscriminator("send_chat_session"),
   delegate:                ixDiscriminator("delegate"),
   initializeHunt:          ixDiscriminator("initialize_hunt"),
   claimFind:               ixDiscriminator("claim_find"),
@@ -200,6 +203,64 @@ export function buildUpdatePositionSessionIx(
     keys: [
       { pubkey: playerPda, isSigner: false, isWritable: true },
       { pubkey: sessionKey, isSigner: true, isWritable: false },
+    ],
+    data,
+  });
+}
+
+// ── Shared-world session writes (outfit / expression / chat on the ER) ────
+// All signed by the session key (seamless) and written to the delegated PDA,
+// so others read them off the same position poll — no base-layer memos.
+
+/** `update_look_session(loadout)` — pipe-encoded paper-doll ("skin=Light|..."). */
+export function buildUpdateLookSessionIx(
+  playerWallet: PublicKey,
+  sessionKey: PublicKey,
+  loadout: string,
+): TransactionInstruction {
+  const [playerPda] = derivePlayerPDA(playerWallet);
+  const data = Buffer.concat([DISC.updateLookSession, packString(loadout, 120)]);
+  return new TransactionInstruction({
+    programId: SOL_CITY_PROGRAM_ID,
+    keys: [
+      { pubkey: playerPda,  isSigner: false, isWritable: true },
+      { pubkey: sessionKey, isSigner: true,  isWritable: false },
+    ],
+    data,
+  });
+}
+
+/** `set_expression_session(expression)` — expression id/textureKey. */
+export function buildSetExpressionSessionIx(
+  playerWallet: PublicKey,
+  sessionKey: PublicKey,
+  expression: string,
+): TransactionInstruction {
+  const [playerPda] = derivePlayerPDA(playerWallet);
+  const data = Buffer.concat([DISC.setExpressionSession, packString(expression, 24)]);
+  return new TransactionInstruction({
+    programId: SOL_CITY_PROGRAM_ID,
+    keys: [
+      { pubkey: playerPda,  isSigner: false, isWritable: true },
+      { pubkey: sessionKey, isSigner: true,  isWritable: false },
+    ],
+    data,
+  });
+}
+
+/** `send_chat_session(message)` — latest chat message (bubble + log). */
+export function buildSendChatSessionIx(
+  playerWallet: PublicKey,
+  sessionKey: PublicKey,
+  message: string,
+): TransactionInstruction {
+  const [playerPda] = derivePlayerPDA(playerWallet);
+  const data = Buffer.concat([DISC.sendChatSession, packString(message, 200)]);
+  return new TransactionInstruction({
+    programId: SOL_CITY_PROGRAM_ID,
+    keys: [
+      { pubkey: playerPda,  isSigner: false, isWritable: true },
+      { pubkey: sessionKey, isSigner: true,  isWritable: false },
     ],
     data,
   });
