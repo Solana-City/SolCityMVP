@@ -922,10 +922,11 @@ export class OnChainMultiplayer {
     try {
       if (!isDelegated) {
         console.log("… delegating PDA to ephemeral rollup (1 sign prompt)");
-        await this.delegateToEphemeral(wallet);
-        const delegationRecord = delegationRecordPdaFromDelegatedAccount(playerPDA);
-        const info = await this.baseConnection.getAccountInfo(delegationRecord);
-        this.useEphemeral = info !== null;
+        // delegateToEphemeral now confirms by POLLING the delegation record and
+        // returns whether it landed — do NOT re-read the record once here (the
+        // router lags right after creation and returned null even for a
+        // successful delegate, wrongly forcing every write onto base).
+        this.useEphemeral = await this.delegateToEphemeral(wallet);
       } else {
         this.useEphemeral = true;
         console.log("✓ already delegated — using ephemeral rollup");
@@ -1211,7 +1212,16 @@ export class OnChainMultiplayer {
     throw new Error("ER authorize dropped — no status after 5s");
   }
 
-  private async delegateToEphemeral(wallet: PublicKey): Promise<void> {
+  /**
+   * Delegates the player PDA to the ER. Returns true once the delegation is
+   * confirmed on-chain. Confirmation is by POLLING the delegation record — the
+   * router's WS `signatureSubscribe` (what `confirmTransaction` uses) is
+   * unreliable and threw "Unexpected error" on otherwise-successful delegates,
+   * and a single immediate record read races the router's propagation. A
+   * delegated PDA is definitively proven by its delegation record existing.
+   */
+  private async delegateToEphemeral(wallet: PublicKey): Promise<boolean> {
+    const [playerPDA] = derivePlayerPDA(wallet);
     const entry = transactionLog.record({
       kind: "delegate", layer: "base",
       label: "Delegate PDA → Ephemeral Rollup", status: "pending",
@@ -1222,14 +1232,34 @@ export class OnChainMultiplayer {
       const tx = new Transaction({ recentBlockhash: blockhash, feePayer: wallet }).add(ix);
 
       const sig = await this.requestWalletSign(tx);
-      await this.confirmReal(this.baseConnection, sig);
-      transactionLog.markConfirmed(entry.id, sig);
-      console.log("[Multiplayer] PDA delegated to ephemeral rollup:", sig.slice(0, 12));
+      // Poll the delegation record (up to ~10s) instead of confirmTransaction.
+      const landed = await this.waitForDelegation(playerPDA, 12, 800);
+      if (landed) {
+        transactionLog.markConfirmed(entry.id, sig);
+        console.log("[Multiplayer] PDA delegated to ephemeral rollup:", sig.slice(0, 12));
+        return true;
+      }
+      transactionLog.markFailed(entry.id, "delegation record not found after send");
+      return false;
     } catch (err: any) {
       console.error("[Multiplayer] delegate failed:", err);
       transactionLog.markFailed(entry.id, err?.message ?? "delegate failed");
-      // Non-fatal: fall back to BroadcastChannel layer
+      return false; // Non-fatal: fall back to base/BroadcastChannel layer
     }
+  }
+
+  /**
+   * Polls the delegation record until it appears (PDA is delegated) or the
+   * attempts run out. Tolerates the router's post-delegate propagation lag.
+   */
+  private async waitForDelegation(
+    playerPDA: PublicKey, attempts: number, delayMs: number,
+  ): Promise<boolean> {
+    for (let i = 0; i < attempts; i++) {
+      if (await this.isPdaDelegated(playerPDA)) return true;
+      await new Promise((r) => setTimeout(r, delayMs));
+    }
+    return this.isPdaDelegated(playerPDA);
   }
 
   /**
