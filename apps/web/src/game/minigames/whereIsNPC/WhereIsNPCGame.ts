@@ -14,6 +14,33 @@ export const ROTATION_BATCH_MS = 90 * 1000; // pedestrians rotate every 90s in b
 
 const STORAGE_KEY = "solcity:whereIsNPC:scores";
 
+// ── Global on-chain hunt state ──────────────────────────────────────────────
+// When the on-chain HuntState is live, its `round` is the shared slot every
+// client derives the target from, and its `deadline` drives the countdown — so
+// all players hunt the SAME citizen and a find/expiry advances the round for
+// everyone. OnChainMultiplayer polls the hunt and pushes it here. When absent
+// (offline / pre-init) we fall back to the local time-based slot below.
+
+let onChainRound: number | null = null;
+let onChainDeadlineMs: number | null = null;
+
+/** Called by the hunt poll. `deadlineSecs` is the on-chain unix deadline. */
+export function setHuntFromChain(round: number, deadlineSecs: number): void {
+  onChainRound = round >>> 0;
+  onChainDeadlineMs = deadlineSecs * 1000;
+}
+
+/** Drop back to the local slot (e.g. on disconnect). */
+export function clearHuntFromChain(): void {
+  onChainRound = null;
+  onChainDeadlineMs = null;
+}
+
+/** Whether the shared on-chain hunt is driving the round. */
+export function isHuntOnChain(): boolean {
+  return onChainRound !== null;
+}
+
 export interface RoundState {
   round: number;
   targetIndex: number;   // index into pedestrian array
@@ -39,7 +66,7 @@ function rng(seed: number) {
 }
 
 export function getRoundIndex(): number {
-  return Math.floor(Date.now() / ROUND_MS);
+  return onChainRound ?? Math.floor(Date.now() / ROUND_MS);
 }
 
 /** Target pedestrian for a given citizen sequence number. Selection is
@@ -64,18 +91,23 @@ export const CITIZEN_MS = ROUND_MS; // each citizen sticks around up to this lon
 
 let citizenDeadline = Date.now() + CITIZEN_MS;
 
-/** Time left before the current citizen rotates if not found. */
+/** Time left before the current citizen rotates if not found. Driven by the
+ *  on-chain deadline when the shared hunt is live, else the local timer. */
 export function getCitizenMsRemaining(): number {
+  if (onChainDeadlineMs !== null) return Math.max(0, onChainDeadlineMs - Date.now());
   return Math.max(0, citizenDeadline - Date.now());
 }
 
-/** Start a fresh full countdown — call whenever a new citizen becomes active. */
+/** Start a fresh full countdown — call whenever a new citizen becomes active.
+ *  No-op under the on-chain hunt (the deadline comes from the chain). */
 export function resetCitizenTimer(): void {
+  if (onChainDeadlineMs !== null) return;
   citizenDeadline = Date.now() + CITIZEN_MS;
 }
 
 /** True once the current citizen's countdown has run out. */
 export function isCitizenExpired(): boolean {
+  if (onChainDeadlineMs !== null) return Date.now() >= onChainDeadlineMs;
   return Date.now() >= citizenDeadline;
 }
 
@@ -148,17 +180,24 @@ function saveFindLog(log: Record<string, Record<string, number>>) {
 
 let citizenSeq = Math.floor(Date.now() / 1000);
 
+/** The active citizen's sequence number — the seed for target selection. Under
+ *  the shared on-chain hunt this IS the on-chain round, so every client targets
+ *  the same citizen; offline it's the local monotonic counter. */
+export function getCurrentSlot(): number {
+  return onChainRound ?? citizenSeq;
+}
+
 /** True if this wallet already claimed the CURRENT citizen. */
 export function hasAlreadyFoundCurrent(wallet: string): boolean {
   const log = loadFindLog();
-  return (log[wallet]?.[String(citizenSeq)] ?? 0) > 0;
+  return (log[wallet]?.[String(getCurrentSlot())] ?? 0) > 0;
 }
 
 /** Record that this wallet found the current citizen (call before advanceFindSlot). */
 export function markCurrentFound(wallet: string): void {
   const log = loadFindLog();
   const w = log[wallet] ?? (log[wallet] = {});
-  w[String(citizenSeq)] = 1;
+  w[String(getCurrentSlot())] = 1;
   // Bound growth over long sessions — keep only the most recent claims.
   const keys = Object.keys(w);
   if (keys.length > 100) {
@@ -169,12 +208,10 @@ export function markCurrentFound(wallet: string): void {
   saveFindLog(log);
 }
 
-/** Advance to the next citizen (called on a find or an expiry). */
+/** Advance to the next citizen (called on a find or an expiry). No-op under the
+ *  on-chain hunt — there the round only advances when the chain says so (via a
+ *  claim/expire landing), which the poll then reflects. */
 export function advanceFindSlot(): void {
+  if (onChainRound !== null) return;
   citizenSeq += 1;
-}
-
-/** The active citizen's sequence number — the seed for target selection. */
-export function getCurrentSlot(): number {
-  return citizenSeq;
 }

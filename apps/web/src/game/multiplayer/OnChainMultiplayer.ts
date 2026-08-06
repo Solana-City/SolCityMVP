@@ -50,10 +50,14 @@ import {
   buildRecordTransferIx,
   buildRecordBountyIx,
   buildRecordMiniGameSessionIx,
+  buildInitializeHuntIx,
+  buildClaimFindIx,
+  buildExpireRoundIx,
   isProgramDeployed,
 } from "../solana/instructions";
-import { derivePlayerPDA, SOL_CITY_PROGRAM_ID } from "../solana/program";
+import { derivePlayerPDA, SOL_CITY_PROGRAM_ID, deriveHuntPDA, decodeHuntState } from "../solana/program";
 import { BASE_RPC_PRIMARY, resilientBaseFetch } from "../solana/baseRpc";
+import { setHuntFromChain, clearHuntFromChain } from "../minigames/whereIsNPC/WhereIsNPCGame";
 import { transactionLog } from "../telemetry/transactionLog";
 import type { Loadout } from "../config/paperDoll";
 
@@ -355,6 +359,9 @@ export class OnChainMultiplayer {
     this.pendingLoadouts.clear();
     for (const t of this.discoveryTimers) clearInterval(t);
     this.discoveryTimers = [];
+    // Drop back to the local hunt slot so a disconnected client still shows a
+    // sensible countdown instead of a frozen on-chain one.
+    clearHuntFromChain();
 
     if (isProgramDeployed() && this.wallet) {
       this.commitAndUndelegatePlayer(this.wallet).catch(() => {});
@@ -714,6 +721,110 @@ export class OnChainMultiplayer {
     }
   }
 
+  // ── Global "Find Someone" hunt (shared HuntState on base) ─────────────────
+  // The hunt account isn't delegated (low frequency: one write per 5-min round
+  // city-wide), so its reads/writes live on base. Writes are session-signed
+  // (seamless). The round drives the shared target citizen; claim_find is
+  // first-writer-wins so exactly one player scores per round, and the round it
+  // advances is the "next citizen" signal every client's poll picks up.
+
+  private lastCrankedRound = -1;
+
+  /** Sends a session-signed instruction to the hunt on BASE, fire-and-forget
+   *  with one fresh-blockhash retry. Returns the signature, or null on failure. */
+  private async sendHuntIx(ix: TransactionInstruction): Promise<string | null> {
+    const sessionKey = this.sessionKeys.getSessionPublicKey();
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        if (attempt === 1) this.cachedMoveBlockhash = null;
+        const tx = new Transaction().add(ix);
+        tx.feePayer = sessionKey;
+        tx.recentBlockhash = await this.getMoveBlockhash("base");
+        this.sessionKeys.signTransaction(tx);
+        return await OnChainMultiplayer.withTimeout(
+          this.baseConnection.sendRawTransaction(tx.serialize(), { skipPreflight: true }), 8_000,
+        );
+      } catch (err: any) {
+        this.cachedMoveBlockhash = null;
+        if (attempt === 1) console.warn("[Hunt] ix skipped:", err?.message);
+      }
+    }
+    return null;
+  }
+
+  /** Creates the global hunt account if it doesn't exist yet (first player ever).
+   *  `init` makes a concurrent double-create fail harmlessly. */
+  private async ensureHuntInitialized(): Promise<void> {
+    if (!this.wallet || !isProgramDeployed()) return;
+    try {
+      const [huntPda] = deriveHuntPDA();
+      const info = await this.baseConnection.getAccountInfo(huntPda);
+      if (info) return; // already initialized
+      const sessionKey = this.sessionKeys.getSessionPublicKey();
+      await this.sendHuntIx(buildInitializeHuntIx(sessionKey));
+      console.log("[Hunt] initialize_hunt sent (first player)");
+    } catch (err: any) {
+      console.warn("[Hunt] init check failed:", err?.message);
+    }
+  }
+
+  /** Reads the on-chain hunt and pushes round + deadline into WhereIsNPCGame,
+   *  so every client targets the same citizen and shares the countdown. */
+  private async pollHunt(): Promise<void> {
+    if (!isProgramDeployed()) return;
+    try {
+      const [huntPda] = deriveHuntPDA();
+      const info = await this.baseConnection.getAccountInfo(huntPda);
+      if (!info) return; // not initialized yet (ensureHuntInitialized will make it)
+      const hunt = decodeHuntState(info.data);
+      if (hunt) setHuntFromChain(hunt.round, hunt.deadline);
+    } catch { /* transient RPC — keep the last known round */ }
+  }
+
+  /** First-finder claim for `round`. First-writer-wins on-chain: if we land it
+   *  we scored (points recorded on our player PDA via the ER); if someone beat
+   *  us the tx no-ops on the stale-round guard. Refreshes the hunt right after
+   *  so the new round shows promptly. Returns true if WE won. */
+  async claimFind(round: number): Promise<boolean> {
+    if (!this.wallet || !isProgramDeployed()) return false;
+    const sessionKey = this.sessionKeys.getSessionPublicKey();
+    const entry = transactionLog.record({
+      kind: "bounty", layer: "base", label: "Find someone — claim", status: "pending",
+    });
+    const sig = await this.sendHuntIx(buildClaimFindIx(sessionKey, round));
+    // Confirm the outcome by reading the hunt: the winner is set to our session
+    // key iff our claim landed first.
+    await new Promise((r) => setTimeout(r, 1200));
+    await this.pollHunt();
+    let won = false;
+    try {
+      const [huntPda] = deriveHuntPDA();
+      const info = await this.baseConnection.getAccountInfo(huntPda);
+      const hunt = info ? decodeHuntState(info.data) : null;
+      won = !!hunt && hunt.winner.equals(sessionKey) && hunt.round === round + 1;
+    } catch { /* ignore */ }
+    if (won && sig) {
+      transactionLog.markConfirmed(entry.id, sig);
+      // Award on-chain points to the finder (ER, seamless): score += 100.
+      this.recordMiniGame(true).catch(() => {});
+    } else {
+      transactionLog.markFailed(entry.id, "another player claimed this round first");
+    }
+    return won;
+  }
+
+  /** Cranks an expired round forward (any client). Guarded so we don't spam a
+   *  claim tx per client every tick — one attempt per round locally. */
+  async expireRound(round: number): Promise<void> {
+    if (!this.wallet || !isProgramDeployed()) return;
+    if (this.lastCrankedRound === round) return;
+    this.lastCrankedRound = round;
+    const sessionKey = this.sessionKeys.getSessionPublicKey();
+    await this.sendHuntIx(buildExpireRoundIx(sessionKey, round));
+    await new Promise((r) => setTimeout(r, 1000));
+    await this.pollHunt();
+  }
+
   onPlayerAdd(cb: PlayerCallback):    void { this.addCallbacks.push(cb); }
   onPlayerRemove(cb: RemoveCallback): void { this.removeCallbacks.push(cb); }
   onPlayerChange(cb: PlayerCallback): void { this.changeCallbacks.push(cb); }
@@ -998,7 +1109,14 @@ export class OnChainMultiplayer {
       // Refresh the online roster from the ER. getProgramAccounts on the ER is
       // cheap (~20ms) and returns exactly the delegated (online) players.
       setInterval(() => this.discoverPlayersFromBase(wallet), 12_000),
+      // Global "Find Someone" hunt — read the shared round/deadline off base so
+      // every client targets the same citizen (low-frequency; every 3s is ample).
+      setInterval(() => this.pollHunt(), 3_000),
     ];
+
+    // Ensure the global hunt exists (first player ever creates it), then seed
+    // the round immediately so the target syncs without waiting for the poll.
+    this.ensureHuntInitialized().then(() => this.pollHunt());
 
     // 6. Cross-device chat/outfit/expression now ride the ER PlayerState fields
     //    (read off the position poll), so the base-layer Memo + onLogs channel

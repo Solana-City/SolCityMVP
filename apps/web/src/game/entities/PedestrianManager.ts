@@ -10,6 +10,12 @@ import { getTargetPedIndex, advanceFindSlot, getCurrentSlot, resetCitizenTimer, 
 const PEDESTRIAN_COUNT_DESKTOP = 96;
 const PEDESTRIAN_COUNT_MOBILE = 40;
 
+// The shared hunt derives its target index from this fixed pool, NOT the
+// device-dependent crowd size — so every client (desktop or mobile) resolves the
+// same citizen for a given round. Must be ≤ the smallest crowd (mobile) so the
+// index always exists locally.
+const HUNT_TARGET_POOL = PEDESTRIAN_COUNT_MOBILE;
+
 function getPedestrianCount(): number {
   return window.matchMedia("(pointer: coarse)").matches
     ? PEDESTRIAN_COUNT_MOBILE
@@ -280,7 +286,10 @@ export class PedestrianManager {
       this.pedGroup.remove(current.getContainer());
       current.destroy();
 
-      const newSeed = i * 31337 + Date.now() % 9999;
+      // Canonical per-index appearance (same seed as the initial spawn) so
+      // pedestrian index `i` looks identical on every client — that's what lets
+      // the shared hunt's target citizen match city-wide even after rotations.
+      const newSeed = i * 31337 + 17;
       const loadout = makePedestrianLoadout(newSeed);
       const speed   = SPEED_BANDS[Math.floor(Math.random() * SPEED_BANDS.length)];
       const PZ = PLAYABLE_ZONE;
@@ -305,10 +314,11 @@ export class PedestrianManager {
   }
 
   refreshTarget(): void {
-    const newIndex = getTargetPedIndex(
-      getCurrentSlot(),
-      this.pedestrians.length || this.count,
-    );
+    // Derive the target from a FIXED pool (not the device-dependent crowd size)
+    // so desktop (96 peds) and mobile (40) pick the SAME index for a given round
+    // — indices 0..HUNT_TARGET_POOL-1 exist and share a canonical appearance on
+    // every client, so the target citizen is identical city-wide.
+    const newIndex = getTargetPedIndex(getCurrentSlot(), HUNT_TARGET_POOL);
     if (newIndex === this.currentTargetIndex) return;
 
     if (this.currentTargetIndex >= 0 && this.pedestrians[this.currentTargetIndex]) {

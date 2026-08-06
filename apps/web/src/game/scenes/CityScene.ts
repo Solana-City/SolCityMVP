@@ -9,7 +9,7 @@ import { ChatBubble } from "../chat/ChatBubble";
 import { NPCSprite } from "../entities/NPCSprite";
 import { NPC_REGISTRY } from "../config/npcRegistry";
 import { PedestrianManager } from "../entities/PedestrianManager";
-import { hasAlreadyFoundCurrent, markCurrentFound, isCitizenExpired, advanceFindSlot, resetCitizenTimer } from "../minigames/whereIsNPC/WhereIsNPCGame";
+import { hasAlreadyFoundCurrent, markCurrentFound, isCitizenExpired, advanceFindSlot, resetCitizenTimer, isHuntOnChain, getRoundIndex } from "../minigames/whereIsNPC/WhereIsNPCGame";
 import { ProfileManager, profileManager } from "../config/profileManager";
 import { AchievementEngine } from "../progression/achievementEngine";
 import { showEmoji, EmojiDef } from "../chat/EmojiSystem";
@@ -406,8 +406,14 @@ export class CityScene extends Phaser.Scene {
       loop: true,
       callback: () => {
         if (isCitizenExpired()) {
-          advanceFindSlot();
-          resetCitizenTimer();
+          if (isHuntOnChain()) {
+            // Shared hunt: crank the on-chain round forward (first-writer-wins;
+            // guarded to one attempt per round). The poll then advances everyone.
+            this.network?.expireRound(getRoundIndex());
+          } else {
+            advanceFindSlot();
+            resetCitizenTimer();
+          }
         }
         this.pedestrians.refreshTarget();
         this.game.events.emit("whereIsNPC:roundCheck");
@@ -767,7 +773,17 @@ export class CityScene extends Phaser.Scene {
 
     markCurrentFound(wallet);
     this.pedestrians.onTargetFound();
-    this.game.events.emit("whereIsNPC:found", { wallet, loadout: target.loadout });
+
+    if (isHuntOnChain()) {
+      // Shared hunt: the on-chain claim is first-writer-wins, so only the first
+      // finder city-wide scores. Award the "found" banner (and its on-chain
+      // points) only if OUR claim landed first; the round then advances for all.
+      this.network?.claimFind(getRoundIndex()).then((won) => {
+        if (won) this.game.events.emit("whereIsNPC:found", { wallet, loadout: target.loadout });
+      });
+    } else {
+      this.game.events.emit("whereIsNPC:found", { wallet, loadout: target.loadout });
+    }
 
     const FOUND_LINES = [
       "Oh! You recognized me. Sharp eyes, citizen.",
