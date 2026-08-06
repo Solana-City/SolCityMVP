@@ -689,12 +689,23 @@ export class OnChainMultiplayer {
    * Falls back to transactionLog simulation when program is not deployed.
    */
   async recordMiniGame(success: boolean): Promise<void> {
-    const label = success ? "Mini-game win" : "Mini-game loss";
+    await this.recordScoreSession(
+      success, success ? 100 : 0, success ? "Mini-game win" : "Mini-game loss",
+    );
+  }
+
+  /**
+   * Records a session-key score event (record_mini_game_session) on the ER —
+   * no wallet popup. `scoreDelta` is added to the player's score on success and
+   * bounty_count is bumped by 1. Sent on the seamless session path (ER when
+   * delegated, base otherwise), NOT the Magic Router (which hangs on sends).
+   */
+  private async recordScoreSession(success: boolean, scoreDelta: number, label: string): Promise<void> {
     const layer = this.useEphemeral ? "ephemeral" : "base";
     const entry = transactionLog.record({ kind: "bounty", layer, label, status: "pending" });
 
     if (!this.wallet || !isProgramDeployed()) {
-      transactionLog.markConfirmed(entry.id, "sim:minigame");
+      transactionLog.markConfirmed(entry.id, "sim:score");
       return;
     }
 
@@ -703,7 +714,7 @@ export class OnChainMultiplayer {
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
         if (attempt === 1) this.cachedMoveBlockhash = null;
-        const ix = buildRecordMiniGameSessionIx(this.wallet, sessionKey, success, success ? 100 : 0);
+        const ix = buildRecordMiniGameSessionIx(this.wallet, sessionKey, success, scoreDelta);
         const tx = new Transaction().add(ix);
         tx.feePayer = sessionKey;
         tx.recentBlockhash = await this.getMoveBlockhash(layer);
@@ -712,11 +723,11 @@ export class OnChainMultiplayer {
           conn.sendRawTransaction(tx.serialize(), { skipPreflight: true }), 6_000,
         );
         transactionLog.markConfirmed(entry.id, sig);
-        console.log(`[Multiplayer] mini-game ${success ? "win" : "loss"} recorded:`, sig.slice(0, 12));
+        console.log(`[Multiplayer] score recorded (${label}):`, sig.slice(0, 12));
         return;
       } catch (err: any) {
         this.cachedMoveBlockhash = null;
-        if (attempt === 1) transactionLog.markFailed(entry.id, err?.message ?? "mini-game record failed");
+        if (attempt === 1) transactionLog.markFailed(entry.id, err?.message ?? "score record failed");
       }
     }
   }
@@ -805,8 +816,10 @@ export class OnChainMultiplayer {
     } catch { /* ignore */ }
     if (won && sig) {
       transactionLog.markConfirmed(entry.id, sig);
-      // Award on-chain points to the finder (ER, seamless): score += 100.
-      this.recordMiniGame(true).catch(() => {});
+      // A find is worth exactly +1 (not +100) — a single point per citizen, the
+      // Find Someone leaderboard metric. Recorded on the ER (seamless) on the
+      // finder's player PDA.
+      this.recordScoreSession(true, 1, "Find someone ★ +1").catch(() => {});
     } else {
       transactionLog.markFailed(entry.id, "another player claimed this round first");
     }
