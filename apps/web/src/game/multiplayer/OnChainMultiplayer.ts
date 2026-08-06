@@ -663,7 +663,7 @@ export class OnChainMultiplayer {
         feePayer: this.wallet,
       }).add(ix);
 
-      const sig = await this.requestWalletSign(tx);
+      const sig = await this.signAndSendViaWallet(tx);
       await this.confirmReal(this.baseConnection, sig);
       transactionLog.markConfirmed(entry.id, sig);
     } catch (err: any) {
@@ -906,7 +906,7 @@ export class OnChainMultiplayer {
           if (needsFunding) {
             tx.add(SystemProgram.transfer({ fromPubkey: wallet, toPubkey: sessionKey, lamports: SESSION_FUND_LAMPORTS }));
           }
-          const sig = await this.requestWalletSign(tx);
+          const sig = await this.signAndSendViaWallet(tx);
           pdaReady = await this.waitForAccount(playerPDA, 12, 800);
           if (pdaReady) {
             this.sessionKeys["authorized"] = true;
@@ -934,7 +934,7 @@ export class OnChainMultiplayer {
           const { blockhash } = await this.baseRpcWithRetry(() => this.baseConnection.getLatestBlockhash());
           const fundTx = new Transaction({ recentBlockhash: blockhash, feePayer: wallet })
             .add(SystemProgram.transfer({ fromPubkey: wallet, toPubkey: sessionKey, lamports: SESSION_FUND_LAMPORTS }));
-          const sig = await this.requestWalletSign(fundTx);
+          const sig = await this.signAndSendViaWallet(fundTx);
           await this.confirmReal(this.baseConnection, sig);
         }
       }
@@ -1164,7 +1164,7 @@ export class OnChainMultiplayer {
       const { blockhash } = await this.baseConnection.getLatestBlockhash();
       const tx = new Transaction({ recentBlockhash: blockhash, feePayer: wallet }).add(ix);
 
-      const sig = await this.requestWalletSign(tx);
+      const sig = await this.signAndSendViaWallet(tx);
       await this.confirmReal(this.baseConnection, sig);
       transactionLog.markConfirmed(entry.id, sig);
     } catch (err: any) {
@@ -1261,7 +1261,7 @@ export class OnChainMultiplayer {
       const { blockhash } = await this.baseRpcWithRetry(() => this.baseConnection.getLatestBlockhash());
       const tx = new Transaction({ recentBlockhash: blockhash, feePayer: wallet }).add(ix);
 
-      const sig = await this.requestWalletSign(tx);
+      const sig = await this.signAndSendViaWallet(tx);
       // Poll the delegation record (up to ~10s) instead of confirmTransaction.
       const landed = await this.waitForDelegation(playerPDA, 12, 800);
       if (landed) {
@@ -1675,6 +1675,21 @@ export class OnChainMultiplayer {
   }
 
   // ── Wallet signing bridge ─────────────────────────────────────────────
+
+  /**
+   * Signs a base-layer tx with the wallet, then broadcasts it OURSELVES via the
+   * app's devnet connection. We deliberately avoid the wallet's own
+   * sign-AND-send: Phantom's `signAndSendTransaction` broadcasts on whatever
+   * network the wallet is set to (mainnet by default), not on our connection —
+   * so a devnet tx sent that way lands nowhere and throws "Unexpected error".
+   * `signTransaction` is network-agnostic (it just signs the bytes, devnet
+   * blockhash and all), so signing here + sending on baseConnection keeps every
+   * wallet-signed tx on devnet regardless of the wallet's selected cluster.
+   */
+  private async signAndSendViaWallet(tx: Transaction): Promise<string> {
+    const signed = await this.requestWalletSignOnly(tx);
+    return this.baseConnection.sendRawTransaction(signed.serialize(), { skipPreflight: true });
+  }
 
   /**
    * Emits a game event asking React (which has access to useWallet()) to sign
