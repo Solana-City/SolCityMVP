@@ -12,13 +12,17 @@ import {
 } from "@solana/wallet-adapter-wallets";
 import "@solana/wallet-adapter-react-ui/styles.css";
 
-// The wallet adapter's ConnectionProvider endpoint. Must be a real devnet RPC:
-// api.devnet.solana.com 429-bans for hours, and the Magic Router is a routing
-// proxy that times out on sends and lacks simulate. Helius devnet is reliable.
-// Free devnet key — client-side and low-risk; override via NEXT_PUBLIC_HELIUS_DEVNET.
-const RPC_ENDPOINT =
-  process.env.NEXT_PUBLIC_HELIUS_DEVNET ||
-  "https://devnet.helius-rpc.com/?api-key=92175bf8-4484-4c09-a60a-4d08ee821058";
+import { BASE_RPC_PRIMARY, resilientBaseFetch } from "@/game/solana/baseRpc";
+
+// The wallet adapter's ConnectionProvider. Uses the same failover fetch as the
+// game (Helius devnet + api.devnet) — never the Magic Router, which hangs on
+// sends. See baseRpc.ts. Signing itself needs no RPC, so this mainly backs
+// balance reads and the adapter's own housekeeping.
+const RPC_ENDPOINT = BASE_RPC_PRIMARY;
+const RPC_CONFIG = {
+  commitment: "confirmed" as const,
+  fetch: resilientBaseFetch as unknown as typeof fetch,
+};
 
 // Solana-native wallets allowed to auto-connect.
 // Includes MWA names used by Android/Seeker mobile wallets.
@@ -65,7 +69,7 @@ export default function SolanaProvider({
   }, []);
 
   return (
-    <ConnectionProvider endpoint={endpoint}>
+    <ConnectionProvider endpoint={endpoint} config={RPC_CONFIG}>
       <WalletProvider
         wallets={wallets}
         autoConnect={autoConnectFilter}
