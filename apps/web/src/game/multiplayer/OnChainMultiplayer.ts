@@ -675,42 +675,42 @@ export class OnChainMultiplayer {
 
   /**
    * Records a mini-game result via session key — no wallet popup.
-   * Sends to the ephemeral rollup through the Magic Router.
    * Win: score += 100, bounty_count += 1. Loss: last_active only.
+   * Sends on the SAME seamless session path as position/outfit (ER when
+   * delegated, base otherwise) — NOT the Magic Router, which HANGS on
+   * sendRawTransaction (that silently dropped every mini-game record).
    * Falls back to transactionLog simulation when program is not deployed.
    */
   async recordMiniGame(success: boolean): Promise<void> {
     const label = success ? "Mini-game win" : "Mini-game loss";
-    const entry = transactionLog.record({
-      kind: "bounty", layer: "ephemeral", label, status: "pending",
-    });
+    const layer = this.useEphemeral ? "ephemeral" : "base";
+    const entry = transactionLog.record({ kind: "bounty", layer, label, status: "pending" });
 
     if (!this.wallet || !isProgramDeployed()) {
       transactionLog.markConfirmed(entry.id, "sim:minigame");
       return;
     }
 
-    try {
-      const sessionKey = this.sessionKeys.getSessionPublicKey();
-      const ix = buildRecordMiniGameSessionIx(
-        this.wallet, sessionKey, success, success ? 100 : 0
-      );
-
-      const tx = new Transaction().add(ix);
-      tx.feePayer = sessionKey;
-
-      const { blockhash } = await this.routerConnection.getLatestBlockhashForTransaction(tx);
-      tx.recentBlockhash = blockhash;
-      this.sessionKeys.signTransaction(tx);
-
-      const sig = await this.routerConnection.sendRawTransaction(tx.serialize(), {
-        skipPreflight: true,
-        preflightCommitment: "processed",
-      });
-      transactionLog.markConfirmed(entry.id, sig);
-      console.log(`[Multiplayer] mini-game ${success ? "win" : "loss"} recorded:`, sig.slice(0, 12));
-    } catch (err: any) {
-      transactionLog.markFailed(entry.id, err?.message ?? "mini-game record failed");
+    const sessionKey = this.sessionKeys.getSessionPublicKey();
+    const conn = this.useEphemeral ? this.ephemeralConnection : this.baseConnection;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        if (attempt === 1) this.cachedMoveBlockhash = null;
+        const ix = buildRecordMiniGameSessionIx(this.wallet, sessionKey, success, success ? 100 : 0);
+        const tx = new Transaction().add(ix);
+        tx.feePayer = sessionKey;
+        tx.recentBlockhash = await this.getMoveBlockhash(layer);
+        this.sessionKeys.signTransaction(tx);
+        const sig = await OnChainMultiplayer.withTimeout(
+          conn.sendRawTransaction(tx.serialize(), { skipPreflight: true }), 6_000,
+        );
+        transactionLog.markConfirmed(entry.id, sig);
+        console.log(`[Multiplayer] mini-game ${success ? "win" : "loss"} recorded:`, sig.slice(0, 12));
+        return;
+      } catch (err: any) {
+        this.cachedMoveBlockhash = null;
+        if (attempt === 1) transactionLog.markFailed(entry.id, err?.message ?? "mini-game record failed");
+      }
     }
   }
 
