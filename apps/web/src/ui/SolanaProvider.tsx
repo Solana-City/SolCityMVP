@@ -12,13 +12,13 @@ import {
 } from "@solana/wallet-adapter-wallets";
 import "@solana/wallet-adapter-react-ui/styles.css";
 
-// The wallet adapter's ConnectionProvider is what WalletSignBridge hands to
-// `sendTransaction`, so every wallet-signed base-layer tx (init / authorize /
-// delegate) is broadcast through THIS endpoint. It must be the Magic Router,
-// not api.devnet.solana.com: the public devnet RPC rate-bans (429) under load,
-// which made the delegate send hang until the 60s "wallet sign timeout". The
-// router is healthy and forwards base-layer txs to devnet transparently.
-const RPC_ENDPOINT = "https://devnet-router.magicblock.app";
+// The wallet adapter's ConnectionProvider endpoint. Must be a real devnet RPC:
+// api.devnet.solana.com 429-bans for hours, and the Magic Router is a routing
+// proxy that times out on sends and lacks simulate. Helius devnet is reliable.
+// Free devnet key — client-side and low-risk; override via NEXT_PUBLIC_HELIUS_DEVNET.
+const RPC_ENDPOINT =
+  process.env.NEXT_PUBLIC_HELIUS_DEVNET ||
+  "https://devnet.helius-rpc.com/?api-key=92175bf8-4484-4c09-a60a-4d08ee821058";
 
 // Solana-native wallets allowed to auto-connect.
 // Includes MWA names used by Android/Seeker mobile wallets.

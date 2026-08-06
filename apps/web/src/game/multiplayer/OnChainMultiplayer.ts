@@ -62,6 +62,14 @@ const ENDPOINTS = {
   magicRouter:  "https://devnet-router.magicblock.app",
   ephemeral:    "https://devnet.magicblock.app",
   solanaDevnet: "https://api.devnet.solana.com",
+  // Base-layer devnet RPC. api.devnet 429-bans for hours and the Magic Router
+  // times out on sendRawTransaction (it's a routing proxy, not a full RPC), so
+  // wallet-signed base txs (init/delegate) never landed. Helius devnet is a
+  // real, reliable RPC (simulate + sends confirmed working). Free devnet key —
+  // client-side and low-risk; override via NEXT_PUBLIC_HELIUS_DEVNET if desired.
+  heliusDevnet:
+    (typeof process !== "undefined" && process.env.NEXT_PUBLIC_HELIUS_DEVNET) ||
+    "https://devnet.helius-rpc.com/?api-key=92175bf8-4484-4c09-a60a-4d08ee821058",
 } as const;
 
 // Shared state channel name — BroadcastChannel works across tabs
@@ -180,14 +188,12 @@ export class OnChainMultiplayer {
   constructor() {
     this.routerConnection    = new ConnectionMagicRouter(ENDPOINTS.magicRouter,  "confirmed");
     this.ephemeralConnection = new Connection(ENDPOINTS.ephemeral,    "confirmed");
-    // Base HTTP ops (connect: getAccountInfo / getBalance / blockhash /
-    // sendRawTransaction / confirm) go through the Magic Router, NOT
-    // api.devnet.solana.com — the public devnet RPC rate-limits hard and stays
-    // 429-banned for long stretches, which broke delegation (no ER = nothing
-    // syncs). The router is MagicBlock infra and stays healthy; it routes base
-    // txs to base. With outfit/expr/chat now on the ER too, this removes the
-    // LAST api.devnet dependency — the whole shared world runs off the router+ER.
-    this.baseConnection      = new Connection(ENDPOINTS.magicRouter, "confirmed");
+    // Base HTTP ops (getAccountInfo / getBalance / blockhash / sendRawTransaction
+    // / confirm) go to Helius devnet — a real, reliable RPC. NOT api.devnet
+    // (429-bans for hours) and NOT the Magic Router (a routing proxy that times
+    // out on sendRawTransaction and 'Method not found's simulate). This is the
+    // path that actually lands wallet-signed init/delegate on devnet.
+    this.baseConnection      = new Connection(ENDPOINTS.heliusDevnet, "confirmed");
     this.sessionKeys         = new SessionKeyManager();
   }
 
