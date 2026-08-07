@@ -143,7 +143,11 @@ function AvatarPreview({ loadout, facingUp, scale = 3 }: { loadout: Loadout; fac
       ref={canvasRef}
       width={FW}
       height={FH}
-      style={{ imageRendering: "pixelated", display: "block" }}
+      // Fill the (square) preview box and letterbox to preserve aspect — the
+      // canvas backing store stays at FW×FH for crispness, but it never
+      // overflows its container (which used to spill the preview onto the option
+      // grid on desktop and clip the character on mobile).
+      style={{ imageRendering: "pixelated", display: "block", width: "100%", height: "100%", objectFit: "contain" }}
     />
   );
 }
@@ -346,12 +350,19 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
                 background: "rgba(153,69,255,0.06)",
                 border: "1px solid rgba(153,69,255,0.14)",
                 borderRadius: 10,
-                padding: isMobile ? 4 : 10,
+                padding: isMobile ? 6 : 8,
+                // Fixed square box so the responsive canvas has a bounded target
+                // — fits inside the 168px desktop column (no overflow onto the
+                // grid) and shows the full character at a comfortable size on
+                // mobile. scale stays high (crisp backing store, CSS downsizes).
+                width: isMobile ? 108 : 140,
+                height: isMobile ? 108 : 140,
+                flexShrink: 0,
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
               }}>
-                <AvatarPreview loadout={loadout} facingUp={activeCategory === "back"} scale={isMobile ? 1.4 : 3} />
+                <AvatarPreview loadout={loadout} facingUp={activeCategory === "back"} scale={3} />
               </div>
               {!isMobile && <span style={{ fontSize: 7, color: "#444466", letterSpacing: 1 }}>PREVIEW</span>}
             </div>

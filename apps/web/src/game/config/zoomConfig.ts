@@ -38,7 +38,16 @@ export function computeRenderDpr(): number {
   // backing-store pixel each frame, so the cap bounds the fill cost at 4x
   // CSS resolution (phones at dpr 3 get a slight CSS upscale instead).
   // A dpr-2 backing store is what allows the crisp 0.5x zoom-out level.
-  return Math.min(Math.max(window.devicePixelRatio || 1, 1), 2);
+  const raw = Math.min(Math.max(window.devicePixelRatio || 1, 1), 2);
+  // Desktop renders via WebGL, where a 2x backing store is cheap. Give it at
+  // least dpr 2 so it gets the SAME crisp zoom-out range as mobile: a non-retina
+  // desktop is dpr 1, whose only even (pixel-perfect) camera zooms yield view
+  // scales 1.0x/2.0x — i.e. no zoom-out at all — while mobile (dpr 2) reaches
+  // 0.5x. Forcing dpr 2 unlocks 0.5x..2.5x on desktop too; the default (~1.0x)
+  // is unchanged. Mobile (Canvas2D) keeps its real dpr to bound fill cost.
+  const isTouch = typeof window !== "undefined"
+    && window.matchMedia("(pointer: coarse)").matches;
+  return isTouch ? raw : Math.max(raw, 2);
 }
 
 /** Even camera zooms whose view scale falls in a sane range, ascending. */
