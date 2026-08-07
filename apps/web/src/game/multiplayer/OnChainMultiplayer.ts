@@ -484,8 +484,11 @@ export class OnChainMultiplayer {
           if (sig) {
             this.trackMoveConfirmation(entry.id, sig);
           } else {
-            transactionLog.markFailed(entry.id, "null signature");
-            console.warn("[Multiplayer] position tx returned null sig");
+            // A single un-submitted position move is transient and self-heals —
+            // the next move overwrites the position — so don't paint the whole
+            // coalesced batch red. Other moves in it keep it confirmed; only a
+            // genuine on-chain rejection (trackMoveConfirmation) turns it red.
+            console.warn("[Multiplayer] position tx returned null sig (transient, dropped)");
           }
         })
         .catch(err => {
@@ -1694,7 +1697,10 @@ export class OnChainMultiplayer {
   private cachedMoveBlockhash: { hash: string; fetchedAt: number; layer: "ephemeral" | "base" } | null = null;
 
   private async getMoveBlockhash(layer: "ephemeral" | "base"): Promise<string> {
-    const ttlMs = layer === "ephemeral" ? 3_000 : 20_000;
+    // Shorter TTL on the ER: its blockhash validity window is tight, and a
+    // slightly stale cached hash was the dominant cause of dropped ("null
+    // signature") moves during movement bursts. 2s keeps enough reuse to batch.
+    const ttlMs = layer === "ephemeral" ? 2_000 : 20_000;
     const now = Date.now();
     const cached = this.cachedMoveBlockhash;
     if (cached && cached.layer === layer && now - cached.fetchedAt < ttlMs) {
@@ -1721,9 +1727,9 @@ export class OnChainMultiplayer {
       // signature"): the 3s-cached ER blockhash occasionally expires between
       // reuse, so the first send throws — the retry rebuilds+re-signs against a
       // new hash instead of dropping the move outright.
-      for (let attempt = 0; attempt < 2; attempt++) {
+      for (let attempt = 0; attempt < 3; attempt++) {
         try {
-          if (attempt === 1) this.cachedMoveBlockhash = null; // force a fresh hash on the retry
+          if (attempt > 0) this.cachedMoveBlockhash = null; // force a fresh hash on each retry
           const tx = new Transaction().add(ix);
           tx.feePayer = sessionKey;
           tx.recentBlockhash = await this.getMoveBlockhash("ephemeral");
@@ -1737,7 +1743,7 @@ export class OnChainMultiplayer {
         } catch (err: any) {
           // Don't permanently disable ER — rate limits and transient errors clear up.
           this.cachedMoveBlockhash = null;
-          if (attempt === 1) {
+          if (attempt === 2) {
             console.warn("[Multiplayer] ephemeral tx skipped:", err?.message);
             return null;
           }
