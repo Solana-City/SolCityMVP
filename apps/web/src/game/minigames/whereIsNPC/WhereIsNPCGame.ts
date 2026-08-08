@@ -92,9 +92,16 @@ export const CITIZEN_MS = ROUND_MS; // each citizen sticks around up to this lon
 let citizenDeadline = Date.now() + CITIZEN_MS;
 
 /** Time left before the current citizen rotates if not found. Driven by the
- *  on-chain deadline when the shared hunt is live, else the local timer. */
+ *  on-chain deadline when the shared hunt is live, else the local timer.
+ *  Capped at CITIZEN_MS (5 min): the round IS 300 on-chain seconds, but the
+ *  devnet validator clock can drift ahead of real time, which would otherwise
+ *  make `deadline − now` read as MORE than 5:00. Clamping keeps the display a
+ *  clean 0–5:00 and still shows the true remaining for anyone who joined
+ *  mid-round (that value is already ≤ 5:00). */
 export function getCitizenMsRemaining(): number {
-  if (onChainDeadlineMs !== null) return Math.max(0, onChainDeadlineMs - Date.now());
+  if (onChainDeadlineMs !== null) {
+    return Math.min(CITIZEN_MS, Math.max(0, onChainDeadlineMs - Date.now()));
+  }
   return Math.max(0, citizenDeadline - Date.now());
 }
 
