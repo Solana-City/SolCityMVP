@@ -17,16 +17,20 @@
  */
 
 export type TxKind =
-  | "move"      // update_position on ephemeral rollup
-  | "swap"      // Jupiter swap
-  | "transfer"  // SOL / SPL transfer
-  | "bounty"    // record_bounty
-  | "init"      // initialize_player
-  | "delegate"  // PDA delegation to ER
-  | "commit"    // periodic ER → base layer commit (informational)
+  | "move"       // update_position on ephemeral rollup
+  | "swap"       // Jupiter swap
+  | "transfer"   // SOL / SPL transfer
+  | "bounty"     // record_bounty (legacy — Superteam bounties can't be tracked from the game wallet)
+  | "init"       // initialize_player
+  | "delegate"   // PDA delegation to ER
+  | "commit"     // periodic ER → base layer commit (informational)
   | "undelegate" // session end
-  | "outfit"    // change_outfit
-  | "system";   // non-tx internal event (e.g. "session started")
+  | "outfit"     // update_look_session (wardrobe)
+  | "expression" // set_expression_session
+  | "chat"       // send_chat_session
+  | "hunt"       // Find Someone: claim_find + the finder's +1
+  | "minigame"   // record_mini_game_session
+  | "system";    // non-tx internal event (e.g. "session started")
 
 export type TxLayer = "base" | "ephemeral" | "jupiter" | "local";
 

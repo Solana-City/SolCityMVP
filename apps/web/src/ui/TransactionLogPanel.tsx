@@ -121,11 +121,15 @@ export default function TransactionLogPanel({ isOpen, onToggle, gameRef }: Props
 
   const triggerRef = useRef<HTMLDivElement>(null);
 
-  // Compute panel top dynamically so it always opens just below the HUD card,
-  // regardless of how tall the card grows.
+  // Compute panel top dynamically so it always opens just BELOW the HUD card
+  // (the ONCHAIN button sits in the card's footer row), never overlapping the
+  // profile/wallet above it. triggerRef is a display:contents wrapper — its own
+  // getBoundingClientRect is all-zeros, which used to collapse panelTop to ~6px
+  // and open the panel over the HUD — so measure the actual button element.
   const panelTop = (() => {
-    if (!triggerRef.current) return 130;
-    const rect = triggerRef.current.getBoundingClientRect();
+    const el = (triggerRef.current?.firstElementChild ?? triggerRef.current) as HTMLElement | null;
+    const rect = el?.getBoundingClientRect();
+    if (!rect || !rect.height) return 130;
     return rect.bottom + 6;
   })();
 
@@ -328,11 +332,18 @@ function Header({
 const KIND_OPTIONS: Array<{ value: TxKind | "all"; label: string }> = [
   { value: "all", label: "all" },
   { value: "move", label: "move" },
+  { value: "outfit", label: "wardrobe" },
+  { value: "expression", label: "expression" },
+  { value: "chat", label: "chat" },
+  { value: "hunt", label: "hunt" },
+  { value: "minigame", label: "minigame" },
   { value: "swap", label: "swap" },
   { value: "transfer", label: "send" },
   { value: "delegate", label: "delegate" },
   { value: "init", label: "init" },
-  { value: "bounty", label: "bounty" },
+  // "bounty" removed: record_bounty is never triggered — Superteam Earn bounties
+  // are completed through an abstracted wallet, never the in-game wallet, so they
+  // can't be attributed to the player here.
 ];
 
 const STATUS_OPTIONS: Array<{ value: TxStatus | "all"; label: string; color: string }> = [

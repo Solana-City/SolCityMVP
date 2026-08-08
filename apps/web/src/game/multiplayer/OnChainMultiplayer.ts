@@ -693,7 +693,7 @@ export class OnChainMultiplayer {
    */
   async recordMiniGame(success: boolean): Promise<void> {
     await this.recordScoreSession(
-      success, success ? 100 : 0, success ? "Mini-game win" : "Mini-game loss",
+      success, success ? 100 : 0, success ? "Mini-game win" : "Mini-game loss", "minigame",
     );
   }
 
@@ -703,9 +703,11 @@ export class OnChainMultiplayer {
    * bounty_count is bumped by 1. Sent on the seamless session path (ER when
    * delegated, base otherwise), NOT the Magic Router (which hangs on sends).
    */
-  private async recordScoreSession(success: boolean, scoreDelta: number, label: string): Promise<void> {
+  private async recordScoreSession(
+    success: boolean, scoreDelta: number, label: string, kind: "minigame" | "hunt",
+  ): Promise<void> {
     const layer = this.useEphemeral ? "ephemeral" : "base";
-    const entry = transactionLog.record({ kind: "bounty", layer, label, status: "pending" });
+    const entry = transactionLog.record({ kind, layer, label, status: "pending" });
 
     if (!this.wallet || !isProgramDeployed()) {
       transactionLog.markConfirmed(entry.id, "sim:score");
@@ -803,7 +805,7 @@ export class OnChainMultiplayer {
     if (!this.wallet || !isProgramDeployed()) return false;
     const sessionKey = this.sessionKeys.getSessionPublicKey();
     const entry = transactionLog.record({
-      kind: "bounty", layer: "base", label: "Find someone — claim", status: "pending",
+      kind: "hunt", layer: "base", label: "Find someone — claim", status: "pending",
     });
     const sig = await this.sendHuntIx(buildClaimFindIx(sessionKey, round));
     // Confirm the outcome by reading the hunt: the winner is set to our session
@@ -822,7 +824,7 @@ export class OnChainMultiplayer {
       // A find is worth exactly +1 (not +100) — a single point per citizen, the
       // Find Someone leaderboard metric. Recorded on the ER (seamless) on the
       // finder's player PDA.
-      this.recordScoreSession(true, 1, "Find someone ★ +1").catch(() => {});
+      this.recordScoreSession(true, 1, "Find someone ★ +1", "hunt").catch(() => {});
     } else {
       transactionLog.markFailed(entry.id, "another player claimed this round first");
     }
@@ -1784,12 +1786,10 @@ export class OnChainMultiplayer {
     const sessionKey = this.sessionKeys.getSessionPublicKey();
     const conn = this.useEphemeral ? this.ephemeralConnection : this.baseConnection;
     const layer = this.useEphemeral ? "ephemeral" : "base";
-    // Surface these ER writes in the ONCHAIN LOG too — same as position/swap —
-    // so the shared-world sync is visibly on-chain (matters for the demo). The
-    // TxKind is "outfit" for looks; expression/chat map to it as well since the
-    // label already says what it is and the log groups by label, not just kind.
+    // Surface these ER writes in the ONCHAIN LOG too — each under its own kind
+    // (outfit / expression / chat) so they're independently filterable.
     const entry = log
-      ? transactionLog.record({ kind: "outfit", layer, label: log.label, status: "pending" })
+      ? transactionLog.record({ kind: log.kind, layer, label: log.label, status: "pending" })
       : null;
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
