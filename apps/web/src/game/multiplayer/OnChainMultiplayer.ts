@@ -363,16 +363,16 @@ export class OnChainMultiplayer {
     // sensible countdown instead of a frozen on-chain one.
     clearHuntFromChain();
 
-    if (isProgramDeployed() && this.wallet) {
-      this.commitAndUndelegatePlayer(this.wallet).catch(() => {});
-    } else {
-      const entry = transactionLog.record({
-        kind: "undelegate", layer: "base",
-        label: "Commit & undelegate session", status: "pending",
-      });
-      transactionLog.markConfirmed(entry.id, "sim:undelegate");
-    }
-
+    // Do NOT commit_and_undelegate (and do NOT rotate the session key) here.
+    // wallet:disconnected fires on transient wallet flaps (auto-connect retries,
+    // account/network events, re-renders), not just real exits. Undelegating +
+    // rotating on every one of those forced the NEXT connect to re-delegate (a
+    // wallet popup) and left the ER holding the OLD key while the client had a
+    // NEW one → InvalidSessionKey (6000) and 3 sign prompts in a row on a flap.
+    // The delegate CPI sets a 3s ER→base auto-commit, so base stays fresh while
+    // delegated; leaving the PDA delegated with a STABLE session key lets a
+    // reconnect resume seamlessly (no popup, no mismatch). Explicit teardown
+    // still lives in resetSession() (the "reset session" button).
     this._connected = false;
     this.sessionKeys.revoke(this.routerConnection);
     // Tell the scene to tear down every remote avatar before wiping the
@@ -400,6 +400,10 @@ export class OnChainMultiplayer {
     const displayName = this.knownPlayers.get(wallet.toBase58())?.displayName;
     const [playerPDA] = derivePlayerPDA(wallet);
 
+    // Explicit undelegate + key rotation — this is the ONLY path that does it now
+    // (disconnect() intentionally leaves the PDA delegated for seamless
+    // reconnect). This is what makes the next connect re-prompt a fresh delegate.
+    await this.commitAndUndelegatePlayer(wallet);
     this.disconnect();
 
     // Poll the BASE layer until ownership actually reverts to our program —
