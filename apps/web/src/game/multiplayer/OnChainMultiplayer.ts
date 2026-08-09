@@ -1173,7 +1173,21 @@ export class OnChainMultiplayer {
    * up stuck at 512,288. The ER is the authoritative live view.
    * (Method name kept for its callers.)
    */
-  private async discoverPlayersFromBase(_self: PublicKey): Promise<void> {
+  private async discoverPlayersFromBase(self: PublicKey): Promise<void> {
+    // Safety net: if we're not yet on the ER but our PDA IS delegated (the
+    // delegation record propagated after connect's confirmation window — e.g.
+    // slow settling right after a resetSession), switch to the ER now. Without
+    // this a late-landing delegate would strand us writing to base — invisible
+    // to peers who read the rollup.
+    if (!this.useEphemeral && isProgramDeployed()) {
+      try {
+        const [playerPDA] = derivePlayerPDA(self);
+        if (await this.isPdaDelegated(playerPDA)) {
+          this.useEphemeral = true;
+          console.log("[Multiplayer] delegation detected late — switching to ER");
+        }
+      } catch { /* keep base until next tick */ }
+    }
     try {
       const accounts = await this.ephemeralConnection.getProgramAccounts(
         SOL_CITY_PROGRAM_ID,
@@ -1414,22 +1428,20 @@ export class OnChainMultiplayer {
       const tx = new Transaction({ recentBlockhash: blockhash, feePayer: wallet }).add(ix);
 
       const sig = await this.signAndSendViaWallet(tx);
-      // A signed+sent delegate on a non-delegated PDA WILL land (we control the
-      // send). Switch to the ER immediately so moves route to the rollup right
-      // away instead of dribbling onto base while the delegation record
-      // propagates — that propagation can outrun a bounded poll (especially
-      // right after a resetSession undelegate), which used to leave the client
-      // stuck on "base / dropped" even though the delegate had landed. Confirm
-      // the record in the BACKGROUND for the log status (generous window).
-      this.waitForDelegation(playerPDA, 20, 800).then((landed) => {
-        if (landed) {
-          transactionLog.markConfirmed(entry.id, sig);
-          console.log("[Multiplayer] PDA delegated to ephemeral rollup:", sig.slice(0, 12));
-        } else {
-          transactionLog.markFailed(entry.id, "delegation record not found after send");
-        }
-      });
-      return true;
+      // Wait for the delegation to be CONFIRMED on-chain (record present) before
+      // switching to the ER. A player must be genuinely delegated for their ER
+      // writes to land and for OTHERS to see them — turning useEphemeral on
+      // optimistically (before confirmation) made a slow/failed delegate write
+      // to the ER silently and never appear to peers (one-way visibility).
+      // Generous window (~13s) so post-reset propagation still lands in time.
+      const landed = await this.waitForDelegation(playerPDA, 16, 800);
+      if (landed) {
+        transactionLog.markConfirmed(entry.id, sig);
+        console.log("[Multiplayer] PDA delegated to ephemeral rollup:", sig.slice(0, 12));
+        return true;
+      }
+      transactionLog.markFailed(entry.id, "delegation record not found after send");
+      return false;
     } catch (err: any) {
       console.error("[Multiplayer] delegate failed:", err);
       transactionLog.markFailed(entry.id, err?.message ?? "delegate failed");
