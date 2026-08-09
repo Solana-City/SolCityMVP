@@ -363,16 +363,16 @@ export class OnChainMultiplayer {
     // sensible countdown instead of a frozen on-chain one.
     clearHuntFromChain();
 
-    // Do NOT commit_and_undelegate (and do NOT rotate the session key) here.
-    // wallet:disconnected fires on transient wallet flaps (auto-connect retries,
-    // account/network events, re-renders), not just real exits. Undelegating +
-    // rotating on every one of those forced the NEXT connect to re-delegate (a
-    // wallet popup) and left the ER holding the OLD key while the client had a
-    // NEW one → InvalidSessionKey (6000) and 3 sign prompts in a row on a flap.
-    // The delegate CPI sets a 3s ER→base auto-commit, so base stays fresh while
-    // delegated; leaving the PDA delegated with a STABLE session key lets a
-    // reconnect resume seamlessly (no popup, no mismatch). Explicit teardown
-    // still lives in resetSession() (the "reset session" button).
+    if (isProgramDeployed() && this.wallet) {
+      this.commitAndUndelegatePlayer(this.wallet).catch(() => {});
+    } else {
+      const entry = transactionLog.record({
+        kind: "undelegate", layer: "base",
+        label: "Commit & undelegate session", status: "pending",
+      });
+      transactionLog.markConfirmed(entry.id, "sim:undelegate");
+    }
+
     this._connected = false;
     this.sessionKeys.revoke(this.routerConnection);
     // Tell the scene to tear down every remote avatar before wiping the
@@ -400,10 +400,6 @@ export class OnChainMultiplayer {
     const displayName = this.knownPlayers.get(wallet.toBase58())?.displayName;
     const [playerPDA] = derivePlayerPDA(wallet);
 
-    // Explicit undelegate + key rotation — this is the ONLY path that does it now
-    // (disconnect() intentionally leaves the PDA delegated for seamless
-    // reconnect). This is what makes the next connect re-prompt a fresh delegate.
-    await this.commitAndUndelegatePlayer(wallet);
     this.disconnect();
 
     // Poll the BASE layer until ownership actually reverts to our program —
@@ -1056,19 +1052,9 @@ export class OnChainMultiplayer {
           console.warn("✗ init/auth failed:", err?.message);
         }
       } else if (!isDelegated) {
-        // If the base PDA already stores OUR session key and it's funded, the
-        // key is good to re-delegate as-is — skip the authorize popup entirely.
-        // (This is the common case after a resetSession undelegate now that we
-        // no longer rotate the key.)
-        const storedKey = existing ? this.readSessionAuthority(existing.data) : null;
-        if (storedKey && storedKey.equals(sessionKey) && !needsFunding) {
-          this.sessionKeys["authorized"] = true;
-          console.log("✓ session key already authorized on base — no prompt");
-        } else {
-          console.log("✓ PDA on base — auth" + (needsFunding ? " + fund (1 sign prompt)" : ""));
-          await this.sessionKeys.authorize(wallet, this.baseConnection, undefined, needsFunding ? SESSION_FUND_LAMPORTS : 0);
-          console.log("✓ session authorized");
-        }
+        console.log("✓ PDA on base — auth" + (needsFunding ? " + fund (1 sign prompt)" : " (may skip if cached)"));
+        await this.sessionKeys.authorize(wallet, this.baseConnection, undefined, needsFunding ? SESSION_FUND_LAMPORTS : 0);
+        console.log("✓ session authorized");
       } else {
         // Delegated: the ER copy is the authoritative session state.
         // Re-authorize on the rollup only if its stored key differs from ours
@@ -1173,21 +1159,7 @@ export class OnChainMultiplayer {
    * up stuck at 512,288. The ER is the authoritative live view.
    * (Method name kept for its callers.)
    */
-  private async discoverPlayersFromBase(self: PublicKey): Promise<void> {
-    // Safety net: if we're not yet on the ER but our PDA IS delegated (the
-    // delegation record propagated after connect's confirmation window — e.g.
-    // slow settling right after a resetSession), switch to the ER now. Without
-    // this a late-landing delegate would strand us writing to base — invisible
-    // to peers who read the rollup.
-    if (!this.useEphemeral && isProgramDeployed()) {
-      try {
-        const [playerPDA] = derivePlayerPDA(self);
-        if (await this.isPdaDelegated(playerPDA)) {
-          this.useEphemeral = true;
-          console.log("[Multiplayer] delegation detected late — switching to ER");
-        }
-      } catch { /* keep base until next tick */ }
-    }
+  private async discoverPlayersFromBase(_self: PublicKey): Promise<void> {
     try {
       const accounts = await this.ephemeralConnection.getProgramAccounts(
         SOL_CITY_PROGRAM_ID,
@@ -1428,13 +1400,8 @@ export class OnChainMultiplayer {
       const tx = new Transaction({ recentBlockhash: blockhash, feePayer: wallet }).add(ix);
 
       const sig = await this.signAndSendViaWallet(tx);
-      // Wait for the delegation to be CONFIRMED on-chain (record present) before
-      // switching to the ER. A player must be genuinely delegated for their ER
-      // writes to land and for OTHERS to see them — turning useEphemeral on
-      // optimistically (before confirmation) made a slow/failed delegate write
-      // to the ER silently and never appear to peers (one-way visibility).
-      // Generous window (~13s) so post-reset propagation still lands in time.
-      const landed = await this.waitForDelegation(playerPDA, 16, 800);
+      // Poll the delegation record (up to ~10s) instead of confirmTransaction.
+      const landed = await this.waitForDelegation(playerPDA, 12, 800);
       if (landed) {
         transactionLog.markConfirmed(entry.id, sig);
         console.log("[Multiplayer] PDA delegated to ephemeral rollup:", sig.slice(0, 12));
@@ -1507,12 +1474,9 @@ export class OnChainMultiplayer {
       });
       transactionLog.markConfirmed(entry.id, sig);
       console.log("[Multiplayer] committed & undelegated:", sig.slice(0, 12));
-      // Do NOT rotate the session key. commit_and_undelegate commits the ER
-      // state (incl. our session_authority) back to base, so the base PDA still
-      // holds THIS key — reusing it means the next connect finds it already
-      // authorized (no re-auth popup, no funding a fresh key) and just needs the
-      // one delegate prompt. Rotating here forced an extra authorize + fund and
-      // opened an old-key/new-key window that read as InvalidSessionKey (6000).
+      // PDA is back on base layer — safe to rotate session key now so the next
+      // connect can re-authorize a fresh key on base layer before re-delegating.
+      this.sessionKeys.rotateKey();
     } catch (err: any) {
       transactionLog.markFailed(entry.id, err?.message ?? "undelegate failed");
     }

@@ -42,11 +42,6 @@ export class CityScene extends Phaser.Scene {
   // Debounce "entered the city" — wallet reconnects clear knownPlayers and
   // re-discover the same players, which would spam the chat on every reconnect.
   private recentJoins = new Map<string, number>();
-  // Debounce transient wallet flaps: the adapter emits disconnect→connect on
-  // auto-connect retries / re-renders. We delay acting on a disconnect briefly
-  // and cancel it if a reconnect for the same wallet arrives — avoids tearing
-  // down and rebuilding the whole session (and spamming "Session ended").
-  private walletFlapTimer: ReturnType<typeof setTimeout> | null = null;
   private currentDirection: Direction = "down";
   private idleDelay = 0;
   // Footstep dust — kicked up behind the feet while walking, ramping in
@@ -506,10 +501,6 @@ export class CityScene extends Phaser.Scene {
 
     // Listen for wallet connection from React to start on-chain session
     this.game.events.on("wallet:connected", async (walletAddress: string) => {
-      // A reconnect cancels any pending flap-disconnect for this wallet.
-      if (this.walletFlapTimer) { clearTimeout(this.walletFlapTimer); this.walletFlapTimer = null; }
-      // Ignore re-fires for a wallet we're already connected to (adapter flaps).
-      if (this.network.connected && this.walletAddress === walletAddress) return;
       try {
         this.walletAddress = walletAddress;
         const { PublicKey } = await import("@solana/web3.js");
@@ -551,16 +542,8 @@ export class CityScene extends Phaser.Scene {
     });
 
     this.game.events.on("wallet:disconnected", () => {
-      // Debounce: a transient flap fires disconnect then connect right after.
-      // Wait briefly; if a reconnect cancels this, the session is never torn
-      // down. Only a real disconnect (no reconnect within the window) proceeds.
-      if (this.walletFlapTimer) return;
-      this.walletFlapTimer = setTimeout(() => {
-        this.walletFlapTimer = null;
-        if (!this.network.connected) return;
-        this.network.disconnect();
-        this.chat.addSystemMessage("Session ended");
-      }, 800);
+      this.network.disconnect();
+      this.chat.addSystemMessage("Session ended");
     });
 
     // Record on-chain when the player completes a swap/transfer/bounty.
