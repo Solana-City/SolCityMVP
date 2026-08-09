@@ -1056,9 +1056,19 @@ export class OnChainMultiplayer {
           console.warn("✗ init/auth failed:", err?.message);
         }
       } else if (!isDelegated) {
-        console.log("✓ PDA on base — auth" + (needsFunding ? " + fund (1 sign prompt)" : " (may skip if cached)"));
-        await this.sessionKeys.authorize(wallet, this.baseConnection, undefined, needsFunding ? SESSION_FUND_LAMPORTS : 0);
-        console.log("✓ session authorized");
+        // If the base PDA already stores OUR session key and it's funded, the
+        // key is good to re-delegate as-is — skip the authorize popup entirely.
+        // (This is the common case after a resetSession undelegate now that we
+        // no longer rotate the key.)
+        const storedKey = existing ? this.readSessionAuthority(existing.data) : null;
+        if (storedKey && storedKey.equals(sessionKey) && !needsFunding) {
+          this.sessionKeys["authorized"] = true;
+          console.log("✓ session key already authorized on base — no prompt");
+        } else {
+          console.log("✓ PDA on base — auth" + (needsFunding ? " + fund (1 sign prompt)" : ""));
+          await this.sessionKeys.authorize(wallet, this.baseConnection, undefined, needsFunding ? SESSION_FUND_LAMPORTS : 0);
+          console.log("✓ session authorized");
+        }
       } else {
         // Delegated: the ER copy is the authoritative session state.
         // Re-authorize on the rollup only if its stored key differs from ours
@@ -1404,15 +1414,22 @@ export class OnChainMultiplayer {
       const tx = new Transaction({ recentBlockhash: blockhash, feePayer: wallet }).add(ix);
 
       const sig = await this.signAndSendViaWallet(tx);
-      // Poll the delegation record (up to ~10s) instead of confirmTransaction.
-      const landed = await this.waitForDelegation(playerPDA, 12, 800);
-      if (landed) {
-        transactionLog.markConfirmed(entry.id, sig);
-        console.log("[Multiplayer] PDA delegated to ephemeral rollup:", sig.slice(0, 12));
-        return true;
-      }
-      transactionLog.markFailed(entry.id, "delegation record not found after send");
-      return false;
+      // A signed+sent delegate on a non-delegated PDA WILL land (we control the
+      // send). Switch to the ER immediately so moves route to the rollup right
+      // away instead of dribbling onto base while the delegation record
+      // propagates — that propagation can outrun a bounded poll (especially
+      // right after a resetSession undelegate), which used to leave the client
+      // stuck on "base / dropped" even though the delegate had landed. Confirm
+      // the record in the BACKGROUND for the log status (generous window).
+      this.waitForDelegation(playerPDA, 20, 800).then((landed) => {
+        if (landed) {
+          transactionLog.markConfirmed(entry.id, sig);
+          console.log("[Multiplayer] PDA delegated to ephemeral rollup:", sig.slice(0, 12));
+        } else {
+          transactionLog.markFailed(entry.id, "delegation record not found after send");
+        }
+      });
+      return true;
     } catch (err: any) {
       console.error("[Multiplayer] delegate failed:", err);
       transactionLog.markFailed(entry.id, err?.message ?? "delegate failed");
@@ -1478,9 +1495,12 @@ export class OnChainMultiplayer {
       });
       transactionLog.markConfirmed(entry.id, sig);
       console.log("[Multiplayer] committed & undelegated:", sig.slice(0, 12));
-      // PDA is back on base layer — safe to rotate session key now so the next
-      // connect can re-authorize a fresh key on base layer before re-delegating.
-      this.sessionKeys.rotateKey();
+      // Do NOT rotate the session key. commit_and_undelegate commits the ER
+      // state (incl. our session_authority) back to base, so the base PDA still
+      // holds THIS key — reusing it means the next connect finds it already
+      // authorized (no re-auth popup, no funding a fresh key) and just needs the
+      // one delegate prompt. Rotating here forced an extra authorize + fund and
+      // opened an old-key/new-key window that read as InvalidSessionKey (6000).
     } catch (err: any) {
       transactionLog.markFailed(entry.id, err?.message ?? "undelegate failed");
     }
