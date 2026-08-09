@@ -400,6 +400,22 @@ export class OnChainMultiplayer {
     const displayName = this.knownPlayers.get(wallet.toBase58())?.displayName;
     const [playerPDA] = derivePlayerPDA(wallet);
 
+    // Key drift (from past session-key rotations) can leave the ER holding a
+    // session key the client no longer has. commit_and_undelegate is signed by
+    // the client's key, so a mismatch makes it silently fail — the PDA stays
+    // stuck delegated and the delegate never re-appears on reconnect. Re-auth
+    // OUR CURRENT key on the ER first: authorize_session is signed by the WALLET
+    // (has_one authority), so it lands regardless of the stale key, making the
+    // subsequent commit_and_undelegate signable. No-op (no prompt) when the key
+    // already matches.
+    try {
+      if (await this.isPdaDelegated(playerPDA)) {
+        await this.syncSessionKeyOnEr(wallet, playerPDA);
+      }
+    } catch (e: any) {
+      console.warn("[Multiplayer] resetSession key-sync skipped:", e?.message);
+    }
+
     this.disconnect();
 
     // Poll the BASE layer until ownership actually reverts to our program —
