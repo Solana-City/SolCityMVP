@@ -42,6 +42,13 @@ export class CityScene extends Phaser.Scene {
   // Debounce "entered the city" — wallet reconnects clear knownPlayers and
   // re-discover the same players, which would spam the chat on every reconnect.
   private recentJoins = new Map<string, number>();
+  // Debounce transient wallet flaps: the adapter emits disconnect→connect on
+  // auto-connect retries / re-renders. Acting on each disconnect tears the
+  // session down (commit_and_undelegate + rotateKey), and the rapid reconnect
+  // then reads the ER with a rotated key it can't match → InvalidSessionKey
+  // (6000) on every move. We delay the disconnect and cancel it if a reconnect
+  // for the same wallet arrives, so a flap never undelegates.
+  private walletFlapTimer: ReturnType<typeof setTimeout> | null = null;
   private currentDirection: Direction = "down";
   private idleDelay = 0;
   // Footstep dust — kicked up behind the feet while walking, ramping in
@@ -501,6 +508,10 @@ export class CityScene extends Phaser.Scene {
 
     // Listen for wallet connection from React to start on-chain session
     this.game.events.on("wallet:connected", async (walletAddress: string) => {
+      // A reconnect cancels any pending flap-disconnect for this wallet.
+      if (this.walletFlapTimer) { clearTimeout(this.walletFlapTimer); this.walletFlapTimer = null; }
+      // Ignore re-fires for a wallet we're already connected to (adapter flaps).
+      if (this.network.connected && this.walletAddress === walletAddress) return;
       try {
         this.walletAddress = walletAddress;
         const { PublicKey } = await import("@solana/web3.js");
@@ -542,8 +553,16 @@ export class CityScene extends Phaser.Scene {
     });
 
     this.game.events.on("wallet:disconnected", () => {
-      this.network.disconnect();
-      this.chat.addSystemMessage("Session ended");
+      // Debounce: a transient flap fires disconnect then connect right after.
+      // Wait; if a reconnect cancels this, the session is never torn down (no
+      // undelegate/rotate, so no 6000). Only a real disconnect proceeds.
+      if (this.walletFlapTimer) return;
+      this.walletFlapTimer = setTimeout(() => {
+        this.walletFlapTimer = null;
+        if (!this.network.connected) return;
+        this.network.disconnect();
+        this.chat.addSystemMessage("Session ended");
+      }, 1200);
     });
 
     // Record on-chain when the player completes a swap/transfer/bounty.
