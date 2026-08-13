@@ -1,6 +1,5 @@
 import {
   Connection,
-  ComputeBudgetProgram,
   PublicKey,
   SystemProgram,
   Transaction,
@@ -1022,25 +1021,44 @@ export class OnChainMultiplayer {
       const needsFunding = sessionBalance < 500_000;
 
       if (!existing) {
-        // Fresh player: ONE signature does init + authorize + (fund) + delegate,
-        // so connect prompts the wallet ONCE at session start and Phantom can
-        // preview the cost (the new PlayerState account's rent shows up).
-        console.log("… new player — init + authorize + delegate (1 sign prompt)");
-        const res = await this.enterEphemeralRollup(wallet, sessionKey, name, needsFunding);
-        pdaReady = res.pdaReady;
-        this.useEphemeral = res.delegated;
+        console.log("… new player — init + auth" + (needsFunding ? " + fund" : "") + " (1 sign prompt)");
+        // Logged + confirmed by POLLING the PDA (confirmTransaction's router WS
+        // is unreliable). Without this the init failure was invisible — no log
+        // entry at all — while every later ix failed 3012 on the missing PDA.
+        const initEntry = transactionLog.record({
+          kind: "init", layer: "base",
+          label: "Initialize player + session", status: "pending",
+        });
+        try {
+          const { blockhash } = await this.baseRpcWithRetry(() => this.baseConnection.getLatestBlockhash());
+          const tx = new Transaction({ recentBlockhash: blockhash, feePayer: wallet })
+            .add(buildInitializePlayerIx(wallet, name))
+            .add(buildAuthorizeSessionIx(wallet, sessionKey));
+          if (needsFunding) {
+            tx.add(SystemProgram.transfer({ fromPubkey: wallet, toPubkey: sessionKey, lamports: SESSION_FUND_LAMPORTS }));
+          }
+          const sig = await this.signAndSendViaWallet(tx);
+          pdaReady = await this.waitForAccount(playerPDA, 12, 800);
+          if (pdaReady) {
+            this.sessionKeys["authorized"] = true;
+            transactionLog.markConfirmed(initEntry.id, sig);
+            console.log("✓ initialized + authorized:", sig.slice(0, 12));
+          } else {
+            transactionLog.markFailed(initEntry.id, "player PDA not found after send — init did not land");
+            console.warn("✗ init sent but PDA never appeared:", sig.slice(0, 12));
+          }
+        } catch (err: any) {
+          transactionLog.markFailed(initEntry.id, err?.message ?? "init failed");
+          console.warn("✗ init/auth failed:", err?.message);
+        }
       } else if (!isDelegated) {
-        // Returning but undelegated (e.g. after reset): ONE signature =
-        // authorize + (fund) + delegate.
-        console.log("… PDA on base — authorize + delegate (1 sign prompt)");
-        const res = await this.enterEphemeralRollup(wallet, sessionKey, null, needsFunding);
-        pdaReady = true;
-        this.useEphemeral = res.delegated;
+        console.log("✓ PDA on base — auth" + (needsFunding ? " + fund (1 sign prompt)" : " (may skip if cached)"));
+        await this.sessionKeys.authorize(wallet, this.baseConnection, undefined, needsFunding ? SESSION_FUND_LAMPORTS : 0);
+        console.log("✓ session authorized");
       } else {
-        // Already delegated: the ER copy is authoritative. Re-authorize the
-        // session key on the rollup only if it drifted (no prompt when in sync),
-        // and top up funding if needed.
-        pdaReady = true;
+        // Delegated: the ER copy is the authoritative session state.
+        // Re-authorize on the rollup only if its stored key differs from ours
+        // — when in sync this whole branch needs no wallet prompt.
         await this.syncSessionKeyOnEr(wallet, playerPDA);
         if (needsFunding) {
           console.log("… funding session key (1 sign prompt)");
@@ -1050,17 +1068,33 @@ export class OnChainMultiplayer {
           const sig = await this.signAndSendViaWallet(fundTx);
           await this.confirmReal(this.baseConnection, sig);
         }
-        this.useEphemeral = true;
       }
     } catch (err: any) {
-      console.warn("✗ connect/delegate failed:", err?.message);
+      console.warn("✗ init/auth failed:", err?.message);
+    }
+
+    // Delegate or reuse delegation so position writes go to the ephemeral rollup.
+    try {
+      if (!pdaReady) {
+        console.warn("○ delegation skipped — player PDA not initialized");
+        this.useEphemeral = false;
+      } else if (!isDelegated) {
+        console.log("… delegating PDA to ephemeral rollup (1 sign prompt)");
+        this.useEphemeral = await this.delegateToEphemeral(wallet);
+      } else {
+        this.useEphemeral = true;
+        console.log("✓ already delegated — using ephemeral rollup");
+      }
+    } catch (err: any) {
+      console.warn("○ delegation skipped:", err?.message);
+      this.useEphemeral = false;
     }
 
     // A delegated PDA can ONLY be written on the ER — a base write always fails
     // with AccountOwnedByWrongProgram (custom 3007). If it's delegated on-chain
-    // (per the delegation record) but the branch above didn't flip us, force ER.
+    // (per the delegation record), force ER regardless of the branch above.
     try {
-      if (!this.useEphemeral && pdaReady && await this.isPdaDelegated(playerPDA)) {
+      if (!this.useEphemeral && await this.isPdaDelegated(playerPDA)) {
         console.log("✓ PDA delegated on-chain — forcing ER writes (base would 3007)");
         this.useEphemeral = true;
       }
@@ -1305,13 +1339,6 @@ export class OnChainMultiplayer {
 
     if (erSession && erSession.equals(sessionKey)) {
       this.sessionKeys["authorized"] = true;
-      // Transparency: the PDA is already delegated and our key matches, so there
-      // is no new delegate tx — surface that we're reusing the live delegation
-      // so the log is never silent about the ER on a resume.
-      transactionLog.record({
-        kind: "delegate", layer: "ephemeral",
-        label: "ER delegation active (reused)", status: "confirmed",
-      });
       console.log("✓ ER session key in sync — no prompt needed");
       return;
     }
@@ -1320,96 +1347,61 @@ export class OnChainMultiplayer {
       `… ER session key ${erSession ? `stale (${erSession.toBase58().slice(0, 8)}… on ER)` : "unreadable"}` +
       " — re-authorizing on the rollup (1 sign prompt)"
     );
-    // Log the re-authorization as a first-class on-chain tx so the ER connection
-    // step is transparent even when there's no fresh delegate (already delegated).
-    const entry = transactionLog.record({
-      kind: "delegate", layer: "ephemeral",
-      label: "Re-authorize session → Ephemeral Rollup", status: "pending",
+    const ix = buildAuthorizeSessionIx(wallet, sessionKey);
+    const { blockhash } = await OnChainMultiplayer.withTimeout(
+      this.ephemeralConnection.getLatestBlockhash(), 5_000
+    );
+    const tx = new Transaction({ recentBlockhash: blockhash, feePayer: wallet }).add(ix);
+    const signed = await this.requestWalletSignOnly(tx);
+    const sig = await this.ephemeralConnection.sendRawTransaction(signed.serialize(), {
+      skipPreflight: true,
     });
-    try {
-      const ix = buildAuthorizeSessionIx(wallet, sessionKey);
-      const { blockhash } = await OnChainMultiplayer.withTimeout(
-        this.ephemeralConnection.getLatestBlockhash(), 5_000
-      );
-      const tx = new Transaction({ recentBlockhash: blockhash, feePayer: wallet }).add(ix);
-      const signed = await this.requestWalletSignOnly(tx);
-      const sig = await this.ephemeralConnection.sendRawTransaction(signed.serialize(), {
-        skipPreflight: true,
-      });
 
-      // Confirm by RE-READING the ER PDA's stored key — `getSignatureStatuses`
-      // on the rollup is unreliable (it prunes fast), which left this entry
-      // stuck yellow waiting for a status that never came. The authority equal
-      // to ours is the ground truth that the re-auth landed.
-      this.sessionKeys["authorized"] = true;
-      for (const delayMs of [700, 1000, 1500, 2500]) {
-        await new Promise(r => setTimeout(r, delayMs));
-        try {
-          const info = await this.ephemeralConnection.getAccountInfo(playerPDA);
-          const cur = info ? this.readSessionAuthority(info.data) : null;
-          if (cur && cur.equals(sessionKey)) {
-            transactionLog.markConfirmed(entry.id, sig);
-            console.log("✓ session key re-authorized on ER:", sig.slice(0, 12));
-            return;
-          }
-        } catch { /* transient ER read — keep polling */ }
+    // Verify it landed — a silent drop here would leave every subsequent
+    // move failing with InvalidSessionKey again.
+    for (const delayMs of [800, 1500, 3000]) {
+      await new Promise(r => setTimeout(r, delayMs));
+      const st = await this.ephemeralConnection.getSignatureStatuses([sig]);
+      const s = st?.value?.[0];
+      if (s) {
+        if (s.err) throw new Error(`ER authorize failed: ${JSON.stringify(s.err)}`);
+        this.sessionKeys["authorized"] = true;
+        console.log("✓ session key re-authorized on ER:", sig.slice(0, 12));
+        return;
       }
-      // Sent but not yet observed — the tx was accepted, so keep it confirmed
-      // rather than a false failure; a genuine miss surfaces as move 6000s.
-      transactionLog.markConfirmed(entry.id, sig);
-      console.warn("[Multiplayer] re-auth sent, ER authority not yet observed:", sig.slice(0, 12));
-    } catch (err: any) {
-      transactionLog.markFailed(entry.id, err?.message ?? "re-authorize failed");
-      throw err;
     }
+    throw new Error("ER authorize dropped — no status after 5s");
   }
 
   /**
-   * One-signature "enter the Ephemeral Rollup". Builds a SINGLE base tx that,
-   * for a fresh player, initializes + authorizes the session key, optionally
-   * funds it, and delegates the PDA — all in one wallet prompt at session start.
-   * Bundling means Phantom simulates the whole thing and PREVIEWS the cost (the
-   * new PlayerState account's rent is visible), instead of a bare sign-only
-   * delegate it can't estimate. `initName` null = the PDA already exists (just
-   * authorize + delegate). Confirmation is by POLLING the delegation record —
-   * the router's WS confirm is unreliable, and a delegated PDA is proven by its
-   * record existing. Returns whether it landed.
+   * Delegates the player PDA to the ER. Returns true once the delegation is
+   * confirmed on-chain (its delegation record exists) — getSignatureStatuses on
+   * the router is unreliable, so a delegated PDA is proven by the record.
    */
-  private async enterEphemeralRollup(
-    wallet: PublicKey, sessionKey: PublicKey,
-    initName: string | null, fund: boolean,
-  ): Promise<{ delegated: boolean; pdaReady: boolean }> {
+  private async delegateToEphemeral(wallet: PublicKey): Promise<boolean> {
     const [playerPDA] = derivePlayerPDA(wallet);
     const entry = transactionLog.record({
       kind: "delegate", layer: "base",
-      label: initName ? "Enter city → Ephemeral Rollup" : "Delegate PDA → Ephemeral Rollup",
-      status: "pending",
+      label: "Delegate PDA → Ephemeral Rollup", status: "pending",
     });
     try {
+      const ix = buildDelegateIx(wallet);
       const { blockhash } = await this.baseRpcWithRetry(() => this.baseConnection.getLatestBlockhash());
-      const tx = new Transaction({ recentBlockhash: blockhash, feePayer: wallet })
-        // The delegate CPI (buffer dance + delegation-program CPI) is compute-
-        // heavy; bump the limit so the combined tx never trips the 200k default.
-        .add(ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }));
-      if (initName) tx.add(buildInitializePlayerIx(wallet, initName));
-      tx.add(buildAuthorizeSessionIx(wallet, sessionKey));
-      if (fund) tx.add(SystemProgram.transfer({ fromPubkey: wallet, toPubkey: sessionKey, lamports: 5_000_000 }));
-      tx.add(buildDelegateIx(wallet));
+      const tx = new Transaction({ recentBlockhash: blockhash, feePayer: wallet }).add(ix);
 
       const sig = await this.signAndSendViaWallet(tx);
-      this.sessionKeys["authorized"] = true;
-      const delegated = await this.waitForDelegation(playerPDA, 12, 800);
-      if (delegated) {
+      const landed = await this.waitForDelegation(playerPDA, 12, 800);
+      if (landed) {
         transactionLog.markConfirmed(entry.id, sig);
-        console.log("[Multiplayer] entered ER (one-tx init+delegate):", sig.slice(0, 12));
-      } else {
-        transactionLog.markFailed(entry.id, "delegation record not found after send");
+        console.log("[Multiplayer] PDA delegated to ephemeral rollup:", sig.slice(0, 12));
+        return true;
       }
-      return { delegated, pdaReady: delegated };
+      transactionLog.markFailed(entry.id, "delegation record not found after send");
+      return false;
     } catch (err: any) {
-      console.error("[Multiplayer] enter-ER failed:", err);
-      transactionLog.markFailed(entry.id, err?.message ?? "enter-ER failed");
-      return { delegated: false, pdaReady: false };
+      console.error("[Multiplayer] delegate failed:", err);
+      transactionLog.markFailed(entry.id, err?.message ?? "delegate failed");
+      return false;
     }
   }
 
