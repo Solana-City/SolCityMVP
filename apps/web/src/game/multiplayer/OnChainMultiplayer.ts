@@ -16,18 +16,32 @@ const CHAT_PREFIX = "solcity-chat:";
 const LOOK_PREFIX = "solcity-look:"; // solcity-look:<wallet>:<k=v|k=v...>
 const EXPR_PREFIX = "solcity-expr:"; // solcity-expr:<wallet>:<textureKey>
 
-// Loadout is encoded pipe/eq (NO quotes) for the memo channel — the memo log is
-// `Memo (len N): "<text>"`, and other apps on devnet avoid quotes in the payload
-// for exactly this reason. JSON would embed quotes and risk log-escaping.
+// Loadout is encoded pipe/eq (NO quotes) — matches the on-chain PlayerState
+// `loadout` String, capped at #[max_len(120)]. Category KEYS are abbreviated to
+// one char so a FULL outfit (all 8 layers, incl. hat/accessory/back) fits under
+// 120 — otherwise the last-encoded layer (hat) was truncated, which is exactly
+// why remote players showed up without their hats. Decode accepts both the
+// short keys and the old full-word keys so pre-existing loadouts still render.
+const LOADOUT_KEY_ABBR: Record<string, string> = {
+  skin: "s", hair: "h", eyesFace: "e", tshirt: "t",
+  pants: "p", hat: "H", accessory: "a", back: "b",
+};
+const LOADOUT_ABBR_KEY: Record<string, string> = Object.fromEntries(
+  Object.entries(LOADOUT_KEY_ABBR).map(([full, abbr]) => [abbr, full]),
+);
 function encodeLoadout(l: Loadout): string {
-  return Object.entries(l).filter(([, v]) => v).map(([k, v]) => `${k}=${v}`).join("|");
+  return Object.entries(l)
+    .filter(([, v]) => v)
+    .map(([k, v]) => `${LOADOUT_KEY_ABBR[k] ?? k}=${v}`)
+    .join("|");
 }
 function decodeLoadout(s: string): Loadout {
   const out: Loadout = {};
   for (const part of s.split("|")) {
     const i = part.indexOf("=");
     if (i === -1) continue;
-    const k = part.slice(0, i), v = part.slice(i + 1);
+    const rawK = part.slice(0, i), v = part.slice(i + 1);
+    const k = LOADOUT_ABBR_KEY[rawK] ?? rawK; // short key → full; full stays full
     if (k && v) (out as Record<string, string>)[k] = v;
   }
   return out;
@@ -1463,9 +1477,12 @@ export class OnChainMultiplayer {
       });
       transactionLog.markConfirmed(entry.id, sig);
       console.log("[Multiplayer] committed & undelegated:", sig.slice(0, 12));
-      // PDA is back on base layer — safe to rotate session key now so the next
-      // connect can re-authorize a fresh key on base layer before re-delegating.
-      this.sessionKeys.rotateKey();
+      // Do NOT rotate the session key. Rotating meant the NEXT connect signed
+      // moves with a fresh key while the ER copy still held the old one (the
+      // undelegate is async) → InvalidSessionKey (6000) on every move, so that
+      // device's writes never landed and it stayed invisible to peers. Keeping
+      // ONE stable key means it already matches (or a single re-authorize syncs
+      // it), and moves land — restoring two-way visibility.
     } catch (err: any) {
       transactionLog.markFailed(entry.id, err?.message ?? "undelegate failed");
     }
