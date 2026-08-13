@@ -515,7 +515,13 @@ export class CityScene extends Phaser.Scene {
       // A reconnect cancels any pending flap-disconnect for this wallet.
       if (this.walletFlapTimer) { clearTimeout(this.walletFlapTimer); this.walletFlapTimer = null; }
       // Ignore re-fires for a wallet we're already connected to (adapter flaps).
-      if (this.network.connected && this.walletAddress === walletAddress) return;
+      // The session is already live, so make sure the login gate is DOWN — a
+      // re-fire must never leave the player stuck on the spinner.
+      if (this.network.connected && this.walletAddress === walletAddress) {
+        this.sessionLocked = false;
+        this.game.events.emit("game:sessionReady");
+        return;
+      }
       // Hold the player on the login gate + block movement until the session is
       // fully established (delegation confirmed). This prevents moves from being
       // signed/sent before the PDA is delegated (which would fail or log as sim).
