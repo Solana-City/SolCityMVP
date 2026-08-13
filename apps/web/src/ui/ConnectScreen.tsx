@@ -33,6 +33,43 @@ export default function ConnectScreen({
   const preparing = connected;
 
   return (
+    <GateView preparing={preparing} openModal={openModal} onGuest={() => setDismissed(true)} />
+  );
+}
+
+// Staged spinner copy so a multi-second session setup feels alive rather than
+// frozen. Times are approximate to the real connect() flow (init → authorize →
+// delegate → confirm); the last message holds until the gate releases.
+const PREPARING_STAGES: { at: number; label: string }[] = [
+  { at: 0,     label: "Connecting wallet…" },
+  { at: 2500,  label: "Creating your player…" },
+  { at: 6000,  label: "Delegating to the rollup…" },
+  { at: 10500, label: "Almost there — confirming…" },
+];
+
+function GateView({
+  preparing, openModal, onGuest,
+}: {
+  preparing: boolean; openModal: () => void; onGuest: () => void;
+}) {
+  const [stage, setStage] = useState(0);
+
+  // Advance the spinner copy while the session is being established.
+  useEffect(() => {
+    if (!preparing) { setStage(0); return; }
+    const start = Date.now();
+    const tick = setInterval(() => {
+      const elapsed = Date.now() - start;
+      let next = 0;
+      for (let i = 0; i < PREPARING_STAGES.length; i++) {
+        if (elapsed >= PREPARING_STAGES[i].at) next = i;
+      }
+      setStage(next);
+    }, 400);
+    return () => clearInterval(tick);
+  }, [preparing]);
+
+  return (
     <div
       style={{
         position: "fixed",
@@ -122,8 +159,10 @@ export default function ConnectScreen({
               letterSpacing: 1,
               textAlign: "center",
               lineHeight: 1.6,
+              minHeight: 14,
+              transition: "opacity 0.2s",
             }}>
-              PREPARING SESSION…
+              {PREPARING_STAGES[stage].label}
             </div>
             <div style={{
               fontFamily: '"Press Start 2P", monospace',
@@ -134,7 +173,7 @@ export default function ConnectScreen({
               lineHeight: 1.8,
               maxWidth: 260,
             }}>
-              Confirming delegation on-chain. Sign the prompts to enter the world.
+              Setting up your on-chain session. Sign the prompts to enter.
             </div>
           </div>
         ) : (
@@ -171,7 +210,7 @@ export default function ConnectScreen({
             </button>
 
             <button
-              onClick={() => setDismissed(true)}
+              onClick={onGuest}
               style={{
                 fontFamily: '"Press Start 2P", monospace',
                 fontSize: 9,
