@@ -4,7 +4,13 @@ import { useWallet } from "@solana/wallet-adapter-react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import { useCallback, useEffect, useState } from "react";
 
-export default function ConnectScreen() {
+export default function ConnectScreen({
+  sessionPhase = "idle",
+}: {
+  /** Login-gate phase driven by CityScene: "connecting" holds this screen up
+      (with a spinner) until the on-chain session is established. */
+  sessionPhase?: "idle" | "connecting" | "ready";
+}) {
   const { connected } = useWallet();
   const { setVisible } = useWalletModal();
   const openModal = useCallback(() => setVisible(true), [setVisible]);
@@ -16,7 +22,15 @@ export default function ConnectScreen() {
     if (!connected) setDismissed(false);
   }, [connected]);
 
-  if (connected || dismissed) return null;
+  // Guest chose local mode → never gate them.
+  if (dismissed) return null;
+  // Wallet connected AND the on-chain session is fully established → enter world.
+  if (connected && sessionPhase === "ready") return null;
+
+  // Wallet connected but the session (init + delegate + confirm) is still in
+  // flight → keep the gate up with a spinner instead of the connect button, so
+  // the player can't move (and fire premature/simulation txs) before it lands.
+  const preparing = connected;
 
   return (
     <div
@@ -27,6 +41,7 @@ export default function ConnectScreen() {
         overflow: "hidden",
       }}
     >
+      <style>{`@keyframes solcity-gate-spin { to { transform: rotate(360deg); } }`}</style>
       {/* Background — full brightness, let the art breathe */}
       <div
         style={{
@@ -88,53 +103,92 @@ export default function ConnectScreen() {
           </div>
         </div>
 
-        <button
-          onClick={openModal}
-          style={{
-            fontFamily: '"Press Start 2P", monospace',
-            fontSize: 10,
-            padding: "18px 52px",
-            background: "rgba(153,69,255,0.9)",
-            color: "#fff",
-            border: "1px solid rgba(200,150,255,0.45)",
-            borderRadius: 50,
-            cursor: "pointer",
-            letterSpacing: 2,
-            width: "100%",
-            boxShadow: "0 0 28px rgba(153,69,255,0.55), 0 4px 16px rgba(0,0,0,0.4)",
-            transition: "background 0.15s, box-shadow 0.15s, transform 0.1s",
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.background = "rgba(153,69,255,1)";
-            e.currentTarget.style.boxShadow = "0 0 42px rgba(153,69,255,0.8), 0 4px 16px rgba(0,0,0,0.4)";
-            e.currentTarget.style.transform = "translateY(-2px)";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.background = "rgba(153,69,255,0.9)";
-            e.currentTarget.style.boxShadow = "0 0 28px rgba(153,69,255,0.55), 0 4px 16px rgba(0,0,0,0.4)";
-            e.currentTarget.style.transform = "translateY(0)";
-          }}
-        >
-          CONNECT WALLET
-        </button>
+        {preparing ? (
+          /* ── Session establishing: spinner, no interactive buttons ── */
+          <div style={{
+            display: "flex", flexDirection: "column", alignItems: "center", gap: 14,
+            padding: "6px 0 2px",
+          }}>
+            <div style={{
+              width: 28, height: 28, borderRadius: "50%",
+              border: "3px solid rgba(153,69,255,0.25)",
+              borderTopColor: "#14F195",
+              animation: "solcity-gate-spin 0.8s linear infinite",
+            }} />
+            <div style={{
+              fontFamily: '"Press Start 2P", monospace',
+              fontSize: 9,
+              color: "#fff",
+              letterSpacing: 1,
+              textAlign: "center",
+              lineHeight: 1.6,
+            }}>
+              PREPARING SESSION…
+            </div>
+            <div style={{
+              fontFamily: '"Press Start 2P", monospace',
+              fontSize: 7,
+              color: "rgba(180,180,255,0.6)",
+              letterSpacing: 1,
+              textAlign: "center",
+              lineHeight: 1.8,
+              maxWidth: 260,
+            }}>
+              Confirming delegation on-chain. Sign the prompts to enter the world.
+            </div>
+          </div>
+        ) : (
+          /* ── Not connected: connect + guest actions ── */
+          <>
+            <button
+              onClick={openModal}
+              style={{
+                fontFamily: '"Press Start 2P", monospace',
+                fontSize: 10,
+                padding: "18px 52px",
+                background: "rgba(153,69,255,0.9)",
+                color: "#fff",
+                border: "1px solid rgba(200,150,255,0.45)",
+                borderRadius: 50,
+                cursor: "pointer",
+                letterSpacing: 2,
+                width: "100%",
+                boxShadow: "0 0 28px rgba(153,69,255,0.55), 0 4px 16px rgba(0,0,0,0.4)",
+                transition: "background 0.15s, box-shadow 0.15s, transform 0.1s",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = "rgba(153,69,255,1)";
+                e.currentTarget.style.boxShadow = "0 0 42px rgba(153,69,255,0.8), 0 4px 16px rgba(0,0,0,0.4)";
+                e.currentTarget.style.transform = "translateY(-2px)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = "rgba(153,69,255,0.9)";
+                e.currentTarget.style.boxShadow = "0 0 28px rgba(153,69,255,0.55), 0 4px 16px rgba(0,0,0,0.4)";
+                e.currentTarget.style.transform = "translateY(0)";
+              }}
+            >
+              CONNECT WALLET
+            </button>
 
-        <button
-          onClick={() => setDismissed(true)}
-          style={{
-            fontFamily: '"Press Start 2P", monospace',
-            fontSize: 9,
-            color: "rgba(255,255,255,0.4)",
-            background: "none",
-            border: "none",
-            cursor: "pointer",
-            letterSpacing: 1,
-            marginTop: -4,
-          }}
-          onMouseEnter={(e) => { e.currentTarget.style.color = "rgba(255,255,255,0.75)"; }}
-          onMouseLeave={(e) => { e.currentTarget.style.color = "rgba(255,255,255,0.4)"; }}
-        >
-          continue as guest
-        </button>
+            <button
+              onClick={() => setDismissed(true)}
+              style={{
+                fontFamily: '"Press Start 2P", monospace',
+                fontSize: 9,
+                color: "rgba(255,255,255,0.4)",
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                letterSpacing: 1,
+                marginTop: -4,
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.color = "rgba(255,255,255,0.75)"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.color = "rgba(255,255,255,0.4)"; }}
+            >
+              continue as guest
+            </button>
+          </>
+        )}
 
         <div style={{
           fontFamily: '"Press Start 2P", monospace',

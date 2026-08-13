@@ -62,6 +62,10 @@ export class CityScene extends Phaser.Scene {
   private npcSprites: NPCSprite[] = [];
   private pedestrians!: PedestrianManager;
   private interactionBlocked = false;
+  // Locks movement while a wallet session is being established (init + delegate
+  // + confirm). Keeps the player on the login gate until moves will actually
+  // land on-chain, so no "simulation"/failing txs fire before signing.
+  private sessionLocked = false;
   private walletAddress: string | null = null;
   private profile!: ProfileManager;
   private touchDx = 0;
@@ -512,6 +516,11 @@ export class CityScene extends Phaser.Scene {
       if (this.walletFlapTimer) { clearTimeout(this.walletFlapTimer); this.walletFlapTimer = null; }
       // Ignore re-fires for a wallet we're already connected to (adapter flaps).
       if (this.network.connected && this.walletAddress === walletAddress) return;
+      // Hold the player on the login gate + block movement until the session is
+      // fully established (delegation confirmed). This prevents moves from being
+      // signed/sent before the PDA is delegated (which would fail or log as sim).
+      this.sessionLocked = true;
+      this.game.events.emit("game:sessionConnecting");
       try {
         this.walletAddress = walletAddress;
         const { PublicKey } = await import("@solana/web3.js");
@@ -549,6 +558,11 @@ export class CityScene extends Phaser.Scene {
       } catch (err: any) {
         console.error("[CityScene] session error:", err);
         this.chat.addSystemMessage("Session offline (local mode)");
+      } finally {
+        // Release the gate whether the session came up on-chain or fell back to
+        // local mode — never trap the player on the login screen.
+        this.sessionLocked = false;
+        this.game.events.emit("game:sessionReady");
       }
     });
 
@@ -645,7 +659,7 @@ export class CityScene extends Phaser.Scene {
   }
 
   update(): void {
-    if (this.chatInputActive || this.interactionBlocked) {
+    if (this.chatInputActive || this.interactionBlocked || this.sessionLocked) {
       this.playerBody.setVelocity(0);
       this.avatar.idle();
       // Still check NPC proximity for prompt display even when blocked

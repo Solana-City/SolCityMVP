@@ -57,6 +57,10 @@ export default function Home() {
   const [profileOpen, setProfileOpen] = useState(false);
   const [wardrobeOpen, setWardrobeOpen] = useState(false);
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
+  // Login-gate phase: "connecting" holds the ConnectScreen up (with a spinner)
+  // from wallet-connect until the on-chain session is established, so the player
+  // never enters the world before delegation confirms.
+  const [sessionPhase, setSessionPhase] = useState<"idle" | "connecting" | "ready">("idle");
   const [logOpen, setLogOpen] = useState(false);
   const [mobilePanel, setMobilePanel] = useState<"hunt" | "quests" | null>(null);
   // Wallet address that connected before the Phaser game was ready — replayed once game loads.
@@ -170,8 +174,23 @@ export default function Home() {
     return () => window.removeEventListener("keydown", handler);
   }, []);
 
+  // Session lifecycle from CityScene drives the login gate.
+  useEffect(() => {
+    if (!game) return;
+    const onConnecting = () => setSessionPhase("connecting");
+    const onReady = () => setSessionPhase("ready");
+    game.events.on("game:sessionConnecting", onConnecting);
+    game.events.on("game:sessionReady", onReady);
+    return () => {
+      game.events.off("game:sessionConnecting", onConnecting);
+      game.events.off("game:sessionReady", onReady);
+    };
+  }, [game]);
+
   const handleWalletChange = useCallback((wallet: string | null) => {
     setWalletAddress(wallet);
+    // Reset the gate when the wallet drops so a fresh connect re-arms it.
+    if (!wallet) setSessionPhase("idle");
     if (!game) {
       // Game still loading — store and replay once it's ready
       pendingWalletRef.current = wallet;
@@ -205,7 +224,7 @@ export default function Home() {
         <MwaRegistration />
         {/* Headless bridge so Phaser can request wallet signatures */}
         <WalletSignBridge />
-        <ConnectScreen />
+        <ConnectScreen sessionPhase={sessionPhase} />
         <main className="w-screen app-viewport relative">
           <PhaserGame onGameReady={setGame} />
 
