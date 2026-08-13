@@ -1305,6 +1305,13 @@ export class OnChainMultiplayer {
 
     if (erSession && erSession.equals(sessionKey)) {
       this.sessionKeys["authorized"] = true;
+      // Transparency: the PDA is already delegated and our key matches, so there
+      // is no new delegate tx — surface that we're reusing the live delegation
+      // so the log is never silent about the ER on a resume.
+      transactionLog.record({
+        kind: "delegate", layer: "ephemeral",
+        label: "ER delegation active (reused)", status: "confirmed",
+      });
       console.log("✓ ER session key in sync — no prompt needed");
       return;
     }
@@ -1313,30 +1320,42 @@ export class OnChainMultiplayer {
       `… ER session key ${erSession ? `stale (${erSession.toBase58().slice(0, 8)}… on ER)` : "unreadable"}` +
       " — re-authorizing on the rollup (1 sign prompt)"
     );
-    const ix = buildAuthorizeSessionIx(wallet, sessionKey);
-    const { blockhash } = await OnChainMultiplayer.withTimeout(
-      this.ephemeralConnection.getLatestBlockhash(), 5_000
-    );
-    const tx = new Transaction({ recentBlockhash: blockhash, feePayer: wallet }).add(ix);
-    const signed = await this.requestWalletSignOnly(tx);
-    const sig = await this.ephemeralConnection.sendRawTransaction(signed.serialize(), {
-      skipPreflight: true,
+    // Log the re-authorization as a first-class on-chain tx so the ER connection
+    // step is transparent even when there's no fresh delegate (already delegated).
+    const entry = transactionLog.record({
+      kind: "delegate", layer: "ephemeral",
+      label: "Re-authorize session → Ephemeral Rollup", status: "pending",
     });
+    try {
+      const ix = buildAuthorizeSessionIx(wallet, sessionKey);
+      const { blockhash } = await OnChainMultiplayer.withTimeout(
+        this.ephemeralConnection.getLatestBlockhash(), 5_000
+      );
+      const tx = new Transaction({ recentBlockhash: blockhash, feePayer: wallet }).add(ix);
+      const signed = await this.requestWalletSignOnly(tx);
+      const sig = await this.ephemeralConnection.sendRawTransaction(signed.serialize(), {
+        skipPreflight: true,
+      });
 
-    // Verify it landed — a silent drop here would leave every subsequent
-    // move failing with InvalidSessionKey again.
-    for (const delayMs of [800, 1500, 3000]) {
-      await new Promise(r => setTimeout(r, delayMs));
-      const st = await this.ephemeralConnection.getSignatureStatuses([sig]);
-      const s = st?.value?.[0];
-      if (s) {
-        if (s.err) throw new Error(`ER authorize failed: ${JSON.stringify(s.err)}`);
-        this.sessionKeys["authorized"] = true;
-        console.log("✓ session key re-authorized on ER:", sig.slice(0, 12));
-        return;
+      // Verify it landed — a silent drop here would leave every subsequent
+      // move failing with InvalidSessionKey again.
+      for (const delayMs of [800, 1500, 3000]) {
+        await new Promise(r => setTimeout(r, delayMs));
+        const st = await this.ephemeralConnection.getSignatureStatuses([sig]);
+        const s = st?.value?.[0];
+        if (s) {
+          if (s.err) throw new Error(`ER authorize failed: ${JSON.stringify(s.err)}`);
+          this.sessionKeys["authorized"] = true;
+          transactionLog.markConfirmed(entry.id, sig);
+          console.log("✓ session key re-authorized on ER:", sig.slice(0, 12));
+          return;
+        }
       }
+      throw new Error("ER authorize dropped — no status after 5s");
+    } catch (err: any) {
+      transactionLog.markFailed(entry.id, err?.message ?? "re-authorize failed");
+      throw err;
     }
-    throw new Error("ER authorize dropped — no status after 5s");
   }
 
   /**
