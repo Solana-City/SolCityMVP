@@ -521,6 +521,15 @@ export class CityScene extends Phaser.Scene {
       // signed/sent before the PDA is delegated (which would fail or log as sim).
       this.sessionLocked = true;
       this.game.events.emit("game:sessionConnecting");
+      // Watchdog: never trap the player on the gate. If connect() stalls (RPC
+      // hang, wallet on the wrong network, etc.), release into the world anyway
+      // after 18s so they're not stuck staring at the spinner.
+      const gateWatchdog = setTimeout(() => {
+        if (!this.sessionLocked) return;
+        this.sessionLocked = false;
+        this.game.events.emit("game:sessionReady");
+        this.chat.addSystemMessage("Entering — session still finalizing in background.");
+      }, 18_000);
       try {
         this.walletAddress = walletAddress;
         const { PublicKey } = await import("@solana/web3.js");
@@ -561,6 +570,7 @@ export class CityScene extends Phaser.Scene {
       } finally {
         // Release the gate whether the session came up on-chain or fell back to
         // local mode — never trap the player on the login screen.
+        clearTimeout(gateWatchdog);
         this.sessionLocked = false;
         this.game.events.emit("game:sessionReady");
       }
