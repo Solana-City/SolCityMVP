@@ -29,6 +29,13 @@ client/program layouts diverge and multiplayer breaks.
    itself onto the ER needs a `delegate_hunt` instruction. Low value (the hunt is
    ~1 write per 5-min round city-wide → negligible base cost) vs real complexity
    (a shared delegated account). Evaluate before doing.
+4. **Player names: changeable + first-come ownership.** Today the on-chain
+   `display_name` is written ONCE at `initialize_player`, defaulting to the wallet
+   short-form (`ProfileManager.setWallet` sets `displayName = "7NXk...uqbA"`), and
+   `setDisplayName` only touches localStorage — so peers always render the WALLET
+   above heads, never a chosen name. Need (a) `set_display_name_session` to change
+   the name post-init and propagate it via the ER, and (b) a `NameClaim` registry
+   PDA so a name is owned first-come (a second wallet can't take it).
 
 ---
 
@@ -144,8 +151,81 @@ run on the ER and reads come off the ER poll. **Evaluate whether it's worth the
 complexity** (shared delegated account, who delegates it once, never undelegate).
 If skipped, the hunt simply stays on base — which works fine today.
 
+### Item 4 — Player names: `set_display_name_session` + `NameClaim` first-come registry
+
+Two pieces. The name change writes to the EXISTING `display_name` field on
+`PlayerState` (no size change → no seed bump — the field is already there, we're
+just making it writable post-init). The ownership guarantee is a separate small
+account seeded by the normalized name.
+
+```rust
+// Lowercase + trim the name client-side BEFORE seeding so "Alice"/"alice" collide.
+// Max 20 bytes to match PlayerState.display_name's cap.
+pub const NAME_CLAIM_SEED: &[u8] = b"name_claim";
+
+#[account]
+#[derive(InitSpace)]
+pub struct NameClaim {
+    pub owner: Pubkey,        // wallet that first claimed this name
+    #[max_len(20)]
+    pub name: String,         // the normalized name (for display / audit)
+}
+
+/// Claim a name (first-come) AND set it on the player PDA in one tx.
+/// `init` (NOT init_if_needed) on name_claim → the tx FAILS if the name PDA
+/// already exists (someone owns it), which is exactly the first-come guarantee.
+/// Session-signed + written on the ER (player PDA is delegated there).
+pub fn set_display_name_session(ctx: Context<SetDisplayNameSession>, name: String) -> Result<()> {
+    require!(name.len() <= 20 && !name.is_empty(), SolCityError::InvalidName);
+    let player = &mut ctx.accounts.player;
+    player.display_name = name.clone();
+    player.last_active = Clock::get()?.unix_timestamp;
+    let claim = &mut ctx.accounts.name_claim;
+    claim.owner = player.authority;
+    claim.name = name;
+    Ok(())
+}
+
+#[derive(Accounts)]
+#[instruction(name: String)]
+pub struct SetDisplayNameSession<'info> {
+    #[account(
+        mut,
+        seeds = [PLAYER_SEED, player.authority.as_ref()],
+        bump,
+        constraint = player.session_authority == Some(session_authority.key())
+            @ SolCityError::InvalidSessionKey,
+    )]
+    pub player: Account<'info, PlayerState>,
+    // init → fails if the name is already claimed = first-come ownership.
+    #[account(
+        init,
+        payer = session_authority,
+        space = 8 + NameClaim::INIT_SPACE,
+        seeds = [NAME_CLAIM_SEED, name.as_bytes()],
+        bump,
+    )]
+    pub name_claim: Account<'info, NameClaim>,
+    #[account(mut)]
+    pub session_authority: Signer<'info>,
+    pub system_program: Program<'info, System>,
+}
+```
+> CAVEAT — `name_claim` is a fresh account, so this tx must run where it can be
+> CREATED. If the player PDA is delegated (its ER copy is authoritative), a tx
+> that BOTH mutates `player` (ER) and inits `name_claim` (base) can't span two
+> clusters. Two clean options, decide at impl time: (a) run the whole ix on the
+> ER and let `name_claim` be an ER account too (then the registry is only visible
+> to ER readers — fine for uniqueness among online players, weaker as a global
+> registry); or (b) split into `claim_name` (base, inits NameClaim, wallet- or
+> session-signed) + `set_display_name_session` (ER, just sets `player.display_name`).
+> (b) is more robust: the base NameClaim is the global source of truth, and the
+> ER name is cosmetic. Prefer (b) unless the extra tx is a problem.
+> Also add `InvalidName` to `SolCityError`.
+
 **Do NOT change `PLAYER_SEED`** unless you deliberately add a field to `PlayerState`
-(none of the recommended items above do — that's the whole point of `HuntScore`).
+(none of the recommended items above do — Item 4 reuses the existing `display_name`
+field, so no seed bump either).
 
 ---
 
@@ -181,7 +261,24 @@ Order: deploy program → verify → then push these together.
      decode `{authority, wins}`, sort desc → global leaderboard. `myScore` = our
      wallet's HuntScore.wins.
 
-5. **Verify layouts match** the deployed program before pushing (this is what broke
+5. **Player names (Item 4).**
+   - `program.ts`: `NAME_CLAIM_SEED = "name_claim"` + `deriveNameClaimPDA(normalizedName)`
+     + `interface NameClaim { owner: PublicKey; name: string }` + `decodeNameClaim`.
+   - `instructions.ts`: `DISC.setDisplayNameSession` (+ `DISC.claimName` if using
+     the split option b) + `buildSetDisplayNameSessionIx(player, sessionKey, name)`.
+   - `ProfileManager.setDisplayName`: after saving locally, fire the on-chain set
+     via `OnChainMultiplayer` (session-signed, no popup) so peers re-render the name
+     from their next poll. STOP defaulting `displayName` to the wallet in `setWallet`
+     — keep `"Citizen"` (or an empty sentinel) until the player picks a name, so the
+     nameplate shows a real name, not the address.
+   - Login/name UI: a name field (on the ConnectScreen gate or first-run ProfilePanel)
+     that calls `claim_name`; surface "name taken" when the `init` fails (the PDA
+     already exists) so the player picks another. First claimer wins.
+   - `CityScene.addRemotePlayer`: already uses `player.displayName ?? shortAddr` — once
+     names propagate it will show the real name automatically; keep `shortAddr` as the
+     fallback for players who never set one.
+
+6. **Verify layouts match** the deployed program before pushing (this is what broke
    things historically). `npx tsc --noEmit` + a quick `simulateTransaction` of the
    new ixs against the deployed program on the ephemeral node (the technique that
    cracked the init bug — see `project-multiplayer-transport` memory).
@@ -196,6 +293,8 @@ Order: deploy program → verify → then push these together.
 - [ ] Find a citizen → HuntScore.wins +1 (NOT score +100/+1); log shows it.
 - [ ] Leaderboard shows the SAME numbers on 2 devices (truly global/on-chain).
 - [ ] NPC swap/transfer/bounty records: no 2nd wallet popup; log entry appears.
+- [ ] Set a name → it shows above YOUR head on the OTHER device (not the wallet).
+- [ ] A 2nd wallet trying to claim the SAME name is rejected ("name taken").
 - [ ] Full cross-device multiplayer still green (compare to Parabéns 2.0).
 
 ---
