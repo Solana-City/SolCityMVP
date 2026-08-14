@@ -261,11 +261,12 @@ export class CityScene extends Phaser.Scene {
     this.physics.world.setBounds(boundsX, boundsY, map.widthInPixels, map.heightInPixels);
     this.cameras.main.setBounds(boundsX, boundsY, map.widthInPixels, map.heightInPixels);
 
-    // "YOU" label — same visual weight as NPC names for consistency.
-    const youLabel = this.add.text(0, -38, "YOU", {
-      fontSize: "8px", fontFamily: '"Press Start 2P", monospace',
+    // "YOU" label — small and tucked just above the head so it reads as a
+    // nameplate, not a banner.
+    const youLabel = this.add.text(0, -30, "YOU", {
+      fontSize: "6px", fontFamily: '"Press Start 2P", monospace',
       color: "#ffffff", align: "center",
-      resolution: 2,
+      resolution: 3,
       stroke: "#0a0a1e",
       strokeThickness: 2,
     }).setOrigin(0.5, 1);
@@ -913,10 +914,10 @@ export class CityScene extends Phaser.Scene {
     const shortAddr = `${wallet.slice(0, 4)}…${wallet.slice(-4)}`;
     const displayName = player.displayName ?? shortAddr;
 
-    const label = this.add.text(0, -38, displayName, {
-      fontSize: "7px", fontFamily: '"Press Start 2P", monospace',
+    const label = this.add.text(0, -30, displayName, {
+      fontSize: "6px", fontFamily: '"Press Start 2P", monospace',
       color: "#aaaacc", align: "center",
-      resolution: 2,
+      resolution: 3,
       stroke: "#0a0a1e",
       strokeThickness: 2,
     }).setOrigin(0.5, 1);
