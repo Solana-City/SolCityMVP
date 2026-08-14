@@ -83,6 +83,13 @@ const ENDPOINTS = {
   solanaDevnet: "https://api.devnet.solana.com",
 } as const;
 
+// Minimum byte length of a CURRENT-layout (player_v2) PlayerState account.
+// The v2 account is ~505 bytes (adds loadout/expression/chat over v1's 133).
+// Discovery uses this to ignore STALE pre-v2 PDAs (old seed, still delegated on
+// the ER) that would otherwise overwrite the live player and cause one-way
+// visibility. 256 sits safely between the old 133 and the current 505.
+const CURRENT_PLAYER_MIN_LEN = 256;
+
 // Shared state channel name — BroadcastChannel works across tabs
 // in the same browser origin. Provides instant multi-tab multiplayer
 // without any server, perfect for live demo.
@@ -1175,6 +1182,13 @@ export class OnChainMultiplayer {
       console.log(`[Multiplayer] ER getProgramAccounts: ${accounts.length} online player(s)`);
       let added = 0;
       for (const { pubkey, account } of accounts) {
+        // Skip STALE duplicate PDAs from an older seed still delegated on the ER.
+        // The current PlayerState (player_v2, with loadout/expr/chat) is ~505 bytes;
+        // pre-v2 accounts are 133/60 bytes. Both decode under the same `authority`,
+        // so a stale short account would OVERWRITE the live one in knownPlayers and
+        // strand that wallet at a frozen position (one-way visibility). Only the
+        // current-layout account is a real, live player.
+        if (account.data.length < CURRENT_PLAYER_MIN_LEN) continue;
         const before = this.knownPlayers.size;
         this.decodeAndUpdatePlayer(pubkey.toBase58(), account.data);
         if (this.knownPlayers.size > before) added++;

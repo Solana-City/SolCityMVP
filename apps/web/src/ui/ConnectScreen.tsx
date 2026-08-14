@@ -3,6 +3,15 @@
 import { useWallet } from "@solana/wallet-adapter-react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import { useCallback, useEffect, useState } from "react";
+import { profileManager } from "@/game/config/profileManager";
+
+// A stored name that still looks like a wallet ("7NXk...uqbA") or the default
+// "Citizen" counts as "unset" — pre-fill the field empty so the player types a
+// real one. (Interim: the chosen name is written on-chain at initialize_player,
+// so it only takes effect for wallets that haven't initialized yet.)
+function isRealName(n: string): boolean {
+  return !!n && n !== "Citizen" && !/^[1-9A-HJ-NP-Za-km-z]{4}\.\.\.[1-9A-HJ-NP-Za-km-z]{4}$/.test(n);
+}
 
 export default function ConnectScreen({
   sessionPhase = "idle",
@@ -53,6 +62,18 @@ function GateView({
   preparing: boolean; openModal: () => void; onGuest: () => void;
 }) {
   const [stage, setStage] = useState(0);
+  const [name, setName] = useState(() => {
+    const stored = profileManager?.get().displayName ?? "";
+    return isRealName(stored) ? stored : "";
+  });
+
+  // Persist the chosen name to the profile as it's typed, so it's already in
+  // place when the wallet connects and initialize_player writes it on-chain.
+  const onNameChange = (v: string) => {
+    const clean = v.slice(0, 20);
+    setName(clean);
+    if (profileManager && clean.trim()) profileManager.setDisplayName(clean.trim());
+  };
 
   // Advance the spinner copy while the session is being established.
   useEffect(() => {
@@ -177,8 +198,46 @@ function GateView({
             </div>
           </div>
         ) : (
-          /* ── Not connected: connect + guest actions ── */
+          /* ── Not connected: name + connect + guest actions ── */
           <>
+            <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: 6 }}>
+              <label style={{
+                fontFamily: '"Press Start 2P", monospace',
+                fontSize: 7, color: "rgba(180,180,255,0.6)", letterSpacing: 1,
+                textAlign: "center",
+              }}>
+                YOUR NAME
+              </label>
+              <input
+                value={name}
+                onChange={(e) => onNameChange(e.target.value)}
+                maxLength={20}
+                placeholder="pick a name"
+                spellCheck={false}
+                style={{
+                  fontFamily: '"Press Start 2P", monospace',
+                  fontSize: 9,
+                  textAlign: "center",
+                  color: "#fff",
+                  background: "rgba(0,0,10,0.5)",
+                  border: "1px solid rgba(153,69,255,0.4)",
+                  borderRadius: 10,
+                  padding: "12px 10px",
+                  width: "100%",
+                  outline: "none",
+                }}
+                onFocus={(e) => { e.currentTarget.style.borderColor = "rgba(20,241,149,0.6)"; }}
+                onBlur={(e) => { e.currentTarget.style.borderColor = "rgba(153,69,255,0.4)"; }}
+              />
+              <span style={{
+                fontFamily: '"Press Start 2P", monospace',
+                fontSize: 6, color: "rgba(180,180,255,0.4)", letterSpacing: 0.5,
+                textAlign: "center", lineHeight: 1.7,
+              }}>
+                shows above your character
+              </span>
+            </div>
+
             <button
               onClick={openModal}
               style={{
