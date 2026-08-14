@@ -183,8 +183,15 @@ function waitForGameFont(onReady: () => void): void {
 
 /**
  * Replaces a loaded spritesheet texture with a canvas copy that has the
- * chroma-key color removed (set to alpha 0). Re-registers frame data so
+ * chroma-key BACKGROUND removed (set to alpha 0). Re-registers frame data so
  * Phaser treats it identically to the original spritesheet.
+ *
+ * Background is cleared by FLOOD FILL from each frame's borders — not by a flat
+ * "every pixel matching the key" pass. The key color (a pink, 215/123/186) can
+ * be identical to a pink SKIN tone, so a flat pass punched transparent holes in
+ * pink-skinned characters. The background always touches the frame edges while
+ * skin is interior (enclosed by the outline), so seeding the fill from the
+ * borders clears only the true background and leaves same-colored skin intact.
  */
 function applyChromaKey(
   scene: Phaser.Scene,
@@ -208,13 +215,47 @@ function applyChromaKey(
   const imageData = ctx.getImageData(0, 0, w, h);
   const data = imageData.data;
 
-  for (let i = 0; i < data.length; i += 4) {
+  // Clear pixel `i` (a pixel index, not a byte offset) iff it's still opaque and
+  // matches the key within tolerance; on clear, queue it so the fill spreads.
+  const stack: number[] = [];
+  const tryClear = (i: number): void => {
+    const a = i * 4;
+    if (data[a + 3] === 0) return; // already transparent → visited
     if (
-      Math.abs(data[i]     - CHROMA_R) <= CHROMA_TOLERANCE &&
-      Math.abs(data[i + 1] - CHROMA_G) <= CHROMA_TOLERANCE &&
-      Math.abs(data[i + 2] - CHROMA_B) <= CHROMA_TOLERANCE
+      Math.abs(data[a]     - CHROMA_R) <= CHROMA_TOLERANCE &&
+      Math.abs(data[a + 1] - CHROMA_G) <= CHROMA_TOLERANCE &&
+      Math.abs(data[a + 2] - CHROMA_B) <= CHROMA_TOLERANCE
     ) {
-      data[i + 3] = 0;
+      data[a + 3] = 0;
+      stack.push(i);
+    }
+  };
+
+  const cols = Math.max(1, Math.floor(w / frameWidth));
+  const rows = Math.max(1, Math.floor(h / frameHeight));
+
+  for (let fr = 0; fr < rows; fr++) {
+    for (let fc = 0; fc < cols; fc++) {
+      const x0 = fc * frameWidth;
+      const y0 = fr * frameHeight;
+      const x1 = Math.min(x0 + frameWidth, w);
+      const y1 = Math.min(y0 + frameHeight, h);
+
+      // Seed from the four borders of this frame.
+      for (let x = x0; x < x1; x++) { tryClear(y0 * w + x); tryClear((y1 - 1) * w + x); }
+      for (let y = y0; y < y1; y++) { tryClear(y * w + x0); tryClear(y * w + (x1 - 1)); }
+
+      // Flood inward, staying within this frame's bounds so a character that
+      // reaches its own edge can't let the fill bleed into a neighbour frame.
+      while (stack.length) {
+        const i = stack.pop()!;
+        const px = i % w;
+        const py = (i - px) / w;
+        if (px > x0)      tryClear(i - 1);
+        if (px < x1 - 1)  tryClear(i + 1);
+        if (py > y0)      tryClear(i - w);
+        if (py < y1 - 1)  tryClear(i + w);
+      }
     }
   }
 
