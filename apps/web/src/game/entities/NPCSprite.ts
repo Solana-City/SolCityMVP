@@ -99,11 +99,11 @@ export class NPCSprite {
     // head — doesn't have its name/prompt drawn over the top of the sprite.
     // The "!" and the prompt share the same slot (toggle visibility).
     const visualHeight = this.avatar.getVisualHeight();
-    const nameY = -(visualHeight + 6);
-    // A bit more headroom than name's own +6 (was +24) so the smaller
-    // balloon below still clears the name text at rest, not just at the
-    // top of its bounce.
-    const exclamationY = -(visualHeight + 27);
+    const nameY = -(visualHeight + 2);
+    // Tucked just above the name so the "!" sits close to both the name and
+    // the character (still clears the name text at rest, not only at the top
+    // of its bounce).
+    const exclamationY = -(visualHeight + 19);
 
     // ── Name label ───────────────────────────────────────────────────────────
     this.nameText = scene.add.text(0, nameY, def.name, {
@@ -121,16 +121,16 @@ export class NPCSprite {
     const balloonKey = `attention-${attentionVariantFor(def.color)}`;
     if (scene.textures.exists(balloonKey)) {
       this.exclamationImg = scene.add.image(0, 0, balloonKey);
-      // 64x64 source rendered at 16px world (20px reduced 20%) — still
-      // enough room for the sprite's outline, and clears the name below.
-      this.exclamationImg.setDisplaySize(16, 16);
+      // 64x64 source rendered at 12px world — a smaller badge that sits close
+      // above the name without looming over the character.
+      this.exclamationImg.setDisplaySize(12, 12);
       this.exclamation = scene.add.container(0, exclamationY, [this.exclamationImg]);
     } else {
-      // Fallback: primitive circle + "!" (texture failed to load), also
-      // reduced 20% (8 -> 6.4, 9px -> 7px) to match.
-      this.exclamationBg = scene.add.circle(0, 0, 6.4, def.color);
+      // Fallback: primitive circle + "!" (texture failed to load), scaled to
+      // match the smaller badge.
+      this.exclamationBg = scene.add.circle(0, 0, 4.8, def.color);
       this.exclamationText = scene.add.text(0, 0, "!", {
-        fontSize: "7px", fontFamily: "monospace",
+        fontSize: "6px", fontFamily: "monospace",
         color: "#ffffff", fontStyle: "bold",
         resolution: 2,
       }).setOrigin(0.5, 0.5);
