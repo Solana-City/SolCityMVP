@@ -346,22 +346,6 @@ export class OnChainMultiplayer {
     console.log(`[Multiplayer] connected as ${walletStr.slice(0, 8)}… | program=${isProgramDeployed() ? "real" : "sim"}`);
   }
 
-  /**
-   * True if the wallet's player PDA already exists on-chain (read on base).
-   * A brand-new wallet has none. The login gate uses this to decide whether to
-   * ask for a name — only an uninitialized wallet can have one written at
-   * `initialize_player` (changing an existing name needs the redeploy).
-   */
-  async isInitialized(wallet: PublicKey): Promise<boolean> {
-    const [pda] = derivePlayerPDA(wallet);
-    // Bounded — a slow/hung base RPC must never stall the login gate. On
-    // timeout the caller treats it as "initialized" (skip the name prompt).
-    const info = await OnChainMultiplayer.withTimeout(
-      this.baseConnection.getAccountInfo(pda), 5_000,
-    );
-    return info !== null;
-  }
-
   disconnect(): void {
     if (!this._connected) return;
 
