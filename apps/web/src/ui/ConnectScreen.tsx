@@ -6,19 +6,24 @@ import { useCallback, useEffect, useState } from "react";
 import { profileManager } from "@/game/config/profileManager";
 
 // A stored name that still looks like a wallet ("7NXk...uqbA") or the default
-// "Citizen" counts as "unset" — pre-fill the field empty so the player types a
-// real one. (Interim: the chosen name is written on-chain at initialize_player,
-// so it only takes effect for wallets that haven't initialized yet.)
+// "Citizen" counts as "unset" — so the name picker pre-fills empty.
 function isRealName(n: string): boolean {
   return !!n && n !== "Citizen" && !/^[1-9A-HJ-NP-Za-km-z]{4}\.\.\.[1-9A-HJ-NP-Za-km-z]{4}$/.test(n);
 }
 
 export default function ConnectScreen({
   sessionPhase = "idle",
+  namePrompt = false,
+  onNameSubmit,
 }: {
   /** Login-gate phase driven by CityScene: "connecting" holds this screen up
       (with a spinner) until the on-chain session is established. */
   sessionPhase?: "idle" | "connecting" | "ready";
+  /** CityScene detected a brand-new wallet with no name yet → ask for one
+      before the session (and initialize_player) proceeds. */
+  namePrompt?: boolean;
+  /** Called with the chosen name; CityScene resumes connecting once it fires. */
+  onNameSubmit?: (name: string) => void;
 }) {
   const { connected } = useWallet();
   const { setVisible } = useWalletModal();
@@ -34,15 +39,22 @@ export default function ConnectScreen({
   // Guest chose local mode → never gate them.
   if (dismissed) return null;
   // Wallet connected AND the on-chain session is fully established → enter world.
-  if (connected && sessionPhase === "ready") return null;
+  if (connected && sessionPhase === "ready" && !namePrompt) return null;
 
-  // Wallet connected but the session (init + delegate + confirm) is still in
-  // flight → keep the gate up with a spinner instead of the connect button, so
-  // the player can't move (and fire premature/simulation txs) before it lands.
-  const preparing = connected;
+  // Which face of the gate to show:
+  //   name      → brand-new wallet, waiting for the player to pick a name
+  //   preparing → session establishing (init + delegate + confirm) → spinner
+  //   connect   → not connected yet → connect + guest actions
+  const mode: "connect" | "name" | "preparing" =
+    namePrompt ? "name" : connected ? "preparing" : "connect";
 
   return (
-    <GateView preparing={preparing} openModal={openModal} onGuest={() => setDismissed(true)} />
+    <GateView
+      mode={mode}
+      openModal={openModal}
+      onGuest={() => setDismissed(true)}
+      onNameSubmit={onNameSubmit}
+    />
   );
 }
 
@@ -57,9 +69,12 @@ const PREPARING_STAGES: { at: number; label: string }[] = [
 ];
 
 function GateView({
-  preparing, openModal, onGuest,
+  mode, openModal, onGuest, onNameSubmit,
 }: {
-  preparing: boolean; openModal: () => void; onGuest: () => void;
+  mode: "connect" | "name" | "preparing";
+  openModal: () => void;
+  onGuest: () => void;
+  onNameSubmit?: (name: string) => void;
 }) {
   const [stage, setStage] = useState(0);
   const [name, setName] = useState(() => {
@@ -67,17 +82,15 @@ function GateView({
     return isRealName(stored) ? stored : "";
   });
 
-  // Persist the chosen name to the profile as it's typed, so it's already in
-  // place when the wallet connects and initialize_player writes it on-chain.
-  const onNameChange = (v: string) => {
-    const clean = v.slice(0, 20);
-    setName(clean);
-    if (profileManager && clean.trim()) profileManager.setDisplayName(clean.trim());
+  const submitName = () => {
+    const clean = name.trim().slice(0, 20);
+    if (!clean) return;
+    onNameSubmit?.(clean);
   };
 
   // Advance the spinner copy while the session is being established.
   useEffect(() => {
-    if (!preparing) { setStage(0); return; }
+    if (mode !== "preparing") { setStage(0); return; }
     const start = Date.now();
     const tick = setInterval(() => {
       const elapsed = Date.now() - start;
@@ -88,7 +101,7 @@ function GateView({
       setStage(next);
     }, 400);
     return () => clearInterval(tick);
-  }, [preparing]);
+  }, [mode]);
 
   return (
     <div
@@ -161,7 +174,7 @@ function GateView({
           </div>
         </div>
 
-        {preparing ? (
+        {mode === "preparing" ? (
           /* ── Session establishing: spinner, no interactive buttons ── */
           <div style={{
             display: "flex", flexDirection: "column", alignItems: "center", gap: 14,
@@ -197,8 +210,8 @@ function GateView({
               Setting up your on-chain session. Sign the prompts to enter.
             </div>
           </div>
-        ) : (
-          /* ── Not connected: name + connect + guest actions ── */
+        ) : mode === "name" ? (
+          /* ── Brand-new wallet: pick a name, then enter ── */
           <>
             <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: 6 }}>
               <label style={{
@@ -206,11 +219,20 @@ function GateView({
                 fontSize: 7, color: "rgba(180,180,255,0.6)", letterSpacing: 1,
                 textAlign: "center",
               }}>
-                YOUR NAME
+                CHOOSE YOUR NAME
               </label>
               <input
+                autoFocus
                 value={name}
-                onChange={(e) => onNameChange(e.target.value)}
+                // Phaser captures WASD / arrows / space at the window level and
+                // preventDefaults them — stop the event here so those keys type
+                // into the field instead of driving the (hidden) game.
+                onKeyDown={(e) => {
+                  e.stopPropagation();
+                  if (e.key === "Enter") submitName();
+                }}
+                onKeyUp={(e) => e.stopPropagation()}
+                onChange={(e) => setName(e.target.value.slice(0, 20))}
                 maxLength={20}
                 placeholder="pick a name"
                 spellCheck={false}
@@ -238,6 +260,30 @@ function GateView({
               </span>
             </div>
 
+            <button
+              onClick={submitName}
+              disabled={!name.trim()}
+              style={{
+                fontFamily: '"Press Start 2P", monospace',
+                fontSize: 10,
+                padding: "18px 52px",
+                background: name.trim() ? "rgba(20,241,149,0.9)" : "rgba(80,80,100,0.5)",
+                color: name.trim() ? "#052015" : "rgba(255,255,255,0.4)",
+                border: "1px solid rgba(20,241,149,0.45)",
+                borderRadius: 50,
+                cursor: name.trim() ? "pointer" : "not-allowed",
+                letterSpacing: 2,
+                width: "100%",
+                boxShadow: name.trim() ? "0 0 28px rgba(20,241,149,0.45), 0 4px 16px rgba(0,0,0,0.4)" : "none",
+                transition: "background 0.15s, box-shadow 0.15s",
+              }}
+            >
+              ENTER CITY
+            </button>
+          </>
+        ) : (
+          /* ── Not connected: connect + guest actions ── */
+          <>
             <button
               onClick={openModal}
               style={{

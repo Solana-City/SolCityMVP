@@ -527,6 +527,32 @@ export class CityScene extends Phaser.Scene {
       // fully established (delegation confirmed). This prevents moves from being
       // signed/sent before the PDA is delegated (which would fail or log as sim).
       this.sessionLocked = true;
+      this.walletAddress = walletAddress;
+      const { PublicKey } = await import("@solana/web3.js");
+      this.profile.setWallet(walletAddress);
+
+      // Name gate (interim): a BRAND-NEW wallet with no real name yet picks one
+      // now — initialize_player (inside connect) is the only chance to write the
+      // name without a redeploy. Existing wallets skip this (name can't change
+      // yet) and enter directly. Runs BEFORE the spinner + watchdog so the player
+      // can take their time typing without the gate timing out.
+      try {
+        const dn = this.profile.get().displayName;
+        const hasRealName = !!dn && dn !== "Citizen" &&
+          !/^[1-9A-HJ-NP-Za-km-z]{4}\.\.\.[1-9A-HJ-NP-Za-km-z]{4}$/.test(dn);
+        if (!hasRealName) {
+          const initialized = await this.network
+            .isInitialized(new PublicKey(walletAddress)).catch(() => true);
+          if (!initialized) {
+            const chosen = await new Promise<string>(resolve => {
+              this.game.events.emit("game:needName");
+              this.game.events.once("game:nameChosen", (n: string) => resolve((n ?? "").trim()));
+            });
+            if (chosen) this.profile.setDisplayName(chosen);
+          }
+        }
+      } catch { /* non-fatal — proceed with whatever name we have */ }
+
       this.game.events.emit("game:sessionConnecting");
       // Watchdog: never trap the player on the gate. If connect() stalls (RPC
       // hang, wallet on the wrong network, etc.), release into the world anyway
@@ -538,9 +564,6 @@ export class CityScene extends Phaser.Scene {
         this.chat.addSystemMessage("Entering — session still finalizing in background.");
       }, 18_000);
       try {
-        this.walletAddress = walletAddress;
-        const { PublicKey } = await import("@solana/web3.js");
-        this.profile.setWallet(walletAddress);
         const displayName = this.profile.get().displayName;
         this.network.updateScore(this.profile.get().score);
 

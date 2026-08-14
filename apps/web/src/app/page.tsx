@@ -61,6 +61,9 @@ export default function Home() {
   // from wallet-connect until the on-chain session is established, so the player
   // never enters the world before delegation confirms.
   const [sessionPhase, setSessionPhase] = useState<"idle" | "connecting" | "ready">("idle");
+  // CityScene asks for a name when a brand-new wallet connects without one; the
+  // gate shows the name picker and the session waits for game:nameChosen.
+  const [namePrompt, setNamePrompt] = useState(false);
   const [logOpen, setLogOpen] = useState(false);
   const [mobilePanel, setMobilePanel] = useState<"hunt" | "quests" | null>(null);
   // Wallet address that connected before the Phaser game was ready — replayed once game loads.
@@ -177,20 +180,41 @@ export default function Home() {
   // Session lifecycle from CityScene drives the login gate.
   useEffect(() => {
     if (!game) return;
-    const onConnecting = () => setSessionPhase("connecting");
-    const onReady = () => setSessionPhase("ready");
+    const onConnecting = () => { setNamePrompt(false); setSessionPhase("connecting"); };
+    const onReady = () => { setNamePrompt(false); setSessionPhase("ready"); };
+    const onNeedName = () => setNamePrompt(true);
     game.events.on("game:sessionConnecting", onConnecting);
     game.events.on("game:sessionReady", onReady);
+    game.events.on("game:needName", onNeedName);
     return () => {
       game.events.off("game:sessionConnecting", onConnecting);
       game.events.off("game:sessionReady", onReady);
+      game.events.off("game:needName", onNeedName);
     };
   }, [game]);
+
+  // Player picked a name at the gate → save it and let CityScene resume the
+  // session (its wallet:connected handler is awaiting game:nameChosen).
+  const handleNameSubmit = useCallback((name: string) => {
+    setNamePrompt(false);
+    game?.events.emit("game:nameChosen", name);
+  }, [game]);
+
+  // Hard backstop, independent of the game: if a wallet is connected and the
+  // session still hasn't reported ready after 20s (and we're not waiting on the
+  // name picker), force the gate down so the spinner can NEVER load forever —
+  // covers a missed sessionReady event or a connect() that hangs past the
+  // scene's own watchdog.
+  useEffect(() => {
+    if (!walletAddress || sessionPhase === "ready" || namePrompt) return;
+    const t = setTimeout(() => setSessionPhase("ready"), 20_000);
+    return () => clearTimeout(t);
+  }, [walletAddress, sessionPhase, namePrompt]);
 
   const handleWalletChange = useCallback((wallet: string | null) => {
     setWalletAddress(wallet);
     // Reset the gate when the wallet drops so a fresh connect re-arms it.
-    if (!wallet) setSessionPhase("idle");
+    if (!wallet) { setSessionPhase("idle"); setNamePrompt(false); }
     if (!game) {
       // Game still loading — store and replay once it's ready
       pendingWalletRef.current = wallet;
@@ -224,7 +248,7 @@ export default function Home() {
         <MwaRegistration />
         {/* Headless bridge so Phaser can request wallet signatures */}
         <WalletSignBridge />
-        <ConnectScreen sessionPhase={sessionPhase} />
+        <ConnectScreen sessionPhase={sessionPhase} namePrompt={namePrompt} onNameSubmit={handleNameSubmit} />
         <main className="w-screen app-viewport relative">
           <PhaserGame onGameReady={setGame} />
 
