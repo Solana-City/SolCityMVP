@@ -146,11 +146,12 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
     preloadBuild(playerBuild);
     preloadBuild(PRESET_BUILDS[foe]);
 
-    const fresh = createBattle(
-      playerBuild, PRESET_BUILDS[foe],
-      MATRICES.find((m) => m.id === mech)!.matrixName,
-      MATRICES.find((m) => m.id === foe)!.matrixName,
-    );
+    const fresh = createBattle(playerBuild, PRESET_BUILDS[foe], {
+      p1Name: MATRICES.find((m) => m.id === mech)!.matrixName,
+      p2Name: MATRICES.find((m) => m.id === foe)!.matrixName,
+      // Local play opens on the faster mech, so building for SPD pays off.
+      firstMove: "speed",
+    });
     stateRef.current = fresh;
     setBattle(fresh);
     setLog([`${fresh.p1.name} vs ${fresh.p2.name} — battle start.`]);

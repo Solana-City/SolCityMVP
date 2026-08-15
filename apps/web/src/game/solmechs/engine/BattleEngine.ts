@@ -31,8 +31,40 @@ const STAGE_MULTIPLIERS = [
 const MIN_STAGE = -6;
 const MAX_STAGE = 6;
 
-/** Floor on the attack/defense ratio, so a hopeless matchup still chips. */
-const MIN_DAMAGE_MULTIPLIER = 0.1;
+/**
+ * Damage tuning.
+ *
+ * Every value a designer would want to move lives here rather than inline in
+ * the formula, because changing any of them rebalances every matchup and the
+ * on-chain verifier must be kept in lockstep with whatever these are set to.
+ *
+ * The curve is `2 * atk / (atk + def)`, which sits at exactly 1.0 when the
+ * two sides are even and self-normalizes at the extremes. It replaces the
+ * raw `atk / def` quotient the Unity build used: that quotient was unbounded,
+ * so a stat-stage stack could swing damage 16x (4x on the attacker's side
+ * against 0.25x on the defender's) and every fight collapsed inside five
+ * actions. The ratio form keeps stages meaningful without letting them run
+ * away — see the clamp below.
+ */
+const BALANCE = {
+  /**
+   * Global damage scale. Move power values come straight from the Unity
+   * .assets and are left untouched; this is the single dial that sets fight
+   * length. At 0.65 a healthy limb takes 2-3 hits and a matrix 4-6, putting
+   * a full battle in the 12-20 action range.
+   */
+  DAMAGE_SCALE: 0.65,
+  /**
+   * Bounds on the attack/defense multiplier. The natural range for real
+   * builds is roughly 0.6-1.5, so these only bind once stat stages are
+   * stacked — which is the point: a +6/-6 stack should be decisive, not
+   * terminal.
+   */
+  MIN_MULTIPLIER: 0.35,
+  MAX_MULTIPLIER: 1.75,
+  /** A connecting hit always does something, however bad the matchup. */
+  MIN_DAMAGE: 1,
+} as const;
 
 export type PlayerSide = "p1" | "p2";
 
@@ -117,15 +149,42 @@ export function createUnit(name: string, build: MechBuild): MechUnit {
   };
 }
 
-export function createBattle(p1Build: MechBuild, p2Build: MechBuild, p1Name = "Player 1", p2Name = "Player 2"): BattleState {
+/**
+ * How the opening turn is decided.
+ *
+ *  - `"speed"` — higher total SPD moves first, ties to p1. This is what makes
+ *    SPD (and therefore the legs slot, whose whole job is SPD) a stat worth
+ *    building for; Unity left it decorative.
+ *  - `"p1"` / `"p2"` — an explicit winner. Wagered on-chain matches must use
+ *    this with a value derived from a commit-reveal seed: if first move came
+ *    from SPD there, the advantage would simply be buyable at build time.
+ */
+export type FirstMoveRule = "speed" | "p1" | "p2";
+
+export interface CreateBattleOptions {
+  p1Name?: string;
+  p2Name?: string;
+  /** Defaults to "speed". */
+  firstMove?: FirstMoveRule;
+}
+
+/** Ties break to p1 — arbitrary, but it must be deterministic for replay. */
+function openingSide(p1: MechUnit, p2: MechUnit, rule: FirstMoveRule): PlayerSide {
+  if (rule === "p1" || rule === "p2") return rule;
+  return p2.totalStats.SPD > p1.totalStats.SPD ? "p2" : "p1";
+}
+
+export function createBattle(
+  p1Build: MechBuild,
+  p2Build: MechBuild,
+  options: CreateBattleOptions = {},
+): BattleState {
+  const p1 = createUnit(options.p1Name ?? "Player 1", p1Build);
+  const p2 = createUnit(options.p2Name ?? "Player 2", p2Build);
   return {
-    p1: createUnit(p1Name, p1Build),
-    p2: createUnit(p2Name, p2Build),
-    // Unity's LocalBattleManager always opened on Player 1 rather than
-    // comparing SPD. Kept as-is: for a wagered on-chain match, first move is
-    // a real advantage and who gets it must be decided by the matchmaker
-    // (seed/commit), not silently by whoever built the faster mech.
-    status: { kind: "active", turn: "p1" },
+    p1,
+    p2,
+    status: { kind: "active", turn: openingSide(p1, p2, options.firstMove ?? "speed") },
     turnNumber: 1,
     history: [],
   };
@@ -187,17 +246,25 @@ export function legalTargets(defender: MechUnit): ModuleSlot[] {
 // ==================== DAMAGE ====================
 
 /**
- * Verbatim port of LocalBattleManager.CalculateDamage.
+ * Damage for one connecting hit.
  *
- *   damage = floor(moveDamage * max(0.1, effectiveATK / max(1, effectiveDEF)))
+ *   atk = totalStats[ATK|ENG] * stageMult(firing limb's stage)
+ *   def = totalStats[DEF|SYS] * stageMult(struck limb's stage)
+ *   damage = floor(movePower * clamp(2*atk/(atk+def)) * DAMAGE_SCALE)
  *
- * Two quirks are deliberate, not oversights — changing either would rebalance
- * every matchup away from the Unity build:
- *  - the offensive/defensive stats come from the *chassis base* stats, so
- *    equipped parts contribute their ATK/DEF to nothing in this formula and
- *    matter only as hit points and as move providers;
- *  - stages are read per *slot* (the firing limb's ATK, the struck limb's
- *    DEF), so buffs are local to a limb rather than global to the mech.
+ * Two things differ from the Unity original, both intentional:
+ *
+ *  - **Stats are the assembled totals, not the chassis base.** Unity read
+ *    `chassis.baseStats` here, which meant every part's ATK/DEF/ENG/SYS was
+ *    inert — a part contributed hit points and a move and nothing else, so
+ *    the whole build editor was choosing between cosmetics. Reading
+ *    `totalStats` is what makes a loadout a real decision.
+ *  - **The curve is bounded** (see BALANCE), replacing the unbounded
+ *    `atk / def` quotient.
+ *
+ * Unchanged and deliberate: stages are read per *slot* — the firing limb's
+ * offensive stage against the struck limb's defensive stage — so a debuff
+ * weakens one limb rather than the whole mech.
  */
 export function calculateDamage(
   move: MoveDefinition,
@@ -212,14 +279,21 @@ export function calculateDamage(
   const atkStat: StageableStat = physical ? "ATK" : "ENG";
   const defStat: StageableStat = physical ? "DEF" : "SYS";
 
-  const baseAtk = physical ? attacker.matrix.baseStats.ATK : attacker.matrix.baseStats.ENG;
-  const baseDef = physical ? defender.matrix.baseStats.DEF : defender.matrix.baseStats.SYS;
+  // Math.max(1, …) guards the degenerate case where a build and a -6 stage
+  // together round a stat to nothing, which would divide by zero below.
+  const atk = Math.max(1, attacker.totalStats[atkStat] * stageMultiplier(getStage(attacker, sourceSlot, atkStat)));
+  const def = Math.max(1, defender.totalStats[defStat] * stageMultiplier(getStage(defender, targetSlot, defStat)));
 
-  const effectiveAtk = baseAtk * stageMultiplier(getStage(attacker, sourceSlot, atkStat));
-  const effectiveDef = Math.max(1, baseDef * stageMultiplier(getStage(defender, targetSlot, defStat)));
+  const multiplier = clamp(
+    (2 * atk) / (atk + def),
+    BALANCE.MIN_MULTIPLIER,
+    BALANCE.MAX_MULTIPLIER,
+  );
 
-  const multiplier = Math.max(MIN_DAMAGE_MULTIPLIER, effectiveAtk / effectiveDef);
-  return Math.floor(move.baseDamage * multiplier);
+  return Math.max(
+    BALANCE.MIN_DAMAGE,
+    Math.floor(move.baseDamage * multiplier * BALANCE.DAMAGE_SCALE),
+  );
 }
 
 // ==================== RESOLUTION ====================
@@ -350,8 +424,18 @@ export function resolveAction(state: BattleState, action: BattleAction): Resolve
  * verify a submitted result: same builds + same actions must reproduce the
  * claimed winner, so a client cannot report a match it did not win.
  */
-export function replay(p1Build: MechBuild, p2Build: MechBuild, actions: BattleAction[]): BattleState {
-  let state = createBattle(p1Build, p2Build);
+export function replay(
+  p1Build: MechBuild,
+  p2Build: MechBuild,
+  actions: BattleAction[],
+  /**
+   * Must match what the original battle opened with — a replay under a
+   * different rule desynchronizes on the very first action and would reject
+   * an honest result.
+   */
+  options: CreateBattleOptions = {},
+): BattleState {
+  let state = createBattle(p1Build, p2Build, options);
   for (const action of actions) {
     state = resolveAction(state, action).state;
   }

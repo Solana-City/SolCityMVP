@@ -256,6 +256,16 @@ export function getSelectableParts(
   return family ? parts.filter((p) => familyOf(p.partCode) === family) : parts;
 }
 
+/**
+ * The stock opponent the Workshop measures damage against.
+ *
+ * Striker's assembled build sits at the median of the five presets for both
+ * defensive stats (DEF 80, SYS 90), so it is the least arbitrary yardstick
+ * available — a "hits harder" readout against it means hits harder against a
+ * typical mech, not against one cherry-picked matchup.
+ */
+export const REFERENCE_OPPONENT = "striker" as const;
+
 /** The five stock builds — each mech wearing its own matching parts. */
 export const PRESET_BUILDS: Record<MechId, MechBuild> = {
   titan:     { matrixCode: "M01", rightArm: "RA01", leftArm: "LA01", lowerBody: "IN01" },

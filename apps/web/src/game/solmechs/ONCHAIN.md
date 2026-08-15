@@ -75,18 +75,21 @@ These are the three that a cheating client would target, all already in
 - the matrix is only targetable once an **arm** is destroyed — not legs;
 - stat stages clamp to [-6, +6], and damage floors at 0.1× the ratio.
 
-Porting `calculateDamage` to Rust is mechanical — it is integer math plus a
-13-entry multiplier table. The table must be transcribed exactly: the
-positive half climbs linearly (1.5, 2, 2.5, …4), which is *not* the Pokémon
-ratio it otherwise resembles, and getting it wrong would make every client
-disagree with the program.
+Porting `calculateDamage` to Rust is mechanical, but two details bite. The
+stage table must be transcribed exactly — its positive half climbs linearly
+(1.5, 2, 2.5, …4), which is *not* the Pokémon ratio it otherwise resembles.
+And the formula is float-valued before its final `floor`, so the Rust side
+must reproduce the same rounding rather than working in integers throughout;
+fixed-point with an explicit scale is the safer route.
 
 ### Open questions
 
-- **Who moves first.** `createBattle` currently always opens on p1, inherited
-  from Unity's local-PvP scene where it didn't matter. With a wager it does.
-  This should come from a commit-reveal seed at join time, not from build
-  SPD — otherwise the first-move advantage is buyable.
+- **Who moves first.** `createBattle` takes a `FirstMoveRule`. Local play
+  passes `"speed"`, so the faster build opens. A wagered match **must** pass
+  an explicit `"p1"`/`"p2"` derived from a commit-reveal seed at join time —
+  under `"speed"` the first-move advantage is simply buyable at build time.
+  `replay()` takes the same option and must be given the value the battle
+  actually opened with, or it desyncs on action one.
 - **Timeouts.** A player who stops submitting actions currently stalls the
   room forever. Needs a per-turn deadline with a claim-by-forfeit path.
 - **Wager custody.** Escrow in the room PDA vs. a separate vault.
@@ -96,8 +99,25 @@ disagree with the program.
 
 ## Balance note
 
-The ported Unity numbers make for very short fights — a Titan/Arclight match
-settles in about five actions, because damage scales on chassis base stats
-while part HP stays flat. That is faithful to the source, not a porting bug.
-If matches should last longer, the lever is the `Dmg` values, and that is a
-design decision rather than a port decision — so nothing here was retuned.
+The engine has since diverged from Unity's damage formula on purpose. Unity
+read ATK/DEF/ENG/SYS from the *chassis base stats*, which left every part's
+combat stats inert and made the build editor cosmetic, and it used an
+unbounded `atk / def` quotient that let stat stages swing damage 16x and
+settled fights in about five actions.
+
+Current formula, in `BattleEngine.calculateDamage`:
+
+```
+atk = totalStats[ATK|ENG] * stageMult(firing limb)
+def = totalStats[DEF|SYS] * stageMult(struck limb)
+damage = floor(movePower * clamp(2*atk/(atk+def), 0.35, 1.75) * 0.65)
+```
+
+Measured across all 20 preset matchups: 13–19 actions, median 16. Total SPD
+now decides the opening turn (`FirstMoveRule`), which the opener won 12/20 —
+an advantage, not a decider.
+
+**Every constant above lives in the `BALANCE` block in `BattleEngine.ts`, and
+the program must be built against the same values.** A mismatch between
+client and program does not fail loudly — it produces a verifier that
+rejects honest results.

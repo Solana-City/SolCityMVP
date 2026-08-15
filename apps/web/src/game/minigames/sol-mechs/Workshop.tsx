@@ -21,9 +21,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { drawMech, MECH_FRAME_SIZE, preloadBuild } from "@/game/solmechs/render/MechPaperDoll";
 import {
   MATRICES, getMatrixById, getPart, getSelectableParts, familyOf, PRESET_BUILDS,
+  REFERENCE_OPPONENT,
 } from "@/game/solmechs/data/catalog";
-import type { MechBuild, MechId, MechPart, StatBlock, ModuleSlot } from "@/game/solmechs/data/types";
+import type { MechBuild, MechId, StatBlock, ModuleSlot } from "@/game/solmechs/data/types";
 import { addStats, ZERO_STATS } from "@/game/solmechs/data/types";
+import { createUnit, calculateDamage } from "@/game/solmechs/engine/BattleEngine";
 import { loadHangar, setBuild as persistBuild, resetBuild, getBuild } from "@/game/solmechs/hangar";
 
 const UI = "/assets/minigames/sol-mechs/ui";
@@ -43,23 +45,22 @@ const PREVIEW_SCALE = 3;
 const PREVIEW_SIZE = MECH_FRAME_SIZE * PREVIEW_SCALE;
 
 /**
- * Stats shown in the readout.
+ * Stats shown in the readout, each with what it actually controls.
  *
- * `drivesDamage` is the honest part. BattleEngine.calculateDamage — faithful
- * to LocalBattleManager — reads ATK/DEF/ENG/SYS from the *chassis base stats
- * only*, so a part's contribution to those four changes the number displayed
- * here but not a single point of damage in a fight. HP is the exception:
- * each part's HP is that limb's real hit points. Unity's editor showed the
- * combined totals with no such distinction, which quietly invited players to
- * optimize a stat that does nothing.
+ * Every one of these is live: `calculateDamage` reads the assembled totals,
+ * so a part's ATK/DEF/ENG/SYS contribution is real damage, and total SPD
+ * decides who opens the battle. PROC is the sole exception — it exists in
+ * the data and is referenced by nothing, in this port or in the Unity
+ * original — so it is deliberately absent from this panel rather than shown
+ * as a number the player could try to build for.
  */
-const STAT_ROWS: Array<{ key: keyof StatBlock; label: string; drivesDamage: boolean }> = [
-  { key: "HP",  label: "HP",  drivesDamage: true },
-  { key: "ATK", label: "ATK", drivesDamage: false },
-  { key: "DEF", label: "DEF", drivesDamage: false },
-  { key: "ENG", label: "ENG", drivesDamage: false },
-  { key: "SYS", label: "SYS", drivesDamage: false },
-  { key: "SPD", label: "SPD", drivesDamage: false },
+const STAT_ROWS: Array<{ key: keyof StatBlock; label: string; role: string }> = [
+  { key: "HP",  label: "HP",  role: "Limb hit points" },
+  { key: "ATK", label: "ATK", role: "Physical damage dealt" },
+  { key: "DEF", label: "DEF", role: "Physical damage taken" },
+  { key: "ENG", label: "ENG", role: "Energy damage dealt" },
+  { key: "SYS", label: "SYS", role: "Energy damage taken" },
+  { key: "SPD", label: "SPD", role: "Decides who moves first" },
 ];
 
 /** Visual ceilings for the bars, with headroom over the best build available. */
@@ -111,6 +112,39 @@ export default function Workshop({ initialMech, onSaved, onClose }: WorkshopProp
     }
     return t;
   }, [matrix, equipped]);
+
+  /**
+   * What each equipped move actually hits for, and whether this build wins
+   * the opening turn — both measured against the stock reference opponent.
+   *
+   * This runs the real `calculateDamage` against a real `createUnit`, never a
+   * reimplementation of the formula, so the number shown here cannot drift
+   * from the number the battle produces. Wrapped in try/catch because a build
+   * carrying a part code from an older catalog would otherwise throw out of
+   * `createUnit` and take the whole Workshop down with it.
+   */
+  const preview = useMemo(() => {
+    try {
+      const me = createUnit("preview", build);
+      const ref = createUnit("ref", PRESET_BUILDS[REFERENCE_OPPONENT]);
+      const perMove = new Map<string, number>();
+      for (const slot of LIMB_ORDER) {
+        me.parts[slot].moves.forEach((mv, i) => {
+          if (mv.baseDamage > 0) {
+            perMove.set(`${slot}:${i}`, calculateDamage(mv, me, ref, slot, "rightArm"));
+          }
+        });
+      }
+      return {
+        perMove,
+        movesFirst: me.totalStats.SPD >= ref.totalStats.SPD,
+        refSpd: ref.totalStats.SPD,
+        ok: true,
+      };
+    } catch {
+      return { perMove: new Map<string, number>(), movesFirst: false, refSpd: 0, ok: false };
+    }
+  }, [build]);
 
   // Live paper doll. Redrawn on a rAF loop rather than once per state change
   // because the layer images decode asynchronously — a single draw on mount
@@ -295,19 +329,35 @@ export default function Workshop({ initialMech, onSaved, onClose }: WorkshopProp
             {/* moves granted by the equipped part */}
             <div style={sx.sectionLabel}>MOVES</div>
             <div style={sx.moveList}>
-              {activePart?.moves.map((mv) => (
-                <div key={mv.name} style={sx.moveRow}>
-                  <div>
-                    <div style={sx.moveName}>{mv.name}</div>
-                    <div style={sx.moveMeta}>
-                      {mv.damageType}
-                      {mv.targetType !== "single" && ` · ${mv.targetType}`}
-                      {mv.effect && ` · ${mv.effect}`}
+              {activePart?.moves.map((mv, i) => {
+                const hit = preview.perMove.get(`${activeSlot}:${i}`);
+                return (
+                  <div key={mv.name} style={sx.moveRow}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={sx.moveName}>{mv.name}</div>
+                      <div style={sx.moveMeta}>
+                        {mv.damageType}
+                        {mv.targetType !== "single" && ` · ${mv.targetType}`}
+                        {mv.effect && ` · ${mv.effect}`}
+                      </div>
+                    </div>
+                    {/* Real damage against the reference mech, not the raw
+                        move power — raw power ignores the build entirely,
+                        which is exactly the thing being tuned here. */}
+                    <div style={{ textAlign: "right" }}>
+                      <div style={sx.moveDmg}>{hit ?? "—"}</div>
+                      {hit !== undefined && <div style={sx.moveDmgNote}>dmg</div>}
                     </div>
                   </div>
-                  <div style={sx.moveDmg}>{mv.baseDamage > 0 ? mv.baseDamage : "—"}</div>
-                </div>
-              ))}
+                );
+              })}
+            </div>
+            <div style={sx.refNote}>
+              Damage shown against a stock{" "}
+              <strong style={{ color: "#9d8fc4" }}>
+                {getMatrixById(REFERENCE_OPPONENT)?.matrixName}
+              </strong>{" "}
+              (median defences).
             </div>
           </div>
 
@@ -320,9 +370,9 @@ export default function Workshop({ initialMech, onSaved, onClose }: WorkshopProp
               const fromParts = total - base;
               const max = STAT_MAX[row.key] ?? 200;
               return (
-                <div key={row.key} style={{ marginBottom: 7 }}>
+                <div key={row.key} style={{ marginBottom: 7 }} title={row.role}>
                   <div style={sx.statHead}>
-                    <span style={{ color: row.drivesDamage ? "#c3b8e0" : "#7a68a8" }}>{row.label}</span>
+                    <span style={{ color: "#c3b8e0" }}>{row.label}</span>
                     <span style={sx.statValue}>
                       {total}
                       {fromParts !== 0 && (
@@ -332,6 +382,7 @@ export default function Workshop({ initialMech, onSaved, onClose }: WorkshopProp
                       )}
                     </span>
                   </div>
+                  <div style={sx.statRole}>{row.role}</div>
                   <div style={sx.statTrack}>
                     {/* chassis contribution solid, parts' contribution ghosted
                         on top — makes it visible at a glance how much of a
@@ -346,9 +397,18 @@ export default function Workshop({ initialMech, onSaved, onClose }: WorkshopProp
                 </div>
               );
             })}
+            <div style={{
+              ...sx.initiative,
+              borderColor: preview.movesFirst ? "#2ee6a8" : "#3d2a63",
+              color: preview.movesFirst ? "#2ee6a8" : "#7a68a8",
+            }}>
+              {preview.movesFirst ? "▲ Moves first" : "▼ Moves second"}
+              <span style={{ color: "#5a4a7a" }}> vs SPD {preview.refSpd}</span>
+            </div>
             <div style={sx.statFootnote}>
-              Damage is computed from <strong style={{ color: "#c3b8e0" }}>chassis</strong> ATK/DEF/ENG/SYS
-              only — limbs contribute their <strong style={{ color: "#c3b8e0" }}>HP</strong> and their moves.
+              Bars split <strong style={{ color: "#6b8cff" }}>chassis</strong> from{" "}
+              <strong style={{ color: "#2ee6a8" }}>limbs</strong>. Every stat here is live —
+              totals drive damage, and SPD decides the opening turn.
             </div>
           </div>
         </div>
@@ -460,7 +520,14 @@ const sx: Record<string, React.CSSProperties> = {
   },
   moveName: { fontSize: 11, color: "#c3b8e0", fontWeight: 600 },
   moveMeta: { fontSize: 9, color: "#7a68a8" },
-  moveDmg: { fontSize: 14, color: "#2ee6a8", fontWeight: 700, fontFamily: "monospace" },
+  moveDmg: { fontSize: 15, color: "#2ee6a8", fontWeight: 700, fontFamily: "monospace", lineHeight: 1.1 },
+  moveDmgNote: { fontSize: 8, color: "#5a4a7a", letterSpacing: 1 },
+  refNote: { fontSize: 9, color: "#5a4a7a", marginTop: 6, lineHeight: 1.5 },
+  statRole: { fontSize: 8, color: "#5a4a7a", marginTop: 1 },
+  initiative: {
+    marginTop: 10, padding: "6px 8px", borderRadius: 5,
+    border: "1px solid", fontSize: 10, fontWeight: 700, textAlign: "center",
+  },
   statsPanel: { background: "#120a24", border: "1px solid #2a1c4d", borderRadius: 8, padding: 10 },
   statHead: { display: "flex", justifyContent: "space-between", fontSize: 10, fontFamily: "monospace" },
   statValue: { color: "#fff", fontWeight: 700 },
