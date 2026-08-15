@@ -2,25 +2,32 @@
  * Sol Mechs — battle scene renderer.
  *
  * Draws the two mechs facing each other in the sidescroller layout the Unity
- * battle scene used, and plays short animations in response to engine events.
+ * battle scene used, and stages the aftermath of an action as a timed
+ * sequence.
  *
- * The renderer is a pure consumer of battle state: it never decides anything
- * about the fight, it only shows what the engine already resolved. Animations
- * are fire-and-forget overlays on top of the current state, so a dropped or
- * skipped animation can never desync the battle — which matters once actions
- * arrive from the network instead of from a local click.
+ * ## Why a timeline
+ *
+ * The engine resolves a whole action at once and hands back its events in one
+ * array — attack, damage, part destroyed, stage change. Playing those
+ * simultaneously reads as a single confusing frame: the mech lunges, the
+ * number pops and the limb explodes on the same tick, and the player cannot
+ * tell what caused what.
+ *
+ * So `playEvents` compiles the array into cues with start times: the attacker
+ * winds up, the impact effect lands ON the struck limb at the peak of the
+ * lunge, the number and shake follow the hit, and a destroyed part detonates
+ * after that. `isBusy()` reports while a sequence is running so the UI can
+ * hold input until it finishes.
+ *
+ * The renderer still decides nothing about the fight. It is fed resolved
+ * state and a resolved event log, so a dropped or skipped animation can never
+ * desync a battle — which matters once actions arrive over a network.
  */
 import type { BattleEvent, PlayerSide } from "../engine/BattleEngine";
-import { drawMech, DOLL_WIDTH, DOLL_HEIGHT } from "./MechPaperDoll";
-import type { MechBuild, MechUnit } from "../data/types";
+import { drawMech, DOLL_WIDTH, DOLL_HEIGHT, slotAnchor } from "./MechPaperDoll";
+import type { MechBuild, MechUnit, ModuleSlot, MoveDefinition } from "../data/types";
+import { fxForMove, fxForStage, fxFrame, clipDuration, preloadFx, FX_DESTROY, type FxClip } from "./AttackFx";
 
-/**
- * All the renderer needs: whoever is on the field right now.
- *
- * Deliberately narrower than BattleState so a 3v3 can hand over its two
- * ACTIVE mechs and get the same scene — the renderer has no business knowing
- * which format it is drawing.
- */
 export interface RenderUnits {
   p1: MechUnit;
   p2: MechUnit;
@@ -36,36 +43,67 @@ const GROUND_Y = 268;
 const P1_X = 64;
 const P2_X = CANVAS_W - 64 - MECH_W;
 
-/** ms */
-const ATTACK_DURATION = 420;
-const FLASH_DURATION = 260;
-const FLOATER_DURATION = 900;
+// ── timing (ms) ──────────────────────────────────────────────────────────
+/** Lunge start → impact. The effect and the damage land at this offset. */
+const WINDUP = 240;
+/** How long the attacker's lunge takes end to end. */
+const LUNGE = 460;
+/** Impact → a destroyed limb detonating, so the two read as cause and effect. */
+const BREAK_DELAY = 260;
+/** Held at the peak of the lunge, so a hit lands with weight. */
+const HITSTOP = 90;
+const FLASH_DURATION = 300;
+const FLOATER_DURATION = 950;
+const SHAKE_DURATION = 260;
+/** Tail after the last cue before input is handed back. */
+const SEQUENCE_TAIL = 260;
 
-interface AttackAnim {
-  side: PlayerSide;
+interface Anim {
   start: number;
+  side: PlayerSide;
 }
 
-interface FlashAnim {
-  side: PlayerSide;
+interface LungeAnim extends Anim {
+  /** Peak hold, so the mech freezes for a beat on contact. */
+  hitstop: boolean;
+}
+
+interface FxAnim {
   start: number;
+  clip: FxClip;
+  /** Canvas-space centre, resolved when the cue was scheduled. */
+  x: number;
+  y: number;
+  scale: number;
 }
 
 interface Floater {
-  side: PlayerSide;
+  start: number;
+  x: number;
+  y: number;
   text: string;
   color: string;
+  /** Larger for heavier hits and for a destroyed part. */
+  size: number;
+}
+
+interface Shake {
   start: number;
+  magnitude: number;
 }
 
 export class BattleRenderer {
   private ctx: CanvasRenderingContext2D;
   private raf = 0;
   private state: RenderUnits;
-  private attacks: AttackAnim[] = [];
-  private flashes: FlashAnim[] = [];
+  private lunges: LungeAnim[] = [];
+  private flashes: Anim[] = [];
+  private fx: FxAnim[] = [];
   private floaters: Floater[] = [];
+  private shakes: Shake[] = [];
   private running = false;
+  /** performance.now() when the current sequence hands input back. */
+  private busyUntil = 0;
 
   constructor(private canvas: HTMLCanvasElement, initial: RenderUnits) {
     const ctx = canvas.getContext("2d");
@@ -74,6 +112,7 @@ export class BattleRenderer {
     canvas.width = CANVAS_W;
     canvas.height = CANVAS_H;
     this.state = initial;
+    preloadFx();
   }
 
   start(): void {
@@ -95,51 +134,184 @@ export class BattleRenderer {
     this.state = state;
   }
 
-  /** Feed the engine's event log so the renderer can animate the outcome. */
-  playEvents(events: BattleEvent[]): void {
-    const now = performance.now();
-    for (const e of events) {
-      switch (e.type) {
-        case "attack":
-          this.attacks.push({ side: e.side, start: now });
-          break;
-        case "damage":
-          this.flashes.push({ side: e.side, start: now });
-          this.floaters.push({ side: e.side, text: `-${e.amount}`, color: "#ff5468", start: now });
-          break;
-        case "heal":
-          this.floaters.push({ side: e.side, text: `+${e.amount}`, color: "#14f195", start: now });
-          break;
-        case "stage":
-          this.floaters.push({
-            side: e.side,
-            text: `${e.delta > 0 ? "+" : ""}${e.delta} ${e.stat}`,
-            color: e.delta > 0 ? "#14f195" : "#ffa726",
-            start: now,
-          });
-          break;
-      }
-    }
+  /** True while a sequence is still playing — the UI gates input on this. */
+  isBusy(): boolean {
+    return performance.now() < this.busyUntil;
   }
 
-  private buildFor(side: PlayerSide): MechBuild {
-    return (side === "p1" ? this.state.p1 : this.state.p2).build;
+  /** ms until the current sequence finishes; 0 when idle. */
+  remainingMs(): number {
+    return Math.max(0, this.busyUntil - performance.now());
   }
+
+  // ── positioning ────────────────────────────────────────────────────────
+
+  private unitFor(side: PlayerSide): MechUnit {
+    return side === "p1" ? this.state.p1 : this.state.p2;
+  }
+
+  private baseX(side: PlayerSide): number {
+    return side === "p1" ? P1_X : P2_X;
+  }
+
+  /**
+   * Canvas-space centre of one slot on one mech.
+   *
+   * Player 2 is drawn mirrored, so its doll-space x has to be reflected about
+   * the doll box before scaling — otherwise every effect aimed at the rival's
+   * right arm lands on its left.
+   */
+  private anchorOf(side: PlayerSide, slot: ModuleSlot): { x: number; y: number } {
+    const a = slotAnchor(slot);
+    const flipped = side === "p2";
+    const dx = flipped ? DOLL_WIDTH - a.x : a.x;
+    return {
+      x: this.baseX(side) + dx * MECH_SCALE,
+      y: GROUND_Y - MECH_H + a.y * MECH_SCALE,
+    };
+  }
+
+  // ── sequencing ─────────────────────────────────────────────────────────
+
+  /**
+   * Compile one action's events into a timed sequence.
+   *
+   * Walks the log in the order the engine emitted it and assigns each cue an
+   * absolute start time, so effects land in causal order rather than all at
+   * once.
+   */
+  playEvents(events: BattleEvent[], move?: MoveDefinition): void {
+    const now = performance.now();
+    let impactAt = now + WINDUP;
+    let last = now;
+
+    for (const e of events) {
+      switch (e.type) {
+        case "attack": {
+          this.lunges.push({ start: now, side: e.side, hitstop: true });
+          // The clip is chosen from the move when the caller knows it; the
+          // event only carries a name, and matching on that alone would miss
+          // the four moves the Unity library never covered.
+          const clip = move ? fxForMove(move) : undefined;
+          if (clip) {
+            // Self-buffs play on the caster; everything else waits for the
+            // impact cue below, where the struck slot is known.
+            if (move && move.targetType === "self") {
+              const at = this.anchorOf(e.side, e.sourceSlot);
+              this.fx.push({ start: impactAt, clip, x: at.x, y: at.y, scale: 1 });
+              last = Math.max(last, impactAt + clipDuration(clip));
+            }
+          }
+          last = Math.max(last, now + LUNGE);
+          break;
+        }
+
+        case "damage": {
+          const at = this.anchorOf(e.side, e.targetSlot);
+          if (move && move.targetType !== "self") {
+            const clip = fxForMove(move);
+            this.fx.push({ start: impactAt, clip, x: at.x, y: at.y, scale: 1 });
+            last = Math.max(last, impactAt + clipDuration(clip));
+          }
+          this.flashes.push({ start: impactAt, side: e.side });
+          // Shake scales with how much of that part just went, so a chip and
+          // a near-kill don't feel the same.
+          this.shakes.push({ start: impactAt, magnitude: 2 + Math.min(9, e.percent / 9) });
+          this.floaters.push({
+            start: impactAt, x: at.x, y: at.y,
+            text: `-${e.amount}`, color: "#ff5468",
+            size: e.percent > 45 ? 26 : e.percent > 20 ? 21 : 17,
+          });
+          last = Math.max(last, impactAt + FLOATER_DURATION);
+          break;
+        }
+
+        case "heal": {
+          const at = this.anchorOf(e.side, e.targetSlot);
+          this.floaters.push({
+            start: impactAt, x: at.x, y: at.y,
+            text: `+${e.amount}`, color: "#21dda0", size: 20,
+          });
+          last = Math.max(last, impactAt + FLOATER_DURATION);
+          break;
+        }
+
+        case "stage": {
+          const at = this.anchorOf(e.side, e.targetSlot);
+          const clip = fxForStage(e.delta);
+          // Offset from the damage cue so a hit that also debuffs reads as two
+          // beats instead of one pile-up.
+          const stageAt = impactAt + 140;
+          this.fx.push({ start: stageAt, clip, x: at.x, y: at.y, scale: 0.85 });
+          this.floaters.push({
+            start: stageAt, x: at.x, y: at.y - 14,
+            text: `${e.delta > 0 ? "+" : ""}${e.delta} ${e.stat}`,
+            color: e.delta > 0 ? "#21dda0" : "#ffa726", size: 15,
+          });
+          last = Math.max(last, stageAt + FLOATER_DURATION);
+          break;
+        }
+
+        case "part-broken": {
+          const at = this.anchorOf(e.side, e.slot);
+          const breakAt = impactAt + BREAK_DELAY;
+          this.fx.push({ start: breakAt, clip: FX_DESTROY, x: at.x, y: at.y, scale: 1.15 });
+          this.shakes.push({ start: breakAt, magnitude: 13 });
+          this.floaters.push({
+            start: breakAt + 120, x: at.x, y: at.y - 20,
+            text: "DESTROYED", color: "#ffd166", size: 15,
+          });
+          last = Math.max(last, breakAt + clipDuration(FX_DESTROY) + 300);
+          break;
+        }
+
+        case "matrix-unlocked": {
+          const at = this.anchorOf(e.side, "matrix");
+          const openAt = impactAt + BREAK_DELAY + 220;
+          this.floaters.push({
+            start: openAt, x: at.x, y: at.y - 26,
+            text: "MATRIX EXPOSED", color: "#ff5468", size: 16,
+          });
+          last = Math.max(last, openAt + FLOATER_DURATION);
+          break;
+        }
+      }
+    }
+
+    this.busyUntil = Math.max(this.busyUntil, last + SEQUENCE_TAIL);
+  }
+
+  // ── drawing ────────────────────────────────────────────────────────────
 
   private draw(now: number): void {
     const ctx = this.ctx;
 
-    this.attacks = this.attacks.filter((a) => now - a.start < ATTACK_DURATION);
+    this.lunges = this.lunges.filter((a) => now - a.start < LUNGE);
     this.flashes = this.flashes.filter((f) => now - f.start < FLASH_DURATION);
+    this.fx = this.fx.filter((f) => now - f.start < clipDuration(f.clip));
     this.floaters = this.floaters.filter((f) => now - f.start < FLOATER_DURATION);
+    this.shakes = this.shakes.filter((s) => now - s.start < SHAKE_DURATION);
 
-    this.drawBackground(ctx);
-
-    for (const side of ["p1", "p2"] as PlayerSide[]) {
-      this.drawSide(ctx, side, now);
+    // Screen shake displaces the whole scene, so it has to wrap every draw.
+    let sx = 0, sy = 0;
+    for (const s of this.shakes) {
+      const t = (now - s.start) / SHAKE_DURATION;
+      if (t < 0) continue;
+      const decay = (1 - t) ** 2;
+      // Alternating sign per frame reads as a rattle rather than a drift.
+      sx += Math.sin((now - s.start) * 0.9) * s.magnitude * decay;
+      sy += Math.cos((now - s.start) * 1.1) * s.magnitude * decay * 0.5;
     }
 
+    ctx.save();
+    ctx.clearRect(0, 0, CANVAS_W, CANVAS_H);
+    this.drawBackground(ctx);
+    ctx.translate(sx, sy);
+
+    for (const side of ["p1", "p2"] as PlayerSide[]) this.drawSide(ctx, side, now);
+    this.drawFx(ctx, now);
     this.drawFloaters(ctx, now);
+    ctx.restore();
   }
 
   private drawBackground(ctx: CanvasRenderingContext2D): void {
@@ -150,40 +322,48 @@ export class BattleRenderer {
     ctx.fillStyle = sky;
     ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
 
-    // Arena floor plus a horizon line to anchor the mechs' feet.
     ctx.fillStyle = "#1b1030";
     ctx.fillRect(0, GROUND_Y, CANVAS_W, CANVAS_H - GROUND_Y);
     ctx.fillStyle = "#3d2a63";
     ctx.fillRect(0, GROUND_Y, CANVAS_W, 2);
   }
 
+  /**
+   * Lunge offset for a side.
+   *
+   * Eases out to the impact point, holds there for HITSTOP so contact has
+   * weight, then eases back. A plain sine would sail through the moment of
+   * impact and rob it of the pause.
+   */
+  private lungeOffset(anim: LungeAnim, now: number): number {
+    const t = now - anim.start;
+    const dir = anim.side === "p1" ? 1 : -1;
+    const reach = 26;
+    if (t < WINDUP) {
+      const p = t / WINDUP;
+      return dir * reach * (1 - (1 - p) ** 3);
+    }
+    if (anim.hitstop && t < WINDUP + HITSTOP) return dir * reach;
+    const p = Math.min(1, (t - WINDUP - HITSTOP) / (LUNGE - WINDUP - HITSTOP));
+    return dir * reach * (1 - p);
+  }
+
   private drawSide(ctx: CanvasRenderingContext2D, side: PlayerSide, now: number): void {
-    const unit = side === "p1" ? this.state.p1 : this.state.p2;
-    const baseX = side === "p1" ? P1_X : P2_X;
+    const unit = this.unitFor(side);
+    const baseX = this.baseX(side);
     const y = GROUND_Y - MECH_H;
 
-    const attack = this.attacks.find((a) => a.side === side);
-    const flash = this.flashes.find((f) => f.side === side);
-
-    // Lunge: ease out toward the opponent and settle back. Each part has only
-    // one sprite — there is no second pose to swap to — so the attack reads
-    // through movement rather than through a changed frame.
     let dx = 0;
-    if (attack) {
-      const t = (now - attack.start) / ATTACK_DURATION;
-      dx = Math.sin(t * Math.PI) * 22 * (side === "p1" ? 1 : -1);
-    }
+    const lunge = this.lunges.find((a) => a.side === side && now >= a.start);
+    if (lunge) dx += this.lungeOffset(lunge, now);
 
-    // Recoil away from the hit.
+    const flash = this.flashes.find((f) => f.side === side && now >= f.start);
     if (flash) {
       const t = (now - flash.start) / FLASH_DURATION;
-      dx += Math.sin(t * Math.PI) * 8 * (side === "p1" ? -1 : 1);
+      dx += Math.sin(t * Math.PI) * 9 * (side === "p1" ? -1 : 1);
     }
-
     const hitFlash = flash ? 1 - (now - flash.start) / FLASH_DURATION : 0;
 
-    // Ground shadow — sold separately from the sprite so a lunging mech's
-    // shadow stays put rather than sliding with it.
     ctx.save();
     ctx.globalAlpha = 0.35;
     ctx.fillStyle = "#000000";
@@ -192,7 +372,7 @@ export class BattleRenderer {
     ctx.fill();
     ctx.restore();
 
-    const drawn = drawMech(ctx, this.buildFor(side), {
+    const drawn = drawMech(ctx, unit.build, {
       x: baseX + dx,
       y,
       scale: MECH_SCALE,
@@ -206,8 +386,6 @@ export class BattleRenderer {
     });
 
     if (!drawn) {
-      // Sprites still decoding — a labelled block keeps the layout stable
-      // instead of leaving a hole that pops when the art lands.
       ctx.save();
       ctx.fillStyle = "#2a1c4d";
       ctx.fillRect(baseX, y, MECH_W, MECH_H);
@@ -219,19 +397,44 @@ export class BattleRenderer {
     }
   }
 
+  private drawFx(ctx: CanvasRenderingContext2D, now: number): void {
+    for (const f of this.fx) {
+      const t = now - f.start;
+      if (t < 0) continue;
+      const frame = Math.min(f.clip.frames, Math.floor((t / 1000) * f.clip.fps) + 1);
+      const img = fxFrame(f.clip, frame);
+      if (!img.complete || img.naturalWidth === 0) continue;
+
+      const h = f.clip.size * f.scale;
+      const w = h * (img.naturalWidth / img.naturalHeight);
+
+      ctx.save();
+      ctx.imageSmoothingEnabled = false;
+      // Additive suits the energy/plasma clips — it reads as emitted light.
+      // The impact clips keep normal blending so they stay solid and readable
+      // against the bright mechs.
+      if (f.clip.additive) ctx.globalCompositeOperation = "lighter";
+      ctx.drawImage(img, Math.round(f.x - w / 2), Math.round(f.y - h / 2), Math.round(w), Math.round(h));
+      ctx.restore();
+    }
+  }
+
   private drawFloaters(ctx: CanvasRenderingContext2D, now: number): void {
     ctx.save();
-    ctx.font = "bold 18px monospace";
     ctx.textAlign = "center";
     for (const f of this.floaters) {
       const t = (now - f.start) / FLOATER_DURATION;
-      const x = (f.side === "p1" ? P1_X : P2_X) + MECH_W / 2;
-      const y = GROUND_Y - MECH_H - 10 - t * 42;
-      ctx.globalAlpha = 1 - t;
-      ctx.fillStyle = "#000000";
-      ctx.fillText(f.text, x + 1, y + 1);
+      if (t < 0) continue;
+      // Pops slightly oversized then settles — a flat rise reads as inert.
+      const pop = t < 0.14 ? 1 + (0.14 - t) * 2.4 : 1;
+      const y = f.y - 16 - t * 44;
+      ctx.globalAlpha = t > 0.7 ? (1 - t) / 0.3 : 1;
+      ctx.font = `bold ${Math.round(f.size * pop)}px ui-monospace, monospace`;
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = "rgba(0,0,0,.85)";
+      ctx.strokeText(f.text, f.x, y);
       ctx.fillStyle = f.color;
-      ctx.fillText(f.text, x, y);
+      ctx.fillText(f.text, f.x, y);
     }
     ctx.restore();
   }

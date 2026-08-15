@@ -24,7 +24,7 @@
  * Verified by compositing Striker's stock parts and diffing against the
  * artist's pre-assembled `striker1.png`.
  */
-import type { MechBuild } from "../data/types";
+import type { MechBuild, ModuleSlot } from "../data/types";
 import { getMatrix, getPart } from "../data/catalog";
 
 const BASE = "/assets/minigames/sol-mechs/parts";
@@ -180,7 +180,24 @@ export function drawMech(ctx: CanvasRenderingContext2D, build: MechBuild, opts: 
   return true;
 }
 
-/** Kick off decoding for one build's sprites. */
+/**
+ * Where a slot sits inside the doll box, in source pixels.
+ *
+ * This is what lets an impact effect land ON the limb that was actually hit
+ * rather than in the middle of the mech. Each socket holds a 64x64 sprite, so
+ * its visual centre is the socket offset plus half a frame.
+ *
+ * The matrix anchor is nudged down: the torso sprite's ink sits in the lower
+ * half of its frame (the upper half is head clearance), so the geometric
+ * centre reads as floating above the chest.
+ */
+export function slotAnchor(slot: ModuleSlot): { x: number; y: number } {
+  const socket = SOCKETS[slot as SocketName] ?? SOCKETS.matrix;
+  return {
+    x: ORIGIN_X + socket.dx + PART_FRAME / 2,
+    y: ORIGIN_Y + socket.dy + PART_FRAME / 2 + (slot === "matrix" ? 6 : 0),
+  };
+}
 export function preloadBuild(build: MechBuild): void {
   const codes = resolveCodes(build);
   if (codes) for (const slot of DRAW_ORDER) sprite(codes[slot]);

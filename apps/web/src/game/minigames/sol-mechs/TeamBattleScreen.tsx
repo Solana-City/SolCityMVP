@@ -17,7 +17,19 @@ import type { PlayerSide } from "@/game/solmechs/engine/BattleEngine";
 import { BattleRenderer, CANVAS_W, CANVAS_H } from "@/game/solmechs/render/BattleRenderer";
 import { preloadBuild } from "@/game/solmechs/render/MechPaperDoll";
 import type { TeamBuild } from "@/game/solmechs/data/team";
-import type { ModuleSlot } from "@/game/solmechs/data/types";
+import type { ModuleSlot, MoveDefinition } from "@/game/solmechs/data/types";
+
+/**
+ * Narrows the team log to the events BattleRenderer understands. Switches and
+ * KOs are team-level concepts with no scene animation of their own.
+ */
+const BATTLE_EVENT_TYPES = new Set([
+  "attack", "damage", "heal", "stage", "part-broken", "matrix-unlocked",
+]);
+function isBattleEvent(e: TeamEvent): e is Extract<TeamEvent, { type: string }> & BattleEventLike {
+  return BATTLE_EVENT_TYPES.has(e.type);
+}
+type BattleEventLike = Parameters<BattleRenderer["playEvents"]>[0][number];
 
 const C = {
   teal: "#21dda0", ink: "#0b0616", panel: "#150c2b", panelHi: "#1d1140",
@@ -55,6 +67,8 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, onFinished, on
   const [pending, setPending] = useState<{ slot: Exclude<ModuleSlot, "matrix">; moveIndex: number } | null>(null);
   const [picking, setPicking] = useState(false);
   const [busy, setBusy] = useState(false);
+  /** True while the renderer is mid-sequence; blocks input and the rival. */
+  const [animating, setAnimating] = useState(false);
   const settledRef = useRef(false);
 
   useEffect(() => {
@@ -85,14 +99,33 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, onFinished, on
   const apply = useCallback((action: TeamAction) => {
     const cur = stateRef.current;
     if (!cur) return;
+
+    // Resolve the move from the PRE-resolution state so the renderer can pick
+    // its effect; after resolution that limb may already be gone.
+    let move: MoveDefinition | undefined;
+    if (action.kind === "move") {
+      const side = action.side === "p1" ? cur.p1 : cur.p2;
+      move = activeUnit(side).parts[action.sourceSlot]?.moves[action.moveIndex];
+    }
+
     const { state: next, events } = resolveTeamAction(cur, action);
     const lines = events.map((e) => describe(e, next)).filter((l): l is string => l !== null);
     setLog((prev) => [...lines.reverse(), ...prev].slice(0, 60));
-    // The renderer only ever sees the two mechs on the field.
-    rendererRef.current?.playEvents(events.filter((e) => "type" in e) as never);
-    rendererRef.current?.setState({ p1: activeUnit(next.p1), p2: activeUnit(next.p2) });
+
+    const renderer = rendererRef.current;
+    // The renderer only ever sees the two mechs on the field, and only the
+    // battle-level events — switches and KOs are team concepts it has no
+    // notion of, and are narrated in the log instead.
+    renderer?.setState({ p1: activeUnit(next.p1), p2: activeUnit(next.p2) });
+    renderer?.playEvents(events.filter(isBattleEvent), move);
     stateRef.current = next;
     setState(next);
+
+    const wait = renderer?.remainingMs() ?? 0;
+    if (wait > 0) {
+      setAnimating(true);
+      window.setTimeout(() => setAnimating(false), wait);
+    }
   }, [describe]);
 
   // Renderer lifetime.
@@ -112,6 +145,8 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, onFinished, on
     const isRivalSwitch = state.status.kind === "awaiting-switch" && state.status.side === "p2";
     const isRivalTurn = state.status.kind === "active" && state.status.turn === "p2";
     if (!isRivalSwitch && !isRivalTurn) return;
+    // Let the player's hit finish playing before the rival answers.
+    if (animating) return;
 
     let cancelled = false;
     setBusy(true);
@@ -159,7 +194,7 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, onFinished, on
     }, AI_DELAY);
 
     return () => { cancelled = true; clearTimeout(t); setBusy(false); };
-  }, [state, apply]);
+  }, [state, apply, animating]);
 
   // Settle once, when it's over.
   useEffect(() => {
@@ -168,7 +203,7 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, onFinished, on
     onFinished(state.status.winner === "p1", state);
   }, [state, onFinished]);
 
-  const myTurn = state.status.kind === "active" && state.status.turn === "p1" && !busy;
+  const myTurn = state.status.kind === "active" && state.status.turn === "p1" && !busy && !animating;
   const mustSwitch = state.status.kind === "awaiting-switch" && state.status.side === "p1";
   const me = activeUnit(state.p1);
   const foe = activeUnit(state.p2);

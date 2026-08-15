@@ -57,6 +57,8 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
   const [battle, setBattle] = useState<BattleState | null>(null);
   const [log, setLog] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
+  /** True while the renderer is mid-sequence; blocks input and the AI. */
+  const [animating, setAnimating] = useState(false);
   const [pendingMove, setPendingMove] = useState<{ slot: Exclude<ModuleSlot, "matrix">; moveIndex: number } | null>(null);
   const [playerTeam, setPlayerTeam] = useState<TeamBuild | null>(null);
 
@@ -117,15 +119,30 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
   const applyAction = useCallback((action: BattleAction): BattleState | null => {
     const current = stateRef.current;
     if (!current) return null;
+
+    // Read the move off the PRE-resolution state: the renderer picks its
+    // effect from it, and the post-state may already have that limb destroyed.
+    const attacker = action.side === "p1" ? current.p1 : current.p2;
+    const move = attacker.parts[action.sourceSlot]?.moves[action.moveIndex];
+
     const { state: nextState, events } = resolveAction(current, action);
 
     const lines = events.map((e) => describe(e, nextState)).filter((l): l is string => l !== null);
     pushLog(lines.reverse());
 
-    rendererRef.current?.playEvents(events);
-    rendererRef.current?.setState(nextState);
+    const renderer = rendererRef.current;
+    renderer?.setState(nextState);
+    renderer?.playEvents(events, move);
     stateRef.current = nextState;
     setBattle(nextState);
+
+    // Hold input until the sequence has played out, so a hit can't be
+    // interrupted by the next click and the log stays in step with the screen.
+    const wait = renderer?.remainingMs() ?? 0;
+    if (wait > 0) {
+      setAnimating(true);
+      window.setTimeout(() => setAnimating(false), wait);
+    }
     return nextState;
   }, [describe, pushLog]);
 
@@ -133,6 +150,8 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
   useEffect(() => {
     if (phase !== "battle" || !battle) return;
     if (battle.status.kind !== "active" || battle.status.turn !== "p2") return;
+    // Let the player's hit finish playing before the rival answers.
+    if (animating) return;
 
     let cancelled = false;
     setBusy(true);
@@ -143,7 +162,7 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
       setBusy(false);
     })();
     return () => { cancelled = true; setBusy(false); };
-  }, [phase, battle, applyAction]);
+  }, [phase, battle, applyAction, animating]);
 
   // Settle once someone wins.
   useEffect(() => {
@@ -323,7 +342,7 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
   if (!battle) return null;
 
   // ==================== BATTLE / RESULT ====================
-  const myTurn = battle.status.kind === "active" && battle.status.turn === "p1" && !busy;
+  const myTurn = battle.status.kind === "active" && battle.status.turn === "p1" && !busy && !animating;
   const moves = availableMoves(battle.p1);
   const targets = legalTargets(battle.p2);
   const selectedMove = pendingMove
