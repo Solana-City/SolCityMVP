@@ -251,9 +251,12 @@ function unitFor(state: BattleState, side: PlayerSide): MechUnit {
   return side === "p1" ? state.p1 : state.p2;
 }
 
-function opponentOf(side: PlayerSide): PlayerSide {
+export function opponentOfSide(side: PlayerSide): PlayerSide {
   return side === "p1" ? "p2" : "p1";
 }
+
+/** Local alias — `opponentOfSide` is the exported name for other formats. */
+const opponentOf = opponentOfSide;
 
 /** The moves a side can legally pick right now — broken limbs can't fire. */
 export function availableMoves(unit: MechUnit): Array<{ slot: Exclude<ModuleSlot, "matrix">; moveIndex: number; move: MoveDefinition }> {
@@ -339,46 +342,70 @@ export interface ResolveResult {
  * what happened. The input state is never mutated — units are cloned first —
  * so callers can keep prior states around for replay and rollback.
  */
-export function resolveAction(state: BattleState, action: BattleAction): ResolveResult {
+/** Why a mech is out of the fight, or null while it can still stand. */
+export type DefeatCause = "matrix-destroyed" | "limbs-destroyed";
+
+export function defeatCauseOf(unit: MechUnit): DefeatCause | null {
+  if (unit.matrixHP <= 0) return "matrix-destroyed";
+  if (allLimbsDestroyed(unit)) return "limbs-destroyed";
+  return null;
+}
+
+export function isDefeated(unit: MechUnit): boolean {
+  return defeatCauseOf(unit) !== null;
+}
+
+/**
+ * Why a move would be illegal, or null when it is legal.
+ *
+ * Split out from resolveAction so the 1v1 and team battles enforce the rules
+ * from one place — a second copy of "is the matrix still sealed?" is exactly
+ * the kind of thing that drifts and then disagrees with the on-chain verifier.
+ */
+export function validateMove(
+  attacker: MechUnit,
+  defender: MechUnit,
+  sourceSlot: Exclude<ModuleSlot, "matrix">,
+  moveIndex: number,
+  targetSlot: ModuleSlot,
+): string | null {
+  if (isPartBroken(attacker, sourceSlot)) return `${sourceSlot} is broken`;
+
+  const move = attacker.parts[sourceSlot].moves[moveIndex];
+  if (!move) return "No such move";
+
+  if (move.targetType === "self") {
+    if (targetSlot !== "matrix" && isPartBroken(attacker, targetSlot)) return `${targetSlot} is broken`;
+    return null;
+  }
+  if (targetSlot === "matrix" && !canAttackMatrix(defender)) return "Matrix locked — destroy an arm first";
+  if (targetSlot !== "matrix" && isPartBroken(defender, targetSlot)) return "That part is already destroyed";
+  return null;
+}
+
+/**
+ * Apply one already-validated move. MUTATES both units, so callers must pass
+ * copies they own. Returns the events describing what happened; it performs
+ * no win check, because who has lost depends on the format.
+ */
+export function applyMove(
+  attacker: MechUnit,
+  defender: MechUnit,
+  attackerSide: PlayerSide,
+  sourceSlot: Exclude<ModuleSlot, "matrix">,
+  moveIndex: number,
+  targetSlot: ModuleSlot,
+): BattleEvent[] {
   const events: BattleEvent[] = [];
-
-  const reject = (reason: string): ResolveResult => ({
-    state,
-    events: [{ type: "rejected", reason }],
-  });
-
-  if (state.status.kind === "finished") return reject("Battle is already over");
-  if (state.status.turn !== action.side) return reject("Not your turn");
-
-  const next = cloneState(state);
-  const attacker = unitFor(next, action.side);
-  const defenderSide = opponentOf(action.side);
-  const defender = unitFor(next, defenderSide);
-
-  if (isPartBroken(attacker, action.sourceSlot)) return reject(`${action.sourceSlot} is broken`);
-
-  const part = attacker.parts[action.sourceSlot];
-  const move = part.moves[action.moveIndex];
-  if (!move) return reject("No such move");
+  const defenderSide = opponentOf(attackerSide);
+  const move = attacker.parts[sourceSlot].moves[moveIndex];
 
   const selfTargeted = move.targetType === "self";
   const target = selfTargeted ? attacker : defender;
-  const targetSide = selfTargeted ? action.side : defenderSide;
+  const targetSide = selfTargeted ? attackerSide : defenderSide;
+  const action = { sourceSlot, targetSlot, side: attackerSide };
 
-  if (selfTargeted) {
-    if (action.targetSlot !== "matrix" && isPartBroken(attacker, action.targetSlot)) {
-      return reject(`${action.targetSlot} is broken`);
-    }
-  } else {
-    if (action.targetSlot === "matrix" && !canAttackMatrix(defender)) {
-      return reject("Matrix locked — destroy an arm first");
-    }
-    if (action.targetSlot !== "matrix" && isPartBroken(defender, action.targetSlot)) {
-      return reject("That part is already destroyed");
-    }
-  }
-
-  events.push({ type: "attack", side: action.side, moveName: move.name, sourceSlot: action.sourceSlot });
+  events.push({ type: "attack", side: attackerSide, moveName: move.name, sourceSlot });
 
   // --- damage ---
   if (!selfTargeted && move.baseDamage > 0) {
@@ -434,26 +461,48 @@ export function resolveAction(state: BattleState, action: BattleAction): Resolve
     }
   }
 
+  return events;
+}
+
+/**
+ * Resolve one action of a 1v1 battle: validate, apply, then check whether
+ * either mech is out.
+ */
+export function resolveAction(state: BattleState, action: BattleAction): ResolveResult {
+  const reject = (reason: string): ResolveResult => ({
+    state,
+    events: [{ type: "rejected", reason }],
+  });
+
+  if (state.status.kind === "finished") return reject("Battle is already over");
+  if (state.status.turn !== action.side) return reject("Not your turn");
+
+  const next = cloneState(state);
+  const attacker = unitFor(next, action.side);
+  const defenderSide = opponentOf(action.side);
+  const defender = unitFor(next, defenderSide);
+
+  const illegal = validateMove(attacker, defender, action.sourceSlot, action.moveIndex, action.targetSlot);
+  if (illegal) return reject(illegal);
+
+  const events = applyMove(
+    attacker, defender, action.side,
+    action.sourceSlot, action.moveIndex, action.targetSlot,
+  );
+
   next.history.push(action);
 
-  // --- win check ---
   // Two routes to a win, and they are genuinely alternative strategies: blow
   // the core, or strip all three limbs so the mech has nothing left to fight
   // with. Checked on both sides because a self-targeted move can, in
   // principle, finish off the user's own last limb.
   for (const side of ["p1", "p2"] as PlayerSide[]) {
-    const unit = unitFor(next, side);
-    const coreGone = unit.matrixHP <= 0;
-    const strippedBare = allLimbsDestroyed(unit);
-    if (!coreGone && !strippedBare) continue;
+    const cause = defeatCauseOf(unitFor(next, side));
+    if (!cause) continue;
 
     const winner = opponentOf(side);
     next.status = { kind: "finished", winner };
-    events.push({
-      type: "defeat-cause",
-      side,
-      cause: coreGone ? "matrix-destroyed" : "limbs-destroyed",
-    });
+    events.push({ type: "defeat-cause", side, cause });
     events.push({ type: "victory", winner });
     return { state: next, events };
   }
@@ -488,7 +537,7 @@ export function replay(
   return state;
 }
 
-function cloneUnit(unit: MechUnit): MechUnit {
+export function cloneUnit(unit: MechUnit): MechUnit {
   const statuses = {} as Record<ModuleSlot, PartStatus>;
   for (const slot of Object.keys(unit.partStatuses) as ModuleSlot[]) {
     const s = unit.partStatuses[slot];
