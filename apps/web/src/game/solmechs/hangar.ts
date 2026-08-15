@@ -29,12 +29,17 @@ export interface HangarState {
 }
 
 /**
- * Everyone starts with Titan. It's the tank — the most forgiving chassis to
- * learn the limb/matrix rule on, since it survives long enough to make the
- * mistake twice.
+ * Every chassis is available.
+ *
+ * `owned` exists for the unlock/progression flow that will gate chassis
+ * later, but no such flow is built yet — and while it defaulted to Titan
+ * alone, the hangar (which lists all five) and the Workshop (which listed
+ * only owned ones) disagreed about what you could fly. Defaulting to the
+ * full roster keeps the two screens telling the same story until unlocking
+ * is real.
  */
 export const DEFAULT_HANGAR: HangarState = {
-  owned: ["titan"],
+  owned: [...MECH_IDS],
   active: "titan",
   builds: {},
   wins: 0,
@@ -51,10 +56,11 @@ export function loadHangar(): HangarState {
     if (!raw) return { ...DEFAULT_HANGAR };
     const parsed = JSON.parse(raw) as Partial<HangarState>;
 
-    // Sanitize rather than trust: a stale save from an earlier catalog could
-    // otherwise hand a mech id that no longer exists to the sprite loader.
-    const owned = Array.isArray(parsed.owned) ? parsed.owned.filter(isMechId) : [];
-    if (owned.length === 0) owned.push("titan");
+    // Ownership is not gated yet, so the saved list is deliberately ignored
+    // in favour of the full roster — otherwise a save written before every
+    // chassis was unlocked would keep that player restricted to Titan with no
+    // way out. Restore `parsed.owned` here once unlocking is real.
+    const owned = [...MECH_IDS];
 
     const active = isMechId(parsed.active) && owned.includes(parsed.active) ? parsed.active : owned[0];
 
