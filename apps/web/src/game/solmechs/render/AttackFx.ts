@@ -29,6 +29,8 @@ export interface FxClip {
   additive?: boolean;
 }
 
+const cache = new Map<string, HTMLImageElement>();
+
 export const FX: Record<string, FxClip> = {
   kick:   { id: "kick",                frames: 8,  fps: 12, size: 74 },
   orb:    { id: "green_purple_sphere", frames: 23, fps: 16, size: 66, additive: true },
@@ -72,15 +74,35 @@ export function fxForMove(move: MoveDefinition): FxClip {
   return BY_MOVE[move.name.toLowerCase()] ?? defaultFor(move);
 }
 
-/** Stat-stage arrows — the Up/Down sequences, picked by direction. */
+/**
+ * Stat-stage badges.
+ *
+ * Unity shipped a per-stat icon set (Sprites/Interface guidance/status:
+ * ATK_Up, DEF_Down, …) which says WHICH stat moved, where the generic Up/Down
+ * arrow sequences only say the direction. These are single frames rather than
+ * animations, so they are served separately from the FX clips.
+ */
+const STAT_ICON_BASE = "/assets/minigames/sol-mechs/vfx/stat";
+const STAGED = new Set(["ATK", "DEF", "ENG", "SPD", "SYS"]);
+
+export function statBadge(stat: string, delta: number): HTMLImageElement | null {
+  if (!STAGED.has(stat)) return null;
+  const key = `stat/${stat}_${delta > 0 ? "Up" : "Down"}`;
+  const hit = cache.get(key);
+  if (hit) return hit;
+  const img = new Image();
+  img.src = `${STAT_ICON_BASE}/${stat}_${delta > 0 ? "Up" : "Down"}.png`;
+  cache.set(key, img);
+  return img;
+}
+
+/** Fallback animation for a stage change, when no per-stat icon exists. */
 export function fxForStage(delta: number): FxClip {
   return delta > 0 ? FX.up : FX.down;
 }
 
 /** Played where a limb is destroyed. */
 export const FX_DESTROY = FX.boom;
-
-const cache = new Map<string, HTMLImageElement>();
 
 export function fxFrame(clip: FxClip, frame: number): HTMLImageElement {
   const key = `${clip.id}/${frame}`;
@@ -96,6 +118,10 @@ export function fxFrame(clip: FxClip, frame: number): HTMLImageElement {
 export function preloadFx(): void {
   for (const clip of Object.values(FX)) {
     for (let i = 1; i <= clip.frames; i++) fxFrame(clip, i);
+  }
+  for (const stat of STAGED) {
+    statBadge(stat, 1);
+    statBadge(stat, -1);
   }
 }
 

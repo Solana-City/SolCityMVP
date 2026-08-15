@@ -275,7 +275,7 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
   if (phase === "hangar") {
     const hangar = loadHangar();
     return (
-      <Shell onClose={onClose} title="SOL MECHS — HANGAR">
+      <Shell onClose={onClose} title="Sol Mechs" subtitle="HANGAR">
         <p style={{ color: "#9d8fc4", fontSize: 13, margin: "0 0 4px" }}>
           Pick the mech you&apos;ll deploy. Two ways to win a fight:
         </p>
@@ -363,7 +363,7 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
   };
 
   return (
-    <Shell onClose={onClose} title="SOL MECHS">
+    <Shell onClose={onClose} title="Sol Mechs" subtitle="BATTLE">
       <div style={{ display: "flex", justifyContent: "space-between", gap: 12, marginBottom: 8 }}>
         <MechStatus state={battle} side="p1" />
         <MechStatus state={battle} side="p2" align="right" />
@@ -450,7 +450,7 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
         </div>
       )}
 
-      <BattleLog lines={log} turns={battle.history.length} />
+      <BattleLog lines={log} turns={battle.history.length} initiallyCollapsed />
     </Shell>
   );
 }
@@ -578,7 +578,7 @@ function Bar({ label, current, max, color }: { label: string; current: number; m
   );
 }
 
-function Shell({ children, onClose, title }: { children: React.ReactNode; onClose: () => void; title: string }) {
+function Shell({ children, onClose, title, subtitle = "" }: { children: React.ReactNode; onClose: () => void; title: string; subtitle?: string }) {
   return (
     <div style={{
       position: "fixed", inset: 0, background: "rgba(5,2,12,.88)", zIndex: 1000,
@@ -589,8 +589,17 @@ function Shell({ children, onClose, title }: { children: React.ReactNode; onClos
         padding: 16, width: "min(680px,100%)", maxHeight: "100%", overflowY: "auto",
         fontFamily: "system-ui,sans-serif",
       }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-          <h2 style={{ margin: 0, fontSize: 16, color: "#14f195", letterSpacing: 1 }}>{title}</h2>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, gap: 10 }}>
+          {/* The Unity wordmark (Interface guidance/UI/logo.png) carries the
+              brand far better than a styled <h2>; the text stays as the
+              accessible name and as a fallback if the art fails to load. */}
+          <img
+            src="/assets/minigames/sol-mechs/ui/logo.png"
+            alt={title}
+            style={{ imageRendering: "pixelated", height: 30, width: "auto", display: "block" }}
+            onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+          />
+          <span style={{ fontSize: 11, color: "#6b5c92", letterSpacing: 2, marginRight: "auto" }}>{subtitle}</span>
           <button onClick={onClose} style={{
             background: "none", border: "none", color: "#9d8fc4", fontSize: 20,
             cursor: "pointer", lineHeight: 1, padding: 0,

@@ -26,7 +26,7 @@
 import type { BattleEvent, PlayerSide } from "../engine/BattleEngine";
 import { drawMech, DOLL_WIDTH, DOLL_HEIGHT, slotAnchor } from "./MechPaperDoll";
 import type { MechBuild, MechUnit, ModuleSlot, MoveDefinition } from "../data/types";
-import { fxForMove, fxForStage, fxFrame, clipDuration, preloadFx, FX_DESTROY, type FxClip } from "./AttackFx";
+import { fxForMove, fxForStage, fxFrame, clipDuration, preloadFx, statBadge, FX_DESTROY, type FxClip } from "./AttackFx";
 
 export interface RenderUnits {
   p1: MechUnit;
@@ -34,14 +34,28 @@ export interface RenderUnits {
 }
 
 export const CANVAS_W = 640;
-export const CANVAS_H = 320;
+/**
+ * Taller than the mechs strictly need, so the arena backdrop's crowd and
+ * skyline read instead of being cropped down to the platform.
+ */
+export const CANVAS_H = 360;
+
+/**
+ * The arena art (BattleSceneSprites/arena.png) imported at 640 wide. It is
+ * drawn bottom-aligned, so the canvas shows its lower portion: crowd, rails
+ * and the neon platform the mechs stand on.
+ */
+const ARENA_SRC = "/assets/minigames/sol-mechs/ui/arena.png";
+const ARENA_W = 640;
+const ARENA_H = 557;
 
 const MECH_SCALE = 2;
 const MECH_W = DOLL_WIDTH * MECH_SCALE;
 const MECH_H = DOLL_HEIGHT * MECH_SCALE;
-const GROUND_Y = 268;
-const P1_X = 64;
-const P2_X = CANVAS_W - 64 - MECH_W;
+/** Lands the mechs' feet on the platform in the backdrop, not on a flat line. */
+const GROUND_Y = 300;
+const P1_X = 58;
+const P2_X = CANVAS_W - 58 - MECH_W;
 
 // ── timing (ms) ──────────────────────────────────────────────────────────
 /** Lunge start → impact. The effect and the damage land at this offset. */
@@ -63,6 +77,8 @@ const FLOATER_DURATION = 1900;
 /** Fraction of a floater's life spent fading out at the end. */
 const FLOATER_FADE = 0.35;
 const SHAKE_DURATION = 260;
+/** How long a stat-stage badge sits over the affected limb. */
+const BADGE_DURATION = 1100;
 /**
  * Tail after the last cue before input is handed back. Deliberately shorter
  * than a floater's life: the numbers linger over the next action rather than
@@ -104,6 +120,14 @@ interface Shake {
   magnitude: number;
 }
 
+/** A single-frame stat icon (ATK_Up, DEF_Down, …) popped over a limb. */
+interface Badge {
+  start: number;
+  img: HTMLImageElement;
+  x: number;
+  y: number;
+}
+
 export class BattleRenderer {
   private ctx: CanvasRenderingContext2D;
   private raf = 0;
@@ -113,9 +137,11 @@ export class BattleRenderer {
   private fx: FxAnim[] = [];
   private floaters: Floater[] = [];
   private shakes: Shake[] = [];
+  private badges: Badge[] = [];
   private running = false;
   /** performance.now() when the current sequence hands input back. */
   private busyUntil = 0;
+  private arena = new Image();
 
   constructor(private canvas: HTMLCanvasElement, initial: RenderUnits) {
     const ctx = canvas.getContext("2d");
@@ -124,6 +150,7 @@ export class BattleRenderer {
     canvas.width = CANVAS_W;
     canvas.height = CANVAS_H;
     this.state = initial;
+    this.arena.src = ARENA_SRC;
     preloadFx();
   }
 
@@ -252,17 +279,20 @@ export class BattleRenderer {
 
         case "stage": {
           const at = this.anchorOf(e.side, e.targetSlot);
-          const clip = fxForStage(e.delta);
           // Offset from the damage cue so a hit that also debuffs reads as two
           // beats instead of one pile-up.
           const stageAt = impactAt + 140;
-          this.fx.push({ start: stageAt, clip, x: at.x, y: at.y, scale: 0.85 });
-          this.floaters.push({
-            start: stageAt, x: at.x, y: at.y - 14,
-            text: `${e.delta > 0 ? "+" : ""}${e.delta} ${e.stat}`,
-            color: e.delta > 0 ? "#21dda0" : "#ffa726", size: 15,
-          });
-          last = Math.max(last, stageAt + clipDuration(clip));
+          // Unity's per-stat badge says WHICH stat moved; the animated arrow is
+          // only a fallback for a stat with no icon.
+          const badge = statBadge(e.stat, e.delta);
+          if (badge) {
+            this.badges.push({ start: stageAt, img: badge, x: at.x, y: at.y - 6 });
+            last = Math.max(last, stageAt + BADGE_DURATION);
+          } else {
+            const clip = fxForStage(e.delta);
+            this.fx.push({ start: stageAt, clip, x: at.x, y: at.y, scale: 0.85 });
+            last = Math.max(last, stageAt + clipDuration(clip));
+          }
           break;
         }
 
@@ -305,6 +335,7 @@ export class BattleRenderer {
     this.fx = this.fx.filter((f) => now - f.start < clipDuration(f.clip));
     this.floaters = this.floaters.filter((f) => now - f.start < FLOATER_DURATION);
     this.shakes = this.shakes.filter((s) => now - s.start < SHAKE_DURATION);
+    this.badges = this.badges.filter((b) => now - b.start < BADGE_DURATION);
 
     // Screen shake displaces the whole scene, so it has to wrap every draw.
     let sx = 0, sy = 0;
@@ -324,22 +355,30 @@ export class BattleRenderer {
 
     for (const side of ["p1", "p2"] as PlayerSide[]) this.drawSide(ctx, side, now);
     this.drawFx(ctx, now);
+    this.drawBadges(ctx, now);
     this.drawFloaters(ctx, now);
     ctx.restore();
   }
 
   private drawBackground(ctx: CanvasRenderingContext2D): void {
+    const arena = this.arena;
+    if (arena.complete && arena.naturalWidth > 0) {
+      // Bottom-aligned: the platform belongs at the foot of the frame, and
+      // whatever skyline fits above it is a bonus.
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(arena, 0, CANVAS_H - ARENA_H, ARENA_W, ARENA_H);
+      return;
+    }
+    // Backdrop still decoding — the old gradient keeps the scene readable
+    // rather than flashing empty on the first frame.
     const sky = ctx.createLinearGradient(0, 0, 0, CANVAS_H);
     sky.addColorStop(0, "#120a24");
     sky.addColorStop(0.55, "#231145");
     sky.addColorStop(1, "#0d0718");
     ctx.fillStyle = sky;
     ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
-
     ctx.fillStyle = "#1b1030";
     ctx.fillRect(0, GROUND_Y, CANVAS_W, CANVAS_H - GROUND_Y);
-    ctx.fillStyle = "#3d2a63";
-    ctx.fillRect(0, GROUND_Y, CANVAS_W, 2);
   }
 
   /**
@@ -429,6 +468,22 @@ export class BattleRenderer {
       // against the bright mechs.
       if (f.clip.additive) ctx.globalCompositeOperation = "lighter";
       ctx.drawImage(img, Math.round(f.x - w / 2), Math.round(f.y - h / 2), Math.round(w), Math.round(h));
+      ctx.restore();
+    }
+  }
+
+  private drawBadges(ctx: CanvasRenderingContext2D, now: number): void {
+    for (const b of this.badges) {
+      const t = (now - b.start) / BADGE_DURATION;
+      if (t < 0 || !b.img.complete || b.img.naturalWidth === 0) continue;
+      // Pops in, drifts up a little, fades over the last third.
+      const pop = t < 0.12 ? 0.5 + (t / 0.12) * 0.5 : 1;
+      const size = 34 * pop;
+      const y = b.y - t * 16;
+      ctx.save();
+      ctx.imageSmoothingEnabled = false;
+      ctx.globalAlpha = t > 0.66 ? Math.max(0, (1 - t) / 0.34) : 1;
+      ctx.drawImage(b.img, Math.round(b.x - size / 2), Math.round(y - size / 2), Math.round(size), Math.round(size));
       ctx.restore();
     }
   }
