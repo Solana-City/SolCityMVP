@@ -232,7 +232,11 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, onFinished, on
             <div style={sx.prompt}>Rival is choosing…</div>
           ) : picking ? (
             <>
-              <div style={sx.prompt}>Substitute — costs your turn.</div>
+              <div style={sx.prompt}>
+                {state.rules.switchCost === "turn"
+                  ? "Substitute — costs your turn."
+                  : "Substitute — free, then act with the new mech."}
+              </div>
               <div style={sx.btnRow}>
                 {bench.map((i) => (
                   <button
@@ -296,10 +300,14 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, onFinished, on
                     </div>
                   </button>
                 ))}
-                {bench.length > 0 && (
+                {bench.length > 0 && !(state.rules.switchCost === "free" && state.freeSwitchUsed) && (
                   <button onClick={() => setPicking(true)} style={{ ...sx.btn, borderColor: C.blue }}>
                     <div style={{ ...sx.btnTitle, color: C.blue }}>SUBSTITUTE</div>
-                    <div style={sx.btnSub}>costs your turn</div>
+                    {/* Reads the live rule rather than asserting one, so the
+                        label can't lie if the default is changed. */}
+                    <div style={sx.btnSub}>
+                      {state.rules.switchCost === "turn" ? "costs your turn" : "free · then act"}
+                    </div>
                   </button>
                 )}
               </div>

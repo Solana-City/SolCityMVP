@@ -11,10 +11,11 @@
  *
  * ## Conventions taken from Pokémon, since that's the reference
  *
- *  - **Switching costs your turn.** Free switching would make every bad
- *    matchup escapable and reduce lead choice to a coin flip.
- *  - **A switch after a KO is free.** You lost the turn that lost the mech;
- *    charging a second one compounds the same mistake.
+ *  - **Switching costs your turn** — by default, and now configurable via
+ *    `TeamRules.switchCost`. See SwitchCost for what each setting does to the
+ *    feel of a match.
+ *  - **A switch after a KO is free**, under either setting. You lost the turn
+ *    that lost the mech; charging a second one compounds the same mistake.
  *  - **Stat stages reset on switch-out.** They are per-limb buffs on a
  *    machine that just walked off the field.
  *  - **Damage does NOT reset.** A mech returns with exactly the limbs it left
@@ -60,12 +61,46 @@ export type TeamEvent =
   | { type: "mech-down"; side: PlayerSide; index: number; mechName: string; cause: DefeatCause }
   | { type: "must-switch"; side: PlayerSide };
 
+/**
+ * What a voluntary substitution costs.
+ *
+ *  - `"turn"` — swapping ends your turn; the opponent moves next. Every bad
+ *    matchup then has a price, and reading the opponent's swap is worth
+ *    something.
+ *  - `"free"` — you swap AND still act. Much swingier: the fresh mech gets a
+ *    hit in before the opponent can react, so leading badly costs almost
+ *    nothing.
+ *
+ * A forced substitution after a KO is unaffected — it is always free, since
+ * the turn that lost the mech was already spent.
+ */
+export type SwitchCost = "turn" | "free";
+
+export interface TeamRules {
+  switchCost: SwitchCost;
+}
+
+export const DEFAULT_TEAM_RULES: TeamRules = { switchCost: "turn" };
+
 export interface TeamBattleState {
   p1: TeamSide;
   p2: TeamSide;
   status: TeamStatus;
   turnNumber: number;
   history: TeamAction[];
+  /**
+   * Carried in the state, not just passed to the constructor, so a replay
+   * reconstructs the same battle — a verifier running different rules would
+   * reject an honest result.
+   */
+  rules: TeamRules;
+  /**
+   * Under `switchCost: "free"` a voluntary swap keeps the turn, which on its
+   * own would let a side swap forever and never act. This marks the free swap
+   * as spent until the turn changes hands, so "free" means one swap plus a
+   * move — not an infinite carousel.
+   */
+  freeSwitchUsed: boolean;
 }
 
 export interface TeamResolveResult {
@@ -78,6 +113,8 @@ export interface CreateTeamBattleOptions {
   p2Name?: string;
   /** "speed" compares the two LEAD mechs; otherwise an explicit opener. */
   firstMove?: "speed" | "p1" | "p2";
+  /** Defaults to DEFAULT_TEAM_RULES. */
+  rules?: Partial<TeamRules>;
 }
 
 function buildSide(team: TeamBuild, name: string): TeamSide {
@@ -127,7 +164,14 @@ export function createTeamBattle(
         ? "p2"
         : "p1";
 
-  return { p1, p2, status: { kind: "active", turn }, turnNumber: 1, history: [] };
+  return {
+    p1, p2,
+    status: { kind: "active", turn },
+    turnNumber: 1,
+    history: [],
+    rules: { ...DEFAULT_TEAM_RULES, ...options.rules },
+    freeSwitchUsed: false,
+  };
 }
 
 function cloneSide(side: TeamSide): TeamSide {
@@ -141,6 +185,8 @@ function cloneState(state: TeamBattleState): TeamBattleState {
     status: state.status,
     turnNumber: state.turnNumber,
     history: [...state.history],
+    rules: state.rules,
+    freeSwitchUsed: state.freeSwitchUsed,
   };
 }
 
@@ -175,6 +221,9 @@ export function resolveTeamAction(state: TeamBattleState, action: TeamAction): T
   const foe = sideOf(next, foeSide);
 
   if (action.kind === "switch") {
+    if (!forced && next.rules.switchCost === "free" && next.freeSwitchUsed) {
+      return reject("Already substituted this turn — act with this mech");
+    }
     if (action.toIndex === me.activeIndex) return reject("That mech is already out");
     if (action.toIndex < 0 || action.toIndex >= me.units.length) return reject("No such mech");
     if (isDefeated(me.units[action.toIndex])) return reject("That mech is out of the fight");
@@ -191,16 +240,20 @@ export function resolveTeamAction(state: TeamBattleState, action: TeamAction): T
     });
     next.history.push(action);
 
-    // A voluntary switch spends your turn, so play passes to the opponent.
+    // A forced switch never costs the turn: the side that just lost a mech
+    // sends its replacement in and then takes its normal turn. Passing the
+    // turn here would charge them twice for one KO — the mech AND the tempo.
     //
-    // A forced switch does not: the side that just lost a mech sends its
-    // replacement in for free and then takes its normal turn. Passing the
-    // turn here instead would charge them twice for one KO — the mech AND
-    // the tempo — which is neither how Pokémon reads nor a rule anyone would
-    // enjoy losing to.
-    const nextTurn = forced ? action.side : foeSide;
+    // A voluntary switch costs the turn only under the "turn" rule; under
+    // "free" the switcher keeps it and acts with the mech they just brought
+    // in.
+    const keepsTurn = forced || next.rules.switchCost === "free";
+    const nextTurn = keepsTurn ? action.side : foeSide;
     next.status = { kind: "active", turn: nextTurn };
-    if (!forced) next.turnNumber += 1;
+    if (!keepsTurn) next.turnNumber += 1;
+    // A free voluntary swap is spent for this turn. A forced one isn't — the
+    // replacement still deserves its normal move.
+    next.freeSwitchUsed = keepsTurn && !forced;
     events.push({ type: "turn-start", side: nextTurn, turnNumber: next.turnNumber });
     return { state: next, events };
   }
@@ -251,6 +304,8 @@ export function resolveTeamAction(state: TeamBattleState, action: TeamAction): T
 
   next.status = { kind: "active", turn: foeSide };
   next.turnNumber += 1;
+  // The turn has changed hands, so the next side gets its free swap back.
+  next.freeSwitchUsed = false;
   events.push({ type: "turn-start", side: foeSide, turnNumber: next.turnNumber });
   return { state: next, events };
 }
@@ -263,6 +318,7 @@ export function replayTeam(
   p1Team: TeamBuild,
   p2Team: TeamBuild,
   actions: TeamAction[],
+  /** Must include the same `rules` the battle ran under, or it desyncs. */
   options: CreateTeamBattleOptions = {},
 ): TeamBattleState {
   let state = createTeamBattle(p1Team, p2Team, options);
