@@ -187,6 +187,25 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     action: { type: "private-payment", label: "Send privately" },
     spriteKey: "Magic Man",
   },
+  {
+    id: "mech-handler",
+    name: "Rade",
+    role: "Sol Mechs Hangar",
+    // Open 5x5 plaza, ~22 tiles clear of every other NPC — room for the
+    // hangar building to go up around this spot without displacing anyone.
+    tileX: 131,
+    tileY: 113,
+    color: 0xff5468,
+    dialog: [
+      "You made it. This is the Sol Mechs hangar — five chassis on the racks, all combat-rated.",
+      "Rules are simple: arms and legs take hits, but the Matrix is sealed. Blow off an arm and the core is exposed. That's your win condition.",
+      "Parts mix across chassis, so don't feel married to a stock loadout. Pick a mech and I'll fire up the arena.",
+    ],
+    action: { type: "minigame", label: "Enter the Hangar", miniGameId: "sol-mechs" },
+    // No spriteKey yet — falls back to the default avatar sheet until the
+    // handler's own art is drawn. Same for the portrait: the Unity source
+    // only ships 2048x2048 busts, well over this repo's 256x256 convention.
+  },
   // ── Expansion district NPCs ──────────────────────────────────────
   {
     id: "kuka",

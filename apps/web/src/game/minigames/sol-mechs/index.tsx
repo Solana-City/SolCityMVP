@@ -21,6 +21,7 @@ import { BattleRenderer, CANVAS_W, CANVAS_H } from "@/game/solmechs/render/Battl
 import { preloadAll, preloadBuild } from "@/game/solmechs/render/MechPaperDoll";
 import { LocalAIOpponent } from "@/game/solmechs/opponent/LocalAIOpponent";
 import { MATRICES, PRESET_BUILDS } from "@/game/solmechs/data/catalog";
+import { recordResult } from "@/game/solmechs/hangar";
 import { LIMB_SLOTS, type MechId, type ModuleSlot } from "@/game/solmechs/data/types";
 
 type Phase = "hangar" | "battle" | "result";
@@ -117,6 +118,7 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
     if (!battle || battle.status.kind !== "finished") return;
     setPhase("result");
     const won = battle.status.winner === "p1";
+    recordResult(won);
     void onResult({
       success: won,
       metadata: {
