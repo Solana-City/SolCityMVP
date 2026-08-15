@@ -11,17 +11,18 @@
  * arrive from the network instead of from a local click.
  */
 import type { BattleState, BattleEvent, PlayerSide } from "../engine/BattleEngine";
-import { drawMech, MECH_FRAME_SIZE } from "./MechPaperDoll";
+import { drawMech, DOLL_WIDTH, DOLL_HEIGHT } from "./MechPaperDoll";
 import type { MechBuild } from "../data/types";
 
 export const CANVAS_W = 640;
-export const CANVAS_H = 288;
+export const CANVAS_H = 320;
 
-const MECH_SCALE = 3;
-const MECH_SIZE = MECH_FRAME_SIZE * MECH_SCALE; // 192
-const GROUND_Y = 232;
-const P1_X = 72;
-const P2_X = CANVAS_W - 72 - MECH_SIZE;
+const MECH_SCALE = 2;
+const MECH_W = DOLL_WIDTH * MECH_SCALE;
+const MECH_H = DOLL_HEIGHT * MECH_SCALE;
+const GROUND_Y = 268;
+const P1_X = 64;
+const P2_X = CANVAS_W - 64 - MECH_W;
 
 /** ms */
 const ATTACK_DURATION = 420;
@@ -147,19 +148,18 @@ export class BattleRenderer {
   private drawSide(ctx: CanvasRenderingContext2D, side: PlayerSide, now: number): void {
     const unit = side === "p1" ? this.state.p1 : this.state.p2;
     const baseX = side === "p1" ? P1_X : P2_X;
-    const y = GROUND_Y - MECH_SIZE;
+    const y = GROUND_Y - MECH_H;
 
     const attack = this.attacks.find((a) => a.side === side);
     const flash = this.flashes.find((f) => f.side === side);
 
-    // Lunge: ease out toward the opponent and settle back.
+    // Lunge: ease out toward the opponent and settle back. Each part has only
+    // one sprite — there is no second pose to swap to — so the attack reads
+    // through movement rather than through a changed frame.
     let dx = 0;
-    let pose: 1 | 2 = 1;
     if (attack) {
       const t = (now - attack.start) / ATTACK_DURATION;
-      const lunge = Math.sin(t * Math.PI);
-      dx = lunge * 22 * (side === "p1" ? 1 : -1);
-      pose = t < 0.65 ? 2 : 1;
+      dx = Math.sin(t * Math.PI) * 22 * (side === "p1" ? 1 : -1);
     }
 
     // Recoil away from the hit.
@@ -176,7 +176,7 @@ export class BattleRenderer {
     ctx.globalAlpha = 0.35;
     ctx.fillStyle = "#000000";
     ctx.beginPath();
-    ctx.ellipse(baseX + MECH_SIZE / 2, GROUND_Y + 2, MECH_SIZE * 0.28, 7, 0, 0, Math.PI * 2);
+    ctx.ellipse(baseX + MECH_W / 2, GROUND_Y + 2, MECH_W * 0.3, 7, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
 
@@ -185,7 +185,6 @@ export class BattleRenderer {
       y,
       scale: MECH_SCALE,
       flip: side === "p2",
-      pose,
       hitFlash,
       brokenSlots: {
         rightArm: unit.partStatuses.rightArm.currentHP <= 0,
@@ -199,11 +198,11 @@ export class BattleRenderer {
       // instead of leaving a hole that pops when the art lands.
       ctx.save();
       ctx.fillStyle = "#2a1c4d";
-      ctx.fillRect(baseX, y, MECH_SIZE, MECH_SIZE);
+      ctx.fillRect(baseX, y, MECH_W, MECH_H);
       ctx.fillStyle = "#7a68a8";
       ctx.font = "12px monospace";
       ctx.textAlign = "center";
-      ctx.fillText(unit.matrix.matrixName, baseX + MECH_SIZE / 2, y + MECH_SIZE / 2);
+      ctx.fillText(unit.matrix.matrixName, baseX + MECH_W / 2, y + MECH_H / 2);
       ctx.restore();
     }
   }
@@ -214,8 +213,8 @@ export class BattleRenderer {
     ctx.textAlign = "center";
     for (const f of this.floaters) {
       const t = (now - f.start) / FLOATER_DURATION;
-      const x = (f.side === "p1" ? P1_X : P2_X) + MECH_SIZE / 2;
-      const y = GROUND_Y - MECH_SIZE - 10 - t * 42;
+      const x = (f.side === "p1" ? P1_X : P2_X) + MECH_W / 2;
+      const y = GROUND_Y - MECH_H - 10 - t * 42;
       ctx.globalAlpha = 1 - t;
       ctx.fillStyle = "#000000";
       ctx.fillText(f.text, x + 1, y + 1);

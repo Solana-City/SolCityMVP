@@ -18,7 +18,7 @@
  * the chrome is rebuilt in CSS and only the small slot-tab icons ship as art.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { drawMech, MECH_FRAME_SIZE, preloadBuild } from "@/game/solmechs/render/MechPaperDoll";
+import { drawMech, DOLL_WIDTH, DOLL_HEIGHT, preloadBuild } from "@/game/solmechs/render/MechPaperDoll";
 import {
   MATRICES, getMatrixById, getPart, getSelectableParts, familyOf, PRESET_BUILDS,
   REFERENCE_OPPONENT,
@@ -42,7 +42,8 @@ const SLOT_META: Record<LimbSlot, { label: string; icon: string }> = {
 };
 
 const PREVIEW_SCALE = 3;
-const PREVIEW_SIZE = MECH_FRAME_SIZE * PREVIEW_SCALE;
+const PREVIEW_W = DOLL_WIDTH * PREVIEW_SCALE;
+const PREVIEW_H = DOLL_HEIGHT * PREVIEW_SCALE;
 
 /**
  * Stats shown in the readout, each with what it actually controls.
@@ -253,8 +254,8 @@ export default function Workshop({ initialMech, onSaved, onClose }: WorkshopProp
           <div style={sx.previewPanel}>
             <canvas
               ref={canvasRef}
-              width={PREVIEW_SIZE}
-              height={PREVIEW_SIZE}
+              width={PREVIEW_W}
+              height={PREVIEW_H}
               style={{ ...PIXELATED, width: "100%", height: "auto", display: "block" }}
             />
             <div style={sx.previewName}>{matrix.matrixName}</div>

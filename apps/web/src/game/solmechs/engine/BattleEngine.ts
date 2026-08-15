@@ -91,6 +91,7 @@ export type BattleEvent =
   | { type: "stage"; side: PlayerSide; targetSlot: ModuleSlot; stat: StageableStat; delta: number; newStage: number }
   | { type: "part-broken"; side: PlayerSide; slot: ModuleSlot; partName: string }
   | { type: "matrix-unlocked"; side: PlayerSide }
+  | { type: "defeat-cause"; side: PlayerSide; cause: "matrix-destroyed" | "limbs-destroyed" }
   | { type: "rejected"; reason: string }
   | { type: "victory"; winner: PlayerSide };
 
@@ -209,6 +210,34 @@ export function getStage(unit: MechUnit, slot: ModuleSlot, stat: StageableStat):
   return unit.partStatuses[slot].buffs[stat] ?? 0;
 }
 
+/** True once every limb is gone — the second way to lose. */
+export function allLimbsDestroyed(unit: MechUnit): boolean {
+  return LIMB_SLOTS.every((slot) => isPartBroken(unit, slot));
+}
+
+/**
+ * Stats as they stand right now: the chassis plus only the limbs still
+ * standing.
+ *
+ * This is the heart of the modular combat. A part contributes its bonuses
+ * *while it is active* — shoot off an arm and the mech permanently loses that
+ * arm's ATK, not merely its moves. That is what makes choosing a target a
+ * real decision: you can go for the core, or you can dismantle the opponent
+ * until nothing they own hits hard enough to matter.
+ *
+ * `unit.totalStats` remains the intact, at-full-strength figure — the
+ * Workshop shows that one, since it describes the build rather than a
+ * moment in a fight.
+ */
+export function effectiveStats(unit: MechUnit): StatBlock {
+  let stats: StatBlock = { ...unit.matrix.baseStats };
+  for (const slot of LIMB_SLOTS as Array<Exclude<ModuleSlot, "matrix">>) {
+    if (isPartBroken(unit, slot)) continue;
+    stats = addStats(stats, unit.parts[slot].statModifiers);
+  }
+  return stats;
+}
+
 function stageMultiplier(stage: number): number {
   const idx = clamp(stage, MIN_STAGE, MAX_STAGE) + 6;
   return STAGE_MULTIPLIERS[idx];
@@ -279,10 +308,12 @@ export function calculateDamage(
   const atkStat: StageableStat = physical ? "ATK" : "ENG";
   const defStat: StageableStat = physical ? "DEF" : "SYS";
 
-  // Math.max(1, …) guards the degenerate case where a build and a -6 stage
-  // together round a stat to nothing, which would divide by zero below.
-  const atk = Math.max(1, attacker.totalStats[atkStat] * stageMultiplier(getStage(attacker, sourceSlot, atkStat)));
-  const def = Math.max(1, defender.totalStats[defStat] * stageMultiplier(getStage(defender, targetSlot, defStat)));
+  // effectiveStats, not totalStats: a destroyed limb has stopped contributing,
+  // so dismantling an opponent really does weaken every remaining swing they
+  // take. Math.max(1, …) guards the degenerate case where a stripped mech and
+  // a -6 stage together round a stat to nothing, which would divide by zero.
+  const atk = Math.max(1, effectiveStats(attacker)[atkStat] * stageMultiplier(getStage(attacker, sourceSlot, atkStat)));
+  const def = Math.max(1, effectiveStats(defender)[defStat] * stageMultiplier(getStage(defender, targetSlot, defStat)));
 
   const multiplier = clamp(
     (2 * atk) / (atk + def),
@@ -406,9 +437,24 @@ export function resolveAction(state: BattleState, action: BattleAction): Resolve
   next.history.push(action);
 
   // --- win check ---
-  if (defender.matrixHP <= 0) {
-    next.status = { kind: "finished", winner: action.side };
-    events.push({ type: "victory", winner: action.side });
+  // Two routes to a win, and they are genuinely alternative strategies: blow
+  // the core, or strip all three limbs so the mech has nothing left to fight
+  // with. Checked on both sides because a self-targeted move can, in
+  // principle, finish off the user's own last limb.
+  for (const side of ["p1", "p2"] as PlayerSide[]) {
+    const unit = unitFor(next, side);
+    const coreGone = unit.matrixHP <= 0;
+    const strippedBare = allLimbsDestroyed(unit);
+    if (!coreGone && !strippedBare) continue;
+
+    const winner = opponentOf(side);
+    next.status = { kind: "finished", winner };
+    events.push({
+      type: "defeat-cause",
+      side,
+      cause: coreGone ? "matrix-destroyed" : "limbs-destroyed",
+    });
+    events.push({ type: "victory", winner });
     return { state: next, events };
   }
 
