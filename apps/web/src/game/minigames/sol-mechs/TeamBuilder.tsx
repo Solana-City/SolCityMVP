@@ -1,0 +1,255 @@
+"use client";
+
+/**
+ * Sol Mechs — squad builder for 3v3.
+ *
+ * Three slots, each edited through the same Workshop used for solo builds.
+ * The uniqueness rule is enforced by *omission*: the Workshop is handed the
+ * codes the other two mechs already carry and simply doesn't offer them, so
+ * a clash normally can't be created in the first place.
+ *
+ * The validator still runs on top of that, because a squad saved under an
+ * older catalog — or one the player loaded from elsewhere — can arrive
+ * already broken. When it does, the offending mechs are flagged and DEPLOY is
+ * blocked rather than the team being silently rewritten underneath them.
+ */
+import { useCallback, useMemo, useState } from "react";
+import { drawMech, DOLL_WIDTH, DOLL_HEIGHT, preloadBuild } from "@/game/solmechs/render/MechPaperDoll";
+import { useEffect, useRef } from "react";
+import { getMatrix } from "@/game/solmechs/data/catalog";
+import { validateTeam, takenCodes, TEAM_SIZE, type TeamBuild } from "@/game/solmechs/data/team";
+import { createUnit } from "@/game/solmechs/engine/BattleEngine";
+import type { MechBuild, ModuleSlot } from "@/game/solmechs/data/types";
+import { loadHangar, setTeam } from "@/game/solmechs/hangar";
+import Workshop from "./Workshop";
+
+const C = {
+  teal: "#21dda0", purple: "#9a46fe", ink: "#0b0616", panel: "#150c2b",
+  panelHi: "#1d1140", line: "#33235c", text: "#e8e2f7", dim: "#9d8fc4",
+  faint: "#6b5c92", danger: "#ff5468",
+};
+
+const SLOTS: ModuleSlot[] = ["matrix", "rightArm", "leftArm", "lowerBody"];
+const CARD_SCALE = 2;
+
+export interface TeamBuilderProps {
+  onDeploy: (team: TeamBuild) => void;
+  onClose: () => void;
+}
+
+export default function TeamBuilder({ onDeploy, onClose }: TeamBuilderProps) {
+  const [mechs, setMechs] = useState<MechBuild[]>(() => loadHangar().team.slice(0, TEAM_SIZE));
+  const [editing, setEditing] = useState<number | null>(null);
+
+  const team: TeamBuild = useMemo(() => ({ mechs }), [mechs]);
+  const validation = useMemo(() => validateTeam(team), [team]);
+
+  /** Mech indices involved in any clash, for badging the cards. */
+  const flagged = useMemo(() => {
+    const s = new Set<number>();
+    for (const v of validation.violations) for (const i of v.mechIndices) s.add(i);
+    return s;
+  }, [validation]);
+
+  const updateAt = useCallback((index: number, build: MechBuild) => {
+    setMechs((prev) => prev.map((b, i) => (i === index ? build : b)));
+  }, []);
+
+  const deploy = useCallback(() => {
+    if (!validation.ok) return;
+    setTeam(mechs);
+    onDeploy(team);
+  }, [validation.ok, mechs, team, onDeploy]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape" && editing === null) onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [editing, onClose]);
+
+  if (editing !== null) {
+    const build = mechs[editing];
+    const matrix = getMatrix(build.matrixCode);
+    const taken: Partial<Record<ModuleSlot, Set<string>>> = {};
+    for (const slot of SLOTS) taken[slot] = takenCodes(team, editing, slot);
+
+    return (
+      <Workshop
+        initialMech={matrix?.id ?? "titan"}
+        onClose={() => setEditing(null)}
+        teamContext={{
+          build,
+          taken,
+          label: `SQUAD ${editing + 1} / ${TEAM_SIZE}`,
+          onChange: (b) => updateAt(editing, b),
+        }}
+      />
+    );
+  }
+
+  return (
+    <div style={sx.backdrop} onPointerDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div style={sx.frame}>
+        <header style={sx.header}>
+          <h2 style={sx.title}>SQUAD</h2>
+          <div style={{ flex: 1 }} />
+          <button onClick={onClose} style={sx.close} aria-label="Close">×</button>
+        </header>
+
+        <p style={sx.blurb}>
+          Three mechs, sent out one at a time. Substituting costs your turn, and a mech
+          returns with the damage it left with — only its stat buffs reset.
+          <br />
+          <strong style={{ color: C.text }}>Each part may appear once per squad</strong>, matrices
+          included.
+        </p>
+
+        <div style={sx.grid}>
+          {mechs.map((build, i) => (
+            <SquadCard
+              key={i}
+              index={i}
+              build={build}
+              flagged={flagged.has(i)}
+              onEdit={() => setEditing(i)}
+            />
+          ))}
+        </div>
+
+        {!validation.ok && (
+          <div style={sx.errors}>
+            {validation.messages.map((m) => <div key={m}>· {m}</div>)}
+          </div>
+        )}
+
+        <footer style={sx.footer}>
+          <button onClick={onClose} style={sx.btnGhost}>BACK</button>
+          <div style={{ flex: 1 }} />
+          <button
+            onClick={deploy}
+            disabled={!validation.ok}
+            style={{
+              ...sx.btnPrimary,
+              opacity: validation.ok ? 1 : 0.35,
+              cursor: validation.ok ? "pointer" : "not-allowed",
+            }}
+          >
+            DEPLOY SQUAD
+          </button>
+        </footer>
+      </div>
+    </div>
+  );
+}
+
+function SquadCard({ index, build, flagged, onEdit }: {
+  index: number; build: MechBuild; flagged: boolean; onEdit: () => void;
+}) {
+  const ref = useRef<HTMLCanvasElement>(null);
+  const raf = useRef(0);
+
+  useEffect(() => {
+    preloadBuild(build);
+    const c = ref.current;
+    const ctx = c?.getContext("2d");
+    if (!c || !ctx) return;
+    const loop = () => {
+      ctx.clearRect(0, 0, c.width, c.height);
+      drawMech(ctx, build, { x: 0, y: 0, scale: CARD_SCALE });
+      raf.current = requestAnimationFrame(loop);
+    };
+    raf.current = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(raf.current);
+  }, [build]);
+
+  const matrix = getMatrix(build.matrixCode);
+  const stats = useMemo(() => {
+    try { return createUnit("x", build).totalStats; } catch { return null; }
+  }, [build]);
+
+  return (
+    <button
+      onClick={onEdit}
+      style={{
+        ...sx.card,
+        borderColor: flagged ? C.danger : C.line,
+      }}
+    >
+      <div style={sx.cardHead}>
+        <span style={sx.cardIndex}>#{index + 1}</span>
+        <strong style={{ fontSize: 15, color: C.text }}>{matrix?.matrixName ?? "—"}</strong>
+        {flagged && <span style={sx.clashTag}>CLASH</span>}
+      </div>
+      <canvas
+        ref={ref}
+        width={DOLL_WIDTH * CARD_SCALE}
+        height={DOLL_HEIGHT * CARD_SCALE}
+        style={{ imageRendering: "pixelated", width: "100%", height: "auto", display: "block" }}
+      />
+      <div style={sx.codes}>
+        {build.rightArm} · {build.leftArm} · {build.lowerBody}
+      </div>
+      {stats && (
+        <div style={sx.cardStats}>
+          HP {stats.HP} · SPD {stats.SPD}<br />
+          ATK {stats.ATK} · DEF {stats.DEF} · ENG {stats.ENG} · SYS {stats.SYS}
+        </div>
+      )}
+      <div style={sx.editHint}>EDIT ▸</div>
+    </button>
+  );
+}
+
+const sx: Record<string, React.CSSProperties> = {
+  backdrop: {
+    position: "fixed", inset: 0, background: "rgba(4,2,10,.9)", zIndex: 1000,
+    display: "flex", alignItems: "center", justifyContent: "center", padding: 12,
+  },
+  frame: {
+    position: "relative", background: C.panel,
+    backgroundImage:
+      `linear-gradient(${C.line}55 1px, transparent 1px), linear-gradient(90deg, ${C.line}55 1px, transparent 1px)`,
+    backgroundSize: "26px 26px",
+    border: `2px solid ${C.line}`, borderRadius: 10, padding: 18,
+    width: "min(940px, 100%)", maxHeight: "100%",
+    display: "flex", flexDirection: "column", gap: 12, overflow: "hidden",
+    boxShadow: `0 0 0 1px ${C.teal}33, 0 16px 60px rgba(0,0,0,.65)`,
+    fontFamily: "system-ui,sans-serif",
+  },
+  header: { display: "flex", alignItems: "center", gap: 12, flexShrink: 0 },
+  title: { margin: 0, fontSize: 20, color: C.teal, letterSpacing: 5, fontWeight: 800 },
+  close: { background: "none", border: "none", color: C.dim, fontSize: 26, cursor: "pointer", lineHeight: 1, padding: 0 },
+  blurb: { fontSize: 12, color: C.dim, margin: 0, lineHeight: 1.65, flexShrink: 0 },
+  grid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(min(210px, 100%), 1fr))",
+    gap: 10, overflowY: "auto", overflowX: "hidden", alignItems: "start", minHeight: 0,
+  },
+  card: {
+    background: C.ink, border: "2px solid", borderRadius: 8, padding: 10,
+    cursor: "pointer", textAlign: "left", display: "flex", flexDirection: "column",
+    gap: 5, minWidth: 0,
+  },
+  cardHead: { display: "flex", alignItems: "baseline", gap: 6 },
+  cardIndex: { fontSize: 11, color: C.faint, fontFamily: "monospace" },
+  clashTag: {
+    marginLeft: "auto", fontSize: 8, color: C.danger, border: `1px solid ${C.danger}`,
+    borderRadius: 3, padding: "1px 4px", letterSpacing: 1,
+  },
+  codes: { fontSize: 10, color: C.faint, fontFamily: "monospace" },
+  cardStats: { fontSize: 11, color: C.dim, lineHeight: 1.55, fontFamily: "monospace" },
+  editHint: { fontSize: 10, color: C.teal, letterSpacing: 2, marginTop: "auto", paddingTop: 4 },
+  errors: {
+    background: "#2a0f18", border: `1px solid ${C.danger}`, borderRadius: 6,
+    padding: 10, fontSize: 11, color: "#ffb3bd", lineHeight: 1.7, flexShrink: 0,
+  },
+  footer: { display: "flex", alignItems: "center", gap: 10, flexShrink: 0, flexWrap: "wrap" },
+  btnGhost: {
+    background: "none", border: `1px solid ${C.line}`, color: C.dim, borderRadius: 6,
+    padding: "11px 16px", fontSize: 12, fontWeight: 700, cursor: "pointer", letterSpacing: 1,
+  },
+  btnPrimary: {
+    background: C.teal, border: "none", color: C.ink, borderRadius: 6,
+    padding: "12px 26px", fontSize: 14, fontWeight: 800, letterSpacing: 1,
+  },
+};

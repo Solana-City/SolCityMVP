@@ -11,12 +11,19 @@
  * the read/write pair below, not a redesign.
  */
 import type { MechBuild, MechId } from "./data/types";
-import { PRESET_BUILDS } from "./data/catalog";
+import { PRESET_BUILDS, getMatrix, getPart } from "./data/catalog";
 import { MECH_IDS } from "./data/types";
+import { TEAM_SIZE } from "./data/team";
 
 const STORAGE_KEY = "solcity:solmechs";
 
 export interface HangarState {
+  /**
+   * The player's 3v3 squad, in send-out order. Stored as builds rather than
+   * mech ids because a team slot is a full loadout — and because part
+   * uniqueness is checked across the actual codes, not the chassis.
+   */
+  team: MechBuild[];
   /** Mechs the player has unlocked. */
   owned: MechId[];
   /** Which one escorts them in the overworld, or null for none. */
@@ -38,13 +45,37 @@ export interface HangarState {
  * full roster keeps the two screens telling the same story until unlocking
  * is real.
  */
+/**
+ * Stock squad. Titan/Striker/Solus stock builds share no part code, so the
+ * default team is legal out of the box — a player who never opens the team
+ * builder can still press play.
+ */
+export const DEFAULT_TEAM: MechBuild[] = [
+  PRESET_BUILDS.titan,
+  PRESET_BUILDS.striker,
+  PRESET_BUILDS.solus,
+];
+
 export const DEFAULT_HANGAR: HangarState = {
+  team: DEFAULT_TEAM,
   owned: [...MECH_IDS],
   active: "titan",
   builds: {},
   wins: 0,
   losses: 0,
 };
+
+/** Every code in a build still exists in the catalog and fits its slot. */
+function isBuildResolvable(b: unknown): b is MechBuild {
+  if (!b || typeof b !== "object") return false;
+  const { matrixCode, rightArm, leftArm, lowerBody } = b as MechBuild;
+  return (
+    !!getMatrix(matrixCode) &&
+    getPart(rightArm)?.slot === "rightArm" &&
+    getPart(leftArm)?.slot === "leftArm" &&
+    getPart(lowerBody)?.slot === "lowerBody"
+  );
+}
 
 function isMechId(v: unknown): v is MechId {
   return typeof v === "string" && (MECH_IDS as string[]).includes(v);
@@ -64,7 +95,16 @@ export function loadHangar(): HangarState {
 
     const active = isMechId(parsed.active) && owned.includes(parsed.active) ? parsed.active : owned[0];
 
+    // A saved team is only honoured if it still has the right shape and every
+    // code still resolves — a squad referencing a part the catalog dropped
+    // would throw out of createUnit and take the battle screen down with it.
+    const team = Array.isArray(parsed.team) && parsed.team.length === TEAM_SIZE
+      && parsed.team.every(isBuildResolvable)
+      ? (parsed.team as MechBuild[])
+      : DEFAULT_TEAM;
+
     return {
+      team,
       owned,
       active,
       builds: parsed.builds ?? {},
@@ -136,6 +176,15 @@ export function resetBuild(mech: MechId): HangarState {
   const builds = { ...state.builds };
   delete builds[mech];
   const next: HangarState = { ...state, builds };
+  saveHangar(next);
+  return next;
+}
+
+/** Persist the 3v3 squad. Legality is the caller's call — the team builder
+ *  blocks an illegal save, but a half-built team is still worth keeping. */
+export function setTeam(team: MechBuild[]): HangarState {
+  const state = loadHangar();
+  const next: HangarState = { ...state, team };
   saveHangar(next);
   return next;
 }

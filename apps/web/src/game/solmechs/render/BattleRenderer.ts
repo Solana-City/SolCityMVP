@@ -4,15 +4,27 @@
  * Draws the two mechs facing each other in the sidescroller layout the Unity
  * battle scene used, and plays short animations in response to engine events.
  *
- * The renderer is a pure consumer of BattleState: it never decides anything
+ * The renderer is a pure consumer of battle state: it never decides anything
  * about the fight, it only shows what the engine already resolved. Animations
  * are fire-and-forget overlays on top of the current state, so a dropped or
  * skipped animation can never desync the battle — which matters once actions
  * arrive from the network instead of from a local click.
  */
-import type { BattleState, BattleEvent, PlayerSide } from "../engine/BattleEngine";
+import type { BattleEvent, PlayerSide } from "../engine/BattleEngine";
 import { drawMech, DOLL_WIDTH, DOLL_HEIGHT } from "./MechPaperDoll";
-import type { MechBuild } from "../data/types";
+import type { MechBuild, MechUnit } from "../data/types";
+
+/**
+ * All the renderer needs: whoever is on the field right now.
+ *
+ * Deliberately narrower than BattleState so a 3v3 can hand over its two
+ * ACTIVE mechs and get the same scene — the renderer has no business knowing
+ * which format it is drawing.
+ */
+export interface RenderUnits {
+  p1: MechUnit;
+  p2: MechUnit;
+}
 
 export const CANVAS_W = 640;
 export const CANVAS_H = 320;
@@ -49,13 +61,13 @@ interface Floater {
 export class BattleRenderer {
   private ctx: CanvasRenderingContext2D;
   private raf = 0;
-  private state: BattleState;
+  private state: RenderUnits;
   private attacks: AttackAnim[] = [];
   private flashes: FlashAnim[] = [];
   private floaters: Floater[] = [];
   private running = false;
 
-  constructor(private canvas: HTMLCanvasElement, initial: BattleState) {
+  constructor(private canvas: HTMLCanvasElement, initial: RenderUnits) {
     const ctx = canvas.getContext("2d");
     if (!ctx) throw new Error("2D context unavailable");
     this.ctx = ctx;
@@ -79,7 +91,7 @@ export class BattleRenderer {
     cancelAnimationFrame(this.raf);
   }
 
-  setState(state: BattleState): void {
+  setState(state: RenderUnits): void {
     this.state = state;
   }
 

@@ -81,10 +81,26 @@ export interface WorkshopProps {
   initialMech: MechId;
   onSaved?: (mech: MechId, build: MechBuild) => void;
   onClose: () => void;
+  /**
+   * Team mode. When present the Workshop edits THIS build instead of the
+   * hangar's per-mech loadout, and codes already claimed by the rest of the
+   * squad are removed from every cycler — the uniqueness rule is enforced by
+   * simply not offering the clash, rather than by letting the player build
+   * something the team screen then rejects.
+   */
+  teamContext?: {
+    build: MechBuild;
+    /** Codes taken by the OTHER team members, per slot. */
+    taken: Partial<Record<ModuleSlot, Set<string>>>;
+    label: string;
+    onChange: (build: MechBuild) => void;
+  };
 }
 
-export default function Workshop({ initialMech, onSaved, onClose }: WorkshopProps) {
-  const [build, setBuildState] = useState<MechBuild>(() => getBuild(loadHangar(), initialMech));
+export default function Workshop({ initialMech, onSaved, onClose, teamContext }: WorkshopProps) {
+  const [build, setBuildState] = useState<MechBuild>(
+    () => teamContext?.build ?? getBuild(loadHangar(), initialMech),
+  );
   const [activeSlot, setActiveSlot] = useState<ModuleSlot>("matrix");
   const [lockToFamily, setLockToFamily] = useState(false);
   const [dirty, setDirty] = useState(false);
@@ -161,10 +177,19 @@ export default function Workshop({ initialMech, onSaved, onClose }: WorkshopProp
 
   /** Options for a slot — every matrix, or the parts legal for this chassis. */
   const optionsFor = useCallback((slot: ModuleSlot): Array<{ code: string; name: string }> => {
-    if (slot === "matrix") return MATRICES.map((m) => ({ code: m.matrixCode, name: m.matrixName }));
-    return getSelectableParts(slot, build.matrixCode, lockToFamily)
-      .map((p: MechPart) => ({ code: p.partCode, name: p.partName }));
-  }, [build.matrixCode, lockToFamily]);
+    const all = slot === "matrix"
+      ? MATRICES.map((m) => ({ code: m.matrixCode, name: m.matrixName }))
+      : getSelectableParts(slot, build.matrixCode, lockToFamily)
+          .map((p: MechPart) => ({ code: p.partCode, name: p.partName }));
+
+    const taken = teamContext?.taken[slot];
+    if (!taken) return all;
+    // Keep whatever is currently equipped even if a teammate also holds it,
+    // so an already-clashing squad can still be cycled OUT of the clash
+    // instead of trapping the player on a code they can't move off.
+    const current = slot === "matrix" ? build.matrixCode : build[slot];
+    return all.filter((o) => o.code === current || !taken.has(o.code));
+  }, [build, lockToFamily, teamContext]);
 
   const currentCode = activeSlot === "matrix" ? build.matrixCode : build[activeSlot];
 
@@ -174,25 +199,42 @@ export default function Workshop({ initialMech, onSaved, onClose }: WorkshopProp
     const code = slot === "matrix" ? build.matrixCode : build[slot];
     const idx = options.findIndex((o) => o.code === code);
     const next = options[(((idx < 0 ? 0 : idx) + dir) + options.length) % options.length].code;
-    setBuildState(slot === "matrix" ? { ...build, matrixCode: next } : { ...build, [slot]: next });
+    const updated = slot === "matrix" ? { ...build, matrixCode: next } : { ...build, [slot]: next };
+    setBuildState(updated);
     setDirty(true);
-  }, [build, optionsFor]);
+    // In team mode the parent owns the squad, so every edit is reported live
+    // rather than waiting for a save — the team screen has to re-check
+    // uniqueness as you go.
+    teamContext?.onChange(updated);
+  }, [build, optionsFor, teamContext]);
 
   const save = useCallback(() => {
+    if (teamContext) {
+      teamContext.onChange(build);
+      setDirty(false);
+      onClose();
+      return;
+    }
     if (!mech) return;
     persistBuild(mech, build);
     setDirty(false);
     setSaved(true);
     onSaved?.(mech, build);
     window.setTimeout(() => setSaved(false), 1500);
-  }, [mech, build, onSaved]);
+  }, [mech, build, onSaved, teamContext, onClose]);
 
   const revert = useCallback(() => {
     if (!mech) return;
+    if (teamContext) {
+      setBuildState(PRESET_BUILDS[mech]);
+      teamContext.onChange(PRESET_BUILDS[mech]);
+      setDirty(true);
+      return;
+    }
     resetBuild(mech);
     setBuildState(PRESET_BUILDS[mech]);
     setDirty(false);
-  }, [mech]);
+  }, [mech, teamContext]);
 
   if (!matrix || !totals) return null;
 
@@ -209,8 +251,16 @@ export default function Workshop({ initialMech, onSaved, onClose }: WorkshopProp
 
         <header style={sx.header}>
           <h2 style={sx.title}>WORKSHOP</h2>
+          {teamContext && <span style={sx.teamTag}>{teamContext.label}</span>}
+          <div style={{ flex: 1 }} />
           <button onClick={onClose} style={sx.close} aria-label="Close">×</button>
         </header>
+        {teamContext && (
+          <p style={sx.teamHint}>
+            Parts already carried by the rest of the squad are hidden — each part may
+            appear once per team.
+          </p>
+        )}
 
         <div style={sx.body}>
           {/* ── preview ─────────────────────────────────────────────── */}
@@ -398,10 +448,16 @@ export default function Workshop({ initialMech, onSaved, onClose }: WorkshopProp
           {saved && <span style={{ color: C.teal, fontSize: 12, fontWeight: 700 }}>SAVED</span>}
           <button
             onClick={save}
-            disabled={!dirty}
-            style={{ ...sx.btnPrimary, opacity: dirty ? 1 : 0.35, cursor: dirty ? "pointer" : "default" }}
+            // Team edits already propagate live, so the button is a "done"
+            // rather than a commit and stays enabled.
+            disabled={!teamContext && !dirty}
+            style={{
+              ...sx.btnPrimary,
+              opacity: teamContext || dirty ? 1 : 0.35,
+              cursor: teamContext || dirty ? "pointer" : "default",
+            }}
           >
-            SAVE BUILD
+            {teamContext ? "DONE" : "SAVE BUILD"}
           </button>
         </footer>
       </div>
@@ -469,7 +525,12 @@ const sx: Record<string, React.CSSProperties> = {
     boxShadow: `0 0 0 1px ${C.teal}33, 0 16px 60px rgba(0,0,0,.65)`,
     fontFamily: "system-ui,sans-serif",
   },
-  header: { display: "flex", justifyContent: "space-between", alignItems: "center", flexShrink: 0 },
+  header: { display: "flex", alignItems: "center", gap: 12, flexShrink: 0 },
+  teamTag: {
+    fontSize: 11, color: C.purple, border: `1px solid ${C.purple}`,
+    borderRadius: 4, padding: "3px 8px", letterSpacing: 2, fontWeight: 700,
+  },
+  teamHint: { fontSize: 11, color: C.faint, margin: "-6px 0 0", lineHeight: 1.5 },
   title: { margin: 0, fontSize: 20, color: C.teal, letterSpacing: 5, fontWeight: 800 },
   close: {
     background: "none", border: "none", color: C.dim, fontSize: 26,

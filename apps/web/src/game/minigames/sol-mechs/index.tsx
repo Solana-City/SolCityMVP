@@ -25,9 +25,12 @@ import { LocalAIOpponent } from "@/game/solmechs/opponent/LocalAIOpponent";
 import { MATRICES, PRESET_BUILDS } from "@/game/solmechs/data/catalog";
 import { recordResult, loadHangar, getBuild } from "@/game/solmechs/hangar";
 import Workshop from "./Workshop";
+import TeamBuilder from "./TeamBuilder";
+import TeamBattleScreen from "./TeamBattleScreen";
+import { validateTeam, type TeamBuild } from "@/game/solmechs/data/team";
 import { LIMB_SLOTS, type MechId, type ModuleSlot, type MechBuild } from "@/game/solmechs/data/types";
 
-type Phase = "hangar" | "workshop" | "battle" | "result";
+type Phase = "hangar" | "workshop" | "squad" | "team-battle" | "battle" | "result";
 
 /** Paper-doll scale for the roster cards. */
 const CARD_SCALE = 2;
@@ -55,6 +58,25 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
   const [log, setLog] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [pendingMove, setPendingMove] = useState<{ slot: Exclude<ModuleSlot, "matrix">; moveIndex: number } | null>(null);
+  const [playerTeam, setPlayerTeam] = useState<TeamBuild | null>(null);
+
+  /**
+   * The 3v3 opponent. Fixed rather than random so a squad can be tuned
+   * against a known wall, and verified legal at module scope — an illegal
+   * rival would be a rule the player is held to and the AI isn't.
+   */
+  const rivalTeam: TeamBuild = useMemo(() => {
+    const team: TeamBuild = {
+      mechs: [
+        PRESET_BUILDS.arclight,
+        PRESET_BUILDS.heartcore,
+        { matrixCode: "M02", rightArm: "RA01", leftArm: "LA01", lowerBody: "IN01" },
+      ],
+    };
+    const check = validateTeam(team);
+    if (!check.ok) console.error("[SolMechs] rival squad is illegal:", check.messages);
+    return team;
+  }, []);
 
   useEffect(() => { preloadAll(); }, []);
 
@@ -181,6 +203,40 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
     return () => { renderer.destroy(); rendererRef.current = null; };
   }, [phase]);
 
+  // ==================== SQUAD (3v3) ====================
+  if (phase === "squad") {
+    return (
+      <TeamBuilder
+        onClose={() => setPhase("hangar")}
+        onDeploy={(team) => { setPlayerTeam(team); setPhase("team-battle"); }}
+      />
+    );
+  }
+
+  if (phase === "team-battle" && playerTeam) {
+    return (
+      <TeamBattleScreen
+        playerTeam={playerTeam}
+        enemyTeam={rivalTeam}
+        onClose={() => setPhase("hangar")}
+        onFinished={(playerWon, s) => {
+          recordResult(playerWon);
+          void onResult({
+            success: playerWon,
+            metadata: {
+              game: "sol-mechs",
+              mode: "3v3",
+              turns: s.history.length,
+              // The action list is what an on-chain verifier replays, so it
+              // travels with the outcome exactly as in the 1v1 path.
+              actions: s.history,
+            },
+          });
+        }}
+      />
+    );
+  }
+
   // ==================== WORKSHOP ====================
   if (phase === "workshop") {
     return (
@@ -228,7 +284,7 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
             );
           })}
         </div>
-        <div style={{ display: "flex", gap: 8, marginTop: 18 }}>
+        <div style={{ display: "flex", gap: 8, marginTop: 18, flexWrap: "wrap" }}>
           <button
             onClick={() => setPhase("workshop")}
             style={{
@@ -238,6 +294,16 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
             }}
           >
             WORKSHOP
+          </button>
+          <button
+            onClick={() => setPhase("squad")}
+            style={{
+              padding: "12px 18px", background: "none", color: "#9a46fe",
+              border: "1px solid #9a46fe", borderRadius: 8, fontSize: 13,
+              fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap",
+            }}
+          >
+            3v3 SQUAD
           </button>
           <button
             onClick={() => startBattle(playerMech)}
