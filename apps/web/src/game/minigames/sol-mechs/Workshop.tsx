@@ -220,7 +220,13 @@ export default function Workshop({ initialMech, onSaved, onClose }: WorkshopProp
                 ref={canvasRef}
                 width={DOLL_WIDTH * PREVIEW_SCALE}
                 height={DOLL_HEIGHT * PREVIEW_SCALE}
-                style={{ ...PIXELATED, width: "100%", height: "auto", display: "block" }}
+                // Capped so a short viewport doesn't let the doll crowd the
+                // name and passives out of the panel.
+                style={{
+                  ...PIXELATED, display: "block",
+                  width: "100%", height: "auto",
+                  maxHeight: "42vh", objectFit: "contain",
+                }}
               />
             </div>
             <div style={sx.mechName}>{matrix.matrixName}</div>
@@ -471,17 +477,31 @@ const sx: Record<string, React.CSSProperties> = {
   },
   body: {
     display: "grid",
-    // minmax(0,…) lets every column shrink below its content, which is what
-    // keeps the panel from overflowing sideways at any width.
-    gridTemplateColumns: "minmax(0,1.05fr) minmax(0,1.15fr) minmax(0,1fr)",
-    gap: 12, minHeight: 0, overflow: "auto",
+    /**
+     * auto-fit + minmax reflows three columns down to two or one as the
+     * viewport narrows, instead of squeezing three fixed tracks until their
+     * contents push the panel sideways. `min(280px, 100%)` is the part that
+     * actually kills the horizontal scrollbar: a bare 280px floor still
+     * overflows once the container is narrower than that, which is what was
+     * left over after the previous pass.
+     */
+    gridTemplateColumns: "repeat(auto-fit, minmax(min(280px, 100%), 1fr))",
+    gap: 12,
+    minHeight: 0,
+    // Vertical only — any horizontal overflow is a layout bug to fix, never
+    // something to hand the user a scrollbar for.
+    overflowY: "auto",
+    overflowX: "hidden",
+    // Panels take their natural height rather than being stretched to the
+    // tallest one — stretching is what clipped the preview's passives.
+    alignItems: "start",
   },
   previewPanel: {
     background: C.ink, border: `1px solid ${C.line}`, borderRadius: 8,
     padding: 12, textAlign: "center", minWidth: 0,
     display: "flex", flexDirection: "column",
   },
-  dollWrap: { flex: 1, display: "flex", alignItems: "center", justifyContent: "center", minHeight: 0 },
+  dollWrap: { display: "flex", alignItems: "center", justifyContent: "center", minWidth: 0 },
   mechName: { color: C.text, fontSize: 22, fontWeight: 800, letterSpacing: 1, marginTop: 6 },
   mechRole: { color: C.teal, fontSize: 12, letterSpacing: 2, marginBottom: 10 },
   passives: { display: "flex", flexDirection: "column", gap: 4 },
@@ -493,7 +513,12 @@ const sx: Record<string, React.CSSProperties> = {
     background: C.ink, border: `1px solid ${C.line}`, borderRadius: 8,
     padding: 12, minWidth: 0, display: "flex", flexDirection: "column",
   },
-  slotRow: { display: "flex", alignItems: "center", gap: 4, marginBottom: 10 },
+  /**
+   * Wraps. Four 40px tabs plus the nowrap "Family lock" label add up to ~307px
+   * of unshrinkable content against a 280px minimum column — that difference
+   * was the last thing still pushing a horizontal scrollbar onto the panel.
+   */
+  slotRow: { display: "flex", alignItems: "center", gap: 4, marginBottom: 10, flexWrap: "wrap" },
   slotTab: { border: "2px solid transparent", borderRadius: 8, padding: 3, cursor: "pointer", lineHeight: 0 },
   lock: {
     display: "flex", alignItems: "center", gap: 5,
@@ -546,7 +571,7 @@ const sx: Record<string, React.CSSProperties> = {
     fontSize: 10, color: C.faint, marginTop: 8,
   },
   swatch: { display: "inline-block", width: 9, height: 9, marginRight: 4, verticalAlign: "middle" },
-  footer: { display: "flex", alignItems: "center", gap: 10, flexShrink: 0 },
+  footer: { display: "flex", alignItems: "center", gap: 10, flexShrink: 0, flexWrap: "wrap" },
   btnGhost: {
     background: "none", border: `1px solid ${C.line}`, color: C.dim,
     borderRadius: 6, padding: "11px 16px", fontSize: 12, fontWeight: 700,

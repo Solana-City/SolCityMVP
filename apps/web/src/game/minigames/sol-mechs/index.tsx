@@ -6,26 +6,31 @@
  * Follows the house minigame convention: the scene renders on a <canvas>
  * owned by BattleRenderer, with the HUD and controls as DOM on top.
  *
- * The flow is hangar → battle → result. Selecting a mech in the hangar picks
- * a preset build; the battle itself is driven entirely by the pure engine, so
+ * The flow is hangar → workshop → battle → result. The hangar shows each
+ * mech as the build that will actually deploy — its saved loadout, not the
+ * stock chassis — so what the roster advertises and what the engine fights
+ * are the same thing. The battle is driven entirely by the pure engine, so
  * swapping LocalAIOpponent for a network provider later changes only where
  * player 2's actions come from.
  */
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import type { MiniGameComponentProps, MiniGameBaseContext } from "../types";
 import {
-  createBattle, resolveAction, availableMoves, legalTargets,
+  createBattle, resolveAction, availableMoves, legalTargets, createUnit,
   type BattleState, type BattleAction, type BattleEvent, type PlayerSide,
 } from "@/game/solmechs/engine/BattleEngine";
 import { BattleRenderer, CANVAS_W, CANVAS_H } from "@/game/solmechs/render/BattleRenderer";
-import { preloadAll, preloadBuild } from "@/game/solmechs/render/MechPaperDoll";
+import { preloadAll, preloadBuild, drawMech, DOLL_WIDTH, DOLL_HEIGHT } from "@/game/solmechs/render/MechPaperDoll";
 import { LocalAIOpponent } from "@/game/solmechs/opponent/LocalAIOpponent";
 import { MATRICES, PRESET_BUILDS } from "@/game/solmechs/data/catalog";
 import { recordResult, loadHangar, getBuild } from "@/game/solmechs/hangar";
 import Workshop from "./Workshop";
-import { LIMB_SLOTS, type MechId, type ModuleSlot } from "@/game/solmechs/data/types";
+import { LIMB_SLOTS, type MechId, type ModuleSlot, type MechBuild } from "@/game/solmechs/data/types";
 
 type Phase = "hangar" | "workshop" | "battle" | "result";
+
+/** Paper-doll scale for the roster cards. */
+const CARD_SCALE = 2;
 
 const SLOT_LABEL: Record<ModuleSlot, string> = {
   rightArm: "R.Arm",
@@ -77,6 +82,10 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
       case "stage": return `  ${name(e.side)}'s ${SLOT_LABEL[e.targetSlot]} ${e.stat} ${e.delta > 0 ? "rose" : "fell"}.`;
       case "part-broken": return `  ** ${e.partName} destroyed!`;
       case "matrix-unlocked": return `  ** ${name(e.side)}'s MATRIX is exposed!`;
+      case "defeat-cause":
+        return e.cause === "matrix-destroyed"
+          ? `  ** ${name(e.side)}'s Matrix is destroyed.`
+          : `  ** ${name(e.side)} has lost every limb.`;
       case "victory": return `=== ${name(e.winner)} wins! ===`;
       case "rejected": return `  ${e.reason}.`;
       default: return null;
@@ -187,37 +196,35 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
 
   // ==================== HANGAR ====================
   if (phase === "hangar") {
+    const hangar = loadHangar();
     return (
       <Shell onClose={onClose} title="SOL MECHS — HANGAR">
-        <p style={{ color: "#9d8fc4", fontSize: 13, margin: "0 0 16px" }}>
-          Pick your chassis. Destroy an enemy arm to expose their Matrix — that&apos;s the only way to win.
+        <p style={{ color: "#9d8fc4", fontSize: 13, margin: "0 0 4px" }}>
+          Pick the mech you&apos;ll deploy. Two ways to win a fight:
         </p>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 10 }}>
+        <p style={{ color: "#7a68a8", fontSize: 12, margin: "0 0 14px" }}>
+          break an <strong style={{ color: "#c3b8e0" }}>arm</strong> to expose the Matrix and blow the core —
+          or strip <strong style={{ color: "#c3b8e0" }}>all three limbs</strong>. Each limb you take also
+          costs them the stats that limb was providing.
+        </p>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(158px,1fr))", gap: 10 }}>
           {MATRICES.map((m) => {
-            const selected = playerMech === m.id;
+            // Cards render the SAVED build, not the stock chassis. Showing base
+            // chassis stats here was what made a customized mech look like it
+            // was being ignored: the hangar advertised one thing and the
+            // battle deployed another.
+            const build = getBuild(hangar, m.id);
+            const custom = hangar.builds[m.id] !== undefined;
             return (
-              <button
+              <MechCard
                 key={m.matrixCode}
-                onClick={() => setPlayerMech(m.id)}
-                style={{
-                  background: selected ? "#2d1b5e" : "#1a1030",
-                  border: `2px solid ${selected ? "#14f195" : "#3d2a63"}`,
-                  borderRadius: 8, padding: 12, cursor: "pointer", textAlign: "left", color: "#fff",
-                }}
-              >
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-                  <strong style={{ fontSize: 15 }}>{m.matrixName}</strong>
-                  <span style={{ fontSize: 10, color: "#9d8fc4" }}>{m.matrixCode}</span>
-                </div>
-                <div style={{ fontSize: 11, color: "#14f195", marginBottom: 6 }}>{m.role}</div>
-                <div style={{ fontSize: 11, color: "#c3b8e0", lineHeight: 1.5 }}>
-                  HP {m.baseStats.HP} · ATK {m.baseStats.ATK} · DEF {m.baseStats.DEF}<br />
-                  ENG {m.baseStats.ENG} · SYS {m.baseStats.SYS} · SPD {m.baseStats.SPD}
-                </div>
-                <div style={{ fontSize: 10, color: "#7a68a8", marginTop: 6 }}>
-                  {m.passive1} · {m.passive2}
-                </div>
-              </button>
+                matrixName={m.matrixName}
+                role={m.role}
+                build={build}
+                custom={custom}
+                selected={playerMech === m.id}
+                onSelect={() => setPlayerMech(m.id)}
+              />
             );
           })}
         </div>
@@ -364,6 +371,81 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
         {log.map((line, i) => <div key={i}>{line}</div>)}
       </div>
     </Shell>
+  );
+}
+
+/**
+ * One roster entry: the assembled mech as it will actually deploy.
+ *
+ * Draws the saved build's paper doll and its real assembled totals, so the
+ * card and the battle can't disagree. `custom` badges a build the player
+ * edited, which is the feedback that was missing when the hangar listed bare
+ * chassis stats.
+ */
+function MechCard({ matrixName, role, build, custom, selected, onSelect }: {
+  matrixName: string;
+  role: string;
+  build: MechBuild;
+  custom: boolean;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  const ref = useRef<HTMLCanvasElement>(null);
+  const raf = useRef(0);
+
+  useEffect(() => {
+    preloadBuild(build);
+    const ctx = ref.current?.getContext("2d");
+    if (!ctx || !ref.current) return;
+    const c = ref.current;
+    const loop = () => {
+      ctx.clearRect(0, 0, c.width, c.height);
+      drawMech(ctx, build, { x: 0, y: 0, scale: CARD_SCALE });
+      raf.current = requestAnimationFrame(loop);
+    };
+    raf.current = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(raf.current);
+  }, [build]);
+
+  // Totals come from the engine's own assembly, never a local re-derivation.
+  const stats = useMemo(() => {
+    try { return createUnit(matrixName, build).totalStats; } catch { return null; }
+  }, [matrixName, build]);
+
+  return (
+    <button
+      onClick={onSelect}
+      style={{
+        background: selected ? "#25184a" : "#150c2b",
+        border: `2px solid ${selected ? "#21dda0" : "#33235c"}`,
+        borderRadius: 8, padding: 10, cursor: "pointer", textAlign: "left",
+        color: "#fff", display: "flex", flexDirection: "column", gap: 4,
+      }}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 6 }}>
+        <strong style={{ fontSize: 15 }}>{matrixName}</strong>
+        {custom && (
+          <span style={{
+            fontSize: 8, color: "#21dda0", border: "1px solid #21dda0",
+            borderRadius: 3, padding: "1px 4px", letterSpacing: 1, flexShrink: 0,
+          }}>CUSTOM</span>
+        )}
+      </div>
+      <div style={{ fontSize: 11, color: "#21dda0" }}>{role}</div>
+      <canvas
+        ref={ref}
+        width={DOLL_WIDTH * CARD_SCALE}
+        height={DOLL_HEIGHT * CARD_SCALE}
+        style={{ imageRendering: "pixelated", width: "100%", height: "auto", display: "block" }}
+      />
+      {stats && (
+        <div style={{ fontSize: 11, color: "#c3b8e0", lineHeight: 1.55, fontFamily: "monospace" }}>
+          HP {stats.HP} · SPD {stats.SPD}<br />
+          ATK {stats.ATK} · DEF {stats.DEF}<br />
+          ENG {stats.ENG} · SYS {stats.SYS}
+        </div>
+      )}
+    </button>
   );
 }
 
