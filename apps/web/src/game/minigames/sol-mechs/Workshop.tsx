@@ -10,8 +10,13 @@
  * alongside the three limb images). That is what makes the chassis
  * swappable — an earlier pass exposed chassis only through a separate
  * "owned mechs" chip row, which showed a single entry and left no way to
- * change it. Cycling the matrix keeps the limbs you already chose, so the
- * chassis is one more thing you tune rather than a mode you leave and re-enter.
+ * change it.
+ *
+ * Cycling the matrix in solo mode LOADS that mech's stored loadout, because
+ * picking a chassis is picking which mech you are working on. Carrying the
+ * previous mech's limbs across instead made the screen show a build that
+ * wasn't the selected mech's, and saving then overwrote whatever that mech
+ * really had stored.
  *
  * Palette and chrome are lifted from the Unity Workshop comps
  * (Sprites/Interface guidance/MechEditorSprites/Workshop): the four brand
@@ -80,6 +85,12 @@ const STAT_MAX: Record<string, number> = {
 export interface WorkshopProps {
   initialMech: MechId;
   onSaved?: (mech: MechId, build: MechBuild) => void;
+  /**
+   * Fired as soon as the player cycles to a different chassis, before any
+   * save. Lets the hangar's selection track the Workshop so leaving without
+   * saving doesn't snap back to the mech they started on.
+   */
+  onMechChange?: (mech: MechId) => void;
   onClose: () => void;
   /**
    * Team mode. When present the Workshop edits THIS build instead of the
@@ -97,7 +108,7 @@ export interface WorkshopProps {
   };
 }
 
-export default function Workshop({ initialMech, onSaved, onClose, teamContext }: WorkshopProps) {
+export default function Workshop({ initialMech, onSaved, onMechChange, onClose, teamContext }: WorkshopProps) {
   const [build, setBuildState] = useState<MechBuild>(
     () => teamContext?.build ?? getBuild(loadHangar(), initialMech),
   );
@@ -199,6 +210,27 @@ export default function Workshop({ initialMech, onSaved, onClose, teamContext }:
     const code = slot === "matrix" ? build.matrixCode : build[slot];
     const idx = options.findIndex((o) => o.code === code);
     const next = options[(((idx < 0 ? 0 : idx) + dir) + options.length) % options.length].code;
+
+    // Changing the MATRIX is changing which mech you're working on, so in solo
+    // mode it loads that mech's stored loadout. Carrying the previous mech's
+    // limbs across meant selecting a chassis showed someone else's build and
+    // saving then overwrote whatever that mech actually had stored.
+    //
+    // Team mode keeps the carry-across: there a slot is one build being
+    // assembled, and pulling in a per-mech save would fight the squad the
+    // player is composing.
+    if (slot === "matrix" && !teamContext) {
+      const nextMech = getMatrix(next)?.id;
+      const loaded = nextMech ? getBuild(loadHangar(), nextMech) : { ...build, matrixCode: next };
+      setBuildState(loaded);
+      // Freshly loaded from storage, so there is nothing to save yet.
+      setDirty(false);
+      // Tell the hangar straight away, so its selection follows the Workshop
+      // even if the player leaves without saving.
+      if (nextMech) onMechChange?.(nextMech);
+      return;
+    }
+
     const updated = slot === "matrix" ? { ...build, matrixCode: next } : { ...build, [slot]: next };
     setBuildState(updated);
     setDirty(true);
@@ -206,7 +238,7 @@ export default function Workshop({ initialMech, onSaved, onClose, teamContext }:
     // rather than waiting for a save — the team screen has to re-check
     // uniqueness as you go.
     teamContext?.onChange(updated);
-  }, [build, optionsFor, teamContext]);
+  }, [build, optionsFor, teamContext, onMechChange]);
 
   const save = useCallback(() => {
     if (teamContext) {

@@ -53,9 +53,21 @@ const BREAK_DELAY = 260;
 /** Held at the peak of the lunge, so a hit lands with weight. */
 const HITSTOP = 90;
 const FLASH_DURATION = 300;
-const FLOATER_DURATION = 950;
+/**
+ * Damage numbers stay up long enough to actually be read — they were gone
+ * before the eye finished moving to them. They keep drifting the whole time
+ * but only fade over the last stretch, so most of their life is at full
+ * opacity.
+ */
+const FLOATER_DURATION = 1900;
+/** Fraction of a floater's life spent fading out at the end. */
+const FLOATER_FADE = 0.35;
 const SHAKE_DURATION = 260;
-/** Tail after the last cue before input is handed back. */
+/**
+ * Tail after the last cue before input is handed back. Deliberately shorter
+ * than a floater's life: the numbers linger over the next action rather than
+ * making the player wait for them.
+ */
 const SEQUENCE_TAIL = 260;
 
 interface Anim {
@@ -181,6 +193,9 @@ export class BattleRenderer {
    * once.
    */
   playEvents(events: BattleEvent[], move?: MoveDefinition): void {
+    // `last` tracks when the ACTION is done, which gates input. Floaters are
+    // excluded on purpose: they outlive the sequence so the numbers stay
+    // readable into the next turn instead of holding the player up.
     const now = performance.now();
     let impactAt = now + WINDUP;
     let last = now;
@@ -222,7 +237,6 @@ export class BattleRenderer {
             text: `-${e.amount}`, color: "#ff5468",
             size: e.percent > 45 ? 26 : e.percent > 20 ? 21 : 17,
           });
-          last = Math.max(last, impactAt + FLOATER_DURATION);
           break;
         }
 
@@ -232,7 +246,7 @@ export class BattleRenderer {
             start: impactAt, x: at.x, y: at.y,
             text: `+${e.amount}`, color: "#21dda0", size: 20,
           });
-          last = Math.max(last, impactAt + FLOATER_DURATION);
+          last = Math.max(last, impactAt + 200);
           break;
         }
 
@@ -248,7 +262,7 @@ export class BattleRenderer {
             text: `${e.delta > 0 ? "+" : ""}${e.delta} ${e.stat}`,
             color: e.delta > 0 ? "#21dda0" : "#ffa726", size: 15,
           });
-          last = Math.max(last, stageAt + FLOATER_DURATION);
+          last = Math.max(last, stageAt + clipDuration(clip));
           break;
         }
 
@@ -272,7 +286,7 @@ export class BattleRenderer {
             start: openAt, x: at.x, y: at.y - 26,
             text: "MATRIX EXPOSED", color: "#ff5468", size: 16,
           });
-          last = Math.max(last, openAt + FLOATER_DURATION);
+          last = Math.max(last, openAt + 200);
           break;
         }
       }
@@ -425,10 +439,17 @@ export class BattleRenderer {
     for (const f of this.floaters) {
       const t = (now - f.start) / FLOATER_DURATION;
       if (t < 0) continue;
+
       // Pops slightly oversized then settles — a flat rise reads as inert.
-      const pop = t < 0.14 ? 1 + (0.14 - t) * 2.4 : 1;
-      const y = f.y - 16 - t * 44;
-      ctx.globalAlpha = t > 0.7 ? (1 - t) / 0.3 : 1;
+      const pop = t < 0.07 ? 1 + (0.07 - t) * 4.8 : 1;
+      // Rises fast at first and then eases almost to a stop, so the number
+      // hangs where it can be read instead of sliding away at constant speed.
+      const rise = 1 - (1 - t) ** 3;
+      const y = f.y - 16 - rise * 52;
+      // Full opacity for most of its life, fading only at the tail.
+      const fadeFrom = 1 - FLOATER_FADE;
+      ctx.globalAlpha = t > fadeFrom ? Math.max(0, (1 - t) / FLOATER_FADE) : 1;
+
       ctx.font = `bold ${Math.round(f.size * pop)}px ui-monospace, monospace`;
       ctx.lineWidth = 3;
       ctx.strokeStyle = "rgba(0,0,0,.85)";

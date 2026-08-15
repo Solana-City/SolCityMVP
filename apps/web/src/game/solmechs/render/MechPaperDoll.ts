@@ -121,6 +121,39 @@ export interface DrawOptions {
 }
 
 /**
+ * Scratch surface for the hit flash.
+ *
+ * Tinting the mech's silhouette white needs `source-atop`, a composite that
+ * keeps the DESTINATION's alpha. Applied straight to the battle canvas that
+ * destination is the already-painted background — opaque everywhere — so the
+ * flash filled a solid white RECTANGLE the size of the mech's box rather than
+ * following its outline.
+ *
+ * Compositing the mech here first, where the only non-transparent pixels are
+ * the mech itself, makes source-atop mean what it looks like it means. One
+ * canvas is reused across every mech and resized only when the draw size
+ * changes.
+ */
+let scratch: HTMLCanvasElement | null = null;
+let scratchCtx: CanvasRenderingContext2D | null = null;
+
+function getScratch(w: number, h: number): CanvasRenderingContext2D | null {
+  if (typeof document === "undefined") return null;
+  if (!scratch) {
+    scratch = document.createElement("canvas");
+    scratchCtx = scratch.getContext("2d");
+  }
+  if (!scratchCtx || !scratch) return null;
+  if (scratch.width !== w || scratch.height !== h) {
+    scratch.width = w;
+    scratch.height = h;
+  } else {
+    scratchCtx.clearRect(0, 0, w, h);
+  }
+  return scratchCtx;
+}
+
+/**
  * Composite one mech onto a 2D context.
  *
  * Returns false when any sprite is still decoding, so callers can draw a
@@ -137,46 +170,68 @@ export function drawMech(ctx: CanvasRenderingContext2D, build: MechBuild, opts: 
   const boxW = DOLL_WIDTH * scale;
   const boxH = DOLL_HEIGHT * scale;
   const broken = opts.brokenSlots ?? {};
+  const flash = Math.min(1, opts.hitFlash ?? 0);
 
-  ctx.save();
-  ctx.imageSmoothingEnabled = false;
-  if (opts.alpha !== undefined) ctx.globalAlpha = opts.alpha;
+  // The flash needs its own surface (see getScratch); everything else draws
+  // straight onto the caller's context.
+  const off = flash > 0 ? getScratch(boxW, boxH) : null;
+  const target = off ?? ctx;
 
-  // Flip about the box's centre so `x` stays the left edge either way.
-  if (opts.flip) {
-    ctx.translate(opts.x + boxW, opts.y);
-    ctx.scale(-1, 1);
+  target.save();
+  target.imageSmoothingEnabled = false;
+  if (opts.alpha !== undefined) target.globalAlpha = opts.alpha;
+
+  if (off) {
+    // The scratch canvas IS the box, so there is no offset to apply — only
+    // the mirror, which still has to happen before the layers are laid down.
+    if (opts.flip) {
+      target.translate(boxW, 0);
+      target.scale(-1, 1);
+    }
+  } else if (opts.flip) {
+    // Flip about the box's centre so `x` stays the left edge either way.
+    target.translate(opts.x + boxW, opts.y);
+    target.scale(-1, 1);
   } else {
-    ctx.translate(opts.x, opts.y);
+    target.translate(opts.x, opts.y);
   }
 
   DRAW_ORDER.forEach((slot, i) => {
     const socket = SOCKETS[slot];
     const isBroken = slot !== "matrix" && broken[slot];
-    ctx.save();
+    target.save();
     // A destroyed limb stays on the mech but goes ghosted — removing it
     // outright makes the silhouette unreadable mid-battle.
-    if (isBroken) ctx.globalAlpha = (opts.alpha ?? 1) * 0.25;
-    ctx.drawImage(
+    if (isBroken) target.globalAlpha = (opts.alpha ?? 1) * 0.25;
+    target.drawImage(
       images[i],
       0, 0, PART_FRAME, PART_FRAME,
       Math.round((ORIGIN_X + socket.dx) * scale),
       Math.round((ORIGIN_Y + socket.dy) * scale),
       PART_FRAME * scale, PART_FRAME * scale,
     );
-    ctx.restore();
+    target.restore();
   });
 
-  // Hit flash: re-stamp the silhouette white through source-atop so it tints
-  // only pixels already drawn, never the background.
-  if (opts.hitFlash && opts.hitFlash > 0) {
-    ctx.globalCompositeOperation = "source-atop";
-    ctx.globalAlpha = Math.min(1, opts.hitFlash);
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(0, 0, boxW, boxH);
+  target.restore();
+
+  if (off && scratch) {
+    // On this surface the only non-transparent pixels ARE the mech, so
+    // source-atop tints the silhouette instead of a rectangle.
+    off.save();
+    off.globalCompositeOperation = "source-atop";
+    off.globalAlpha = flash;
+    off.fillStyle = "#ffffff";
+    off.fillRect(0, 0, boxW, boxH);
+    off.restore();
+
+    ctx.save();
+    ctx.imageSmoothingEnabled = false;
+    if (opts.alpha !== undefined) ctx.globalAlpha = opts.alpha;
+    ctx.drawImage(scratch, Math.round(opts.x), Math.round(opts.y));
+    ctx.restore();
   }
 
-  ctx.restore();
   return true;
 }
 

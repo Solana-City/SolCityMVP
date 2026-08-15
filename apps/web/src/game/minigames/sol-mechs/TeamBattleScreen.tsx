@@ -18,6 +18,7 @@ import { BattleRenderer, CANVAS_W, CANVAS_H } from "@/game/solmechs/render/Battl
 import { preloadBuild } from "@/game/solmechs/render/MechPaperDoll";
 import type { TeamBuild } from "@/game/solmechs/data/team";
 import type { ModuleSlot, MoveDefinition } from "@/game/solmechs/data/types";
+import { BattleLog } from "./BattleLog";
 
 /**
  * Narrows the team log to the events BattleRenderer understands. Switches and
@@ -350,9 +351,7 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, onFinished, on
           )}
         </div>
 
-        <div style={sx.log}>
-          {log.map((l, i) => <div key={i}>{l}</div>)}
-        </div>
+        <BattleLog lines={log} turns={state.history.length} />
       </div>
     </div>
   );

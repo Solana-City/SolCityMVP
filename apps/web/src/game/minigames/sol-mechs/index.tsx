@@ -25,6 +25,7 @@ import { LocalAIOpponent } from "@/game/solmechs/opponent/LocalAIOpponent";
 import { MATRICES, PRESET_BUILDS } from "@/game/solmechs/data/catalog";
 import { recordResult, loadHangar, getBuild } from "@/game/solmechs/hangar";
 import Workshop from "./Workshop";
+import { BattleLog } from "./BattleLog";
 import TeamBuilder from "./TeamBuilder";
 import TeamBattleScreen from "./TeamBattleScreen";
 import { validateTeam, type TeamBuild } from "@/game/solmechs/data/team";
@@ -264,6 +265,7 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
         // Follow the chassis the player left the Workshop on, so hitting
         // DEPLOY next deploys what they were just editing.
         onSaved={(mech) => setPlayerMech(mech)}
+        onMechChange={(mech) => setPlayerMech(mech)}
         onClose={() => setPhase("hangar")}
       />
     );
@@ -448,13 +450,7 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
         </div>
       )}
 
-      <div style={{
-        marginTop: 10, height: 82, overflowY: "auto", background: "#120a24",
-        border: "1px solid #2a1c4d", borderRadius: 6, padding: 8,
-        fontSize: 11, fontFamily: "monospace", color: "#c3b8e0", lineHeight: 1.6,
-      }}>
-        {log.map((line, i) => <div key={i}>{line}</div>)}
-      </div>
+      <BattleLog lines={log} turns={battle.history.length} />
     </Shell>
   );
 }
