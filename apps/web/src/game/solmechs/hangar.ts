@@ -106,6 +106,32 @@ export function setActiveMech(mech: MechId | null): HangarState {
   return next;
 }
 
+/**
+ * Persist a customized build for one mech.
+ *
+ * Stored per mech rather than as a single active build, so switching chassis
+ * in the Workshop doesn't discard the loadout you tuned for the other one.
+ */
+export function setBuild(mech: MechId, build: MechBuild): HangarState {
+  const state = loadHangar();
+  const next: HangarState = {
+    ...state,
+    builds: { ...state.builds, [mech]: build },
+  };
+  saveHangar(next);
+  return next;
+}
+
+/** Drop a mech's customization, reverting it to the stock preset. */
+export function resetBuild(mech: MechId): HangarState {
+  const state = loadHangar();
+  const builds = { ...state.builds };
+  delete builds[mech];
+  const next: HangarState = { ...state, builds };
+  saveHangar(next);
+  return next;
+}
+
 export function unlockMech(mech: MechId): HangarState {
   const state = loadHangar();
   if (state.owned.includes(mech)) return state;

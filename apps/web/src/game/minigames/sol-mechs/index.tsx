@@ -21,10 +21,11 @@ import { BattleRenderer, CANVAS_W, CANVAS_H } from "@/game/solmechs/render/Battl
 import { preloadAll, preloadBuild } from "@/game/solmechs/render/MechPaperDoll";
 import { LocalAIOpponent } from "@/game/solmechs/opponent/LocalAIOpponent";
 import { MATRICES, PRESET_BUILDS } from "@/game/solmechs/data/catalog";
-import { recordResult } from "@/game/solmechs/hangar";
+import { recordResult, loadHangar, getBuild } from "@/game/solmechs/hangar";
+import Workshop from "./Workshop";
 import { LIMB_SLOTS, type MechId, type ModuleSlot } from "@/game/solmechs/data/types";
 
-type Phase = "hangar" | "battle" | "result";
+type Phase = "hangar" | "workshop" | "battle" | "result";
 
 const SLOT_LABEL: Record<ModuleSlot, string> = {
   rightArm: "R.Arm",
@@ -139,11 +140,14 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
     const others = MATRICES.filter((m) => m.id !== mech);
     const foe = others[Math.floor(Math.random() * others.length)].id;
 
-    preloadBuild(PRESET_BUILDS[mech]);
+    // The player fights their Workshop loadout; the AI fights stock, so a
+    // customized build is measured against a known baseline.
+    const playerBuild = getBuild(loadHangar(), mech);
+    preloadBuild(playerBuild);
     preloadBuild(PRESET_BUILDS[foe]);
 
     const fresh = createBattle(
-      PRESET_BUILDS[mech], PRESET_BUILDS[foe],
+      playerBuild, PRESET_BUILDS[foe],
       MATRICES.find((m) => m.id === mech)!.matrixName,
       MATRICES.find((m) => m.id === foe)!.matrixName,
     );
@@ -166,6 +170,19 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
     renderer.start();
     return () => { renderer.destroy(); rendererRef.current = null; };
   }, [phase]);
+
+  // ==================== WORKSHOP ====================
+  if (phase === "workshop") {
+    return (
+      <Workshop
+        initialMech={playerMech}
+        // Follow the chassis the player left the Workshop on, so hitting
+        // DEPLOY next deploys what they were just editing.
+        onSaved={(mech) => setPlayerMech(mech)}
+        onClose={() => setPhase("hangar")}
+      />
+    );
+  }
 
   // ==================== HANGAR ====================
   if (phase === "hangar") {
@@ -203,16 +220,28 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
             );
           })}
         </div>
-        <button
-          onClick={() => startBattle(playerMech)}
-          style={{
-            marginTop: 18, width: "100%", padding: "12px 0", background: "#14f195",
-            color: "#0d0718", border: "none", borderRadius: 8, fontSize: 15,
-            fontWeight: 700, cursor: "pointer",
-          }}
-        >
-          DEPLOY
-        </button>
+        <div style={{ display: "flex", gap: 8, marginTop: 18 }}>
+          <button
+            onClick={() => setPhase("workshop")}
+            style={{
+              padding: "12px 18px", background: "none", color: "#9d8fc4",
+              border: "1px solid #3d2a63", borderRadius: 8, fontSize: 13,
+              fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap",
+            }}
+          >
+            WORKSHOP
+          </button>
+          <button
+            onClick={() => startBattle(playerMech)}
+            style={{
+              flex: 1, padding: "12px 0", background: "#14f195",
+              color: "#0d0718", border: "none", borderRadius: 8, fontSize: 15,
+              fontWeight: 700, cursor: "pointer",
+            }}
+          >
+            DEPLOY
+          </button>
+        </div>
       </Shell>
     );
   }

@@ -225,6 +225,37 @@ export function getPartsForSlot(slot: MechPart["slot"]): MechPart[] {
   return ALL_PARTS.filter((p) => p.slot === slot);
 }
 
+/**
+ * The two-digit family number shared by a matrix and its matching parts —
+ * "RA03", "LA03", "IN03" and "M03" are all family "03". Ported from
+ * PartCodeUtil.FamilyOf.
+ */
+export function familyOf(code: string): string | null {
+  const m = /^(?:RA|LA|IN|M)(\d{2})$/.exec(code);
+  return m ? m[1] : null;
+}
+
+/**
+ * Parts selectable for a slot.
+ *
+ * Unity's EditorController shipped with `lockByFamily = true`, which filters
+ * this to the parts matching the equipped matrix. Since every family has
+ * exactly one part per slot, that leaves a single option and makes the
+ * Workshop's cycling arrows inert — the flag exists precisely so it can be
+ * turned off. Sol City defaults it off so the Workshop has something to do;
+ * pass `lockToFamily` to restore the Unity behaviour.
+ */
+export function getSelectableParts(
+  slot: MechPart["slot"],
+  matrixCode: string,
+  lockToFamily = false,
+): MechPart[] {
+  const parts = getPartsForSlot(slot);
+  if (!lockToFamily) return parts;
+  const family = familyOf(matrixCode);
+  return family ? parts.filter((p) => familyOf(p.partCode) === family) : parts;
+}
+
 /** The five stock builds — each mech wearing its own matching parts. */
 export const PRESET_BUILDS: Record<MechId, MechBuild> = {
   titan:     { matrixCode: "M01", rightArm: "RA01", leftArm: "LA01", lowerBody: "IN01" },
