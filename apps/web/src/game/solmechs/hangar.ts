@@ -99,7 +99,9 @@ export function setActiveMech(mech: MechId | null): HangarState {
     active: mech && state.owned.includes(mech) ? mech : null,
   };
   saveHangar(next);
-  // The city scene listens for this so the companion swaps without a reload.
+  // Hot-swap hook for the overworld companion. Nothing listens today — the
+  // escort is unwired (see MechCompanion) — but the event is kept so
+  // re-enabling it needs no change here.
   try {
     (globalThis as any).__solCityGameEvents?.emit("solmechs:activeChanged", next.active);
   } catch {}

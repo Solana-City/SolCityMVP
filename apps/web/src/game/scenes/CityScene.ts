@@ -14,9 +14,6 @@ import { ProfileManager, profileManager } from "../config/profileManager";
 import { AchievementEngine } from "../progression/achievementEngine";
 import { showEmoji, EmojiDef } from "../chat/EmojiSystem";
 import { soundManager } from "../audio/SoundManager";
-import { MechCompanion } from "../solmechs/overworld/MechCompanion";
-import { loadHangar } from "../solmechs/hangar";
-import type { MechId } from "../solmechs/data/types";
 
 // Pixel-perfect zoom values and snapping live in config/zoomConfig.ts —
 // shared with ZoomControl and the pinch-zoom hook.
@@ -64,8 +61,6 @@ export class CityScene extends Phaser.Scene {
   private chatInputActive = false;
   private npcSprites: NPCSprite[] = [];
   private pedestrians!: PedestrianManager;
-  /** Sol Mechs escort drone — null when the player has none deployed. */
-  private mechCompanion: MechCompanion | null = null;
   private interactionBlocked = false;
   // Locks movement while a wallet session is being established (init + delegate
   // + confirm). Keeps the player on the login gate until moves will actually
@@ -402,28 +397,6 @@ export class CityScene extends Phaser.Scene {
       this.physics.add.collider(container, npcContainer);
     }
 
-    // Sol Mechs escort — purely cosmetic, so it takes no body and no
-    // colliders. It is skipped entirely when the player has no mech deployed
-    // or when BootScene could not load that mech's art.
-    const activeMech = loadHangar().active;
-    if (activeMech) {
-      this.mechCompanion = new MechCompanion(this, activeMech, this.avatar.x, this.avatar.y);
-      if (!this.mechCompanion.active) this.mechCompanion = null;
-    }
-    this.game.events.on("solmechs:activeChanged", (mech: MechId | null) => {
-      if (!mech) {
-        this.mechCompanion?.destroy();
-        this.mechCompanion = null;
-        return;
-      }
-      if (this.mechCompanion) {
-        this.mechCompanion.setMech(mech);
-      } else {
-        const companion = new MechCompanion(this, mech, this.avatar.x, this.avatar.y);
-        this.mechCompanion = companion.active ? companion : null;
-      }
-    });
-
     // Pedestrians + "Where Is NPC?" hunt game
     this.pedestrians = new PedestrianManager();
     this.pedestrians.spawn(this, this.collisionLayers);
@@ -711,10 +684,6 @@ export class CityScene extends Phaser.Scene {
       for (const npc of this.npcSprites) {
         npc.checkProximity(this.avatar.x, this.avatar.y);
       }
-      // Keep the escort ticking while movement is locked, so it drifts into
-      // its parked slot behind the player instead of freezing mid-flight
-      // during a dialog or the login gate.
-      this.mechCompanion?.update(this.avatar.x, this.avatar.y, false, this.game.loop.delta);
       return;
     }
 
@@ -751,8 +720,6 @@ export class CityScene extends Phaser.Scene {
     }
 
     this.playerBody.setVelocity(vx, vy);
-
-    this.mechCompanion?.update(this.avatar.x, this.avatar.y, direction !== null, this.game.loop.delta);
 
     if (direction) {
       this.idleDelay = 0;

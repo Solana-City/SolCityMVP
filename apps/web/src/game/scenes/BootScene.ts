@@ -4,8 +4,6 @@ import { SimpleSprite } from "../entities/SimpleSprite";
 import { AvatarSprite } from "../entities/AvatarSprite";
 import { NPC_REGISTRY } from "../config/npcRegistry";
 import { getAllLayerVariants, EXPRESSIONS, SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT } from "../config/paperDoll";
-import { preloadCompanions } from "../solmechs/overworld/MechCompanion";
-import { loadHangar } from "../solmechs/hangar";
 
 // Background color used in the spriter's sheets — treated as transparent.
 const CHROMA_R = 215;
@@ -47,7 +45,6 @@ export class BootScene extends Phaser.Scene {
       if (
         file.key.startsWith("avatar-") ||
         file.key.startsWith("pd-") ||
-        file.key.startsWith("mech-drone-") ||
         NPC_REGISTRY.some(n => n.spriteKey === file.key)
       ) {
         console.info(`[BootScene] ${file.key} not present — fallback active`);
@@ -103,12 +100,6 @@ export class BootScene extends Phaser.Scene {
     for (const expr of EXPRESSIONS) {
       AvatarSprite.loadSpriteSheet(this, expr.textureKey, `assets/sprites/paperdoll/${expr.file}`);
     }
-
-    // Sol Mechs escort drones. Only the mech the player currently has
-    // deployed is loaded — the other four are 18 more images nobody sees
-    // until they swap in the hangar, which reloads the scene anyway.
-    const activeMech = loadHangar().active;
-    if (activeMech) preloadCompanions(this, [activeMech]);
   }
 
   create(): void {

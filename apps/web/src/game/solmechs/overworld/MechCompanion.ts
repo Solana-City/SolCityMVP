@@ -1,6 +1,18 @@
 /**
  * Sol Mechs — overworld companion.
  *
+ * NOT CURRENTLY WIRED UP. The escort was pulled out of the city on purpose —
+ * it works, but it isn't wanted in the overworld yet. Nothing constructs this
+ * class today; it is kept, along with its art under
+ * public/assets/minigames/sol-mechs/drones/, so bringing it back is a matter
+ * of restoring the call sites rather than rewriting it.
+ *
+ * To re-enable: call `preloadCompanions(this, [activeMech])` at the end of
+ * BootScene.preload (and re-add "mech-drone-" to that scene's tolerated
+ * loaderror prefixes), then construct one in CityScene.create and drive it
+ * from CityScene.update. `hangar.setActiveMech` already emits
+ * "solmechs:activeChanged" for the hot-swap path.
+ *
  * The drone escort that trails the player around the city once they own a
  * mech. It is cosmetic: it has no body, collides with nothing, and never
  * feeds the battle engine — so it can never block a doorway or wedge the
