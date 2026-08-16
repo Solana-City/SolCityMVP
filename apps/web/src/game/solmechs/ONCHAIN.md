@@ -165,14 +165,30 @@ fixed-point with an explicit scale is the safer route.
   change was meant to replace, with the advantage handed to the slower
   submitter.
 
-- **Timeouts — now a clean rule.** Alternating turns had no natural deadline;
-  rounds do. Each phase gets one:
-  - miss the **commit** deadline → that side does nothing this round;
-  - commit but miss the **reveal** deadline → forfeit the match, since a
-    selective reveal is a real attack (see it go badly, refuse to reveal).
+- **Timeouts — a match clock, not a per-round deadline.** Each side holds a
+  bank (`data/clock.ts`: 180s + 8s a round for duels, 300s + 8s for squads,
+  capped). Thinking spends it, submitting a round hands the increment back,
+  and running out is a loss. A bank rather than a per-round timer because a
+  per-round timer punishes the one hard decision as much as the nine obvious
+  ones.
 
-  That closes the stalling surface a ladder cares about: refusing to play can
-  no longer deny an opponent their result, it just loses.
+  The clock stops while a round RESOLVES. Charging players for watching an
+  animation would make a slow client lose matches to its own frame rate.
+
+  On top of that, the reveal phase still needs its own deadline: commit and
+  then refuse to reveal is a real attack (see the round go badly, go silent),
+  so a missed reveal forfeits regardless of bank.
+
+  **Both constants and the timestamps are consensus data.** The program
+  settles a timeout from the round timestamps the ER already records, so it
+  has to agree with the client about the bank, the increment and the cap — a
+  disagreement there is a disagreement about who won. `forfeit()` /
+  `forfeitTeam()` make "lost on time" an ordinary result the ladder records
+  through the same path as "lost the core", rather than a UI special case.
+
+  Note that a forfeit is NOT in the round list and so cannot be replayed: a
+  verifier reproduces the battle up to the last submitted round, then settles
+  the timeout from the clock.
 - **Pass verification.** Both players must hold a current-season pass at
   `open`/`join`. Checking it only at settlement would let an expired account
   play out a season and place.

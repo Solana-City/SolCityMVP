@@ -9,7 +9,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  createTeamBattle, resolveTeamRound, resolveForcedSwitches, activeUnit, switchableIndices,
+  createTeamBattle, resolveTeamRound, resolveForcedSwitches, forfeitTeam, activeUnit, switchableIndices,
   type TeamBattleState, type TeamAction, type TeamEvent, type TeamRoundActions,
 } from "@/game/solmechs/engine/TeamBattle";
 import { availableMoves, legalTargets, calculateDamage, isDefeated } from "@/game/solmechs/engine/BattleEngine";
@@ -19,6 +19,8 @@ import { preloadBuild } from "@/game/solmechs/render/MechPaperDoll";
 import type { TeamBuild } from "@/game/solmechs/data/team";
 import type { ModuleSlot, MoveDefinition } from "@/game/solmechs/data/types";
 import { BattleLog } from "./BattleLog";
+import { useChessClock, ClockBar } from "./ClockBar";
+import { SQUAD_CLOCK } from "@/game/solmechs/data/clock";
 import { C, T, SP, R, MONO, W, PANEL_HEIGHT } from "./theme";
 
 /**
@@ -68,6 +70,24 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, onFinished, on
   const [animating, setAnimating] = useState(false);
   const settledRef = useRef(false);
 
+  /** Runs while the round is being chosen; stops while it resolves. */
+  const thinking: PlayerSide[] =
+    state.status.kind === "active" && !animating && !busy ? ["p1", "p2"] : [];
+
+  const { clock, credit } = useChessClock({
+    config: SQUAD_CLOCK,
+    thinking,
+    paused: state.status.kind === "finished",
+    onTimeout: (side) => {
+      const cur = stateRef.current;
+      if (!cur || cur.status.kind === "finished") return;
+      const { state: ended } = forfeitTeam(cur, side, "timeout");
+      setLog((prev) => [`  ** ${side === "p1" ? "You" : "Rival"} ran out of time.`, ...prev]);
+      stateRef.current = ended;
+      setState(ended);
+    },
+  });
+
   useEffect(() => {
     for (const b of [...playerTeam.mechs, ...enemyTeam.mechs]) preloadBuild(b);
   }, [playerTeam, enemyTeam]);
@@ -87,6 +107,7 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, onFinished, on
           e.cause === "matrix-destroyed" ? "core destroyed" : "all limbs stripped"
         }).`;
       case "must-switch": return `${who(e.side)} must substitute.`;
+      case "forfeit": return `  ** ${who(e.side)} ran out of time.`;
       case "victory": return `=== ${who(e.winner)} win${e.winner === "p1" ? "" : "s"}! ===`;
       case "rejected": return `  ${e.reason}.`;
       default: return null;
@@ -156,6 +177,8 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, onFinished, on
     const cur = stateRef.current;
     if (!cur || cur.status.kind !== "active") return;
     setBusy(true);
+    credit("p1");
+    credit("p2");
     const rival = rivalChoice(cur);
     const round: TeamRoundActions = { p1: action, p2: rival };
     // Moves are read from the PRE-round state; afterwards the limb that fired
@@ -165,7 +188,7 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, onFinished, on
         ? activeUnit(side === "p1" ? cur.p1 : cur.p2).parts[a.sourceSlot]?.moves[a.moveIndex]
         : undefined;
     play(resolveTeamRound(cur, round), { p1: moveOf(action, "p1"), p2: moveOf(rival, "p2") });
-  }, [rivalChoice, play]);
+  }, [rivalChoice, play, credit]);
 
   /** Forced substitution after a KO — free, and both sides send in together. */
   const submitForced = useCallback((myIndex?: number) => {
@@ -237,6 +260,14 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, onFinished, on
             canvas must be `object-fit: contain` inside a flex-1 box, never
             `width: 100%` — at this panel width a 640x557 canvas stretched to
             100% is ~1300px tall, which is what forced the page to scroll. */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: SP.md, flexShrink: 0 }}>
+          <ClockBar clock={clock} config={SQUAD_CLOCK} thinking={thinking} side="p1" label="You" />
+          <span style={{ fontSize: T.eyebrow, letterSpacing: 2, color: C.faint, fontWeight: 700 }}>
+            ROUND {state.round}
+          </span>
+          <ClockBar clock={clock} config={SQUAD_CLOCK} thinking={thinking} side="p2" label="Rival" align="right" />
+        </div>
+
         <div style={sx.arenaRow}>
           <div style={sx.hudColumn}>
             <UnitBars unit={me} />

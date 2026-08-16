@@ -16,7 +16,7 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import type { MiniGameComponentProps, MiniGameBaseContext } from "../types";
 import {
-  createBattle, resolveRound, availableMoves, legalTargets, createUnit,
+  createBattle, resolveRound, forfeit, availableMoves, legalTargets, createUnit,
   type BattleState, type BattleAction, type BattleEvent, type PlayerSide,
   type RoundActions,
 } from "@/game/solmechs/engine/BattleEngine";
@@ -28,6 +28,8 @@ import { recordResult, loadHangar, getBuild } from "@/game/solmechs/hangar";
 import Workshop from "./Workshop";
 import MainMenu from "./MainMenu";
 import { BattleLog } from "./BattleLog";
+import { useChessClock, ClockBar } from "./ClockBar";
+import { DEFAULT_CLOCK } from "@/game/solmechs/data/clock";
 import { C, T, SP, R, MONO, backdrop, panel, eyebrow, button, W, PANEL_HEIGHT } from "./theme";
 import TeamBuilder from "./TeamBuilder";
 import TeamBattleScreen from "./TeamBattleScreen";
@@ -120,6 +122,29 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
   const [playerTeam, setPlayerTeam] = useState<TeamBuild | null>(null);
 
   /**
+   * Both clocks run while the round is being chosen and stop while it
+   * resolves — the player is not charged for watching the animation.
+   */
+  const thinking: PlayerSide[] =
+    phase === "battle" && battle?.status.kind === "active" && !animating && !busy
+      ? ["p1", "p2"]
+      : [];
+
+  const { clock, credit } = useChessClock({
+    config: DEFAULT_CLOCK,
+    thinking,
+    paused: phase !== "battle" || battle?.status.kind === "finished",
+    onTimeout: (side) => {
+      const current = stateRef.current;
+      if (!current || current.status.kind === "finished") return;
+      const { state: ended, events } = forfeit(current, side, "timeout");
+      pushLog(events.map((e) => describeRef.current(e, ended)).filter((l): l is string => l !== null).reverse());
+      stateRef.current = ended;
+      setBattle(ended);
+    },
+  });
+
+  /**
    * The 3v3 opponent. Fixed rather than random so a squad can be tuned
    * against a known wall, and verified legal at module scope — an illegal
    * rival would be a rule the player is held to and the AI isn't.
@@ -167,17 +192,25 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
         return e.cause === "matrix-destroyed"
           ? `  ** ${name(e.side)}'s Matrix is destroyed.`
           : `  ** ${name(e.side)} has lost every limb.`;
+      case "forfeit":
+        return `  ** ${name(e.side)} ran out of time.`;
       case "victory": return `=== ${name(e.winner)} wins! ===`;
       case "rejected": return `  ${e.reason}.`;
       default: return null;
     }
   }, []);
 
+  const describeRef = useRef(describe);
+  describeRef.current = describe;
+
   const submitRound = useCallback(async (action: BattleAction | null): Promise<void> => {
     const current = stateRef.current;
     if (!current) return;
 
     setBusy(true);
+    // Submitting hands back the increment — the Fischer half of the clock.
+    credit("p1");
+    credit("p2");
     // The rival chooses from the PRE-round state and never sees the player's
     // pick — that is what makes this simultaneous rather than the rival simply
     // answering. Both commitments then resolve together in speed order.
@@ -208,7 +241,7 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
     const wait = renderer?.remainingMs() ?? 0;
     setAnimating(true);
     window.setTimeout(() => { setAnimating(false); setBusy(false); }, Math.max(wait, 200));
-  }, [describe, pushLog]);
+  }, [describe, pushLog, credit]);
 
   // Settle once someone wins.
   useEffect(() => {
@@ -424,6 +457,12 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
       {/* Arena centre stage, HUD flanking it. Stacking the two status blocks
           above the canvas wasted the width and squeezed the arena into a
           letterbox; wrapping is what keeps this honest on a narrow window. */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: SP.md, flexShrink: 0 }}>
+        <ClockBar clock={clock} config={DEFAULT_CLOCK} thinking={thinking} side="p1" label="You" />
+        <span style={{ ...eyebrow, color: C.faint }}>Round {battle.round}</span>
+        <ClockBar clock={clock} config={DEFAULT_CLOCK} thinking={thinking} side="p2" label="Rival" align="right" />
+      </div>
+
       <div style={sxBattle.arenaRow}>
         <div style={sxBattle.hudColumn}>
           <MechStatus state={battle} side="p1" />
@@ -456,7 +495,8 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
             {battle.status.winner === "p1" ? "VICTORY" : "DEFEAT"}
           </div>
           <div style={{ color: C.dim, fontSize: T.body, margin: "6px 0 18px" }}>
-            {battle.history.length} actions
+            {battle.history.length} rounds
+            {clock.p1 <= 0 || clock.p2 <= 0 ? " · decided on time" : ""}
           </div>
           <button onClick={() => setPhase("menu")} style={btnStyle(C.teal)}>MAIN MENU</button>
           <button onClick={onClose} style={{ ...btnStyle(C.line), color: "#fff", marginLeft: 8 }}>LEAVE</button>

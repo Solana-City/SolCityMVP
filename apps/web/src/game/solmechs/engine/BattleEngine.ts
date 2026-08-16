@@ -96,6 +96,7 @@ export type BattleEvent =
   | { type: "part-broken"; side: PlayerSide; slot: ModuleSlot; partName: string }
   | { type: "matrix-unlocked"; side: PlayerSide }
   | { type: "defeat-cause"; side: PlayerSide; cause: "matrix-destroyed" | "limbs-destroyed" }
+  | { type: "forfeit"; side: PlayerSide; reason: "timeout" | "abandoned" }
   | { type: "rejected"; reason: string }
   | { type: "victory"; winner: PlayerSide };
 
@@ -512,9 +513,37 @@ export function resolveRound(state: BattleState, actions: RoundActions): Resolve
 }
 
 /**
+ * End a battle because a side ran out of clock or abandoned it.
+ *
+ * A forfeit is a real result, not a UI special case: the ladder has to record
+ * it, and a replay has to be able to reproduce it. Keeping it in the engine
+ * means "lost on time" settles through the same path as "lost the core".
+ */
+export function forfeit(state: BattleState, side: PlayerSide, reason: ForfeitReason = "timeout"): ResolveResult {
+  if (state.status.kind === "finished") {
+    return { state, events: [{ type: "rejected", reason: "Battle is already over" }] };
+  }
+  const next = cloneState(state);
+  const winner = opponentOf(side);
+  next.status = { kind: "finished", winner };
+  return {
+    state: next,
+    events: [
+      { type: "forfeit", side, reason },
+      { type: "victory", winner },
+    ],
+  };
+}
+
+export type ForfeitReason = "timeout" | "abandoned";
+
+/**
  * Replay a battle from its round list. The settlement path uses this to verify
  * a submitted result: same builds + same rounds must reproduce the claimed
  * winner, so a client cannot report a match it did not win.
+ *
+ * A forfeit is NOT in the round list — it has no action to replay — so a
+ * verifier settles it from the clock rather than from this function.
  */
 export function replay(
   p1Build: MechBuild,

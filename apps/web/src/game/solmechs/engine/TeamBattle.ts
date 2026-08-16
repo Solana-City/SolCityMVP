@@ -317,6 +317,30 @@ export function resolveForcedSwitches(
 }
 
 /**
+ * End a squad battle on clock or abandonment. Same contract as the 1v1's
+ * `forfeit`: a real result the ladder records, not a UI special case.
+ */
+export function forfeitTeam(
+  state: TeamBattleState,
+  side: PlayerSide,
+  reason: "timeout" | "abandoned" = "timeout",
+): TeamResolveResult {
+  if (state.status.kind === "finished") {
+    return { state, events: [{ type: "rejected", reason: "Battle is already over" }] };
+  }
+  const next = cloneState(state);
+  const winner = opponentOfSide(side);
+  next.status = { kind: "finished", winner };
+  return {
+    state: next,
+    events: [
+      { type: "forfeit", side, reason },
+      { type: "victory", winner },
+    ],
+  };
+}
+
+/**
  * Replay a team battle from its round list — the verification path, same
  * contract as the 1v1 `replay`.
  */
