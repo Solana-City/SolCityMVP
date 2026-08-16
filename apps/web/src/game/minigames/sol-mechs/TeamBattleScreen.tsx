@@ -14,7 +14,7 @@ import {
 } from "@/game/solmechs/engine/TeamBattle";
 import { availableMoves, legalTargets, calculateDamage, isDefeated } from "@/game/solmechs/engine/BattleEngine";
 import type { PlayerSide } from "@/game/solmechs/engine/BattleEngine";
-import { BattleRenderer, CANVAS_W, CANVAS_H } from "@/game/solmechs/render/BattleRenderer";
+import { BattleRenderer, splitIntoBeats, CANVAS_W, CANVAS_H } from "@/game/solmechs/render/BattleRenderer";
 import { preloadBuild } from "@/game/solmechs/render/MechPaperDoll";
 import type { TeamBuild } from "@/game/solmechs/data/team";
 import type { ModuleSlot, MoveDefinition } from "@/game/solmechs/data/types";
@@ -40,6 +40,8 @@ const SLOT_LABEL: Record<ModuleSlot, string> = {
 
 /** ms the AI "thinks" for, so its turn is legible rather than instant. */
 const AI_DELAY = 620;
+/** Pause after a substitution so the replacement registers before it is hit. */
+const SWITCH_LEAD_IN = 420;
 
 export interface TeamBattleScreenProps {
   playerTeam: TeamBuild;
@@ -117,13 +119,30 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, onFinished, on
     return best?.a ?? null;
   }, []);
 
-  const play = useCallback((result: { state: TeamBattleState; events: TeamEvent[] }) => {
+  const play = useCallback((
+    result: { state: TeamBattleState; events: TeamEvent[] },
+    moves: Partial<Record<PlayerSide, MoveDefinition | undefined>> = {},
+  ) => {
     const lines = result.events.map((e) => describe(e, result.state)).filter((l): l is string => l !== null);
     setLog((prev) => [...lines.reverse(), ...prev].slice(0, 60));
 
     const renderer = rendererRef.current;
-    renderer?.setState({ p1: activeUnit(result.state.p1), p2: activeUnit(result.state.p2) });
-    renderer?.playEvents(result.events.filter(isBattleEvent));
+    const after = { p1: activeUnit(result.state.p1), p2: activeUnit(result.state.p2) };
+
+    // Substitutions resolve before any attack, so the replacement has to be on
+    // screen before the beats that follow it — but NOT before the round starts,
+    // or the outgoing mech never gets to be seen leaving.
+    const switched = result.events.some((e) => e.type === "switch");
+    const beats = splitIntoBeats(result.events.filter(isBattleEvent), moves);
+    if (beats.length === 0) {
+      renderer?.setState(after);
+    } else {
+      renderer?.playRound(
+        beats.map((b, i) => (i === 0 && switched
+          ? { ...b, unitsAt: after, leadIn: SWITCH_LEAD_IN }
+          : i === 0 ? { ...b, unitsAt: after } : b)),
+      );
+    }
     stateRef.current = result.state;
     setState(result.state);
 
@@ -137,8 +156,15 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, onFinished, on
     const cur = stateRef.current;
     if (!cur || cur.status.kind !== "active") return;
     setBusy(true);
-    const round: TeamRoundActions = { p1: action, p2: rivalChoice(cur) };
-    play(resolveTeamRound(cur, round));
+    const rival = rivalChoice(cur);
+    const round: TeamRoundActions = { p1: action, p2: rival };
+    // Moves are read from the PRE-round state; afterwards the limb that fired
+    // may already be gone, or the mech may have been substituted out.
+    const moveOf = (a: TeamAction | null, side: PlayerSide) =>
+      a?.kind === "move"
+        ? activeUnit(side === "p1" ? cur.p1 : cur.p2).parts[a.sourceSlot]?.moves[a.moveIndex]
+        : undefined;
+    play(resolveTeamRound(cur, round), { p1: moveOf(action, "p1"), p2: moveOf(rival, "p2") });
   }, [rivalChoice, play]);
 
   /** Forced substitution after a KO — free, and both sides send in together. */
@@ -222,8 +248,9 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, onFinished, on
               width={CANVAS_W}
               height={CANVAS_H}
               style={{
-                imageRendering: "pixelated", maxWidth: "100%", maxHeight: "100%",
-                objectFit: "contain", display: "block",
+                position: "absolute", inset: 0,
+                width: "100%", height: "100%", objectFit: "contain",
+                imageRendering: "pixelated", display: "block",
               }}
             />
           </div>
@@ -422,17 +449,17 @@ const sx: Record<string, React.CSSProperties> = {
   squadLabel: { fontSize: 12, color: C.faint, letterSpacing: 2, marginBottom: 3 },
   /** The arena and its two HUD columns share the leftover height. */
   arenaRow: {
-    flex: 1, minHeight: 0, display: "flex", gap: SP.md,
-    alignItems: "stretch", flexWrap: "wrap",
+    // No wrap — see the 1v1: wrapping let this row outgrow its flex allowance.
+    flex: 1, minHeight: 0, display: "flex", gap: SP.md, alignItems: "stretch",
   },
   hudColumn: {
-    flex: "1 1 190px", minWidth: 170, maxWidth: 280,
+    flex: "1 1 170px", minWidth: 140, maxWidth: 260,
     display: "flex", flexDirection: "column", justifyContent: "center",
     background: C.ink, border: `1px solid ${C.line}`, borderRadius: R.md, padding: SP.md,
   },
   arenaBox: {
-    flex: "4 1 400px", minWidth: 280, minHeight: 0,
-    display: "flex", alignItems: "center", justifyContent: "center",
+    // `relative` is what lets the canvas resolve 100% against a real height.
+    position: "relative", flex: "4 1 320px", minWidth: 220, minHeight: 0,
     borderRadius: R.md, border: `2px solid ${C.line}`,
     overflow: "hidden", background: C.ink,
   },

@@ -102,6 +102,8 @@ const BADGE_DURATION = 1100;
  * making the player wait for them.
  */
 const SEQUENCE_TAIL = 260;
+/** Pause between beats that produced no animation, so they still read. */
+const BEAT_GAP = 320;
 
 interface Anim {
   start: number;
@@ -155,6 +157,8 @@ export class BattleRenderer {
   private floaters: Floater[] = [];
   private shakes: Shake[] = [];
   private badges: Badge[] = [];
+  /** Deferred setState calls, so a substitution swaps the mech mid-sequence. */
+  private stateChanges: Array<{ at: number; units: RenderUnits }> = [];
   private running = false;
   /** performance.now() when the current sequence hands input back. */
   private busyUntil = 0;
@@ -184,6 +188,14 @@ export class BattleRenderer {
   destroy(): void {
     this.running = false;
     cancelAnimationFrame(this.raf);
+  }
+
+  /** Drop every queued cue — used when a battle screen resets. */
+  clear(): void {
+    this.lunges = []; this.flashes = []; this.fx = [];
+    this.floaters = []; this.shakes = []; this.badges = [];
+    this.stateChanges = [];
+    this.busyUntil = 0;
   }
 
   setState(state: RenderUnits): void {
@@ -236,6 +248,41 @@ export class BattleRenderer {
    * absolute start time, so effects land in causal order rather than all at
    * once.
    */
+  /**
+   * Stage a whole round.
+   *
+   * A round contains up to four beats — two substitutions and two attacks —
+   * and playing them together was the bug: everything landed on one frame and
+   * the player could not tell what caused what.
+   *
+   * This splits the engine's event log at each `attack` and plays the segments
+   * back to back, each waiting for the previous to finish. Anything before the
+   * first attack (substitutions) is its own opening beat.
+   *
+   * `unitsAt` lets a beat swap the mech on screen when it begins, so a
+   * substitution's replacement appears at the moment of the switch instead of
+   * popping in before the round has played.
+   */
+  playRound(beats: Array<{
+    events: BattleEvent[];
+    move?: MoveDefinition;
+    /** Applied when this beat starts, for substitutions. */
+    unitsAt?: RenderUnits;
+    /** Extra pause before the beat, e.g. to let a switch read. */
+    leadIn?: number;
+  }>): void {
+    let cursor = this.remainingMs();
+    for (const beat of beats) {
+      cursor += beat.leadIn ?? 0;
+      if (beat.unitsAt) this.stateChanges.push({ at: performance.now() + cursor, units: beat.unitsAt });
+      const before = this.busyUntil;
+      this.playEvents(beat.events, beat.move, cursor);
+      // Chain: the next beat starts when this one has finished, not now.
+      cursor = Math.max(cursor, this.busyUntil - performance.now());
+      if (this.busyUntil === before) cursor += BEAT_GAP;
+    }
+  }
+
   playEvents(events: BattleEvent[], move?: MoveDefinition, delayMs = 0): void {
     // `last` tracks when the ACTION is done, which gates input. Floaters are
     // excluded on purpose: they outlive the sequence so the numbers stay
@@ -350,6 +397,11 @@ export class BattleRenderer {
 
   private draw(now: number): void {
     const ctx = this.ctx;
+
+    // Apply any state swap whose moment has arrived (substitutions).
+    while (this.stateChanges.length > 0 && this.stateChanges[0].at <= now) {
+      this.state = this.stateChanges.shift()!.units;
+    }
 
     this.lunges = this.lunges.filter((a) => now - a.start < LUNGE);
     this.flashes = this.flashes.filter((f) => now - f.start < FLASH_DURATION);
@@ -539,4 +591,36 @@ export class BattleRenderer {
     }
     ctx.restore();
   }
+}
+
+/**
+ * Split a round's event log into one beat per attacker.
+ *
+ * The engine emits a round as one flat array; playing it as one sequence made
+ * both mechs lunge, both numbers pop and both limbs break on the same frame.
+ * Cutting at each `attack` gives the renderer the beats to chain, and each
+ * beat carries the move that produced it so the right effect plays.
+ *
+ * Anything before the first attack is its own opening beat — that is where
+ * substitutions live in the 3v3.
+ */
+export function splitIntoBeats(
+  events: BattleEvent[],
+  moves: Partial<Record<PlayerSide, MoveDefinition | undefined>>,
+): Array<{ events: BattleEvent[]; move?: MoveDefinition }> {
+  const beats: Array<{ events: BattleEvent[]; move?: MoveDefinition }> = [];
+  let current: BattleEvent[] = [];
+  let side: PlayerSide | undefined;
+
+  for (const e of events) {
+    if (e.type === "attack") {
+      if (current.length) beats.push({ events: current, move: side ? moves[side] : undefined });
+      current = [e];
+      side = e.side;
+      continue;
+    }
+    current.push(e);
+  }
+  if (current.length) beats.push({ events: current, move: side ? moves[side] : undefined });
+  return beats;
 }

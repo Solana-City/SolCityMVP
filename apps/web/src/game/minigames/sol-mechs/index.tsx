@@ -16,11 +16,11 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import type { MiniGameComponentProps, MiniGameBaseContext } from "../types";
 import {
-  createBattle, resolveRound, orderOfPlay, availableMoves, legalTargets, createUnit,
+  createBattle, resolveRound, availableMoves, legalTargets, createUnit,
   type BattleState, type BattleAction, type BattleEvent, type PlayerSide,
   type RoundActions,
 } from "@/game/solmechs/engine/BattleEngine";
-import { BattleRenderer, CANVAS_W, CANVAS_H } from "@/game/solmechs/render/BattleRenderer";
+import { BattleRenderer, splitIntoBeats, CANVAS_W, CANVAS_H } from "@/game/solmechs/render/BattleRenderer";
 import { preloadAll, preloadBuild, drawMech, DOLL_WIDTH, DOLL_HEIGHT } from "@/game/solmechs/render/MechPaperDoll";
 import { LocalAIOpponent } from "@/game/solmechs/opponent/LocalAIOpponent";
 import { MATRICES, PRESET_BUILDS } from "@/game/solmechs/data/catalog";
@@ -32,7 +32,7 @@ import { C, T, SP, R, MONO, backdrop, panel, eyebrow, button, W, PANEL_HEIGHT } 
 import TeamBuilder from "./TeamBuilder";
 import TeamBattleScreen from "./TeamBattleScreen";
 import { validateTeam, type TeamBuild } from "@/game/solmechs/data/team";
-import { LIMB_SLOTS, type MechId, type ModuleSlot, type MechBuild } from "@/game/solmechs/data/types";
+import { LIMB_SLOTS, type MechId, type ModuleSlot, type MechBuild, type MoveDefinition } from "@/game/solmechs/data/types";
 
 type Phase = "menu" | "hangar" | "workshop" | "squad" | "team-battle" | "battle" | "result";
 
@@ -68,8 +68,22 @@ const SLOT_ICON: Record<ModuleSlot, string> = {
  * narrow window the columns wrap under the canvas rather than crushing it.
  */
 const sxBattle: Record<string, React.CSSProperties> = {
+  /**
+   * No wrap. Wrapping let the row grow taller than its flex allowance, which
+   * is how the arena ended up overflowing the panel; the HUD columns shrink
+   * instead, and their min-width keeps them legible.
+   */
+  arenaRow: {
+    flex: 1, minHeight: 0, display: "flex", gap: SP.md, alignItems: "stretch",
+  },
+  arenaBox: {
+    // `relative` is what lets the canvas resolve 100% against a real height.
+    position: "relative", flex: "4 1 320px", minWidth: 220, minHeight: 0,
+    borderRadius: R.md, border: `2px solid ${C.line}`,
+    overflow: "hidden", background: C.ink,
+  },
   hudColumn: {
-    flex: "1 1 200px", minWidth: 180, maxWidth: 300,
+    flex: "1 1 170px", minWidth: 140, maxWidth: 260,
     display: "flex", flexDirection: "column", justifyContent: "center",
     background: C.ink, border: `1px solid ${C.line}`,
     borderRadius: R.md, padding: SP.md,
@@ -184,20 +198,9 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
 
     const renderer = rendererRef.current;
     renderer?.setState(nextState);
-    // Split the log at the round's second attacker so each mech's hit is
-    // staged with its own move's effect rather than both sharing one.
-    const secondAttackIdx = events.findIndex(
-      (e, i) => e.type === "attack" && events.slice(0, i).some((p) => p.type === "attack"),
-    );
-    const [firstSide] = orderOfPlay(current);
-    const firstMove = firstSide === "p1" ? p1Move : p2Move;
-    const secondMove = firstSide === "p1" ? p2Move : p1Move;
-    if (secondAttackIdx > 0) {
-      renderer?.playEvents(events.slice(0, secondAttackIdx), firstMove);
-      renderer?.playEvents(events.slice(secondAttackIdx), secondMove, renderer.remainingMs());
-    } else {
-      renderer?.playEvents(events, firstMove);
-    }
+    // One beat per attacker, chained — the faster mech's hit plays out in full
+    // before the slower one begins.
+    renderer?.playRound(splitIntoBeats(events, { p1: p1Move, p2: p2Move }));
 
     stateRef.current = nextState;
     setBattle(nextState);
@@ -421,27 +424,21 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
       {/* Arena centre stage, HUD flanking it. Stacking the two status blocks
           above the canvas wasted the width and squeezed the arena into a
           letterbox; wrapping is what keeps this honest on a narrow window. */}
-      <div style={{
-        flex: 1, minHeight: 0, display: "flex", gap: SP.md,
-        alignItems: "stretch", flexWrap: "wrap",
-      }}>
+      <div style={sxBattle.arenaRow}>
         <div style={sxBattle.hudColumn}>
           <MechStatus state={battle} side="p1" />
         </div>
 
-        <div style={{
-          flex: "4 1 420px", minWidth: 300, minHeight: 0,
-          display: "flex", alignItems: "center", justifyContent: "center",
-          borderRadius: R.md, border: `2px solid ${C.line}`,
-          overflow: "hidden", background: C.ink,
-        }}>
+        <div style={sxBattle.arenaBox}>
           <canvas
             ref={canvasRef}
             width={CANVAS_W}
             height={CANVAS_H}
-            // object-fit keeps the arena's aspect while it shrinks to whatever
-            // space is left, so nothing is cropped at any window size.
-            style={{ ...PIXELATED, maxWidth: "100%", maxHeight: "100%", objectFit: "contain", display: "block" }}
+            style={{
+                position: "absolute", inset: 0,
+                width: "100%", height: "100%", objectFit: "contain",
+                imageRendering: "pixelated", display: "block",
+              }}
           />
         </div>
 
