@@ -60,7 +60,22 @@ export const MATRICES: MechMatrix[] = [
     matrixName: "Solus",
     id: "solus",
     role: "All-Rounder",
-    baseStats: { HP: 260, ATK: 60, DEF: 60, ENG: 60, SPD: 60, SYS: 60, PROC: 0 },
+    /**
+     * REBALANCED from the Unity source (all stats 60, combat budget 300).
+     *
+     * Solus wasn't a sidegrade, it was a bigger mech: 300 points of combat
+     * stats against 180-210 for the other four, and a kit worth 360 against
+     * 210-220. Measured across every matchup under three play styles and both
+     * seats, it won 100% of 144 duels — not "strong", unbeatable.
+     *
+     * Scaled to 200, the mean of the other four, keeping its even
+     * all-rounder shape and its 260 HP. That drops it to 65%: still the best
+     * chassis in the game, which suits a mech you earn by completing the
+     * collection, but now something the other four can actually beat.
+     *
+     * See the kit note on RA05/LA05/IN05, which was scaled the same way.
+     */
+    baseStats: { HP: 260, ATK: 40, DEF: 40, ENG: 40, SPD: 40, SYS: 40, PROC: 0 },
     passive1: "Solana Speed",
     passive2: "Huge Community",
   },
@@ -103,9 +118,15 @@ const RAW_RIGHT_ARMS: RawPart[] = [
     stats: [80, 10, 10, 30, 10, 20],
     moves: [{ name: "Pulse Wave", dmg: 50, type: "Energy", target: 0 }],
   },
+  /**
+   * Solus kit, REBALANCED alongside its chassis — see the M05 note. The Unity
+   * values totalled 360 combat points against 210-220 for every other kit;
+   * these are scaled to 215. HP is untouched, so the kit keeps its durability
+   * and loses only the across-the-board stat lead.
+   */
   {
     code: "RA05", name: "Solus Cannon", mech: "solus",
-    stats: [100, 30, 30, 30, 15, 30],
+    stats: [100, 20, 20, 20, 10, 20],
     moves: [{ name: "Solus Burst", dmg: 65, type: "Energy", target: 2 }],
   },
 ];
@@ -136,7 +157,7 @@ const RAW_LEFT_ARMS: RawPart[] = [
   },
   {
     code: "LA05", name: "Solus Blade", mech: "solus",
-    stats: [100, 40, 30, 20, 15, 20],
+    stats: [100, 25, 20, 10, 10, 10],
     moves: [{ name: "Blade Rush", dmg: 45, type: "Physical", target: 0, effect: "-1 SPD" }],
   },
 ];
@@ -169,7 +190,7 @@ const RAW_LOWER_BODIES: RawPart[] = [
   },
   {
     code: "IN05", name: "Solus Thrusters", mech: "solus",
-    stats: [145, 20, 20, 20, 20, 20],
+    stats: [145, 10, 10, 10, 10, 10],
     moves: [{ name: "Boost Dash", dmg: 0, type: "Effect", target: 1, effect: "+1 SPD" }],
   },
 ];
