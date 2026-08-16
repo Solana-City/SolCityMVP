@@ -28,6 +28,9 @@ import { drawMech, DOLL_WIDTH, DOLL_HEIGHT, slotAnchor } from "./MechPaperDoll";
 import type { MechBuild, MechUnit, ModuleSlot, MoveDefinition } from "../data/types";
 import { fxForMove, fxForStage, fxFrame, clipDuration, preloadFx, statBadge, FX_DESTROY, type FxClip } from "./AttackFx";
 
+/** Doll-space position of the legs socket — the mech's real ground contact. */
+const FOOT_ANCHOR = slotAnchor("lowerBody");
+
 export interface RenderUnits {
   p1: MechUnit;
   p2: MechUnit;
@@ -35,27 +38,41 @@ export interface RenderUnits {
 
 export const CANVAS_W = 640;
 /**
- * Taller than the mechs strictly need, so the arena backdrop's crowd and
- * skyline read instead of being cropped down to the platform.
+ * The canvas matches the arena art's aspect exactly (2480x2160 -> 640x557), so
+ * the backdrop is shown WHOLE — skyline, crowd and platform — with nothing
+ * cropped. The screen scales this down with object-fit rather than showing a
+ * window onto it.
  */
-export const CANVAS_H = 360;
+export const CANVAS_H = 557;
+
+const ARENA_SRC = "/assets/minigames/sol-mechs/ui/arena.png";
 
 /**
- * The arena art (BattleSceneSprites/arena.png) imported at 640 wide. It is
- * drawn bottom-aligned, so the canvas shows its lower portion: crowd, rails
- * and the neon platform the mechs stand on.
+ * Where the mechs' feet meet the neon platform, as a fraction of the arena's
+ * height. Probed off the art: the platform ellipse runs from ~0.70 to ~0.95
+ * and is widest around 0.75-0.80, so this stands them on it without covering
+ * the front rim.
  */
-const ARENA_SRC = "/assets/minigames/sol-mechs/ui/arena.png";
-const ARENA_W = 640;
-const ARENA_H = 557;
+const FOOT_LINE = Math.round(CANVAS_H * 0.80);
+
+/**
+ * The leg sprites carry 7-13px of empty frame below the feet. Without
+ * compensating, the mechs float that far above the platform — which is what
+ * the first pass at this got wrong.
+ */
+const FOOT_INSET_SRC = 10;
 
 const MECH_SCALE = 2;
 const MECH_W = DOLL_WIDTH * MECH_SCALE;
 const MECH_H = DOLL_HEIGHT * MECH_SCALE;
-/** Lands the mechs' feet on the platform in the backdrop, not on a flat line. */
-const GROUND_Y = 300;
-const P1_X = 58;
-const P2_X = CANVAS_W - 58 - MECH_W;
+
+/** Bottom edge of the doll box — below the feet by the sprite's own padding. */
+const BOX_BOTTOM = FOOT_LINE + FOOT_INSET_SRC * MECH_SCALE;
+const BOX_TOP = BOX_BOTTOM - MECH_H;
+
+/** Spread so both mechs sit inside the platform's widest span (x 46..592). */
+const P1_X = 52;
+const P2_X = CANVAS_W - 52 - MECH_W;
 
 // ── timing (ms) ──────────────────────────────────────────────────────────
 /** Lunge start → impact. The effect and the damage land at this offset. */
@@ -206,7 +223,7 @@ export class BattleRenderer {
     const dx = flipped ? DOLL_WIDTH - a.x : a.x;
     return {
       x: this.baseX(side) + dx * MECH_SCALE,
-      y: GROUND_Y - MECH_H + a.y * MECH_SCALE,
+      y: BOX_TOP + a.y * MECH_SCALE,
     };
   }
 
@@ -366,7 +383,7 @@ export class BattleRenderer {
       // Bottom-aligned: the platform belongs at the foot of the frame, and
       // whatever skyline fits above it is a bonus.
       ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(arena, 0, CANVAS_H - ARENA_H, ARENA_W, ARENA_H);
+      ctx.drawImage(arena, 0, 0, CANVAS_W, CANVAS_H);
       return;
     }
     // Backdrop still decoding — the old gradient keeps the scene readable
@@ -378,7 +395,7 @@ export class BattleRenderer {
     ctx.fillStyle = sky;
     ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
     ctx.fillStyle = "#1b1030";
-    ctx.fillRect(0, GROUND_Y, CANVAS_W, CANVAS_H - GROUND_Y);
+    ctx.fillRect(0, FOOT_LINE, CANVAS_W, CANVAS_H - FOOT_LINE);
   }
 
   /**
@@ -404,7 +421,7 @@ export class BattleRenderer {
   private drawSide(ctx: CanvasRenderingContext2D, side: PlayerSide, now: number): void {
     const unit = this.unitFor(side);
     const baseX = this.baseX(side);
-    const y = GROUND_Y - MECH_H;
+    const y = BOX_TOP;
 
     let dx = 0;
     const lunge = this.lunges.find((a) => a.side === side && now >= a.start);
@@ -421,7 +438,11 @@ export class BattleRenderer {
     ctx.globalAlpha = 0.35;
     ctx.fillStyle = "#000000";
     ctx.beginPath();
-    ctx.ellipse(baseX + MECH_W / 2, GROUND_Y + 2, MECH_W * 0.3, 7, 0, 0, Math.PI * 2);
+    // Centred on the LEGS socket rather than the box, because the box is
+    // padded wide by the arm sockets and a box-centred shadow sits off to one
+    // side of the mech that casts it.
+    const footX = baseX + (side === "p2" ? DOLL_WIDTH - FOOT_ANCHOR.x : FOOT_ANCHOR.x) * MECH_SCALE;
+    ctx.ellipse(footX, FOOT_LINE + 3, 30, 7, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
 

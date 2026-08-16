@@ -45,6 +45,29 @@ const SLOT_LABEL: Record<ModuleSlot, string> = {
 
 const PIXELATED: React.CSSProperties = { imageRendering: "pixelated" };
 
+/**
+ * Unity's per-slot glyphs (Interface guidance/arena/log_*.png). Used on the
+ * target buttons so picking a limb is a picture of that limb rather than an
+ * abbreviation the player has to decode mid-fight.
+ */
+const SLOT_ICON: Record<ModuleSlot, string> = {
+  matrix:    "/assets/minigames/sol-mechs/ui/slotmini-matrix.png",
+  rightArm:  "/assets/minigames/sol-mechs/ui/slotmini-rightarm.png",
+  leftArm:   "/assets/minigames/sol-mechs/ui/slotmini-leftarm.png",
+  lowerBody: "/assets/minigames/sol-mechs/ui/slotmini-legs.png",
+};
+
+function SlotIcon({ slot, size = 20 }: { slot: ModuleSlot; size?: number }) {
+  return (
+    <img
+      src={SLOT_ICON[slot]}
+      alt=""
+      style={{ ...PIXELATED, height: size, width: "auto", display: "block", flexShrink: 0 }}
+      onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+    />
+  );
+}
+
 export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentProps<MiniGameBaseContext>) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rendererRef = useRef<BattleRenderer | null>(null);
@@ -369,12 +392,19 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
         <MechStatus state={battle} side="p2" align="right" />
       </div>
 
-      <canvas
-        ref={canvasRef}
-        width={CANVAS_W}
-        height={CANVAS_H}
-        style={{ ...PIXELATED, width: "100%", borderRadius: 8, border: "2px solid #3d2a63", display: "block" }}
-      />
+      <div style={{
+        flex: 1, minHeight: 0, display: "flex", alignItems: "center", justifyContent: "center",
+        borderRadius: 8, border: "2px solid #3d2a63", overflow: "hidden", background: "#0b0616",
+      }}>
+        <canvas
+          ref={canvasRef}
+          width={CANVAS_W}
+          height={CANVAS_H}
+          // object-fit keeps the arena's aspect while it shrinks to whatever
+          // height is left, so nothing is cropped at any window size.
+          style={{ ...PIXELATED, maxWidth: "100%", maxHeight: "100%", objectFit: "contain", display: "block" }}
+        />
+      </div>
 
       {phase === "result" && battle.status.kind === "finished" ? (
         <div style={{ textAlign: "center", padding: "16px 0" }}>
@@ -429,10 +459,17 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
               </div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                 {targets.map((slot) => (
-                  <button key={slot} onClick={() => onTargetPicked(slot)} style={btnStyle(slot === "matrix" ? "#7a1f3d" : "#2d1b5e", true)}>
-                    <div style={{ fontWeight: 700 }}>{SLOT_LABEL[slot]}</div>
-                    <div style={{ fontSize: 10, color: "#9d8fc4" }}>
-                      {battle.p2.partStatuses[slot].currentHP} HP
+                  <button
+                    key={slot}
+                    onClick={() => onTargetPicked(slot)}
+                    style={{ ...btnStyle(slot === "matrix" ? "#7a1f3d" : "#2d1b5e", true), display: "flex", alignItems: "center", gap: 8 }}
+                  >
+                    <SlotIcon slot={slot} size={slot === "matrix" ? 18 : 24} />
+                    <div>
+                      <div style={{ fontWeight: 700 }}>{SLOT_LABEL[slot]}</div>
+                      <div style={{ fontSize: 10, color: "#9d8fc4" }}>
+                        {battle.p2.partStatuses[slot].currentHP} HP
+                      </div>
                     </div>
                   </button>
                 ))}
@@ -570,8 +607,16 @@ function Bar({ label, current, max, color }: { label: string; current: number; m
       <span style={{ fontSize: 9, color: dead ? "#5a4a7a" : "#9d8fc4", width: 46, fontFamily: "monospace" }}>
         {label}
       </span>
-      <div style={{ flex: 1, height: 6, background: "#1a1030", borderRadius: 3, overflow: "hidden" }}>
-        <div style={{ width: `${pct}%`, height: "100%", background: dead ? "#5a2a3a" : color, transition: "width .25s" }} />
+      {/* 9-slice of the Unity bar frame (MechEditorSprites/Workshop/bar.png),
+          the same chrome the Workshop's stat bars use. */}
+      <div style={{
+        flex: 1,
+        borderStyle: "solid", borderWidth: "2px 4px 5px",
+        borderImage: "url(/assets/minigames/sol-mechs/ui/bar.png) 20 60 80 fill / 2px 4px 5px / 0 stretch",
+      }}>
+        <div style={{ height: 7, background: "#000", overflow: "hidden" }}>
+          <div style={{ width: `${pct}%`, height: "100%", background: dead ? "#5a2a3a" : color, transition: "width .25s" }} />
+        </div>
       </div>
       <span style={{ fontSize: 9, color: "#7a68a8", width: 30, fontFamily: "monospace" }}>{current}</span>
     </div>
@@ -586,10 +631,14 @@ function Shell({ children, onClose, title, subtitle = "" }: { children: React.Re
     }}>
       <div style={{
         background: "#150c2b", border: "2px solid #3d2a63", borderRadius: 12,
-        padding: 16, width: "min(680px,100%)", maxHeight: "100%", overflowY: "auto",
+        padding: 16, width: "min(680px,100%)", height: "100%",
+        // Fixed height with an internal flex column instead of a scrolling
+        // box: the arena is shown whole, so the canvas has to shrink to the
+        // space left over rather than push the panel past the viewport.
+        display: "flex", flexDirection: "column", gap: 8, overflow: "hidden",
         fontFamily: "system-ui,sans-serif",
       }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, gap: 10 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexShrink: 0 }}>
           {/* The Unity wordmark (Interface guidance/UI/logo.png) carries the
               brand far better than a styled <h2>; the text stays as the
               accessible name and as a fallback if the art fails to load. */}
@@ -605,7 +654,9 @@ function Shell({ children, onClose, title, subtitle = "" }: { children: React.Re
             cursor: "pointer", lineHeight: 1, padding: 0,
           }}>×</button>
         </div>
-        {children}
+        <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", gap: 8 }}>
+          {children}
+        </div>
       </div>
     </div>
   );
