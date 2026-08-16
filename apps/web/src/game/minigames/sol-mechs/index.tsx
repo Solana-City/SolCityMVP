@@ -298,16 +298,22 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
   if (phase === "hangar") {
     const hangar = loadHangar();
     return (
-      <Shell onClose={onClose} title="Sol Mechs" subtitle="HANGAR">
-        <p style={{ color: "#9d8fc4", fontSize: 13, margin: "0 0 4px" }}>
+      <Shell onClose={onClose} title="Sol Mechs" subtitle="HANGAR" fit>
+        <p style={{ color: "#9d8fc4", fontSize: 13, margin: 0, flexShrink: 0 }}>
           Pick the mech you&apos;ll deploy. Two ways to win a fight:
         </p>
-        <p style={{ color: "#7a68a8", fontSize: 12, margin: "0 0 14px" }}>
+        <p style={{ color: "#7a68a8", fontSize: 12, margin: "0 0 4px" }}>
           break an <strong style={{ color: "#c3b8e0" }}>arm</strong> to expose the Matrix and blow the core —
           or strip <strong style={{ color: "#c3b8e0" }}>all three limbs</strong>. Each limb you take also
           costs them the stats that limb was providing.
         </p>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(158px,1fr))", gap: 10 }}>
+        {/* Only the roster scrolls, so DEPLOY stays reachable without hunting
+            for it at the bottom of a list. */}
+        <div style={{
+          flex: 1, minHeight: 0, overflowY: "auto", overflowX: "hidden", paddingRight: 2,
+          display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(158px,1fr))",
+          gap: 10, alignContent: "start",
+        }}>
           {MATRICES.map((m) => {
             // Cards render the SAVED build, not the stock chassis. Showing base
             // chassis stats here was what made a customized mech look like it
@@ -328,7 +334,7 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
             );
           })}
         </div>
-        <div style={{ display: "flex", gap: 8, marginTop: 18, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", flexShrink: 0 }}>
           <button
             onClick={() => setPhase("workshop")}
             style={{
@@ -386,7 +392,7 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
   };
 
   return (
-    <Shell onClose={onClose} title="Sol Mechs" subtitle="BATTLE">
+    <Shell onClose={onClose} title="Sol Mechs" subtitle="BATTLE" fit>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 12, marginBottom: 8 }}>
         <MechStatus state={battle} side="p1" />
         <MechStatus state={battle} side="p2" align="right" />
@@ -550,11 +556,17 @@ function MechCard({ matrixName, role, build, custom, selected, onSelect }: {
         )}
       </div>
       <div style={{ fontSize: 11, color: "#21dda0" }}>{role}</div>
+      {/* Sized by height, not width: the doll box is padded wide by the arm
+          sockets, so a width-driven canvas made every card far taller than the
+          mech inside it and pushed the roster off screen. */}
       <canvas
         ref={ref}
         width={DOLL_WIDTH * CARD_SCALE}
         height={DOLL_HEIGHT * CARD_SCALE}
-        style={{ imageRendering: "pixelated", width: "100%", height: "auto", display: "block" }}
+        style={{
+          imageRendering: "pixelated", height: 116, width: "auto",
+          maxWidth: "100%", display: "block", margin: "0 auto",
+        }}
       />
       {stats && (
         <div style={{ fontSize: 11, color: "#c3b8e0", lineHeight: 1.55, fontFamily: "monospace" }}>
@@ -623,7 +635,22 @@ function Bar({ label, current, max, color }: { label: string; current: number; m
   );
 }
 
-function Shell({ children, onClose, title, subtitle = "" }: { children: React.ReactNode; onClose: () => void; title: string; subtitle?: string }) {
+/**
+ * Overlay chrome, in two layouts.
+ *
+ *  - `fit` (battle): fixed height, nothing scrolls, and the canvas shrinks
+ *    into whatever space is left so the arena is never cropped.
+ *  - default (hangar, result): the content is a LIST, so it scrolls. Forcing
+ *    the fit layout on it just clipped the roster with no way to reach the
+ *    buttons underneath.
+ */
+function Shell({ children, onClose, title, subtitle = "", fit = false }: {
+  children: React.ReactNode;
+  onClose: () => void;
+  title: string;
+  subtitle?: string;
+  fit?: boolean;
+}) {
   return (
     <div style={{
       position: "fixed", inset: 0, background: "rgba(5,2,12,.88)", zIndex: 1000,
@@ -631,10 +658,9 @@ function Shell({ children, onClose, title, subtitle = "" }: { children: React.Re
     }}>
       <div style={{
         background: "#150c2b", border: "2px solid #3d2a63", borderRadius: 12,
-        padding: 16, width: "min(680px,100%)", height: "100%",
-        // Fixed height with an internal flex column instead of a scrolling
-        // box: the arena is shown whole, so the canvas has to shrink to the
-        // space left over rather than push the panel past the viewport.
+        padding: 16, width: "min(680px,100%)",
+        height: fit ? "100%" : undefined,
+        maxHeight: "100%",
         display: "flex", flexDirection: "column", gap: 8, overflow: "hidden",
         fontFamily: "system-ui,sans-serif",
       }}>
@@ -654,7 +680,13 @@ function Shell({ children, onClose, title, subtitle = "" }: { children: React.Re
             cursor: "pointer", lineHeight: 1, padding: 0,
           }}>×</button>
         </div>
-        <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", gap: 8 }}>
+        <div style={{
+          flex: 1, minHeight: 0, display: "flex", flexDirection: "column", gap: 8,
+          // Only the fit layout keeps everything on screen; the list layout
+          // scrolls vertically and never sideways.
+          overflowY: fit ? "hidden" : "auto",
+          overflowX: "hidden",
+        }}>
           {children}
         </div>
       </div>
