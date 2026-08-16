@@ -17,6 +17,7 @@
  */
 
 import { useState } from "react";
+import { C, T, SP, R, MONO, eyebrow } from "./theme";
 
 export interface BattleLogProps {
   /** Newest first. */
@@ -38,22 +39,21 @@ export function BattleLog({ lines, turns, initiallyCollapsed = false }: BattleLo
         style={{
           display: "flex", alignItems: "center", gap: 8, width: "100%",
           background: "none", border: "none", padding: "2px 0", cursor: "pointer",
-          fontSize: 9, letterSpacing: 2, color: "#6b5c92", marginBottom: 4,
-          fontFamily: "inherit",
+          ...eyebrow, marginBottom: SP.xs, fontFamily: "inherit",
         }}
       >
         <span style={{ transform: open ? "rotate(90deg)" : "none", transition: "transform .15s" }}>▸</span>
         <span>COMBAT LOG</span>
-        <span style={{ flex: 1, height: 1, background: "#2a1c4d" }} />
+        <span style={{ flex: 1, height: 1, background: C.line }} />
         <span>{turns} {turns === 1 ? "ACTION" : "ACTIONS"}</span>
       </button>
 
       {open ? (
         <div style={{
-          height: 116, overflowY: "auto", background: "#0b0616",
-          border: "1px solid #2a1c4d", borderRadius: 6, padding: 9,
-          fontSize: 11.5, fontFamily: "ui-monospace, monospace",
-          color: "#c3b8e0", lineHeight: 1.75,
+          height: 132, overflowY: "auto", background: C.ink,
+          border: "1px solid " + C.line, borderRadius: R.sm, padding: SP.md,
+          fontSize: T.small, fontFamily: MONO,
+          color: C.body, lineHeight: 1.8,
         }}>
           {lines.map((line, i) => (
             <div
@@ -61,7 +61,7 @@ export function BattleLog({ lines, turns, initiallyCollapsed = false }: BattleLo
               style={{
                 // Newest line reads brightest and older ones recede, so the eye
                 // lands on what just happened without re-reading the whole panel.
-                color: i === 0 ? "#e8e2f7" : i < 4 ? "#c3b8e0" : "#8577ad",
+                color: i === 0 ? C.text : i < 4 ? C.body : C.faint,
                 whiteSpace: "pre-wrap",
               }}
             >
@@ -73,9 +73,9 @@ export function BattleLog({ lines, turns, initiallyCollapsed = false }: BattleLo
         // Collapsed still shows the latest line: the record is the point, and
         // hiding it entirely would mean losing track of what just happened.
         <div style={{
-          background: "#0b0616", border: "1px solid #2a1c4d", borderRadius: 6,
-          padding: "7px 9px", fontSize: 11.5, fontFamily: "ui-monospace, monospace",
-          color: "#c3b8e0", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+          background: C.ink, border: "1px solid " + C.line, borderRadius: R.sm,
+          padding: "10px 12px", fontSize: T.small, fontFamily: MONO,
+          color: C.body, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
         }}>
           {lines[0] ?? "—"}
         </div>

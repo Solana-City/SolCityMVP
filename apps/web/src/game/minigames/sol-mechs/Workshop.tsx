@@ -35,25 +35,12 @@ import type { MechBuild, MechId, StatBlock, ModuleSlot, MechPart } from "@/game/
 import { addStats } from "@/game/solmechs/data/types";
 import { createUnit, calculateDamage } from "@/game/solmechs/engine/BattleEngine";
 import { loadHangar, setBuild as persistBuild, resetBuild, getBuild } from "@/game/solmechs/hangar";
+import { C, T, SP, R, MONO } from "./theme";
 
 const UI = "/assets/minigames/sol-mechs/ui";
 const PIXELATED: React.CSSProperties = { imageRendering: "pixelated" };
 
 /** Sampled from the Unity Workshop art (bar.png) so the chrome matches. */
-const C = {
-  teal:    "#21dda0",
-  purple:  "#9a46fe",
-  blue:    "#6686db",
-  steel:   "#4656a5",
-  ink:     "#0b0616",
-  panel:   "#150c2b",
-  panelHi: "#1d1140",
-  line:    "#33235c",
-  text:    "#e8e2f7",
-  dim:     "#9d8fc4",
-  faint:   "#6b5c92",
-  danger:  "#ff5468",
-};
 
 /** All four editable sockets, matrix first — Unity's slot order. */
 const SLOTS: ModuleSlot[] = ["matrix", "rightArm", "leftArm", "lowerBody"];
@@ -331,7 +318,7 @@ export default function Workshop({ initialMech, onSaved, onMechChange, onClose, 
                     style={{
                       ...sx.slotTab,
                       borderColor: on ? C.teal : "transparent",
-                      background: on ? C.panelHi : "transparent",
+                      background: on ? C.raised : "transparent",
                     }}
                     title={SLOT_META[slot].label}
                   >
@@ -364,7 +351,7 @@ export default function Workshop({ initialMech, onSaved, onMechChange, onClose, 
                 </div>
                 <div style={sx.partMeta}>
                   <span style={{ color: C.faint }}>{currentCode}</span>
-                  {crossChassis && <span style={{ color: "#ffa726" }}> · cross-chassis</span>}
+                  {crossChassis && <span style={{ color: C.warn }}> · cross-chassis</span>}
                   {options.length > 1 && (
                     <span style={{ color: C.faint }}> · {index + 1}/{options.length}</span>
                   )}
@@ -441,7 +428,7 @@ export default function Workshop({ initialMech, onSaved, onMechChange, onClose, 
                     <span style={sx.statNums}>
                       <span style={sx.statTotal}>{total}</span>
                       {fromLimbs !== 0 && (
-                        <span style={{ color: fromLimbs > 0 ? C.teal : C.danger, fontSize: 11 }}>
+                        <span style={{ color: fromLimbs > 0 ? C.teal : C.bad, fontSize: 12 }}>
                           {fromLimbs > 0 ? "+" : ""}{fromLimbs}
                         </span>
                       )}
@@ -559,10 +546,10 @@ const sx: Record<string, React.CSSProperties> = {
   },
   header: { display: "flex", alignItems: "center", gap: 12, flexShrink: 0 },
   teamTag: {
-    fontSize: 11, color: C.purple, border: `1px solid ${C.purple}`,
+    fontSize: 12, color: C.purple, border: `1px solid ${C.purple}`,
     borderRadius: 4, padding: "3px 8px", letterSpacing: 2, fontWeight: 700,
   },
-  teamHint: { fontSize: 11, color: C.faint, margin: "-6px 0 0", lineHeight: 1.5 },
+  teamHint: { fontSize: 12, color: C.faint, margin: "-6px 0 0", lineHeight: 1.5 },
   title: { margin: 0, fontSize: 20, color: C.teal, letterSpacing: 5, fontWeight: 800 },
   close: {
     background: "none", border: "none", color: C.dim, fontSize: 26,
@@ -599,7 +586,7 @@ const sx: Record<string, React.CSSProperties> = {
   mechRole: { color: C.teal, fontSize: 12, letterSpacing: 2, marginBottom: 10 },
   passives: { display: "flex", flexDirection: "column", gap: 4 },
   passive: {
-    fontSize: 11, color: C.dim, background: C.panelHi,
+    fontSize: 12, color: C.dim, background: C.raised,
     border: `1px solid ${C.line}`, borderRadius: 4, padding: "5px 6px",
   },
   editorPanel: {
@@ -615,26 +602,26 @@ const sx: Record<string, React.CSSProperties> = {
   slotTab: { border: "2px solid transparent", borderRadius: 8, padding: 3, cursor: "pointer", lineHeight: 0 },
   lock: {
     display: "flex", alignItems: "center", gap: 5,
-    fontSize: 10, color: C.faint, cursor: "pointer", userSelect: "none", whiteSpace: "nowrap",
+    fontSize: 12, color: C.faint, cursor: "pointer", userSelect: "none", whiteSpace: "nowrap",
   },
   cycler: { display: "flex", alignItems: "center", gap: 6, marginBottom: 10 },
   cyclerBody: { flex: 1, textAlign: "center", minWidth: 0 },
-  slotLabel: { fontSize: 10, color: C.faint, letterSpacing: 2, textTransform: "uppercase" },
+  slotLabel: { fontSize: 12, color: C.faint, letterSpacing: 2, textTransform: "uppercase" },
   partName: { fontSize: 19, color: C.text, fontWeight: 700, lineHeight: 1.25, wordBreak: "break-word" },
-  partMeta: { fontSize: 11, fontFamily: "monospace", marginTop: 2 },
-  warn: { fontSize: 10, color: "#ffa726", margin: "0 0 8px", lineHeight: 1.5 },
-  sectionLabel: { fontSize: 10, color: C.faint, letterSpacing: 3, margin: "2px 0 8px" },
+  partMeta: { fontSize: 12, fontFamily: "monospace", marginTop: 2 },
+  warn: { fontSize: 12, color: C.warn, margin: "0 0 8px", lineHeight: 1.5 },
+  sectionLabel: { fontSize: 12, color: C.faint, letterSpacing: 3, margin: "2px 0 8px" },
   moveList: { display: "flex", flexDirection: "column", gap: 6 },
   moveRow: {
     display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8,
-    background: C.panelHi, border: `1px solid ${C.line}`, borderRadius: 6, padding: "9px 11px",
+    background: C.raised, border: `1px solid ${C.line}`, borderRadius: 6, padding: "9px 11px",
   },
   moveName: { fontSize: 14, color: C.text, fontWeight: 600 },
-  moveMeta: { fontSize: 11, color: C.dim, marginTop: 2 },
+  moveMeta: { fontSize: 12, color: C.dim, marginTop: 2 },
   moveDmg: { fontSize: 24, color: C.teal, fontWeight: 800, fontFamily: "monospace", lineHeight: 1 },
-  moveDmgTag: { fontSize: 8, color: C.faint, letterSpacing: 2 },
-  moveSupport: { fontSize: 10, color: C.blue, letterSpacing: 2, fontWeight: 700, flexShrink: 0 },
-  note: { fontSize: 10, color: C.faint, lineHeight: 1.5, margin: "4px 0 0" },
+  moveDmgTag: { fontSize: 12, color: C.faint, letterSpacing: 2 },
+  moveSupport: { fontSize: 12, color: C.blue, letterSpacing: 2, fontWeight: 700, flexShrink: 0 },
+  note: { fontSize: 12, color: C.faint, lineHeight: 1.5, margin: "4px 0 0" },
   statsPanel: {
     background: C.ink, border: `1px solid ${C.line}`, borderRadius: 8,
     padding: 12, minWidth: 0,
@@ -654,14 +641,14 @@ const sx: Record<string, React.CSSProperties> = {
   barTrack: { position: "relative", height: 9, background: "#000", overflow: "hidden" },
   barBase: { position: "absolute", left: 0, top: 0, height: "100%", background: C.blue },
   barLimb: { position: "absolute", top: 0, height: "100%", background: C.teal },
-  statRole: { fontSize: 10, color: C.faint, marginTop: 3 },
+  statRole: { fontSize: 12, color: C.faint, marginTop: 3 },
   initiative: {
     marginTop: 12, padding: "8px 6px", borderRadius: 5, border: "1px solid",
     fontSize: 12, fontWeight: 800, textAlign: "center", letterSpacing: 1,
   },
   legend: {
     display: "flex", gap: 14, justifyContent: "center",
-    fontSize: 10, color: C.faint, marginTop: 8,
+    fontSize: 12, color: C.faint, marginTop: 8,
   },
   swatch: { display: "inline-block", width: 9, height: 9, marginRight: 4, verticalAlign: "middle" },
   footer: { display: "flex", alignItems: "center", gap: 10, flexShrink: 0, flexWrap: "wrap" },

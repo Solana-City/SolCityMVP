@@ -22,12 +22,8 @@ import { createUnit } from "@/game/solmechs/engine/BattleEngine";
 import type { MechBuild, ModuleSlot } from "@/game/solmechs/data/types";
 import { loadHangar, setTeam } from "@/game/solmechs/hangar";
 import Workshop from "./Workshop";
+import { C, T, SP, R, MONO } from "./theme";
 
-const C = {
-  teal: "#21dda0", purple: "#9a46fe", ink: "#0b0616", panel: "#150c2b",
-  panelHi: "#1d1140", line: "#33235c", text: "#e8e2f7", dim: "#9d8fc4",
-  faint: "#6b5c92", danger: "#ff5468",
-};
 
 const SLOTS: ModuleSlot[] = ["matrix", "rightArm", "leftArm", "lowerBody"];
 const CARD_SCALE = 2;
@@ -172,7 +168,7 @@ function SquadCard({ index, build, flagged, onEdit }: {
       onClick={onEdit}
       style={{
         ...sx.card,
-        borderColor: flagged ? C.danger : C.line,
+        borderColor: flagged ? C.bad : C.line,
       }}
     >
       <div style={sx.cardHead}>
@@ -231,17 +227,17 @@ const sx: Record<string, React.CSSProperties> = {
     gap: 5, minWidth: 0,
   },
   cardHead: { display: "flex", alignItems: "baseline", gap: 6 },
-  cardIndex: { fontSize: 11, color: C.faint, fontFamily: "monospace" },
+  cardIndex: { fontSize: 12, color: C.faint, fontFamily: "monospace" },
   clashTag: {
-    marginLeft: "auto", fontSize: 8, color: C.danger, border: `1px solid ${C.danger}`,
+    marginLeft: "auto", fontSize: 12, color: C.bad, border: `1px solid ${C.bad}`,
     borderRadius: 3, padding: "1px 4px", letterSpacing: 1,
   },
-  codes: { fontSize: 10, color: C.faint, fontFamily: "monospace" },
-  cardStats: { fontSize: 11, color: C.dim, lineHeight: 1.55, fontFamily: "monospace" },
-  editHint: { fontSize: 10, color: C.teal, letterSpacing: 2, marginTop: "auto", paddingTop: 4 },
+  codes: { fontSize: 12, color: C.faint, fontFamily: "monospace" },
+  cardStats: { fontSize: 12, color: C.dim, lineHeight: 1.55, fontFamily: "monospace" },
+  editHint: { fontSize: 12, color: C.teal, letterSpacing: 2, marginTop: "auto", paddingTop: 4 },
   errors: {
-    background: "#2a0f18", border: `1px solid ${C.danger}`, borderRadius: 6,
-    padding: 10, fontSize: 11, color: "#ffb3bd", lineHeight: 1.7, flexShrink: 0,
+    background: "#2a0f18", border: `1px solid ${C.bad}`, borderRadius: 6,
+    padding: 10, fontSize: 12, color: C.body, lineHeight: 1.7, flexShrink: 0,
   },
   footer: { display: "flex", alignItems: "center", gap: 10, flexShrink: 0, flexWrap: "wrap" },
   btnGhost: {

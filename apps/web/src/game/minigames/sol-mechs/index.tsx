@@ -28,6 +28,7 @@ import { recordResult, loadHangar, getBuild } from "@/game/solmechs/hangar";
 import Workshop from "./Workshop";
 import MainMenu from "./MainMenu";
 import { BattleLog } from "./BattleLog";
+import { C, T, SP, R, MONO, backdrop, panel, eyebrow, button } from "./theme";
 import TeamBuilder from "./TeamBuilder";
 import TeamBattleScreen from "./TeamBattleScreen";
 import { validateTeam, type TeamBuild } from "@/game/solmechs/data/team";
@@ -317,12 +318,12 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
     const hangar = loadHangar();
     return (
       <Shell onClose={onClose} onBack={() => setPhase("menu")} title="Sol Mechs" subtitle="SELECT MECH" fit>
-        <p style={{ color: "#9d8fc4", fontSize: 13, margin: 0, flexShrink: 0 }}>
+        <p style={{ color: C.text, fontSize: T.lead, margin: 0, flexShrink: 0, fontWeight: 600 }}>
           Pick the mech you&apos;ll deploy. Two ways to win a fight:
         </p>
-        <p style={{ color: "#7a68a8", fontSize: 12, margin: "0 0 4px" }}>
-          break an <strong style={{ color: "#c3b8e0" }}>arm</strong> to expose the Matrix and blow the core —
-          or strip <strong style={{ color: "#c3b8e0" }}>all three limbs</strong>. Each limb you take also
+        <p style={{ color: C.body, fontSize: T.body, margin: "0 0 4px", lineHeight: 1.6 }}>
+          break an <strong style={{ color: C.body }}>arm</strong> to expose the Matrix and blow the core —
+          or strip <strong style={{ color: C.body }}>all three limbs</strong>. Each limb you take also
           costs them the stats that limb was providing.
         </p>
         {/* Only the roster scrolls, so DEPLOY stays reachable without hunting
@@ -356,8 +357,8 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
           <button
             onClick={() => setPhase("workshop")}
             style={{
-              padding: "12px 18px", background: "none", color: "#9d8fc4",
-              border: "1px solid #3d2a63", borderRadius: 8, fontSize: 13,
+              padding: "12px 18px", background: "none", color: C.dim,
+              border: "1px solid ${C.line}", borderRadius: 8, fontSize: 13,
               fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap",
             }}
           >
@@ -366,8 +367,8 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
           <button
             onClick={() => startBattle(playerMech)}
             style={{
-              flex: 1, padding: "12px 0", background: "#14f195",
-              color: "#0d0718", border: "none", borderRadius: 8, fontSize: 15,
+              flex: 1, padding: "12px 0", background: C.teal,
+              color: C.ink, border: "none", borderRadius: 8, fontSize: 15,
               fontWeight: 700, cursor: "pointer",
             }}
           >
@@ -408,7 +409,7 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
 
       <div style={{
         flex: 1, minHeight: 0, display: "flex", alignItems: "center", justifyContent: "center",
-        borderRadius: 8, border: "2px solid #3d2a63", overflow: "hidden", background: "#0b0616",
+        borderRadius: 8, border: "2px solid ${C.line}", overflow: "hidden", background: C.ink,
       }}>
         <canvas
           ref={canvasRef}
@@ -423,26 +424,26 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
       {phase === "result" && battle.status.kind === "finished" ? (
         <div style={{ textAlign: "center", padding: "16px 0" }}>
           <div style={{
-            fontSize: 24, fontWeight: 800,
-            color: battle.status.winner === "p1" ? "#14f195" : "#ff5468",
+            fontSize: T.display, fontWeight: 800, letterSpacing: 1,
+            color: battle.status.winner === "p1" ? C.teal : C.bad,
           }}>
             {battle.status.winner === "p1" ? "VICTORY" : "DEFEAT"}
           </div>
-          <div style={{ color: "#9d8fc4", fontSize: 12, margin: "4px 0 14px" }}>
+          <div style={{ color: C.dim, fontSize: T.body, margin: "6px 0 18px" }}>
             {battle.history.length} actions
           </div>
-          <button onClick={() => setPhase("menu")} style={btnStyle("#14f195")}>MAIN MENU</button>
-          <button onClick={onClose} style={{ ...btnStyle("#3d2a63"), color: "#fff", marginLeft: 8 }}>LEAVE</button>
+          <button onClick={() => setPhase("menu")} style={btnStyle(C.teal)}>MAIN MENU</button>
+          <button onClick={onClose} style={{ ...btnStyle(C.line), color: "#fff", marginLeft: 8 }}>LEAVE</button>
         </div>
       ) : (
         <div style={{ marginTop: 10 }}>
           {!canAct ? (
-            <div style={{ color: "#9d8fc4", fontSize: 13, textAlign: "center", padding: "14px 0" }}>
+            <div style={{ color: C.dim, fontSize: T.body, textAlign: "center", padding: "18px 0" }}>
               {battle.p2.name} is choosing…
             </div>
           ) : !pendingMove ? (
             <>
-              <div style={{ fontSize: 11, color: "#9d8fc4", marginBottom: 6 }}>SELECT ACTION</div>
+              <div style={{ ...eyebrow, marginBottom: SP.sm }}>Select action</div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                 {moves.map((o) => (
                   <button
@@ -456,10 +457,10 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
                         setPendingMove({ slot: o.slot, moveIndex: o.moveIndex });
                       }
                     }}
-                    style={btnStyle("#2d1b5e", true)}
+                    style={btnStyle(C.raised, true)}
                   >
-                    <div style={{ fontWeight: 700 }}>{o.move.name}</div>
-                    <div style={{ fontSize: 10, color: "#9d8fc4" }}>
+                    <div style={{ fontWeight: 800, fontSize: T.body }}>{o.move.name}</div>
+                    <div style={{ fontSize: T.small, color: C.dim, marginTop: 2 }}>
                       {SLOT_LABEL[o.slot]} · {o.move.baseDamage > 0 ? `${o.move.baseDamage} ${o.move.damageType}` : o.move.effect || "Effect"}
                     </div>
                   </button>
@@ -468,7 +469,7 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
             </>
           ) : (
             <>
-              <div style={{ fontSize: 11, color: "#9d8fc4", marginBottom: 6 }}>
+              <div style={{ ...eyebrow, marginBottom: SP.sm }}>
                 TARGET FOR {selectedMove?.name.toUpperCase()}
               </div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
@@ -476,23 +477,23 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
                   <button
                     key={slot}
                     onClick={() => onTargetPicked(slot)}
-                    style={{ ...btnStyle(slot === "matrix" ? "#7a1f3d" : "#2d1b5e", true), display: "flex", alignItems: "center", gap: 8 }}
+                    style={{ ...btnStyle(slot === "matrix" ? "#5c1830" : C.raised, true), display: "flex", alignItems: "center", gap: 8 }}
                   >
                     <SlotIcon slot={slot} size={slot === "matrix" ? 18 : 24} />
                     <div>
-                      <div style={{ fontWeight: 700 }}>{SLOT_LABEL[slot]}</div>
-                      <div style={{ fontSize: 10, color: "#9d8fc4" }}>
+                      <div style={{ fontWeight: 800, fontSize: T.body }}>{SLOT_LABEL[slot]}</div>
+                      <div style={{ fontSize: T.small, color: C.dim, marginTop: 2 }}>
                         {battle.p2.partStatuses[slot].currentHP} HP
                       </div>
                     </div>
                   </button>
                 ))}
-                <button onClick={() => setPendingMove(null)} style={btnStyle("#3d2a63", true)}>
-                  <div style={{ fontWeight: 700 }}>Back</div>
+                <button onClick={() => setPendingMove(null)} style={btnStyle(C.line, true)}>
+                  <div style={{ fontWeight: 800, fontSize: T.body }}>Back</div>
                 </button>
               </div>
               {!targets.includes("matrix") && (
-                <div style={{ fontSize: 10, color: "#7a68a8", marginTop: 6 }}>
+                <div style={{ fontSize: T.small, color: C.warn, marginTop: SP.sm }}>
                   Matrix is sealed — destroy an arm to expose it.
                 </div>
               )}
@@ -548,22 +549,22 @@ function MechCard({ matrixName, role, build, custom, selected, onSelect }: {
     <button
       onClick={onSelect}
       style={{
-        background: selected ? "#25184a" : "#150c2b",
-        border: `2px solid ${selected ? "#21dda0" : "#33235c"}`,
+        background: selected ? C.raised : C.panel,
+        border: `2px solid ${selected ? C.teal : C.line}`,
         borderRadius: 8, padding: 10, cursor: "pointer", textAlign: "left",
         color: "#fff", display: "flex", flexDirection: "column", gap: 4,
       }}
     >
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 6 }}>
-        <strong style={{ fontSize: 15 }}>{matrixName}</strong>
+        <strong style={{ fontSize: T.lead, color: C.text }}>{matrixName}</strong>
         {custom && (
           <span style={{
-            fontSize: 8, color: "#21dda0", border: "1px solid #21dda0",
-            borderRadius: 3, padding: "1px 4px", letterSpacing: 1, flexShrink: 0,
+            fontSize: T.eyebrow, color: C.teal, border: "1px solid " + C.teal,
+            borderRadius: R.sm, padding: "2px 7px", letterSpacing: 1, flexShrink: 0, fontWeight: 700,
           }}>CUSTOM</span>
         )}
       </div>
-      <div style={{ fontSize: 11, color: "#21dda0" }}>{role}</div>
+      <div style={{ fontSize: T.small, color: C.teal, fontWeight: 600 }}>{role}</div>
       {/* Sized by height, not width: the doll box is padded wide by the arm
           sockets, so a width-driven canvas made every card far taller than the
           mech inside it and pushed the roster off screen. */}
@@ -577,7 +578,7 @@ function MechCard({ matrixName, role, build, custom, selected, onSelect }: {
         }}
       />
       {stats && (
-        <div style={{ fontSize: 11, color: "#c3b8e0", lineHeight: 1.55, fontFamily: "monospace" }}>
+        <div style={{ fontSize: T.small, color: C.body, lineHeight: 1.75, fontFamily: MONO }}>
           HP {stats.HP} · SPD {stats.SPD}<br />
           ATK {stats.ATK} · DEF {stats.DEF}<br />
           ENG {stats.ENG} · SYS {stats.SYS}
@@ -587,11 +588,18 @@ function MechCard({ matrixName, role, build, custom, selected, onSelect }: {
   );
 }
 
+/**
+ * Battle-screen buttons. A thin adapter over the shared `button()` so the call
+ * sites stay readable while the tokens stay in one place.
+ */
 function btnStyle(bg: string, block = false): React.CSSProperties {
+  const tone: "primary" | "danger" | "neutral" =
+    bg === C.teal ? "primary" : bg === "#5c1830" ? "danger" : "neutral";
   return {
-    background: bg, color: "#fff", border: "1px solid #3d2a63", borderRadius: 6,
-    padding: block ? "8px 12px" : "10px 18px", cursor: "pointer", fontSize: 12,
-    textAlign: "left", minWidth: block ? 108 : undefined, fontWeight: 600,
+    ...button(tone),
+    textAlign: "left",
+    minWidth: block ? 132 : undefined,
+    padding: block ? "10px 14px" : "12px 22px",
   };
 }
 
@@ -599,12 +607,12 @@ function MechStatus({ state, side, align }: { state: BattleState; side: PlayerSi
   const unit = side === "p1" ? state.p1 : state.p2;
   return (
     <div style={{ flex: 1, textAlign: align ?? "left" }}>
-      <div style={{ fontSize: 13, fontWeight: 700, color: "#fff" }}>{unit.name}</div>
+      <div style={{ fontSize: T.lead, fontWeight: 800, color: C.text, marginBottom: 3 }}>{unit.name}</div>
       <Bar
         label="MATRIX"
         current={unit.partStatuses.matrix.currentHP}
         max={unit.partStatuses.matrix.maxHP}
-        color="#14f195"
+        color={C.teal}
       />
       {LIMB_SLOTS.map((slot) => (
         <Bar
@@ -612,7 +620,7 @@ function MechStatus({ state, side, align }: { state: BattleState; side: PlayerSi
           label={SLOT_LABEL[slot]}
           current={unit.partStatuses[slot].currentHP}
           max={unit.partStatuses[slot].maxHP}
-          color="#6b8cff"
+          color={C.blue}
         />
       ))}
     </div>
@@ -624,7 +632,7 @@ function Bar({ label, current, max, color }: { label: string; current: number; m
   const dead = current <= 0;
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 2 }}>
-      <span style={{ fontSize: 9, color: dead ? "#5a4a7a" : "#9d8fc4", width: 46, fontFamily: "monospace" }}>
+      <span style={{ fontSize: T.eyebrow, color: dead ? C.faint : C.dim, width: 54, fontFamily: MONO, fontWeight: 700 }}>
         {label}
       </span>
       {/* 9-slice of the Unity bar frame (MechEditorSprites/Workshop/bar.png),
@@ -634,11 +642,11 @@ function Bar({ label, current, max, color }: { label: string; current: number; m
         borderStyle: "solid", borderWidth: "2px 4px 5px",
         borderImage: "url(/assets/minigames/sol-mechs/ui/bar.png) 20 60 80 fill / 2px 4px 5px / 0 stretch",
       }}>
-        <div style={{ height: 7, background: "#000", overflow: "hidden" }}>
-          <div style={{ width: `${pct}%`, height: "100%", background: dead ? "#5a2a3a" : color, transition: "width .25s" }} />
+        <div style={{ height: 9, background: "#000", overflow: "hidden" }}>
+          <div style={{ width: `${pct}%`, height: "100%", background: dead ? "#4a2030" : color, transition: "width .25s" }} />
         </div>
       </div>
-      <span style={{ fontSize: 9, color: "#7a68a8", width: 30, fontFamily: "monospace" }}>{current}</span>
+      <span style={{ fontSize: T.small, color: C.body, width: 38, fontFamily: MONO, textAlign: "right" }}>{current}</span>
     </div>
   );
 }
@@ -662,51 +670,36 @@ function Shell({ children, onClose, onBack, title, subtitle = "", fit = false }:
   fit?: boolean;
 }) {
   return (
-    <div style={{
-      position: "fixed", inset: 0, background: "rgba(5,2,12,.88)", zIndex: 1000,
-      display: "flex", alignItems: "center", justifyContent: "center", padding: 16,
-    }}>
+    <div style={backdrop}>
       <div style={{
-        background: "#150c2b", border: "2px solid #3d2a63", borderRadius: 12,
-        padding: 16, width: "min(680px,100%)",
+        ...panel("min(720px,100%)"),
+        padding: SP.lg,
         height: fit ? "100%" : undefined,
-        maxHeight: "100%",
-        display: "flex", flexDirection: "column", gap: 8, overflow: "hidden",
-        fontFamily: "system-ui,sans-serif",
+        display: "flex", flexDirection: "column", gap: SP.md, overflow: "hidden",
       }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexShrink: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: SP.md, flexShrink: 0 }}>
           {onBack && (
-            <button
-              onClick={onBack}
-              aria-label="Back"
-              style={{
-                background: "none", border: "1px solid #3d2a63", borderRadius: 6,
-                color: "#9d8fc4", cursor: "pointer", fontSize: 14,
-                lineHeight: 1, padding: "6px 9px", flexShrink: 0,
-              }}
-            >
-              ◂
+            <button onClick={onBack} aria-label="Back" style={{ ...button("ghost"), padding: "8px 12px", fontSize: T.lead }}>
+              &lsaquo;
             </button>
           )}
-          {/* The Unity wordmark (Interface guidance/UI/logo.png) carries the
-              brand far better than a styled <h2>; the text stays as the
-              accessible name and as a fallback if the art fails to load. */}
           <img
             src="/assets/minigames/sol-mechs/ui/logo.png"
             alt={title}
-            style={{ imageRendering: "pixelated", height: 30, width: "auto", display: "block" }}
+            style={{ imageRendering: "pixelated", height: 34, width: "auto", display: "block" }}
             onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
           />
-          <span style={{ fontSize: 11, color: "#6b5c92", letterSpacing: 2, marginRight: "auto" }}>{subtitle}</span>
-          <button onClick={onClose} style={{
-            background: "none", border: "none", color: "#9d8fc4", fontSize: 20,
-            cursor: "pointer", lineHeight: 1, padding: 0,
-          }}>×</button>
+          <span style={{ ...eyebrow, marginRight: "auto" }}>{subtitle}</span>
+          <button onClick={onClose} aria-label="Close" style={{
+            background: "none", border: "none", color: C.dim,
+            fontSize: 30, cursor: "pointer", lineHeight: 1, padding: 4,
+          }}>&times;</button>
         </div>
+
         <div style={{
-          flex: 1, minHeight: 0, display: "flex", flexDirection: "column", gap: 8,
-          // Only the fit layout keeps everything on screen; the list layout
-          // scrolls vertically and never sideways.
+          flex: 1, minHeight: 0, display: "flex", flexDirection: "column", gap: SP.md,
+          // Only the fit layout keeps everything on screen; list layouts scroll
+          // vertically and never sideways.
           overflowY: fit ? "hidden" : "auto",
           overflowX: "hidden",
         }}>

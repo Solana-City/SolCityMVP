@@ -19,6 +19,7 @@ import { preloadBuild } from "@/game/solmechs/render/MechPaperDoll";
 import type { TeamBuild } from "@/game/solmechs/data/team";
 import type { ModuleSlot, MoveDefinition } from "@/game/solmechs/data/types";
 import { BattleLog } from "./BattleLog";
+import { C, T, SP, R, MONO } from "./theme";
 
 /**
  * Narrows the team log to the events BattleRenderer understands. Switches and
@@ -32,11 +33,6 @@ function isBattleEvent(e: TeamEvent): e is Extract<TeamEvent, { type: string }> 
 }
 type BattleEventLike = Parameters<BattleRenderer["playEvents"]>[0][number];
 
-const C = {
-  teal: "#21dda0", ink: "#0b0616", panel: "#150c2b", panelHi: "#1d1140",
-  line: "#33235c", text: "#e8e2f7", dim: "#9d8fc4", faint: "#6b5c92",
-  danger: "#ff5468", blue: "#6686db",
-};
 
 const SLOT_LABEL: Record<ModuleSlot, string> = {
   rightArm: "R.Arm", leftArm: "L.Arm", lowerBody: "Legs", matrix: "MATRIX",
@@ -226,7 +222,7 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, onFinished, on
         <div style={sx.controls}>
           {finished ? (
             <div style={{ textAlign: "center", width: "100%" }}>
-              <div style={{ fontSize: 24, fontWeight: 800, color: won ? C.teal : C.danger }}>
+              <div style={{ fontSize: 24, fontWeight: 800, color: won ? C.teal : C.bad }}>
                 {won ? "SQUAD VICTORY" : "SQUAD DEFEATED"}
               </div>
               <div style={{ color: C.faint, fontSize: 12, margin: "4px 0 12px" }}>
@@ -280,7 +276,7 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, onFinished, on
                       submitRound({ kind: "move", side: "p1", sourceSlot: pending.slot, moveIndex: pending.moveIndex, targetSlot: slot });
                       setPending(null);
                     }}
-                    style={{ ...sx.btn, background: slot === "matrix" ? "#5c1830" : C.panelHi }}
+                    style={{ ...sx.btn, background: slot === "matrix" ? "#5c1830" : C.raised }}
                   >
                     <div style={sx.btnTitle}>{SLOT_LABEL[slot]}</div>
                     <div style={sx.btnSub}>{foe.partStatuses[slot].currentHP} HP</div>
@@ -351,10 +347,10 @@ function SquadBar({ state, side, label, align }: {
               key={i}
               title={u.matrix.matrixName}
               style={{
-                fontSize: 10, padding: "3px 7px", borderRadius: 4, fontWeight: 700,
+                fontSize: 12, padding: "3px 7px", borderRadius: 4, fontWeight: 700,
                 border: `1px solid ${active ? C.teal : down ? "#4a2030" : C.line}`,
-                background: active ? "#25184a" : down ? "#2a0f18" : C.panelHi,
-                color: down ? "#7a4a58" : active ? C.teal : C.dim,
+                background: active ? C.raised : down ? "#2a0f18" : C.raised,
+                color: down ? C.faint : active ? C.teal : C.dim,
                 textDecoration: down ? "line-through" : "none",
                 whiteSpace: "nowrap",
               }}
@@ -378,16 +374,16 @@ function UnitBars({ unit, align }: { unit: TeamBattleState["p1"]["units"][number
         const dead = st.currentHP <= 0;
         return (
           <div key={slot} style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 2 }}>
-            <span style={{ fontSize: 9, color: dead ? "#5a4a7a" : C.faint, width: 44, fontFamily: "monospace" }}>
+            <span style={{ fontSize: 12, color: dead ? C.faint : C.faint, width: 44, fontFamily: "monospace" }}>
               {SLOT_LABEL[slot]}
             </span>
-            <div style={{ flex: 1, height: 6, background: "#120a24", borderRadius: 3, overflow: "hidden" }}>
+            <div style={{ flex: 1, height: 6, background: C.ink, borderRadius: 3, overflow: "hidden" }}>
               <div style={{
                 width: `${pct}%`, height: "100%", transition: "width .25s",
-                background: dead ? "#5a2a3a" : slot === "matrix" ? C.teal : C.blue,
+                background: dead ? "#4a2030" : slot === "matrix" ? C.teal : C.blue,
               }} />
             </div>
-            <span style={{ fontSize: 9, color: C.faint, width: 28, fontFamily: "monospace" }}>{st.currentHP}</span>
+            <span style={{ fontSize: 12, color: C.faint, width: 28, fontFamily: "monospace" }}>{st.currentHP}</span>
           </div>
         );
       })}
@@ -409,25 +405,25 @@ const sx: Record<string, React.CSSProperties> = {
   title: { margin: 0, fontSize: 16, color: C.teal, letterSpacing: 4, fontWeight: 800 },
   close: { background: "none", border: "none", color: C.dim, fontSize: 24, cursor: "pointer", lineHeight: 1, padding: 0 },
   squadRow: { display: "flex", gap: 10, flexWrap: "wrap" },
-  squadLabel: { fontSize: 9, color: C.faint, letterSpacing: 2, marginBottom: 3 },
+  squadLabel: { fontSize: 12, color: C.faint, letterSpacing: 2, marginBottom: 3 },
   statusRow: { display: "flex", gap: 12, flexWrap: "wrap" },
   controls: { minHeight: 74 },
-  prompt: { fontSize: 11, color: C.dim, marginBottom: 6, letterSpacing: 1 },
+  prompt: { fontSize: 12, color: C.dim, marginBottom: 6, letterSpacing: 1 },
   btnRow: { display: "flex", flexWrap: "wrap", gap: 6 },
   btn: {
-    background: C.panelHi, color: C.text, border: `1px solid ${C.line}`, borderRadius: 6,
+    background: C.raised, color: C.text, border: `1px solid ${C.line}`, borderRadius: 6,
     padding: "8px 12px", cursor: "pointer", textAlign: "left", minWidth: 104,
   },
   btnTitle: { fontSize: 12, fontWeight: 700 },
-  btnSub: { fontSize: 10, color: C.faint, marginTop: 1 },
-  hint: { fontSize: 10, color: C.faint, marginTop: 6 },
+  btnSub: { fontSize: 12, color: C.faint, marginTop: 1 },
+  hint: { fontSize: 12, color: C.faint, marginTop: 6 },
   btnPrimary: {
     background: C.teal, border: "none", color: C.ink, borderRadius: 6,
     padding: "11px 24px", fontSize: 13, fontWeight: 800, letterSpacing: 1, cursor: "pointer",
   },
   log: {
-    height: 84, overflowY: "auto", background: "#120a24", border: `1px solid ${C.line}`,
-    borderRadius: 6, padding: 8, fontSize: 11, fontFamily: "monospace",
-    color: "#c3b8e0", lineHeight: 1.6,
+    height: 84, overflowY: "auto", background: C.ink, border: `1px solid ${C.line}`,
+    borderRadius: 6, padding: 8, fontSize: 12, fontFamily: "monospace",
+    color: C.body, lineHeight: 1.6,
   },
 };

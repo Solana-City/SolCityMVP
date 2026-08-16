@@ -3,34 +3,21 @@
 /**
  * Sol Mechs — main menu.
  *
- * The entry point used to be the mech roster: the player was dropped straight
- * into a grid of five mechs with no idea what pressing one would do, and the
- * mode buttons were an afterthought below the fold. Choosing a MODE is the
- * first real decision, so it comes first, and each row says what it is before
- * you commit to it.
+ * The entry point used to be the mech roster: the player was dropped into a
+ * grid of five mechs with no idea what pressing one would do. Choosing a MODE
+ * is the first real decision, so it comes first, and each row says what it is
+ * before you commit.
  *
  * Mode labels use Unity's own menu art (Interface guidance/Menus) wherever the
- * baked-in wording is accurate — PvE, ARENA PvP, SOL MECH EDITOR. Squad 3v3
- * has no matching label in that set, so it is drawn in CSS in the same visual
- * language rather than mislabelled with a sprite that says something else.
+ * baked-in wording is accurate. Squad 3v3 has no matching label in that set,
+ * so it renders on the same gradient plate in CSS — normalised to
+ * LABEL_HEIGHT, because the sprites have different baked widths and matching
+ * on height is what makes a row of them read as one set.
  */
 import { useEffect } from "react";
+import { C, T, SP, R, MONO, PIXELATED, backdrop, panel, eyebrow, labelPlate, LABEL_HEIGHT } from "./theme";
 
 const UI = "/assets/minigames/sol-mechs/ui";
-const PIXELATED: React.CSSProperties = { imageRendering: "pixelated" };
-
-const C = {
-  teal: "#21dda0",
-  cyan: "#3fe0ff",
-  purple: "#9a46fe",
-  ink: "#0b0616",
-  panel: "#150c2b",
-  panelHi: "#1d1140",
-  line: "#33235c",
-  text: "#e8e2f7",
-  dim: "#9d8fc4",
-  faint: "#6b5c92",
-};
 
 export type MenuChoice = "pve" | "squad" | "workshop";
 
@@ -51,15 +38,15 @@ export default function MainMenu({ onChoose, onClose, wins, losses }: MainMenuPr
   const played = wins + losses;
 
   return (
-    <div style={sx.backdrop} onPointerDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div style={sx.frame}>
+    <div style={backdrop} onPointerDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div style={{ ...panel("min(600px, 100%)"), padding: `${SP.xxl}px ${SP.xl}px ${SP.xl}px`, overflowY: "auto", overflowX: "hidden" }}>
         <button onClick={onClose} style={sx.close} aria-label="Close">×</button>
 
-        <div style={sx.hero}>
+        <header style={sx.hero}>
           <img
             src={`${UI}/logo.png`}
             alt="Sol Mechs"
-            style={{ ...PIXELATED, width: "min(300px, 80%)", height: "auto", display: "block" }}
+            style={{ ...PIXELATED, width: "min(330px, 82%)", height: "auto", display: "block" }}
             onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
           />
           <p style={sx.tagline}>
@@ -67,23 +54,24 @@ export default function MainMenu({ onChoose, onClose, wins, losses }: MainMenuPr
           </p>
           {played > 0 && (
             <div style={sx.record}>
-              <span style={{ color: C.teal }}>{wins}W</span>
+              <span style={{ color: C.good }}>{wins}W</span>
               <span style={{ color: C.faint }}>·</span>
-              <span style={{ color: "#ff5468" }}>{losses}L</span>
+              <span style={{ color: C.bad }}>{losses}L</span>
             </div>
           )}
-        </div>
+        </header>
 
+        <div style={eyebrow}>Choose a mode</div>
         <div style={sx.list}>
           <MenuRow
             art={`${UI}/menu/pve.png`}
-            fallback="PvE"
+            fallback="ARENA PvE"
             desc="Duel one rival mech. Best place to learn the rules."
             onClick={() => onChoose("pve")}
           />
           <MenuRow
             label="SQUAD 3v3"
-            desc="Three mechs, one at a time. Substituting costs your turn."
+            desc="Three mechs, one at a time. Substituting is your whole round."
             onClick={() => onChoose("squad")}
           />
           <MenuRow
@@ -118,83 +106,74 @@ function MenuRow({ art, fallback, label, desc, onClick, disabled, badge }: {
     <button
       onClick={onClick}
       disabled={disabled}
-      style={{ ...sx.row, opacity: disabled ? 0.45 : 1, cursor: disabled ? "not-allowed" : "pointer" }}
+      style={{ ...sx.row, opacity: disabled ? 0.5 : 1, cursor: disabled ? "not-allowed" : "pointer" }}
     >
-      <div style={sx.rowLabel}>
+      <span style={sx.labelSlot}>
         {art ? (
           <img
             src={art}
             alt={fallback ?? ""}
-            style={{ ...PIXELATED, height: 34, width: "auto", display: "block" }}
+            // Height-matched, width free — see LABEL_HEIGHT.
+            style={{ ...PIXELATED, height: LABEL_HEIGHT, width: "auto", display: "block" }}
             onError={(e) => {
-              // Fall back to the text so a missing sprite can never leave an
+              // Swap in the text plate so a missing sprite never leaves an
               // unlabelled button.
-              const el = e.currentTarget as HTMLImageElement;
-              el.replaceWith(Object.assign(document.createElement("span"), {
-                textContent: fallback ?? "",
-                className: "",
-              }));
+              const el = e.currentTarget;
+              const span = document.createElement("span");
+              span.textContent = fallback ?? "";
+              Object.assign(span.style, {
+                display: "inline-flex", alignItems: "center", height: `${LABEL_HEIGHT}px`,
+                padding: "0 16px", color: "#fff", fontSize: `${T.small}px`, fontWeight: "800",
+                letterSpacing: "1.5px", whiteSpace: "nowrap",
+                background: `linear-gradient(180deg, ${C.cyan}, ${C.purple})`,
+              });
+              el.replaceWith(span);
             }}
           />
         ) : (
-          <span style={sx.cssLabel}>{label}</span>
+          <span style={labelPlate()}>{label}</span>
         )}
-      </div>
-      <div style={{ minWidth: 0 }}>
-        <div style={sx.desc}>{desc}</div>
-      </div>
+      </span>
+
+      <span style={sx.desc}>{desc}</span>
+
       {badge
         ? <span style={sx.badge}>{badge}</span>
-        : <span style={sx.chevron}>▸</span>}
+        : <span style={sx.chevron} aria-hidden>›</span>}
     </button>
   );
 }
 
 const sx: Record<string, React.CSSProperties> = {
-  backdrop: {
-    position: "fixed", inset: 0, background: "rgba(4,2,10,.92)", zIndex: 1000,
-    display: "flex", alignItems: "center", justifyContent: "center", padding: 16,
-  },
-  frame: {
-    position: "relative", background: C.panel,
-    backgroundImage:
-      `linear-gradient(${C.line}44 1px, transparent 1px), linear-gradient(90deg, ${C.line}44 1px, transparent 1px)`,
-    backgroundSize: "26px 26px",
-    border: `2px solid ${C.line}`, borderRadius: 12, padding: "26px 22px 22px",
-    width: "min(520px, 100%)", maxHeight: "100%", overflowY: "auto", overflowX: "hidden",
-    boxShadow: `0 0 0 1px ${C.teal}33, 0 18px 60px rgba(0,0,0,.7)`,
-    fontFamily: "system-ui,sans-serif",
-  },
   close: {
-    position: "absolute", top: 10, right: 14, background: "none", border: "none",
-    color: C.dim, fontSize: 26, cursor: "pointer", lineHeight: 1, padding: 0,
+    position: "absolute", top: 12, right: 16, background: "none", border: "none",
+    color: C.dim, fontSize: 30, cursor: "pointer", lineHeight: 1, padding: 4,
   },
-  hero: { display: "flex", flexDirection: "column", alignItems: "center", gap: 8, marginBottom: 22 },
-  tagline: { margin: 0, fontSize: 12.5, color: C.dim, textAlign: "center", lineHeight: 1.6 },
+  hero: {
+    display: "flex", flexDirection: "column", alignItems: "center",
+    gap: SP.md, marginBottom: SP.xxl,
+  },
+  tagline: {
+    margin: 0, fontSize: T.body, color: C.body, textAlign: "center",
+    lineHeight: 1.6, maxWidth: 420,
+  },
   record: {
-    display: "flex", gap: 7, fontSize: 12, fontFamily: "ui-monospace, monospace",
+    display: "flex", gap: SP.sm, fontSize: T.small, fontFamily: MONO,
     fontWeight: 700, background: C.ink, border: `1px solid ${C.line}`,
-    borderRadius: 999, padding: "4px 12px",
+    borderRadius: R.pill, padding: "6px 16px",
   },
-  list: { display: "flex", flexDirection: "column", gap: 9 },
+  list: { display: "flex", flexDirection: "column", gap: SP.sm, marginTop: SP.sm },
   row: {
-    display: "flex", alignItems: "center", gap: 14, textAlign: "left",
-    background: C.ink, border: `1px solid ${C.line}`, borderRadius: 9,
-    padding: "12px 14px", color: C.text, fontFamily: "inherit", width: "100%",
+    display: "flex", alignItems: "center", gap: SP.lg, textAlign: "left",
+    background: C.ink, border: `1px solid ${C.line}`, borderRadius: R.md,
+    padding: `${SP.md}px ${SP.lg}px`, color: C.text, fontFamily: "inherit", width: "100%",
   },
-  rowLabel: { flexShrink: 0, width: 132, display: "flex", alignItems: "center" },
-  /** Matches the baked gradient of the Unity labels, for modes with no art. */
-  cssLabel: {
-    display: "inline-block", padding: "7px 14px",
-    background: `linear-gradient(180deg, ${C.cyan}, ${C.purple})`,
-    color: "#fff", fontSize: 13, fontWeight: 800, letterSpacing: 1,
-    WebkitTextStroke: "0.5px rgba(0,0,0,.55)",
-    clipPath: "polygon(7px 0, 100% 0, calc(100% - 7px) 100%, 0 100%)",
-  },
-  desc: { fontSize: 12, color: C.dim, lineHeight: 1.55 },
-  chevron: { color: C.faint, fontSize: 14, flexShrink: 0 },
+  /** Fixed slot so the descriptions align down the column. */
+  labelSlot: { flexShrink: 0, width: 172, display: "flex", alignItems: "center" },
+  desc: { flex: 1, minWidth: 0, fontSize: T.body, color: C.body, lineHeight: 1.55 },
+  chevron: { color: C.faint, fontSize: T.title, flexShrink: 0, lineHeight: 1 },
   badge: {
-    flexShrink: 0, fontSize: 9, letterSpacing: 1.5, color: C.faint,
-    border: `1px solid ${C.line}`, borderRadius: 4, padding: "3px 7px",
+    flexShrink: 0, fontSize: T.eyebrow, letterSpacing: 1.5, color: C.faint,
+    border: `1px solid ${C.line}`, borderRadius: R.sm, padding: "5px 10px", fontWeight: 700,
   },
 };
