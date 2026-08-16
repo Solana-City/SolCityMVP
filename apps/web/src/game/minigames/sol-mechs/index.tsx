@@ -25,13 +25,14 @@ import { LocalAIOpponent } from "@/game/solmechs/opponent/LocalAIOpponent";
 import { MATRICES, PRESET_BUILDS } from "@/game/solmechs/data/catalog";
 import { recordResult, loadHangar, getBuild } from "@/game/solmechs/hangar";
 import Workshop from "./Workshop";
+import MainMenu from "./MainMenu";
 import { BattleLog } from "./BattleLog";
 import TeamBuilder from "./TeamBuilder";
 import TeamBattleScreen from "./TeamBattleScreen";
 import { validateTeam, type TeamBuild } from "@/game/solmechs/data/team";
 import { LIMB_SLOTS, type MechId, type ModuleSlot, type MechBuild } from "@/game/solmechs/data/types";
 
-type Phase = "hangar" | "workshop" | "squad" | "team-battle" | "battle" | "result";
+type Phase = "menu" | "hangar" | "workshop" | "squad" | "team-battle" | "battle" | "result";
 
 /** Paper-doll scale for the roster cards. */
 const CARD_SCALE = 2;
@@ -76,7 +77,7 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
   // cycle, so it lives in a ref as well as in state.
   const stateRef = useRef<BattleState | null>(null);
 
-  const [phase, setPhase] = useState<Phase>("hangar");
+  const [phase, setPhase] = useState<Phase>("menu");
   const [playerMech, setPlayerMech] = useState<MechId>("titan");
   const [battle, setBattle] = useState<BattleState | null>(null);
   const [log, setLog] = useState<string[]>([]);
@@ -246,11 +247,28 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
     return () => { renderer.destroy(); rendererRef.current = null; };
   }, [phase]);
 
+  // ==================== MAIN MENU ====================
+  if (phase === "menu") {
+    const h = loadHangar();
+    return (
+      <MainMenu
+        wins={h.wins}
+        losses={h.losses}
+        onClose={onClose}
+        onChoose={(choice) => {
+          if (choice === "pve") setPhase("hangar");
+          else if (choice === "squad") setPhase("squad");
+          else setPhase("workshop");
+        }}
+      />
+    );
+  }
+
   // ==================== SQUAD (3v3) ====================
   if (phase === "squad") {
     return (
       <TeamBuilder
-        onClose={() => setPhase("hangar")}
+        onClose={() => setPhase("menu")}
         onDeploy={(team) => { setPlayerTeam(team); setPhase("team-battle"); }}
       />
     );
@@ -261,7 +279,7 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
       <TeamBattleScreen
         playerTeam={playerTeam}
         enemyTeam={rivalTeam}
-        onClose={() => setPhase("hangar")}
+        onClose={() => setPhase("menu")}
         onFinished={(playerWon, s) => {
           recordResult(playerWon);
           void onResult({
@@ -289,7 +307,7 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
         // DEPLOY next deploys what they were just editing.
         onSaved={(mech) => setPlayerMech(mech)}
         onMechChange={(mech) => setPlayerMech(mech)}
-        onClose={() => setPhase("hangar")}
+        onClose={() => setPhase("menu")}
       />
     );
   }
@@ -298,7 +316,7 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
   if (phase === "hangar") {
     const hangar = loadHangar();
     return (
-      <Shell onClose={onClose} title="Sol Mechs" subtitle="HANGAR" fit>
+      <Shell onClose={onClose} onBack={() => setPhase("menu")} title="Sol Mechs" subtitle="SELECT MECH" fit>
         <p style={{ color: "#9d8fc4", fontSize: 13, margin: 0, flexShrink: 0 }}>
           Pick the mech you&apos;ll deploy. Two ways to win a fight:
         </p>
@@ -344,16 +362,6 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
             }}
           >
             WORKSHOP
-          </button>
-          <button
-            onClick={() => setPhase("squad")}
-            style={{
-              padding: "12px 18px", background: "none", color: "#9a46fe",
-              border: "1px solid #9a46fe", borderRadius: 8, fontSize: 13,
-              fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap",
-            }}
-          >
-            3v3 SQUAD
           </button>
           <button
             onClick={() => startBattle(playerMech)}
@@ -423,7 +431,7 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
           <div style={{ color: "#9d8fc4", fontSize: 12, margin: "4px 0 14px" }}>
             {battle.history.length} actions
           </div>
-          <button onClick={() => setPhase("hangar")} style={btnStyle("#14f195")}>BACK TO HANGAR</button>
+          <button onClick={() => setPhase("menu")} style={btnStyle("#14f195")}>MAIN MENU</button>
           <button onClick={onClose} style={{ ...btnStyle("#3d2a63"), color: "#fff", marginLeft: 8 }}>LEAVE</button>
         </div>
       ) : (
@@ -644,9 +652,11 @@ function Bar({ label, current, max, color }: { label: string; current: number; m
  *    the fit layout on it just clipped the roster with no way to reach the
  *    buttons underneath.
  */
-function Shell({ children, onClose, title, subtitle = "", fit = false }: {
+function Shell({ children, onClose, onBack, title, subtitle = "", fit = false }: {
   children: React.ReactNode;
   onClose: () => void;
+  /** When present, shows a back arrow to the previous screen. */
+  onBack?: () => void;
   title: string;
   subtitle?: string;
   fit?: boolean;
@@ -665,6 +675,19 @@ function Shell({ children, onClose, title, subtitle = "", fit = false }: {
         fontFamily: "system-ui,sans-serif",
       }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexShrink: 0 }}>
+          {onBack && (
+            <button
+              onClick={onBack}
+              aria-label="Back"
+              style={{
+                background: "none", border: "1px solid #3d2a63", borderRadius: 6,
+                color: "#9d8fc4", cursor: "pointer", fontSize: 14,
+                lineHeight: 1, padding: "6px 9px", flexShrink: 0,
+              }}
+            >
+              ◂
+            </button>
+          )}
           {/* The Unity wordmark (Interface guidance/UI/logo.png) carries the
               brand far better than a styled <h2>; the text stays as the
               accessible name and as a fallback if the art fails to load. */}
