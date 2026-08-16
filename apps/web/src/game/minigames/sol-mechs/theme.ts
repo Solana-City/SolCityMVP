@@ -86,8 +86,31 @@ export const backdrop: React.CSSProperties = {
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
-  padding: SP.lg,
+  padding: SP.md,
 };
+
+/**
+ * Panel widths.
+ *
+ * Sol Mechs is registered as a mini-game, but it is a full battle screen with
+ * an arena backdrop, a paper-doll editor and a squad manager — none of which
+ * belong in the small centred box the other mini-games use. These take real
+ * screen, capped only so the layout doesn't stretch absurdly on ultrawides.
+ *
+ * `vw`/`vh` rather than percentages: the panel should size against the
+ * VIEWPORT, not against whatever the backdrop happens to be.
+ */
+export const W = {
+  /** Menus and other short lists. */
+  narrow: "min(760px, 94vw)",
+  /** Battle: the arena wants width for the flanking HUD columns. */
+  battle: "min(1240px, 96vw)",
+  /** Workshop and squad builder: three working columns. */
+  wide: "min(1360px, 96vw)",
+} as const;
+
+/** Full-height screens leave a little breathing room top and bottom. */
+export const PANEL_HEIGHT = "min(94vh, 1000px)";
 
 /** The panel itself, with the Workshop comp's plotting-grid ground. */
 export function panel(width: string): React.CSSProperties {

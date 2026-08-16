@@ -19,7 +19,7 @@ import { preloadBuild } from "@/game/solmechs/render/MechPaperDoll";
 import type { TeamBuild } from "@/game/solmechs/data/team";
 import type { ModuleSlot, MoveDefinition } from "@/game/solmechs/data/types";
 import { BattleLog } from "./BattleLog";
-import { C, T, SP, R, MONO } from "./theme";
+import { C, T, SP, R, MONO, W, PANEL_HEIGHT } from "./theme";
 
 /**
  * Narrows the team log to the events BattleRenderer understands. Switches and
@@ -398,7 +398,7 @@ const sx: Record<string, React.CSSProperties> = {
   },
   frame: {
     background: C.panel, border: `2px solid ${C.line}`, borderRadius: 10, padding: 16,
-    width: "min(760px, 100%)", maxHeight: "100%", overflowY: "auto", overflowX: "hidden",
+    width: W.battle, height: PANEL_HEIGHT, overflowY: "auto", overflowX: "hidden",
     display: "flex", flexDirection: "column", gap: 8, fontFamily: "system-ui,sans-serif",
   },
   header: { display: "flex", alignItems: "center", gap: 10 },

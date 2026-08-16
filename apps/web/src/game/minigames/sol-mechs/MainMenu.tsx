@@ -15,7 +15,7 @@
  * on height is what makes a row of them read as one set.
  */
 import { useEffect } from "react";
-import { C, T, SP, R, MONO, PIXELATED, backdrop, panel, eyebrow, labelPlate, LABEL_HEIGHT } from "./theme";
+import { C, T, SP, R, MONO, PIXELATED, backdrop, panel, eyebrow, labelPlate, LABEL_HEIGHT, W } from "./theme";
 
 const UI = "/assets/minigames/sol-mechs/ui";
 
@@ -39,7 +39,7 @@ export default function MainMenu({ onChoose, onClose, wins, losses }: MainMenuPr
 
   return (
     <div style={backdrop} onPointerDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div style={{ ...panel("min(600px, 100%)"), padding: `${SP.xxl}px ${SP.xl}px ${SP.xl}px`, overflowY: "auto", overflowX: "hidden" }}>
+      <div style={{ ...panel(W.narrow), padding: `${SP.xxl}px ${SP.xl}px ${SP.xl}px`, overflowY: "auto", overflowX: "hidden" }}>
         <button onClick={onClose} style={sx.close} aria-label="Close">×</button>
 
         <header style={sx.hero}>

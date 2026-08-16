@@ -22,7 +22,7 @@ import { createUnit } from "@/game/solmechs/engine/BattleEngine";
 import type { MechBuild, ModuleSlot } from "@/game/solmechs/data/types";
 import { loadHangar, setTeam } from "@/game/solmechs/hangar";
 import Workshop from "./Workshop";
-import { C, T, SP, R, MONO } from "./theme";
+import { C, T, SP, R, MONO, W, PANEL_HEIGHT } from "./theme";
 
 
 const SLOTS: ModuleSlot[] = ["matrix", "rightArm", "leftArm", "lowerBody"];
@@ -207,7 +207,7 @@ const sx: Record<string, React.CSSProperties> = {
       `linear-gradient(${C.line}55 1px, transparent 1px), linear-gradient(90deg, ${C.line}55 1px, transparent 1px)`,
     backgroundSize: "26px 26px",
     border: `2px solid ${C.line}`, borderRadius: 10, padding: 18,
-    width: "min(940px, 100%)", maxHeight: "100%",
+    width: W.wide, height: PANEL_HEIGHT,
     display: "flex", flexDirection: "column", gap: 12, overflow: "hidden",
     boxShadow: `0 0 0 1px ${C.teal}33, 0 16px 60px rgba(0,0,0,.65)`,
     fontFamily: "system-ui,sans-serif",
@@ -218,7 +218,7 @@ const sx: Record<string, React.CSSProperties> = {
   blurb: { fontSize: 12, color: C.dim, margin: 0, lineHeight: 1.65, flexShrink: 0 },
   grid: {
     display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(min(210px, 100%), 1fr))",
+    gridTemplateColumns: "repeat(auto-fit, minmax(min(280px, 100%), 1fr))",
     gap: 10, overflowY: "auto", overflowX: "hidden", alignItems: "start", minHeight: 0,
   },
   card: {

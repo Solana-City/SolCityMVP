@@ -28,7 +28,7 @@ import { recordResult, loadHangar, getBuild } from "@/game/solmechs/hangar";
 import Workshop from "./Workshop";
 import MainMenu from "./MainMenu";
 import { BattleLog } from "./BattleLog";
-import { C, T, SP, R, MONO, backdrop, panel, eyebrow, button } from "./theme";
+import { C, T, SP, R, MONO, backdrop, panel, eyebrow, button, W, PANEL_HEIGHT } from "./theme";
 import TeamBuilder from "./TeamBuilder";
 import TeamBattleScreen from "./TeamBattleScreen";
 import { validateTeam, type TeamBuild } from "@/game/solmechs/data/team";
@@ -58,6 +58,22 @@ const SLOT_ICON: Record<ModuleSlot, string> = {
   rightArm:  "/assets/minigames/sol-mechs/ui/slotmini-rightarm.png",
   leftArm:   "/assets/minigames/sol-mechs/ui/slotmini-leftarm.png",
   lowerBody: "/assets/minigames/sol-mechs/ui/slotmini-legs.png",
+};
+
+/**
+ * Battle layout.
+ *
+ * The HUD columns flank the arena instead of stacking above it. `flex-basis`
+ * with `flexWrap` on the parent is what makes that collapse gracefully: on a
+ * narrow window the columns wrap under the canvas rather than crushing it.
+ */
+const sxBattle: Record<string, React.CSSProperties> = {
+  hudColumn: {
+    flex: "1 1 200px", minWidth: 180, maxWidth: 300,
+    display: "flex", flexDirection: "column", justifyContent: "center",
+    background: C.ink, border: `1px solid ${C.line}`,
+    borderRadius: R.md, padding: SP.md,
+  },
 };
 
 function SlotIcon({ slot, size = 20 }: { slot: ModuleSlot; size?: number }) {
@@ -317,7 +333,7 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
   if (phase === "hangar") {
     const hangar = loadHangar();
     return (
-      <Shell onClose={onClose} onBack={() => setPhase("menu")} title="Sol Mechs" subtitle="SELECT MECH" fit>
+      <Shell onClose={onClose} onBack={() => setPhase("menu")} title="Sol Mechs" subtitle="SELECT MECH" fit wide>
         <p style={{ color: C.text, fontSize: T.lead, margin: 0, flexShrink: 0, fontWeight: 600 }}>
           Pick the mech you&apos;ll deploy. Two ways to win a fight:
         </p>
@@ -330,7 +346,7 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
             for it at the bottom of a list. */}
         <div style={{
           flex: 1, minHeight: 0, overflowY: "auto", overflowX: "hidden", paddingRight: 2,
-          display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(158px,1fr))",
+          display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(190px,1fr))",
           gap: 10, alignContent: "start",
         }}>
           {MATRICES.map((m) => {
@@ -358,7 +374,7 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
             onClick={() => setPhase("workshop")}
             style={{
               padding: "12px 18px", background: "none", color: C.dim,
-              border: "1px solid ${C.line}", borderRadius: 8, fontSize: 13,
+              border: `1px solid ${C.line}`, borderRadius: 8, fontSize: 13,
               fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap",
             }}
           >
@@ -401,24 +417,37 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
   };
 
   return (
-    <Shell onClose={onClose} title="Sol Mechs" subtitle="BATTLE" fit>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, marginBottom: 8 }}>
-        <MechStatus state={battle} side="p1" />
-        <MechStatus state={battle} side="p2" align="right" />
-      </div>
-
+    <Shell onClose={onClose} title="Sol Mechs" subtitle="BATTLE" fit wide>
+      {/* Arena centre stage, HUD flanking it. Stacking the two status blocks
+          above the canvas wasted the width and squeezed the arena into a
+          letterbox; wrapping is what keeps this honest on a narrow window. */}
       <div style={{
-        flex: 1, minHeight: 0, display: "flex", alignItems: "center", justifyContent: "center",
-        borderRadius: 8, border: "2px solid ${C.line}", overflow: "hidden", background: C.ink,
+        flex: 1, minHeight: 0, display: "flex", gap: SP.md,
+        alignItems: "stretch", flexWrap: "wrap",
       }}>
-        <canvas
-          ref={canvasRef}
-          width={CANVAS_W}
-          height={CANVAS_H}
-          // object-fit keeps the arena's aspect while it shrinks to whatever
-          // height is left, so nothing is cropped at any window size.
-          style={{ ...PIXELATED, maxWidth: "100%", maxHeight: "100%", objectFit: "contain", display: "block" }}
-        />
+        <div style={sxBattle.hudColumn}>
+          <MechStatus state={battle} side="p1" />
+        </div>
+
+        <div style={{
+          flex: "4 1 420px", minWidth: 300, minHeight: 0,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          borderRadius: R.md, border: `2px solid ${C.line}`,
+          overflow: "hidden", background: C.ink,
+        }}>
+          <canvas
+            ref={canvasRef}
+            width={CANVAS_W}
+            height={CANVAS_H}
+            // object-fit keeps the arena's aspect while it shrinks to whatever
+            // space is left, so nothing is cropped at any window size.
+            style={{ ...PIXELATED, maxWidth: "100%", maxHeight: "100%", objectFit: "contain", display: "block" }}
+          />
+        </div>
+
+        <div style={sxBattle.hudColumn}>
+          <MechStatus state={battle} side="p2" />
+        </div>
       </div>
 
       {phase === "result" && battle.status.kind === "finished" ? (
@@ -573,7 +602,7 @@ function MechCard({ matrixName, role, build, custom, selected, onSelect }: {
         width={DOLL_WIDTH * CARD_SCALE}
         height={DOLL_HEIGHT * CARD_SCALE}
         style={{
-          imageRendering: "pixelated", height: 116, width: "auto",
+          imageRendering: "pixelated", height: 150, width: "auto",
           maxWidth: "100%", display: "block", margin: "0 auto",
         }}
       />
@@ -660,21 +689,24 @@ function Bar({ label, current, max, color }: { label: string; current: number; m
  *    the fit layout on it just clipped the roster with no way to reach the
  *    buttons underneath.
  */
-function Shell({ children, onClose, onBack, title, subtitle = "", fit = false }: {
+function Shell({ children, onClose, onBack, title, subtitle = "", fit = false, wide = false }: {
   children: React.ReactNode;
   onClose: () => void;
   /** When present, shows a back arrow to the previous screen. */
   onBack?: () => void;
   title: string;
   subtitle?: string;
+  /** Fill the height and never scroll — for the battle, where the canvas shrinks. */
   fit?: boolean;
+  /** Take the battle-sized width. Menus and lists stay narrow. */
+  wide?: boolean;
 }) {
   return (
     <div style={backdrop}>
       <div style={{
-        ...panel("min(720px,100%)"),
+        ...panel(wide ? W.battle : W.narrow),
         padding: SP.lg,
-        height: fit ? "100%" : undefined,
+        height: fit ? PANEL_HEIGHT : undefined,
         display: "flex", flexDirection: "column", gap: SP.md, overflow: "hidden",
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: SP.md, flexShrink: 0 }}>

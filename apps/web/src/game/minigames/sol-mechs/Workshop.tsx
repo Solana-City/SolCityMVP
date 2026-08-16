@@ -35,7 +35,7 @@ import type { MechBuild, MechId, StatBlock, ModuleSlot, MechPart } from "@/game/
 import { addStats } from "@/game/solmechs/data/types";
 import { createUnit, calculateDamage } from "@/game/solmechs/engine/BattleEngine";
 import { loadHangar, setBuild as persistBuild, resetBuild, getBuild } from "@/game/solmechs/hangar";
-import { C, T, SP, R, MONO } from "./theme";
+import { C, T, SP, R, MONO, W, PANEL_HEIGHT } from "./theme";
 
 const UI = "/assets/minigames/sol-mechs/ui";
 const PIXELATED: React.CSSProperties = { imageRendering: "pixelated" };
@@ -538,7 +538,7 @@ const sx: Record<string, React.CSSProperties> = {
     padding: 18,
     // Sized to fit the viewport outright — the previous版 forced a min-width
     // per column, which is what produced the horizontal scrollbar.
-    width: "min(1080px, 100%)", maxHeight: "100%",
+    width: W.wide, height: PANEL_HEIGHT,
     display: "flex", flexDirection: "column", gap: 14,
     overflow: "hidden",
     boxShadow: `0 0 0 1px ${C.teal}33, 0 16px 60px rgba(0,0,0,.65)`,
@@ -565,7 +565,7 @@ const sx: Record<string, React.CSSProperties> = {
      * overflows once the container is narrower than that, which is what was
      * left over after the previous pass.
      */
-    gridTemplateColumns: "repeat(auto-fit, minmax(min(280px, 100%), 1fr))",
+    gridTemplateColumns: "repeat(auto-fit, minmax(min(320px, 100%), 1fr))",
     gap: 12,
     minHeight: 0,
     // Vertical only — any horizontal overflow is a layout bug to fix, never
