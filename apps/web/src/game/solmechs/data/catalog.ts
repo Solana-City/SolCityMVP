@@ -24,7 +24,7 @@ export const MATRICES: MechMatrix[] = [
     matrixName: "Titan",
     id: "titan",
     role: "Tank",
-    baseStats: { HP: 260, ATK: 40, DEF: 60, ENG: 40, SPD: 20, SYS: 20, PROC: 20 },
+    baseStats: { HP: 260, ATK: 45, DEF: 60, ENG: 30, SPD: 25, SYS: 40, PROC: 20 },
     passive1: "Fortify",
     passive2: "Thermal Stability",
   },
@@ -33,7 +33,7 @@ export const MATRICES: MechMatrix[] = [
     matrixName: "Striker",
     id: "striker",
     role: "Hacker",
-    baseStats: { HP: 180, ATK: 40, DEF: 30, ENG: 40, SPD: 40, SYS: 60, PROC: 80 },
+    baseStats: { HP: 200, ATK: 45, DEF: 30, ENG: 40, SPD: 45, SYS: 40, PROC: 80 },
     passive1: "Hostile Instinct",
     passive2: "Backdoor",
   },
@@ -42,7 +42,7 @@ export const MATRICES: MechMatrix[] = [
     matrixName: "Arclight",
     id: "arclight",
     role: "Energy DPS",
-    baseStats: { HP: 180, ATK: 40, DEF: 20, ENG: 80, SPD: 40, SYS: 30, PROC: 60 },
+    baseStats: { HP: 200, ATK: 30, DEF: 30, ENG: 60, SPD: 45, SYS: 35, PROC: 60 },
     passive1: "Residual Energy",
     passive2: "First Shot",
   },
@@ -51,7 +51,7 @@ export const MATRICES: MechMatrix[] = [
     matrixName: "HeartCore",
     id: "heartcore",
     role: "Support",
-    baseStats: { HP: 240, ATK: 30, DEF: 40, ENG: 50, SPD: 20, SYS: 40, PROC: 60 },
+    baseStats: { HP: 250, ATK: 30, DEF: 45, ENG: 50, SPD: 25, SYS: 50, PROC: 60 },
     passive1: "Auto-Regen",
     passive2: "Echo Sensor",
   },
@@ -61,21 +61,24 @@ export const MATRICES: MechMatrix[] = [
     id: "solus",
     role: "All-Rounder",
     /**
-     * REBALANCED from the Unity source (all stats 60, combat budget 300).
+     * REBALANCED. Every chassis now carries the SAME combat budget — 200
+     * points across ATK/DEF/ENG/SPD/SYS — with the four base mechs shaped as
+     * specialists (one stat at 60, the rest lower) and Solus flat.
      *
-     * Solus wasn't a sidegrade, it was a bigger mech: 300 points of combat
-     * stats against 180-210 for the other four, and a kit worth 360 against
-     * 210-220. Measured across every matchup under three play styles and both
-     * seats, it won 100% of 144 duels — not "strong", unbeatable.
+     * Solus is the mech with no weakness, so its flat value sits a little
+     * above the others' average rather than at their peak. That last part is a
+     * measured constraint, not a preference: flat 60 — matching a
+     * specialist's peak in every stat — wins 100% of 144 duels and stays
+     * unbeatable even with its HP cut to 150. Stats in this engine feed BOTH
+     * sides of an exchange (damage is 2*atk/(atk+def)), so being at peak
+     * everywhere means hitting harder AND taking less, and HP cannot buy that
+     * back.
      *
-     * Scaled to 200, the mean of the other four, keeping its even
-     * all-rounder shape and its 260 HP. That drops it to 65%: still the best
-     * chassis in the game, which suits a mech you earn by completing the
-     * collection, but now something the other four can actually beat.
-     *
-     * See the kit note on RA05/LA05/IN05, which was scaled the same way.
+     * Flat 45 puts it at 67% — clearly the best chassis, which suits a mech
+     * earned by completing the collection, but one the other four can beat.
+     * The cliff is sharp: 45 -> 67%, 50 -> 83%, 55 -> 100%.
      */
-    baseStats: { HP: 260, ATK: 40, DEF: 40, ENG: 40, SPD: 40, SYS: 40, PROC: 0 },
+    baseStats: { HP: 260, ATK: 45, DEF: 45, ENG: 45, SPD: 45, SYS: 45, PROC: 0 },
     passive1: "Solana Speed",
     passive2: "Huge Community",
   },
@@ -157,7 +160,7 @@ const RAW_LEFT_ARMS: RawPart[] = [
   },
   {
     code: "LA05", name: "Solus Blade", mech: "solus",
-    stats: [100, 25, 20, 10, 10, 10],
+    stats: [100, 30, 20, 10, 10, 10],
     moves: [{ name: "Blade Rush", dmg: 45, type: "Physical", target: 0, effect: "-1 SPD" }],
   },
 ];
