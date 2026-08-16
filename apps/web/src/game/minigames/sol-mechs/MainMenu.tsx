@@ -95,7 +95,7 @@ export default function MainMenu({ onChoose, onClose, wins, losses }: MainMenuPr
           <MenuRow
             art={`${UI}/menu/pvp.png`}
             fallback="ARENA PvP"
-            desc="Wagered matches against another player."
+            desc="Season ladder. One pass, an exclusive mech, USDC by placement."
             badge="SOON"
             disabled
           />
