@@ -207,17 +207,31 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, onFinished, on
           <SquadBar state={state} side="p2" label="RIVAL" align="right" />
         </div>
 
-        <div style={sx.statusRow}>
-          <UnitBars unit={me} />
-          <UnitBars unit={foe} align="right" />
-        </div>
+        {/* Arena centre stage with the active mechs' bars flanking it. The
+            canvas must be `object-fit: contain` inside a flex-1 box, never
+            `width: 100%` — at this panel width a 640x557 canvas stretched to
+            100% is ~1300px tall, which is what forced the page to scroll. */}
+        <div style={sx.arenaRow}>
+          <div style={sx.hudColumn}>
+            <UnitBars unit={me} />
+          </div>
 
-        <canvas
-          ref={canvasRef}
-          width={CANVAS_W}
-          height={CANVAS_H}
-          style={{ imageRendering: "pixelated", width: "100%", borderRadius: 8, border: `2px solid ${C.line}`, display: "block" }}
-        />
+          <div style={sx.arenaBox}>
+            <canvas
+              ref={canvasRef}
+              width={CANVAS_W}
+              height={CANVAS_H}
+              style={{
+                imageRendering: "pixelated", maxWidth: "100%", maxHeight: "100%",
+                objectFit: "contain", display: "block",
+              }}
+            />
+          </div>
+
+          <div style={sx.hudColumn}>
+            <UnitBars unit={foe} />
+          </div>
+        </div>
 
         <div style={sx.controls}>
           {finished ? (
@@ -325,7 +339,7 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, onFinished, on
           )}
         </div>
 
-        <BattleLog lines={log} turns={state.history.length} />
+        <BattleLog lines={log} turns={state.history.length} initiallyCollapsed />
       </div>
     </div>
   );
@@ -398,16 +412,31 @@ const sx: Record<string, React.CSSProperties> = {
   },
   frame: {
     background: C.panel, border: `2px solid ${C.line}`, borderRadius: 10, padding: 16,
-    width: W.battle, height: PANEL_HEIGHT, overflowY: "auto", overflowX: "hidden",
-    display: "flex", flexDirection: "column", gap: 8, fontFamily: "system-ui,sans-serif",
+    width: W.battle, height: PANEL_HEIGHT, overflow: "hidden",
+    display: "flex", flexDirection: "column", gap: SP.sm, fontFamily: "system-ui,sans-serif",
   },
-  header: { display: "flex", alignItems: "center", gap: 10 },
+  header: { display: "flex", alignItems: "center", gap: SP.md, flexShrink: 0 },
   title: { margin: 0, fontSize: 16, color: C.teal, letterSpacing: 4, fontWeight: 800 },
   close: { background: "none", border: "none", color: C.dim, fontSize: 24, cursor: "pointer", lineHeight: 1, padding: 0 },
-  squadRow: { display: "flex", gap: 10, flexWrap: "wrap" },
+  squadRow: { display: "flex", gap: SP.md, flexWrap: "wrap", flexShrink: 0 },
   squadLabel: { fontSize: 12, color: C.faint, letterSpacing: 2, marginBottom: 3 },
-  statusRow: { display: "flex", gap: 12, flexWrap: "wrap" },
-  controls: { minHeight: 74 },
+  /** The arena and its two HUD columns share the leftover height. */
+  arenaRow: {
+    flex: 1, minHeight: 0, display: "flex", gap: SP.md,
+    alignItems: "stretch", flexWrap: "wrap",
+  },
+  hudColumn: {
+    flex: "1 1 190px", minWidth: 170, maxWidth: 280,
+    display: "flex", flexDirection: "column", justifyContent: "center",
+    background: C.ink, border: `1px solid ${C.line}`, borderRadius: R.md, padding: SP.md,
+  },
+  arenaBox: {
+    flex: "4 1 400px", minWidth: 280, minHeight: 0,
+    display: "flex", alignItems: "center", justifyContent: "center",
+    borderRadius: R.md, border: `2px solid ${C.line}`,
+    overflow: "hidden", background: C.ink,
+  },
+  controls: { minHeight: 74, flexShrink: 0 },
   prompt: { fontSize: 12, color: C.dim, marginBottom: 6, letterSpacing: 1 },
   btnRow: { display: "flex", flexWrap: "wrap", gap: 6 },
   btn: {
