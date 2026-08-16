@@ -145,19 +145,34 @@ fixed-point with an explicit scale is the safer route.
 
 ### Open questions
 
-- **Who moves first — keep `"speed"`.** An earlier draft of this file said a
-  ranked match *must* derive the opener from a commit-reveal seed, because
-  under `"speed"` the first-move advantage is "buyable at build time". That
-  reasoning was written for a wagered match and does not survive the move to a
-  season ladder. Both players build freely under identical rules, so the
-  advantage is symmetric, not bought — and SPD's **only** job in this engine is
-  deciding the opener, so randomising it would strip the legs slot of its
-  purpose all over again. Whatever is chosen, `replay()` must be given the
-  value the battle actually opened with or it desyncs on action one.
-- **Timeouts.** A player who stops submitting actions currently stalls the
-  room forever. Needs a per-turn deadline with a claim-by-forfeit path. On a
-  ladder this is also an exploit surface: stalling a losing match to deny an
-  opponent rating has to cost the staller the loss.
+- **Who moves first — solved by simultaneous rounds.** Two earlier drafts of
+  this file argued over this: first that a wagered match must derive the
+  opener from a commit-reveal seed, then that a ladder could keep `"speed"`.
+  Both are moot. Alternating turns are gone; both sides commit every round and
+  SPD only decides who lands first *within* it. Nobody holds a permanent
+  first-move advantage, and SPD keeps its job.
+
+  **This makes commit-reveal mandatory, for a different reason.** Simultaneous
+  selection is only simultaneous if neither side can see the other's choice
+  before making their own. On-chain that means each round is:
+
+  1. both submit `hash(action, salt)`;
+  2. both reveal `(action, salt)`;
+  3. the program verifies the hashes and resolves.
+
+  Without it, whoever transactions second reads the first's action off the
+  chain and answers it — which is exactly the alternating-turn game this
+  change was meant to replace, with the advantage handed to the slower
+  submitter.
+
+- **Timeouts — now a clean rule.** Alternating turns had no natural deadline;
+  rounds do. Each phase gets one:
+  - miss the **commit** deadline → that side does nothing this round;
+  - commit but miss the **reveal** deadline → forfeit the match, since a
+    selective reveal is a real attack (see it go badly, refuse to reveal).
+
+  That closes the stalling surface a ladder cares about: refusing to play can
+  no longer deny an opponent their result, it just loses.
 - **Pass verification.** Both players must hold a current-season pass at
   `open`/`join`. Checking it only at settlement would let an expired account
   play out a season and place.

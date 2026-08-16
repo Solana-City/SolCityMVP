@@ -11,11 +11,16 @@
  *
  * ## Conventions taken from Pokémon, since that's the reference
  *
- *  - **Switching costs your turn** — by default, and now configurable via
- *    `TeamRules.switchCost`. See SwitchCost for what each setting does to the
- *    feel of a match.
- *  - **A switch after a KO is free**, under either setting. You lost the turn
- *    that lost the mech; charging a second one compounds the same mistake.
+ *  - **Switching costs your round.** This is structural now rather than a
+ *    setting: a round action is EITHER a move or a substitution, so the cost
+ *    falls out of simultaneous selection instead of needing a rule. The old
+ *    `switchCost: "free"` option is gone with it — under simultaneous rounds
+ *    "swap and also act" has no coherent meaning.
+ *  - **Substitutions resolve before moves**, regardless of speed, so the mech
+ *    you send in eats the attack the opponent already committed to. That is
+ *    what makes switching a read instead of a safe escape.
+ *  - **A switch after a KO is free.** You lost the round that lost the mech;
+ *    charging a second one compounds the same mistake.
  *  - **Stat stages reset on switch-out.** They are per-limb buffs on a
  *    machine that just walked off the field.
  *  - **Damage does NOT reset.** A mech returns with exactly the limbs it left
@@ -39,9 +44,14 @@ export interface TeamSide {
 }
 
 export type TeamStatus =
-  | { kind: "active"; turn: PlayerSide }
-  /** A side must substitute before play resumes; its turn is not consumed. */
-  | { kind: "awaiting-switch"; side: PlayerSide }
+  /** Both sides commit an action for the round. */
+  | { kind: "active" }
+  /**
+   * One or both sides lost their active mech and must send a replacement
+   * before the next round. Free — the round that lost the mech is already
+   * spent.
+   */
+  | { kind: "awaiting-switch"; sides: PlayerSide[] }
   | { kind: "finished"; winner: PlayerSide };
 
 /** A move, or a substitution. Both are one turn's worth of decision. */
@@ -59,48 +69,22 @@ export type TeamEvent =
   | BattleEvent
   | { type: "switch"; side: PlayerSide; fromIndex: number; toIndex: number; mechName: string }
   | { type: "mech-down"; side: PlayerSide; index: number; mechName: string; cause: DefeatCause }
-  | { type: "must-switch"; side: PlayerSide };
+  | { type: "must-switch"; side: PlayerSide }
+  | { type: "round-start"; round: number };
 
-/**
- * What a voluntary substitution costs.
- *
- *  - `"turn"` — swapping ends your turn; the opponent moves next. Every bad
- *    matchup then has a price, and reading the opponent's swap is worth
- *    something.
- *  - `"free"` — you swap AND still act. Much swingier: the fresh mech gets a
- *    hit in before the opponent can react, so leading badly costs almost
- *    nothing.
- *
- * A forced substitution after a KO is unaffected — it is always free, since
- * the turn that lost the mech was already spent.
- */
-export type SwitchCost = "turn" | "free";
-
-export interface TeamRules {
-  switchCost: SwitchCost;
+/** One round of simultaneous decisions. `null` = nothing legal to do. */
+export interface TeamRoundActions {
+  p1: TeamAction | null;
+  p2: TeamAction | null;
 }
-
-export const DEFAULT_TEAM_RULES: TeamRules = { switchCost: "turn" };
 
 export interface TeamBattleState {
   p1: TeamSide;
   p2: TeamSide;
   status: TeamStatus;
-  turnNumber: number;
-  history: TeamAction[];
-  /**
-   * Carried in the state, not just passed to the constructor, so a replay
-   * reconstructs the same battle — a verifier running different rules would
-   * reject an honest result.
-   */
-  rules: TeamRules;
-  /**
-   * Under `switchCost: "free"` a voluntary swap keeps the turn, which on its
-   * own would let a side swap forever and never act. This marks the free swap
-   * as spent until the turn changes hands, so "free" means one swap plus a
-   * move — not an infinite carousel.
-   */
-  freeSwitchUsed: boolean;
+  /** 1-based; also breaks speed ties, as in the 1v1. */
+  round: number;
+  history: TeamRoundActions[];
 }
 
 export interface TeamResolveResult {
@@ -111,10 +95,6 @@ export interface TeamResolveResult {
 export interface CreateTeamBattleOptions {
   p1Name?: string;
   p2Name?: string;
-  /** "speed" compares the two LEAD mechs; otherwise an explicit opener. */
-  firstMove?: "speed" | "p1" | "p2";
-  /** Defaults to DEFAULT_TEAM_RULES. */
-  rules?: Partial<TeamRules>;
 }
 
 function buildSide(team: TeamBuild, name: string): TeamSide {
@@ -155,22 +135,11 @@ export function createTeamBattle(
   const p1 = buildSide(p1Team, options.p1Name ?? "Player 1");
   const p2 = buildSide(p2Team, options.p2Name ?? "Player 2");
 
-  const rule = options.firstMove ?? "speed";
-  // Ties break to p1 — arbitrary, but it has to be deterministic for replay.
-  const turn: PlayerSide =
-    rule === "p1" || rule === "p2"
-      ? rule
-      : effectiveStats(activeUnit(p2)).SPD > effectiveStats(activeUnit(p1)).SPD
-        ? "p2"
-        : "p1";
-
   return {
     p1, p2,
-    status: { kind: "active", turn },
-    turnNumber: 1,
+    status: { kind: "active" },
+    round: 1,
     history: [],
-    rules: { ...DEFAULT_TEAM_RULES, ...options.rules },
-    freeSwitchUsed: false,
   };
 }
 
@@ -183,11 +152,18 @@ function cloneState(state: TeamBattleState): TeamBattleState {
     p1: cloneSide(state.p1),
     p2: cloneSide(state.p2),
     status: state.status,
-    turnNumber: state.turnNumber,
+    round: state.round,
     history: [...state.history],
-    rules: state.rules,
-    freeSwitchUsed: state.freeSwitchUsed,
   };
+}
+
+/** Speed order among a set of sides, ties alternating by round parity. */
+function bySpeed(state: TeamBattleState, sides: PlayerSide[]): PlayerSide[] {
+  if (sides.length < 2) return sides;
+  const spd = (s: PlayerSide) => effectiveStats(activeUnit(sideOf(state, s))).SPD;
+  const [a, b] = sides;
+  if (spd(a) !== spd(b)) return spd(a) > spd(b) ? [a, b] : [b, a];
+  return state.round % 2 === 1 ? [a, b] : [b, a];
 }
 
 /** Stages are per-limb buffs; a mech leaving the field drops them. */
@@ -195,134 +171,175 @@ function clearStages(unit: MechUnit): void {
   for (const status of Object.values(unit.partStatuses)) status.buffs = {};
 }
 
-export function resolveTeamAction(state: TeamBattleState, action: TeamAction): TeamResolveResult {
-  const reject = (reason: string): TeamResolveResult => ({
-    state,
-    events: [{ type: "rejected", reason }],
-  });
-
-  if (state.status.kind === "finished") return reject("Battle is already over");
-
-  // A forced substitution is the only legal action while one is pending, and
-  // only from the side that owes it.
+/**
+ * Resolve one round of a squad battle.
+ *
+ * Order within the round, following Pokémon:
+ *
+ *  1. **Substitutions first**, regardless of speed. That is what makes
+ *     switching a read rather than a safe escape: the mech you send in eats
+ *     the attack the opponent had already committed to.
+ *  2. **Then moves**, in speed order — measured AFTER the switches, so it is
+ *     the incoming mech's SPD that counts.
+ *
+ * A side whose active mech is knocked out does not act, and owes a free
+ * substitution before the next round (`awaiting-switch`).
+ */
+export function resolveTeamRound(state: TeamBattleState, actions: TeamRoundActions): TeamResolveResult {
+  if (state.status.kind === "finished") {
+    return { state, events: [{ type: "rejected", reason: "Battle is already over" }] };
+  }
   if (state.status.kind === "awaiting-switch") {
-    if (action.kind !== "switch" || action.side !== state.status.side) {
-      return reject("A substitution is required first");
-    }
-  } else if (state.status.turn !== action.side) {
-    return reject("Not your turn");
+    return { state, events: [{ type: "rejected", reason: "A substitution is required first" }] };
   }
 
-  const forced = state.status.kind === "awaiting-switch";
   const next = cloneState(state);
-  const events: TeamEvent[] = [];
-  const me = sideOf(next, action.side);
-  const foeSide = opponentOfSide(action.side);
-  const foe = sideOf(next, foeSide);
+  const events: TeamEvent[] = [{ type: "round-start", round: next.round }];
+  const get = (side: PlayerSide) => (side === "p1" ? actions.p1 : actions.p2);
 
-  if (action.kind === "switch") {
-    if (!forced && next.rules.switchCost === "free" && next.freeSwitchUsed) {
-      return reject("Already substituted this turn — act with this mech");
+  // ── 1. substitutions ────────────────────────────────────────────────────
+  const switching = (["p1", "p2"] as PlayerSide[]).filter((s) => get(s)?.kind === "switch");
+  for (const side of bySpeed(next, switching)) {
+    const action = get(side) as Extract<TeamAction, { kind: "switch" }>;
+    const me = sideOf(next, side);
+    if (action.toIndex === me.activeIndex || action.toIndex < 0 || action.toIndex >= me.units.length) {
+      events.push({ type: "rejected", reason: "No such mech to send out" });
+      continue;
     }
-    if (action.toIndex === me.activeIndex) return reject("That mech is already out");
-    if (action.toIndex < 0 || action.toIndex >= me.units.length) return reject("No such mech");
-    if (isDefeated(me.units[action.toIndex])) return reject("That mech is out of the fight");
-
+    if (isDefeated(me.units[action.toIndex])) {
+      events.push({ type: "rejected", reason: "That mech is out of the fight" });
+      continue;
+    }
     const fromIndex = me.activeIndex;
     clearStages(me.units[fromIndex]);
     me.activeIndex = action.toIndex;
     events.push({
-      type: "switch",
-      side: action.side,
-      fromIndex,
-      toIndex: action.toIndex,
+      type: "switch", side, fromIndex, toIndex: action.toIndex,
       mechName: activeUnit(me).matrix.matrixName,
     });
-    next.history.push(action);
-
-    // A forced switch never costs the turn: the side that just lost a mech
-    // sends its replacement in and then takes its normal turn. Passing the
-    // turn here would charge them twice for one KO — the mech AND the tempo.
-    //
-    // A voluntary switch costs the turn only under the "turn" rule; under
-    // "free" the switcher keeps it and acts with the mech they just brought
-    // in.
-    const keepsTurn = forced || next.rules.switchCost === "free";
-    const nextTurn = keepsTurn ? action.side : foeSide;
-    next.status = { kind: "active", turn: nextTurn };
-    if (!keepsTurn) next.turnNumber += 1;
-    // A free voluntary swap is spent for this turn. A forced one isn't — the
-    // replacement still deserves its normal move.
-    next.freeSwitchUsed = keepsTurn && !forced;
-    events.push({ type: "turn-start", side: nextTurn, turnNumber: next.turnNumber });
-    return { state: next, events };
   }
 
-  // --- a move ---
-  const attacker = activeUnit(me);
-  const defender = activeUnit(foe);
+  // ── 2. moves, in the speed order that now applies ───────────────────────
+  const moving = (["p1", "p2"] as PlayerSide[]).filter((s) => get(s)?.kind === "move");
+  for (const side of bySpeed(next, moving)) {
+    const action = get(side) as Extract<TeamAction, { kind: "move" }>;
+    const me = sideOf(next, side);
+    const foe = sideOf(next, opponentOfSide(side));
+    const actor = activeUnit(me);
+    const target = activeUnit(foe);
 
-  const illegal = validateMove(attacker, defender, action.sourceSlot, action.moveIndex, action.targetSlot);
-  if (illegal) return reject(illegal);
+    // The slower mech may have been knocked out before it could act.
+    if (isDefeated(actor)) {
+      events.push({ type: "rejected", reason: `${actor.name} was down before it could act` });
+      continue;
+    }
+    const illegal = validateMove(actor, target, action.sourceSlot, action.moveIndex, action.targetSlot);
+    if (illegal) {
+      events.push({ type: "rejected", reason: illegal });
+      continue;
+    }
+    events.push(...applyMove(actor, target, side, action.sourceSlot, action.moveIndex, action.targetSlot));
+  }
 
-  events.push(...applyMove(attacker, defender, action.side, action.sourceSlot, action.moveIndex, action.targetSlot));
-  next.history.push(action);
+  next.history.push(actions);
 
-  // Did anyone go down? Checked on both sides, since a self-targeted move can
-  // finish off the user's own last limb.
-  let pendingSwitch: PlayerSide | null = null;
+  // ── 3. casualties ───────────────────────────────────────────────────────
+  const owing: PlayerSide[] = [];
   for (const side of ["p1", "p2"] as PlayerSide[]) {
     const teamSide = sideOf(next, side);
     const unit = activeUnit(teamSide);
     const cause = defeatCauseOf(unit);
     if (!cause) continue;
-
     events.push({
-      type: "mech-down",
-      side,
-      index: teamSide.activeIndex,
-      mechName: unit.matrix.matrixName,
-      cause,
+      type: "mech-down", side, index: teamSide.activeIndex,
+      mechName: unit.matrix.matrixName, cause,
     });
-
-    if (teamWiped(teamSide)) {
-      const winner = opponentOfSide(side);
-      next.status = { kind: "finished", winner };
-      events.push({ type: "victory", winner });
-      return { state: next, events };
-    }
-    // Both sides can fall on the same action; the first one owing a
-    // substitution gets asked, and the other is asked on the next resolve.
-    if (!pendingSwitch) pendingSwitch = side;
+    if (!teamWiped(teamSide)) owing.push(side);
   }
 
-  if (pendingSwitch) {
-    next.status = { kind: "awaiting-switch", side: pendingSwitch };
-    events.push({ type: "must-switch", side: pendingSwitch });
+  // A whole side being wiped ends it. Both wiped in the same round resolves to
+  // whoever still had a mech standing when the round's moves ran — the faster
+  // side, consistent with resolving in speed order.
+  const wiped = (["p1", "p2"] as PlayerSide[]).filter((s) => teamWiped(sideOf(next, s)));
+  if (wiped.length > 0) {
+    const loser = wiped.length === 2 ? bySpeed(state, ["p1", "p2"])[1] : wiped[0];
+    const winner = opponentOfSide(loser);
+    next.status = { kind: "finished", winner };
+    events.push({ type: "victory", winner });
     return { state: next, events };
   }
 
-  next.status = { kind: "active", turn: foeSide };
-  next.turnNumber += 1;
-  // The turn has changed hands, so the next side gets its free swap back.
-  next.freeSwitchUsed = false;
-  events.push({ type: "turn-start", side: foeSide, turnNumber: next.turnNumber });
+  if (owing.length > 0) {
+    next.status = { kind: "awaiting-switch", sides: owing };
+    for (const side of owing) events.push({ type: "must-switch", side });
+    return { state: next, events };
+  }
+
+  next.round += 1;
   return { state: next, events };
 }
 
 /**
- * Replay a team battle from its action list — the verification path, same
+ * Send in replacements for every side that lost its mech last round. Free —
+ * the round that lost the mech was already spent.
+ */
+export function resolveForcedSwitches(
+  state: TeamBattleState,
+  picks: Partial<Record<PlayerSide, number>>,
+): TeamResolveResult {
+  if (state.status.kind !== "awaiting-switch") {
+    return { state, events: [{ type: "rejected", reason: "No substitution is pending" }] };
+  }
+  const next = cloneState(state);
+  const events: TeamEvent[] = [];
+
+  for (const side of state.status.sides) {
+    const me = sideOf(next, side);
+    const options = switchableIndices(me);
+    const wanted = picks[side];
+    // Falling back to the first legal reserve keeps a missing or illegal pick
+    // from stalling the match, which matters on a ladder where refusing to
+    // choose would otherwise be a way to deny an opponent their win.
+    const idx = wanted !== undefined && options.includes(wanted) ? wanted : options[0];
+    if (idx === undefined) continue;
+    const fromIndex = me.activeIndex;
+    me.activeIndex = idx;
+    events.push({
+      type: "switch", side, fromIndex, toIndex: idx,
+      mechName: activeUnit(me).matrix.matrixName,
+    });
+  }
+
+  next.status = { kind: "active" };
+  next.round += 1;
+  events.push({ type: "round-start", round: next.round });
+  return { state: next, events };
+}
+
+/**
+ * Replay a team battle from its round list — the verification path, same
  * contract as the 1v1 `replay`.
  */
 export function replayTeam(
   p1Team: TeamBuild,
   p2Team: TeamBuild,
-  actions: TeamAction[],
-  /** Must include the same `rules` the battle ran under, or it desyncs. */
+  rounds: TeamRoundActions[],
   options: CreateTeamBattleOptions = {},
 ): TeamBattleState {
   let state = createTeamBattle(p1Team, p2Team, options);
-  for (const action of actions) state = resolveTeamAction(state, action).state;
+  for (const round of rounds) {
+    if (state.status.kind === "awaiting-switch") {
+      // A forced substitution is recorded as the round's switch actions.
+      const picks: Partial<Record<PlayerSide, number>> = {};
+      for (const side of ["p1", "p2"] as PlayerSide[]) {
+        const a = side === "p1" ? round.p1 : round.p2;
+        if (a?.kind === "switch") picks[side] = a.toIndex;
+      }
+      state = resolveForcedSwitches(state, picks).state;
+      continue;
+    }
+    state = resolveTeamRound(state, round).state;
+  }
   return state;
 }
 

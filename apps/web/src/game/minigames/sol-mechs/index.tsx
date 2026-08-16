@@ -16,8 +16,9 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import type { MiniGameComponentProps, MiniGameBaseContext } from "../types";
 import {
-  createBattle, resolveAction, availableMoves, legalTargets, createUnit,
+  createBattle, resolveRound, orderOfPlay, availableMoves, legalTargets, createUnit,
   type BattleState, type BattleAction, type BattleEvent, type PlayerSide,
+  type RoundActions,
 } from "@/game/solmechs/engine/BattleEngine";
 import { BattleRenderer, CANVAS_W, CANVAS_H } from "@/game/solmechs/render/BattleRenderer";
 import { preloadAll, preloadBuild, drawMech, DOLL_WIDTH, DOLL_HEIGHT } from "@/game/solmechs/render/MechPaperDoll";
@@ -141,53 +142,53 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
     }
   }, []);
 
-  const applyAction = useCallback((action: BattleAction): BattleState | null => {
+  const submitRound = useCallback(async (action: BattleAction | null): Promise<void> => {
     const current = stateRef.current;
-    if (!current) return null;
+    if (!current) return;
 
-    // Read the move off the PRE-resolution state: the renderer picks its
-    // effect from it, and the post-state may already have that limb destroyed.
-    const attacker = action.side === "p1" ? current.p1 : current.p2;
-    const move = attacker.parts[action.sourceSlot]?.moves[action.moveIndex];
+    setBusy(true);
+    // The rival chooses from the PRE-round state and never sees the player's
+    // pick — that is what makes this simultaneous rather than the rival simply
+    // answering. Both commitments then resolve together in speed order.
+    const rivalAction = await aiRef.current.chooseAction(current, "p2");
 
-    const { state: nextState, events } = resolveAction(current, action);
+    const round: RoundActions = { p1: action, p2: rivalAction };
+    const { state: nextState, events } = resolveRound(current, round);
 
-    const lines = events.map((e) => describe(e, nextState)).filter((l): l is string => l !== null);
+    // Effects are picked from the pre-round moves; afterwards the limb that
+    // fired may already be gone.
+    const p1Move = action ? current.p1.parts[action.sourceSlot]?.moves[action.moveIndex] : undefined;
+    const p2Move = rivalAction ? current.p2.parts[rivalAction.sourceSlot]?.moves[rivalAction.moveIndex] : undefined;
+
+    const lines = events
+      .map((e) => describe(e, nextState))
+      .filter((l): l is string => l !== null);
     pushLog(lines.reverse());
 
     const renderer = rendererRef.current;
     renderer?.setState(nextState);
-    renderer?.playEvents(events, move);
+    // Split the log at the round's second attacker so each mech's hit is
+    // staged with its own move's effect rather than both sharing one.
+    const secondAttackIdx = events.findIndex(
+      (e, i) => e.type === "attack" && events.slice(0, i).some((p) => p.type === "attack"),
+    );
+    const [firstSide] = orderOfPlay(current);
+    const firstMove = firstSide === "p1" ? p1Move : p2Move;
+    const secondMove = firstSide === "p1" ? p2Move : p1Move;
+    if (secondAttackIdx > 0) {
+      renderer?.playEvents(events.slice(0, secondAttackIdx), firstMove);
+      renderer?.playEvents(events.slice(secondAttackIdx), secondMove, renderer.remainingMs());
+    } else {
+      renderer?.playEvents(events, firstMove);
+    }
+
     stateRef.current = nextState;
     setBattle(nextState);
 
-    // Hold input until the sequence has played out, so a hit can't be
-    // interrupted by the next click and the log stays in step with the screen.
     const wait = renderer?.remainingMs() ?? 0;
-    if (wait > 0) {
-      setAnimating(true);
-      window.setTimeout(() => setAnimating(false), wait);
-    }
-    return nextState;
+    setAnimating(true);
+    window.setTimeout(() => { setAnimating(false); setBusy(false); }, Math.max(wait, 200));
   }, [describe, pushLog]);
-
-  // Hand the turn to the AI whenever it becomes p2's move.
-  useEffect(() => {
-    if (phase !== "battle" || !battle) return;
-    if (battle.status.kind !== "active" || battle.status.turn !== "p2") return;
-    // Let the player's hit finish playing before the rival answers.
-    if (animating) return;
-
-    let cancelled = false;
-    setBusy(true);
-    (async () => {
-      const action = await aiRef.current.chooseAction(battle, "p2");
-      if (cancelled) return;
-      if (action) applyAction(action);
-      setBusy(false);
-    })();
-    return () => { cancelled = true; setBusy(false); };
-  }, [phase, battle, applyAction, animating]);
 
   // Settle once someone wins.
   useEffect(() => {
@@ -225,7 +226,6 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
       p1Name: MATRICES.find((m) => m.id === mech)!.matrixName,
       p2Name: MATRICES.find((m) => m.id === foe)!.matrixName,
       // Local play opens on the faster mech, so building for SPD pays off.
-      firstMove: "speed",
     });
     stateRef.current = fresh;
     setBattle(fresh);
@@ -381,7 +381,7 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
   if (!battle) return null;
 
   // ==================== BATTLE / RESULT ====================
-  const myTurn = battle.status.kind === "active" && battle.status.turn === "p1" && !busy && !animating;
+  const canAct = battle.status.kind === "active" && !busy && !animating;
   const moves = availableMoves(battle.p1);
   const targets = legalTargets(battle.p2);
   const selectedMove = pendingMove
@@ -389,8 +389,8 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
     : null;
 
   const onTargetPicked = (slot: ModuleSlot) => {
-    if (!pendingMove || !myTurn) return;
-    applyAction({
+    if (!pendingMove || !canAct) return;
+    void submitRound({
       side: "p1",
       sourceSlot: pendingMove.slot,
       moveIndex: pendingMove.moveIndex,
@@ -436,7 +436,7 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
         </div>
       ) : (
         <div style={{ marginTop: 10 }}>
-          {!myTurn ? (
+          {!canAct ? (
             <div style={{ color: "#9d8fc4", fontSize: 13, textAlign: "center", padding: "14px 0" }}>
               {battle.p2.name} is choosing…
             </div>
@@ -451,7 +451,7 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
                       // Self-target moves have exactly one sensible target —
                       // the limb they came from — so they skip target picking.
                       if (o.move.targetType === "self") {
-                        applyAction({ side: "p1", sourceSlot: o.slot, moveIndex: o.moveIndex, targetSlot: o.slot });
+                        void submitRound({ side: "p1", sourceSlot: o.slot, moveIndex: o.moveIndex, targetSlot: o.slot });
                       } else {
                         setPendingMove({ slot: o.slot, moveIndex: o.moveIndex });
                       }

@@ -68,8 +68,12 @@ const BALANCE = {
 
 export type PlayerSide = "p1" | "p2";
 
+/**
+ * Both sides choose every round, so there is no "whose turn is it" — only
+ * whether the fight is still going.
+ */
 export type BattleStatus =
-  | { kind: "active"; turn: PlayerSide }
+  | { kind: "active" }
   | { kind: "finished"; winner: PlayerSide };
 
 /** One resolved action. This is the unit that gets committed on-chain. */
@@ -84,7 +88,7 @@ export interface BattleAction {
 }
 
 export type BattleEvent =
-  | { type: "turn-start"; side: PlayerSide; turnNumber: number }
+  | { type: "round-start"; round: number }
   | { type: "attack"; side: PlayerSide; moveName: string; sourceSlot: ModuleSlot }
   | { type: "damage"; side: PlayerSide; targetSlot: ModuleSlot; amount: number; percent: number; remaining: number }
   | { type: "heal"; side: PlayerSide; targetSlot: ModuleSlot; amount: number; remaining: number }
@@ -95,13 +99,20 @@ export type BattleEvent =
   | { type: "rejected"; reason: string }
   | { type: "victory"; winner: PlayerSide };
 
+/** One round's worth of decisions. `null` = that side had nothing legal to do. */
+export interface RoundActions {
+  p1: BattleAction | null;
+  p2: BattleAction | null;
+}
+
 export interface BattleState {
   p1: MechUnit;
   p2: MechUnit;
   status: BattleStatus;
-  turnNumber: number;
-  /** Every action accepted so far, in order — the replayable battle record. */
-  history: BattleAction[];
+  /** 1-based. Also breaks speed ties — see resolveRound. */
+  round: number;
+  /** Every round played, in order — the replayable battle record. */
+  history: RoundActions[];
 }
 
 // ==================== BUILD → UNIT ====================
@@ -150,29 +161,9 @@ export function createUnit(name: string, build: MechBuild): MechUnit {
   };
 }
 
-/**
- * How the opening turn is decided.
- *
- *  - `"speed"` — higher total SPD moves first, ties to p1. This is what makes
- *    SPD (and therefore the legs slot, whose whole job is SPD) a stat worth
- *    building for; Unity left it decorative.
- *  - `"p1"` / `"p2"` — an explicit winner. Wagered on-chain matches must use
- *    this with a value derived from a commit-reveal seed: if first move came
- *    from SPD there, the advantage would simply be buyable at build time.
- */
-export type FirstMoveRule = "speed" | "p1" | "p2";
-
 export interface CreateBattleOptions {
   p1Name?: string;
   p2Name?: string;
-  /** Defaults to "speed". */
-  firstMove?: FirstMoveRule;
-}
-
-/** Ties break to p1 — arbitrary, but it must be deterministic for replay. */
-function openingSide(p1: MechUnit, p2: MechUnit, rule: FirstMoveRule): PlayerSide {
-  if (rule === "p1" || rule === "p2") return rule;
-  return p2.totalStats.SPD > p1.totalStats.SPD ? "p2" : "p1";
 }
 
 export function createBattle(
@@ -180,13 +171,11 @@ export function createBattle(
   p2Build: MechBuild,
   options: CreateBattleOptions = {},
 ): BattleState {
-  const p1 = createUnit(options.p1Name ?? "Player 1", p1Build);
-  const p2 = createUnit(options.p2Name ?? "Player 2", p2Build);
   return {
-    p1,
-    p2,
-    status: { kind: "active", turn: openingSide(p1, p2, options.firstMove ?? "speed") },
-    turnNumber: 1,
+    p1: createUnit(options.p1Name ?? "Player 1", p1Build),
+    p2: createUnit(options.p2Name ?? "Player 2", p2Build),
+    status: { kind: "active" },
+    round: 1,
     history: [],
   };
 }
@@ -221,9 +210,7 @@ export function allLimbsDestroyed(unit: MechUnit): boolean {
  *
  * This is the heart of the modular combat. A part contributes its bonuses
  * *while it is active* — shoot off an arm and the mech permanently loses that
- * arm's ATK, not merely its moves. That is what makes choosing a target a
- * real decision: you can go for the core, or you can dismantle the opponent
- * until nothing they own hits hard enough to matter.
+ * arm's ATK, not merely its moves.
  *
  * `unit.totalStats` remains the intact, at-full-strength figure — the
  * Workshop shows that one, since it describes the build rather than a
@@ -280,23 +267,16 @@ export function legalTargets(defender: MechUnit): ModuleSlot[] {
 /**
  * Damage for one connecting hit.
  *
- *   atk = totalStats[ATK|ENG] * stageMult(firing limb's stage)
- *   def = totalStats[DEF|SYS] * stageMult(struck limb's stage)
+ *   atk = effectiveStats[ATK|ENG] * stageMult(firing limb's stage)
+ *   def = effectiveStats[DEF|SYS] * stageMult(struck limb's stage)
  *   damage = floor(movePower * clamp(2*atk/(atk+def)) * DAMAGE_SCALE)
  *
- * Two things differ from the Unity original, both intentional:
+ * Stats are the SURVIVING assembly, not the chassis base and not the intact
+ * total: a destroyed limb has stopped contributing, so dismantling an opponent
+ * really does weaken every remaining swing they take.
  *
- *  - **Stats are the assembled totals, not the chassis base.** Unity read
- *    `chassis.baseStats` here, which meant every part's ATK/DEF/ENG/SYS was
- *    inert — a part contributed hit points and a move and nothing else, so
- *    the whole build editor was choosing between cosmetics. Reading
- *    `totalStats` is what makes a loadout a real decision.
- *  - **The curve is bounded** (see BALANCE), replacing the unbounded
- *    `atk / def` quotient.
- *
- * Unchanged and deliberate: stages are read per *slot* — the firing limb's
- * offensive stage against the struck limb's defensive stage — so a debuff
- * weakens one limb rather than the whole mech.
+ * Stages are read per *slot* — the firing limb's offensive stage against the
+ * struck limb's defensive stage — so a debuff weakens one limb, not the mech.
  */
 export function calculateDamage(
   move: MoveDefinition,
@@ -311,37 +291,17 @@ export function calculateDamage(
   const atkStat: StageableStat = physical ? "ATK" : "ENG";
   const defStat: StageableStat = physical ? "DEF" : "SYS";
 
-  // effectiveStats, not totalStats: a destroyed limb has stopped contributing,
-  // so dismantling an opponent really does weaken every remaining swing they
-  // take. Math.max(1, …) guards the degenerate case where a stripped mech and
-  // a -6 stage together round a stat to nothing, which would divide by zero.
+  // Math.max(1, …) guards the degenerate case where a stripped mech and a -6
+  // stage together round a stat to nothing, which would divide by zero.
   const atk = Math.max(1, effectiveStats(attacker)[atkStat] * stageMultiplier(getStage(attacker, sourceSlot, atkStat)));
   const def = Math.max(1, effectiveStats(defender)[defStat] * stageMultiplier(getStage(defender, targetSlot, defStat)));
 
-  const multiplier = clamp(
-    (2 * atk) / (atk + def),
-    BALANCE.MIN_MULTIPLIER,
-    BALANCE.MAX_MULTIPLIER,
-  );
-
-  return Math.max(
-    BALANCE.MIN_DAMAGE,
-    Math.floor(move.baseDamage * multiplier * BALANCE.DAMAGE_SCALE),
-  );
+  const multiplier = clamp((2 * atk) / (atk + def), BALANCE.MIN_MULTIPLIER, BALANCE.MAX_MULTIPLIER);
+  return Math.max(BALANCE.MIN_DAMAGE, Math.floor(move.baseDamage * multiplier * BALANCE.DAMAGE_SCALE));
 }
 
 // ==================== RESOLUTION ====================
 
-export interface ResolveResult {
-  state: BattleState;
-  events: BattleEvent[];
-}
-
-/**
- * Apply one action and hand back the next state plus the events describing
- * what happened. The input state is never mutated — units are cloned first —
- * so callers can keep prior states around for replay and rollback.
- */
 /** Why a mech is out of the fight, or null while it can still stand. */
 export type DefeatCause = "matrix-destroyed" | "limbs-destroyed";
 
@@ -358,9 +318,9 @@ export function isDefeated(unit: MechUnit): boolean {
 /**
  * Why a move would be illegal, or null when it is legal.
  *
- * Split out from resolveAction so the 1v1 and team battles enforce the rules
- * from one place — a second copy of "is the matrix still sealed?" is exactly
- * the kind of thing that drifts and then disagrees with the on-chain verifier.
+ * Shared by the 1v1 and 3v3 formats so the rules live in one place — a second
+ * copy of "is the matrix still sealed?" is exactly the kind of thing that
+ * drifts and then disagrees with the on-chain verifier.
  */
 export function validateMove(
   attacker: MechUnit,
@@ -385,8 +345,8 @@ export function validateMove(
 
 /**
  * Apply one already-validated move. MUTATES both units, so callers must pass
- * copies they own. Returns the events describing what happened; it performs
- * no win check, because who has lost depends on the format.
+ * copies they own. Returns the events describing what happened; it performs no
+ * win check, because who has lost depends on the format.
  */
 export function applyMove(
   attacker: MechUnit,
@@ -403,61 +363,54 @@ export function applyMove(
   const selfTargeted = move.targetType === "self";
   const target = selfTargeted ? attacker : defender;
   const targetSide = selfTargeted ? attackerSide : defenderSide;
-  const action = { sourceSlot, targetSlot, side: attackerSide };
 
   events.push({ type: "attack", side: attackerSide, moveName: move.name, sourceSlot });
 
-  // --- damage ---
   if (!selfTargeted && move.baseDamage > 0) {
-    const amount = calculateDamage(move, attacker, defender, action.sourceSlot, action.targetSlot);
-    const status = defender.partStatuses[action.targetSlot];
+    const amount = calculateDamage(move, attacker, defender, sourceSlot, targetSlot);
+    const status = defender.partStatuses[targetSlot];
     const wasAlive = status.currentHP > 0;
 
     status.currentHP = Math.max(0, status.currentHP - amount);
-    if (action.targetSlot === "matrix") defender.matrixHP = status.currentHP;
+    if (targetSlot === "matrix") defender.matrixHP = status.currentHP;
 
     events.push({
       type: "damage",
       side: defenderSide,
-      targetSlot: action.targetSlot,
+      targetSlot,
       amount,
       percent: status.maxHP > 0 ? (amount / status.maxHP) * 100 : 0,
       remaining: status.currentHP,
     });
 
     if (wasAlive && status.currentHP <= 0) {
-      events.push({ type: "part-broken", side: defenderSide, slot: action.targetSlot, partName: status.partName });
+      events.push({ type: "part-broken", side: defenderSide, slot: targetSlot, partName: status.partName });
       // Losing an arm exposes the core — worth calling out, since it's the
       // moment the match becomes winnable.
-      if ((action.targetSlot === "rightArm" || action.targetSlot === "leftArm") && canAttackMatrix(defender)) {
+      if ((targetSlot === "rightArm" || targetSlot === "leftArm") && canAttackMatrix(defender)) {
         events.push({ type: "matrix-unlocked", side: defenderSide });
       }
     }
   }
 
-  // --- heal ---
   if (move.healAmount && move.healAmount > 0) {
-    const status = target.partStatuses[action.targetSlot];
+    const status = target.partStatuses[targetSlot];
     const healed = Math.min(status.maxHP, status.currentHP + move.healAmount);
     const delta = healed - status.currentHP;
     status.currentHP = healed;
-    if (action.targetSlot === "matrix") target.matrixHP = healed;
-    events.push({ type: "heal", side: targetSide, targetSlot: action.targetSlot, amount: delta, remaining: healed });
+    if (targetSlot === "matrix") target.matrixHP = healed;
+    events.push({ type: "heal", side: targetSide, targetSlot, amount: delta, remaining: healed });
   }
 
-  // --- stat stages ---
   // Riders land on the struck slot, matching Unity's ApplyEffect. A debuff
   // therefore weakens only the limb that was hit, not the whole mech.
   for (const mod of move.statModifiers) {
-    const status = target.partStatuses[action.targetSlot];
+    const status = target.partStatuses[targetSlot];
     const current = status.buffs[mod.stat] ?? 0;
     const newStage = clamp(current + mod.amount, MIN_STAGE, MAX_STAGE);
     if (newStage !== current) {
       status.buffs[mod.stat] = newStage;
-      events.push({
-        type: "stage", side: targetSide, targetSlot: action.targetSlot,
-        stat: mod.stat, delta: mod.amount, newStage,
-      });
+      events.push({ type: "stage", side: targetSide, targetSlot, stat: mod.stat, delta: mod.amount, newStage });
     }
   }
 
@@ -465,75 +418,112 @@ export function applyMove(
 }
 
 /**
- * Resolve one action of a 1v1 battle: validate, apply, then check whether
- * either mech is out.
+ * Who lands first this round.
+ *
+ * Higher effective SPD goes first — the SURVIVING assembly's SPD, so losing
+ * the legs can cost you the initiative mid-fight.
+ *
+ * Ties alternate by round parity instead of always favouring p1. A fixed
+ * tiebreak would hand one side a permanent edge in every mirror match, which
+ * on a season ladder is an advantage nobody earned. Alternating stays fully
+ * deterministic, so replay is unaffected.
  */
-export function resolveAction(state: BattleState, action: BattleAction): ResolveResult {
-  const reject = (reason: string): ResolveResult => ({
-    state,
-    events: [{ type: "rejected", reason }],
-  });
+export function orderOfPlay(state: BattleState): [PlayerSide, PlayerSide] {
+  const s1 = effectiveStats(state.p1).SPD;
+  const s2 = effectiveStats(state.p2).SPD;
+  if (s1 !== s2) return s1 > s2 ? ["p1", "p2"] : ["p2", "p1"];
+  return state.round % 2 === 1 ? ["p1", "p2"] : ["p2", "p1"];
+}
 
-  if (state.status.kind === "finished") return reject("Battle is already over");
-  if (state.status.turn !== action.side) return reject("Not your turn");
+export interface ResolveResult {
+  state: BattleState;
+  events: BattleEvent[];
+}
+
+/**
+ * Resolve one round: both sides have committed an action, and they play out in
+ * speed order.
+ *
+ * This is simultaneous selection, Pokémon-style, and it is what removes both
+ * of the problems alternating turns had. Nobody holds a permanent first-move
+ * advantage — every side acts every round, and SPD only decides who lands
+ * first WITHIN the round. And there is no "waiting for their turn" state to
+ * sit in, so stalling has nothing to stall: a round either has both
+ * commitments or it times out, which is a rule the program can enforce.
+ *
+ * An action that has become illegal by the time it resolves — its limb just
+ * blown off, or its target destroyed by the faster mech — fizzles with a
+ * `rejected` event rather than being retargeted. Silently redirecting it would
+ * make the outcome depend on a choice the player never made.
+ */
+export function resolveRound(state: BattleState, actions: RoundActions): ResolveResult {
+  if (state.status.kind === "finished") {
+    return { state, events: [{ type: "rejected", reason: "Battle is already over" }] };
+  }
 
   const next = cloneState(state);
-  const attacker = unitFor(next, action.side);
-  const defenderSide = opponentOf(action.side);
-  const defender = unitFor(next, defenderSide);
+  const events: BattleEvent[] = [{ type: "round-start", round: next.round }];
+  const [first, second] = orderOfPlay(state);
 
-  const illegal = validateMove(attacker, defender, action.sourceSlot, action.moveIndex, action.targetSlot);
-  if (illegal) return reject(illegal);
+  for (const side of [first, second]) {
+    const action = side === "p1" ? actions.p1 : actions.p2;
+    if (!action) continue;
 
-  const events = applyMove(
-    attacker, defender, action.side,
-    action.sourceSlot, action.moveIndex, action.targetSlot,
-  );
+    const actor = unitFor(next, side);
+    // The slower mech may have been knocked out before it got to act.
+    if (isDefeated(actor)) {
+      events.push({ type: "rejected", reason: `${actor.name} was down before it could act` });
+      continue;
+    }
 
-  next.history.push(action);
+    const foe = unitFor(next, opponentOf(side));
+    const illegal = validateMove(actor, foe, action.sourceSlot, action.moveIndex, action.targetSlot);
+    if (illegal) {
+      events.push({ type: "rejected", reason: illegal });
+      continue;
+    }
 
-  // Two routes to a win, and they are genuinely alternative strategies: blow
-  // the core, or strip all three limbs so the mech has nothing left to fight
-  // with. Checked on both sides because a self-targeted move can, in
-  // principle, finish off the user's own last limb.
+    events.push(...applyMove(actor, foe, side, action.sourceSlot, action.moveIndex, action.targetSlot));
+  }
+
+  next.history.push(actions);
+
+  // A double knockout is possible now that both sides act in the same round.
+  // It resolves to the mech that was still standing when it acted — the
+  // faster one wins the trade, which is the only reading consistent with
+  // resolving in speed order.
+  const causes: Array<{ side: PlayerSide; cause: DefeatCause }> = [];
   for (const side of ["p1", "p2"] as PlayerSide[]) {
     const cause = defeatCauseOf(unitFor(next, side));
-    if (!cause) continue;
+    if (cause) causes.push({ side, cause });
+  }
 
-    const winner = opponentOf(side);
+  if (causes.length > 0) {
+    for (const c of causes) events.push({ type: "defeat-cause", side: c.side, cause: c.cause });
+    const loser = causes.length === 2 ? second : causes[0].side;
+    const winner = opponentOf(loser);
     next.status = { kind: "finished", winner };
-    events.push({ type: "defeat-cause", side, cause });
     events.push({ type: "victory", winner });
     return { state: next, events };
   }
 
-  next.status = { kind: "active", turn: defenderSide };
-  next.turnNumber += 1;
-  events.push({ type: "turn-start", side: defenderSide, turnNumber: next.turnNumber });
-
+  next.round += 1;
   return { state: next, events };
 }
 
 /**
- * Replay a battle from its action list. The settlement path uses this to
- * verify a submitted result: same builds + same actions must reproduce the
- * claimed winner, so a client cannot report a match it did not win.
+ * Replay a battle from its round list. The settlement path uses this to verify
+ * a submitted result: same builds + same rounds must reproduce the claimed
+ * winner, so a client cannot report a match it did not win.
  */
 export function replay(
   p1Build: MechBuild,
   p2Build: MechBuild,
-  actions: BattleAction[],
-  /**
-   * Must match what the original battle opened with — a replay under a
-   * different rule desynchronizes on the very first action and would reject
-   * an honest result.
-   */
+  rounds: RoundActions[],
   options: CreateBattleOptions = {},
 ): BattleState {
   let state = createBattle(p1Build, p2Build, options);
-  for (const action of actions) {
-    state = resolveAction(state, action).state;
-  }
+  for (const round of rounds) state = resolveRound(state, round).state;
   return state;
 }
 
@@ -553,7 +543,7 @@ function cloneState(state: BattleState): BattleState {
     p1: cloneUnit(state.p1),
     p2: cloneUnit(state.p2),
     status: state.status,
-    turnNumber: state.turnNumber,
+    round: state.round,
     history: [...state.history],
   };
 }

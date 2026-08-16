@@ -236,11 +236,15 @@ export class BattleRenderer {
    * absolute start time, so effects land in causal order rather than all at
    * once.
    */
-  playEvents(events: BattleEvent[], move?: MoveDefinition): void {
+  playEvents(events: BattleEvent[], move?: MoveDefinition, delayMs = 0): void {
     // `last` tracks when the ACTION is done, which gates input. Floaters are
     // excluded on purpose: they outlive the sequence so the numbers stay
-    // readable into the next turn instead of holding the player up.
-    const now = performance.now();
+    // readable into the next round instead of holding the player up.
+    //
+    // `delayMs` staggers a second call behind the first: a round has two
+    // attackers, and they must land one after the other rather than on top of
+    // each other.
+    const now = performance.now() + delayMs;
     let impactAt = now + WINDUP;
     let last = now;
 

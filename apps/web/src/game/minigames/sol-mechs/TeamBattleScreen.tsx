@@ -9,8 +9,8 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  createTeamBattle, resolveTeamAction, activeUnit, switchableIndices,
-  type TeamBattleState, type TeamAction, type TeamEvent,
+  createTeamBattle, resolveTeamRound, resolveForcedSwitches, activeUnit, switchableIndices,
+  type TeamBattleState, type TeamAction, type TeamEvent, type TeamRoundActions,
 } from "@/game/solmechs/engine/TeamBattle";
 import { availableMoves, legalTargets, calculateDamage, isDefeated } from "@/game/solmechs/engine/BattleEngine";
 import type { PlayerSide } from "@/game/solmechs/engine/BattleEngine";
@@ -58,9 +58,7 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, onFinished, on
   const stateRef = useRef<TeamBattleState | null>(null);
 
   const [state, setState] = useState<TeamBattleState>(() => {
-    const s = createTeamBattle(playerTeam, enemyTeam, {
-      p1Name: "You", p2Name: "Rival", firstMove: "speed",
-    });
+    const s = createTeamBattle(playerTeam, enemyTeam, { p1Name: "You", p2Name: "Rival" });
     stateRef.current = s;
     return s;
   });
@@ -97,37 +95,69 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, onFinished, on
     }
   }, []);
 
-  const apply = useCallback((action: TeamAction) => {
-    const cur = stateRef.current;
-    if (!cur) return;
-
-    // Resolve the move from the PRE-resolution state so the renderer can pick
-    // its effect; after resolution that limb may already be gone.
-    let move: MoveDefinition | undefined;
-    if (action.kind === "move") {
-      const side = action.side === "p1" ? cur.p1 : cur.p2;
-      move = activeUnit(side).parts[action.sourceSlot]?.moves[action.moveIndex];
+  /** The rival's pick for a round, chosen WITHOUT seeing the player's. */
+  const rivalChoice = useCallback((s: TeamBattleState): TeamAction | null => {
+    const me = activeUnit(s.p2);
+    const foe = activeUnit(s.p1);
+    const opts = availableMoves(me).filter((o) => o.move.targetType !== "self");
+    if (opts.length === 0) {
+      const sw = switchableIndices(s.p2);
+      if (sw.length) return { kind: "switch", side: "p2", toIndex: sw[0] };
+      const all = availableMoves(me);
+      return all.length
+        ? { kind: "move", side: "p2", sourceSlot: all[0].slot, moveIndex: all[0].moveIndex, targetSlot: all[0].slot }
+        : null;
     }
+    const targets = legalTargets(foe);
+    let best: { a: TeamAction; sc: number } | null = null;
+    for (const o of opts) for (const t of targets) {
+      let sc = calculateDamage(o.move, me, foe, o.slot, t);
+      if (t === "matrix") sc *= 2;
+      if (sc >= foe.partStatuses[t].currentHP) sc += 45;
+      if (!best || sc > best.sc) {
+        best = { a: { kind: "move", side: "p2", sourceSlot: o.slot, moveIndex: o.moveIndex, targetSlot: t }, sc };
+      }
+    }
+    return best?.a ?? null;
+  }, []);
 
-    const { state: next, events } = resolveTeamAction(cur, action);
-    const lines = events.map((e) => describe(e, next)).filter((l): l is string => l !== null);
+  const play = useCallback((result: { state: TeamBattleState; events: TeamEvent[] }) => {
+    const lines = result.events.map((e) => describe(e, result.state)).filter((l): l is string => l !== null);
     setLog((prev) => [...lines.reverse(), ...prev].slice(0, 60));
 
     const renderer = rendererRef.current;
-    // The renderer only ever sees the two mechs on the field, and only the
-    // battle-level events — switches and KOs are team concepts it has no
-    // notion of, and are narrated in the log instead.
-    renderer?.setState({ p1: activeUnit(next.p1), p2: activeUnit(next.p2) });
-    renderer?.playEvents(events.filter(isBattleEvent), move);
-    stateRef.current = next;
-    setState(next);
+    renderer?.setState({ p1: activeUnit(result.state.p1), p2: activeUnit(result.state.p2) });
+    renderer?.playEvents(result.events.filter(isBattleEvent));
+    stateRef.current = result.state;
+    setState(result.state);
 
     const wait = renderer?.remainingMs() ?? 0;
-    if (wait > 0) {
-      setAnimating(true);
-      window.setTimeout(() => setAnimating(false), wait);
-    }
+    setAnimating(true);
+    window.setTimeout(() => { setAnimating(false); setBusy(false); }, Math.max(wait, 200));
   }, [describe]);
+
+  /** Player commits their action; the rival commits blind; the round resolves. */
+  const submitRound = useCallback((action: TeamAction | null) => {
+    const cur = stateRef.current;
+    if (!cur || cur.status.kind !== "active") return;
+    setBusy(true);
+    const round: TeamRoundActions = { p1: action, p2: rivalChoice(cur) };
+    play(resolveTeamRound(cur, round));
+  }, [rivalChoice, play]);
+
+  /** Forced substitution after a KO — free, and both sides send in together. */
+  const submitForced = useCallback((myIndex?: number) => {
+    const cur = stateRef.current;
+    if (!cur || cur.status.kind !== "awaiting-switch") return;
+    setBusy(true);
+    const picks: Partial<Record<"p1" | "p2", number>> = {};
+    if (cur.status.sides.includes("p1") && myIndex !== undefined) picks.p1 = myIndex;
+    if (cur.status.sides.includes("p2")) {
+      const opts = switchableIndices(cur.p2);
+      if (opts.length) picks.p2 = opts[0];
+    }
+    play(resolveForcedSwitches(cur, picks));
+  }, [play]);
 
   // Renderer lifetime.
   useEffect(() => {
@@ -140,62 +170,14 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, onFinished, on
     return () => { r.destroy(); rendererRef.current = null; };
   }, []);
 
-  // The rival: forced substitutions first, then its move.
+  // A forced substitution the player doesn't owe (only the rival lost a mech)
+  // resolves itself, so the match never waits on a choice nobody has to make.
   useEffect(() => {
-    if (state.status.kind === "finished") return;
-    const isRivalSwitch = state.status.kind === "awaiting-switch" && state.status.side === "p2";
-    const isRivalTurn = state.status.kind === "active" && state.status.turn === "p2";
-    if (!isRivalSwitch && !isRivalTurn) return;
-    // Let the player's hit finish playing before the rival answers.
-    if (animating) return;
-
-    let cancelled = false;
-    setBusy(true);
-    const t = setTimeout(() => {
-      if (cancelled) return;
-      const s = stateRef.current;
-      if (!s) return;
-
-      if (s.status.kind === "awaiting-switch" && s.status.side === "p2") {
-        const opts = switchableIndices(s.p2);
-        if (opts.length) apply({ kind: "switch", side: "p2", toIndex: opts[0] });
-        setBusy(false);
-        return;
-      }
-
-      const me = activeUnit(s.p2);
-      const foe = activeUnit(s.p1);
-      const opts = availableMoves(me).filter((o) => o.move.targetType !== "self");
-      if (opts.length === 0) {
-        // Nothing offensive left — substitute if there's anyone to send.
-        const sw = switchableIndices(s.p2);
-        if (sw.length) apply({ kind: "switch", side: "p2", toIndex: sw[0] });
-        else {
-          const all = availableMoves(me);
-          if (all.length) {
-            apply({ kind: "move", side: "p2", sourceSlot: all[0].slot, moveIndex: all[0].moveIndex, targetSlot: all[0].slot });
-          }
-        }
-        setBusy(false);
-        return;
-      }
-
-      const targets = legalTargets(foe);
-      let best: { a: TeamAction; sc: number } | null = null;
-      for (const o of opts) for (const t2 of targets) {
-        let sc = calculateDamage(o.move, me, foe, o.slot, t2);
-        if (t2 === "matrix") sc *= 2;
-        if (sc >= foe.partStatuses[t2].currentHP) sc += 45;
-        if (!best || sc > best.sc) {
-          best = { a: { kind: "move", side: "p2", sourceSlot: o.slot, moveIndex: o.moveIndex, targetSlot: t2 }, sc };
-        }
-      }
-      if (best) apply(best.a);
-      setBusy(false);
-    }, AI_DELAY);
-
-    return () => { cancelled = true; clearTimeout(t); setBusy(false); };
-  }, [state, apply, animating]);
+    if (state.status.kind !== "awaiting-switch" || animating || busy) return;
+    if (state.status.sides.includes("p1")) return;
+    const t = setTimeout(() => submitForced(), AI_DELAY);
+    return () => clearTimeout(t);
+  }, [state, animating, busy, submitForced]);
 
   // Settle once, when it's over.
   useEffect(() => {
@@ -204,8 +186,8 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, onFinished, on
     onFinished(state.status.winner === "p1", state);
   }, [state, onFinished]);
 
-  const myTurn = state.status.kind === "active" && state.status.turn === "p1" && !busy && !animating;
-  const mustSwitch = state.status.kind === "awaiting-switch" && state.status.side === "p1";
+  const canAct = state.status.kind === "active" && !busy && !animating;
+  const mustSwitch = state.status.kind === "awaiting-switch" && state.status.sides.includes("p1") && !busy && !animating;
   const me = activeUnit(state.p1);
   const foe = activeUnit(state.p2);
   const moves = useMemo(() => availableMoves(me), [me]);
@@ -257,27 +239,25 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, onFinished, on
               <div style={sx.prompt}>Your mech is down — send out a replacement (free).</div>
               <div style={sx.btnRow}>
                 {bench.map((i) => (
-                  <button key={i} onClick={() => apply({ kind: "switch", side: "p1", toIndex: i })} style={sx.btn}>
+                  <button key={i} onClick={() => submitForced(i)} style={sx.btn}>
                     <div style={sx.btnTitle}>#{i + 1} {state.p1.units[i].matrix.matrixName}</div>
                     <div style={sx.btnSub}>Matrix {state.p1.units[i].partStatuses.matrix.currentHP}</div>
                   </button>
                 ))}
               </div>
             </>
-          ) : !myTurn ? (
-            <div style={sx.prompt}>Rival is choosing…</div>
+          ) : !canAct ? (
+            <div style={sx.prompt}>Resolving…</div>
           ) : picking ? (
             <>
               <div style={sx.prompt}>
-                {state.rules.switchCost === "turn"
-                  ? "Substitute — costs your turn."
-                  : "Substitute — free, then act with the new mech."}
+"Substitute — this is your action for the round."
               </div>
               <div style={sx.btnRow}>
                 {bench.map((i) => (
                   <button
                     key={i}
-                    onClick={() => { setPicking(false); apply({ kind: "switch", side: "p1", toIndex: i }); }}
+                    onClick={() => { setPicking(false); submitForced(i); }}
                     style={sx.btn}
                   >
                     <div style={sx.btnTitle}>#{i + 1} {state.p1.units[i].matrix.matrixName}</div>
@@ -297,7 +277,7 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, onFinished, on
                   <button
                     key={slot}
                     onClick={() => {
-                      apply({ kind: "move", side: "p1", sourceSlot: pending.slot, moveIndex: pending.moveIndex, targetSlot: slot });
+                      submitRound({ kind: "move", side: "p1", sourceSlot: pending.slot, moveIndex: pending.moveIndex, targetSlot: slot });
                       setPending(null);
                     }}
                     style={{ ...sx.btn, background: slot === "matrix" ? "#5c1830" : C.panelHi }}
@@ -323,7 +303,7 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, onFinished, on
                     key={`${o.slot}-${o.moveIndex}`}
                     onClick={() => {
                       if (o.move.targetType === "self") {
-                        apply({ kind: "move", side: "p1", sourceSlot: o.slot, moveIndex: o.moveIndex, targetSlot: o.slot });
+                        submitRound({ kind: "move", side: "p1", sourceSlot: o.slot, moveIndex: o.moveIndex, targetSlot: o.slot });
                       } else {
                         setPending({ slot: o.slot, moveIndex: o.moveIndex });
                       }
@@ -336,14 +316,12 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, onFinished, on
                     </div>
                   </button>
                 ))}
-                {bench.length > 0 && !(state.rules.switchCost === "free" && state.freeSwitchUsed) && (
+                {bench.length > 0 && (
                   <button onClick={() => setPicking(true)} style={{ ...sx.btn, borderColor: C.blue }}>
                     <div style={{ ...sx.btnTitle, color: C.blue }}>SUBSTITUTE</div>
                     {/* Reads the live rule rather than asserting one, so the
                         label can't lie if the default is changed. */}
-                    <div style={sx.btnSub}>
-                      {state.rules.switchCost === "turn" ? "costs your turn" : "free · then act"}
-                    </div>
+                    <div style={sx.btnSub}>your action this round</div>
                   </button>
                 )}
               </div>
