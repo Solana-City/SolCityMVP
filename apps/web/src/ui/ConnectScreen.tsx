@@ -55,6 +55,7 @@ const PREPARING_STAGES: { at: number; label: string }[] = [
   { at: 2500,  label: "Creating your player…" },
   { at: 6000,  label: "Delegating to the rollup…" },
   { at: 10500, label: "Almost there — confirming…" },
+  { at: 17000, label: "Taking longer than usual…" },
 ];
 
 function GateView({
