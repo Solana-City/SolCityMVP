@@ -27,6 +27,7 @@ const MwaRegistration     = dynamic(() => import("@/ui/MwaRegistration"),     { 
 const RotatePrompt        = dynamic(() => import("@/ui/RotatePrompt"),        { ssr: false });
 const WardrobePanel       = dynamic(() => import("@/ui/WardrobePanel"),       { ssr: false });
 const ConnectScreen       = dynamic(() => import("@/ui/ConnectScreen"),       { ssr: false });
+const SWUpdater           = dynamic(() => import("@/ui/SWUpdater"),            { ssr: false });
 const WhereIsNPCCard      = dynamic(() => import("@/ui/WhereIsNPCCard"),      { ssr: false });
 const QuestPanel          = dynamic(() => import("@/ui/QuestPanel"),          { ssr: false });
 const PlayerCard          = dynamic(() => import("@/ui/PlayerCard"),          { ssr: false });
@@ -224,6 +225,8 @@ export default function Home() {
 
   return (
     <ErrorBoundary>
+      {/* Seamless SW updates so a stale/broken cached build self-recovers. */}
+      <SWUpdater />
       <SolanaProvider>
         {/* Blocks the game canvas while the device is in portrait — Seeker/mobile */}
         <RotatePrompt />
