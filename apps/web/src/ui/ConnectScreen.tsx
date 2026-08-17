@@ -52,13 +52,12 @@ export default function ConnectScreen({
 }
 
 /**
- * Force a clean session: drop the stored session key so the next connect
- * re-authorizes from scratch (fixes a session key that's out of sync with the
- * delegated PDA on the ER — the usual cause of a connect that hangs without a
- * sign prompt), then reload so everything comes up fresh.
+ * Retry the session from scratch with a full reload. We deliberately KEEP the
+ * stored session key: for a delegated PDA the ER already trusts that exact key,
+ * so dropping it forces an ER re-authorize (the fragile step that hangs). A
+ * reload with the same key re-runs connect cleanly — matching key → no prompt.
  */
 function forceReconnect() {
-  try { localStorage.removeItem("sol-city-session-key"); } catch {}
   window.location.reload();
 }
 
