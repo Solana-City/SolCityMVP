@@ -134,7 +134,9 @@ export class BootScene extends Phaser.Scene {
           applyChromaKey(this, variants[i].variant.textureKey);
         } else if (i < exprStart) {
           const npc = animatedNpcSheets[i - npcStart];
-          applyChromaKey(this, npc.spriteKey!, npc.spriteAnimation!.frameWidth, npc.spriteAnimation!.frameHeight);
+          // Flat: NPC art has pink background pockets enclosed by the sprite
+          // (e.g. Kite Pro's kite) that a flood fill can't reach.
+          applyChromaKey(this, npc.spriteKey!, npc.spriteAnimation!.frameWidth, npc.spriteAnimation!.frameHeight, false);
         } else if (i < total) {
           applyChromaKey(this, exprKeys[i - exprStart]);
         } else {
@@ -156,7 +158,8 @@ export class BootScene extends Phaser.Scene {
       }
     }
     for (const npc of animatedNpcSheets) {
-      applyChromaKey(this, npc.spriteKey!, npc.spriteAnimation!.frameWidth, npc.spriteAnimation!.frameHeight);
+      // Flat pass (no flood fill) — clears pink pockets enclosed by the NPC art.
+      applyChromaKey(this, npc.spriteKey!, npc.spriteAnimation!.frameWidth, npc.spriteAnimation!.frameHeight, false);
     }
     for (const key of exprKeys) {
       applyChromaKey(this, key);
@@ -186,18 +189,22 @@ function waitForGameFont(onReady: () => void): void {
  * chroma-key BACKGROUND removed (set to alpha 0). Re-registers frame data so
  * Phaser treats it identically to the original spritesheet.
  *
- * Background is cleared by FLOOD FILL from each frame's borders — not by a flat
- * "every pixel matching the key" pass. The key color (a pink, 215/123/186) can
- * be identical to a pink SKIN tone, so a flat pass punched transparent holes in
- * pink-skinned characters. The background always touches the frame edges while
- * skin is interior (enclosed by the outline), so seeding the fill from the
- * borders clears only the true background and leaves same-colored skin intact.
+ * Two modes:
+ *  • floodFill (default) — clears only key-colored pixels reachable from each
+ *    frame's borders. The pink key (215/123/186) can equal a pink SKIN tone, so
+ *    a flat pass punched holes in pink-skinned characters; seeding from the
+ *    edges clears the true background and leaves same-colored interior skin.
+ *  • flat (floodFill=false) — clears EVERY matching pixel. Needed for art whose
+ *    background forms pockets ENCLOSED by the sprite (e.g. the Kite Pro NPC's
+ *    kite), which a flood fill can't reach and would leave as pink residue.
+ *    Safe for sheets that have no pink skin (the NPC sheets).
  */
 function applyChromaKey(
   scene: Phaser.Scene,
   key: string,
   frameWidth: number = SPRITE_FRAME_WIDTH,
   frameHeight: number = SPRITE_FRAME_HEIGHT,
+  floodFill: boolean = true,
 ): void {
   const texture = scene.textures.get(key);
   const source = texture.source[0];
@@ -215,46 +222,51 @@ function applyChromaKey(
   const imageData = ctx.getImageData(0, 0, w, h);
   const data = imageData.data;
 
-  // Clear pixel `i` (a pixel index, not a byte offset) iff it's still opaque and
-  // matches the key within tolerance; on clear, queue it so the fill spreads.
-  const stack: number[] = [];
-  const tryClear = (i: number): void => {
-    const a = i * 4;
-    if (data[a + 3] === 0) return; // already transparent → visited
-    if (
-      Math.abs(data[a]     - CHROMA_R) <= CHROMA_TOLERANCE &&
-      Math.abs(data[a + 1] - CHROMA_G) <= CHROMA_TOLERANCE &&
-      Math.abs(data[a + 2] - CHROMA_B) <= CHROMA_TOLERANCE
-    ) {
-      data[a + 3] = 0;
-      stack.push(i);
+  const isKey = (a: number): boolean =>
+    Math.abs(data[a]     - CHROMA_R) <= CHROMA_TOLERANCE &&
+    Math.abs(data[a + 1] - CHROMA_G) <= CHROMA_TOLERANCE &&
+    Math.abs(data[a + 2] - CHROMA_B) <= CHROMA_TOLERANCE;
+
+  if (!floodFill) {
+    // Flat pass: clear every matching pixel, enclosed pockets included.
+    for (let a = 0; a < data.length; a += 4) {
+      if (data[a + 3] !== 0 && isKey(a)) data[a + 3] = 0;
     }
-  };
+  } else {
+    // Clear pixel `i` iff it's still opaque and matches the key; on clear, queue
+    // it so the fill spreads outward from the frame borders.
+    const stack: number[] = [];
+    const tryClear = (i: number): void => {
+      const a = i * 4;
+      if (data[a + 3] === 0) return; // already transparent → visited
+      if (isKey(a)) { data[a + 3] = 0; stack.push(i); }
+    };
 
-  const cols = Math.max(1, Math.floor(w / frameWidth));
-  const rows = Math.max(1, Math.floor(h / frameHeight));
+    const cols = Math.max(1, Math.floor(w / frameWidth));
+    const rows = Math.max(1, Math.floor(h / frameHeight));
 
-  for (let fr = 0; fr < rows; fr++) {
-    for (let fc = 0; fc < cols; fc++) {
-      const x0 = fc * frameWidth;
-      const y0 = fr * frameHeight;
-      const x1 = Math.min(x0 + frameWidth, w);
-      const y1 = Math.min(y0 + frameHeight, h);
+    for (let fr = 0; fr < rows; fr++) {
+      for (let fc = 0; fc < cols; fc++) {
+        const x0 = fc * frameWidth;
+        const y0 = fr * frameHeight;
+        const x1 = Math.min(x0 + frameWidth, w);
+        const y1 = Math.min(y0 + frameHeight, h);
 
-      // Seed from the four borders of this frame.
-      for (let x = x0; x < x1; x++) { tryClear(y0 * w + x); tryClear((y1 - 1) * w + x); }
-      for (let y = y0; y < y1; y++) { tryClear(y * w + x0); tryClear(y * w + (x1 - 1)); }
+        // Seed from the four borders of this frame.
+        for (let x = x0; x < x1; x++) { tryClear(y0 * w + x); tryClear((y1 - 1) * w + x); }
+        for (let y = y0; y < y1; y++) { tryClear(y * w + x0); tryClear(y * w + (x1 - 1)); }
 
-      // Flood inward, staying within this frame's bounds so a character that
-      // reaches its own edge can't let the fill bleed into a neighbour frame.
-      while (stack.length) {
-        const i = stack.pop()!;
-        const px = i % w;
-        const py = (i - px) / w;
-        if (px > x0)      tryClear(i - 1);
-        if (px < x1 - 1)  tryClear(i + 1);
-        if (py > y0)      tryClear(i - w);
-        if (py < y1 - 1)  tryClear(i + w);
+        // Flood inward, staying within this frame's bounds so a character that
+        // reaches its own edge can't let the fill bleed into a neighbour frame.
+        while (stack.length) {
+          const i = stack.pop()!;
+          const px = i % w;
+          const py = (i - px) / w;
+          if (px > x0)      tryClear(i - 1);
+          if (px < x1 - 1)  tryClear(i + 1);
+          if (py > y0)      tryClear(i - w);
+          if (py < y1 - 1)  tryClear(i + w);
+        }
       }
     }
   }
