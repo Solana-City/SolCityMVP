@@ -1051,7 +1051,7 @@ export class OnChainMultiplayer {
       const sessionKey = this.sessionKeys.getSessionPublicKey();
       const name = displayName ?? walletStr.slice(0, 8);
 
-      const SESSION_FUND_LAMPORTS = 5_000_000; // 0.005 SOL — covers ~1000 position updates
+      const SESSION_FUND_LAMPORTS = 2_000_000; // 0.002 SOL — cheaper init for low-balance test wallets (ER fees are tiny)
       const sessionBalance = await this.baseConnection.getBalance(sessionKey).catch(() => 0);
       const needsFunding = sessionBalance < 500_000;
 
