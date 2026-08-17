@@ -1,4 +1,5 @@
 import * as Phaser from "phaser";
+import { PublicKey } from "@solana/web3.js";
 import { PLAYER_SPEED, TILE_SIZE, PLAYABLE_ZONE } from "../config/constants";
 import { Direction } from "../entities/SimpleSprite";
 import { AvatarSprite } from "../entities/AvatarSprite";
@@ -516,7 +517,6 @@ export class CityScene extends Phaser.Scene {
       // background (moves before delegation land as sim/base, as before).
       try {
         this.walletAddress = walletAddress;
-        const { PublicKey } = await import("@solana/web3.js");
         this.profile.setWallet(walletAddress);
         const displayName = this.profile.get().displayName;
         this.network.updateScore(this.profile.get().score);
