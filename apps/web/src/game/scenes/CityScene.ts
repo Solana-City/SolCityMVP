@@ -62,10 +62,6 @@ export class CityScene extends Phaser.Scene {
   private npcSprites: NPCSprite[] = [];
   private pedestrians!: PedestrianManager;
   private interactionBlocked = false;
-  // Locks movement while a wallet session is being established (init + delegate
-  // + confirm). Keeps the player on the login gate until moves will actually
-  // land on-chain, so no "simulation"/failing txs fire before signing.
-  private sessionLocked = false;
   private walletAddress: string | null = null;
   private profile!: ProfileManager;
   private touchDx = 0;
@@ -515,28 +511,13 @@ export class CityScene extends Phaser.Scene {
       // A reconnect cancels any pending flap-disconnect for this wallet.
       if (this.walletFlapTimer) { clearTimeout(this.walletFlapTimer); this.walletFlapTimer = null; }
       // Ignore re-fires for a wallet we're already connected to (adapter flaps).
-      // The session is already live, so make sure the login gate is DOWN — a
-      // re-fire must never leave the player stuck on the spinner.
-      if (this.network.connected && this.walletAddress === walletAddress) {
-        this.sessionLocked = false;
-        this.game.events.emit("game:sessionReady");
-        return;
-      }
-      // Hold the player on the login gate + block movement until the session is
-      // fully established (delegation confirmed). This prevents moves from being
-      // signed/sent before the PDA is delegated (which would fail or log as sim).
-      this.sessionLocked = true;
-      this.walletAddress = walletAddress;
-      const { PublicKey } = await import("@solana/web3.js");
-      this.profile.setWallet(walletAddress);
-
-      this.game.events.emit("game:sessionConnecting");
-      // No early-release watchdog: the player must stay on the gate (movement
-      // locked) until connect() actually finishes establishing the on-chain
-      // session. Releasing early let them move before delegation confirmed,
-      // firing base writes (Custom 3007) and simulation moves — exactly what
-      // we don't want. Sign → confirmed on-chain → enter.
+      if (this.network.connected && this.walletAddress === walletAddress) return;
+      // Enter the map immediately; the on-chain session comes up in the
+      // background (moves before delegation land as sim/base, as before).
       try {
+        this.walletAddress = walletAddress;
+        const { PublicKey } = await import("@solana/web3.js");
+        this.profile.setWallet(walletAddress);
         const displayName = this.profile.get().displayName;
         this.network.updateScore(this.profile.get().score);
 
@@ -551,16 +532,7 @@ export class CityScene extends Phaser.Scene {
           bus?.once("walletBridge:ready", () => { clearTimeout(fallback); resolve(); });
         });
 
-        // Bounded so a hung RPC surfaces as a gate error+retry instead of an
-        // endless spinner. Resolving means the on-chain session is established.
-        await Promise.race([
-          this.network.connect(new PublicKey(walletAddress), displayName, loadSavedLoadout()),
-          new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error("connect timeout")), 30_000)),
-        ]);
-        // Confirmed on-chain — release the gate and enter.
-        this.sessionLocked = false;
-        this.game.events.emit("game:sessionReady");
+        await this.network.connect(new PublicKey(walletAddress), displayName, loadSavedLoadout());
         this.chat.addSystemMessage("Multiplayer session started.");
 
         // Warnings from multiplayer (e.g. delegated PDA detected)
@@ -578,9 +550,7 @@ export class CityScene extends Phaser.Scene {
         });
       } catch (err: any) {
         console.error("[CityScene] session error:", err);
-        // Stay on the gate with an error + RETRY — never drop the player into
-        // the world in local/sim mode. Movement stays locked (sessionLocked).
-        this.game.events.emit("game:sessionError");
+        this.chat.addSystemMessage("Session offline (local mode)");
       }
     });
 
@@ -677,7 +647,7 @@ export class CityScene extends Phaser.Scene {
   }
 
   update(): void {
-    if (this.chatInputActive || this.interactionBlocked || this.sessionLocked) {
+    if (this.chatInputActive || this.interactionBlocked) {
       this.playerBody.setVelocity(0);
       this.avatar.idle();
       // Still check NPC proximity for prompt display even when blocked

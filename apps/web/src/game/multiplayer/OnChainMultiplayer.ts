@@ -1015,14 +1015,6 @@ export class OnChainMultiplayer {
 
     console.group(`[Multiplayer] setup for ${walletStr.slice(0,8)}…`);
 
-    // Deterministic session key (same wallet → same key on every device) so it
-    // always matches what the ER authorized — no re-auth, no wedged wallets.
-    // One-time "sign message" prompt per browser; cached afterwards.
-    this.progress("Preparing your session key (sign)…");
-    await this.sessionKeys.ensureForWallet(wallet);
-
-    this.progress("Reading your account…");
-
     // 1. Read PDA + delegation state FIRST — where the live copy of the
     //    account resides decides which cluster authorize_session must target.
     //    A delegated PDA is owned by the delegation program on base, so a
