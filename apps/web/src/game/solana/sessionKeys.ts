@@ -28,6 +28,8 @@ export class SessionKeyManager {
   private sessionKey: Keypair;
   private mainWallet: PublicKey | null = null;
   private authorized = false;
+  /** Wallet whose deterministic session key is currently loaded (base58). */
+  private derivedForWallet: string | null = null;
 
   constructor() {
     const stored = localStorage.getItem(STORAGE_KEY);
@@ -42,6 +44,51 @@ export class SessionKeyManager {
       this.sessionKey = Keypair.generate();
     }
     this.persist();
+  }
+
+  /**
+   * Ensures the session key is the DETERMINISTIC one for this wallet: derived
+   * from a fixed message the wallet signs once. Because ed25519 signatures are
+   * deterministic, the same wallet yields the same session key on every
+   * device/browser — so it always matches the key the ER already authorized and
+   * never needs a re-authorize (the step that used to hang / wedge wallets).
+   *
+   * Cached per-wallet in localStorage, so only the FIRST connect in a given
+   * browser shows the one-time "sign message" prompt; reconnects are silent.
+   * Falls back to the existing random key if the wallet can't sign messages.
+   */
+  async ensureForWallet(walletPublicKey: PublicKey): Promise<void> {
+    const w = walletPublicKey.toBase58();
+    if (this.derivedForWallet === w) return;
+
+    const cacheKey = `${STORAGE_KEY}-${w}`;
+    const cached = typeof localStorage !== "undefined" ? localStorage.getItem(cacheKey) : null;
+    if (cached) {
+      try {
+        this.sessionKey = Keypair.fromSecretKey(Uint8Array.from(JSON.parse(cached)));
+        this.derivedForWallet = w;
+        this.persist();
+        return;
+      } catch { /* corrupt cache — re-derive below */ }
+    }
+
+    try {
+      const message = new TextEncoder().encode(
+        `Solana City — session key\nWallet: ${w}\n` +
+        `Signing derives your in-game session key. Only sign on solanacity.io.`
+      );
+      const signature = await this.requestWalletSignMessage(message);
+      const hash = await crypto.subtle.digest("SHA-256", signature as BufferSource);
+      this.sessionKey = Keypair.fromSeed(new Uint8Array(hash));
+      this.derivedForWallet = w;
+      try { localStorage.setItem(cacheKey, JSON.stringify(Array.from(this.sessionKey.secretKey))); } catch {}
+      this.persist();
+      console.log(`[SessionKey] derived deterministic key ${this.sessionKey.publicKey.toBase58().slice(0, 8)}… for ${w.slice(0, 8)}…`);
+    } catch (err: any) {
+      // Non-fatal: keep the existing (random) key. Cross-device sync just won't
+      // be automatic for this wallet, but the session still works in-browser.
+      console.warn("[SessionKey] deterministic derivation skipped:", err?.message);
+    }
   }
 
   getSessionKey(): Keypair       { return this.sessionKey; }
@@ -188,6 +235,36 @@ export class SessionKeyManager {
         reject(err);
       });
       bus.emit("wallet:needSign", tx);
+    });
+  }
+
+  /**
+   * Asks the wallet (via WalletSignBridge) to sign a raw message, returning the
+   * signature bytes. Used only to derive the deterministic session key.
+   */
+  private requestWalletSignMessage(message: Uint8Array): Promise<Uint8Array> {
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error("sign message timeout")), 60_000);
+
+      const bus = (globalThis as any).__solCityGameEvents as
+        | { once: (event: string, cb: (...a: any[]) => void) => void; emit: (event: string, ...a: any[]) => void }
+        | undefined;
+
+      if (!bus) {
+        clearTimeout(timeout);
+        reject(new Error("wallet bus not available — session offline"));
+        return;
+      }
+
+      bus.once("wallet:signedMessage", (sig: Uint8Array) => {
+        clearTimeout(timeout);
+        resolve(sig);
+      });
+      bus.once("wallet:signMessageError", (err: Error) => {
+        clearTimeout(timeout);
+        reject(err);
+      });
+      bus.emit("wallet:needSignMessage", message);
     });
   }
 
