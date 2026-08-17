@@ -7,12 +7,15 @@ import { useCallback, useEffect, useState } from "react";
 export default function ConnectScreen({
   sessionPhase = "idle",
   sessionError = false,
+  sessionProgress = null,
 }: {
   /** Login-gate phase driven by CityScene: "connecting" holds this screen up
       (with a spinner) until the on-chain session is established. */
   sessionPhase?: "idle" | "connecting" | "ready";
   /** connect() failed/timed out → show an error + RETRY instead of entering. */
   sessionError?: boolean;
+  /** Real connect stage label (overrides the time-based copy when present). */
+  sessionProgress?: string | null;
 }) {
   const { connected } = useWallet();
   const { setVisible } = useWalletModal();
@@ -40,6 +43,7 @@ export default function ConnectScreen({
   return (
     <GateView
       mode={mode}
+      progressLabel={sessionProgress}
       openModal={openModal}
       onGuest={() => setDismissed(true)}
       onRetry={forceReconnect}
@@ -70,9 +74,10 @@ const PREPARING_STAGES: { at: number; label: string }[] = [
 ];
 
 function GateView({
-  mode, openModal, onGuest, onRetry,
+  mode, progressLabel, openModal, onGuest, onRetry,
 }: {
   mode: "connect" | "preparing" | "error";
+  progressLabel?: string | null;
   openModal: () => void;
   onGuest: () => void;
   onRetry: () => void;
@@ -230,7 +235,7 @@ function GateView({
               minHeight: 14,
               transition: "opacity 0.2s",
             }}>
-              {PREPARING_STAGES[stage].label}
+              {progressLabel ?? PREPARING_STAGES[stage].label}
             </div>
             <div style={{
               fontFamily: '"Press Start 2P", monospace',

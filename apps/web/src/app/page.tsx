@@ -65,6 +65,9 @@ export default function Home() {
   // Set when connect() fails/times out — the gate shows an error + RETRY
   // instead of entering the world in a non-on-chain state.
   const [sessionError, setSessionError] = useState(false);
+  // Real connect stage label (from OnChainMultiplayer) shown on the gate spinner
+  // so a stall is visible at the exact step.
+  const [sessionProgress, setSessionProgress] = useState<string | null>(null);
   const [logOpen, setLogOpen] = useState(false);
   const [mobilePanel, setMobilePanel] = useState<"hunt" | "quests" | null>(null);
   // Wallet address that connected before the Phaser game was ready — replayed once game loads.
@@ -181,16 +184,19 @@ export default function Home() {
   // Session lifecycle from CityScene drives the login gate.
   useEffect(() => {
     if (!game) return;
-    const onConnecting = () => { setSessionError(false); setSessionPhase("connecting"); };
-    const onReady = () => { setSessionError(false); setSessionPhase("ready"); };
+    const onConnecting = () => { setSessionError(false); setSessionProgress(null); setSessionPhase("connecting"); };
+    const onReady = () => { setSessionError(false); setSessionProgress(null); setSessionPhase("ready"); };
     const onError = () => setSessionError(true);
+    const onProgress = (label: string) => setSessionProgress(label);
     game.events.on("game:sessionConnecting", onConnecting);
     game.events.on("game:sessionReady", onReady);
     game.events.on("game:sessionError", onError);
+    game.events.on("game:sessionProgress", onProgress);
     return () => {
       game.events.off("game:sessionConnecting", onConnecting);
       game.events.off("game:sessionReady", onReady);
       game.events.off("game:sessionError", onError);
+      game.events.off("game:sessionProgress", onProgress);
     };
   }, [game]);
 
@@ -234,7 +240,7 @@ export default function Home() {
         <MwaRegistration />
         {/* Headless bridge so Phaser can request wallet signatures */}
         <WalletSignBridge />
-        <ConnectScreen sessionPhase={sessionPhase} sessionError={sessionError} />
+        <ConnectScreen sessionPhase={sessionPhase} sessionError={sessionError} sessionProgress={sessionProgress} />
         <main className="w-screen app-viewport relative">
           <PhaserGame onGameReady={setGame} />
 
