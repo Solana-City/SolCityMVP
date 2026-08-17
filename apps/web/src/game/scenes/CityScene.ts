@@ -262,7 +262,7 @@ export class CityScene extends Phaser.Scene {
     this.cameras.main.setBounds(boundsX, boundsY, map.widthInPixels, map.heightInPixels);
 
     // "YOU" label — small and tucked just above the hat, close to the head.
-    const youLabel = this.add.text(0, -40, "YOU", {
+    const youLabel = this.add.text(0, -36, "YOU", {
       fontSize: "6px", fontFamily: '"Press Start 2P", monospace',
       color: "#ffffff", align: "center",
       resolution: 3,
@@ -531,15 +531,11 @@ export class CityScene extends Phaser.Scene {
       this.profile.setWallet(walletAddress);
 
       this.game.events.emit("game:sessionConnecting");
-      // Watchdog: never trap the player on the gate. If connect() stalls (RPC
-      // hang, wallet on the wrong network, etc.), release into the world anyway
-      // after 18s so they're not stuck staring at the spinner.
-      const gateWatchdog = setTimeout(() => {
-        if (!this.sessionLocked) return;
-        this.sessionLocked = false;
-        this.game.events.emit("game:sessionReady");
-        this.chat.addSystemMessage("Entering — session still finalizing in background.");
-      }, 18_000);
+      // No early-release watchdog: the player must stay on the gate (movement
+      // locked) until connect() actually finishes establishing the on-chain
+      // session. Releasing early let them move before delegation confirmed,
+      // firing base writes (Custom 3007) and simulation moves — exactly what
+      // we don't want. Sign → confirmed on-chain → enter.
       try {
         const displayName = this.profile.get().displayName;
         this.network.updateScore(this.profile.get().score);
@@ -575,9 +571,9 @@ export class CityScene extends Phaser.Scene {
         console.error("[CityScene] session error:", err);
         this.chat.addSystemMessage("Session offline (local mode)");
       } finally {
-        // Release the gate whether the session came up on-chain or fell back to
-        // local mode — never trap the player on the login screen.
-        clearTimeout(gateWatchdog);
+        // Release the gate once connect() has finished (delegation confirmed on
+        // success, or fell back to local mode on error). Movement was locked the
+        // whole time, so no premature base/sim moves fired before this point.
         this.sessionLocked = false;
         this.game.events.emit("game:sessionReady");
       }
@@ -914,7 +910,7 @@ export class CityScene extends Phaser.Scene {
     const shortAddr = `${wallet.slice(0, 4)}…${wallet.slice(-4)}`;
     const displayName = player.displayName ?? shortAddr;
 
-    const label = this.add.text(0, -40, displayName, {
+    const label = this.add.text(0, -36, displayName, {
       fontSize: "6px", fontFamily: '"Press Start 2P", monospace',
       color: "#aaaacc", align: "center",
       resolution: 3,

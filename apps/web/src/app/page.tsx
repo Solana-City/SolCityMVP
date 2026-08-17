@@ -187,15 +187,6 @@ export default function Home() {
     };
   }, [game]);
 
-  // Hard backstop, independent of the game: if a wallet is connected and the
-  // session still hasn't reported ready after 20s, force the gate down so the
-  // spinner can NEVER load forever — covers a missed sessionReady event or a
-  // connect() that hangs past the scene's own watchdog.
-  useEffect(() => {
-    if (!walletAddress || sessionPhase === "ready") return;
-    const t = setTimeout(() => setSessionPhase("ready"), 20_000);
-    return () => clearTimeout(t);
-  }, [walletAddress, sessionPhase]);
 
   const handleWalletChange = useCallback((wallet: string | null) => {
     setWalletAddress(wallet);
