@@ -220,7 +220,22 @@ export function resolveTeamRound(state: TeamBattleState, actions: TeamRoundActio
   }
 
   // ── 2. moves, in the speed order that now applies ───────────────────────
+  //
+  // Legality is judged against the board as it stands AFTER substitutions but
+  // BEFORE any attack — see BattleEngine.resolveRound. Validating mid-round
+  // let the faster mech delete the exact limb the slower one had committed to
+  // firing, wiping its whole round.
   const moving = (["p1", "p2"] as PlayerSide[]).filter((s) => get(s)?.kind === "move");
+  const legality: Partial<Record<PlayerSide, string | null>> = {};
+  for (const side of moving) {
+    const action = get(side) as Extract<TeamAction, { kind: "move" }>;
+    legality[side] = validateMove(
+      activeUnit(sideOf(next, side)),
+      activeUnit(sideOf(next, opponentOfSide(side))),
+      action.sourceSlot, action.moveIndex, action.targetSlot,
+    );
+  }
+
   for (const side of bySpeed(next, moving)) {
     const action = get(side) as Extract<TeamAction, { kind: "move" }>;
     const me = sideOf(next, side);
@@ -228,12 +243,12 @@ export function resolveTeamRound(state: TeamBattleState, actions: TeamRoundActio
     const actor = activeUnit(me);
     const target = activeUnit(foe);
 
-    // The slower mech may have been knocked out before it could act.
+    // Only death stops a committed action.
     if (isDefeated(actor)) {
       events.push({ type: "rejected", reason: `${actor.name} was down before it could act` });
       continue;
     }
-    const illegal = validateMove(actor, target, action.sourceSlot, action.moveIndex, action.targetSlot);
+    const illegal = legality[side];
     if (illegal) {
       events.push({ type: "rejected", reason: illegal });
       continue;

@@ -46,7 +46,11 @@ const MAX_STAGE = 6;
  * actions. The ratio form keeps stages meaningful without letting them run
  * away — see the clamp below.
  */
-const BALANCE = {
+/**
+ * Exported so balance tooling can sweep it and so the on-chain port has one
+ * named place to mirror. Every value here is consensus data — see ONCHAIN.md.
+ */
+export const BALANCE = {
   /**
    * Global damage scale. Move power values come straight from the Unity
    * .assets and are left untouched; this is the single dial that sets fight
@@ -64,6 +68,24 @@ const BALANCE = {
   MAX_MULTIPLIER: 1.75,
   /** A connecting hit always does something, however bad the matchup. */
   MIN_DAMAGE: 1,
+  /**
+   * What fraction of its stats a DESTROYED limb still contributes.
+   *
+   * At 0 — the original rule — offence compounds and defence does not: going
+   * first lets you break a limb before it acts, and the stats that limb was
+   * providing vanish, so the next hit lands harder still. Measured, that
+   * snowball was the single biggest driver of the roster's spread: fast
+   * offensive chassis sat near 75% and slow durable ones near 30%, even with
+   * every chassis on an identical stat budget and near-identical damage per
+   * hit.
+   *
+   * At 0.5 the wrecked frame is still bolted on and still carries load. Taking
+   * a limb is still a real gain — half its stats, ALL of its moves, and it can
+   * no longer act or be healed — but it no longer hands the aggressor a
+   * runaway lead, which is what makes a defensive build a strategy rather than
+   * a slower loss.
+   */
+  WRECKED_STAT_RETENTION: 0.5,
 } as const;
 
 export type PlayerSide = "p1" | "p2";
@@ -218,10 +240,17 @@ export function allLimbsDestroyed(unit: MechUnit): boolean {
  * moment in a fight.
  */
 export function effectiveStats(unit: MechUnit): StatBlock {
-  let stats: StatBlock = { ...unit.matrix.baseStats };
+  const stats: StatBlock = { ...unit.matrix.baseStats };
   for (const slot of LIMB_SLOTS as Array<Exclude<ModuleSlot, "matrix">>) {
-    if (isPartBroken(unit, slot)) continue;
-    stats = addStats(stats, unit.parts[slot].statModifiers);
+    // A destroyed limb is wrecked, not removed — the frame still carries part
+    // of its load. See BALANCE.WRECKED_STAT_RETENTION for why that fraction
+    // is not zero.
+    const share: number = isPartBroken(unit, slot) ? BALANCE.WRECKED_STAT_RETENTION : 1;
+    if (share <= 0) continue;
+    const mods = unit.parts[slot].statModifiers;
+    for (const key of Object.keys(stats) as Array<keyof StatBlock>) {
+      stats[key] += Math.round(mods[key] * share);
+    }
   }
   return stats;
 }
@@ -452,10 +481,21 @@ export interface ResolveResult {
  * sit in, so stalling has nothing to stall: a round either has both
  * commitments or it times out, which is a rule the program can enforce.
  *
- * An action that has become illegal by the time it resolves — its limb just
- * blown off, or its target destroyed by the faster mech — fizzles with a
- * `rejected` event rather than being retargeted. Silently redirecting it would
- * make the outcome depend on a choice the player never made.
+ * ## Legality is judged at the START of the round
+ *
+ * Both sides commit against the same board, so both actions are validated
+ * against that board — not against the board as it stands when they resolve.
+ *
+ * This matters more than it sounds. Validating mid-round meant the faster mech
+ * could destroy the exact limb the slower one had committed to firing, and the
+ * slower mech's whole round evaporated. Traced in a Titan/Arclight duel, the
+ * Titan lost its arm on round 2 and then spent rounds landing NOTHING while
+ * the Arclight free-hit it — that single rule, not any stat, was what put fast
+ * chassis near 75% and slow ones near 30%.
+ *
+ * Committing an action now means it happens: the shot was already in motion
+ * when the limb came off. A mech that is fully DEFEATED still doesn't act —
+ * that is death, not a damaged part.
  */
 export function resolveRound(state: BattleState, actions: RoundActions): ResolveResult {
   if (state.status.kind === "finished") {
@@ -466,24 +506,36 @@ export function resolveRound(state: BattleState, actions: RoundActions): Resolve
   const events: BattleEvent[] = [{ type: "round-start", round: next.round }];
   const [first, second] = orderOfPlay(state);
 
+  // Judged against the pre-round board, before anything has been applied.
+  const legality: Partial<Record<PlayerSide, string | null>> = {};
+  for (const side of ["p1", "p2"] as PlayerSide[]) {
+    const action = side === "p1" ? actions.p1 : actions.p2;
+    if (!action) continue;
+    legality[side] = validateMove(
+      unitFor(state, side),
+      unitFor(state, opponentOf(side)),
+      action.sourceSlot, action.moveIndex, action.targetSlot,
+    );
+  }
+
   for (const side of [first, second]) {
     const action = side === "p1" ? actions.p1 : actions.p2;
     if (!action) continue;
 
     const actor = unitFor(next, side);
-    // The slower mech may have been knocked out before it got to act.
+    // Only death stops a committed action.
     if (isDefeated(actor)) {
       events.push({ type: "rejected", reason: `${actor.name} was down before it could act` });
       continue;
     }
 
-    const foe = unitFor(next, opponentOf(side));
-    const illegal = validateMove(actor, foe, action.sourceSlot, action.moveIndex, action.targetSlot);
+    const illegal = legality[side];
     if (illegal) {
       events.push({ type: "rejected", reason: illegal });
       continue;
     }
 
+    const foe = unitFor(next, opponentOf(side));
     events.push(...applyMove(actor, foe, side, action.sourceSlot, action.moveIndex, action.targetSlot));
   }
 
