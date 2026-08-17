@@ -24,7 +24,20 @@ export const MATRICES: MechMatrix[] = [
     matrixName: "Titan",
     id: "titan",
     role: "Tank",
-    baseStats: { HP: 260, ATK: 45, DEF: 60, ENG: 30, SPD: 25, SYS: 40, PROC: 20 },
+    /**
+     * Titan's defence used to be a DEF spike (60, the roster's highest) against
+     * SYS 40. Measured, that made it lose EVERY matchup at 32%: three of the
+     * four other chassis attack with Energy, which reads SYS, so half its
+     * defensive budget was never doing anything and the half that mattered was
+     * the thin half.
+     *
+     * Same 200-point budget, redistributed to cover both damage types. Its
+     * peak is now HP — highest chassis HP in the game, 600 assembled — rather
+     * than a one-sided DEF wall, which is a better tank anyway: durable
+     * against everything instead of immune to one thing and paper to the
+     * other. That took it 32% -> 42% and the roster spread 29 -> 22.
+     */
+    baseStats: { HP: 260, ATK: 50, DEF: 45, ENG: 25, SPD: 30, SYS: 50, PROC: 20 },
     passive1: "Fortify",
     passive2: "Thermal Stability",
   },
