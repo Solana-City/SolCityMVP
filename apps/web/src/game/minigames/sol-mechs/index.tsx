@@ -28,7 +28,9 @@ import { recordResult, loadHangar, getBuild } from "@/game/solmechs/hangar";
 import Workshop from "./Workshop";
 import MainMenu from "./MainMenu";
 import { BattleLog } from "./BattleLog";
-import { useChessClock, ClockBar } from "./ClockBar";
+import { useChessClock } from "./ClockBar";
+import { PlayerCard, MirroredBars } from "./BattleHud";
+import { formatClock } from "@/game/solmechs/data/clock";
 import { DEFAULT_CLOCK } from "@/game/solmechs/data/clock";
 import { C, T, SP, R, MONO, backdrop, panel, eyebrow, button, W, PANEL_HEIGHT } from "./theme";
 import TeamBuilder from "./TeamBuilder";
@@ -71,25 +73,31 @@ const SLOT_ICON: Record<ModuleSlot, string> = {
  */
 const sxBattle: Record<string, React.CSSProperties> = {
   /**
-   * No wrap. Wrapping let the row grow taller than its flex allowance, which
-   * is how the arena ended up overflowing the panel; the HUD columns shrink
-   * instead, and their min-width keeps them legible.
+   * Name plates and clocks, one per side, mirrored.
+   *
+   * No panel chrome of its own: the plates are the Unity frame art, and a box
+   * drawn around them reads as a second, competing border.
    */
-  arenaRow: {
-    flex: 1, minHeight: 0, display: "flex", gap: SP.md, alignItems: "stretch",
+  plates: {
+    display: "flex", alignItems: "center", gap: SP.md, flexShrink: 0,
+  },
+  roundChip: {
+    flexShrink: 0, fontSize: T.eyebrow, letterSpacing: 2, fontWeight: 700,
+    color: C.faint, border: `1px solid ${C.line}`, borderRadius: R.pill,
+    padding: "5px 12px", whiteSpace: "nowrap",
   },
   arenaBox: {
     // `relative` is what lets the canvas resolve 100% against a real height.
-    position: "relative", flex: "4 1 320px", minWidth: 220, minHeight: 0,
+    position: "relative", flex: 1, minHeight: 0,
     borderRadius: R.md, border: `2px solid ${C.line}`,
     overflow: "hidden", background: C.ink,
   },
-  hudColumn: {
-    flex: "1 1 170px", minWidth: 140, maxWidth: 260,
-    display: "flex", flexDirection: "column", justifyContent: "center",
-    background: C.ink, border: `1px solid ${C.line}`,
-    borderRadius: R.md, padding: SP.md,
+  /** Actions on the left, combat log on the right — the Unity arrangement. */
+  footRow: {
+    display: "flex", gap: SP.md, flexShrink: 0, alignItems: "flex-start",
   },
+  controls: { flex: "1 1 340px", minWidth: 0, minHeight: 96 },
+  logColumn: { flex: "1 1 340px", minWidth: 0 },
 };
 
 function SlotIcon({ slot, size = 20 }: { slot: ModuleSlot; size?: number }) {
@@ -454,38 +462,44 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
 
   return (
     <Shell onClose={onClose} title="Sol Mechs" subtitle="BATTLE" fit wide>
-      {/* Arena centre stage, HUD flanking it. Stacking the two status blocks
-          above the canvas wasted the width and squeezed the arena into a
-          letterbox; wrapping is what keeps this honest on a narrow window. */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: SP.md, flexShrink: 0 }}>
-        <ClockBar clock={clock} config={DEFAULT_CLOCK} thinking={thinking} side="p1" label="You" />
-        <span style={{ ...eyebrow, color: C.faint }}>Round {battle.round}</span>
-        <ClockBar clock={clock} config={DEFAULT_CLOCK} thinking={thinking} side="p2" label="Rival" align="right" />
+      {/* Laid out after the Unity original: name plates with clocks across the
+          top, both players' bars mirrored on shared rows beneath them, the
+          arena in the middle, and actions beside the log at the foot. */}
+      <div style={sxBattle.plates}>
+        <PlayerCard
+          unit={battle.p1}
+          label="You"
+          clock={formatClock(clock.p1)}
+          live={thinking.includes("p1")}
+          low={clock.p1 <= DEFAULT_CLOCK.warnAtMs}
+        />
+        <span style={sxBattle.roundChip}>ROUND {battle.round}</span>
+        <PlayerCard
+          unit={battle.p2}
+          label="Rival"
+          clock={formatClock(clock.p2)}
+          live={thinking.includes("p2")}
+          low={clock.p2 <= DEFAULT_CLOCK.warnAtMs}
+          align="right"
+        />
       </div>
 
-      <div style={sxBattle.arenaRow}>
-        <div style={sxBattle.hudColumn}>
-          <MechStatus state={battle} side="p1" />
-        </div>
+      <MirroredBars p1={battle.p1} p2={battle.p2} />
 
-        <div style={sxBattle.arenaBox}>
-          <canvas
-            ref={canvasRef}
-            width={CANVAS_W}
-            height={CANVAS_H}
-            style={{
-                position: "absolute", inset: 0,
-                width: "100%", height: "100%", objectFit: "contain",
-                imageRendering: "pixelated", display: "block",
-              }}
-          />
-        </div>
-
-        <div style={sxBattle.hudColumn}>
-          <MechStatus state={battle} side="p2" />
-        </div>
+      <div style={sxBattle.arenaBox}>
+        <canvas
+          ref={canvasRef}
+          width={CANVAS_W}
+          height={CANVAS_H}
+          style={{
+            position: "absolute", inset: 0,
+            width: "100%", height: "100%", objectFit: "contain",
+            imageRendering: "pixelated", display: "block",
+          }}
+        />
       </div>
 
+      <div style={sxBattle.footRow}>
       {phase === "result" && battle.status.kind === "finished" ? (
         <div style={{ textAlign: "center", padding: "16px 0" }}>
           <div style={{
@@ -502,7 +516,7 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
           <button onClick={onClose} style={{ ...btnStyle(C.line), color: "#fff", marginLeft: 8 }}>LEAVE</button>
         </div>
       ) : (
-        <div style={{ marginTop: 10 }}>
+        <div style={sxBattle.controls}>
           {!canAct ? (
             <div style={{ color: C.dim, fontSize: T.body, textAlign: "center", padding: "18px 0" }}>
               {battle.p2.name} is choosing…
@@ -568,7 +582,10 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
         </div>
       )}
 
-      <BattleLog lines={log} turns={battle.history.length} initiallyCollapsed />
+        <div style={sxBattle.logColumn}>
+          <BattleLog lines={log} turns={battle.history.length} />
+        </div>
+      </div>
     </Shell>
   );
 }

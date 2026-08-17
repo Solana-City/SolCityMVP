@@ -17,7 +17,24 @@
  */
 
 import { useState } from "react";
-import { C, T, SP, R, MONO, eyebrow } from "./theme";
+import { C, T, SP, MONO, eyebrow } from "./theme";
+
+/**
+ * The Unity log panel (`arena/log.png`) as a 9-slice.
+ *
+ * Slice insets are top/right/bottom/left in source pixels of the imported
+ * 372x204 copy, measured by walking in from each edge to where the neon border
+ * gives way to the dark grid field. `fill` keeps that grid as the interior —
+ * it stretches, but the lines are thin enough that it reads as texture.
+ *
+ * The left inset is wider than the right because of the notch in the frame's
+ * left edge, and the bottom is deepest because the striped tab hangs below it.
+ */
+const LOG_FRAME: React.CSSProperties = {
+  borderStyle: "solid",
+  borderWidth: "6px 6px 16px 18px",
+  borderImage: "url(/assets/minigames/sol-mechs/ui/log-panel.png) 6 6 16 18 fill / 6px 6px 16px 18px / 0 stretch",
+};
 
 export interface BattleLogProps {
   /** Newest first. */
@@ -50,8 +67,8 @@ export function BattleLog({ lines, turns, initiallyCollapsed = false }: BattleLo
 
       {open ? (
         <div style={{
-          height: 132, overflowY: "auto", background: C.ink,
-          border: "1px solid " + C.line, borderRadius: R.sm, padding: SP.md,
+          ...LOG_FRAME,
+          height: 132, overflowY: "auto", padding: SP.sm,
           fontSize: T.small, fontFamily: MONO,
           color: C.body, lineHeight: 1.8,
         }}>
@@ -73,8 +90,8 @@ export function BattleLog({ lines, turns, initiallyCollapsed = false }: BattleLo
         // Collapsed still shows the latest line: the record is the point, and
         // hiding it entirely would mean losing track of what just happened.
         <div style={{
-          background: C.ink, border: "1px solid " + C.line, borderRadius: R.sm,
-          padding: "10px 12px", fontSize: T.small, fontFamily: MONO,
+          ...LOG_FRAME,
+          padding: "6px 8px", fontSize: T.small, fontFamily: MONO,
           color: C.body, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
         }}>
           {lines[0] ?? "—"}
