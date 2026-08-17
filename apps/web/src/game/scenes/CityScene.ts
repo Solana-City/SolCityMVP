@@ -261,9 +261,8 @@ export class CityScene extends Phaser.Scene {
     this.physics.world.setBounds(boundsX, boundsY, map.widthInPixels, map.heightInPixels);
     this.cameras.main.setBounds(boundsX, boundsY, map.widthInPixels, map.heightInPixels);
 
-    // "YOU" label — small and tucked just above the tallest outfit piece (hat)
-    // so it reads as a nameplate without covering the hat.
-    const youLabel = this.add.text(0, -44, "YOU", {
+    // "YOU" label — small and tucked just above the hat, close to the head.
+    const youLabel = this.add.text(0, -40, "YOU", {
       fontSize: "6px", fontFamily: '"Press Start 2P", monospace',
       color: "#ffffff", align: "center",
       resolution: 3,
@@ -915,7 +914,7 @@ export class CityScene extends Phaser.Scene {
     const shortAddr = `${wallet.slice(0, 4)}…${wallet.slice(-4)}`;
     const displayName = player.displayName ?? shortAddr;
 
-    const label = this.add.text(0, -44, displayName, {
+    const label = this.add.text(0, -40, displayName, {
       fontSize: "6px", fontFamily: '"Press Start 2P", monospace',
       color: "#aaaacc", align: "center",
       resolution: 3,
