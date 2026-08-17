@@ -551,7 +551,16 @@ export class CityScene extends Phaser.Scene {
           bus?.once("walletBridge:ready", () => { clearTimeout(fallback); resolve(); });
         });
 
-        await this.network.connect(new PublicKey(walletAddress), displayName, loadSavedLoadout());
+        // Bounded so a hung RPC surfaces as a gate error+retry instead of an
+        // endless spinner. Resolving means the on-chain session is established.
+        await Promise.race([
+          this.network.connect(new PublicKey(walletAddress), displayName, loadSavedLoadout()),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error("connect timeout")), 30_000)),
+        ]);
+        // Confirmed on-chain — release the gate and enter.
+        this.sessionLocked = false;
+        this.game.events.emit("game:sessionReady");
         this.chat.addSystemMessage("Multiplayer session started.");
 
         // Warnings from multiplayer (e.g. delegated PDA detected)
@@ -569,13 +578,9 @@ export class CityScene extends Phaser.Scene {
         });
       } catch (err: any) {
         console.error("[CityScene] session error:", err);
-        this.chat.addSystemMessage("Session offline (local mode)");
-      } finally {
-        // Release the gate once connect() has finished (delegation confirmed on
-        // success, or fell back to local mode on error). Movement was locked the
-        // whole time, so no premature base/sim moves fired before this point.
-        this.sessionLocked = false;
-        this.game.events.emit("game:sessionReady");
+        // Stay on the gate with an error + RETRY — never drop the player into
+        // the world in local/sim mode. Movement stays locked (sessionLocked).
+        this.game.events.emit("game:sessionError");
       }
     });
 

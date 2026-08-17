@@ -6,10 +6,13 @@ import { useCallback, useEffect, useState } from "react";
 
 export default function ConnectScreen({
   sessionPhase = "idle",
+  sessionError = false,
 }: {
   /** Login-gate phase driven by CityScene: "connecting" holds this screen up
       (with a spinner) until the on-chain session is established. */
   sessionPhase?: "idle" | "connecting" | "ready";
+  /** connect() failed/timed out → show an error + RETRY instead of entering. */
+  sessionError?: boolean;
 }) {
   const { connected } = useWallet();
   const { setVisible } = useWalletModal();
@@ -25,15 +28,22 @@ export default function ConnectScreen({
   // Guest chose local mode → never gate them.
   if (dismissed) return null;
   // Wallet connected AND the on-chain session is fully established → enter world.
-  if (connected && sessionPhase === "ready") return null;
+  if (connected && sessionPhase === "ready" && !sessionError) return null;
 
-  // Wallet connected but the session (init + delegate + confirm) is still in
-  // flight → keep the gate up with a spinner instead of the connect button, so
-  // the player can't move (and fire premature/simulation txs) before it lands.
-  const preparing = connected;
+  // Which face of the gate to show:
+  //   error     → connect() failed/timed out → message + RETRY (full reload)
+  //   preparing → session establishing (init + delegate + confirm) → spinner
+  //   connect   → not connected yet → connect + guest actions
+  const mode: "connect" | "preparing" | "error" =
+    sessionError ? "error" : connected ? "preparing" : "connect";
 
   return (
-    <GateView preparing={preparing} openModal={openModal} onGuest={() => setDismissed(true)} />
+    <GateView
+      mode={mode}
+      openModal={openModal}
+      onGuest={() => setDismissed(true)}
+      onRetry={() => window.location.reload()}
+    />
   );
 }
 
@@ -48,15 +58,18 @@ const PREPARING_STAGES: { at: number; label: string }[] = [
 ];
 
 function GateView({
-  preparing, openModal, onGuest,
+  mode, openModal, onGuest, onRetry,
 }: {
-  preparing: boolean; openModal: () => void; onGuest: () => void;
+  mode: "connect" | "preparing" | "error";
+  openModal: () => void;
+  onGuest: () => void;
+  onRetry: () => void;
 }) {
   const [stage, setStage] = useState(0);
 
   // Advance the spinner copy while the session is being established.
   useEffect(() => {
-    if (!preparing) { setStage(0); return; }
+    if (mode !== "preparing") { setStage(0); return; }
     const start = Date.now();
     const tick = setInterval(() => {
       const elapsed = Date.now() - start;
@@ -67,7 +80,7 @@ function GateView({
       setStage(next);
     }, 400);
     return () => clearInterval(tick);
-  }, [preparing]);
+  }, [mode]);
 
   return (
     <div
@@ -140,7 +153,50 @@ function GateView({
           </div>
         </div>
 
-        {preparing ? (
+        {mode === "error" ? (
+          /* ── Session failed: message + RETRY (never enter in local/sim) ── */
+          <>
+            <div style={{
+              fontFamily: '"Press Start 2P", monospace',
+              fontSize: 8, color: "#ff8080", letterSpacing: 1,
+              textAlign: "center", lineHeight: 1.9, maxWidth: 280,
+              padding: "2px 0 4px",
+            }}>
+              Couldn’t reach the network. Your session isn’t on-chain yet.
+            </div>
+            <button
+              onClick={onRetry}
+              style={{
+                fontFamily: '"Press Start 2P", monospace',
+                fontSize: 10,
+                padding: "18px 52px",
+                background: "rgba(153,69,255,0.9)",
+                color: "#fff",
+                border: "1px solid rgba(200,150,255,0.45)",
+                borderRadius: 50,
+                cursor: "pointer",
+                letterSpacing: 2,
+                width: "100%",
+                boxShadow: "0 0 28px rgba(153,69,255,0.55), 0 4px 16px rgba(0,0,0,0.4)",
+              }}
+            >
+              RETRY
+            </button>
+            <button
+              onClick={onGuest}
+              style={{
+                fontFamily: '"Press Start 2P", monospace',
+                fontSize: 9, color: "rgba(255,255,255,0.4)",
+                background: "none", border: "none", cursor: "pointer",
+                letterSpacing: 1, marginTop: -4,
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.color = "rgba(255,255,255,0.75)"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.color = "rgba(255,255,255,0.4)"; }}
+            >
+              continue as guest
+            </button>
+          </>
+        ) : mode === "preparing" ? (
           /* ── Session establishing: spinner, no interactive buttons ── */
           <div style={{
             display: "flex", flexDirection: "column", alignItems: "center", gap: 14,

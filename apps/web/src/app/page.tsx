@@ -61,6 +61,9 @@ export default function Home() {
   // from wallet-connect until the on-chain session is established, so the player
   // never enters the world before delegation confirms.
   const [sessionPhase, setSessionPhase] = useState<"idle" | "connecting" | "ready">("idle");
+  // Set when connect() fails/times out — the gate shows an error + RETRY
+  // instead of entering the world in a non-on-chain state.
+  const [sessionError, setSessionError] = useState(false);
   const [logOpen, setLogOpen] = useState(false);
   const [mobilePanel, setMobilePanel] = useState<"hunt" | "quests" | null>(null);
   // Wallet address that connected before the Phaser game was ready — replayed once game loads.
@@ -177,13 +180,16 @@ export default function Home() {
   // Session lifecycle from CityScene drives the login gate.
   useEffect(() => {
     if (!game) return;
-    const onConnecting = () => setSessionPhase("connecting");
-    const onReady = () => setSessionPhase("ready");
+    const onConnecting = () => { setSessionError(false); setSessionPhase("connecting"); };
+    const onReady = () => { setSessionError(false); setSessionPhase("ready"); };
+    const onError = () => setSessionError(true);
     game.events.on("game:sessionConnecting", onConnecting);
     game.events.on("game:sessionReady", onReady);
+    game.events.on("game:sessionError", onError);
     return () => {
       game.events.off("game:sessionConnecting", onConnecting);
       game.events.off("game:sessionReady", onReady);
+      game.events.off("game:sessionError", onError);
     };
   }, [game]);
 
@@ -191,7 +197,7 @@ export default function Home() {
   const handleWalletChange = useCallback((wallet: string | null) => {
     setWalletAddress(wallet);
     // Reset the gate when the wallet drops so a fresh connect re-arms it.
-    if (!wallet) setSessionPhase("idle");
+    if (!wallet) { setSessionPhase("idle"); setSessionError(false); }
     if (!game) {
       // Game still loading — store and replay once it's ready
       pendingWalletRef.current = wallet;
@@ -225,7 +231,7 @@ export default function Home() {
         <MwaRegistration />
         {/* Headless bridge so Phaser can request wallet signatures */}
         <WalletSignBridge />
-        <ConnectScreen sessionPhase={sessionPhase} />
+        <ConnectScreen sessionPhase={sessionPhase} sessionError={sessionError} />
         <main className="w-screen app-viewport relative">
           <PhaserGame onGameReady={setGame} />
 
