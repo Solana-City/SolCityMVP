@@ -19,9 +19,10 @@ import { preloadBuild } from "@/game/solmechs/render/MechPaperDoll";
 import type { TeamBuild } from "@/game/solmechs/data/team";
 import type { ModuleSlot, MoveDefinition } from "@/game/solmechs/data/types";
 import { BattleLog } from "./BattleLog";
-import { useChessClock, ClockBar } from "./ClockBar";
-import { SQUAD_CLOCK } from "@/game/solmechs/data/clock";
-import { C, T, SP, R, MONO, W, PANEL_HEIGHT } from "./theme";
+import { useChessClock } from "./ClockBar";
+import { PlayerCard, MirroredBars } from "./BattleHud";
+import { SQUAD_CLOCK, formatClock } from "@/game/solmechs/data/clock";
+import { C, T, SP, R, W, PANEL_HEIGHT } from "./theme";
 
 /**
  * Narrows the team log to the events BattleRenderer understands. Switches and
@@ -256,41 +257,46 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, onFinished, on
           <SquadBar state={state} side="p2" label="RIVAL" align="right" />
         </div>
 
-        {/* Arena centre stage with the active mechs' bars flanking it. The
+        {/* Same arrangement as the 1v1: Unity name plates across the top, both
+            sides' bars mirrored on shared rows, arena full width beneath. The
             canvas must be `object-fit: contain` inside a flex-1 box, never
             `width: 100%` — at this panel width a 640x557 canvas stretched to
             100% is ~1300px tall, which is what forced the page to scroll. */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: SP.md, flexShrink: 0 }}>
-          <ClockBar clock={clock} config={SQUAD_CLOCK} thinking={thinking} side="p1" label="You" />
-          <span style={{ fontSize: T.eyebrow, letterSpacing: 2, color: C.faint, fontWeight: 700 }}>
-            ROUND {state.round}
-          </span>
-          <ClockBar clock={clock} config={SQUAD_CLOCK} thinking={thinking} side="p2" label="Rival" align="right" />
+        <div style={sx.plates}>
+          <PlayerCard
+            unit={me}
+            label="You"
+            clock={formatClock(clock.p1)}
+            live={thinking.includes("p1")}
+            low={clock.p1 <= SQUAD_CLOCK.warnAtMs}
+          />
+          <span style={sx.roundChip}>ROUND {state.round}</span>
+          <PlayerCard
+            unit={foe}
+            label="Rival"
+            clock={formatClock(clock.p2)}
+            live={thinking.includes("p2")}
+            low={clock.p2 <= SQUAD_CLOCK.warnAtMs}
+            align="right"
+          />
         </div>
 
-        <div style={sx.arenaRow}>
-          <div style={sx.hudColumn}>
-            <UnitBars unit={me} />
-          </div>
+        <MirroredBars p1={me} p2={foe} />
 
-          <div style={sx.arenaBox}>
-            <canvas
-              ref={canvasRef}
-              width={CANVAS_W}
-              height={CANVAS_H}
-              style={{
-                position: "absolute", inset: 0,
-                width: "100%", height: "100%", objectFit: "contain",
-                imageRendering: "pixelated", display: "block",
-              }}
-            />
-          </div>
-
-          <div style={sx.hudColumn}>
-            <UnitBars unit={foe} />
-          </div>
+        <div style={sx.arenaBox}>
+          <canvas
+            ref={canvasRef}
+            width={CANVAS_W}
+            height={CANVAS_H}
+            style={{
+              position: "absolute", inset: 0,
+              width: "100%", height: "100%", objectFit: "contain",
+              imageRendering: "pixelated", display: "block",
+            }}
+          />
         </div>
 
+        <div style={sx.footRow}>
         <div style={sx.controls}>
           {finished ? (
             <div style={{ textAlign: "center", width: "100%" }}>
@@ -319,7 +325,7 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, onFinished, on
           ) : picking ? (
             <>
               <div style={sx.prompt}>
-"Substitute — this is your action for the round."
+                Substitute — this is your action for the round.
               </div>
               <div style={sx.btnRow}>
                 {bench.map((i) => (
@@ -397,7 +403,10 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, onFinished, on
           )}
         </div>
 
-        <BattleLog lines={log} turns={state.history.length} initiallyCollapsed />
+          <div style={sx.logColumn}>
+            <BattleLog lines={log} turns={state.history.length} />
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -436,33 +445,6 @@ function SquadBar({ state, side, label, align }: {
   );
 }
 
-function UnitBars({ unit, align }: { unit: TeamBattleState["p1"]["units"][number]; align?: "right" }) {
-  const rows: ModuleSlot[] = ["matrix", "rightArm", "leftArm", "lowerBody"];
-  return (
-    <div style={{ flex: 1, textAlign: align ?? "left", minWidth: 0 }}>
-      {rows.map((slot) => {
-        const st = unit.partStatuses[slot];
-        const pct = st.maxHP > 0 ? Math.max(0, st.currentHP / st.maxHP) * 100 : 0;
-        const dead = st.currentHP <= 0;
-        return (
-          <div key={slot} style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 2 }}>
-            <span style={{ fontSize: 12, color: dead ? C.faint : C.faint, width: 44, fontFamily: "monospace" }}>
-              {SLOT_LABEL[slot]}
-            </span>
-            <div style={{ flex: 1, height: 6, background: C.ink, borderRadius: 3, overflow: "hidden" }}>
-              <div style={{
-                width: `${pct}%`, height: "100%", transition: "width .25s",
-                background: dead ? "#4a2030" : slot === "matrix" ? C.teal : C.blue,
-              }} />
-            </div>
-            <span style={{ fontSize: 12, color: C.faint, width: 28, fontFamily: "monospace" }}>{st.currentHP}</span>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
 const sx: Record<string, React.CSSProperties> = {
   backdrop: {
     position: "fixed", inset: 0, background: "rgba(4,2,10,.9)", zIndex: 1000,
@@ -478,23 +460,26 @@ const sx: Record<string, React.CSSProperties> = {
   close: { background: "none", border: "none", color: C.dim, fontSize: 24, cursor: "pointer", lineHeight: 1, padding: 0 },
   squadRow: { display: "flex", gap: SP.md, flexWrap: "wrap", flexShrink: 0 },
   squadLabel: { fontSize: 12, color: C.faint, letterSpacing: 2, marginBottom: 3 },
-  /** The arena and its two HUD columns share the leftover height. */
-  arenaRow: {
-    // No wrap — see the 1v1: wrapping let this row outgrow its flex allowance.
-    flex: 1, minHeight: 0, display: "flex", gap: SP.md, alignItems: "stretch",
-  },
-  hudColumn: {
-    flex: "1 1 170px", minWidth: 140, maxWidth: 260,
-    display: "flex", flexDirection: "column", justifyContent: "center",
-    background: C.ink, border: `1px solid ${C.line}`, borderRadius: R.md, padding: SP.md,
+  /**
+   * Name plates and clocks. No chrome of its own — the plates are the Unity
+   * frame art, and a box around them reads as a second, competing border.
+   */
+  plates: { display: "flex", alignItems: "center", gap: SP.md, flexShrink: 0 },
+  roundChip: {
+    flexShrink: 0, fontSize: T.eyebrow, letterSpacing: 2, fontWeight: 700,
+    color: C.faint, border: `1px solid ${C.line}`, borderRadius: R.pill,
+    padding: "5px 12px", whiteSpace: "nowrap",
   },
   arenaBox: {
     // `relative` is what lets the canvas resolve 100% against a real height.
-    position: "relative", flex: "4 1 320px", minWidth: 220, minHeight: 0,
+    position: "relative", flex: 1, minHeight: 0,
     borderRadius: R.md, border: `2px solid ${C.line}`,
     overflow: "hidden", background: C.ink,
   },
-  controls: { minHeight: 74, flexShrink: 0 },
+  /** Actions on the left, combat log on the right — the Unity arrangement. */
+  footRow: { display: "flex", gap: SP.md, flexShrink: 0, alignItems: "flex-start" },
+  controls: { flex: "1 1 340px", minWidth: 0, minHeight: 96 },
+  logColumn: { flex: "1 1 340px", minWidth: 0 },
   prompt: { fontSize: 12, color: C.dim, marginBottom: 6, letterSpacing: 1 },
   btnRow: { display: "flex", flexWrap: "wrap", gap: 6 },
   btn: {
@@ -507,10 +492,5 @@ const sx: Record<string, React.CSSProperties> = {
   btnPrimary: {
     background: C.teal, border: "none", color: C.ink, borderRadius: 6,
     padding: "11px 24px", fontSize: 13, fontWeight: 800, letterSpacing: 1, cursor: "pointer",
-  },
-  log: {
-    height: 84, overflowY: "auto", background: C.ink, border: `1px solid ${C.line}`,
-    borderRadius: 6, padding: 8, fontSize: 12, fontFamily: "monospace",
-    color: C.body, lineHeight: 1.6,
   },
 };
