@@ -42,9 +42,20 @@ export default function ConnectScreen({
       mode={mode}
       openModal={openModal}
       onGuest={() => setDismissed(true)}
-      onRetry={() => window.location.reload()}
+      onRetry={forceReconnect}
     />
   );
+}
+
+/**
+ * Force a clean session: drop the stored session key so the next connect
+ * re-authorizes from scratch (fixes a session key that's out of sync with the
+ * delegated PDA on the ER — the usual cause of a connect that hangs without a
+ * sign prompt), then reload so everything comes up fresh.
+ */
+function forceReconnect() {
+  try { localStorage.removeItem("sol-city-session-key"); } catch {}
+  window.location.reload();
 }
 
 // Staged spinner copy so a multi-second session setup feels alive rather than
@@ -232,6 +243,24 @@ function GateView({
             }}>
               Setting up your on-chain session. Sign the prompts to enter.
             </div>
+            {/* Manual escape once it's been a while — forces a clean session. */}
+            {stage >= 3 && (
+              <button
+                onClick={onRetry}
+                style={{
+                  fontFamily: '"Press Start 2P", monospace',
+                  fontSize: 7, color: "rgba(180,180,255,0.7)",
+                  background: "none",
+                  border: "1px solid rgba(153,69,255,0.35)",
+                  borderRadius: 8, padding: "8px 14px",
+                  cursor: "pointer", letterSpacing: 1, marginTop: 4,
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.borderColor = "rgba(20,241,149,0.6)"; e.currentTarget.style.color = "#fff"; }}
+                onMouseLeave={(e) => { e.currentTarget.style.borderColor = "rgba(153,69,255,0.35)"; e.currentTarget.style.color = "rgba(180,180,255,0.7)"; }}
+              >
+                Force reconnect
+              </button>
+            )}
           </div>
         ) : (
           /* ── Not connected: connect + guest actions ── */
