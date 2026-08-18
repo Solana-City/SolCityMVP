@@ -91,8 +91,8 @@ const sxBattle: Record<string, React.CSSProperties> = {
     objectFit: "contain", imageRendering: "pixelated", display: "block",
   },
   /** Unity puts the two HUDs over the arena's top corners, mirrored. */
-  hudLeft: { position: "absolute", left: "2%", top: "3%", width: "27%" },
-  hudRight: { position: "absolute", right: "2%", top: "3%", width: "27%" },
+  hudLeft: { position: "absolute", left: "1.5%", top: "2.5%", width: "31%" },
+  hudRight: { position: "absolute", right: "1.5%", top: "2.5%", width: "31%" },
   roundChip: {
     position: "absolute", left: "50%", top: "3%", transform: "translateX(-50%)",
     fontSize: T.eyebrow, letterSpacing: 2, fontWeight: 700, color: C.text,

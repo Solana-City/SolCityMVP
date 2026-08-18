@@ -57,8 +57,12 @@ const PLATE = {
   clock: { outer: "38.5%", inner: "23.0%", top: "57.4%", h: "24.2%" },
 } as const;
 
-/** Bar width as a share of the panel — Unity's 160 units against the plate's 250. */
-const BAR_WIDTH = "64%";
+/**
+ * Unity runs the bars at 160 units against the plate's 250 (64%) and writes the
+ * part name ON the bar. Ours carries the name and the number BESIDE it, which
+ * needs the full width to stay readable at this scale.
+ */
+const BAR_WIDTH = "100%";
 
 export interface UnitPanelProps {
   unit: MechUnit;
@@ -141,9 +145,14 @@ export function UnitPanel({ unit, name, clock, live, low, align }: UnitPanelProp
         </div>
       </div>
 
+      {/* A scrim, which Unity does not have and does not need: its bars sit on
+          the arena's dark upper stands, ours on a pale sky. Without it the
+          labels wash out exactly where the horizon line crosses them. */}
       <div style={{
-        marginTop: 4, display: "flex", flexDirection: "column", gap: 2,
+        marginTop: 3, display: "flex", flexDirection: "column", gap: 3,
         alignItems: right ? "flex-end" : "flex-start",
+        background: "rgba(8,4,16,.62)", border: `1px solid ${C.line}`,
+        borderRadius: 4, padding: "5px 6px",
       }}>
         {HUD_SLOTS.map((slot) => (
           <PartBar key={slot} unit={unit} slot={slot} mirrored={right} />
@@ -157,9 +166,10 @@ function PartBar({ unit, slot, mirrored }: { unit: MechUnit; slot: ModuleSlot; m
   const st = unit.partStatuses[slot];
   const pct = st.maxHP > 0 ? Math.max(0, st.currentHP / st.maxHP) * 100 : 0;
   const dead = st.currentHP <= 0;
-  // An arm still standing is what keeps the core sealed — worth marking, since
-  // it is the difference between a legal target and an illegal one.
-  const sealing = (slot === "rightArm" || slot === "leftArm") && !dead && !canAttackMatrix(unit);
+  // Whether the core can be shot at all is the single most decision-relevant
+  // fact on this panel, so it is spelled out on the Matrix row rather than
+  // implied by a padlock on whichever arm happens to be holding it shut.
+  const sealed = !canAttackMatrix(unit);
 
   return (
     <div style={{
@@ -202,9 +212,19 @@ function PartBar({ unit, slot, mirrored }: { unit: MechUnit; slot: ModuleSlot; m
         {st.currentHP}
       </span>
 
-      {sealing && (
-        <span title="This arm is sealing the Matrix" style={{ fontSize: 10, color: C.teal, flexShrink: 0 }}>
-          🔒
+      {slot === "matrix" && (
+        <span
+          title={sealed
+            ? "Break an arm, or strip all three limbs, to expose the core"
+            : "The core can be attacked directly"}
+          style={{
+            fontSize: 9, fontWeight: 800, letterSpacing: 0.5, flexShrink: 0,
+            color: sealed ? C.teal : C.warn,
+            border: `1px solid ${sealed ? C.teal : C.warn}`,
+            borderRadius: 3, padding: "0 3px", lineHeight: "13px",
+          }}
+        >
+          {sealed ? "SEALED" : "OPEN"}
         </span>
       )}
     </div>

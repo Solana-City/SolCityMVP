@@ -113,8 +113,13 @@ function MenuRow({ art, fallback, label, desc, onClick, disabled, badge }: {
           <img
             src={art}
             alt={fallback ?? ""}
-            // Height-matched, width free — see LABEL_HEIGHT.
-            style={{ ...PIXELATED, height: LABEL_HEIGHT, width: "auto", display: "block" }}
+            // WIDTH-matched at the sprites' native 260px, not height-matched.
+            // These are pixel art with baked-in lettering: squeezed to a 30px
+            // row height they came out ~99px wide, a 2.6x downscale that turned
+            // the words into mush. All seven are 260 wide, so matching on width
+            // shows them 1:1 AND keeps the column aligned; the 68-88px spread in
+            // their heights is absorbed by centring the row.
+            style={{ ...PIXELATED, width: "100%", height: "auto", display: "block" }}
             onError={(e) => {
               // Swap in the text plate so a missing sprite never leaves an
               // unlabelled button.
@@ -131,7 +136,9 @@ function MenuRow({ art, fallback, label, desc, onClick, disabled, badge }: {
             }}
           />
         ) : (
-          <span style={labelPlate()}>{label}</span>
+          // Stretched to the same slot as the sprites and centred, so the one
+          // mode with no Unity label of its own still reads as part of the set.
+          <span style={{ ...labelPlate(), width: "100%", height: 58, justifyContent: "center", fontSize: T.body }}>{label}</span>
         )}
       </span>
 
@@ -178,8 +185,8 @@ const sx: Record<string, React.CSSProperties> = {
     display: "flex", alignItems: "center", gap: SP.lg, textAlign: "left",
     padding: `${SP.md}px ${SP.lg}px`, color: C.text, width: "100%",
   },
-  /** Fixed slot so the descriptions align down the column. */
-  labelSlot: { flexShrink: 0, width: 172, display: "flex", alignItems: "center" },
+  /** The sprites' own 260px, so they render 1:1 and the column stays aligned. */
+  labelSlot: { flexShrink: 0, width: "min(260px, 38%)", display: "flex", alignItems: "center" },
   desc: { flex: 1, minWidth: 0, fontSize: T.body, color: C.body, lineHeight: 1.55 },
   chevron: { color: C.faint, fontSize: T.title, flexShrink: 0, lineHeight: 1 },
   badge: {
