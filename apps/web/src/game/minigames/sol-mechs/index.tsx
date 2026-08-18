@@ -65,46 +65,63 @@ const SLOT_ICON: Record<ModuleSlot, string> = {
 };
 
 /**
- * Battle layout.
+ * The raised surface the footer controls sit on.
  *
- * The HUD columns flank the arena instead of stacking above it. `flex-basis`
- * with `flexWrap` on the parent is what makes that collapse gracefully: on a
- * narrow window the columns wrap under the canvas rather than crushing it.
+ * They were a bare region under the arena, which read as a dead cut between
+ * the scene and the things you can click. Raising them onto a card with a
+ * bright edge and a drop shadow makes the strip look attached to the screen.
  */
+const CARD: React.CSSProperties = {
+  background: "rgba(8,4,16,.93)",
+  border: `1px solid ${C.lineBright}`,
+  borderRadius: R.md,
+  padding: SP.md,
+  boxShadow: "0 10px 30px rgba(0,0,0,.65)",
+};
+
 const sxBattle: Record<string, React.CSSProperties> = {
   /**
-   * The arena, sized to the canvas's own aspect so it fills the stage exactly.
+   * The arena takes the panel's full width and all the height the footer
+   * leaves it — no aspect lock, no fitting.
    *
-   * `flex: 1` sets the height from what the footer leaves over, and
-   * `aspect-ratio` derives the width from that — which is what stops the
-   * canvas being letterboxed into a wide, mostly-empty box. `object-fit:
-   * contain` on the canvas is the safety net for when `max-width` clamps.
+   * Three shapes failed before this one. Letterboxing a fixed canvas into a
+   * full-width row left it a stamp in a black box. Locking the stage to the
+   * canvas's aspect killed the letterbox but shrank the arena to whatever the
+   * footer left over, so a wide window was mostly dead space. Cropping it with
+   * `object-fit: cover` filled the space but zoomed in so far that the mechs
+   * ran under the controls.
+   *
+   * What works is giving the renderer the box and letting it draw to that
+   * shape — see BattleRenderer's `resize`.
    */
   stage: {
-    position: "relative", flex: 1, minHeight: 0, alignSelf: "center",
-    aspectRatio: `${CANVAS_W} / ${CANVAS_H}`, maxWidth: "100%",
+    position: "relative", flex: 1, minHeight: 0, width: "100%",
     overflow: "hidden", borderRadius: R.md,
     border: `2px solid ${C.line}`, background: C.ink,
   },
   canvas: {
     position: "absolute", inset: 0, width: "100%", height: "100%",
-    objectFit: "contain", imageRendering: "pixelated", display: "block",
+    // No object-fit: BattleRenderer sizes the backing store to this element, so
+    // the drawing is already the right shape. Fitting it would re-introduce the
+    // letterbox (or the crop) this exists to avoid.
+    imageRendering: "pixelated", display: "block",
   },
   /** Unity puts the two HUDs over the arena's top corners, mirrored. */
-  hudLeft: { position: "absolute", left: "1.5%", top: "2.5%", width: "31%" },
-  hudRight: { position: "absolute", right: "1.5%", top: "2.5%", width: "31%" },
+  hudLeft: { position: "absolute", left: "1.2%", top: "2%", width: "min(310px, 30%)" },
+  hudRight: { position: "absolute", right: "1.2%", top: "2%", width: "min(310px, 30%)" },
   roundChip: {
-    position: "absolute", left: "50%", top: "3%", transform: "translateX(-50%)",
+    position: "absolute", left: "50%", top: "2%", transform: "translateX(-50%)",
     fontSize: T.eyebrow, letterSpacing: 2, fontWeight: 700, color: C.text,
     background: "rgba(11,6,22,.82)", border: `1px solid ${C.line}`,
     borderRadius: R.pill, padding: "4px 12px", whiteSpace: "nowrap",
   },
-  /** Actions on the left, combat log on the right — the Unity arrangement. */
+  /** Actions left, log right — the Unity arrangement, as a pair of cards. */
   footRow: {
-    display: "flex", gap: SP.md, flexShrink: 0, alignItems: "flex-start",
+    display: "flex", gap: SP.md, flexShrink: 0, alignItems: "stretch",
   },
-  controls: { flex: "1 1 380px", minWidth: 0, minHeight: 96 },
-  logColumn: { flex: "1 1 300px", minWidth: 0 },
+  controls: { ...CARD, flex: "1 1 55%", minWidth: 0, minHeight: 104 },
+  logColumn: { ...CARD, flex: "1 1 45%", minWidth: 0 },
+  resultCard: { ...CARD, flex: 1, minWidth: 0, padding: `${SP.xl}px ${SP.lg}px` },
 };
 
 function SlotIcon({ slot, size = 20 }: { slot: ModuleSlot; size?: number }) {
@@ -503,7 +520,7 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
 
       <div style={sxBattle.footRow}>
       {phase === "result" && battle.status.kind === "finished" ? (
-        <div style={{ ...sxBattle.controls, textAlign: "center", padding: "16px 0" }}>
+        <div style={{ ...sxBattle.resultCard, textAlign: "center" }}>
           <div style={{
             fontSize: T.display, fontWeight: 800, letterSpacing: 1,
             color: battle.status.winner === "p1" ? C.teal : C.bad,

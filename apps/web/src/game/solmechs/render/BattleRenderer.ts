@@ -57,9 +57,13 @@ const ARENA_SRC = "/assets/minigames/sol-mechs/ui/arena.png";
  * Where the mechs' feet meet the neon platform, as a fraction of the arena's
  * height. Probed off the art: the platform ellipse runs from ~0.70 to ~0.95
  * and is widest around 0.75-0.80, so this stands them on it without covering
- * the front rim.
+ * the front rim. A fraction, not a pixel count, because the canvas takes its
+ * size from the element — see `resize`.
  */
-const FOOT_LINE = Math.round(CANVAS_H * 0.80);
+const FOOT_FRAC = 0.80;
+
+/** Inset from each edge, as a fraction, so both mechs land on the platform. */
+const SIDE_FRAC = 0.08;
 
 /**
  * The leg sprites carry 7-13px of empty frame below the feet. Without
@@ -71,14 +75,6 @@ const FOOT_INSET_SRC = 10;
 const MECH_SCALE = 2;
 const MECH_W = DOLL_WIDTH * MECH_SCALE;
 const MECH_H = DOLL_HEIGHT * MECH_SCALE;
-
-/** Bottom edge of the doll box — below the feet by the sprite's own padding. */
-const BOX_BOTTOM = FOOT_LINE + FOOT_INSET_SRC * MECH_SCALE;
-const BOX_TOP = BOX_BOTTOM - MECH_H;
-
-/** Spread so both mechs sit inside the platform's widest span (x 65..835). */
-const P1_X = 73;
-const P2_X = CANVAS_W - 73 - MECH_W;
 
 // ── timing (ms) ──────────────────────────────────────────────────────────
 /** Lunge start → impact. The effect and the damage land at this offset. */
@@ -170,16 +166,55 @@ export class BattleRenderer {
   private busyUntil = 0;
   private arena = new Image();
 
+  /**
+   * Live canvas size, tracking the element.
+   *
+   * The canvas used to be a fixed 900x606 that the page scaled with
+   * `object-fit`, which forced a choice between letterboxing it (dead bars) and
+   * cropping it (feet cut off, and everything zoomed). Sizing the backing store
+   * to the element instead means the arena always fills its box exactly: the
+   * backdrop stretches to whatever shape it is given — which is what Unity does
+   * too, its arena Image has `m_PreserveAspect: 0` — while the mechs are drawn
+   * at 1:1 on top and so never distort.
+   */
+  private w = CANVAS_W;
+  private h = CANVAS_H;
+  private ro: ResizeObserver | null = null;
+
   constructor(private canvas: HTMLCanvasElement, initial: RenderUnits) {
     const ctx = canvas.getContext("2d");
     if (!ctx) throw new Error("2D context unavailable");
     this.ctx = ctx;
-    canvas.width = CANVAS_W;
-    canvas.height = CANVAS_H;
     this.state = initial;
     this.arena.src = ARENA_SRC;
+    this.resize();
+    if (typeof ResizeObserver !== "undefined") {
+      this.ro = new ResizeObserver(() => this.resize());
+      this.ro.observe(canvas);
+    }
     preloadFx();
   }
+
+  /** Match the backing store to the element's laid-out size. */
+  private resize(): void {
+    const r = this.canvas.getBoundingClientRect();
+    // Before layout the rect is 0x0; keep the design size until it isn't.
+    const w = Math.max(1, Math.round(r.width)) || CANVAS_W;
+    const h = Math.max(1, Math.round(r.height)) || CANVAS_H;
+    if (r.width < 1 || r.height < 1) return;
+    if (w === this.w && h === this.h) return;
+    this.w = w;
+    this.h = h;
+    this.canvas.width = w;
+    this.canvas.height = h;
+  }
+
+  /** Feet line, doll box and spawn columns, all derived from the live size. */
+  private get footLine(): number { return Math.round(this.h * FOOT_FRAC); }
+  private get boxBottom(): number { return this.footLine + FOOT_INSET_SRC * MECH_SCALE; }
+  private get boxTop(): number { return this.boxBottom - MECH_H; }
+  private get p1X(): number { return Math.round(this.w * SIDE_FRAC); }
+  private get p2X(): number { return this.w - Math.round(this.w * SIDE_FRAC) - MECH_W; }
 
   start(): void {
     if (this.running) return;
@@ -192,6 +227,8 @@ export class BattleRenderer {
   }
 
   destroy(): void {
+    this.ro?.disconnect();
+    this.ro = null;
     this.running = false;
     cancelAnimationFrame(this.raf);
   }
@@ -225,7 +262,7 @@ export class BattleRenderer {
   }
 
   private baseX(side: PlayerSide): number {
-    return side === "p1" ? P1_X : P2_X;
+    return side === "p1" ? this.p1X : this.p2X;
   }
 
   /**
@@ -241,7 +278,7 @@ export class BattleRenderer {
     const dx = flipped ? DOLL_WIDTH - a.x : a.x;
     return {
       x: this.baseX(side) + dx * MECH_SCALE,
-      y: BOX_TOP + a.y * MECH_SCALE,
+      y: this.boxTop + a.y * MECH_SCALE,
     };
   }
 
@@ -428,7 +465,7 @@ export class BattleRenderer {
     }
 
     ctx.save();
-    ctx.clearRect(0, 0, CANVAS_W, CANVAS_H);
+    ctx.clearRect(0, 0, this.w, this.h);
     this.drawBackground(ctx);
     ctx.translate(sx, sy);
 
@@ -445,19 +482,19 @@ export class BattleRenderer {
       // Bottom-aligned: the platform belongs at the foot of the frame, and
       // whatever skyline fits above it is a bonus.
       ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(arena, 0, 0, CANVAS_W, CANVAS_H);
+      ctx.drawImage(arena, 0, 0, this.w, this.h);
       return;
     }
     // Backdrop still decoding — the old gradient keeps the scene readable
     // rather than flashing empty on the first frame.
-    const sky = ctx.createLinearGradient(0, 0, 0, CANVAS_H);
+    const sky = ctx.createLinearGradient(0, 0, 0, this.h);
     sky.addColorStop(0, "#120a24");
     sky.addColorStop(0.55, "#231145");
     sky.addColorStop(1, "#0d0718");
     ctx.fillStyle = sky;
-    ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+    ctx.fillRect(0, 0, this.w, this.h);
     ctx.fillStyle = "#1b1030";
-    ctx.fillRect(0, FOOT_LINE, CANVAS_W, CANVAS_H - FOOT_LINE);
+    ctx.fillRect(0, this.footLine, this.w, this.h - this.footLine);
   }
 
   /**
@@ -483,7 +520,7 @@ export class BattleRenderer {
   private drawSide(ctx: CanvasRenderingContext2D, side: PlayerSide, now: number): void {
     const unit = this.unitFor(side);
     const baseX = this.baseX(side);
-    const y = BOX_TOP;
+    const y = this.boxTop;
 
     let dx = 0;
     const lunge = this.lunges.find((a) => a.side === side && now >= a.start);
@@ -504,7 +541,7 @@ export class BattleRenderer {
     // padded wide by the arm sockets and a box-centred shadow sits off to one
     // side of the mech that casts it.
     const footX = baseX + (side === "p2" ? DOLL_WIDTH - FOOT_ANCHOR.x : FOOT_ANCHOR.x) * MECH_SCALE;
-    ctx.ellipse(footX, FOOT_LINE + 3, 30, 7, 0, 0, Math.PI * 2);
+    ctx.ellipse(footX, this.footLine + 3, 30, 7, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
 

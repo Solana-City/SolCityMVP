@@ -103,8 +103,12 @@ export const backdrop: React.CSSProperties = {
 export const W = {
   /** Menus and other short lists. */
   narrow: "min(760px, 94vw)",
-  /** Battle: the arena wants width for the flanking HUD columns. */
-  battle: "min(1240px, 96vw)",
+  /**
+   * Battle: the arena is the screen, so it takes what the window will give.
+   * Capped at 1600 because past that the mechs, drawn at a fixed 2x, start to
+   * look lost on the platform.
+   */
+  battle: "min(1600px, 96vw)",
   /** Workshop and squad builder: three working columns. */
   wide: "min(1360px, 96vw)",
 } as const;

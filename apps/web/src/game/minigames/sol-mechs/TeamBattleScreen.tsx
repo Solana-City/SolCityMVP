@@ -437,6 +437,15 @@ function SquadBar({ state, side, label, align }: {
   );
 }
 
+/** Matches the 1v1's footer cards. */
+const CARD: React.CSSProperties = {
+  background: "rgba(8,4,16,.93)",
+  border: `1px solid ${C.lineBright}`,
+  borderRadius: R.md,
+  padding: SP.md,
+  boxShadow: "0 10px 30px rgba(0,0,0,.65)",
+};
+
 const sx: Record<string, React.CSSProperties> = {
   backdrop: {
     position: "fixed", inset: 0, background: "rgba(4,2,10,.9)", zIndex: 1000,
@@ -452,32 +461,28 @@ const sx: Record<string, React.CSSProperties> = {
   close: { background: "none", border: "none", color: C.dim, fontSize: 24, cursor: "pointer", lineHeight: 1, padding: 0 },
   squadRow: { display: "flex", gap: SP.md, flexWrap: "wrap", flexShrink: 0 },
   squadLabel: { fontSize: 12, color: C.faint, letterSpacing: 2, marginBottom: 3 },
-  /**
-   * The arena, sized to the canvas's own aspect so it fills the stage exactly
-   * rather than being letterboxed into a wide box. See the 1v1 for why.
-   */
+  /** Full width, no aspect lock — the renderer draws to the box. See the 1v1. */
   stage: {
-    position: "relative", flex: 1, minHeight: 0, alignSelf: "center",
-    aspectRatio: `${CANVAS_W} / ${CANVAS_H}`, maxWidth: "100%",
+    position: "relative", flex: 1, minHeight: 0, width: "100%",
     overflow: "hidden", borderRadius: R.md,
     border: `2px solid ${C.line}`, background: C.ink,
   },
   canvas: {
     position: "absolute", inset: 0, width: "100%", height: "100%",
-    objectFit: "contain", imageRendering: "pixelated", display: "block",
+    imageRendering: "pixelated", display: "block",
   },
-  hudLeft: { position: "absolute", left: "1.5%", top: "2.5%", width: "31%" },
-  hudRight: { position: "absolute", right: "1.5%", top: "2.5%", width: "31%" },
+  hudLeft: { position: "absolute", left: "1.2%", top: "2%", width: "min(310px, 30%)" },
+  hudRight: { position: "absolute", right: "1.2%", top: "2%", width: "min(310px, 30%)" },
   roundChip: {
     position: "absolute", left: "50%", top: "3%", transform: "translateX(-50%)",
     fontSize: T.eyebrow, letterSpacing: 2, fontWeight: 700, color: C.text,
     background: "rgba(11,6,22,.82)", border: `1px solid ${C.line}`,
     borderRadius: R.pill, padding: "4px 12px", whiteSpace: "nowrap",
   },
-  /** Actions on the left, combat log on the right — the Unity arrangement. */
-  footRow: { display: "flex", gap: SP.md, flexShrink: 0, alignItems: "flex-start" },
-  controls: { flex: "1 1 340px", minWidth: 0, minHeight: 96 },
-  logColumn: { flex: "1 1 340px", minWidth: 0 },
+  /** Actions left, log right, both raised onto cards. See the 1v1 for why. */
+  footRow: { display: "flex", gap: SP.md, flexShrink: 0, alignItems: "stretch" },
+  controls: { ...CARD, flex: "1 1 55%", minWidth: 0, minHeight: 104 },
+  logColumn: { ...CARD, flex: "1 1 45%", minWidth: 0 },
   prompt: { fontSize: 12, color: C.dim, marginBottom: 6, letterSpacing: 1 },
   btnRow: { display: "flex", flexWrap: "wrap", gap: 6 },
   btn: { ...actionButton(), minWidth: 112 },
