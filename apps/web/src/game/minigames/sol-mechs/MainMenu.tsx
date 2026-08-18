@@ -15,7 +15,7 @@
  * on height is what makes a row of them read as one set.
  */
 import { useEffect } from "react";
-import { C, T, SP, R, MONO, PIXELATED, backdrop, panel, eyebrow, labelPlate, LABEL_HEIGHT, W } from "./theme";
+import { C, T, SP, R, MONO, PIXELATED, backdrop, panel, eyebrow, labelPlate, actionButton, LABEL_HEIGHT, W } from "./theme";
 
 const UI = "/assets/minigames/sol-mechs/ui";
 
@@ -106,7 +106,7 @@ function MenuRow({ art, fallback, label, desc, onClick, disabled, badge }: {
     <button
       onClick={onClick}
       disabled={disabled}
-      style={{ ...sx.row, opacity: disabled ? 0.5 : 1, cursor: disabled ? "not-allowed" : "pointer" }}
+      style={{ ...sx.row, ...actionButton({ disabled }), ...sx.rowBox }}
     >
       <span style={sx.labelSlot}>
         {art ? (
@@ -163,10 +163,20 @@ const sx: Record<string, React.CSSProperties> = {
     borderRadius: R.pill, padding: "6px 16px",
   },
   list: { display: "flex", flexDirection: "column", gap: SP.sm, marginTop: SP.sm },
-  row: {
+  /**
+   * The Unity menu button, not a CSS rectangle.
+   *
+   * `1_Main_Menu.unity` builds every mode button from `UI/button3.png`, so a
+   * rounded div with a 1px border was the one thing on this screen that wasn't
+   * the game's own art. `actionButton` is the same 9-slice the arena's controls
+   * use, which is also what the original does — the scene reuses that sprite
+   * for the menu and the battle alike.
+   */
+  row: { ...actionButton() },
+  /** Layout, applied after the tone so `disabled` can't drop the padding. */
+  rowBox: {
     display: "flex", alignItems: "center", gap: SP.lg, textAlign: "left",
-    background: C.ink, border: `1px solid ${C.line}`, borderRadius: R.md,
-    padding: `${SP.md}px ${SP.lg}px`, color: C.text, fontFamily: "inherit", width: "100%",
+    padding: `${SP.md}px ${SP.lg}px`, color: C.text, width: "100%",
   },
   /** Fixed slot so the descriptions align down the column. */
   labelSlot: { flexShrink: 0, width: 172, display: "flex", alignItems: "center" },

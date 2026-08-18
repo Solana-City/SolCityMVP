@@ -29,10 +29,10 @@ import Workshop from "./Workshop";
 import MainMenu from "./MainMenu";
 import { BattleLog } from "./BattleLog";
 import { useChessClock } from "./ClockBar";
-import { PlayerCard, MirroredBars } from "./BattleHud";
+import { UnitPanel } from "./BattleHud";
 import { formatClock } from "@/game/solmechs/data/clock";
 import { DEFAULT_CLOCK } from "@/game/solmechs/data/clock";
-import { C, T, SP, R, MONO, backdrop, panel, eyebrow, button, W, PANEL_HEIGHT } from "./theme";
+import { C, T, SP, R, MONO, backdrop, panel, eyebrow, button, actionButton, W, PANEL_HEIGHT } from "./theme";
 import TeamBuilder from "./TeamBuilder";
 import TeamBattleScreen from "./TeamBattleScreen";
 import { validateTeam, type TeamBuild } from "@/game/solmechs/data/team";
@@ -73,31 +73,38 @@ const SLOT_ICON: Record<ModuleSlot, string> = {
  */
 const sxBattle: Record<string, React.CSSProperties> = {
   /**
-   * Name plates and clocks, one per side, mirrored.
+   * The arena, sized to the canvas's own aspect so it fills the stage exactly.
    *
-   * No panel chrome of its own: the plates are the Unity frame art, and a box
-   * drawn around them reads as a second, competing border.
+   * `flex: 1` sets the height from what the footer leaves over, and
+   * `aspect-ratio` derives the width from that — which is what stops the
+   * canvas being letterboxed into a wide, mostly-empty box. `object-fit:
+   * contain` on the canvas is the safety net for when `max-width` clamps.
    */
-  plates: {
-    display: "flex", alignItems: "center", gap: SP.md, flexShrink: 0,
+  stage: {
+    position: "relative", flex: 1, minHeight: 0, alignSelf: "center",
+    aspectRatio: `${CANVAS_W} / ${CANVAS_H}`, maxWidth: "100%",
+    overflow: "hidden", borderRadius: R.md,
+    border: `2px solid ${C.line}`, background: C.ink,
   },
+  canvas: {
+    position: "absolute", inset: 0, width: "100%", height: "100%",
+    objectFit: "contain", imageRendering: "pixelated", display: "block",
+  },
+  /** Unity puts the two HUDs over the arena's top corners, mirrored. */
+  hudLeft: { position: "absolute", left: "2%", top: "3%", width: "27%" },
+  hudRight: { position: "absolute", right: "2%", top: "3%", width: "27%" },
   roundChip: {
-    flexShrink: 0, fontSize: T.eyebrow, letterSpacing: 2, fontWeight: 700,
-    color: C.faint, border: `1px solid ${C.line}`, borderRadius: R.pill,
-    padding: "5px 12px", whiteSpace: "nowrap",
-  },
-  arenaBox: {
-    // `relative` is what lets the canvas resolve 100% against a real height.
-    position: "relative", flex: 1, minHeight: 0,
-    borderRadius: R.md, border: `2px solid ${C.line}`,
-    overflow: "hidden", background: C.ink,
+    position: "absolute", left: "50%", top: "3%", transform: "translateX(-50%)",
+    fontSize: T.eyebrow, letterSpacing: 2, fontWeight: 700, color: C.text,
+    background: "rgba(11,6,22,.82)", border: `1px solid ${C.line}`,
+    borderRadius: R.pill, padding: "4px 12px", whiteSpace: "nowrap",
   },
   /** Actions on the left, combat log on the right — the Unity arrangement. */
   footRow: {
     display: "flex", gap: SP.md, flexShrink: 0, alignItems: "flex-start",
   },
-  controls: { flex: "1 1 340px", minWidth: 0, minHeight: 96 },
-  logColumn: { flex: "1 1 340px", minWidth: 0 },
+  controls: { flex: "1 1 380px", minWidth: 0, minHeight: 96 },
+  logColumn: { flex: "1 1 300px", minWidth: 0 },
 };
 
 function SlotIcon({ slot, size = 20 }: { slot: ModuleSlot; size?: number }) {
@@ -462,46 +469,41 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
 
   return (
     <Shell onClose={onClose} title="Sol Mechs" subtitle="BATTLE" fit wide>
-      {/* Laid out after the Unity original: name plates with clocks across the
-          top, both players' bars mirrored on shared rows beneath them, the
-          arena in the middle, and actions beside the log at the foot. */}
-      <div style={sxBattle.plates}>
-        <PlayerCard
-          unit={battle.p1}
-          label="You"
-          clock={formatClock(clock.p1)}
-          live={thinking.includes("p1")}
-          low={clock.p1 <= DEFAULT_CLOCK.warnAtMs}
-        />
-        <span style={sxBattle.roundChip}>ROUND {battle.round}</span>
-        <PlayerCard
-          unit={battle.p2}
-          label="Rival"
-          clock={formatClock(clock.p2)}
-          live={thinking.includes("p2")}
-          low={clock.p2 <= DEFAULT_CLOCK.warnAtMs}
-          align="right"
-        />
-      </div>
-
-      <MirroredBars p1={battle.p1} p2={battle.p2} />
-
-      <div style={sxBattle.arenaBox}>
+      {/* The Unity scene's arrangement: the arena is the full-width BACKDROP
+          and the two HUDs sit over its top corners, with the controls and the
+          combat log sharing a strip below. See BattleHud for the measurements. */}
+      <div style={sxBattle.stage}>
         <canvas
           ref={canvasRef}
           width={CANVAS_W}
           height={CANVAS_H}
-          style={{
-            position: "absolute", inset: 0,
-            width: "100%", height: "100%", objectFit: "contain",
-            imageRendering: "pixelated", display: "block",
-          }}
+          style={sxBattle.canvas}
         />
+        <div style={sxBattle.hudLeft}>
+          <UnitPanel
+            unit={battle.p1}
+            name="You"
+            clock={formatClock(clock.p1)}
+            live={thinking.includes("p1")}
+            low={clock.p1 <= DEFAULT_CLOCK.warnAtMs}
+          />
+        </div>
+        <span style={sxBattle.roundChip}>ROUND {battle.round}</span>
+        <div style={sxBattle.hudRight}>
+          <UnitPanel
+            unit={battle.p2}
+            name="Rival"
+            clock={formatClock(clock.p2)}
+            live={thinking.includes("p2")}
+            low={clock.p2 <= DEFAULT_CLOCK.warnAtMs}
+            align="right"
+          />
+        </div>
       </div>
 
       <div style={sxBattle.footRow}>
       {phase === "result" && battle.status.kind === "finished" ? (
-        <div style={{ textAlign: "center", padding: "16px 0" }}>
+        <div style={{ ...sxBattle.controls, textAlign: "center", padding: "16px 0" }}>
           <div style={{
             fontSize: T.display, fontWeight: 800, letterSpacing: 1,
             color: battle.status.winner === "p1" ? C.teal : C.bad,
@@ -537,7 +539,7 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
                         setPendingMove({ slot: o.slot, moveIndex: o.moveIndex });
                       }
                     }}
-                    style={btnStyle(C.raised, true)}
+                    style={actionButton()}
                   >
                     <div style={{ fontWeight: 800, fontSize: T.body }}>{o.move.name}</div>
                     <div style={{ fontSize: T.small, color: C.dim, marginTop: 2 }}>
@@ -557,7 +559,7 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
                   <button
                     key={slot}
                     onClick={() => onTargetPicked(slot)}
-                    style={{ ...btnStyle(slot === "matrix" ? "#5c1830" : C.raised, true), display: "flex", alignItems: "center", gap: 8 }}
+                    style={{ ...actionButton({ selected: slot === "matrix" }), display: "flex", alignItems: "center", gap: 8 }}
                   >
                     <SlotIcon slot={slot} size={slot === "matrix" ? 18 : 24} />
                     <div>
@@ -568,7 +570,7 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
                     </div>
                   </button>
                 ))}
-                <button onClick={() => setPendingMove(null)} style={btnStyle(C.line, true)}>
+                <button onClick={() => setPendingMove(null)} style={actionButton()}>
                   <div style={{ fontWeight: 800, fontSize: T.body }}>Back</div>
                 </button>
               </div>

@@ -20,20 +20,18 @@ import { useState } from "react";
 import { C, T, SP, MONO, eyebrow } from "./theme";
 
 /**
- * The Unity log panel (`arena/log.png`) as a 9-slice.
+ * The Unity log panel as a 9-slice.
  *
- * Slice insets are top/right/bottom/left in source pixels of the imported
- * 372x204 copy, measured by walking in from each edge to where the neon border
- * gives way to the dark grid field. `fill` keeps that grid as the interior —
- * it stretches, but the lines are thin enough that it reads as texture.
- *
- * The left inset is wider than the right because of the notch in the frame's
- * left edge, and the bottom is deepest because the striped tab hangs below it.
+ * `BattleSceneSprites/BattleLog.png` — the sprite the battle scene's Scroll
+ * View actually uses, not `arena/log.png`, which an earlier pass reached for
+ * because the filename looked right. The slice is 30px so the decorative
+ * corner brackets fall inside the corner tiles rather than being stretched
+ * along the edges; `fill` keeps the dark interior.
  */
 const LOG_FRAME: React.CSSProperties = {
   borderStyle: "solid",
-  borderWidth: "6px 6px 16px 18px",
-  borderImage: "url(/assets/minigames/sol-mechs/ui/log-panel.png) 6 6 16 18 fill / 6px 6px 16px 18px / 0 stretch",
+  borderWidth: 12,
+  borderImage: "url(/assets/minigames/sol-mechs/ui/log-frame.png) 30 fill / 12px / 0 stretch",
 };
 
 export interface BattleLogProps {

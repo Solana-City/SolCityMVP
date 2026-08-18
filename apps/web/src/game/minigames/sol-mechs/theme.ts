@@ -130,6 +130,33 @@ export function panel(width: string): React.CSSProperties {
   };
 }
 
+/**
+ * The Unity action button (`Interface guidance/UI/button3.png`) as a 9-slice.
+ *
+ * The battle scene's four ActionButtons are all this sprite, so the arena's
+ * controls are pixel art like everything else on screen rather than the CSS
+ * rectangles that stood in for them. Slice 22 keeps the corner brackets in the
+ * corner tiles; the border width is smaller so they scale down with the frame.
+ */
+export function actionButton(opts: { selected?: boolean; disabled?: boolean } = {}): React.CSSProperties {
+  return {
+    borderStyle: "solid",
+    borderWidth: 9,
+    borderImage: `url(/assets/minigames/sol-mechs/ui/btn-action.png) 22 fill / 9px / 0 stretch`,
+    background: "transparent",
+    color: opts.selected ? C.teal : C.text,
+    fontFamily: "inherit",
+    fontSize: T.small,
+    fontWeight: 700,
+    padding: "5px 10px",
+    cursor: opts.disabled ? "not-allowed" : "pointer",
+    opacity: opts.disabled ? 0.45 : 1,
+    textAlign: "left",
+    lineHeight: 1.25,
+    imageRendering: "pixelated",
+  };
+}
+
 export type ButtonTone = "primary" | "ghost" | "danger" | "neutral";
 
 /** One button treatment, so no screen invents its own. */

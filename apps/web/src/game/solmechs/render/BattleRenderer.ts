@@ -36,14 +36,20 @@ export interface RenderUnits {
   p2: MechUnit;
 }
 
-export const CANVAS_W = 640;
+export const CANVAS_W = 900;
 /**
- * The canvas matches the arena art's aspect exactly (2480x2160 -> 640x557), so
- * the backdrop is shown WHOLE — skyline, crowd and platform — with nothing
- * cropped. The screen scales this down with object-fit rather than showing a
- * window onto it.
+ * Unity's aspect, not the art's.
+ *
+ * arena.png is 5580x4740 (1.177), but the battle scene draws it into a
+ * 1240x835 Image with `m_PreserveAspect: 0` — so the original squashes it to
+ * 1.485 and that wider frame is what the arena is composed for. Matching the
+ * art's own aspect instead, as this did, left a tall canvas that could only be
+ * letterboxed into the screen's stage.
+ *
+ * Nothing else needs to change: the backdrop is drawn stretched to the canvas,
+ * and the mechs are placed by FRACTIONS of the canvas, so both follow.
  */
-export const CANVAS_H = 557;
+export const CANVAS_H = 606;
 
 const ARENA_SRC = "/assets/minigames/sol-mechs/ui/arena.png";
 
@@ -70,9 +76,9 @@ const MECH_H = DOLL_HEIGHT * MECH_SCALE;
 const BOX_BOTTOM = FOOT_LINE + FOOT_INSET_SRC * MECH_SCALE;
 const BOX_TOP = BOX_BOTTOM - MECH_H;
 
-/** Spread so both mechs sit inside the platform's widest span (x 46..592). */
-const P1_X = 52;
-const P2_X = CANVAS_W - 52 - MECH_W;
+/** Spread so both mechs sit inside the platform's widest span (x 65..835). */
+const P1_X = 73;
+const P2_X = CANVAS_W - 73 - MECH_W;
 
 // ── timing (ms) ──────────────────────────────────────────────────────────
 /** Lunge start → impact. The effect and the damage land at this offset. */

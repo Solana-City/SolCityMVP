@@ -20,9 +20,9 @@ import type { TeamBuild } from "@/game/solmechs/data/team";
 import type { ModuleSlot, MoveDefinition } from "@/game/solmechs/data/types";
 import { BattleLog } from "./BattleLog";
 import { useChessClock } from "./ClockBar";
-import { PlayerCard, MirroredBars } from "./BattleHud";
+import { UnitPanel } from "./BattleHud";
 import { SQUAD_CLOCK, formatClock } from "@/game/solmechs/data/clock";
-import { C, T, SP, R, W, PANEL_HEIGHT } from "./theme";
+import { C, T, SP, R, W, PANEL_HEIGHT, actionButton } from "./theme";
 
 /**
  * Narrows the team log to the events BattleRenderer understands. Switches and
@@ -257,43 +257,35 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, onFinished, on
           <SquadBar state={state} side="p2" label="RIVAL" align="right" />
         </div>
 
-        {/* Same arrangement as the 1v1: Unity name plates across the top, both
-            sides' bars mirrored on shared rows, arena full width beneath. The
-            canvas must be `object-fit: contain` inside a flex-1 box, never
-            `width: 100%` — at this panel width a 640x557 canvas stretched to
-            100% is ~1300px tall, which is what forced the page to scroll. */}
-        <div style={sx.plates}>
-          <PlayerCard
-            unit={me}
-            label="You"
-            clock={formatClock(clock.p1)}
-            live={thinking.includes("p1")}
-            low={clock.p1 <= SQUAD_CLOCK.warnAtMs}
-          />
-          <span style={sx.roundChip}>ROUND {state.round}</span>
-          <PlayerCard
-            unit={foe}
-            label="Rival"
-            clock={formatClock(clock.p2)}
-            live={thinking.includes("p2")}
-            low={clock.p2 <= SQUAD_CLOCK.warnAtMs}
-            align="right"
-          />
-        </div>
-
-        <MirroredBars p1={me} p2={foe} />
-
-        <div style={sx.arenaBox}>
+        {/* Same arrangement as the 1v1: the arena is the backdrop and the two
+            HUDs sit over its top corners. See BattleHud for the measurements. */}
+        <div style={sx.stage}>
           <canvas
             ref={canvasRef}
             width={CANVAS_W}
             height={CANVAS_H}
-            style={{
-              position: "absolute", inset: 0,
-              width: "100%", height: "100%", objectFit: "contain",
-              imageRendering: "pixelated", display: "block",
-            }}
+            style={sx.canvas}
           />
+          <div style={sx.hudLeft}>
+            <UnitPanel
+              unit={me}
+              name="You"
+              clock={formatClock(clock.p1)}
+              live={thinking.includes("p1")}
+              low={clock.p1 <= SQUAD_CLOCK.warnAtMs}
+            />
+          </div>
+          <span style={sx.roundChip}>ROUND {state.round}</span>
+          <div style={sx.hudRight}>
+            <UnitPanel
+              unit={foe}
+              name="Rival"
+              clock={formatClock(clock.p2)}
+              live={thinking.includes("p2")}
+              low={clock.p2 <= SQUAD_CLOCK.warnAtMs}
+              align="right"
+            />
+          </div>
         </div>
 
         <div style={sx.footRow}>
@@ -461,20 +453,26 @@ const sx: Record<string, React.CSSProperties> = {
   squadRow: { display: "flex", gap: SP.md, flexWrap: "wrap", flexShrink: 0 },
   squadLabel: { fontSize: 12, color: C.faint, letterSpacing: 2, marginBottom: 3 },
   /**
-   * Name plates and clocks. No chrome of its own — the plates are the Unity
-   * frame art, and a box around them reads as a second, competing border.
+   * The arena, sized to the canvas's own aspect so it fills the stage exactly
+   * rather than being letterboxed into a wide box. See the 1v1 for why.
    */
-  plates: { display: "flex", alignItems: "center", gap: SP.md, flexShrink: 0 },
-  roundChip: {
-    flexShrink: 0, fontSize: T.eyebrow, letterSpacing: 2, fontWeight: 700,
-    color: C.faint, border: `1px solid ${C.line}`, borderRadius: R.pill,
-    padding: "5px 12px", whiteSpace: "nowrap",
+  stage: {
+    position: "relative", flex: 1, minHeight: 0, alignSelf: "center",
+    aspectRatio: `${CANVAS_W} / ${CANVAS_H}`, maxWidth: "100%",
+    overflow: "hidden", borderRadius: R.md,
+    border: `2px solid ${C.line}`, background: C.ink,
   },
-  arenaBox: {
-    // `relative` is what lets the canvas resolve 100% against a real height.
-    position: "relative", flex: 1, minHeight: 0,
-    borderRadius: R.md, border: `2px solid ${C.line}`,
-    overflow: "hidden", background: C.ink,
+  canvas: {
+    position: "absolute", inset: 0, width: "100%", height: "100%",
+    objectFit: "contain", imageRendering: "pixelated", display: "block",
+  },
+  hudLeft: { position: "absolute", left: "2%", top: "3%", width: "27%" },
+  hudRight: { position: "absolute", right: "2%", top: "3%", width: "27%" },
+  roundChip: {
+    position: "absolute", left: "50%", top: "3%", transform: "translateX(-50%)",
+    fontSize: T.eyebrow, letterSpacing: 2, fontWeight: 700, color: C.text,
+    background: "rgba(11,6,22,.82)", border: `1px solid ${C.line}`,
+    borderRadius: R.pill, padding: "4px 12px", whiteSpace: "nowrap",
   },
   /** Actions on the left, combat log on the right — the Unity arrangement. */
   footRow: { display: "flex", gap: SP.md, flexShrink: 0, alignItems: "flex-start" },
@@ -482,10 +480,7 @@ const sx: Record<string, React.CSSProperties> = {
   logColumn: { flex: "1 1 340px", minWidth: 0 },
   prompt: { fontSize: 12, color: C.dim, marginBottom: 6, letterSpacing: 1 },
   btnRow: { display: "flex", flexWrap: "wrap", gap: 6 },
-  btn: {
-    background: C.raised, color: C.text, border: `1px solid ${C.line}`, borderRadius: 6,
-    padding: "8px 12px", cursor: "pointer", textAlign: "left", minWidth: 104,
-  },
+  btn: { ...actionButton(), minWidth: 112 },
   btnTitle: { fontSize: 12, fontWeight: 700 },
   btnSub: { fontSize: 12, color: C.faint, marginTop: 1 },
   hint: { fontSize: 12, color: C.faint, marginTop: 6 },
