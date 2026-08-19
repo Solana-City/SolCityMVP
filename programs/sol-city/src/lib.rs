@@ -1,13 +1,28 @@
 use anchor_lang::prelude::*;
 use anchor_lang::solana_program::{
     pubkey,
-    program::invoke_signed,
+    program::{invoke, invoke_signed},
     system_instruction,
     program_memory::sol_memset,
     rent::Rent as SolanaRent,
     sysvar::Sysvar as SolanaSysvar,
     instruction::{AccountMeta as SolAccountMeta, Instruction as SolInstruction},
 };
+
+// ── MagicBlock ephemeral VRF (outfit booster) ──────────────────────────────
+// BUILD NOTES (verify against ephemeral-vrf-sdk 0.3.0 when building in Solana
+// Playground — the crate's exact module paths may differ slightly and the
+// build will name any mismatch):
+//   • #[vrf] macro augments the request Accounts ctx with the VRF program and
+//     adds `ctx.accounts.invoke_signed_vrf(&payer, &ix)`.
+//   • create_request_randomness_ix(RequestRandomnessParams { payer, oracle_queue,
+//     callback_program_id, callback_discriminator, caller_seed, accounts_metas, .. })
+//   • consts::DEFAULT_QUEUE (base devnet Cuj97…AxGh) / VRF_PROGRAM_IDENTITY
+//   • rnd helpers exist too; we derive indices from the raw [u8;32] here.
+use ephemeral_vrf_sdk::anchor::vrf;
+use ephemeral_vrf_sdk::instructions::{create_request_randomness_ix, RequestRandomnessParams};
+use ephemeral_vrf_sdk::types::SerializableAccountMeta;
+use ephemeral_vrf_sdk::consts::VRF_PROGRAM_IDENTITY;
 
 declare_id!("HPvDFVnruSXHwKKP44eUvRh8oYqBaHCeQbK1sKWT1aU2");
 
@@ -21,6 +36,21 @@ pub const BUFFER_SEED: &[u8] = b"buffer";
 pub const HUNT_SEED: &[u8] = b"hunt";
 /// How long a citizen sticks around before it rotates unfound (seconds).
 pub const CITIZEN_DURATION_SECS: i64 = 300;
+
+// ── Outfit booster ─────────────────────────────────────────────────────────
+/// Per-wallet unlock store (bitset of booster-pool item indices).
+pub const UNLOCKS_SEED: &[u8] = b"unlocks";
+/// Bitset capacity in bytes → 256 possible item indices. The CLIENT owns the
+/// index→item table (getBoosterPool order); the pool count per draw is passed
+/// per request and stored on the account, so the pool can grow without a
+/// redeploy (append-only, never reorder).
+pub const UNLOCK_BITS: usize = 32;
+/// Pieces granted per pack.
+pub const BOOSTER_PACK_SIZE: usize = 5;
+/// Price to open a pack (0.01 SOL on devnet).
+pub const BOOSTER_PRICE_LAMPORTS: u64 = 10_000_000;
+/// Treasury that receives pack payments (the game wallet).
+pub const TREASURY: Pubkey = pubkey!("9592QS34mPUwqA7sPAkug1kcuFddjn59QPQMzzCgKhEp");
 
 /// MagicBlock delegation program on devnet.
 pub const DELEGATION_PROGRAM_ID: Pubkey =
@@ -36,6 +66,12 @@ pub enum SolCityError {
     HuntRoundStale,
     #[msg("Hunt citizen has not expired yet")]
     HuntNotExpired,
+    #[msg("A booster pack is already being opened for this wallet")]
+    BoosterPending,
+    #[msg("Booster pool count too small for a full pack")]
+    InvalidPoolCount,
+    #[msg("Wrong treasury account")]
+    InvalidTreasury,
 }
 
 /// Truncates a string to at most `max` BYTES on a char boundary, so a
@@ -402,6 +438,98 @@ pub mod sol_city {
         hunt.deadline = now + CITIZEN_DURATION_SECS;
         Ok(())
     }
+
+    // ── Outfit booster (VRF) ───────────────────────────────────────────────
+    //
+    // open_booster: wallet pays BOOSTER_PRICE_LAMPORTS to the treasury and
+    // requests verifiable randomness from MagicBlock VRF, naming
+    // callback_open_booster as the consumer. `pool_count` is the client's
+    // current getBoosterPool() length (the index space to draw from); it's
+    // stored on the unlock account so the async callback can use it.
+    //
+    // callback_open_booster: invoked by the VRF oracle (signed by the VRF
+    // program identity). Derives BOOSTER_PACK_SIZE distinct indices in
+    // [0, pool_count) from the verified randomness, sets those bits in the
+    // wallet's UnlockState, and emits BoosterOpened so the client reveals them.
+
+    pub fn open_booster(
+        ctx: Context<OpenBooster>,
+        pool_count: u16,
+        client_seed: [u8; 32],
+    ) -> Result<()> {
+        require!(pool_count as usize >= BOOSTER_PACK_SIZE, SolCityError::InvalidPoolCount);
+        require_keys_eq!(ctx.accounts.treasury.key(), TREASURY, SolCityError::InvalidTreasury);
+
+        {
+            let unlocks = &mut ctx.accounts.unlock_state;
+            require!(!unlocks.pending, SolCityError::BoosterPending);
+            if unlocks.authority == Pubkey::default() {
+                unlocks.authority = ctx.accounts.payer.key();
+            }
+            unlocks.pending = true;
+            unlocks.pending_pool_count = pool_count;
+        }
+
+        // Payment → treasury (wallet is the signer/fee payer).
+        invoke(
+            &system_instruction::transfer(
+                ctx.accounts.payer.key,
+                ctx.accounts.treasury.key,
+                BOOSTER_PRICE_LAMPORTS,
+            ),
+            &[
+                ctx.accounts.payer.to_account_info(),
+                ctx.accounts.treasury.to_account_info(),
+                ctx.accounts.system_program.to_account_info(),
+            ],
+        )?;
+
+        // Request randomness; the callback grants into this UnlockState.
+        let ix = create_request_randomness_ix(RequestRandomnessParams {
+            payer: ctx.accounts.payer.key(),
+            oracle_queue: ctx.accounts.oracle_queue.key(),
+            callback_program_id: ID,
+            callback_discriminator: instruction::CallbackOpenBooster::DISCRIMINATOR.to_vec(),
+            caller_seed: client_seed,
+            accounts_metas: Some(vec![SerializableAccountMeta {
+                pubkey: ctx.accounts.unlock_state.key(),
+                is_signer: false,
+                is_writable: true,
+            }]),
+            ..Default::default()
+        });
+        ctx.accounts.invoke_signed_vrf(&ctx.accounts.payer.to_account_info(), &ix)?;
+        Ok(())
+    }
+
+    pub fn callback_open_booster(
+        ctx: Context<CallbackOpenBooster>,
+        randomness: [u8; 32],
+    ) -> Result<()> {
+        let unlocks = &mut ctx.accounts.unlock_state;
+        let n = unlocks.pending_pool_count.max(1);
+
+        let mut picks: Vec<u16> = Vec::with_capacity(BOOSTER_PACK_SIZE);
+        let mut cursor: usize = 0;
+        // 32 bytes → up to 31 index candidates; plenty to find 5 distinct.
+        while picks.len() < BOOSTER_PACK_SIZE && cursor < 31 {
+            let hi = randomness[cursor] as u16;
+            let lo = randomness[cursor + 1] as u16;
+            let idx = ((hi << 8) | lo) % n;
+            if !picks.contains(&idx) {
+                picks.push(idx);
+                let byte = (idx / 8) as usize;
+                if byte < UNLOCK_BITS {
+                    unlocks.bits[byte] |= 1u8 << (idx % 8) as u8;
+                }
+            }
+            cursor += 1;
+        }
+
+        unlocks.pending = false;
+        emit!(BoosterOpened { authority: unlocks.authority, indices: picks });
+        Ok(())
+    }
 }
 
 #[derive(Accounts)]
@@ -558,4 +686,63 @@ pub struct PlayerState {
     pub last_message: String,
     /// Unix ts the last message was sent.
     pub message_at: i64,
+}
+
+// ── Outfit booster accounts ────────────────────────────────────────────────
+
+#[vrf]
+#[derive(Accounts)]
+pub struct OpenBooster<'info> {
+    #[account(mut)]
+    pub payer: Signer<'info>,
+    #[account(
+        init_if_needed,
+        payer = payer,
+        space = 8 + UnlockState::INIT_SPACE,
+        seeds = [UNLOCKS_SEED, payer.key().as_ref()],
+        bump,
+    )]
+    pub unlock_state: Account<'info, UnlockState>,
+    /// CHECK: address-checked against TREASURY in the instruction body.
+    #[account(mut)]
+    pub treasury: AccountInfo<'info>,
+    /// CHECK: MagicBlock VRF oracle queue (base devnet).
+    #[account(mut, address = ephemeral_vrf_sdk::consts::DEFAULT_QUEUE)]
+    pub oracle_queue: AccountInfo<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct CallbackOpenBooster<'info> {
+    /// Only the MagicBlock VRF program identity may invoke the callback.
+    #[account(address = VRF_PROGRAM_IDENTITY)]
+    pub vrf_program_identity: Signer<'info>,
+    /// Re-derived from the authority stored on the account (the wallet doesn't
+    /// sign the callback — the oracle does), so the grant lands on the right PDA.
+    #[account(
+        mut,
+        seeds = [UNLOCKS_SEED, unlock_state.authority.as_ref()],
+        bump,
+    )]
+    pub unlock_state: Account<'info, UnlockState>,
+}
+
+#[account]
+#[derive(InitSpace)]
+pub struct UnlockState {
+    /// Wallet that owns these unlocks.
+    pub authority: Pubkey,
+    /// Bitset of unlocked booster-pool indices (1 bit per index).
+    pub bits: [u8; UNLOCK_BITS],
+    /// A pack has been paid for and is awaiting the VRF callback.
+    pub pending: bool,
+    /// Index space for the pending draw (client getBoosterPool length).
+    pub pending_pool_count: u16,
+}
+
+/// Emitted when a pack resolves — the client reveals these pool indices.
+#[event]
+pub struct BoosterOpened {
+    pub authority: Pubkey,
+    pub indices: Vec<u16>,
 }
