@@ -15,6 +15,8 @@ import {
   SPRITE_FRAME_HEIGHT,
   DIRECTION_ROW,
 } from "@/game/config/paperDoll";
+import { profileManager } from "@/game/config/profileManager";
+import { isVariantUnlocked, unlockItem } from "@/game/config/wardrobeUnlocks";
 
 const CHROMA_R = 215, CHROMA_G = 123, CHROMA_B = 186, CHROMA_TOL = 30;
 
@@ -199,10 +201,12 @@ const CATEGORY_ICONS: Record<LayerCategory, string> = {
 
 const OPTIONAL: LayerCategory[] = ["hat", "accessory", "back"];
 
-function randomLoadout(): Loadout {
+function randomLoadout(wallet: string | null): Loadout {
   const out: Loadout = {};
   for (const cat of LAYER_ORDER) {
-    const variants = getEnabledVariants(cat);
+    // Only roll items the wallet can actually equip.
+    const variants = getEnabledVariants(cat).filter(v => isVariantUnlocked(wallet, cat, v));
+    if (variants.length === 0) continue;
     if (OPTIONAL.includes(cat) && Math.random() < 0.4) continue;
     out[cat] = variants[Math.floor(Math.random() * variants.length)].id;
   }
@@ -219,6 +223,9 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
   const [activeCategory, setActiveCategory] = useState<LayerCategory>("skin");
   const [flash, setFlash] = useState<string | null>(null);
   const [isMobile, setIsMobile] = useState(false);
+  const [wallet] = useState<string | null>(() => profileManager?.get().wallet ?? null);
+  // Bumped whenever an item is unlocked so the locked grid re-renders.
+  const [, bumpUnlocks] = useState(0);
 
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 720px), (pointer: coarse)");
@@ -232,16 +239,50 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
     gameRef?.events.emit("wardrobe:loadout", loadout);
   }, [loadout, gameRef]);
 
+  // Grandfather: any locked item the player already wears stays equippable.
+  useEffect(() => {
+    const saved = loadSavedLoadout();
+    for (const cat of LAYER_ORDER) {
+      const id = saved[cat];
+      const v = id ? getVariant(cat, id) : undefined;
+      if (v?.locked) unlockItem(wallet, cat, v.id, v.name);
+    }
+  }, [wallet]);
+
+  // Re-render when an item is unlocked (from here, a quest, an NPC, or a booster).
+  useEffect(() => {
+    const on = () => bumpUnlocks(n => n + 1);
+    window.addEventListener("solcity:itemUnlocked", on);
+    return () => window.removeEventListener("solcity:itemUnlocked", on);
+  }, []);
+
+  // Dev helper: unlock from the console until quests/NPCs/boosters are wired in.
+  //   solcityUnlock("hat", "Crown")
+  useEffect(() => {
+    (window as unknown as Record<string, unknown>).solcityUnlock =
+      (cat: LayerCategory, id: string) => unlockItem(wallet, cat, id, getVariant(cat, id)?.name);
+    return () => { delete (window as unknown as Record<string, unknown>).solcityUnlock; };
+  }, [wallet]);
+
   const selectVariant = useCallback((category: LayerCategory, variantId: string | undefined) => {
+    if (variantId) {
+      const v = getVariant(category, variantId);
+      // Locked and not yet unlocked → flash the hint instead of equipping.
+      if (v && !isVariantUnlocked(wallet, category, v)) {
+        setFlash(`locked:${category}:${variantId}`);
+        setTimeout(() => setFlash(null), 1400);
+        return;
+      }
+    }
     setLoadout(prev => ({ ...prev, [category]: variantId }));
     setFlash(`${category}:${variantId}`);
     setTimeout(() => setFlash(null), 600);
-  }, []);
+  }, [wallet]);
 
   const handleRandom = useCallback(() => {
-    const next = randomLoadout();
+    const next = randomLoadout(wallet);
     setLoadout(next);
-  }, []);
+  }, [wallet]);
 
   const handleSave = useCallback(() => {
     saveLoadout(loadout);
@@ -487,19 +528,42 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
                 {variants.map(v => {
                   const isSelected = currentVariantId === v.id;
                   const isFlashing = flash === `${activeCategory}:${v.id}`;
+                  const locked = !isVariantUnlocked(wallet, activeCategory, v);
+                  const hintFlashing = flash === `locked:${activeCategory}:${v.id}`;
                   return (
                     <VariantCard
                       key={v.id}
                       isSelected={isSelected}
                       isFlashing={isFlashing}
+                      locked={locked}
+                      hintFlashing={hintFlashing}
                       onClick={() => selectVariant(activeCategory, v.id)}
                     >
-                      <ChromaPreview file={v.file} size={64} facingUp={activeCategory === "back"} />
+                      <div style={{ position: "relative", lineHeight: 0 }}>
+                        <ChromaPreview file={v.file} size={64} facingUp={activeCategory === "back"} />
+                        {locked && (
+                          <span style={{
+                            position: "absolute", inset: 0,
+                            display: "flex", alignItems: "center", justifyContent: "center",
+                            background: "rgba(6,8,20,0.55)", borderRadius: 6,
+                            fontSize: 18,
+                          }}>🔒</span>
+                        )}
+                      </div>
                       <span style={{
-                        color: isSelected ? "#c084fc" : "#aaaacc",
+                        color: locked ? "#666688" : isSelected ? "#c084fc" : "#aaaacc",
                         lineHeight: 1.3,
                         textAlign: "center",
                       }}>{v.name}</span>
+                      {locked && (
+                        <span style={{
+                          fontSize: 6,
+                          color: hintFlashing ? "#FFD700" : "#7a7aa0",
+                          letterSpacing: 0.5,
+                          textAlign: "center",
+                          lineHeight: 1.4,
+                        }}>{v.unlockHint ?? "Locked"}</span>
+                      )}
                     </VariantCard>
                   );
                 })}
@@ -555,53 +619,61 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
 }
 
 function VariantCard({
-  isSelected, isFlashing, onClick, children,
+  isSelected, isFlashing, locked = false, hintFlashing = false, onClick, children,
 }: {
   isSelected: boolean;
   isFlashing: boolean;
+  locked?: boolean;
+  hintFlashing?: boolean;
   onClick: () => void;
   children: React.ReactNode;
 }) {
+  const baseBg = locked
+    ? "rgba(255,255,255,0.015)"
+    : isSelected ? "rgba(153,69,255,0.15)"
+    : isFlashing ? "rgba(20,241,149,0.08)"
+    : "rgba(255,255,255,0.02)";
+  const baseBorder = hintFlashing
+    ? "2px solid rgba(255,215,0,0.6)"
+    : locked ? "2px solid rgba(255,255,255,0.04)"
+    : isSelected ? "2px solid rgba(153,69,255,0.7)"
+    : "2px solid rgba(255,255,255,0.05)";
   return (
     <button
       onClick={onClick}
-      data-sfx="outfit"
+      data-sfx={locked ? undefined : "outfit"}
+      title={locked ? "Locked" : undefined}
       style={{
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
         gap: 6,
         padding: "10px 8px",
-        background: isSelected
-          ? "rgba(153,69,255,0.15)"
-          : isFlashing
-          ? "rgba(20,241,149,0.08)"
-          : "rgba(255,255,255,0.02)",
-        border: isSelected
-          ? "2px solid rgba(153,69,255,0.7)"
-          : "2px solid rgba(255,255,255,0.05)",
+        background: baseBg,
+        border: baseBorder,
         borderRadius: 10,
         cursor: "pointer",
         fontSize: 8,
         fontFamily: '"Press Start 2P", monospace',
+        opacity: locked ? 0.78 : 1,
         transition: "background 0.15s, border-color 0.15s, transform 0.1s",
-        transform: isFlashing ? "scale(1.04)" : "scale(1)",
+        transform: isFlashing || hintFlashing ? "scale(1.04)" : "scale(1)",
         outline: isFlashing ? "2px solid rgba(20,241,149,0.5)" : "none",
         outlineOffset: 2,
       }}
       onMouseEnter={e => {
-        if (!isSelected) {
+        if (!isSelected && !locked) {
           e.currentTarget.style.background = "rgba(153,69,255,0.09)";
           e.currentTarget.style.borderColor = "rgba(153,69,255,0.35)";
         }
         e.currentTarget.style.transform = "scale(1.03)";
       }}
       onMouseLeave={e => {
-        if (!isSelected) {
+        if (!isSelected && !locked) {
           e.currentTarget.style.background = "rgba(255,255,255,0.02)";
           e.currentTarget.style.borderColor = "rgba(255,255,255,0.05)";
         }
-        e.currentTarget.style.transform = isFlashing ? "scale(1.04)" : "scale(1)";
+        e.currentTarget.style.transform = isFlashing || hintFlashing ? "scale(1.04)" : "scale(1)";
       }}
     >
       {children}

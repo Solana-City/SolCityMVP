@@ -62,6 +62,15 @@ export interface LayerVariant {
    *     covers the crown, stays on "full" rather than this).
    */
   hatCoverage?: "full" | "band" | "suppress";
+  /**
+   * When true, this item is shown in the wardrobe but NOT equippable until the
+   * wallet unlocks it (via a quest, an NPC interaction, or a VRF booster). See
+   * `wardrobeUnlocks.ts`. Rendering an already-equipped locked item is never
+   * gated — the lock only applies to picking it in the wardrobe.
+   */
+  locked?: boolean;
+  /** Short hint shown on a locked item ("Booster reward", "Talk to Sol", …). */
+  unlockHint?: string;
 }
 
 /**
@@ -90,7 +99,7 @@ export type Loadout = Partial<Record<LayerCategory, string>>;
 
 export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
   back: [
-    { id: "Jetpack",         name: "Jetpack",        textureKey: "pd-back-Jetpack",         file: "back/Jetpack.png" },
+    { id: "Jetpack",         name: "Jetpack",        textureKey: "pd-back-Jetpack",         file: "back/Jetpack.png", locked: true, unlockHint: "Quest reward" },
     { id: "backpack_brown",  name: "Brown Backpack", textureKey: "pd-back-backpack_brown",  file: "back/backpack_brown.png" },
     { id: "backpack_red",    name: "Red Backpack",   textureKey: "pd-back-backpack_red",    file: "back/backpack_red.png" },
   ],
@@ -125,7 +134,7 @@ export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
     { id: "White_tshirt", name: "White T-Shirt", textureKey: "pd-tshirt-White_tshirt", file: "tshirt/White_tshirt.png" },
   ],
   accessory: [
-    { id: "Golden_ring", name: "Golden Ring", textureKey: "pd-accessory-Golden_ring", file: "accessory/Golden_ring.png" },
+    { id: "Golden_ring", name: "Golden Ring", textureKey: "pd-accessory-Golden_ring", file: "accessory/Golden_ring.png", locked: true, unlockHint: "Booster reward" },
     { id: "Pirate",      name: "Pirate",      textureKey: "pd-accessory-Pirate",      file: "accessory/Pirate.png" },
   ],
   hair: [
@@ -145,13 +154,13 @@ export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
     { id: "Cap_Sol",    name: "Cap Sol",    textureKey: "pd-hat-Cap_Sol",    file: "hat/Cap_Sol.png" },
     { id: "Cap_blue",   name: "Cap Blue",   textureKey: "pd-hat-Cap_blue",   file: "hat/Cap_blue.png" },
     { id: "Cap_kid",    name: "Cap Kid",    textureKey: "pd-hat-Cap_kid",    file: "hat/Cap_kid.png" },
-    { id: "Crown",      name: "Crown",      textureKey: "pd-hat-Crown",      file: "hat/Crown.png" },
+    { id: "Crown",      name: "Crown",      textureKey: "pd-hat-Crown",      file: "hat/Crown.png", locked: true, unlockHint: "Booster reward" },
     { id: "Cylinder",   name: "Cylinder",   textureKey: "pd-hat-Cylinder",   file: "hat/Cylinder.png" },
     { id: "Viking_hat", name: "Viking Hat", textureKey: "pd-hat-Viking_hat", file: "hat/Viking_hat.png" },
     { id: "Ninja",      name: "Ninja",      textureKey: "pd-hat-Ninja",      file: "hat/Ninja.png", hatCoverage: "suppress" },
     { id: "Pirate",     name: "Pirate",     textureKey: "pd-hat-Pirate",     file: "hat/Pirate.png" },
     { id: "Straw_hat",  name: "Straw Hat",  textureKey: "pd-hat-Straw_hat",  file: "hat/Straw_hat.png" },
-    { id: "Vizard_hat", name: "Vizard Hat", textureKey: "pd-hat-Vizard_hat", file: "hat/Vizard_hat.png" },
+    { id: "Vizard_hat", name: "Vizard Hat", textureKey: "pd-hat-Vizard_hat", file: "hat/Vizard_hat.png", locked: true, unlockHint: "Rare booster" },
     { id: "hat_black",  name: "Black Hat",  textureKey: "pd-hat-hat_black",  file: "hat/hat_black.png" },
     { id: "hat_red",    name: "Red Hat",    textureKey: "pd-hat-hat_red",    file: "hat/hat_red.png" },
     { id: "red_belt",   name: "Red Bandana",textureKey: "pd-hat-red_belt",   file: "hat/red_belt.png", hatCoverage: "band" },
