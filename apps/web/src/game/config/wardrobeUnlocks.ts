@@ -1,4 +1,5 @@
 import { LayerCategory, LayerVariant } from "./paperDoll";
+import { progressionBus } from "@/game/progression/progressionBus";
 
 /**
  * Per-wallet unlock registry for paper-doll wardrobe items.
@@ -47,8 +48,8 @@ export function isVariantUnlocked(
 
 /**
  * Grant a locked item to a wallet. Returns true if it was NEWLY unlocked (so
- * callers can toast/reward once). Fires a `solcity:itemUnlocked` window event
- * with `{ category, id, name }` for UI feedback.
+ * callers can reward once). Fires a `progressionBus` "outfit-unlocked" event —
+ * the ToastStack shows "Outfit unlocked" and the WardrobePanel re-renders.
  */
 export function unlockItem(
   wallet: string | null,
@@ -64,10 +65,6 @@ export function unlockItem(
   try {
     localStorage.setItem(storageKey(wallet), JSON.stringify([...set]));
   } catch { /* ignore quota / private-mode */ }
-  try {
-    window.dispatchEvent(
-      new CustomEvent("solcity:itemUnlocked", { detail: { category, id, name: name ?? id } }),
-    );
-  } catch { /* SSR / no window */ }
+  progressionBus.emit({ type: "outfit-unlocked", outfitId: key, outfitName: name ?? id });
   return true;
 }

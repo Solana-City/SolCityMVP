@@ -17,6 +17,7 @@ import {
 } from "@/game/config/paperDoll";
 import { profileManager } from "@/game/config/profileManager";
 import { isVariantUnlocked, unlockItem } from "@/game/config/wardrobeUnlocks";
+import { progressionBus } from "@/game/progression/progressionBus";
 
 const CHROMA_R = 215, CHROMA_G = 123, CHROMA_B = 186, CHROMA_TOL = 30;
 
@@ -251,9 +252,8 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
 
   // Re-render when an item is unlocked (from here, a quest, an NPC, or a booster).
   useEffect(() => {
-    const on = () => bumpUnlocks(n => n + 1);
-    window.addEventListener("solcity:itemUnlocked", on);
-    return () => window.removeEventListener("solcity:itemUnlocked", on);
+    const unsub = progressionBus.on("outfit-unlocked", () => bumpUnlocks(n => n + 1));
+    return () => unsub();
   }, []);
 
   // Dev helper: unlock from the console until quests/NPCs/boosters are wired in.

@@ -1,3 +1,5 @@
+import type { LayerCategory } from "./paperDoll";
+
 export interface NPCAction {
   type: "tutor" | "swap" | "transfer" | "bounties" | "link" | "placeholder" | "private-payment" | "minigame";
   label: string;
@@ -21,6 +23,12 @@ export interface NPCDefinition {
    * Points to a spritesheet (same format as the player: 64×64 frames).
    */
   spriteKey?: string;
+  /**
+   * Optional wardrobe item this NPC gives the player on interaction (granted
+   * once — idempotent). Pairs with a `locked` LayerVariant whose `unlockHint`
+   * points here (e.g. "Meet Sol"). See wardrobeUnlocks.unlockItem.
+   */
+  unlockOutfit?: { category: LayerCategory; id: string };
   /**
    * Set to false to hide this NPC from the city without removing its
    * definition (e.g. temporarily disabled while content is reworked).
@@ -82,6 +90,8 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     ],
     action: { type: "tutor", label: "Got it!" },
     spriteKey: "Sol",
+    // Welcome gift — every player meets Sol, so this is the tutorial unlock.
+    unlockOutfit: { category: "accessory", id: "Golden_ring" },
   },
   {
     id: "sushi-man",
