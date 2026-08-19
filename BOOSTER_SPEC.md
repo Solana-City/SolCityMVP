@@ -6,8 +6,45 @@ preview** (`BoosterOverlay`, `boosterPool.ts`) that uses the exact same pool and
 5-piece draw rules — only the **entropy source** (Math.random → VRF) and the
 **grant** (localStorage → on-chain PDA) change. Reveal UX is final.
 
-Status: **staged, needs a program redeploy.** Nothing here ships client-side
-until the program is live (same rule as `REDEPLOY_CHECKLIST.md`).
+Status: **program WRITTEN (commit 7f9e223), needs a Solana Playground deploy;
+client wiring lands after.** Decisions locked: **VRF via MagicBlock ephemeral
+VRF**, **0.01 SOL** per pack to the **game-wallet treasury**, base devnet
+(wallet-signed — no ER-session dependency). Nothing ships client-side until the
+program is live (same rule as `REDEPLOY_CHECKLIST.md`).
+
+### What's on-chain now (`programs/sol-city/src/lib.rs`)
+- `open_booster(pool_count, client_seed)` — pays 0.01 SOL → treasury, requests
+  VRF (`ephemeral-vrf-sdk` `create_request_randomness_ix`, `DEFAULT_QUEUE`),
+  callback `callback_open_booster`. Stores `pending` + `pending_pool_count` on
+  `UnlockState`.
+- `callback_open_booster(randomness)` — VRF-identity-signed; 5 distinct indices
+  in `[0, pool_count)` → bits in `UnlockState` (seed `["unlocks", wallet]`,
+  256-bit capacity), emits `BoosterOpened { authority, indices }`.
+- Cargo: `anchor-lang` + `init-if-needed`, `ephemeral-vrf-sdk = 0.3.0` (anchor).
+
+### Deploy (Solana Playground) — do this next
+1. Open the program in beta.solpg.io, add the two deps to `Cargo.toml`, build.
+   **Expect to iterate** on `ephemeral-vrf-sdk` path/name mismatches — the
+   `BUILD NOTES` block in `lib.rs` lists what to check (`#[vrf]` macro,
+   `create_request_randomness_ix`, `consts::DEFAULT_QUEUE` / `VRF_PROGRAM_IDENTITY`).
+2. Deploy to devnet (upgrade authority = game wallet). Program id unchanged
+   (`HPvDFVnruSXHwKKP44eUvRh8oYqBaHCeQbK1sKWT1aU2`).
+3. **VRF oracle:** confirm from MagicBlock's docs whether the request payer must
+   pre-fund the oracle queue / any per-request fee on devnet; top up if so.
+4. Export the new IDL — the client needs the `open_booster` accounts (the
+   `#[vrf]` macro appends VRF-program accounts) + the `BoosterOpened` event.
+
+### Client wiring (after deploy — Phase 2)
+- `program.ts`: `UNLOCKS_SEED`, `deriveUnlockPDA(wallet)`, `decodeUnlockState`
+  (bitset → set of indices), `boosterIndexOf`/`itemAtIndex` frozen from
+  `getBoosterPool()` order (POOL_VERSION).
+- `instructions.ts`: `buildOpenBoosterIx(payer, poolCount, seed, {unlockPda,
+  treasury, oracleQueue, ...vrfAccounts})`.
+- `wardrobeUnlocks.getUnlockedSet`: read+decode the `UnlockState` PDA (cache;
+  refresh on the `BoosterOpened` event) instead of localStorage for booster items.
+- `BoosterOverlay`: OPEN → wallet signs/pays `open_booster` → "opening…" until
+  the `BoosterOpened` event / PDA poll → reveal the 5 from the returned indices.
+  Card UX unchanged.
 
 ---
 
