@@ -29,6 +29,12 @@ client/program layouts diverge and multiplayer breaks.
    itself onto the ER needs a `delegate_hunt` instruction. Low value (the hunt is
    ~1 write per 5-min round city-wide → negligible base cost) vs real complexity
    (a shared delegated account). Evaluate before doing.
+5. **Outfit booster (VRF).** Paid pack → 5 random wardrobe pieces via MagicBlock
+   ephemeral VRF → granted to an on-chain `UnlockState` PDA (bitset). Full spec
+   in **`BOOSTER_SPEC.md`**. Client preview already ships (gacha economy +
+   `BoosterOverlay`); only the entropy source (Math.random → VRF) and grant
+   (localStorage → PDA) change. Decisions to lock first: price/treasury, dupe
+   handling, and whether quest/NPC unlocks also move on-chain this redeploy.
 4. **Player names: changeable + first-come ownership.** Today the on-chain
    `display_name` is written ONCE at `initialize_player`, defaulting to the wallet
    short-form (`ProfileManager.setWallet` sets `displayName = "7NXk...uqbA"`), and
