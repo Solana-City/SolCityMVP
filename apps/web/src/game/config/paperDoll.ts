@@ -63,13 +63,12 @@ export interface LayerVariant {
    */
   hatCoverage?: "full" | "band" | "suppress";
   /**
-   * When true, this item is shown in the wardrobe but NOT equippable until the
-   * wallet unlocks it (via a quest, an NPC interaction, or a VRF booster). See
-   * `wardrobeUnlocks.ts`. Rendering an already-equipped locked item is never
-   * gated — the lock only applies to picking it in the wardrobe.
+   * Reserves this item to a specific NON-booster source so it's excluded from
+   * the random booster pool: "quest" (claimed from a quest) or "npc" (given by
+   * an NPC). Undefined + not in FREE_ITEMS ⇒ it drops from booster packs.
    */
-  locked?: boolean;
-  /** Short hint shown on a locked item ("Booster reward", "Talk to Sol", …). */
+  unlockVia?: "quest" | "npc";
+  /** Overrides the default locked-item hint shown in the wardrobe. */
   unlockHint?: string;
 }
 
@@ -99,7 +98,7 @@ export type Loadout = Partial<Record<LayerCategory, string>>;
 
 export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
   back: [
-    { id: "Jetpack",         name: "Jetpack",        textureKey: "pd-back-Jetpack",         file: "back/Jetpack.png", locked: true, unlockHint: "Quest reward" },
+    { id: "Jetpack",         name: "Jetpack",        textureKey: "pd-back-Jetpack",         file: "back/Jetpack.png", unlockVia: "quest", unlockHint: "Quest reward" },
     { id: "backpack_brown",  name: "Brown Backpack", textureKey: "pd-back-backpack_brown",  file: "back/backpack_brown.png" },
     { id: "backpack_red",    name: "Red Backpack",   textureKey: "pd-back-backpack_red",    file: "back/backpack_red.png" },
   ],
@@ -134,7 +133,7 @@ export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
     { id: "White_tshirt", name: "White T-Shirt", textureKey: "pd-tshirt-White_tshirt", file: "tshirt/White_tshirt.png" },
   ],
   accessory: [
-    { id: "Golden_ring", name: "Golden Ring", textureKey: "pd-accessory-Golden_ring", file: "accessory/Golden_ring.png", locked: true, unlockHint: "Meet Sol" },
+    { id: "Golden_ring", name: "Golden Ring", textureKey: "pd-accessory-Golden_ring", file: "accessory/Golden_ring.png", unlockVia: "npc", unlockHint: "Meet Sol" },
     { id: "Pirate",      name: "Pirate",      textureKey: "pd-accessory-Pirate",      file: "accessory/Pirate.png" },
   ],
   hair: [
@@ -154,13 +153,13 @@ export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
     { id: "Cap_Sol",    name: "Cap Sol",    textureKey: "pd-hat-Cap_Sol",    file: "hat/Cap_Sol.png" },
     { id: "Cap_blue",   name: "Cap Blue",   textureKey: "pd-hat-Cap_blue",   file: "hat/Cap_blue.png" },
     { id: "Cap_kid",    name: "Cap Kid",    textureKey: "pd-hat-Cap_kid",    file: "hat/Cap_kid.png" },
-    { id: "Crown",      name: "Crown",      textureKey: "pd-hat-Crown",      file: "hat/Crown.png", locked: true, unlockHint: "Booster reward" },
+    { id: "Crown",      name: "Crown",      textureKey: "pd-hat-Crown",      file: "hat/Crown.png" },
     { id: "Cylinder",   name: "Cylinder",   textureKey: "pd-hat-Cylinder",   file: "hat/Cylinder.png" },
     { id: "Viking_hat", name: "Viking Hat", textureKey: "pd-hat-Viking_hat", file: "hat/Viking_hat.png" },
     { id: "Ninja",      name: "Ninja",      textureKey: "pd-hat-Ninja",      file: "hat/Ninja.png", hatCoverage: "suppress" },
     { id: "Pirate",     name: "Pirate",     textureKey: "pd-hat-Pirate",     file: "hat/Pirate.png" },
     { id: "Straw_hat",  name: "Straw Hat",  textureKey: "pd-hat-Straw_hat",  file: "hat/Straw_hat.png" },
-    { id: "Vizard_hat", name: "Vizard Hat", textureKey: "pd-hat-Vizard_hat", file: "hat/Vizard_hat.png", locked: true, unlockHint: "Rare booster" },
+    { id: "Vizard_hat", name: "Vizard Hat", textureKey: "pd-hat-Vizard_hat", file: "hat/Vizard_hat.png" },
     { id: "hat_black",  name: "Black Hat",  textureKey: "pd-hat-hat_black",  file: "hat/hat_black.png" },
     { id: "hat_red",    name: "Red Hat",    textureKey: "pd-hat-hat_red",    file: "hat/hat_red.png" },
     { id: "red_belt",   name: "Red Bandana",textureKey: "pd-hat-red_belt",   file: "hat/red_belt.png", hatCoverage: "band" },
@@ -229,6 +228,40 @@ export function getVariant(category: LayerCategory, variantId?: string): LayerVa
  *  can pick from or that a random pedestrian could roll. */
 export function getEnabledVariants(category: LayerCategory): LayerVariant[] {
   return LAYER_VARIANTS[category].filter((v) => v.enabled !== false);
+}
+
+// ── Unlock economy (gacha) ──────────────────────────────────────────────────
+//
+// Only a small starter set is free; everything else is locked and earned via a
+// quest, an NPC, or a random booster pack. Identity layers (skin, eyesFace)
+// stay fully free — they aren't cosmetics to collect.
+const FREE_ITEMS: Partial<Record<LayerCategory, "*" | string[]>> = {
+  skin: "*",
+  eyesFace: "*",
+  hair: ["Black_hair", "Brown_hair"],
+  tshirt: ["Blue_tshirt", "White_tshirt"],
+  pants: ["Blue_pants", "Grey_pants"],
+  // hat, accessory, back: nothing free — all via quest / NPC / booster.
+};
+
+/** True if this item needs no unlock (starter set / identity layer). */
+export function isFreeItem(category: LayerCategory, id: string): boolean {
+  const free = FREE_ITEMS[category];
+  return free === "*" || (Array.isArray(free) && free.includes(id));
+}
+
+/** Hint shown on a locked wardrobe item — its explicit `unlockHint`, else the
+ *  default booster hint. */
+export function unlockHintFor(variant: LayerVariant): string {
+  return variant.unlockHint ?? "🎁 Booster";
+}
+
+/** Items that can drop from a booster pack: not free, and not reserved to a
+ *  quest/NPC. Shared by the client preview and (later) the on-chain VRF draw. */
+export function getBoosterPool(): { category: LayerCategory; variant: LayerVariant }[] {
+  return getAllLayerVariants().filter(
+    ({ category, variant }) => !isFreeItem(category, variant.id) && !variant.unlockVia,
+  );
 }
 
 /** All (category, variant) pairs — used by BootScene to preload every

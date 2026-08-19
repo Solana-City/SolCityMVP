@@ -11,6 +11,8 @@ import {
   loadSavedLoadout,
   getVariant,
   getEnabledVariants,
+  isFreeItem,
+  unlockHintFor,
   SPRITE_FRAME_WIDTH,
   SPRITE_FRAME_HEIGHT,
   DIRECTION_ROW,
@@ -18,6 +20,7 @@ import {
 import { profileManager } from "@/game/config/profileManager";
 import { isVariantUnlocked, unlockItem } from "@/game/config/wardrobeUnlocks";
 import { progressionBus } from "@/game/progression/progressionBus";
+import BoosterOverlay from "@/ui/BoosterOverlay";
 
 const CHROMA_R = 215, CHROMA_G = 123, CHROMA_B = 186, CHROMA_TOL = 30;
 
@@ -155,7 +158,7 @@ function AvatarPreview({ loadout, facingUp, scale = 3 }: { loadout: Loadout; fac
   );
 }
 
-function ChromaPreview({ file, size, facingUp }: { file: string; size: number; facingUp?: boolean }) {
+export function ChromaPreview({ file, size, facingUp }: { file: string; size: number; facingUp?: boolean }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   // Backpacks are barely visible from the front (just the strap tops) —
   // show the "up" (back) row instead so items are actually distinguishable
@@ -225,6 +228,7 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
   const [flash, setFlash] = useState<string | null>(null);
   const [isMobile, setIsMobile] = useState(false);
   const [wallet] = useState<string | null>(() => profileManager?.get().wallet ?? null);
+  const [boosterOpen, setBoosterOpen] = useState(false);
   // Bumped whenever an item is unlocked so the locked grid re-renders.
   const [, bumpUnlocks] = useState(0);
 
@@ -246,7 +250,7 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
     for (const cat of LAYER_ORDER) {
       const id = saved[cat];
       const v = id ? getVariant(cat, id) : undefined;
-      if (v?.locked) unlockItem(wallet, cat, v.id, v.name);
+      if (v && !isFreeItem(cat, v.id)) unlockItem(wallet, cat, v.id, v.name, true);
     }
   }, [wallet]);
 
@@ -337,6 +341,27 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
             }}>WARDROBE</span>
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            {/* Booster pack (preview) */}
+            <button
+              onClick={() => setBoosterOpen(true)}
+              title="Open a booster pack"
+              style={{
+                fontFamily: '"Press Start 2P", monospace',
+                fontSize: 7,
+                padding: "7px 14px",
+                background: "rgba(153,69,255,0.14)",
+                color: "#c084fc",
+                border: "1px solid rgba(153,69,255,0.4)",
+                borderRadius: 8,
+                cursor: "pointer",
+                letterSpacing: 1,
+                transition: "background 0.15s",
+              }}
+              onMouseEnter={e => e.currentTarget.style.background = "rgba(153,69,255,0.25)"}
+              onMouseLeave={e => e.currentTarget.style.background = "rgba(153,69,255,0.14)"}
+            >
+              🎁 OPEN PACK
+            </button>
             {/* Random button */}
             <button
               onClick={handleRandom}
@@ -562,7 +587,7 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
                           letterSpacing: 0.5,
                           textAlign: "center",
                           lineHeight: 1.4,
-                        }}>{v.unlockHint ?? "Locked"}</span>
+                        }}>{unlockHintFor(v)}</span>
                       )}
                     </VariantCard>
                   );
@@ -614,6 +639,10 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
           </button>
         </div>
       </div>
+
+      {boosterOpen && (
+        <BoosterOverlay wallet={wallet} onClose={() => setBoosterOpen(false)} />
+      )}
     </div>
   );
 }
