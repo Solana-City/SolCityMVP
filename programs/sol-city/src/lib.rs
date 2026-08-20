@@ -41,6 +41,13 @@ pub const PLAYER_SEED: &[u8] = b"player_v3";
 /// just append and are safe.
 pub const FREE_ITEM_COUNT: u16 = 20;
 pub const POOL_VERSION: u16 = 1;
+/// Reserved block (in the lockable space) for quest/NPC-collection reward
+/// outfits — claimed free, once per wallet, via claim_free_outfit. Booster
+/// items start AFTER this block, so quest and booster bit indices never shift
+/// each other as either grows. Lockable bit layout:
+///   [0, QUEST_FREE_SLOTS)  → quest-free items
+///   [QUEST_FREE_SLOTS, …)  → booster items
+pub const QUEST_FREE_SLOTS: u16 = 16;
 pub const BUFFER_SEED: &[u8] = b"buffer";
 /// Global "Find Someone" hunt state — one account for the whole city.
 pub const HUNT_SEED: &[u8] = b"hunt";
@@ -84,6 +91,8 @@ pub enum SolCityError {
     InvalidTreasury,
     #[msg("Loadout contains an item this wallet hasn't unlocked")]
     ItemNotUnlocked,
+    #[msg("Not a claimable quest-reward item")]
+    InvalidQuestItem,
 }
 
 /// Truncates a string to at most `max` BYTES on a char boundary, so a
@@ -556,12 +565,14 @@ pub mod sol_city {
         while picks.len() < BOOSTER_PACK_SIZE && cursor < 31 {
             let hi = randomness[cursor] as u16;
             let lo = randomness[cursor + 1] as u16;
-            let idx = ((hi << 8) | lo) % n;
-            if !picks.contains(&idx) {
-                picks.push(idx);
-                let byte = (idx / 8) as usize;
+            // Draw a booster-subset index in [0, n); its lockable bit sits after
+            // the reserved quest-free block so quest bits never shift.
+            let bit = QUEST_FREE_SLOTS + ((hi << 8) | lo) % n;
+            if !picks.contains(&bit) {
+                picks.push(bit);
+                let byte = (bit / 8) as usize;
                 if byte < UNLOCK_BITS {
-                    unlocks.bits[byte] |= 1u8 << (idx % 8) as u8;
+                    unlocks.bits[byte] |= 1u8 << (bit % 8) as u8;
                 }
             }
             cursor += 1;
@@ -569,6 +580,21 @@ pub mod sol_city {
 
         unlocks.pending = false;
         emit!(BoosterOpened { authority: unlocks.authority, indices: picks });
+        Ok(())
+    }
+
+    /// Grants a quest / NPC-collection reward outfit — free, once per wallet
+    /// (the bit is idempotent, so re-claiming is a no-op). Wallet-signed (one
+    /// prompt on completion). `index` must be in the reserved quest-free block;
+    /// booster items are out of range, so this can't mint paid items for free.
+    /// The client gates which index behind which completed quest.
+    pub fn claim_free_outfit(ctx: Context<ClaimFreeOutfit>, index: u16) -> Result<()> {
+        require!(index < QUEST_FREE_SLOTS, SolCityError::InvalidQuestItem);
+        let unlocks = &mut ctx.accounts.unlock_state;
+        if unlocks.authority == Pubkey::default() {
+            unlocks.authority = ctx.accounts.authority.key();
+        }
+        unlocks.bits[(index / 8) as usize] |= 1u8 << (index % 8) as u8;
         Ok(())
     }
 }
@@ -784,6 +810,21 @@ pub struct CallbackOpenBooster<'info> {
         bump,
     )]
     pub unlock_state: Account<'info, UnlockState>,
+}
+
+#[derive(Accounts)]
+pub struct ClaimFreeOutfit<'info> {
+    #[account(mut)]
+    pub authority: Signer<'info>,
+    #[account(
+        init_if_needed,
+        payer = authority,
+        space = 8 + UnlockState::INIT_SPACE,
+        seeds = [UNLOCKS_SEED, authority.key().as_ref()],
+        bump,
+    )]
+    pub unlock_state: Account<'info, UnlockState>,
+    pub system_program: Program<'info, System>,
 }
 
 #[account]
