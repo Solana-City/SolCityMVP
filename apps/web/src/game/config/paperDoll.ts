@@ -63,11 +63,11 @@ export interface LayerVariant {
    */
   hatCoverage?: "full" | "band" | "suppress";
   /**
-   * Reserves this item to a specific NON-booster source so it's excluded from
-   * the random booster pool: "quest" (claimed from a quest) or "npc" (given by
-   * an NPC). Undefined + not in FREE_ITEMS ⇒ it drops from booster packs.
+   * Reserves this item to a quest reward so it's excluded from the random
+   * booster pool. Undefined + not in FREE_ITEMS ⇒ it drops from booster packs.
+   * (NPCs no longer grant outfits — unlocks come only from quests + boosters.)
    */
-  unlockVia?: "quest" | "npc";
+  unlockVia?: "quest";
   /** Overrides the default locked-item hint shown in the wardrobe. */
   unlockHint?: string;
 }
@@ -133,7 +133,7 @@ export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
     { id: "White_tshirt", name: "White T-Shirt", textureKey: "pd-tshirt-White_tshirt", file: "tshirt/White_tshirt.png" },
   ],
   accessory: [
-    { id: "Golden_ring", name: "Golden Ring", textureKey: "pd-accessory-Golden_ring", file: "accessory/Golden_ring.png", unlockVia: "npc", unlockHint: "Meet Sol" },
+    { id: "Golden_ring", name: "Golden Ring", textureKey: "pd-accessory-Golden_ring", file: "accessory/Golden_ring.png" },
     { id: "Pirate",      name: "Pirate",      textureKey: "pd-accessory-Pirate",      file: "accessory/Pirate.png" },
   ],
   hair: [

@@ -7,9 +7,6 @@ import type { MiniGameContext, MiniGameResult } from "@/game/minigames/types";
 import { launch as launchMiniGame } from "@/game/minigames";
 import { usePinchZoom } from "@/ui/usePinchZoom";
 import { incrementQuest } from "@/game/quests/QuestManager";
-import { profileManager } from "@/game/config/profileManager";
-import { getVariant } from "@/game/config/paperDoll";
-import { unlockItem } from "@/game/config/wardrobeUnlocks";
 
 // All Solana/wallet-adapter code must be client-only — these packages
 // access `window`/`navigator` at module-load time and crash the SSR pass.
@@ -87,16 +84,7 @@ export default function Home() {
 
   useEffect(() => {
     if (!game) return;
-    const handler = (npc: NPCDefinition) => {
-      setActiveNPC(npc);
-      // NPCs can gift a wardrobe item on interaction (idempotent — the toast
-      // only fires the first time).
-      if (npc.unlockOutfit) {
-        const wallet = profileManager?.get().wallet ?? null;
-        const { category, id } = npc.unlockOutfit;
-        unlockItem(wallet, category, id, getVariant(category, id)?.name);
-      }
-    };
+    const handler = (npc: NPCDefinition) => setActiveNPC(npc);
     game.events.on("npc:interact", handler);
     return () => { game.events.off("npc:interact", handler); };
   }, [game]);
