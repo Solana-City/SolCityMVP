@@ -60,15 +60,24 @@ For each slot index `i` (skip `none`): allow if `i < F` (free) else require
 `unlocked[(i-F)/8] & bit` set, else `err(ItemNotUnlocked)`. Then store it. This
 is the anti-exploit gate — others only ever see a program-accepted loadout.
 
-### Grants (all write `UnlockState.bits`, base, verifiable)
-- **Booster** → the VRF flow already written (`open_booster` + `callback_open_booster`),
-  base + MagicBlock VRF + payment. Its `UnlockState` bitset is now indexed in the
-  **lockable** range. ✅ minimal change.
-- **Quest (find 3)** → `claim_find` is already on-chain; have it (or a sibling ix)
-  set the quest item's bit — on-chain-verified, no client assertion.
-- **NPC (meet Sol, …)** → NOT trustlessly verifiable (client interaction). Options:
-  (a) make NPC-reward items **free** (index `< F`), or (b) a `grant_item` signed by
-  a **game authority** key (semi-trusted: the app authorizes it). **Decision needed.**
+### Lockable bit layout (reserved blocks — indices never shift)
+`[0, QUEST_FREE_SLOTS=16)` = quest/NPC-collection reward outfits; `[16, …)` =
+booster items. Client global catalog = free `[0,F)` ++ quest-free `[F, F+16)` ++
+booster `[F+16, N)`. A lockable item's bit = `globalIndex - F`.
+
+### Grants (both write `UnlockState.bits`, base)
+- **Booster** → the VRF flow (`open_booster` + `callback_open_booster`), base +
+  MagicBlock VRF + payment. Callback sets bit `QUEST_FREE_SLOTS + draw`. Trustless.
+- **Quest / NPC-collection** → `claim_free_outfit(index)`, **wallet-signed**,
+  `index < QUEST_FREE_SLOTS`. Free, **once per wallet** (the bit is idempotent).
+  The client gates which index behind which completed quest (the collection is
+  client-asserted — a hacked client could self-grant a FREE, capped cosmetic;
+  low-harm, and the visual exploit is still closed by `update_look`). Booster
+  items are out of range, so paid items can't be claimed free. Harden later with
+  a backend signer if desired.
+- **Hunt (Find Someone)** → points/leaderboard only, **NOT** outfits (a session
+  key's finds can't attribute to a wallet on base while the player is delegated;
+  hunt ≠ cosmetics).
 
 ### `delegate` — now also syncs the snapshot
 Before delegating, copy `UnlockState.bits → player.unlocked` (both on base). Costs
@@ -92,9 +101,16 @@ one extra account (the UnlockState PDA) on the delegate ix.
 - Existing localStorage unlocks (preview/quest/NPC) do NOT carry to `UnlockState`
   — on-chain starts fresh. Booster/quest re-grant on-chain from here.
 
-## Open decisions before building
-1. **NPC-reward items:** free (`< F`) or `grant_item` signed by a game authority?
-2. Confirm the **"new unlocks apply next delegation"** snapshot caveat is OK
-   (alternative: a `refresh_unlocks` ix that re-syncs mid-session — more surface).
-3. Whether to **bundle** the other redeploy items (names, hunt leaderboard) into
-   this same seed-bump deploy to avoid a second re-init later.
+## Resolved decisions
+1. **Quest/NPC outfits:** `claim_free_outfit` (wallet-signed, once per wallet,
+   client-gated). Hunt ≠ outfits (points only). ✅
+2. **Snapshot caveat** ("new unlocks apply next delegation") accepted. ✅
+3. Bundling other redeploy items (names, hunt leaderboard) into this seed-bump
+   deploy is still open — worth doing to avoid a second re-init, but not required.
+
+## Program status
+Written (staged, needs Playground build/deploy): `player_v3` + `unlocked`,
+`update_look_session` enforcement, `sync_unlocks`, booster (`open_booster` +
+`callback_open_booster`, offset past the quest block), `claim_free_outfit`.
+Client (loadout-as-indices, global catalog, sync + claim wiring) is Phase 2,
+staged behind `BOOSTER_ONCHAIN`.
