@@ -1,7 +1,3 @@
-import type { LayerCategory } from "@/game/config/paperDoll";
-import { getVariant } from "@/game/config/paperDoll";
-import { unlockItem } from "@/game/config/wardrobeUnlocks";
-
 export interface QuestDefinition {
   id: string;
   title: string;
@@ -9,8 +5,6 @@ export interface QuestDefinition {
   target: number;
   points: number;
   rewardLabel: string;
-  /** Optional wardrobe item unlocked when this quest is claimed. */
-  rewardOutfit?: { category: LayerCategory; id: string };
 }
 
 export interface QuestProgress {
@@ -33,8 +27,7 @@ export const DAILY_QUESTS: QuestDefinition[] = [
     description: 'Find 3 citizens in "Find Someone"',
     target: 3,
     points: 300,
-    rewardLabel: "300 pts + Jetpack",
-    rewardOutfit: { category: "back", id: "Jetpack" },
+    rewardLabel: "300 pts",
   },
   {
     id: "swap_jupiter",
@@ -120,12 +113,6 @@ export function claimQuest(wallet: string, questId: string): number {
 
   all[questId].claimedAt = Date.now();
   saveProgress(wallet, all);
-
-  // Grant the outfit reward (idempotent; fires the "Outfit unlocked" toast).
-  if (def.rewardOutfit) {
-    const { category, id } = def.rewardOutfit;
-    unlockItem(wallet, category, id, getVariant(category, id)?.name);
-  }
 
   // Add points to leaderboard
   const lb = loadLeaderboard();
