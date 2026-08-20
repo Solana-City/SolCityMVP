@@ -26,11 +26,21 @@ use ephemeral_vrf_sdk::consts::VRF_PROGRAM_IDENTITY;
 
 declare_id!("HPvDFVnruSXHwKKP44eUvRh8oYqBaHCeQbK1sKWT1aU2");
 
-// Bumped to "player_v2" when the PlayerState layout grew (loadout / expression
-// / chat fields). New PDAs are fresh at the new size, so existing accounts are
-// simply ignored — no on-chain migration/realloc needed. The client's
-// derivePlayerPDA uses the same seed.
-pub const PLAYER_SEED: &[u8] = b"player_v2";
+// Bumped to "player_v3" when PlayerState gained `unlocked` (the on-chain snapshot
+// that update_look_session enforces against) and `loadout` became index-based.
+// New PDAs are fresh at the new size; existing v2 accounts are ignored — every
+// wallet re-inits on next connect (same as v1→v2). Unlocks live in the separate
+// UnlockState PDA, so they're NOT lost by the re-init. Client derivePlayerPDA
+// uses the same seed.
+pub const PLAYER_SEED: &[u8] = b"player_v3";
+
+/// Global cosmetic catalog split: indices [0, FREE_ITEM_COUNT) are free (skin,
+/// faces, starter basics); [FREE_ITEM_COUNT, N) are lockable (bit = idx - F in
+/// UnlockState/PlayerState.unlocked). MUST match the client's global table and
+/// POOL_VERSION. Free additions bump this (+ POOL_VERSION); lockable additions
+/// just append and are safe.
+pub const FREE_ITEM_COUNT: u16 = 20;
+pub const POOL_VERSION: u16 = 1;
 pub const BUFFER_SEED: &[u8] = b"buffer";
 /// Global "Find Someone" hunt state — one account for the whole city.
 pub const HUNT_SEED: &[u8] = b"hunt";
@@ -72,6 +82,8 @@ pub enum SolCityError {
     InvalidPoolCount,
     #[msg("Wrong treasury account")]
     InvalidTreasury,
+    #[msg("Loadout contains an item this wallet hasn't unlocked")]
+    ItemNotUnlocked,
 }
 
 /// Truncates a string to at most `max` BYTES on a char boundary, so a
@@ -109,6 +121,7 @@ pub mod sol_city {
         player.expression_at = 0;
         player.last_message = String::new();
         player.message_at = 0;
+        player.unlocked = [0u8; 32];
         player.last_active = Clock::get()?.unix_timestamp;
         player.created_at = Clock::get()?.unix_timestamp;
         Ok(())
@@ -207,8 +220,36 @@ pub mod sol_city {
     /// "skin=Light|hair=Afro"). Others render the real avatar from the poll.
     pub fn update_look_session(ctx: Context<UpdatePlayerSession>, loadout: String) -> Result<()> {
         let player = &mut ctx.accounts.player;
+        // ENFORCE: the loadout is "slot=index|..." where each value is a global
+        // catalog index. A referenced item must be free (index < FREE_ITEM_COUNT)
+        // or set in the player's unlock snapshot — otherwise the write is
+        // rejected, so peers can never see a cosmetic this wallet never earned.
+        for part in loadout.split('|') {
+            let val = match part.split('=').nth(1) {
+                Some(v) if !v.is_empty() => v,
+                _ => continue, // empty slot / no value = nothing worn there
+            };
+            let idx: u16 = val.parse().map_err(|_| error!(SolCityError::ItemNotUnlocked))?;
+            if idx < FREE_ITEM_COUNT {
+                continue;
+            }
+            let lockable = (idx - FREE_ITEM_COUNT) as usize;
+            let byte = lockable / 8;
+            require!(
+                byte < 32 && (player.unlocked[byte] & (1u8 << (lockable % 8) as u8)) != 0,
+                SolCityError::ItemNotUnlocked
+            );
+        }
         player.loadout = cap_bytes(loadout, 120);
         player.last_active = Clock::get()?.unix_timestamp;
+        Ok(())
+    }
+
+    /// Copies the authoritative UnlockState bitset into the player's snapshot.
+    /// Session-signed (seamless) and run on BASE before delegating — that's why
+    /// unlocks earned this session apply on the next delegation, not instantly.
+    pub fn sync_unlocks(ctx: Context<SyncUnlocks>) -> Result<()> {
+        ctx.accounts.player.unlocked = ctx.accounts.unlock_state.bits;
         Ok(())
     }
 
@@ -585,6 +626,21 @@ pub struct UpdatePlayerSession<'info> {
 }
 
 #[derive(Accounts)]
+pub struct SyncUnlocks<'info> {
+    #[account(
+        mut,
+        seeds = [PLAYER_SEED, player.authority.as_ref()],
+        bump,
+        constraint = player.session_authority == Some(session_authority.key())
+            @ SolCityError::InvalidSessionKey,
+    )]
+    pub player: Account<'info, PlayerState>,
+    #[account(seeds = [UNLOCKS_SEED, player.authority.as_ref()], bump)]
+    pub unlock_state: Account<'info, UnlockState>,
+    pub session_authority: Signer<'info>,
+}
+
+#[derive(Accounts)]
 pub struct DelegatePlayer<'info> {
     #[account(mut)]
     pub authority: Signer<'info>,
@@ -686,6 +742,9 @@ pub struct PlayerState {
     pub last_message: String,
     /// Unix ts the last message was sent.
     pub message_at: i64,
+    /// Snapshot of UnlockState.bits, copied in at delegate/sync time so the ER's
+    /// update_look_session can enforce cosmetics without a cross-cluster read.
+    pub unlocked: [u8; 32],
 }
 
 // ── Outfit booster accounts ────────────────────────────────────────────────
