@@ -24,7 +24,7 @@ import {
   delegationRecordPdaFromDelegatedAccount,
   delegationMetadataPdaFromDelegatedAccount,
 } from "@magicblock-labs/ephemeral-rollups-sdk";
-import { SOL_CITY_PROGRAM_ID, DELEGATION_PROGRAM_ID, derivePlayerPDA, deriveHuntPDA } from "./program";
+import { SOL_CITY_PROGRAM_ID, DELEGATION_PROGRAM_ID, derivePlayerPDA, deriveHuntPDA, deriveUnlockPDA, VRF_QUEUE_DEVNET } from "./program";
 import { sha256 } from "@noble/hashes/sha256";
 
 // ── Discriminator helper ────────────────────────────────────────────────
@@ -58,6 +58,7 @@ const DISC = {
   initializeHunt:          ixDiscriminator("initialize_hunt"),
   claimFind:               ixDiscriminator("claim_find"),
   expireRound:             ixDiscriminator("expire_round"),
+  openBooster:             ixDiscriminator("open_booster"),
 } as const;
 
 // ── Argument packers ────────────────────────────────────────────────────
@@ -70,6 +71,12 @@ function packU32LE(value: number): Buffer {
 
 function packU8(value: number): Buffer {
   return Buffer.from([value & 0xff]);
+}
+
+function packU16LE(value: number): Buffer {
+  const buf = Buffer.alloc(2);
+  buf.writeUInt16LE(value & 0xffff, 0);
+  return buf;
 }
 
 /**
@@ -430,6 +437,47 @@ export function buildExpireRoundIx(cranker: PublicKey, round: number): Transacti
       { pubkey: cranker,  isSigner: true,  isWritable: false },
     ],
     data: Buffer.concat([DISC.expireRound, packU32LE(round)]),
+  });
+}
+
+/**
+ * Builds `open_booster(pool_count: u16, client_seed: [u8;32])` — pays the pack
+ * price to the treasury and requests MagicBlock VRF. Wallet-signed on base
+ * devnet. Args are Anchor-packed: u16 LE + 32 raw seed bytes (a fixed array has
+ * no length prefix).
+ *
+ * ⚠️ ACCOUNTS: the Rust struct is [payer, unlock_state, treasury, oracle_queue,
+ * system_program] PLUS the accounts the `#[vrf]` macro appends (the VRF program
+ * + its identity/queue plumbing). Those extra accounts and their ORDER come
+ * from the DEPLOYED IDL — pass them via `vrfAccounts`. Until filled the ix is
+ * incomplete and the tx will fail; that's the one post-deploy wiring step.
+ */
+export function buildOpenBoosterIx(params: {
+  payer: PublicKey;
+  poolCount: number;
+  clientSeed: Uint8Array; // exactly 32 bytes
+  treasury: PublicKey;
+  vrfAccounts?: { pubkey: PublicKey; isSigner: boolean; isWritable: boolean }[];
+}): TransactionInstruction {
+  const { payer, poolCount, clientSeed, treasury, vrfAccounts = [] } = params;
+  const seed = Buffer.alloc(32);
+  Buffer.from(clientSeed).copy(seed, 0, 0, 32);
+
+  const [unlockPda] = deriveUnlockPDA(payer);
+  const data = Buffer.concat([DISC.openBooster, packU16LE(poolCount), seed]);
+
+  return new TransactionInstruction({
+    programId: SOL_CITY_PROGRAM_ID,
+    keys: [
+      { pubkey: payer,                    isSigner: true,  isWritable: true },
+      { pubkey: unlockPda,                isSigner: false, isWritable: true },
+      { pubkey: treasury,                 isSigner: false, isWritable: true },
+      { pubkey: VRF_QUEUE_DEVNET,         isSigner: false, isWritable: true },
+      { pubkey: SystemProgram.programId,  isSigner: false, isWritable: false },
+      // #[vrf]-appended accounts — order per the deployed IDL:
+      ...vrfAccounts,
+    ],
+    data,
   });
 }
 

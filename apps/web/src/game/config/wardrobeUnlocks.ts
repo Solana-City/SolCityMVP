@@ -1,5 +1,6 @@
-import { LayerCategory, LayerVariant, isFreeItem } from "./paperDoll";
+import { LayerCategory, LayerVariant, isFreeItem, getBoosterPool } from "./paperDoll";
 import { progressionBus } from "@/game/progression/progressionBus";
+import { decodeUnlockState, unlockedIndices, BOOSTER_ONCHAIN } from "@/game/solana/program";
 
 /**
  * Per-wallet unlock registry for paper-doll wardrobe items.
@@ -43,7 +44,39 @@ export function isVariantUnlocked(
 ): boolean {
   if (isFreeItem(category, variant.id)) return true;
   if (!wallet) return false;
-  return getUnlockedSet(wallet).has(unlockKeyOf(category, variant.id));
+  const key = unlockKeyOf(category, variant.id);
+  // localStorage — quest/NPC grants (and the preview's client-side booster).
+  if (getUnlockedSet(wallet).has(key)) return true;
+  // On-chain booster unlocks (only when the VRF booster is live). No-op while
+  // BOOSTER_ONCHAIN is false, so the current behavior is unchanged.
+  if (BOOSTER_ONCHAIN && onchainUnlocks.get(wallet)?.has(key)) return true;
+  return false;
+}
+
+// ── On-chain booster unlocks (read from the UnlockState PDA) ─────────────────
+//
+// The caller (which has the base RPC connection) fetches the UnlockState PDA and
+// feeds its raw data here; we decode the bitset → keys once so isVariantUnlocked
+// stays synchronous. RPC-free by design. Populated only when BOOSTER_ONCHAIN.
+const onchainUnlocks = new Map<string, Set<string>>();
+
+/** Decode + cache a wallet's on-chain unlock bitset. Pass the UnlockState
+ *  account data, or null if the account doesn't exist yet. */
+export function setOnChainUnlocks(wallet: string, data: Uint8Array | null): void {
+  if (!data) { onchainUnlocks.set(wallet, new Set()); return; }
+  const st = decodeUnlockState(data);
+  if (!st) return;
+  const pool = getBoosterPool();
+  const keys = new Set<string>();
+  for (const i of unlockedIndices(st.bits)) {
+    const e = pool[i];
+    if (e) keys.add(unlockKeyOf(e.category, e.variant.id));
+  }
+  onchainUnlocks.set(wallet, keys);
+}
+
+export function getOnChainUnlocks(wallet: string | null): Set<string> {
+  return (wallet ? onchainUnlocks.get(wallet) : undefined) ?? new Set();
 }
 
 /**
