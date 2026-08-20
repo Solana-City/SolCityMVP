@@ -34,17 +34,28 @@ program is live (same rule as `REDEPLOY_CHECKLIST.md`).
 4. Export the new IDL — the client needs the `open_booster` accounts (the
    `#[vrf]` macro appends VRF-program accounts) + the `BoosterOpened` event.
 
-### Client wiring (after deploy — Phase 2)
-- `program.ts`: `UNLOCKS_SEED`, `deriveUnlockPDA(wallet)`, `decodeUnlockState`
-  (bitset → set of indices), `boosterIndexOf`/`itemAtIndex` frozen from
-  `getBoosterPool()` order (POOL_VERSION).
-- `instructions.ts`: `buildOpenBoosterIx(payer, poolCount, seed, {unlockPda,
-  treasury, oracleQueue, ...vrfAccounts})`.
-- `wardrobeUnlocks.getUnlockedSet`: read+decode the `UnlockState` PDA (cache;
-  refresh on the `BoosterOpened` event) instead of localStorage for booster items.
-- `BoosterOverlay`: OPEN → wallet signs/pays `open_booster` → "opening…" until
-  the `BoosterOpened` event / PDA poll → reveal the 5 from the returned indices.
-  Card UX unchanged.
+### Client — Phase 2
+
+**Already staged (commit 3302092, behind `BOOSTER_ONCHAIN`, flag OFF):**
+- `program.ts`: `deriveUnlockPDA`, `decodeUnlockState`, `unlockedIndices`,
+  `VRF_QUEUE_DEVNET`, `BOOSTER_ONCHAIN`.
+- `boosterPool.ts`: `POOL_VERSION` + `boosterIndexTable`/`boosterIndexOf`/
+  `itemAtIndex`/`boosterPoolCount` (the client⇄program index space).
+- `instructions.ts`: `buildOpenBoosterIx({ payer, poolCount, clientSeed,
+  treasury, vrfAccounts })`.
+- `wardrobeUnlocks.ts`: `setOnChainUnlocks`/`getOnChainUnlocks` (decode the PDA
+  bitset → keys); `isVariantUnlocked` honors on-chain unlocks when the flag is on.
+
+**Remaining at deploy (small, needs the IDL / a live oracle):**
+1. From the deployed IDL, fill `buildOpenBoosterIx`'s `vrfAccounts` (the accounts
+   the `#[vrf]` macro appends, in order).
+2. Feed the PDA: on connect, fetch the `UnlockState` account on the base RPC and
+   call `setOnChainUnlocks(wallet, data)` (and re-fetch after a pack).
+3. `BoosterOverlay`: when `BOOSTER_ONCHAIN`, OPEN → wallet signs/pays
+   `open_booster` (via the sign-only + base-send path) → snapshot the unlocked
+   set → poll `UnlockState` until `pending` flips false → reveal the newly-set
+   indices (diff). Keep the mock path when the flag is off.
+4. Flip `NEXT_PUBLIC_BOOSTER_ONCHAIN=1` and verify.
 
 ---
 
