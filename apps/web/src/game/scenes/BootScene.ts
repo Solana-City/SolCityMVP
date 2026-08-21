@@ -11,9 +11,10 @@ const CHROMA_G = 123;
 const CHROMA_B = 186;
 const CHROMA_TOLERANCE = 30;
 
+// SCMap01.1 (ST Brasil). Keys MUST match the embedded tileset names in
+// public/assets/maps/city.json and the PNG filenames in assets/tilesets/.
 const TILESET_KEYS = [
   "SCTileGrass",
-  "SCBuildSTEarn",
   "SCBuildMonkeyDAO",
   "SCBuildSTBrazil",
   "SCBuildJupter",
@@ -25,15 +26,18 @@ const TILESET_KEYS = [
   "SCUrbanEquipament",
   "SCBuildGenericBuild",
   "SCBuildKeepGreen",
-  "SCBuildMagicBlock",
-  "SCLogoIcon",
   "SCGameAssets",
+  "ScTileBeach",
+  "ScBuildSTBrazilLighthouse",
+  "SCBuildSTBrStands",
+  "SCBuildMagicBlock02",
+  "SCBuildSTEarn02",
+  "SCBuildSolanaCity",
 ];
 
-// SCUrbanEquipament and SCBuildKeepGreen have no tiles in city-mobile.json.
-const TILESET_KEYS_MOBILE = TILESET_KEYS.filter(
-  k => k !== "SCUrbanEquipament" && k !== "SCBuildKeepGreen"
-);
+// The new map is small enough (135×115) to serve both platforms — no separate
+// mobile crop, so mobile loads every tileset too.
+const TILESET_KEYS_MOBILE = TILESET_KEYS;
 
 export class BootScene extends Phaser.Scene {
   constructor() {
@@ -58,10 +62,8 @@ export class BootScene extends Phaser.Scene {
       }
     });
 
-    const mapFile = window.matchMedia("(pointer: coarse)").matches
-      ? "assets/maps/city-mobile.json"
-      : "assets/maps/city.json";
-    this.load.tilemapTiledJSON("city-map", mapFile);
+    // One map for both platforms now (SCMap01.1 is 135×115 — no mobile crop).
+    this.load.tilemapTiledJSON("city-map", "assets/maps/city.json");
 
     const isMobileTilesets = window.matchMedia("(pointer: coarse)").matches;
     for (const key of (isMobileTilesets ? TILESET_KEYS_MOBILE : TILESET_KEYS)) {

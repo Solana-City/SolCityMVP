@@ -1,6 +1,6 @@
 import * as Phaser from "phaser";
 import { PublicKey } from "@solana/web3.js";
-import { PLAYER_SPEED, TILE_SIZE, PLAYABLE_ZONE } from "../config/constants";
+import { PLAYER_SPEED, TILE_SIZE } from "../config/constants";
 import { Direction } from "../entities/SimpleSprite";
 import { AvatarSprite } from "../entities/AvatarSprite";
 import { loadSavedLoadout, DEFAULT_LOADOUT, type Loadout } from "../config/paperDoll";
@@ -88,17 +88,19 @@ export class CityScene extends Phaser.Scene {
     const map = this.make.tilemap({ key: "city-map" });
     const tileSize = map.tileWidth;   // 24
 
-    const isMobileMap = window.matchMedia("(pointer: coarse)").matches;
-    this.originCol = isMobileMap ? PLAYABLE_ZONE.col1 : 0;
-    this.originRow = isMobileMap ? PLAYABLE_ZONE.row1 : 0;
+    // SCMap01.1 (135×115) serves both platforms — no mobile crop, origin (0,0).
+    this.originCol = 0;
+    this.originRow = 0;
 
-    // Add all tileset spritesheets loaded in BootScene
+    // Add all tileset spritesheets loaded in BootScene. Names MUST match the
+    // embedded tileset names in city.json and the loaded image keys.
     const allTilesets = [
-      "SCTileGrass", "SCBuildSTEarn", "SCBuildMonkeyDAO",
-      "SCBuildSTBrazil", "SCBuildJupter", "SCTileFountain",
-      "SCTileGround", "SCVegetationSet", "SCPalm", "SCBuildIndies",
-      "SCUrbanEquipament", "SCBuildGenericBuild", "SCBuildKeepGreen",
-      "SCBuildMagicBlock", "SCLogoIcon", "SCGameAssets",
+      "SCTileGrass", "SCBuildMonkeyDAO", "SCBuildSTBrazil", "SCBuildJupter",
+      "SCTileFountain", "SCTileGround", "SCVegetationSet", "SCPalm",
+      "SCBuildIndies", "SCUrbanEquipament", "SCBuildGenericBuild",
+      "SCBuildKeepGreen", "SCGameAssets", "ScTileBeach",
+      "ScBuildSTBrazilLighthouse", "SCBuildSTBrStands", "SCBuildMagicBlock02",
+      "SCBuildSTEarn02", "SCBuildSolanaCity",
     ]
       .map(n => map.addTilesetImage(n, n))
       .filter((ts): ts is Phaser.Tilemaps.Tileset => ts !== null);
@@ -113,7 +115,7 @@ export class CityScene extends Phaser.Scene {
     // the south and behind when approaching from the north.
     // NOTE: "Decor" is intentionally excluded — DecorFountain is a flat
     // plaza structure and must use fixed depth, not Y-sort.
-    const Y_SORT_PREFIXES = ["Vegetation", "DecorLight", "Build", "GameAsset"];
+    const Y_SORT_PREFIXES = ["Vegetation", "DecorLight", "Build", "GameAsset", "Rock"];
 
     // Create all tile layers in order from the JSON.
     // Do NOT pass x/y — Phaser defaults to layerData.x/y which already
@@ -126,30 +128,14 @@ export class CityScene extends Phaser.Scene {
 
       layer.setCollisionFromCollisionGroup();
 
-      // DecorFountain: partial Tiled objectgroup shapes leave many faces open,
-      // so the player's small body slips through even "collidable" rim tiles.
-      //
-      // Fix: force full 4-face collision on the inner water basin only.
-      // Bounds: cols 95-103, rows 91-99 (the water + rim area).
-      // Rows 88-90 (decorative arch) and outer corner tiles are intentionally
-      // EXCLUDED — they sit in walkable areas around the fountain perimeter
-      // and must not block the player.
-      // Corridor tiles (cols 99-100, rows 97+) get resetCollision() so the
-      // player can walk in/out through the staircase freely.
-      if (layerName === "DecorFountain") {
+      // ColliderInvisible: a hand-drawn barrier layer (map edges / no-go areas).
+      // Its tiles aren't decorated with per-tile collision shapes, so force full
+      // collision on every painted tile and hide the layer.
+      if (layerName === "ColliderInvisible") {
         layer.forEachTile((tile: Phaser.Tilemaps.Tile) => {
-          if (tile.index <= 0) return;
-          // tile.x/tile.y are map-data coordinates — shift back to original
-          // 200x200 coordinates before comparing against the corridor bounds.
-          const col = tile.x + this.originCol;
-          const row = tile.y + this.originRow;
-          const inCorridor = col >= 99 && col <= 100 && row >= 97;
-          if (inCorridor) {
-            tile.resetCollision();
-          } else {
-            tile.setCollision(true, true, true, true);
-          }
-        }, this, 95 - this.originCol, 91 - this.originRow, 9, 9); // cols 95-103, rows 91-99 in original coords
+          if (tile.index > 0) tile.setCollision(true, true, true, true);
+        });
+        layer.setVisible(false);
       }
 
       const collidingTiles = layer.filterTiles((t: Phaser.Tilemaps.Tile) => t.collides);
@@ -184,9 +170,10 @@ export class CityScene extends Phaser.Scene {
       }
     }
 
-    // Spawn inside the fountain plaza center (col 99, row 97).
-    const spawnX = 99 * tileSize + tileSize / 2;
-    const spawnY = 97 * tileSize + tileSize / 2;
+    // Spawn on the central plaza (col 67, row 57) — a walkable street tile at
+    // the map center (SCMap01.1 is 135×115).
+    const spawnX = 67 * tileSize + tileSize / 2;
+    const spawnY = 57 * tileSize + tileSize / 2;
     this.avatar = new AvatarSprite(this, spawnX, spawnY, loadSavedLoadout());
 
     const container = this.avatar.getContainer();
@@ -201,62 +188,11 @@ export class CityScene extends Phaser.Scene {
 
     this.createFootDust();
 
-    // Invisible walls — MagicBlock building outer columns patch.
-    //
-    // Tileset analysis (cols 111-120):
-    //   rows 103-108 → all overhead/decorative tiles (no collision) — this is
-    //                   the back street; players must walk through freely.
-    //   rows 109-111 → col 111 and col 120 have no collision tile; cols 112-119 do.
-    //   row  112+    → full collision on all columns; no patch needed.
-    //
-    // Therefore: only patch the two outer columns for the 3-row gap (109-111).
-    const T = tileSize;
-    const mbWalls = this.physics.add.staticGroup();
-    const addWall = (wx: number, wy: number, w: number, h: number) => {
-      const r = this.add.rectangle(wx, wy, w, h).setVisible(false);
-      this.physics.add.existing(r, true);
-      mbWalls.add(r);
-    };
-    // Left outer wall: col 111, rows 109-111 (3 rows)
-    addWall(111 * T + T / 2, 109 * T + (3 * T) / 2, T, 3 * T);
-    // Right outer wall: col 120, rows 109-111 (3 rows)
-    addWall(120 * T + T / 2, 109 * T + (3 * T) / 2, T, 3 * T);
-    this.physics.add.collider(container, mbWalls);
-
-    // ── Playable-zone boundary walls ──────────────────────────────────────────
-    // Invisible strips that stop players leaving the built area.
-    // ZONE_DEBUG=true renders them red so you can verify placement in-game.
-    // Flip to false (and redeploy) once positions are confirmed.
-    const ZONE_DEBUG = false;
-    const WALL_THICKNESS = 3; // tiles
-    const PZ = PLAYABLE_ZONE;
-    const zoneX1    = PZ.col1 * T;
-    const zoneY1    = PZ.row1 * T;
-    const zoneW     = (PZ.col2 - PZ.col1) * T;
-    const zoneH     = (PZ.row2 - PZ.row1) * T;
-    const wallThick = WALL_THICKNESS * T;
-    const zoneWalls = this.physics.add.staticGroup();
-    const addZoneWall = (wx: number, wy: number, w: number, h: number) => {
-      const r = this.add.rectangle(wx, wy, w, h, 0xff0000, ZONE_DEBUG ? 0.4 : 0);
-      if (!ZONE_DEBUG) r.setVisible(false);
-      this.physics.add.existing(r, true);
-      zoneWalls.add(r);
-    };
-    addZoneWall(zoneX1 + zoneW / 2,            zoneY1 - wallThick / 2,            zoneW,              wallThick); // north
-    addZoneWall(zoneX1 + zoneW / 2,            zoneY1 + zoneH + wallThick / 2,    zoneW,              wallThick); // south
-    addZoneWall(zoneX1 - wallThick / 2,         zoneY1 + zoneH / 2,                wallThick, zoneH + wallThick * 2); // west
-    addZoneWall(zoneX1 + zoneW + wallThick / 2, zoneY1 + zoneH / 2,                wallThick, zoneH + wallThick * 2); // east
-    this.physics.add.collider(container, zoneWalls);
-
-    // Bounds must cover where the map content actually renders. On mobile the
-    // cropped map's layers are offset to original world positions, so the
-    // bounds rectangle starts at the crop origin — with (0,0) bounds the
-    // player would spawn outside them and collideWorldBounds would shove it
-    // into the empty area beyond the map.
-    const boundsX = this.originCol * tileSize;
-    const boundsY = this.originRow * tileSize;
-    this.physics.world.setBounds(boundsX, boundsY, map.widthInPixels, map.heightInPixels);
-    this.cameras.main.setBounds(boundsX, boundsY, map.widthInPixels, map.heightInPixels);
+    // Where the player can go = the tilesets' authored collision + the
+    // ColliderInvisible barrier layer + the world bounds (the map edges). No
+    // hand-placed walls — the map itself defines the playable area now.
+    this.physics.world.setBounds(0, 0, map.widthInPixels, map.heightInPixels);
+    this.cameras.main.setBounds(0, 0, map.widthInPixels, map.heightInPixels);
 
     // "YOU" label — small and tucked just above the hat, close to the head.
     const youLabel = this.add.text(0, -36, "YOU", {
@@ -400,11 +336,6 @@ export class CityScene extends Phaser.Scene {
       container,
       this.npcSprites.map(n => n.getContainer()),
     );
-    // Pedestrians must also respect the playable-zone boundary and the
-    // MagicBlock building patch walls (same groups as the player colliders above).
-    const pedGroup = this.pedestrians.getPedGroup();
-    this.physics.add.collider(pedGroup, zoneWalls);
-    this.physics.add.collider(pedGroup, mbWalls);
 
     // Citizen expiry + target sync. When the current citizen's per-citizen
     // countdown runs out unfound, rotate to the next one and reset the
