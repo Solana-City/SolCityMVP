@@ -73,9 +73,9 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     id: "sol-guide",
     name: "Sol",
     role: "City Guide",
-    // Central plaza, right next to the player spawn (col 67, row 57).
+    // Central intersection, one tile west of the player spawn (col 67, row 57).
     tileX: 66,
-    tileY: 58,
+    tileY: 56,
     color: 0x14f195,
     dialog: [
       "Hey there! Welcome to Solana City — I'm Sol, your guide.",
@@ -88,9 +88,10 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     id: "sushi-man",
     name: "Sushi Man",
     role: "Food Cart",
-    // Sushi cart in the central park, a few tiles east of spawn.
-    tileX: 70,
-    tileY: 57,
+    // In front of the food cart (GameAssetFoodCar, cols 109-112 / rows 40-43),
+    // on the green plot east of the Superteam Earn tent.
+    tileX: 110,
+    tileY: 43,
     color: 0xff6b35,
     dialog: [
       "Irasshaimase! Welcome to my cart.",
@@ -105,9 +106,10 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     id: "kite-pro",
     name: "Kite Pro",
     role: "Kite Clash",
-    // Superteam Brazil zone (in front of the ST Brasil building/beach).
-    tileX: 46,
-    tileY: 59,
+    // Superteam Brazil zone — out on the open sand, south of the market
+    // stands, where there is vertical room for the kite.
+    tileX: 40,
+    tileY: 79,
     color: 0x00b4d8,
     dialog: [
       "Hey! Want to take a kite up and see who else is flying right now?",
@@ -128,9 +130,10 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     id: "swap-npc",
     name: "Jupiter Cat",
     role: "Token Swap",
-    // In front of the Jupiter building (top-right district).
-    tileX: 117,
-    tileY: 39,
+    // On the sidewalk in front of the Jupiter building (BuildJupiter,
+    // cols 91-101 / rows 17-32).
+    tileX: 96,
+    tileY: 32,
     color: 0x14f195,
     dialog: [
       "Welcome to the Swap Station!",
@@ -145,9 +148,9 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     id: "send-npc",
     name: "Steve Sends",
     role: "Send Tokens",
-    // Central plaza, just below Sol / the player spawn.
+    // Central intersection, two tiles below Sol / the player spawn.
     tileX: 67,
-    tileY: 61,
+    tileY: 58,
     color: 0x00d1ff,
     dialog: [
       "Steve Sends, at your service.",
@@ -161,9 +164,9 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     id: "pratik",
     name: "Pratik",
     role: "Superteam Earn",
-    // In front of the Superteam Earn tent (SCBuildSTEarn02).
-    tileX: 101,
-    tileY: 42,
+    // In front of the Superteam Earn tent (BuildSTEarn, cols 89-95 / rows 38-44).
+    tileX: 92,
+    tileY: 44,
     color: 0x9945ff,
     dialog: [
       "Hey! I run the Superteam Earn hub, where builders get paid to work on Solana.",
@@ -177,8 +180,9 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     id: "magic-man",
     name: "Magic Man",
     role: "Privacy Operator",
-    // In front of the MagicBlock building (near the central district).
-    tileX: 72,
+    // In front of the MagicBlock building (BuildMagicBlock, base cols 88-95 /
+    // rows 52-55).
+    tileX: 91,
     tileY: 55,
     color: 0xc026d3,
     dialog: [
@@ -197,9 +201,10 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     id: "kuka",
     name: "Kuka",
     role: "Superteam Brazil Lead",
-    // Superteam Brazil zone, by the ST Brasil stands (bottom-left district).
-    tileX: 36,
-    tileY: 77,
+    // Superteam Brazil zone — on the Copacabana promenade, between the two
+    // rows of ST Brasil market stands.
+    tileX: 35,
+    tileY: 68,
     color: 0xffd700,
     dialog: [
       "Hello, I'm Kuka. The Lead of Superteam Brazil.",
@@ -213,9 +218,10 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     id: "bk-indies",
     name: "BK",
     role: "Indies on Solana",
-    // In front of the Indies on Solana building (left/mid district).
-    tileX: 39,
-    tileY: 66,
+    // On the sidewalk in front of the Indies on Solana storefront
+    // (BuildIndies, base rows 40-45 around cols 59-68).
+    tileX: 62,
+    tileY: 45,
     color: 0x7c3aed,
     dialog: [
       "Hello! I'm BK, the leader of Indies on Solana. A community initiative by the Indies for the Indies.",
@@ -229,9 +235,10 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     id: "mr-bananas",
     name: "Mr. Bananas",
     role: "MonkeDAO",
-    // In front of the banana stand at the MonkeDAO block (top-center district).
-    tileX: 53,
-    tileY: 34,
+    // In front of the banana stand at the MonkeDAO block (BuildMonkeDaoStand,
+    // base cols 47-51 / rows 29-31).
+    tileX: 49,
+    tileY: 31,
     color: 0xffd700,
     dialog: [
       "Hey bro! Do you know MonkeDAO? I'm Bananas about it. That's why they call me MR. Bananas.",
