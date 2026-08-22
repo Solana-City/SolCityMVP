@@ -73,9 +73,10 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     id: "sol-guide",
     name: "Sol",
     role: "City Guide",
-    // Central intersection, one tile west of the player spawn (col 67, row 57).
-    tileX: 66,
-    tileY: 56,
+    // Central fountain plaza, on the path just below the steps the player
+    // spawns on (col 78, row 38).
+    tileX: 78,
+    tileY: 40,
     color: 0x14f195,
     dialog: [
       "Hey there! Welcome to Solana City — I'm Sol, your guide.",
@@ -148,9 +149,9 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     id: "send-npc",
     name: "Steve Sends",
     role: "Send Tokens",
-    // Central intersection, two tiles below Sol / the player spawn.
-    tileX: 67,
-    tileY: 58,
+    // Central fountain plaza, three tiles south of Sol down the same path.
+    tileX: 78,
+    tileY: 43,
     color: 0x00d1ff,
     dialog: [
       "Steve Sends, at your service.",
@@ -201,10 +202,10 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     id: "kuka",
     name: "Kuka",
     role: "Superteam Brazil Lead",
-    // Superteam Brazil zone — on the Copacabana promenade, between the two
-    // rows of ST Brasil market stands.
-    tileX: 35,
-    tileY: 68,
+    // In front of the ST Brasil lighthouse, on the sidewalk between the flag
+    // lamp post and the welcome sign.
+    tileX: 56,
+    tileY: 87,
     color: 0xffd700,
     dialog: [
       "Hello, I'm Kuka. The Lead of Superteam Brazil.",

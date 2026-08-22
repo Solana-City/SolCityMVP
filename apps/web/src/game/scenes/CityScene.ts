@@ -117,6 +117,13 @@ export class CityScene extends Phaser.Scene {
     // plaza structure and must use fixed depth, not Y-sort.
     const Y_SORT_PREFIXES = ["Vegetation", "DecorLight", "Build", "GameAsset", "Rock"];
 
+    // Standing decoration that has NO collision but still has to sort against
+    // buildings — e.g. the ST Brasil welcome sign, which stands in front of the
+    // lighthouse. Without this they fall through to `depth = layer index`, a
+    // number in the tens, while any Y-sorted building sits at its bottom-Y in
+    // the thousands — so the building always paints over them.
+    const Y_SORT_NO_COLLISION_PREFIXES = ["DecorSign"];
+
     // Create all tile layers in order from the JSON.
     // Do NOT pass x/y — Phaser defaults to layerData.x/y which already
     // incorporates the Tiled offsetx/offsety for each layer. Passing 0,0
@@ -164,16 +171,28 @@ export class CityScene extends Phaser.Scene {
         layer.setDepth(FOREGROUND_DEPTH);
         // Always above the player → always a fade candidate.
         this.overheadLayers.push(layer);
+      } else if (Y_SORT_NO_COLLISION_PREFIXES.some(p => layerName.startsWith(p))) {
+        // Collision-free standing decor → y-sort off its own painted base, so
+        // it sits in front of buildings whose base is further north and behind
+        // the player once they walk past it.
+        let maxBottomY = 0;
+        layer.forEachTile((tile: Phaser.Tilemaps.Tile) => {
+          if (tile.index <= 0) return;
+          const bottom = layer.tileToWorldY(tile.y)! + map.tileHeight;
+          if (bottom > maxBottomY) maxBottomY = bottom;
+        });
+        layer.setDepth(maxBottomY);
+        this.overheadLayers.push(layer);
       } else {
         // Ground / background layer → always below the player.
         layer.setDepth(i);
       }
     }
 
-    // Spawn on the central plaza (col 67, row 57) — a walkable street tile at
-    // the map center (SCMap01.1 is 135×115).
-    const spawnX = 67 * tileSize + tileSize / 2;
-    const spawnY = 57 * tileSize + tileSize / 2;
+    // Spawn on the central fountain's walkway (col 78, row 38) — the two-tile
+    // flight of steps climbing from the south path up to the sculpture.
+    const spawnX = 78 * tileSize + tileSize / 2;
+    const spawnY = 38 * tileSize + tileSize / 2;
     this.avatar = new AvatarSprite(this, spawnX, spawnY, loadSavedLoadout());
 
     const container = this.avatar.getContainer();
