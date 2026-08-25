@@ -724,19 +724,26 @@ export class CityScene extends Phaser.Scene {
     this.avatar.updateDepth();
 
     // ── Overhead fade ─────────────────────────────────────────────────────
-    // When a y-sorted or foreground layer renders above the player AND has a
-    // tile at the player's world position, smoothly fade it to 0.25 so the
-    // player (and NPCs / remote players) remain visible through rooftops and
-    // tree canopies. Lerp ensures a smooth transition both ways.
+    // Fade a layer only while it actually HIDES the player: it has to draw
+    // above them AND cover their body.
+    //
+    // The body part matters. `avatar.y` is the feet, and testing that tile
+    // alone fired whenever the player merely stood on a tile the layer
+    // happened to paint — brushing the front of a building, or walking past
+    // its base — which read as the whole building blinking translucent for no
+    // reason. The player is drawn upward from their feet, so occlusion happens
+    // at the torso and head; sample there instead.
     {
       const px = this.avatar.x;
       const py = this.avatar.y;
       for (const layer of this.overheadLayers) {
         // Layer is "overhead" only when it draws above the player's depth.
         const isAbove = layer.depth > py;
-        const target = isAbove && layer.getTileAtWorldXY(px, py) !== null
-          ? 0.25
-          : 1.0;
+        const covers = isAbove && (
+          layer.getTileAtWorldXY(px, py - TILE_SIZE) !== null ||
+          layer.getTileAtWorldXY(px, py - TILE_SIZE * 1.5) !== null
+        );
+        const target = covers ? 0.25 : 1.0;
         if (Math.abs(layer.alpha - target) > 0.004) {
           layer.alpha = Phaser.Math.Linear(layer.alpha, target, 0.12);
         }
