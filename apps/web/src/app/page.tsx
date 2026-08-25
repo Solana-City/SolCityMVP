@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import dynamic from "next/dynamic";
 import type { NPCDefinition, NPCAction } from "@/game/config/npcRegistry";
+import type { GameWithSceneReady } from "@/game/scenes/CityScene";
 import type { MiniGameContext, MiniGameResult } from "@/game/minigames/types";
 import { launch as launchMiniGame } from "@/game/minigames";
 import { usePinchZoom } from "@/ui/usePinchZoom";
@@ -60,8 +61,8 @@ export default function Home() {
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
   const [logOpen, setLogOpen] = useState(false);
   const [mobilePanel, setMobilePanel] = useState<"hunt" | "quests" | null>(null);
-  // Wallet address that connected before the Phaser game was ready — replayed once game loads.
-  const pendingWalletRef = useRef<string | null | undefined>(undefined);
+  /** Last wallet state actually handed to Phaser; undefined = nothing sent yet. */
+  const lastSentWalletRef = useRef<string | null | undefined>(undefined);
   // Chat hidden by default on touch devices, visible on desktop
   const [chatOpen, setChatOpen] = useState(() =>
     typeof window === "undefined"
@@ -173,29 +174,42 @@ export default function Home() {
 
   const handleWalletChange = useCallback((wallet: string | null) => {
     setWalletAddress(wallet);
-    if (!game) {
-      // Game still loading — store and replay once it's ready
-      pendingWalletRef.current = wallet;
-      return;
-    }
-    if (wallet) {
-      game.events.emit("wallet:connected", wallet);
-    } else {
-      game.events.emit("wallet:disconnected");
-    }
+  }, []);
+
+  // CityScene only starts listening for "wallet:connected" at the end of its
+  // create(). `game` goes non-null the instant `new Phaser.Game()` returns —
+  // long before BootScene has preloaded — so waiting on `game` alone emitted
+  // into an emitter with no subscribers and Phaser dropped it silently. That
+  // left the player connected in React but never logged into the game or the
+  // multiplayer session until they disconnected and connected again.
+  //
+  // Counter, not a boolean, so a scene restart re-runs the sync below.
+  const [sceneReadyTick, setSceneReadyTick] = useState(0);
+  useEffect(() => {
+    if (!game) return;
+    const onReady = () => {
+      // A fresh scene knows nothing — resend whatever we have.
+      lastSentWalletRef.current = undefined;
+      setSceneReadyTick((t) => t + 1);
+    };
+    game.events.on("scene:ready", onReady);
+    if ((game as GameWithSceneReady).__solCitySceneReady) onReady();
+    return () => { game.events.off("scene:ready", onReady); };
   }, [game]);
 
-  // Replay a wallet connection that arrived before the game was ready
+  // The single place that tells Phaser about the wallet. Runs once the scene is
+  // listening, and dedupes so a re-render never opens a second session.
   useEffect(() => {
-    if (!game || pendingWalletRef.current === undefined) return;
-    const wallet = pendingWalletRef.current;
-    pendingWalletRef.current = undefined;
-    if (wallet) {
-      game.events.emit("wallet:connected", wallet);
-    } else {
+    if (!game || sceneReadyTick === 0) return;
+    if (lastSentWalletRef.current === walletAddress) return;
+    const firstSync = lastSentWalletRef.current === undefined;
+    lastSentWalletRef.current = walletAddress;
+    if (walletAddress) {
+      game.events.emit("wallet:connected", walletAddress);
+    } else if (!firstSync) {
       game.events.emit("wallet:disconnected");
     }
-  }, [game]);
+  }, [game, sceneReadyTick, walletAddress]);
 
   return (
     <ErrorBoundary>

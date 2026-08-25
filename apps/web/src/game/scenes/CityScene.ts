@@ -20,6 +20,13 @@ import { soundManager } from "../audio/SoundManager";
 // shared with ZoomControl and the pinch-zoom hook.
 import { loadZoom, snapZoom, viewScale } from "../config/zoomConfig";
 
+/**
+ * Set on the Phaser.Game once CityScene.create() has registered its listeners.
+ * React reads it so a wallet that connected during boot still gets delivered
+ * even if it subscribes to "scene:ready" after the event already fired.
+ */
+export type GameWithSceneReady = Phaser.Game & { __solCitySceneReady?: boolean };
+
 export class CityScene extends Phaser.Scene {
   private avatar!: AvatarSprite;
   private playerBody!: Phaser.Physics.Arcade.Body;
@@ -64,6 +71,8 @@ export class CityScene extends Phaser.Scene {
   private pedestrians!: PedestrianManager;
   private interactionBlocked = false;
   private walletAddress: string | null = null;
+  /** Wallet whose session handshake is in flight — see the connect guard. */
+  private walletConnecting: string | null = null;
   private profile!: ProfileManager;
   private touchDx = 0;
   private touchDy = 0;
@@ -466,6 +475,13 @@ export class CityScene extends Phaser.Scene {
       if (this.walletFlapTimer) { clearTimeout(this.walletFlapTimer); this.walletFlapTimer = null; }
       // Ignore re-fires for a wallet we're already connected to (adapter flaps).
       if (this.network.connected && this.walletAddress === walletAddress) return;
+      // ...and for one whose handshake is still running. connect() takes seconds
+      // (PDA init, then delegation), and network.connected stays false the whole
+      // time, so the check above alone would let a second event start a parallel
+      // session on the same PDA — which lands as a broken session the player can
+      // only escape by disconnecting and connecting again.
+      if (this.walletConnecting === walletAddress) return;
+      this.walletConnecting = walletAddress;
       // Enter the map immediately; the on-chain session comes up in the
       // background (moves before delegation land as sim/base, as before).
       try {
@@ -504,6 +520,9 @@ export class CityScene extends Phaser.Scene {
       } catch (err: any) {
         console.error("[CityScene] session error:", err);
         this.chat.addSystemMessage("Session offline (local mode)");
+      } finally {
+        // Cleared either way: a failed handshake must stay retryable.
+        if (this.walletConnecting === walletAddress) this.walletConnecting = null;
       }
     });
 
@@ -542,6 +561,16 @@ export class CityScene extends Phaser.Scene {
     this.game.events.on("minigame:result", ({ success }: { success: boolean }) => {
       this.network?.recordMiniGame(success);
     });
+
+    // Every listener above is now live — tell React it is safe to hand us the
+    // wallet. PhaserGame calls onGameReady the instant `new Phaser.Game()`
+    // returns, which is long before BootScene finishes preloading, so a
+    // "wallet:connected" sent on `game` alone lands on an emitter nobody is
+    // subscribed to yet and Phaser silently drops it. That was the whole
+    // "connected but not in the game / not in multiplayer until I reconnect"
+    // bug. The flag covers React attaching its listener after this fires.
+    (this.game as GameWithSceneReady).__solCitySceneReady = true;
+    this.game.events.emit("scene:ready");
   }
 
   /** One-time setup: a tiny dust dot texture + a manual particle emitter. */
