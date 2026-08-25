@@ -1,6 +1,6 @@
 import * as Phaser from "phaser";
 import { AvatarSprite } from "./AvatarSprite";
-import { TILE_SIZE, PLAYABLE_ZONE } from "../config/constants";
+import { TILE_SIZE } from "../config/constants";
 import { getEnabledVariants, type Loadout, DIRECTION_ROW, SPRITE_COLS } from "../config/paperDoll";
 
 // Fast seeded PRNG (mulberry32)
@@ -302,21 +302,22 @@ export class PedestrianSprite {
   }
 
   /** Longest clear stretch (px) along `dir`, probed every half tile against
-   *  the collision map and the playable-zone bounds. */
+   *  the collision map.
+   *
+   *  The collision map is the only fence needed: patch-map-collision.mjs seals
+   *  every tile walled off from the spawn, so the city edge, the sea and the
+   *  interior pockets all read as solid here. This used to also clamp to
+   *  PLAYABLE_ZONE, which still described the old 200x200 city and on SCMap01.1
+   *  (135x115) penned citizens into roughly a fifth of the streets. */
   private walkableDistance(dir: Direction, maxPx: number): number {
     const container = this.avatar.getContainer();
     const [dx, dy] = DIR_VECTORS[dir];
-    const minX = (PLAYABLE_ZONE.col1 + 1) * TILE_SIZE;
-    const maxX = (PLAYABLE_ZONE.col2 - 1) * TILE_SIZE;
-    const minY = (PLAYABLE_ZONE.row1 + 1) * TILE_SIZE;
-    const maxY = (PLAYABLE_ZONE.row2 - 1) * TILE_SIZE;
 
     const step = TILE_SIZE / 2;
     let free = 0;
     for (let d = step; d <= maxPx; d += step) {
       const px = container.x + dx * d;
       const py = container.y + dy * d;
-      if (px < minX || px > maxX || py < minY || py > maxY) break;
       if (this.ctx.isBlocked(px, py)) break;
       free = d;
     }

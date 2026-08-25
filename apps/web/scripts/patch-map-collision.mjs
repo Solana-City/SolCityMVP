@@ -74,6 +74,32 @@ const OPACITY_THRESHOLD = 0.5;
  */
 const LAYER_RENAMES = { "Camada de Blocos 119": "DecorSignSTBrasil" };
 
+/** Layers whose art is solid but whose tiles carry no collision shape. */
+const SOLID_LAYERS = ["Rocks/Rock01", "Rocks/Rock02", "Rocks/Rock03"];
+
+/**
+ * Anything walled off from this tile gets sealed solid.
+ *
+ * The sea, the grey margin outside the city, and the pockets inside building
+ * footprints are all *walkable* in the raw export — they just happen to be
+ * fenced in, so the player never notices. Pedestrians do: PedestrianManager
+ * picks a tile, checks only "is this tile itself a collider", and happily drops
+ * a citizen in the middle of the ocean or inside a sealed courtyard, where it
+ * is stuck forever. Making unreachable ground genuinely solid removes the whole
+ * class of bug instead of patching it at each spawn site.
+ *
+ * Must match CityScene's spawn tile.
+ */
+const SEAL_UNREACHABLE_FROM = { col: 78, row: 38 };
+
+/**
+ * Script-generated barriers live in their own layer, rebuilt from scratch on
+ * every run. Writing them into the hand-drawn ColliderInvisible instead would
+ * bake them in permanently: the next run's flood fill would see last run's
+ * seals as walls, so a path opened later in Tiled could never reopen.
+ */
+const AUTO_LAYER = "ColliderAuto";
+
 const REGION_FIXES = [
   {
     name: "central fountain",
@@ -91,14 +117,31 @@ const GID_MASK = 0x1fffffff; // strip Tiled's flip/rotate flags
 const dry = process.argv.includes("--dry");
 const map = JSON.parse(fs.readFileSync(MAP, "utf8"));
 
-/** Tiled nests layers inside `group` layers; walk the whole tree. */
-function tileLayers(layers) {
+/**
+ * Tiled nests layers inside `group` layers; walk the whole tree.
+ * `layerPath` records each layer's "Group/Name", the form Phaser reports.
+ */
+const layerPath = new Map();
+function tileLayers(layers, prefix = "") {
   const out = [];
   for (const l of layers) {
-    if (l.type === "group") out.push(...tileLayers(l.layers ?? []));
-    else if (l.type === "tilelayer" && l.data) out.push(l);
+    if (l.type === "group") out.push(...tileLayers(l.layers ?? [], `${prefix}${l.name}/`));
+    else if (l.type === "tilelayer" && l.data) {
+      layerPath.set(l, prefix + l.name);
+      out.push(l);
+    }
   }
   return out;
+}
+
+/** Decoded tileset images, loaded on demand. */
+const pngCache = new Map();
+function tilesetPng(tileset) {
+  if (!pngCache.has(tileset.name)) {
+    const file = tileset.image.replace(/^.*[\\/]/, "");
+    pngCache.set(tileset.name, PNG.sync.read(fs.readFileSync(path.join(TILESET_DIR, file))));
+  }
+  return pngCache.get(tileset.name);
 }
 
 /** Every gid painted anywhere in the map. */
@@ -303,7 +346,119 @@ for (const fix of REGION_FIXES) {
   console.log(`  ${fix.name}: ${opened} cells opened, ${sealed} sealed`);
 }
 
-totalAdded += sealed + opened + renamed;
+// ---------------------------------------------------------------- pass 4 ---
+// Rebuild the generated barrier layer: solid decor + everything unreachable.
+
+// Start from a blank slate so seals from earlier runs never masquerade as walls.
+let auto = map.layers.find((l) => l.name === AUTO_LAYER);
+if (!auto) {
+  auto = {
+    data: new Array(map.width * map.height).fill(0),
+    height: map.height,
+    id: Math.max(0, ...map.layers.map((l) => l.id ?? 0)) + 1,
+    name: AUTO_LAYER,
+    opacity: 1,
+    type: "tilelayer",
+    visible: false,
+    width: map.width,
+    x: 0,
+    y: 0,
+  };
+  map.layers.push(auto);
+}
+const autoBefore = auto.data.filter(Boolean).length;
+auto.data.fill(0);
+
+/** Tile index -> solid, from tileset shapes plus every hand-drawn barrier. */
+function buildBlocked() {
+  const grid = new Uint8Array(map.width * map.height);
+  for (const layer of tileLayers(map.layers)) {
+    if (layer.name === AUTO_LAYER) continue;
+    const ox = Math.round((layer.offsetx ?? 0) / map.tilewidth);
+    const oy = Math.round((layer.offsety ?? 0) / map.tileheight);
+    const forced = layer.name.startsWith("Collider");
+    for (let i = 0; i < layer.data.length; i++) {
+      const raw = layer.data[i];
+      if (!raw) continue;
+      if (!forced && !solidGids.has(raw & GID_MASK)) continue;
+      const col = (layer.x ?? 0) + ox + (i % layer.width);
+      const row = (layer.y ?? 0) + oy + Math.floor(i / layer.width);
+      if (col < 0 || col >= map.width || row < 0 || row >= map.height) continue;
+      grid[row * map.width + col] = 1;
+    }
+  }
+  return grid;
+}
+
+const grid = buildBlocked();
+const seal = (col, row) => {
+  auto.data[row * map.width + col] = BARRIER_GID;
+  grid[row * map.width + col] = 1;
+};
+
+// 4a. Solid decor the tilesets left walkable (rocks in the shallows and on
+// the sand). Same opacity test as the tileset backfill, so the transparent
+// corners of each rock sprite stay walkable.
+let rocks = 0;
+for (const layer of tileLayers(map.layers)) {
+  const label = layerPath.get(layer);
+  if (!SOLID_LAYERS.includes(label)) continue;
+  const ox = Math.round((layer.offsetx ?? 0) / map.tilewidth);
+  const oy = Math.round((layer.offsety ?? 0) / map.tileheight);
+  for (let i = 0; i < layer.data.length; i++) {
+    const raw = layer.data[i];
+    if (!raw) continue;
+    const col = (layer.x ?? 0) + ox + (i % layer.width);
+    const row = (layer.y ?? 0) + oy + Math.floor(i / layer.width);
+    if (col < 0 || col >= map.width || row < 0 || row >= map.height) continue;
+    if (grid[row * map.width + col]) continue;
+    const gid = raw & GID_MASK;
+    const ts = [...map.tilesets].sort((a, b) => b.firstgid - a.firstgid).find((t) => gid >= t.firstgid);
+    const png = tilesetPng(ts);
+    if (tileOpacity(png, ts, gid - ts.firstgid) < OPACITY_THRESHOLD) continue;
+    seal(col, row);
+    rocks++;
+  }
+}
+
+// 4b. Flood the reachable world from the spawn, then seal everything else.
+const { col: sc, row: sr } = SEAL_UNREACHABLE_FROM;
+if (grid[sr * map.width + sc]) {
+  throw new Error(`spawn tile ${sc},${sr} is solid — cannot flood the walkable world`);
+}
+const reached = new Uint8Array(map.width * map.height);
+reached[sr * map.width + sc] = 1;
+const queue = [[sc, sr]];
+while (queue.length) {
+  const [c, r] = queue.pop();
+  for (const [dc, dr] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+    const nc = c + dc;
+    const nr = r + dr;
+    if (nc < 0 || nc >= map.width || nr < 0 || nr >= map.height) continue;
+    const i = nr * map.width + nc;
+    if (reached[i] || grid[i]) continue;
+    reached[i] = 1;
+    queue.push([nc, nr]);
+  }
+}
+
+let walled = 0;
+for (let row = 0; row < map.height; row++) {
+  for (let col = 0; col < map.width; col++) {
+    const i = row * map.width + col;
+    if (grid[i] || reached[i]) continue;
+    seal(col, row);
+    walled++;
+  }
+}
+
+const autoAfter = auto.data.filter(Boolean).length;
+console.log(
+  `  ${AUTO_LAYER}: ${rocks} solid-decor + ${walled} walled-off = ${autoAfter} tiles ` +
+    `(was ${autoBefore}); ${reached.reduce((a, b) => a + b, 0)} tiles reachable from ${sc},${sr}`
+);
+
+totalAdded += sealed + opened + renamed + (autoAfter === autoBefore ? 0 : 1);
 
 if (dry) {
   console.log(`\n--dry: ${totalAdded} tiles would change, city.json not written`);
