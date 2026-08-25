@@ -134,16 +134,19 @@ export class CityScene extends Phaser.Scene {
     const Y_SORT_NO_COLLISION_PREFIXES = ["DecorSign"];
 
     // Layers that always draw above the player: the SolanaCity gantry banners
-    // the player walks under, and the planter palms flanking the central
-    // bridge, whose fronds hang over the walkway.
+    // the player walks under, the planter palms flanking the central bridge
+    // whose fronds hang over the walkway, and the beach parasols the player
+    // stands beneath.
     //
     // Y-sorting is not an option for these. A tilemap layer carries ONE depth,
-    // and each of these layers holds several copies spread down the bridge —
-    // the banners at rows 67, 82 and 98, the palm pairs at rows 74, 90 and 105
-    // — so any single base row is right for one copy and wrong for the rest.
-    // Both were falling through to `depth = layer index` (28 and 16) and the
-    // player walked over the top of them.
-    const ABOVE_HEAD_PREFIXES = ["DecorBilboard", "DecorPalmBridge"];
+    // and each of these layers holds several copies spread across the map —
+    // the banners at rows 67, 82 and 98, the palm pairs at rows 74, 90 and 105,
+    // the parasols scattered down the sand — so any single base row is right
+    // for one copy and wrong for the rest. They were all falling through to
+    // `depth = layer index` and the player walked over the top of them.
+    const ABOVE_HEAD_PREFIXES = [
+      "DecorBilboard", "DecorPalmBridge", "DecorSTBrUmbrella", "DecorSolanaUmbrella",
+    ];
 
     // Create all tile layers in order from the JSON.
     // Do NOT pass x/y — Phaser defaults to layerData.x/y which already

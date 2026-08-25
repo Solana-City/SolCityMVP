@@ -1,10 +1,14 @@
 #!/usr/bin/env node
 /**
- * Repairs collision in city.json that Tiled exported wrong. Two passes:
+ * Repairs collision in city.json that Tiled exported wrong:
  *
  *   1. tileset backfill — tilesets exported with no collision shapes at all
- *   2. region fixes     — hand-corrected areas where the authored collision
- *                         does not match the artwork
+ *   2. layer renames    — Tiled placeholder names CityScene cannot key rules on
+ *   3. region fixes     — hand-corrected areas where the authored collision
+ *                         contradicts the artwork
+ *   4. ColliderAuto     — a generated barrier layer, rebuilt each run: solid
+ *                         decor, building ground floors, and every tile walled
+ *                         off from the spawn
  *
  * Why this exists: SCBuildSTBrStands (the Superteam Brasil market stands) and
  * SCBuildSTEarn02 (the Superteam Earn tent) were authored in Tiled with no
@@ -45,24 +49,6 @@ const TARGET_TILESETS = ["SCBuildSTBrStands", "SCBuildSTEarn02"];
 const OPACITY_THRESHOLD = 0.5;
 
 /**
- * Regions where Tiled's collision contradicts the artwork, fixed cell by cell.
- *
- * The central fountain is the one that matters: the art draws a two-tile-wide
- * flight of steps climbing from the south path up to the sculpture, but Tiled
- * blocked almost all of it, leaving a single-tile stub the player can stand on
- * and nothing else — the plaza reads as walkable and isn't. The other half of
- * the mistake is that most of the water basin was left WALKABLE; it only stayed
- * out of reach because the (wrong) staircase collision fenced it in. Opening the
- * steps without sealing the water would let the player stroll across the pools.
- *
- * So each region declares its full solid box plus the cells that must be open,
- * and the script forces both directions. Sealing is painted into the existing
- * ColliderInvisible barrier layer (which CityScene already force-collides and
- * hides); opening clears the tile's own collision box, which is safe here only
- * because those gids are used exactly once each in the whole map — the script
- * verifies that and refuses rather than silently unblocking tiles elsewhere.
- */
-/**
  * Layers Tiled left with its default placeholder name ("Camada de Blocos N"),
  * renamed to something CityScene can key its render-order rules off.
  *
@@ -79,6 +65,9 @@ const LAYER_RENAMES = {
   // dropped it to `depth = layer index` (16) — the player walked over the
   // fronds. DecorPalmBridge* opts it into the above-head branch.
   "Camada de Blocos 109": "DecorPalmBridge",
+  // A building beside BuildSTBrazil. Named Build* so it Y-sorts like its
+  // neighbours and joins the ground-floor sweep below.
+  "Camada de Blocos 122": "BuildGenericSTBrazil",
 };
 
 /**
@@ -96,6 +85,25 @@ const SOLID_LAYERS = [
   { layer: "Rocks/Rock02", minOpacity: 0.2 },
   { layer: "Rocks/Rock03", minOpacity: 0.2 },
 ];
+
+/**
+ * Buildings whose ground floor only got part of its collision in Tiled.
+ *
+ * The lighthouse carries one solid row across its back wall (row 81) and then a
+ * swiss-cheese of holes through rows 82-85, so the player walks in through the
+ * door and stands inside the tower; MagicBlock has the same gaps at rows 52-55.
+ * Those two were merely the ones spotted in play — sweeping every Build* layer
+ * turned up 19 with the same defect, BuildIndies (66 holes) and
+ * BuildGenericEnergy (48) worse than either. So this matches them all rather
+ * than naming the two that happened to get noticed.
+ *
+ * Rather than invent a footprint, seal the painted art from the FIRST row that
+ * carries any authored collision down to the bottom of the layer. That row is
+ * the artist's own marker for "here the building meets the ground"; this just
+ * fills it in completely. Everything above it is the upper storey rising behind
+ * the player and stays walkable.
+ */
+const SEAL_BUILDING_BASES = /(^|\/)Build/;
 
 /**
  * Anything walled off from this tile gets sealed solid.
@@ -120,6 +128,24 @@ const SEAL_UNREACHABLE_FROM = { col: 78, row: 38 };
  */
 const AUTO_LAYER = "ColliderAuto";
 
+/**
+ * Regions where Tiled's collision contradicts the artwork, fixed cell by cell.
+ *
+ * The central fountain is the one that matters: the art draws a two-tile-wide
+ * flight of steps climbing from the south path up to the sculpture, but Tiled
+ * blocked almost all of it, leaving a single-tile stub the player can stand on
+ * and nothing else — the plaza reads as walkable and isn't. The other half of
+ * the mistake is that most of the water basin was left WALKABLE; it only stayed
+ * out of reach because the (wrong) staircase collision fenced it in. Opening the
+ * steps without sealing the water would let the player stroll across the pools.
+ *
+ * So each region declares its full solid box plus the cells that must be open,
+ * and the script forces both directions. Sealing is painted into the existing
+ * ColliderInvisible barrier layer (which CityScene already force-collides and
+ * hides); opening clears the tile's own collision box, which is safe here only
+ * because those gids are used exactly once each in the whole map — the script
+ * verifies that and refuses rather than silently unblocking tiles elsewhere.
+ */
 const REGION_FIXES = [
   {
     name: "central fountain",
@@ -460,6 +486,45 @@ for (const layer of tileLayers(map.layers)) {
   }
 }
 
+// 4ab. Close the gaps in partly-collided building ground floors.
+let bases = 0;
+for (const layer of tileLayers(map.layers)) {
+  if (!SEAL_BUILDING_BASES.test(layerPath.get(layer))) continue;
+  const origin = originOf(layer);
+
+  const cellOf = (i) => ({
+    col: origin.col + (i % layer.width),
+    row: origin.row + Math.floor(i / layer.width),
+  });
+
+  // The artist's own ground line: the topmost row carrying authored collision.
+  let baseRow = Infinity;
+  for (let i = 0; i < layer.data.length; i++) {
+    const raw = layer.data[i];
+    if (!raw || !solidGids.has(raw & GID_MASK)) continue;
+    baseRow = Math.min(baseRow, cellOf(i).row);
+  }
+  if (!Number.isFinite(baseRow)) {
+    console.error(`  ! ${layerPath.get(layer)} has no authored collision — skipped`);
+    continue;
+  }
+
+  for (let i = 0; i < layer.data.length; i++) {
+    const raw = layer.data[i];
+    if (!raw) continue;
+    const { col, row } = cellOf(i);
+    if (row < baseRow) continue; // tower above — stays walkable behind
+    if (col < 0 || col >= map.width || row < 0 || row >= map.height) continue;
+    if (grid[row * map.width + col]) continue;
+    const gid = raw & GID_MASK;
+    const ts = [...map.tilesets].sort((a, b) => b.firstgid - a.firstgid).find((t) => gid >= t.firstgid);
+    if (tileOpacity(tilesetPng(ts), ts, gid - ts.firstgid) < 0.35) continue;
+    seal(col, row);
+    bases++;
+  }
+  console.log(`  ${layerPath.get(layer)}: ground floor sealed from row ${baseRow}`);
+}
+
 // 4b. Flood the reachable world from the spawn, then seal everything else.
 const { col: sc, row: sr } = SEAL_UNREACHABLE_FROM;
 if (grid[sr * map.width + sc]) {
@@ -493,7 +558,7 @@ for (let row = 0; row < map.height; row++) {
 
 const autoAfter = auto.data.filter(Boolean).length;
 console.log(
-  `  ${AUTO_LAYER}: ${rocks} solid-decor + ${walled} walled-off = ${autoAfter} tiles ` +
+  `  ${AUTO_LAYER}: ${rocks} solid-decor + ${bases} building-base + ${walled} walled-off = ${autoAfter} tiles ` +
     `(was ${autoBefore}); ${reached.reduce((a, b) => a + b, 0)} tiles reachable from ${sc},${sr}`
 );
 
