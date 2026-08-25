@@ -133,6 +133,18 @@ export class CityScene extends Phaser.Scene {
     // the thousands — so the building always paints over them.
     const Y_SORT_NO_COLLISION_PREFIXES = ["DecorSign"];
 
+    // Layers that always draw above the player: the SolanaCity gantry banners
+    // the player walks under, and the planter palms flanking the central
+    // bridge, whose fronds hang over the walkway.
+    //
+    // Y-sorting is not an option for these. A tilemap layer carries ONE depth,
+    // and each of these layers holds several copies spread down the bridge —
+    // the banners at rows 67, 82 and 98, the palm pairs at rows 74, 90 and 105
+    // — so any single base row is right for one copy and wrong for the rest.
+    // Both were falling through to `depth = layer index` (28 and 16) and the
+    // player walked over the top of them.
+    const ABOVE_HEAD_PREFIXES = ["DecorBilboard", "DecorPalmBridge"];
+
     // Create all tile layers in order from the JSON.
     // Do NOT pass x/y — Phaser defaults to layerData.x/y which already
     // incorporates the Tiled offsetx/offsety for each layer. Passing 0,0
@@ -159,8 +171,19 @@ export class CityScene extends Phaser.Scene {
 
       const collidingTiles = layer.filterTiles((t: Phaser.Tilemaps.Tile) => t.collides);
 
+      // Phaser reports a grouped layer as "Group/Name". Match the rules below
+      // on the leaf, so a layer keeps its render behaviour wherever the artist
+      // files it in Tiled — the bridge palms live inside the Ground group, and
+      // matching the full path silently dropped them to `depth = layer index`.
+      const leafName = layerName.slice(layerName.lastIndexOf("/") + 1);
+      const isAboveHead = ABOVE_HEAD_PREFIXES.some(p => leafName.startsWith(p));
+
       if (collidingTiles.length > 0) {
-        if (Y_SORT_PREFIXES.some(p => layerName.startsWith(p))) {
+        if (isAboveHead) {
+          // Blocks (planter bases) but still draws over the player.
+          layer.setDepth(FOREGROUND_DEPTH);
+          this.overheadLayers.push(layer);
+        } else if (Y_SORT_PREFIXES.some(p => leafName.startsWith(p))) {
           // Isolated vertical object (trunk, palm, lamp post) → y-sort.
           // depth = bottom-world-Y of the southernmost collidable tile.
           let maxBottomY = 0;
@@ -178,12 +201,12 @@ export class CityScene extends Phaser.Scene {
           layer.setDepth(i);
         }
         this.collisionLayers.push(layer);
-      } else if (FOREGROUND_PREFIXES.some(p => layerName.startsWith(p))) {
-        // Pure-canopy layer (no collision) → always above the player.
+      } else if (isAboveHead || FOREGROUND_PREFIXES.some(p => leafName.startsWith(p))) {
+        // Overhead structure or pure canopy → always above the player.
         layer.setDepth(FOREGROUND_DEPTH);
         // Always above the player → always a fade candidate.
         this.overheadLayers.push(layer);
-      } else if (Y_SORT_NO_COLLISION_PREFIXES.some(p => layerName.startsWith(p))) {
+      } else if (Y_SORT_NO_COLLISION_PREFIXES.some(p => leafName.startsWith(p))) {
         // Collision-free standing decor → y-sort off its own painted base, so
         // it sits in front of buildings whose base is further north and behind
         // the player once they walk past it.

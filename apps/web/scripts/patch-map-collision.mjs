@@ -72,10 +72,30 @@ const OPACITY_THRESHOLD = 0.5;
  * it. Naming it DecorSign* opts it into the no-collision Y-sort branch, which
  * gives it a depth from its own base row instead.
  */
-const LAYER_RENAMES = { "Camada de Blocos 119": "DecorSignSTBrasil" };
+const LAYER_RENAMES = {
+  "Camada de Blocos 119": "DecorSignSTBrasil",
+  // The planter palms flanking the central bridge. Filed inside the Ground
+  // group, so CityScene saw "Ground/Camada de Blocos 109", matched no rule and
+  // dropped it to `depth = layer index` (16) — the player walked over the
+  // fronds. DecorPalmBridge* opts it into the above-head branch.
+  "Camada de Blocos 109": "DecorPalmBridge",
+};
 
-/** Layers whose art is solid but whose tiles carry no collision shape. */
-const SOLID_LAYERS = ["Rocks/Rock01", "Rocks/Rock02", "Rocks/Rock03"];
+/**
+ * Layers whose art is solid but whose tiles carry no collision shape.
+ *
+ * `minOpacity` overrides OPACITY_THRESHOLD. Rocks need a lower bar than the
+ * market stands: a stand is a neat rectangle padded with fully transparent
+ * tiles, so 50% cleanly separates body from padding, but a rock cluster is
+ * irregular and splits across tiles at every coverage from 10% to 100%. At 50%
+ * the outcrop came out half-climbable — the player could stand on its northern
+ * tiles. Only the near-empty fringe stays walkable now.
+ */
+const SOLID_LAYERS = [
+  { layer: "Rocks/Rock01", minOpacity: 0.2 },
+  { layer: "Rocks/Rock02", minOpacity: 0.2 },
+  { layer: "Rocks/Rock03", minOpacity: 0.2 },
+];
 
 /**
  * Anything walled off from this tile gets sealed solid.
@@ -119,19 +139,39 @@ const map = JSON.parse(fs.readFileSync(MAP, "utf8"));
 
 /**
  * Tiled nests layers inside `group` layers; walk the whole tree.
- * `layerPath` records each layer's "Group/Name", the form Phaser reports.
+ *
+ * `layerPath` records each layer's "Group/Name", the form Phaser reports, and
+ * `layerOffset` records its pixel offset with every parent group's offset
+ * folded in — the same accumulation Phaser's Tiled parser does in
+ * CreateGroupLayer. Skipping that is not academic: the Rocks group carries
+ * offsetx -192 / offsety 216, so reading Rock01..03 at their own offsets alone
+ * puts every tile 8 columns right and 9 rows up of where it actually renders.
  */
 const layerPath = new Map();
-function tileLayers(layers, prefix = "") {
+const layerOffset = new Map();
+function tileLayers(layers, prefix = "", ax = 0, ay = 0) {
   const out = [];
   for (const l of layers) {
-    if (l.type === "group") out.push(...tileLayers(l.layers ?? [], `${prefix}${l.name}/`));
-    else if (l.type === "tilelayer" && l.data) {
+    const ox = ax + (l.offsetx ?? 0);
+    const oy = ay + (l.offsety ?? 0);
+    if (l.type === "group") {
+      out.push(...tileLayers(l.layers ?? [], `${prefix}${l.name}/`, ox, oy));
+    } else if (l.type === "tilelayer" && l.data) {
       layerPath.set(l, prefix + l.name);
+      layerOffset.set(l, { x: ox, y: oy });
       out.push(l);
     }
   }
   return out;
+}
+
+/** Tile-space origin of a layer, group offsets included. */
+function originOf(layer) {
+  const off = layerOffset.get(layer) ?? { x: 0, y: 0 };
+  return {
+    col: (layer.x ?? 0) + Math.round(off.x / map.tilewidth),
+    row: (layer.y ?? 0) + Math.round(off.y / map.tileheight),
+  };
 }
 
 /** Decoded tileset images, loaded on demand. */
@@ -287,10 +327,9 @@ if (!BARRIER_GID) throw new Error("ColliderInvisible layer is empty — no gid t
 function cellGids(col, row) {
   const hits = [];
   for (const layer of tileLayers(map.layers)) {
-    const ox = Math.round((layer.offsetx ?? 0) / map.tilewidth);
-    const oy = Math.round((layer.offsety ?? 0) / map.tileheight);
-    const lc = col - (layer.x ?? 0) - ox;
-    const lr = row - (layer.y ?? 0) - oy;
+    const origin = originOf(layer);
+    const lc = col - origin.col;
+    const lr = row - origin.row;
     if (lc < 0 || lc >= layer.width || lr < 0 || lr >= layer.height) continue;
     const raw = layer.data[lr * layer.width + lc];
     if (raw) hits.push({ layer, index: lr * layer.width + lc, gid: raw & GID_MASK });
@@ -374,15 +413,14 @@ function buildBlocked() {
   const grid = new Uint8Array(map.width * map.height);
   for (const layer of tileLayers(map.layers)) {
     if (layer.name === AUTO_LAYER) continue;
-    const ox = Math.round((layer.offsetx ?? 0) / map.tilewidth);
-    const oy = Math.round((layer.offsety ?? 0) / map.tileheight);
+    const origin = originOf(layer);
     const forced = layer.name.startsWith("Collider");
     for (let i = 0; i < layer.data.length; i++) {
       const raw = layer.data[i];
       if (!raw) continue;
       if (!forced && !solidGids.has(raw & GID_MASK)) continue;
-      const col = (layer.x ?? 0) + ox + (i % layer.width);
-      const row = (layer.y ?? 0) + oy + Math.floor(i / layer.width);
+      const col = origin.col + (i % layer.width);
+      const row = origin.row + Math.floor(i / layer.width);
       if (col < 0 || col >= map.width || row < 0 || row >= map.height) continue;
       grid[row * map.width + col] = 1;
     }
@@ -402,20 +440,21 @@ const seal = (col, row) => {
 let rocks = 0;
 for (const layer of tileLayers(map.layers)) {
   const label = layerPath.get(layer);
-  if (!SOLID_LAYERS.includes(label)) continue;
-  const ox = Math.round((layer.offsetx ?? 0) / map.tilewidth);
-  const oy = Math.round((layer.offsety ?? 0) / map.tileheight);
+  const rule = SOLID_LAYERS.find((s) => s.layer === label);
+  if (!rule) continue;
+  const minOpacity = rule.minOpacity ?? OPACITY_THRESHOLD;
+  const origin = originOf(layer);
   for (let i = 0; i < layer.data.length; i++) {
     const raw = layer.data[i];
     if (!raw) continue;
-    const col = (layer.x ?? 0) + ox + (i % layer.width);
-    const row = (layer.y ?? 0) + oy + Math.floor(i / layer.width);
+    const col = origin.col + (i % layer.width);
+    const row = origin.row + Math.floor(i / layer.width);
     if (col < 0 || col >= map.width || row < 0 || row >= map.height) continue;
     if (grid[row * map.width + col]) continue;
     const gid = raw & GID_MASK;
     const ts = [...map.tilesets].sort((a, b) => b.firstgid - a.firstgid).find((t) => gid >= t.firstgid);
     const png = tilesetPng(ts);
-    if (tileOpacity(png, ts, gid - ts.firstgid) < OPACITY_THRESHOLD) continue;
+    if (tileOpacity(png, ts, gid - ts.firstgid) < minOpacity) continue;
     seal(col, row);
     rocks++;
   }
