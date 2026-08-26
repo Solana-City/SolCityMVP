@@ -27,6 +27,13 @@ import { loadZoom, snapZoom, viewScale } from "../config/zoomConfig";
  */
 export type GameWithSceneReady = Phaser.Game & { __solCitySceneReady?: boolean };
 
+/**
+ * The connected wallet, mirrored by React on every change so CityScene can PULL
+ * it at startup instead of relying on having been subscribed when it was
+ * pushed. See the handshake in create().
+ */
+export type SolCityWalletHost = typeof globalThis & { __solCityWallet?: string | null };
+
 export class CityScene extends Phaser.Scene {
   private avatar!: AvatarSprite;
   private playerBody!: Phaser.Physics.Arcade.Body;
@@ -370,6 +377,130 @@ export class CityScene extends Phaser.Scene {
       this.network.updateLoadout(loadout); // broadcast so others re-render our look
     });
 
+    // ── Network + wallet, before the world is populated ───────────────────
+    // This block used to sit AFTER the NPC and pedestrian setup below. That
+    // made login hostage to world population: anything throwing while placing
+    // NPCs or flood-filling the crowd meant `this.network` was never built and
+    // the "wallet:connected" listener never registered, so connecting a wallet
+    // did nothing at all for the rest of the session — silently, since the
+    // throw only showed up in the console. Infrastructure comes first.
+
+    // On-chain multiplayer via MagicBlock Ephemeral Rollups
+    this.network = new OnChainMultiplayer();
+    this.registry.set("network", this.network);
+
+    // Register callbacks immediately so they are active during discovery.
+    // CRITICAL: setupNetworkCallbacks must be called BEFORE network.connect()
+    // because discoverPlayers/discoverPlayersFromBase fire addCallbacks during
+    // connect(). If callbacks are registered after connect(), discovered players
+    // never get sprites in the scene.
+    this.setupNetworkCallbacks();
+
+    // Expose game event bus globally so the multiplayer layer can
+    // ask React (which owns useWallet) to sign transactions.
+    (globalThis as any).__solCityGameEvents = this.game.events;
+
+    // Keep multiplayer score in sync with local profile
+    this.profile.onChange((p) => {
+      this.network?.updateScore(p.score);
+    });
+
+    // Listen for wallet connection from React to start on-chain session
+    this.game.events.on("wallet:connected", async (walletAddress: string) => {
+      // A reconnect cancels any pending flap-disconnect for this wallet.
+      if (this.walletFlapTimer) { clearTimeout(this.walletFlapTimer); this.walletFlapTimer = null; }
+      // Ignore re-fires for a wallet we're already connected to (adapter flaps).
+      if (this.network.connected && this.walletAddress === walletAddress) return;
+      // ...and for one whose handshake is still running. connect() takes seconds
+      // (PDA init, then delegation), and network.connected stays false the whole
+      // time, so the check above alone would let a second event start a parallel
+      // session on the same PDA — which lands as a broken session the player can
+      // only escape by disconnecting and connecting again.
+      if (this.walletConnecting === walletAddress) return;
+      this.walletConnecting = walletAddress;
+      // Enter the map immediately; the on-chain session comes up in the
+      // background (moves before delegation land as sim/base, as before).
+      try {
+        this.walletAddress = walletAddress;
+        this.profile.setWallet(walletAddress);
+        const displayName = this.profile.get().displayName;
+        this.network.updateScore(this.profile.get().score);
+
+        // WalletSignBridge polls every 300ms to register on __solCityGameEvents.
+        // On auto-reconnect the wallet:connected event fires before it registers,
+        // causing all requestWalletSign calls to time out (60s) and fail.
+        // Wait up to 1s for "walletBridge:ready"; fall through immediately if
+        // already registered (normal case after user manually clicks Connect).
+        await new Promise<void>(resolve => {
+          const bus = (globalThis as any).__solCityGameEvents;
+          const fallback = setTimeout(resolve, 1000);
+          bus?.once("walletBridge:ready", () => { clearTimeout(fallback); resolve(); });
+        });
+
+        await this.network.connect(new PublicKey(walletAddress), displayName, loadSavedLoadout());
+        this.chat.addSystemMessage("Multiplayer session started.");
+
+        // Warnings from multiplayer (e.g. delegated PDA detected)
+        this.game.events.once("multiplayer:warning", (msg: string) => {
+          this.chat.addSystemMessage(msg);
+        });
+
+        // Cross-browser chat messages received via Solana Memo / onLogs
+        this.game.events.on("chat:network", ({ wallet, name, text }: { wallet?: string; name: string; text: string }) => {
+          const color = getChannelColor("global");
+          this.chat.addMessage("global", name, name, text, color);
+          // Float the message over the sender's avatar, if they're in view.
+          const avatar = wallet ? this.remotePlayers.get(wallet) : undefined;
+          if (avatar) this.showBubble(avatar.getContainer(), text, color);
+        });
+      } catch (err: any) {
+        console.error("[CityScene] session error:", err);
+        this.chat.addSystemMessage("Session offline (local mode)");
+      } finally {
+        // Cleared either way: a failed handshake must stay retryable.
+        if (this.walletConnecting === walletAddress) this.walletConnecting = null;
+      }
+    });
+
+    this.game.events.on("wallet:disconnected", () => {
+      // Debounce: a transient flap fires disconnect then connect right after.
+      // Wait; if a reconnect cancels this, the session is never torn down (no
+      // undelegate/rotate, so no 6000). Only a real disconnect proceeds.
+      if (this.walletFlapTimer) return;
+      this.walletFlapTimer = setTimeout(() => {
+        this.walletFlapTimer = null;
+        if (!this.network.connected) return;
+        this.network.disconnect();
+        this.chat.addSystemMessage("Session ended");
+      }, 1200);
+    });
+
+    // ── Wallet handshake ──────────────────────────────────────────────────
+    // Announce that the two listeners above are live, then PULL whatever React
+    // already has. Both halves are needed.
+    //
+    // Push alone loses the wallet: PhaserGame calls onGameReady the instant
+    // `new Phaser.Game()` returns, long before BootScene finishes preloading
+    // and far before this line, so React emitting on `game` by itself lands on
+    // an emitter with no subscribers and Phaser drops it silently.
+    //
+    // Waiting for "scene:ready" fixes that but introduces its own single point
+    // of failure — if anything further down create() throws, the event never
+    // goes out and the wallet is stranded for the whole session. Reading the
+    // mirrored value here means the handshake completes whichever side is late,
+    // and this runs immediately after the listeners rather than at the end of
+    // create() so no later failure can skip it.
+    //
+    // Emitting both ways is safe: the connect handler ignores a wallet whose
+    // handshake is already in flight.
+    (this.game as GameWithSceneReady).__solCitySceneReady = true;
+    this.game.events.emit("scene:ready");
+
+    const pendingWallet = (globalThis as SolCityWalletHost).__solCityWallet;
+    if (pendingWallet) {
+      this.game.events.emit("wallet:connected", pendingWallet);
+    }
+
     // NPCs — position read from Tiled NPC layer, scanned to first walkable row
     for (const def of NPC_REGISTRY) {
       if (def.enabled === false) continue;
@@ -475,96 +606,6 @@ export class CityScene extends Phaser.Scene {
     this.input.keyboard?.on("keydown-E", tryInteract);
     this.input.keyboard?.on("keydown-SPACE", tryInteract);
 
-    // On-chain multiplayer via MagicBlock Ephemeral Rollups
-    this.network = new OnChainMultiplayer();
-    this.registry.set("network", this.network);
-
-    // Register callbacks immediately so they are active during discovery.
-    // CRITICAL: setupNetworkCallbacks must be called BEFORE network.connect()
-    // because discoverPlayers/discoverPlayersFromBase fire addCallbacks during
-    // connect(). If callbacks are registered after connect(), discovered players
-    // never get sprites in the scene.
-    this.setupNetworkCallbacks();
-
-    // Expose game event bus globally so the multiplayer layer can
-    // ask React (which owns useWallet) to sign transactions.
-    (globalThis as any).__solCityGameEvents = this.game.events;
-
-    // Keep multiplayer score in sync with local profile
-    this.profile.onChange((p) => {
-      this.network?.updateScore(p.score);
-    });
-
-    // Listen for wallet connection from React to start on-chain session
-    this.game.events.on("wallet:connected", async (walletAddress: string) => {
-      // A reconnect cancels any pending flap-disconnect for this wallet.
-      if (this.walletFlapTimer) { clearTimeout(this.walletFlapTimer); this.walletFlapTimer = null; }
-      // Ignore re-fires for a wallet we're already connected to (adapter flaps).
-      if (this.network.connected && this.walletAddress === walletAddress) return;
-      // ...and for one whose handshake is still running. connect() takes seconds
-      // (PDA init, then delegation), and network.connected stays false the whole
-      // time, so the check above alone would let a second event start a parallel
-      // session on the same PDA — which lands as a broken session the player can
-      // only escape by disconnecting and connecting again.
-      if (this.walletConnecting === walletAddress) return;
-      this.walletConnecting = walletAddress;
-      // Enter the map immediately; the on-chain session comes up in the
-      // background (moves before delegation land as sim/base, as before).
-      try {
-        this.walletAddress = walletAddress;
-        this.profile.setWallet(walletAddress);
-        const displayName = this.profile.get().displayName;
-        this.network.updateScore(this.profile.get().score);
-
-        // WalletSignBridge polls every 300ms to register on __solCityGameEvents.
-        // On auto-reconnect the wallet:connected event fires before it registers,
-        // causing all requestWalletSign calls to time out (60s) and fail.
-        // Wait up to 1s for "walletBridge:ready"; fall through immediately if
-        // already registered (normal case after user manually clicks Connect).
-        await new Promise<void>(resolve => {
-          const bus = (globalThis as any).__solCityGameEvents;
-          const fallback = setTimeout(resolve, 1000);
-          bus?.once("walletBridge:ready", () => { clearTimeout(fallback); resolve(); });
-        });
-
-        await this.network.connect(new PublicKey(walletAddress), displayName, loadSavedLoadout());
-        this.chat.addSystemMessage("Multiplayer session started.");
-
-        // Warnings from multiplayer (e.g. delegated PDA detected)
-        this.game.events.once("multiplayer:warning", (msg: string) => {
-          this.chat.addSystemMessage(msg);
-        });
-
-        // Cross-browser chat messages received via Solana Memo / onLogs
-        this.game.events.on("chat:network", ({ wallet, name, text }: { wallet?: string; name: string; text: string }) => {
-          const color = getChannelColor("global");
-          this.chat.addMessage("global", name, name, text, color);
-          // Float the message over the sender's avatar, if they're in view.
-          const avatar = wallet ? this.remotePlayers.get(wallet) : undefined;
-          if (avatar) this.showBubble(avatar.getContainer(), text, color);
-        });
-      } catch (err: any) {
-        console.error("[CityScene] session error:", err);
-        this.chat.addSystemMessage("Session offline (local mode)");
-      } finally {
-        // Cleared either way: a failed handshake must stay retryable.
-        if (this.walletConnecting === walletAddress) this.walletConnecting = null;
-      }
-    });
-
-    this.game.events.on("wallet:disconnected", () => {
-      // Debounce: a transient flap fires disconnect then connect right after.
-      // Wait; if a reconnect cancels this, the session is never torn down (no
-      // undelegate/rotate, so no 6000). Only a real disconnect proceeds.
-      if (this.walletFlapTimer) return;
-      this.walletFlapTimer = setTimeout(() => {
-        this.walletFlapTimer = null;
-        if (!this.network.connected) return;
-        this.network.disconnect();
-        this.chat.addSystemMessage("Session ended");
-      }, 1200);
-    });
-
     // Record on-chain when the player completes a swap/transfer/bounty.
     // ActionPanel emits these events after a successful transaction.
     this.game.events.on("game:swap",     () => this.network?.recordAction("swap"));
@@ -588,15 +629,6 @@ export class CityScene extends Phaser.Scene {
       this.network?.recordMiniGame(success);
     });
 
-    // Every listener above is now live — tell React it is safe to hand us the
-    // wallet. PhaserGame calls onGameReady the instant `new Phaser.Game()`
-    // returns, which is long before BootScene finishes preloading, so a
-    // "wallet:connected" sent on `game` alone lands on an emitter nobody is
-    // subscribed to yet and Phaser silently drops it. That was the whole
-    // "connected but not in the game / not in multiplayer until I reconnect"
-    // bug. The flag covers React attaching its listener after this fires.
-    (this.game as GameWithSceneReady).__solCitySceneReady = true;
-    this.game.events.emit("scene:ready");
   }
 
   /** One-time setup: a tiny dust dot texture + a manual particle emitter. */

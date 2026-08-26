@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import dynamic from "next/dynamic";
 import type { NPCDefinition, NPCAction } from "@/game/config/npcRegistry";
-import type { GameWithSceneReady } from "@/game/scenes/CityScene";
+import type { GameWithSceneReady, SolCityWalletHost } from "@/game/scenes/CityScene";
 import type { MiniGameContext, MiniGameResult } from "@/game/minigames/types";
 import { launch as launchMiniGame } from "@/game/minigames";
 import { usePinchZoom } from "@/ui/usePinchZoom";
@@ -174,6 +174,11 @@ export default function Home() {
 
   const handleWalletChange = useCallback((wallet: string | null) => {
     setWalletAddress(wallet);
+    // Mirror it somewhere CityScene can read on its own. If the wallet connects
+    // while BootScene is still preloading there is no scene to push to yet, and
+    // the push below can only fire once; CityScene reads this at startup so a
+    // wallet that arrived early is never stranded.
+    (globalThis as SolCityWalletHost).__solCityWallet = wallet;
   }, []);
 
   // CityScene only starts listening for "wallet:connected" at the end of its
