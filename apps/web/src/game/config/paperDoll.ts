@@ -63,9 +63,12 @@ export interface LayerVariant {
    */
   hatCoverage?: "full" | "band" | "suppress";
   /**
-   * Reserves this item to a quest reward so it's excluded from the random
-   * booster pool. Undefined + not in FREE_ITEMS ⇒ it drops from booster packs.
-   * (NPCs no longer grant outfits — unlocks come only from quests + boosters.)
+   * Reserves this item to a specific achievement so it's excluded from the
+   * random booster pool — it has to be earned the intended way, not rolled.
+   * Undefined + not in FREE_ITEMS ⇒ it drops from booster packs.
+   *
+   * Covers quest rewards and the NPC-granted Superteam Brasil set (see
+   * progression/outfitRewards.ts); `unlockHint` spells out the route for each.
    */
   unlockVia?: "quest";
   /** Overrides the default locked-item hint shown in the wardrobe. */
@@ -131,6 +134,11 @@ export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
   tshirt: [
     { id: "Blue_tshirt",  name: "Blue T-Shirt",  textureKey: "pd-tshirt-Blue_tshirt",  file: "tshirt/Blue_tshirt.png" },
     { id: "White_tshirt", name: "White T-Shirt", textureKey: "pd-tshirt-White_tshirt", file: "tshirt/White_tshirt.png" },
+    // Superteam Brasil set — earned, never dropped by a booster (see unlockVia).
+    { id: "STB_shirt", name: "Superteam Brasil Shirt", textureKey: "pd-tshirt-STB_shirt",
+      file: "tshirt/STB_shirt.png", unlockVia: "quest", unlockHint: "Talk to Kuka" },
+    { id: "Brazilian_shirt", name: "Brazil Shirt", textureKey: "pd-tshirt-Brazilian_shirt",
+      file: "tshirt/Brazilian_shirt.png", unlockVia: "quest", unlockHint: "Talk to every citizen in the city" },
   ],
   accessory: [
     { id: "Golden_ring", name: "Golden Ring", textureKey: "pd-accessory-Golden_ring", file: "accessory/Golden_ring.png" },
@@ -163,6 +171,9 @@ export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
     { id: "hat_black",  name: "Black Hat",  textureKey: "pd-hat-hat_black",  file: "hat/hat_black.png" },
     { id: "hat_red",    name: "Red Hat",    textureKey: "pd-hat-hat_red",    file: "hat/hat_red.png" },
     { id: "red_belt",   name: "Red Bandana",textureKey: "pd-hat-red_belt",   file: "hat/red_belt.png", hatCoverage: "band" },
+    // Superteam Brasil set — earned, never dropped by a booster (see unlockVia).
+    { id: "STB_cap", name: "Superteam Brasil Cap", textureKey: "pd-hat-STB_cap",
+      file: "hat/STB_cap.png", unlockVia: "quest", unlockHint: "Win a round of Kite Clash" },
   ],
 };
 

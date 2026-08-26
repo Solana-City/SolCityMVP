@@ -156,9 +156,11 @@ export default function Home() {
 
   // Records result to the ephemeral rollup (session key, no popup), then closes.
   const handleMiniGameResult = useCallback(async (result: MiniGameResult) => {
-    game?.events.emit("minigame:result", { success: result.success });
+    // The id rides along so the scene can tell WHICH game was won — the
+    // Superteam Brasil cap is a Kite Clash reward, not a reward for any win.
+    game?.events.emit("minigame:result", { id: activeMiniGame?.id, success: result.success });
     handleMiniGameClose();
-  }, [game, handleMiniGameClose]);
+  }, [game, activeMiniGame, handleMiniGameClose]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {

@@ -79,15 +79,19 @@ export class BootScene extends Phaser.Scene {
 
     const loadedKeys = new Set<string>();
     for (const npc of NPC_REGISTRY) {
-      if (!npc.spriteKey || loadedKeys.has(npc.spriteKey)) continue;
-      loadedKeys.add(npc.spriteKey);
-      const filename = npc.spriteKey.startsWith("avatar-")
-        ? npc.spriteKey.replace(/^avatar-/, "")
-        : npc.spriteKey.replace(/ /g, "%20");
-      // Static animated NPCs (idle-loop sheets) ship their own frame size —
-      // everyone else uses the standard 64×64 walk-cycle grid.
-      const { frameWidth, frameHeight } = npc.spriteAnimation ?? { frameWidth: 64, frameHeight: 64 };
-      SimpleSprite.load(this, npc.spriteKey, `assets/sprites/${filename}.png`, frameWidth, frameHeight);
+      // spriteWalkKey is the optional second sheet for NPCs drawn as separate
+      // idle and walk cycles (Caramel Dog) — same grid, so it loads the same way.
+      for (const key of [npc.spriteKey, npc.spriteWalkKey]) {
+        if (!key || loadedKeys.has(key)) continue;
+        loadedKeys.add(key);
+        const filename = key.startsWith("avatar-")
+          ? key.replace(/^avatar-/, "")
+          : key.replace(/ /g, "%20");
+        // Static animated NPCs (idle-loop sheets) ship their own frame size —
+        // everyone else uses the standard 64×64 walk-cycle grid.
+        const { frameWidth, frameHeight } = npc.spriteAnimation ?? { frameWidth: 64, frameHeight: 64 };
+        SimpleSprite.load(this, key, `assets/sprites/${filename}.png`, frameWidth, frameHeight);
+      }
     }
 
     // Paper doll sheets are small (256x256 each, ~5MB decoded in total) — load

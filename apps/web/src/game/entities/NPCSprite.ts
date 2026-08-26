@@ -246,7 +246,7 @@ export class NPCSprite {
    */
   private startDeterministicBehavior(): void {
     const STEP_MS    = 4_000;  // one "tick" every 4 s — all clients in sync
-    const WANDER_R   = 18;     // max wander radius in world-px
+    const WANDER_R   = this.def.wanderRadius ?? 18; // max wander radius, world-px
     const WALK_SPEED = 18;     // px/s
 
     /** Fast 32-bit seeded PRNG (mulberry32). */
@@ -314,8 +314,12 @@ export class NPCSprite {
       const dist = Math.abs(x - container.x) + Math.abs(y - container.y);
 
       if (dist < 2 || this.isTileBlocked(x, y)) {
+        this.setSheet(this.def.spriteKey);
         this.avatar.face(dir);
       } else {
+        // Swap to the walk sheet BEFORE walk(), so the animation it starts is
+        // the one registered against the sheet actually on screen.
+        this.setSheet(this.def.spriteWalkKey ?? this.def.spriteKey);
         this.avatar.walk(dir);
         this.scene.tweens.killTweensOf(container);
         this.scene.tweens.add({
@@ -324,7 +328,10 @@ export class NPCSprite {
           duration: (dist / WALK_SPEED) * 1000,
           ease: "Linear",
           onUpdate: () => container.setDepth(container.y),
-          onComplete: () => this.avatar.idle(),
+          onComplete: () => {
+            this.setSheet(this.def.spriteKey);
+            this.avatar.idle();
+          },
         });
       }
 
@@ -338,6 +345,17 @@ export class NPCSprite {
     };
 
     scheduleNext();
+  }
+
+  /**
+   * Switch to one of this NPC's sheets (idle vs walk). No-op for the NPCs that
+   * ship a single sheet, and SimpleSprite.setTexture already ignores a swap to
+   * the texture it is on, so this is cheap to call on every step.
+   */
+  private setSheet(key: string | undefined): void {
+    if (!key || !this.def.spriteWalkKey) return;
+    if (!this.scene.textures.exists(key)) return;
+    this.avatar.setTexture(key);
   }
 
   private isTileBlocked(x: number, y: number): boolean {

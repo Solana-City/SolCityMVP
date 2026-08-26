@@ -22,6 +22,24 @@ export interface NPCDefinition {
    */
   spriteKey?: string;
   /**
+   * Optional second sheet, swapped in while this NPC is walking and swapped
+   * back on arrival. Same 64×64 walk-grid contract as `spriteKey`.
+   *
+   * Only needed for art drawn as two sheets — Caramel Dog ships a sitting idle
+   * and a separate trot cycle. NPCs whose single sheet already carries a
+   * standing frame in column 0 leave this unset.
+   */
+  spriteWalkKey?: string;
+  /**
+   * How far this NPC may stray from its spawn tile while wandering, in world
+   * pixels. Defaults to 18 (under one tile) — enough to look alive in place.
+   *
+   * Raise it for an NPC that should actually roam. The wander is clamped to a
+   * box of this radius around the spawn, so the value doubles as the leash
+   * that keeps it inside its own district.
+   */
+  wanderRadius?: number;
+  /**
    * Set to false to hide this NPC from the city without removing its
    * definition (e.g. temporarily disabled while content is reworked).
    * Defaults to true.
@@ -196,6 +214,29 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     ],
     action: { type: "private-payment", label: "Send privately" },
     spriteKey: "Magic Man",
+  },
+  {
+    id: "caramel-dog",
+    name: "Caramel Dog",
+    role: "Beach Mascot",
+    // Open sand in the Superteam Brazil zone. Chosen so the wander box below
+    // lands on 100% walkable beach — clear of the stands to the north and the
+    // lighthouse to the east — so the dog never picks a blocked target and
+    // stalls in place.
+    tileX: 41,
+    tileY: 85,
+    color: 0xd2833c,
+    dialog: [
+      "Woof!",
+      "The caramel dog sniffs your shoes, decides you are alright, and wags its tail.",
+      "It trots a few steps down the beach, then looks back to check you are still watching.",
+    ],
+    action: { type: "placeholder", label: "Pet the dog" },
+    spriteKey: "avatar-caramel-dog",
+    spriteWalkKey: "avatar-caramel-dog-walk",
+    // ~7 tiles. Keeps it roaming the open sand of the ST Brasil beach without
+    // reaching the stands to the north or the water to the south.
+    wanderRadius: 168,
   },
   // ── Expansion district NPCs ──────────────────────────────────────
   {

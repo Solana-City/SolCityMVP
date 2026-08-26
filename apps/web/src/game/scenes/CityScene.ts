@@ -13,6 +13,7 @@ import { PedestrianManager } from "../entities/PedestrianManager";
 import { hasAlreadyFoundCurrent, markCurrentFound, isCitizenExpired, advanceFindSlot, resetCitizenTimer, isHuntOnChain, getRoundIndex } from "../minigames/whereIsNPC/WhereIsNPCGame";
 import { ProfileManager, profileManager } from "../config/profileManager";
 import { AchievementEngine } from "../progression/achievementEngine";
+import { onMiniGameFinished, watchNpcConversations } from "../progression/outfitRewards";
 import { showEmoji, EmojiDef } from "../chat/EmojiSystem";
 import { soundManager } from "../audio/SoundManager";
 
@@ -327,6 +328,10 @@ export class CityScene extends Phaser.Scene {
       this.registry.set("achievementEngine", engine);
     }
 
+    // Superteam Brasil outfit grants (Kuka, and the full citizen roll call).
+    // Re-subscribes rather than stacking, so a scene restart is harmless.
+    watchNpcConversations();
+
     // Chat system
     this.chat = new ChatManager();
     this.chat.addSystemMessage("Welcome to The Solana City");
@@ -638,8 +643,9 @@ export class CityScene extends Phaser.Scene {
       this.interactionBlocked = false;
     });
     // Record result to ephemeral rollup via session key — no wallet popup.
-    this.game.events.on("minigame:result", ({ success }: { success: boolean }) => {
+    this.game.events.on("minigame:result", ({ id, success }: { id?: string; success: boolean }) => {
       this.network?.recordMiniGame(success);
+      if (id) onMiniGameFinished(id, success);
     });
 
   }
