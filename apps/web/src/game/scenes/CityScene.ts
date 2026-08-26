@@ -195,14 +195,27 @@ export class CityScene extends Phaser.Scene {
           this.overheadLayers.push(layer);
         } else if (Y_SORT_PREFIXES.some(p => leafName.startsWith(p))) {
           // Isolated vertical object (trunk, palm, lamp post) → y-sort.
-          // depth = bottom-world-Y of the southernmost collidable tile.
-          let maxBottomY = 0;
+          // depth = bottom-world-Y of the southernmost collidable ROW that
+          // actually carries the object's mass.
+          //
+          // Not simply the southernmost collidable tile: a layer often holds a
+          // building plus a detached prop. BuildIndies carries the house AND
+          // the "GAMES on SOLANA" sign, whose two feet sit one row south of the
+          // house's front wall — and those two tiles dragged the whole layer's
+          // depth down a row, so anyone standing in FRONT of the house was
+          // drawn behind it, which reads as walking under the facade. A handful
+          // of tiles does not define where a building meets the ground.
+          const tilesPerRow = new Map<number, number>();
           for (const tile of collidingTiles) {
-            const worldY = layer.tileToWorldY(tile.y)!;
-            if (worldY + map.tileHeight > maxBottomY) {
-              maxBottomY = worldY + map.tileHeight;
-            }
+            tilesPerRow.set(tile.y, (tilesPerRow.get(tile.y) ?? 0) + 1);
           }
+          const busiestRow = Math.max(...tilesPerRow.values());
+          let baseTileY = -1;
+          for (const [tileY, count] of tilesPerRow) {
+            if (count * 4 < busiestRow) continue; // sparse outlier row
+            if (tileY > baseTileY) baseTileY = tileY;
+          }
+          const maxBottomY = layer.tileToWorldY(baseTileY)! + map.tileHeight;
           layer.setDepth(maxBottomY);
           // Y-sorted layers can render above the player → candidate for fade.
           this.overheadLayers.push(layer);
