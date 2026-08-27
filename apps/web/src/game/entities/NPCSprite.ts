@@ -311,29 +311,70 @@ export class NPCSprite {
 
       const stepNow = Math.floor(Date.now() / STEP_MS);
       const { x, y, dir } = targetForStep(stepNow);
-      const dist = Math.abs(x - container.x) + Math.abs(y - container.y);
+      const dx = x - container.x;
+      const dy = y - container.y;
+      const dist = Math.abs(dx) + Math.abs(dy);
 
-      if (dist < 2 || this.isTileBlocked(x, y)) {
+      // The corner of the L-path below, checked alongside the destination so a
+      // two-leg walk can't cut through a collider on the turn.
+      if (dist < 2 || this.isTileBlocked(x, y) || this.isTileBlocked(x, container.y)) {
         this.setSheet(this.def.spriteKey);
         this.avatar.face(dir);
-      } else {
+        scheduleNext();
+        return;
+      }
+
+      // Walk the X leg, then the Y leg — one axis at a time, each facing the
+      // way it is actually travelling.
+      //
+      // `dir` from targetForStep is NOT that direction. It says where the
+      // target sits relative to the NPC's ORIGIN, but the NPC sets off from
+      // wherever the last step left it. Those disagree constantly: a step that
+      // rolls move=0 (55% of them) targets the origin itself, so an NPC parked
+      // to its right walks LEFT while playing the right-walk animation. That
+      // was the moonwalk, and it hit the Caramel Dog hardest simply because a
+      // 168px leash makes every mismatch a long, obvious slide.
+      //
+      // Splitting into legs also stops the diagonal drift that happened
+      // whenever consecutive steps picked different axes.
+      const legs: Array<{ x: number; y: number; dir: Direction }> = [];
+      if (Math.abs(dx) >= 1) legs.push({ x, y: container.y, dir: dx >= 0 ? "right" : "left" });
+      if (Math.abs(dy) >= 1) legs.push({ x, y, dir: dy >= 0 ? "down" : "up" });
+
+      // Long walks travel faster rather than overrunning the step. At the base
+      // speed a full-leash move takes far longer than one 4s step, so the next
+      // tick killed the tween mid-stride every time and the NPC juddered
+      // without ever arriving — the other half of "moves strangely".
+      const duration = Math.min((dist / WALK_SPEED) * 1000, STEP_MS * 0.85);
+
+      this.scene.tweens.killTweensOf(container);
+
+      let leg = 0;
+      const runLeg = (): void => {
+        // The legs chain through onComplete, so the scene can go away between
+        // them — one more window than the single tween this replaced.
+        if (!container.scene) return;
+        if (leg >= legs.length) {
+          this.setSheet(this.def.spriteKey);
+          this.avatar.idle();
+          return;
+        }
+        const next = legs[leg++];
+        const legDist = Math.abs(next.x - container.x) + Math.abs(next.y - container.y);
         // Swap to the walk sheet BEFORE walk(), so the animation it starts is
         // the one registered against the sheet actually on screen.
         this.setSheet(this.def.spriteWalkKey ?? this.def.spriteKey);
-        this.avatar.walk(dir);
-        this.scene.tweens.killTweensOf(container);
+        this.avatar.walk(next.dir);
         this.scene.tweens.add({
           targets: container,
-          x, y,
-          duration: (dist / WALK_SPEED) * 1000,
+          x: next.x, y: next.y,
+          duration: duration * (dist > 0 ? legDist / dist : 1),
           ease: "Linear",
           onUpdate: () => container.setDepth(container.y),
-          onComplete: () => {
-            this.setSheet(this.def.spriteKey);
-            this.avatar.idle();
-          },
+          onComplete: runLeg,
         });
-      }
+      };
+      runLeg();
 
       scheduleNext();
     };
