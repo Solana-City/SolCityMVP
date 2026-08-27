@@ -21,14 +21,16 @@
  * everything that already reads tile.collides (player collider, pedestrians,
  * NPC spawn scan).
  *
- * A tile gets a full-tile collision box when it is actually used somewhere in
- * the map AND its artwork covers at least OPACITY_THRESHOLD of the tile. The
- * opacity test is what keeps the transparent padding tiles around each stand
- * walkable — those are painted with a real gid but draw nothing, and blocking
- * them would ring every 5x5 stand with an invisible 7x7 wall.
+ * A tile becomes solid when it is used in the map, its artwork covers at least
+ * OPACITY_THRESHOLD of the tile, AND it sits below the structure's canopy rows
+ * (see CANOPY_TOP_ROWS). The opacity test keeps the transparent padding around
+ * each stall walkable — those tiles carry a real gid but draw nothing, and
+ * blocking them would ring every 5x5 stall with an invisible 7x7 wall. The row
+ * test is what leaves an awning to walk behind.
  *
- * Idempotent: tiles that already have an objectgroup are left alone, so this
- * is safe to re-run after re-exporting city.json from Tiled.
+ * Idempotent: every pass either re-derives its output and compares, or skips
+ * work already present, so a re-run after exporting city.json from Tiled
+ * reports "0 tiles would change" and rewrites nothing.
  *
  *   node apps/web/scripts/patch-map-collision.mjs [--dry]
  */
@@ -42,8 +44,41 @@ const WEB = path.resolve(HERE, "..");
 const MAP = path.join(WEB, "public/assets/maps/city.json");
 const TILESET_DIR = path.join(WEB, "public/assets/tilesets");
 
-/** Tilesets Tiled exported with zero collision shapes. */
+/**
+ * Tilesets Tiled exported with zero collision shapes.
+ *
+ * The artist authored nothing here, so every `tiles[]` entry in them is this
+ * script's own work — which is why the pass below can clear and re-derive them
+ * on each run instead of only ever adding.
+ */
 const TARGET_TILESETS = ["SCBuildSTBrStands", "SCBuildSTEarn02"];
+
+/**
+ * How many rows at the TOP of each of these structures are canopy the player
+ * should be able to walk behind, exactly as they can walk into the upper storey
+ * of every other building.
+ *
+ * Backfilling those two tilesets by opacity alone made the whole silhouette
+ * solid, because a tileset has no idea where its tiles sit in a structure. That
+ * left the market stalls and the ST Earn tent as the only buildings in the city
+ * with no walk-behind at all — you could reach the lane north of them and not a
+ * tile further, which is what "can't get behind the tent or the stands" was.
+ *
+ * Row counts come from the art: a stall is three rows of awning (dark green top
+ * plus the striped valance) over two rows of counter, and the tent is five rows
+ * of roof over the two where its poles and desk meet the ground. SolSentry and
+ * Pegana are deliberately absent — they are flat kiosks with no canopy, solid
+ * all the way up, and open ground already surrounds them.
+ */
+const CANOPY_TOP_ROWS = {
+  BuildStand01: 3,
+  BuildStand02: 3,
+  BuildStand04: 3,
+  BuildStand05: 3,
+  BuildStand07: 3,
+  BuildStand08: 3,
+  BuildSTEarn: 5,
+};
 
 /** Fraction of the tile that must be opaque before it becomes solid. */
 const OPACITY_THRESHOLD = 0.5;
@@ -267,48 +302,92 @@ function fullTileCollision(tileset) {
 }
 
 let totalAdded = 0;
-for (const name of TARGET_TILESETS) {
-  const tileset = map.tilesets.find((t) => t.name === name);
-  if (!tileset) {
-    console.error(`  ! tileset ${name} not found in city.json — skipped`);
-    continue;
+{
+  const targets = TARGET_TILESETS
+    .map((name) => {
+      const ts = map.tilesets.find((t) => t.name === name);
+      if (!ts) console.error(`  ! tileset ${name} not found in city.json — skipped`);
+      return ts;
+    })
+    .filter(Boolean);
+
+  // Wipe last run's work so the canopy rule can be re-derived from scratch;
+  // safe because the artist authored no collision in these tilesets at all.
+  // The previous ids are kept so a re-run that lands on the same answer reports
+  // no change instead of rewriting the map every time.
+  const tilesBefore = new Map(targets.map((ts) => [ts.name, (ts.tiles ?? []).map((t) => t.id).join(",")]));
+  for (const ts of targets) ts.tiles = [];
+
+  const tilesetOf = (gid) =>
+    targets.find((t) => gid >= t.firstgid && gid < t.firstgid + t.tilecount);
+
+  /**
+   * Which local tile ids must be solid.
+   *
+   * Decided POSITIONALLY, then applied per tile id. Walking the layers gives
+   * each painted cell its row within its own structure, so the canopy rows can
+   * be told from the body; applying the result by id then keeps every copy of a
+   * stall consistent, since all six are built from the same tiles.
+   */
+  const solidIds = new Set();
+  const openIds = new Set();
+  for (const layer of tileLayers(map.layers)) {
+    const label = layerPath.get(layer);
+    const leaf = label.slice(label.lastIndexOf("/") + 1);
+    const origin = originOf(layer);
+
+    // Top row of the structure's ARTWORK. Measured from opaque tiles only: the
+    // 7x7 stalls are padded with a ring of fully transparent tiles that draw
+    // nothing, and counting those put their canopy window a row too high, so
+    // the same tile read as canopy on one stall and body on another.
+    let topRow = Infinity;
+    for (let i = 0; i < layer.data.length; i++) {
+      const raw0 = layer.data[i];
+      if (!raw0) continue;
+      const ts0 = tilesetOf(raw0 & GID_MASK);
+      if (!ts0) continue;
+      if (tileOpacity(tilesetPng(ts0), ts0, (raw0 & GID_MASK) - ts0.firstgid) < OPACITY_THRESHOLD) continue;
+      topRow = Math.min(topRow, origin.row + Math.floor(i / layer.width));
+    }
+    if (!Number.isFinite(topRow)) continue;
+
+    const canopyRows = CANOPY_TOP_ROWS[leaf] ?? 0;
+    for (let i = 0; i < layer.data.length; i++) {
+      const raw = layer.data[i];
+      if (!raw) continue;
+      const gid = raw & GID_MASK;
+      const ts = tilesetOf(gid);
+      if (!ts) continue;
+      const row = origin.row + Math.floor(i / layer.width);
+      const localId = gid - ts.firstgid;
+      if (row < topRow + canopyRows) openIds.add(localId);
+      else solidIds.add(localId);
+    }
   }
 
-  const imageFile = tileset.image.replace(/^.*[\\/]/, "");
-  const png = PNG.sync.read(fs.readFileSync(path.join(TILESET_DIR, imageFile)));
-
-  tileset.tiles ??= [];
-  const existing = new Map(tileset.tiles.map((t) => [t.id, t]));
-
-  let added = 0;
-  let skippedTransparent = 0;
-  for (const gid of usedGids) {
-    const localId = gid - tileset.firstgid;
-    if (localId < 0 || localId >= tileset.tilecount) continue;
-
-    const entry = existing.get(localId);
-    if (entry?.objectgroup?.objects?.length) continue; // already solid
-
-    if (tileOpacity(png, tileset, localId) < OPACITY_THRESHOLD) {
-      skippedTransparent++;
-      continue;
+  for (const ts of targets) {
+    const png = tilesetPng(ts);
+    let added = 0;
+    let canopy = 0;
+    let transparent = 0;
+    for (const localId of solidIds) {
+      if (localId < 0 || localId >= ts.tilecount) continue;
+      if (!usedGids.has(ts.firstgid + localId)) continue;
+      if (tileOpacity(png, ts, localId) < OPACITY_THRESHOLD) { transparent++; continue; }
+      ts.tiles.push({ id: localId, objectgroup: fullTileCollision(ts) });
+      added++;
     }
-
-    if (entry) {
-      entry.objectgroup = fullTileCollision(tileset);
-    } else {
-      const created = { id: localId, objectgroup: fullTileCollision(tileset) };
-      tileset.tiles.push(created);
-      existing.set(localId, created);
+    for (const localId of openIds) {
+      if (localId >= 0 && localId < ts.tilecount && !solidIds.has(localId)) canopy++;
     }
-    added++;
+    ts.tiles.sort((a, b) => a.id - b.id);
+    const changed = ts.tiles.map((t) => t.id).join(",") !== tilesBefore.get(ts.name);
+    if (changed) totalAdded += added;
+    console.log(
+      `  ${ts.name}: ${added} solid tiles (${canopy} canopy left walk-behind, ` +
+        `${transparent} transparent)${changed ? "" : " — unchanged"}`
+    );
   }
-
-  tileset.tiles.sort((a, b) => a.id - b.id);
-  totalAdded += added;
-  console.log(
-    `  ${name}: +${added} solid tiles (${skippedTransparent} left walkable as transparent padding)`
-  );
 }
 
 // ---------------------------------------------------------------- pass 2 ---
