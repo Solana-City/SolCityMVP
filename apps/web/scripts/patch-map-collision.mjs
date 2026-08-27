@@ -66,9 +66,13 @@ const TARGET_TILESETS = ["SCBuildSTBrStands", "SCBuildSTEarn02"];
  *
  * Row counts come from the art: a stall is three rows of awning (dark green top
  * plus the striped valance) over two rows of counter, and the tent is five rows
- * of roof over the two where its poles and desk meet the ground. SolSentry and
- * Pegana are deliberately absent — they are flat kiosks with no canopy, solid
- * all the way up, and open ground already surrounds them.
+ * of roof over the two where its poles and desk meet the ground.
+ *
+ * SolSentry and Peg-risk get the same treatment. They have no awning, which is
+ * why they were left solid at first — but they are tall vertical cabinets, so
+ * their upper half (counter top, sign, screen) stands above head height and
+ * only the bottom rows actually meet the sand. Leaving them solid to the top
+ * made them the last two structures the player could not walk behind.
  */
 const CANOPY_TOP_ROWS = {
   BuildStand01: 3,
@@ -78,6 +82,8 @@ const CANOPY_TOP_ROWS = {
   BuildStand07: 3,
   BuildStand08: 3,
   BuildSTEarn: 5,
+  BuildStandSolSentry: 3,
+  BuildStandPegana: 3,
 };
 
 /** Fraction of the tile that must be opaque before it becomes solid. */
