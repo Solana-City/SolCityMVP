@@ -306,9 +306,7 @@ export class PedestrianSprite {
    *
    *  The collision map is the only fence needed: patch-map-collision.mjs seals
    *  every tile walled off from the spawn, so the city edge, the sea and the
-   *  interior pockets all read as solid here. This used to also clamp to
-   *  PLAYABLE_ZONE, which still described the old 200x200 city and on SCMap01.1
-   *  (135x115) penned citizens into roughly a fifth of the streets. */
+   *  interior pockets all read as solid here. */
   private walkableDistance(dir: Direction, maxPx: number): number {
     const container = this.avatar.getContainer();
     const [dx, dy] = DIR_VECTORS[dir];

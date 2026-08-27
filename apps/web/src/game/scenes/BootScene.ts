@@ -1,5 +1,4 @@
 import * as Phaser from "phaser";
-import { generateTileset } from "../utils/tilesetGenerator";
 import { SimpleSprite } from "../entities/SimpleSprite";
 import { AvatarSprite } from "../entities/AvatarSprite";
 import { NPC_REGISTRY } from "../config/npcRegistry";
@@ -109,8 +108,6 @@ export class BootScene extends Phaser.Scene {
   }
 
   create(): void {
-    generateTileset(this);
-
     const isMobile = window.matchMedia("(pointer: coarse)").matches;
 
     // Static animated NPCs (idle-loop sheets, e.g. Kite Pro) ship with the

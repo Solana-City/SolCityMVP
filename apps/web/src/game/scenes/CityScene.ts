@@ -13,7 +13,7 @@ import { PedestrianManager } from "../entities/PedestrianManager";
 import { hasAlreadyFoundCurrent, markCurrentFound, isCitizenExpired, advanceFindSlot, resetCitizenTimer, isHuntOnChain, getRoundIndex } from "../minigames/whereIsNPC/WhereIsNPCGame";
 import { ProfileManager, profileManager } from "../config/profileManager";
 import { AchievementEngine } from "../progression/achievementEngine";
-import { onMiniGameFinished, watchNpcConversations } from "../progression/outfitRewards";
+import { onMiniGameFinished, watchNpcConversations, stopWatchingNpcConversations } from "../progression/outfitRewards";
 import { showEmoji, EmojiDef } from "../chat/EmojiSystem";
 import { soundManager } from "../audio/SoundManager";
 
@@ -84,30 +84,47 @@ export class CityScene extends Phaser.Scene {
   private profile!: ProfileManager;
   private touchDx = 0;
   private touchDy = 0;
-  /**
-   * Crop origin of the loaded map in original (200x200) tile coordinates.
-   * Desktop loads the full city.json → origin (0,0). Mobile loads the
-   * pre-cropped city-mobile.json (120x62 tiles starting at the playable
-   * zone) whose layers carry offsetx/offsety restoring original world
-   * positions — so world-pixel math stays in original coordinates, but
-   * tile-index lookups into map data must subtract this origin.
-   */
-  private originCol = 0;
-  private originRow = 0;
+  /** Every game-level listener this scene added, so shutdown can undo them. */
+  private gameEventHandlers: Array<[string, (...args: never[]) => void]> = [];
 
   constructor() {
     super({ key: "CityScene" });
   }
 
+  /**
+   * Subscribe to a GAME-level event and remember it for teardown.
+   *
+   * `game.events` outlives the scene, so anything registered on it in create()
+   * survives a scene restart and a second create() would stack a duplicate of
+   * every handler — two wallet sessions opened for one connect, every chat line
+   * appended twice, and so on. Scene-level `this.events` cleans itself up; this
+   * is the bus that does not.
+   */
+  private onGameEvent(name: string, fn: (...args: never[]) => void): void {
+    this.game.events.on(name, fn);
+    this.gameEventHandlers.push([name, fn]);
+  }
+
+  private teardownGameEvents(): void {
+    for (const [name, fn] of this.gameEventHandlers) {
+      this.game.events.off(name, fn);
+    }
+    this.gameEventHandlers = [];
+  }
+
   create(): void {
+    // Drop every game-level listener when this scene goes away, and stop the
+    // outfit-reward subscription with it — both live on buses that outlast the
+    // scene, so without this a restart would double them.
+    this.events.once("shutdown", () => {
+      this.teardownGameEvents();
+      stopWatchingNpcConversations();
+    });
+
     // ── Tiled map with real sprite art ────────────────────────────────────
 
     const map = this.make.tilemap({ key: "city-map" });
     const tileSize = map.tileWidth;   // 24
-
-    // SCMap01.1 (135×115) serves both platforms — no mobile crop, origin (0,0).
-    this.originCol = 0;
-    this.originRow = 0;
 
     // Add all tileset spritesheets loaded in BootScene. Names MUST match the
     // embedded tileset names in city.json and the loaded image keys.
@@ -338,7 +355,7 @@ export class CityScene extends Phaser.Scene {
     this.registry.set("chatManager", this.chat);
 
     // Listen for chat input from React UI
-    this.game.events.on("chat:send", (text: string) => {
+    this.onGameEvent("chat:send", (text: string) => {
       const channel = this.chat.getActiveChannel();
       const color = getChannelColor(channel);
 
@@ -357,7 +374,19 @@ export class CityScene extends Phaser.Scene {
       }
     });
 
-    this.game.events.on("chat:focus", (focused: boolean) => {
+    // Cross-browser chat messages received via Solana Memo / onLogs.
+    // Registered here, NOT inside the wallet:connected handler where it used to
+    // live: game.events outlives a session, so every reconnect added another
+    // copy and each network message got appended to the chat once per connect.
+    this.onGameEvent("chat:network", ({ wallet, name, text }: { wallet?: string; name: string; text: string }) => {
+      const color = getChannelColor("global");
+      this.chat.addMessage("global", name, name, text, color);
+      // Float the message over the sender's avatar, if they're in view.
+      const avatar = wallet ? this.remotePlayers.get(wallet) : undefined;
+      if (avatar) this.showBubble(avatar.getContainer(), text, color);
+    });
+
+    this.onGameEvent("chat:focus", (focused: boolean) => {
       this.chatInputActive = focused;
       // Disable Phaser keyboard capture so typing in chat doesn't trigger WASD
       if (this.input.keyboard) {
@@ -371,14 +400,14 @@ export class CityScene extends Phaser.Scene {
     // (setupEmojiKeys intentionally not called.)
 
     // Emoji trigger from React UI button
-    this.game.events.on("emoji:trigger", (emoji: EmojiDef) => {
+    this.onGameEvent("emoji:trigger", (emoji: EmojiDef) => {
       showEmoji(this, this.avatar.getContainer(), emoji);
       this.chat.addMessage("local", "local", this.profile.get().displayName, emoji.symbol, emoji.color);
     });
 
     // Facial expression trigger from the React expressions picker. Swaps the
     // player's own face for a few seconds, then auto-reverts. Local only.
-    this.game.events.on("expression:trigger", (expr: { textureKey: string }) => {
+    this.onGameEvent("expression:trigger", (expr: { textureKey: string }) => {
       this.avatar.setExpression(expr.textureKey);
       soundManager.play("emote");
       this.network.sendExpression(expr.textureKey); // let others see the reaction
@@ -390,7 +419,7 @@ export class CityScene extends Phaser.Scene {
     });
 
     // Wardrobe panel — live preview while panel is open, persisted on Save.
-    this.game.events.on("wardrobe:loadout", (loadout: Loadout) => {
+    this.onGameEvent("wardrobe:loadout", (loadout: Loadout) => {
       this.avatar.setLoadout(loadout);
       this.network.updateLoadout(loadout); // broadcast so others re-render our look
     });
@@ -424,7 +453,7 @@ export class CityScene extends Phaser.Scene {
     });
 
     // Listen for wallet connection from React to start on-chain session
-    this.game.events.on("wallet:connected", async (walletAddress: string) => {
+    this.onGameEvent("wallet:connected", async (walletAddress: string) => {
       // A reconnect cancels any pending flap-disconnect for this wallet.
       if (this.walletFlapTimer) { clearTimeout(this.walletFlapTimer); this.walletFlapTimer = null; }
       // Ignore re-fires for a wallet we're already connected to (adapter flaps).
@@ -462,15 +491,6 @@ export class CityScene extends Phaser.Scene {
         this.game.events.once("multiplayer:warning", (msg: string) => {
           this.chat.addSystemMessage(msg);
         });
-
-        // Cross-browser chat messages received via Solana Memo / onLogs
-        this.game.events.on("chat:network", ({ wallet, name, text }: { wallet?: string; name: string; text: string }) => {
-          const color = getChannelColor("global");
-          this.chat.addMessage("global", name, name, text, color);
-          // Float the message over the sender's avatar, if they're in view.
-          const avatar = wallet ? this.remotePlayers.get(wallet) : undefined;
-          if (avatar) this.showBubble(avatar.getContainer(), text, color);
-        });
       } catch (err: any) {
         console.error("[CityScene] session error:", err);
         this.chat.addSystemMessage("Session offline (local mode)");
@@ -480,7 +500,7 @@ export class CityScene extends Phaser.Scene {
       }
     });
 
-    this.game.events.on("wallet:disconnected", () => {
+    this.onGameEvent("wallet:disconnected", () => {
       // Debounce: a transient flap fires disconnect then connect right after.
       // Wait; if a reconnect cancels this, the session is never torn down (no
       // undelegate/rotate, so no 6000). Only a real disconnect proceeds.
@@ -567,7 +587,7 @@ export class CityScene extends Phaser.Scene {
     });
 
     // React UI requests current target info (on mount or round change)
-    this.game.events.on("whereIsNPC:requestTarget", () => {
+    this.onGameEvent("whereIsNPC:requestTarget", () => {
       const loadout = this.pedestrians.getTargetLoadout();
       if (loadout) this.game.events.emit("whereIsNPC:targetInfo", loadout);
     });
@@ -581,27 +601,27 @@ export class CityScene extends Phaser.Scene {
     });
 
     // NPC interaction listener from React
-    this.game.events.on("npc:close", () => {
+    this.onGameEvent("npc:close", () => {
       this.interactionBlocked = false;
     });
 
     // Camera zoom from UI control — always snap to a pixel-perfect value
-    this.game.events.on("camera:zoom", (zoom: number) => {
+    this.onGameEvent("camera:zoom", (zoom: number) => {
       const z = snapZoom(zoom);
       this.cameras.main.setZoom(z);
       this.applyZoomSmoothing(z);
     });
 
     // Mobile touch input
-    this.game.events.on("touch:joystick", ({ dx, dy }: { dx: number; dy: number }) => {
+    this.onGameEvent("touch:joystick", ({ dx, dy }: { dx: number; dy: number }) => {
       this.touchDx = dx;
       this.touchDy = dy;
     });
-    this.game.events.on("touch:stop", () => {
+    this.onGameEvent("touch:stop", () => {
       this.touchDx = 0;
       this.touchDy = 0;
     });
-    this.game.events.on("touch:interact", () => {
+    this.onGameEvent("touch:interact", () => {
       if (this.chatInputActive || this.interactionBlocked) return;
       if (this.tryHuntInteraction()) return;
       const nearby = this.npcSprites.find((n) => n.isInRange);
@@ -626,24 +646,24 @@ export class CityScene extends Phaser.Scene {
 
     // Record on-chain when the player completes a swap/transfer/bounty.
     // ActionPanel emits these events after a successful transaction.
-    this.game.events.on("game:swap",     () => this.network?.recordAction("swap"));
-    this.game.events.on("game:transfer", () => this.network?.recordAction("transfer"));
-    this.game.events.on("game:bounty",   () => this.network?.recordAction("bounty"));
+    this.onGameEvent("game:swap",     () => this.network?.recordAction("swap"));
+    this.onGameEvent("game:transfer", () => this.network?.recordAction("transfer"));
+    this.onGameEvent("game:bounty",   () => this.network?.recordAction("bounty"));
 
     // Mini-game lifecycle — pause/resume the scene around fullscreen overlays.
     // game.events (not scene.events) keeps the listener alive while paused.
-    this.game.events.on("minigame:launch", () => {
+    this.onGameEvent("minigame:launch", () => {
       this.interactionBlocked = true;
       this.playerBody.setVelocity(0);
       this.avatar.idle();
       this.scene.pause();
     });
-    this.game.events.on("minigame:close", () => {
+    this.onGameEvent("minigame:close", () => {
       this.scene.resume();
       this.interactionBlocked = false;
     });
     // Record result to ephemeral rollup via session key — no wallet popup.
-    this.game.events.on("minigame:result", ({ id, success }: { id?: string; success: boolean }) => {
+    this.onGameEvent("minigame:result", ({ id, success }: { id?: string; success: boolean }) => {
       this.network?.recordMiniGame(success);
       if (id) onMiniGameFinished(id, success);
     });
@@ -1089,11 +1109,9 @@ export class CityScene extends Phaser.Scene {
   ): { wx: number; wy: number } {
     // A tile position is blocked if ANY layer has a collidable tile there.
     // Uses Phaser's tile.collides flag set by setCollisionFromCollisionGroup().
-    // col/row arrive in original 200x200 coordinates — shift by the crop
-    // origin so lookups hit the right tiles in the (possibly cropped) map data.
     const isTileBlocked = (c: number, r: number): boolean =>
       map.layers.some(layerData => {
-        const tile = map.getTileAt(c - this.originCol, r - this.originRow, false, layerData.name);
+        const tile = map.getTileAt(c, r, false, layerData.name);
         return tile !== null && tile.collides;
       });
 
