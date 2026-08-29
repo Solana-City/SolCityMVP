@@ -1,57 +1,14 @@
 /**
  * Sol Mechs — season economy simulator.
  *
- * Not a test. This exists to answer the questions that have to be settled
- * BEFORE the sale opens, because they go in the announcement and cannot be
- * revised afterwards:
+ * A tuning harness, not a test. Runs a whole season over several sales
+ * scenarios and reports revenue, pool size, payout curve, ladder health and
+ * the result of a worst-case collusion attack.
  *
- *   - what is the pool if only 300 passes sell, and how much of the
- *     guaranteed floor comes out of treasury in that case?
- *   - what does 1st pay, and what does 50th? is the curve steep enough that
- *     sitting on a rank is irrational?
- *   - is buying energy to feed your own wallets PROFITABLE? that is the one
- *     number that decides whether the ladder survives contact with money.
- *
- * Run it, change a constant in `config.ts`, run it again. Deterministic: the
- * RNG is seeded, so two runs of the same config are comparable.
+ * Deterministic: the RNG is seeded, so two runs of the same config compare
+ * directly. Change a constant in `config.ts` and run it again.
  *
  *   npx tsx apps/web/src/game/solmechs/season/simulate.ts
- *
- * ## What it has already established
- *
- * **A SUBSIDISED prize pool is what makes farming profitable.**
- *
- * The collusion scenario below hands the attacker something a real server must
- * never give them — the power to choose who their feeders play — and then asks
- * whether buying rank pays. The answer turned on the guaranteed floor, not on
- * anything in the rating formula:
- *
- *   - with a 20 SOL guaranteed floor, 30 feeder wallets at 0.1 SOL bought
- *     FIRST PLACE for less than first place paid. Profitable.
- *   - with the floor at $500 (~3 SOL), the same attack loses money at every
- *     scale tested — 30 feeders cost 12 SOL to win 8.06.
- *
- * The reason is structural. The attack's cost scales with wallets bought; the
- * prize scales with the pool. A pool funded by SALES is self-limiting, because
- * winning more requires more people to have paid in — which is more honest
- * competition to beat. A pool topped up from treasury is free money on the
- * table, and it is the treasury's share that a farmer is really coming for.
- *
- * Two rating-side attempts did NOT fix it and should not be retried:
- *
- *   - repeat-pairing decay is per-PAIR, so a farmer buys fresh wallets rather
- *     than grinding one;
- *   - a per-opponent GAIN CEILING made things strictly worse. It binds on
- *     honest players, who face the same pool repeatedly, while a farmer's new
- *     wallets each arrive with full headroom. Measured: with the ceiling, 10
- *     feeders reached 1st (vs 3rd without) and honest skill correlation fell
- *     0.79 → 0.76. Removed.
- *
- * None of that removes the need for the structural defence: **opponents must
- * be assigned by the server from a live queue and must never be choosable.**
- * The numbers below are the worst case with that guarantee broken — they are
- * the measure of what getting matchmaking wrong would cost, and they are only
- * survivable because the floor is small.
  */
 import {
   LAMPORTS_PER_SOL, PASS_PRICE_LAMPORTS, SUPPLY, ENERGY, PRIZE, ELIGIBILITY,
@@ -206,17 +163,11 @@ function simulate(s: Scenario, seed = 42): Outcome {
 
 // ── the collusion arbitrage ──────────────────────────────────────────────────
 /**
- * Is feeding your own wallets profitable?
+ * Worst-case collusion: buy N wallets, throw every match to a main account.
  *
- * The attack: buy N extra passes, play them against your main, throw every
- * match. Cost is the passes plus the energy. Gain is the prize for the place
- * you buy your way into.
- *
- * The defence this design leans on is NOT detection — it is that repeat
- * pairings decay exponentially, so the Nth thrown match moves almost nothing
- * and the attacker has to keep buying passes to get fresh opponents. This
- * prints the cost of one extra alt against what the top places pay, which is
- * the comparison that decides whether anyone bothers.
+ * Assumes the attacker can choose who their feeders play, which a real
+ * matchmaker must not allow — so this measures the cost of getting
+ * matchmaking wrong, not the expected case. Reports cost against prize won.
  */
 function collusionCheck(s: Scenario, poolLamports: number, feederCounts: number[], seed = 7): void {
   console.log("\n── collusion: a farmed account vs an honest ladder ──");
@@ -233,8 +184,7 @@ function collusionCheck(s: Scenario, poolLamports: number, feederCounts: number[
       return { wallet: w, skill: 1000 + g * 200, entry: newEntry(w, 1000) };
     });
 
-    // The attacker's main is deliberately AVERAGE — the question is whether
-    // money buys a place, not whether a good player can also cheat.
+    // Average skill: the question is whether money alone buys a place.
     const main: Player = { wallet: "ATTACKER", skill: 1000, entry: newEntry("ATTACKER", 1000) };
     const alts: Player[] = Array.from({ length: feeders }, (_, i) => {
       const w = `alt${i}`;
@@ -286,8 +236,7 @@ function collusionCheck(s: Scenario, poolLamports: number, feederCounts: number[
       + ENERGY.PACK_PRICE_LAMPORTS * s.seasonDays * ENERGY.PACKS_PER_DAY);
     const place = row.place;
 
-    // What the attack actually PAYS, against what it cost. This is the only
-    // number that decides whether anyone runs it.
+    // Prize won against cost paid.
     const table = payoutTable(poolLamports);
     const won = place !== null && place <= table.length ? table[place - 1] : 0;
     const net = won - cost;

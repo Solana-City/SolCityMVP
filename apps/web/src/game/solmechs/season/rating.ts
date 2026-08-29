@@ -1,20 +1,12 @@
 /**
  * Sol Mechs — season rating.
  *
- * Elo, in the Chess.com/Showdown tradition: a win over a much stronger player
- * moves you a lot, a win over a much weaker one moves you almost nothing.
+ * Standard Elo plus a decay on repeated pairings: a win over a much weaker
+ * account is worth nearly nothing, and the same pairing is worth
+ * exponentially less each time it recurs.
  *
- * That last property is doing more work here than it does on a chess server.
- * ONCHAIN.md identifies collusion — not in-match cheating — as the central
- * ladder threat, because the replay already catches a forged match while two
- * accounts trading honest wins manufacture rating from nothing. Rating alone
- * blunts that: an account you feed sinks, and beating a sunk account pays
- * nearly zero. `repeatPairingWeight` finishes the job by making the *same*
- * pairing worth exponentially less each time it recurs, so a farming ring
- * cannot simply grind through the decay.
- *
- * Pure: no clock, no storage, no network. Same discipline as BattleEngine, and
- * for the same reason — a verifier has to be able to reproduce this exactly.
+ * Pure — no clock, storage or network — so a verifier can reproduce it
+ * exactly. Same constraint as BattleEngine.
  */
 import { RATING, ELIGIBILITY } from "./config";
 import {
@@ -40,12 +32,9 @@ export function kFactor(entry: LadderEntry): number {
 }
 
 /**
- * Multiplier for the Nth meeting between the same two accounts this season.
- *
- * The first `repeatPairingFree` meetings are worth full value — in a small
- * pool an honest rematch is normal and should count. After that the weight
- * halves every `repeatPairingHalfLife` meetings, so the tenth match between
- * one pair is worth a few percent of the first.
+ * Multiplier for the Nth meeting between the same two accounts this season:
+ * full value for the first `repeatPairingFree`, then halving every
+ * `repeatPairingHalfLife`.
  */
 export function repeatPairingWeight(priorMeetings: number): number {
   const over = priorMeetings - RATING.repeatPairingFree;
@@ -128,16 +117,11 @@ export function ineligibleReason(e: LadderEntry): Standing["ineligibleReason"] {
 }
 
 /**
- * Final standings.
+ * Final standings. Everyone is listed; only eligible entries get a `place`,
+ * and places are numbered over eligible entries alone.
  *
- * Everyone is ranked and shown; only eligible entries receive a `place`, and
- * places are numbered over eligible entries alone — so an ineligible account
- * sitting at the top of the raw rating list does not push a paying place down
- * a slot.
- *
- * Ties break on fewer matches played (the same rating reached in less play is
- * the stronger claim), then on the earlier last match, then on wallet so the
- * order is total and reproducible — a payout must not depend on map order.
+ * Ties break on fewer matches, then earlier last match, then wallet: the order
+ * must be total and reproducible, since a payout reads it.
  */
 export function standings(entries: LadderEntry[]): Standing[] {
   const sorted = [...entries].sort((a, b) =>

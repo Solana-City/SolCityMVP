@@ -1,22 +1,9 @@
 /**
  * Sol Mechs — prize pool accrual and payout.
  *
- * The pool is a guaranteed floor plus a share of every Sol Mechs purchase, so
- * it grows as the competition does. Two properties matter more than the
- * arithmetic:
- *
- * **It must be publishable.** A pool that grows with sales is the best
- * conversion tool this design has, but only if the number is verifiable — a
- * public wallet anyone can check, not a figure in a database. `accrue` is
- * therefore written as a ledger of sources rather than a running total, so
- * what the page claims can always be reconciled against what the wallet holds.
- *
- * **The payout curve is the anti-camping lever.** Rank at season close is what
- * pays, which normally rewards climbing early and then refusing to play. We
- * deliberately have no minimum-activity rule — a dynamic ladder passes a
- * frozen rating on its own, and an activity window would punish a player who
- * earned their place and then had a life. A STEEP curve does the same job for
- * free: when 1st is worth much more than 3rd, sitting on 3rd is irrational.
+ * Pool = a fixed floor plus a share of each purchase. Kept as a ledger of
+ * sources rather than a running total, so the figure can be reconciled against
+ * the balance of the wallet that holds the pool.
  */
 import { PRIZE } from "./config";
 
@@ -67,13 +54,7 @@ export function poolBreakdown(purchases: Purchase[]): PoolBreakdown {
   };
 }
 
-/**
- * Share weights by place: `1 / rank^steepness`, normalised.
- *
- * Exposed on its own so the curve can be shown to buyers before the season —
- * "what does 7th pay?" is a question the sale page should answer, and the
- * answer has to come from the same function that pays out.
- */
+/** Share weights by place: `1 / rank^steepness`, normalised. */
 export function payoutWeights(places: number = PRIZE.PAYOUT_PLACES, steepness: number = PRIZE.PAYOUT_STEEPNESS): number[] {
   const raw = Array.from({ length: places }, (_, i) => 1 / Math.pow(i + 1, steepness));
   const sum = raw.reduce((a, b) => a + b, 0);
@@ -83,11 +64,9 @@ export function payoutWeights(places: number = PRIZE.PAYOUT_PLACES, steepness: n
 /**
  * Split the pool into whole lamports, one entry per paying place.
  *
- * Largest-remainder rather than plain rounding, because the shares MUST sum to
- * the pool exactly: paying out more than was collected fails at the last
- * transfer, and paying out less silently strands funds. The leftover from
- * flooring is handed to the places with the largest fractional part, which is
- * both the standard apportionment method and stable under recomputation.
+ * Largest-remainder, not rounding: the shares must sum to the pool exactly or
+ * the final transfer overdraws (or funds are stranded). Stable under
+ * recomputation.
  */
 export function payoutTable(poolLamports: number, places: number = PRIZE.PAYOUT_PLACES): number[] {
   if (poolLamports <= 0 || places <= 0) return [];
@@ -107,18 +86,12 @@ export function payoutTable(poolLamports: number, places: number = PRIZE.PAYOUT_
 }
 
 /**
- * What each placed wallet is owed.
+ * What each placed wallet is owed. Takes standings, so eligibility is already
+ * applied.
  *
- * Takes standings rather than raw entries so eligibility has already been
- * applied — an account short of the distinct-opponent floor must not consume
- * a paying place.
- *
- * The table is cut to the number of wallets that ACTUALLY placed, not to
- * `PAYOUT_PLACES`. Splitting a pool 50 ways when only four players cleared the
- * eligibility floor would strand the other 46 shares: the season would end
- * with most of the prize money unpaid and unaccounted for. Scaling the curve
- * to the real field keeps the payout summing to the pool no matter how thin
- * the ladder turns out to be.
+ * The table is cut to the number of wallets that actually placed, not to
+ * `PAYOUT_PLACES` — otherwise a thin ladder leaves most shares unassigned and
+ * the payout does not sum to the pool.
  */
 export function payouts(
   placed: Array<{ wallet: string; place: number }>,

@@ -1,14 +1,9 @@
 /**
- * Sol Mechs — energy.
+ * Sol Mechs — energy. Caps ranked matches per day: a free daily grant plus a
+ * bounded number of purchasable packs.
  *
- * Energy is what makes the ladder a competition rather than an endurance
- * test: everyone gets the same small number of ranked matches a day, and the
- * one purchasable pack is capped so spend cannot be converted into rank
- * without bound. Remove that cap and the leaderboard stops being a contest
- * and becomes an auction for a share of the prize pool.
- *
- * Days are UTC day indices rather than local dates. A reset that depends on
- * the client's timezone is a reset a client can move.
+ * Days are UTC day indices, not local dates — a reset keyed to the client's
+ * timezone is one the client can move.
  */
 import { ENERGY } from "./config";
 
@@ -32,13 +27,9 @@ export function newEnergy(nowMs: number): EnergyState {
 }
 
 /**
- * Roll the daily grant forward.
- *
- * Exactly ONE day's grant is credited no matter how long the player was away
- * — accruing per missed day would hand a returning account a month of matches
- * at once, which is the opposite of what the daily cap is for. The bank cap
- * would blunt that anyway; granting once makes the intent explicit rather
- * than leaving it to a `Math.min` to enforce.
+ * Roll the daily grant forward. Exactly one day's grant is credited however
+ * long the player was away — accruing per missed day would defeat the daily
+ * cap, and leaving MAX_BANKED to absorb it makes the intent implicit.
  */
 export function refresh(state: EnergyState, nowMs: number): EnergyState {
   const day = dayIndex(nowMs);
@@ -66,15 +57,11 @@ export function canBuyPack(state: EnergyState, nowMs: number): boolean {
 }
 
 /**
- * Credit a purchased pack.
- *
- * Purchased energy deliberately IGNORES `MAX_BANKED`. The bank cap exists to
- * stop free energy compounding while a player is away; applying it here would
- * mean taking someone's money and handing them nothing when they happen to be
+ * Credit a purchased pack. Ignores `MAX_BANKED`: that cap exists to stop free
+ * energy compounding, and applying it here would silently void a purchase made
  * near the ceiling.
  *
- * Returns null if the daily pack limit is already spent — the caller must
- * check before taking payment.
+ * Returns null if the daily limit is spent; check before taking payment.
  */
 export function creditPack(state: EnergyState, nowMs: number): EnergyState | null {
   const s = refresh(state, nowMs);
