@@ -12,6 +12,17 @@
 
 export const LAMPORTS_PER_SOL = 1_000_000_000;
 
+/**
+ * SOL/USD used ONLY to size USD-denominated budgets into SOL constants.
+ *
+ * A written-down assumption rather than a live oracle: nothing here needs a
+ * price at runtime, and a stale guess buried in a `* 20` is far worse than a
+ * stated one. **Set this to the real rate before the sale** — every USD figure
+ * below scales off it, and getting it wrong misprices the prize floor by the
+ * same ratio.
+ */
+export const ASSUMED_SOL_USD = 165;
+
 /** 0.1 SOL — the Genesis pass price. */
 export const PASS_PRICE_LAMPORTS = LAMPORTS_PER_SOL / 10;
 
@@ -122,12 +133,20 @@ export const PRIZE = {
   /**
    * The floor the project commits to regardless of sales.
    *
-   * Must be coverable in the WORST sales case, not the expected one: at this
-   * value and a 300-pass season, roughly two thirds of it comes out of
-   * treasury rather than revenue. That is a marketing decision, and it is
-   * meant to be one — it is what makes the pool credible on day one.
+   * Must be coverable in the WORST sales case, not the expected one — at a
+   * 300-pass season most of the floor comes out of treasury rather than
+   * revenue, so this is a marketing spend and is meant to be sized like one.
+   *
+   * Derived from a USD figure through an EXPLICIT price assumption rather
+   * than hardcoded, because the two are decided by different people for
+   * different reasons: the budget is a treasury decision, the SOL amount is
+   * whatever that buys on the day. Announce the SOL number, not the dollar
+   * one — the pool is held and paid in SOL, and promising a dollar figure
+   * would leave the project owing the difference if SOL falls during the
+   * season.
    */
-  GUARANTEED_LAMPORTS: 20 * LAMPORTS_PER_SOL,
+  GUARANTEED_USD: 500,
+  GUARANTEED_LAMPORTS: Math.round((500 / ASSUMED_SOL_USD) * LAMPORTS_PER_SOL),
   /**
    * Share of every Sol Mechs purchase that sweeps into the pool.
    *

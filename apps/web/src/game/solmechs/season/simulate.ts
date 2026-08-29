@@ -19,26 +19,39 @@
  *
  * ## What it has already established
  *
- * **The rating formula cannot stop collusion. The matchmaker has to.**
+ * **A SUBSIDISED prize pool is what makes farming profitable.**
  *
- * The scenario below gives the attacker something a real server must never
- * give them: the ability to decide who their feeders play. Under that
- * assumption 30 wallets at 0.1 SOL buy first place for less than first place
- * pays, and no tuning of the rating constants fixed it —
+ * The collusion scenario below hands the attacker something a real server must
+ * never give them — the power to choose who their feeders play — and then asks
+ * whether buying rank pays. The answer turned on the guaranteed floor, not on
+ * anything in the rating formula:
  *
- *   - repeat-pairing decay is per-PAIR, so a farmer buys fresh wallets
- *     instead of grinding one;
- *   - a per-opponent GAIN CEILING was tried and made things strictly worse. It
- *     binds on honest players, who face the same pool over and over, while a
- *     farmer's new wallets each arrive with full headroom. Measured: with the
- *     ceiling, 10 feeders reached 1st (vs 3rd without) and honest skill
- *     correlation fell 0.79 → 0.76. It was removed.
+ *   - with a 20 SOL guaranteed floor, 30 feeder wallets at 0.1 SOL bought
+ *     FIRST PLACE for less than first place paid. Profitable.
+ *   - with the floor at $500 (~3 SOL), the same attack loses money at every
+ *     scale tested — 30 feeders cost 12 SOL to win 8.06.
  *
- * So the defence is structural, not arithmetic: **opponents must be assigned
- * by the server from a live queue and must not be choosable.** With a few
- * hundred players the chance of landing your own feeder is small, and the
- * decay then makes the rare collision worth almost nothing. Treat the numbers
- * below as the cost of getting matchmaking wrong.
+ * The reason is structural. The attack's cost scales with wallets bought; the
+ * prize scales with the pool. A pool funded by SALES is self-limiting, because
+ * winning more requires more people to have paid in — which is more honest
+ * competition to beat. A pool topped up from treasury is free money on the
+ * table, and it is the treasury's share that a farmer is really coming for.
+ *
+ * Two rating-side attempts did NOT fix it and should not be retried:
+ *
+ *   - repeat-pairing decay is per-PAIR, so a farmer buys fresh wallets rather
+ *     than grinding one;
+ *   - a per-opponent GAIN CEILING made things strictly worse. It binds on
+ *     honest players, who face the same pool repeatedly, while a farmer's new
+ *     wallets each arrive with full headroom. Measured: with the ceiling, 10
+ *     feeders reached 1st (vs 3rd without) and honest skill correlation fell
+ *     0.79 → 0.76. Removed.
+ *
+ * None of that removes the need for the structural defence: **opponents must
+ * be assigned by the server from a live queue and must never be choosable.**
+ * The numbers below are the worst case with that guarantee broken — they are
+ * the measure of what getting matchmaking wrong would cost, and they are only
+ * survivable because the floor is small.
  */
 import {
   LAMPORTS_PER_SOL, PASS_PRICE_LAMPORTS, SUPPLY, ENERGY, PRIZE, ELIGIBILITY,
@@ -205,7 +218,7 @@ function simulate(s: Scenario, seed = 42): Outcome {
  * prints the cost of one extra alt against what the top places pay, which is
  * the comparison that decides whether anyone bothers.
  */
-function collusionCheck(s: Scenario, feederCounts: number[], seed = 7): void {
+function collusionCheck(s: Scenario, poolLamports: number, feederCounts: number[], seed = 7): void {
   console.log("\n── collusion: a farmed account vs an honest ladder ──");
   console.log("  worst case — the attacker pairs feeders with the main at will,");
   console.log("  every feeder throws every match, and the main also plays honestly.");
@@ -273,9 +286,16 @@ function collusionCheck(s: Scenario, feederCounts: number[], seed = 7): void {
       + ENERGY.PACK_PRICE_LAMPORTS * s.seasonDays * ENERGY.PACKS_PER_DAY);
     const place = row.place;
 
-    console.log(`  ${String(feeders).padStart(3)} feeders  ->  rating ${String(row.rating).padStart(5)}`
-      + `  place ${place === null ? "none (ineligible)" : String(place).padStart(4)}`
-      + `   cost ${sol(cost).padStart(7)} SOL`);
+    // What the attack actually PAYS, against what it cost. This is the only
+    // number that decides whether anyone runs it.
+    const table = payoutTable(poolLamports);
+    const won = place !== null && place <= table.length ? table[place - 1] : 0;
+    const net = won - cost;
+    console.log(`  ${String(feeders).padStart(3)} feeders -> rating ${String(row.rating).padStart(5)}`
+      + `  place ${place === null ? " none" : String(place).padStart(4)}`
+      + `  cost ${sol(cost).padStart(6)}  won ${sol(won).padStart(6)}`
+      + `  NET ${(net >= 0 ? "+" : "") + sol(net).padStart(6)} SOL`
+      + (net > 0 ? "   <-- PROFITABLE" : ""));
   }
 }
 
@@ -333,7 +353,7 @@ function main(): void {
   }
   console.log(`  top 3 take ${((table.slice(0, 3).reduce((a, b) => a + b, 0) / base.pool.total) * 100).toFixed(1)}% of the pool`);
 
-  collusionCheck(scenarios[1], [0, 1, 3, 10, 30]);
+  collusionCheck(scenarios[1], base.pool.total, [0, 1, 3, 10, 30]);
 }
 
 main();
