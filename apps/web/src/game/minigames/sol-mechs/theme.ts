@@ -114,9 +114,18 @@ export const W = {
 } as const;
 
 /** Full-height screens leave a little breathing room top and bottom. */
+const UI = "/assets/minigames/sol-mechs/ui";
+
 export const PANEL_HEIGHT = "min(94vh, 1000px)";
 
-/** The panel itself, with the Workshop comp's plotting-grid ground. */
+/**
+ * The panel itself, framed in the Unity border and floored with the Workshop
+ * comp's plotting grid.
+ *
+ * `frame()` supplies the border, so nothing here sets one — a rounded CSS
+ * outline was standing in for it, which is what made these screens look
+ * unrelated to the game's own art.
+ */
 export function panel(width: string): React.CSSProperties {
   return {
     position: "relative",
@@ -124,29 +133,50 @@ export function panel(width: string): React.CSSProperties {
     backgroundImage:
       `linear-gradient(${C.line}44 1px, transparent 1px), linear-gradient(90deg, ${C.line}44 1px, transparent 1px)`,
     backgroundSize: "26px 26px",
-    border: `2px solid ${C.line}`,
-    borderRadius: R.lg,
+    ...frame(),
     width,
     maxHeight: "100%",
-    boxShadow: `0 0 0 1px ${C.teal}33, 0 18px 60px rgba(0,0,0,.7)`,
+    boxShadow: `0 18px 60px rgba(0,0,0,.7)`,
     fontFamily: SANS,
     color: C.body,
   };
 }
 
 /**
- * The Unity action button (`Interface guidance/UI/button3.png`) as a 9-slice.
+ * The Unity panel frame (`arena/WinLoseCard/frame.png`) as a 9-slice.
  *
- * The battle scene's four ActionButtons are all this sprite, so the arena's
- * controls are pixel art like everything else on screen rather than the CSS
- * rectangles that stood in for them. Slice 22 keeps the corner brackets in the
- * corner tiles; the border width is smaller so they scale down with the frame.
+ * Chamfered corners and a cyan/purple neon edge — the same border language as
+ * the main menu's `mainframe.png`, but without a scene baked into it. Imported
+ * with its teal interior flood-filled to transparent so only the ring renders
+ * and the panel keeps its own background.
+ *
+ * Slice 26 is the 22px chamfer plus margin, so the cut corners land in the
+ * corner tiles instead of being stretched along the edges.
  */
-export function actionButton(opts: { selected?: boolean; disabled?: boolean } = {}): React.CSSProperties {
+export function frame(): React.CSSProperties {
+  return {
+    borderStyle: "solid",
+    borderWidth: 14,
+    borderImage: `url(${UI}/frame.png) 26 / 14px / 0 stretch`,
+    // The 9-slice draws the edge; a radius would fight the chamfer.
+    borderRadius: 0,
+    imageRendering: "pixelated",
+  };
+}
+
+/**
+ * The Unity action button (`UI/button3.png`) as a 9-slice, with `button2.png`
+ * as its held state — the same frame with the corner accents lit.
+ *
+ * Slice 22 keeps the corner brackets in the corner tiles; the border width is
+ * smaller so they scale down with the frame.
+ */
+export function actionButton(opts: { selected?: boolean; disabled?: boolean; held?: boolean } = {}): React.CSSProperties {
+  const sprite = opts.held ? "btn-action-hold.png" : "btn-action.png";
   return {
     borderStyle: "solid",
     borderWidth: 9,
-    borderImage: `url(/assets/minigames/sol-mechs/ui/btn-action.png) 22 fill / 9px / 0 stretch`,
+    borderImage: `url(${UI}/${sprite}) 22 fill / 9px / 0 stretch`,
     background: "transparent",
     color: opts.selected ? C.teal : C.text,
     fontFamily: "inherit",

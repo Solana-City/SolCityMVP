@@ -18,6 +18,8 @@
 import { useEffect } from "react";
 import { C, T, SP, R, MONO, PIXELATED, backdrop, panel, eyebrow, labelPlate, actionButton, W } from "./theme";
 
+import { SpriteButton } from "./SpriteButton";
+
 const UI = "/assets/minigames/sol-mechs/ui";
 
 export type MenuChoice = "pve" | "squad" | "workshop";
@@ -99,10 +101,10 @@ function MenuRow({ label, desc, onClick, disabled, badge }: {
   badge?: string;
 }) {
   return (
-    <button
+    <SpriteButton
       onClick={onClick}
       disabled={disabled}
-      style={{ ...actionButton({ disabled }), ...sx.rowBox }}
+      style={sx.rowBox}
     >
       <span style={sx.labelSlot}>
         <span style={sx.plate}>{label}</span>
@@ -113,7 +115,7 @@ function MenuRow({ label, desc, onClick, disabled, badge }: {
       {badge
         ? <span style={sx.badge}>{badge}</span>
         : <span style={sx.chevron} aria-hidden>›</span>}
-    </button>
+    </SpriteButton>
   );
 }
 

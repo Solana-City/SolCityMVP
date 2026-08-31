@@ -25,7 +25,7 @@
  */
 import { useEffect, useRef } from "react";
 import { drawMech, DOLL_WIDTH, DOLL_HEIGHT, preloadBuild } from "@/game/solmechs/render/MechPaperDoll";
-import { canAttackMatrix } from "@/game/solmechs/engine/BattleEngine";
+import { canAttackMatrix, getStage } from "@/game/solmechs/engine/BattleEngine";
 import type { MechUnit, ModuleSlot, MechBuild } from "@/game/solmechs/data/types";
 import { C, T, MONO, PIXELATED } from "./theme";
 
@@ -63,6 +63,48 @@ const PLATE = {
  * needs the full width to stay readable at this scale.
  */
 const BAR_WIDTH = "100%";
+
+/** Stats a move can stage, in the order the icons should read. */
+const STAGED_STATS = ["ATK", "DEF", "ENG", "SPD", "SYS"] as const;
+
+/**
+ * Stat stages currently applied to a limb, drawn with Unity's own status
+ * sprites (`Interface guidance/status/ATK_Up.png` and friends).
+ *
+ * The renderer already pops one of these over a limb the moment a stage
+ * lands, but that badge is gone in a second. A buff decides damage for the
+ * rest of the fight, so it belongs in the panel you can look at, not only in
+ * the animation you might have missed.
+ */
+function StageIcons({ unit, slot }: { unit: MechUnit; slot: ModuleSlot }) {
+  const active = STAGED_STATS
+    .map((stat) => ({ stat, n: getStage(unit, slot, stat) }))
+    .filter((s) => s.n !== 0);
+  if (active.length === 0) return null;
+  return (
+    <span style={{ display: "inline-flex", gap: 1, alignItems: "center", flexShrink: 0 }}>
+      {active.map(({ stat, n }) => (
+        <span key={stat} style={{ position: "relative", display: "inline-flex", alignItems: "center" }}>
+          <img
+            src={`${UI.replace("/ui", "/vfx/stat")}/${stat}_${n > 0 ? "Up" : "Down"}.png`}
+            alt={`${stat} ${n > 0 ? "up" : "down"} ${Math.abs(n)}`}
+            title={`${stat} ${n > 0 ? "+" : ""}${n}`}
+            style={{ ...PIXELATED, height: 16, width: "auto", display: "block" }}
+            onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+          />
+          {Math.abs(n) > 1 && (
+            <span style={{
+              fontSize: 8, fontWeight: 800, fontFamily: MONO,
+              color: n > 0 ? C.teal : C.bad, marginLeft: -2,
+            }}>
+              {Math.abs(n)}
+            </span>
+          )}
+        </span>
+      ))}
+    </span>
+  );
+}
 
 export interface UnitPanelProps {
   unit: MechUnit;
@@ -260,6 +302,8 @@ function PartBar({ unit, slot, mirrored }: { unit: MechUnit; slot: ModuleSlot; m
       }}>
         {st.currentHP}
       </span>
+
+      <StageIcons unit={unit} slot={slot} />
 
       {slot === "matrix" && (
         <span

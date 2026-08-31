@@ -30,6 +30,7 @@ import MainMenu from "./MainMenu";
 import { BattleLog } from "./BattleLog";
 import { useChessClock } from "./ClockBar";
 import { UnitPanel } from "./BattleHud";
+import { SpriteButton } from "./SpriteButton";
 import { useOwnership } from "./useOwnership";
 import { lockReason } from "@/game/solmechs/ownership";
 import { formatClock } from "@/game/solmechs/data/clock";
@@ -567,7 +568,7 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
               <div style={{ ...eyebrow, marginBottom: SP.sm }}>Select action</div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                 {moves.map((o) => (
-                  <button
+                  <SpriteButton
                     key={`${o.slot}-${o.moveIndex}`}
                     onClick={() => {
                       // Self-target moves have exactly one sensible target —
@@ -578,13 +579,12 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
                         setPendingMove({ slot: o.slot, moveIndex: o.moveIndex });
                       }
                     }}
-                    style={actionButton()}
                   >
                     <div style={{ fontWeight: 800, fontSize: T.body }}>{o.move.name}</div>
                     <div style={{ fontSize: T.small, color: C.dim, marginTop: 2 }}>
                       {SLOT_LABEL[o.slot]} · {o.move.baseDamage > 0 ? `${o.move.baseDamage} ${o.move.damageType}` : o.move.effect || "Effect"}
                     </div>
-                  </button>
+                  </SpriteButton>
                 ))}
               </div>
             </>
@@ -595,10 +595,11 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
               </div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                 {targets.map((slot) => (
-                  <button
+                  <SpriteButton
                     key={slot}
                     onClick={() => onTargetPicked(slot)}
-                    style={{ ...actionButton({ selected: slot === "matrix" }), display: "flex", alignItems: "center", gap: 8 }}
+                    selected={slot === "matrix"}
+                    style={{ display: "flex", alignItems: "center", gap: 8 }}
                   >
                     <SlotIcon slot={slot} size={slot === "matrix" ? 18 : 24} />
                     <div>
@@ -607,11 +608,11 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
                         {battle.p2.partStatuses[slot].currentHP} HP
                       </div>
                     </div>
-                  </button>
+                  </SpriteButton>
                 ))}
-                <button onClick={() => setPendingMove(null)} style={actionButton()}>
+                <SpriteButton onClick={() => setPendingMove(null)}>
                   <div style={{ fontWeight: 800, fontSize: T.body }}>Back</div>
-                </button>
+                </SpriteButton>
               </div>
               {!targets.includes("matrix") && (
                 <div style={{ fontSize: T.small, color: C.warn, marginTop: SP.sm }}>
