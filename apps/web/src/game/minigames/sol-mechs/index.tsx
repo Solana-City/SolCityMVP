@@ -30,6 +30,8 @@ import MainMenu from "./MainMenu";
 import { BattleLog } from "./BattleLog";
 import { useChessClock } from "./ClockBar";
 import { UnitPanel } from "./BattleHud";
+import { useOwnership } from "./useOwnership";
+import { lockReason } from "@/game/solmechs/ownership";
 import { formatClock } from "@/game/solmechs/data/clock";
 import { DEFAULT_CLOCK } from "@/game/solmechs/data/clock";
 import { C, T, SP, R, MONO, backdrop, panel, eyebrow, button, actionButton, W, PANEL_HEIGHT } from "./theme";
@@ -164,6 +166,8 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
   const [animating, setAnimating] = useState(false);
   const [pendingMove, setPendingMove] = useState<{ slot: Exclude<ModuleSlot, "matrix">; moveIndex: number } | null>(null);
   const [playerTeam, setPlayerTeam] = useState<TeamBuild | null>(null);
+  /** Which chassis this wallet may field. Resolved from chain. */
+  const ownership = useOwnership();
 
   /**
    * Both clocks run while the round is being chosen and stop while it
@@ -436,6 +440,7 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
             // battle deployed another.
             const build = getBuild(hangar, m.id);
             const custom = hangar.builds[m.id] !== undefined;
+            const locked = lockReason(ownership, m.id);
             return (
               <MechCard
                 key={m.matrixCode}
@@ -443,8 +448,9 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
                 role={m.role}
                 build={build}
                 custom={custom}
+                locked={locked}
                 selected={playerMech === m.id}
-                onSelect={() => setPlayerMech(m.id)}
+                onSelect={() => { if (!locked) setPlayerMech(m.id); }}
               />
             );
           })}
@@ -462,10 +468,12 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
           </button>
           <button
             onClick={() => startBattle(playerMech)}
+            disabled={lockReason(ownership, playerMech) !== null}
             style={{
               flex: 1, padding: "12px 0", background: C.teal,
               color: C.ink, border: "none", borderRadius: 8, fontSize: 15,
               fontWeight: 700, cursor: "pointer",
+              opacity: lockReason(ownership, playerMech) ? 0.45 : 1,
             }}
           >
             DEPLOY
@@ -631,11 +639,13 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
  * edited, which is the feedback that was missing when the hangar listed bare
  * chassis stats.
  */
-function MechCard({ matrixName, role, build, custom, selected, onSelect }: {
+function MechCard({ matrixName, role, build, custom, locked, selected, onSelect }: {
   matrixName: string;
   role: string;
   build: MechBuild;
   custom: boolean;
+  /** Null when playable; otherwise why it is not. */
+  locked: "pass" | "reward" | null;
   selected: boolean;
   onSelect: () => void;
 }) {
@@ -664,16 +674,33 @@ function MechCard({ matrixName, role, build, custom, selected, onSelect }: {
   return (
     <button
       onClick={onSelect}
+      disabled={locked !== null}
       style={{
         background: selected ? C.raised : C.panel,
         border: `2px solid ${selected ? C.teal : C.line}`,
-        borderRadius: 8, padding: 10, cursor: "pointer", textAlign: "left",
+        borderRadius: 8, padding: 10, textAlign: "left",
+        cursor: locked ? "not-allowed" : "pointer",
+        // Dimmed, not hidden. A locked chassis with its real stats on show is
+        // what the pass is for; hiding it would sell nothing.
+        opacity: locked ? 0.45 : 1,
         color: "#fff", display: "flex", flexDirection: "column", gap: 4,
       }}
     >
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 6 }}>
         <strong style={{ fontSize: T.lead, color: C.text }}>{matrixName}</strong>
-        {custom && (
+        {locked === "pass" && (
+          <span style={{
+            fontSize: T.eyebrow, color: C.warn, border: `1px solid ${C.warn}`,
+            borderRadius: R.sm, padding: "2px 7px", letterSpacing: 1, flexShrink: 0, fontWeight: 700,
+          }}>PASS</span>
+        )}
+        {locked === "reward" && (
+          <span style={{
+            fontSize: T.eyebrow, color: C.dim, border: `1px solid ${C.line}`,
+            borderRadius: R.sm, padding: "2px 7px", letterSpacing: 1, flexShrink: 0, fontWeight: 700,
+          }}>REWARD</span>
+        )}
+        {custom && !locked && (
           <span style={{
             fontSize: T.eyebrow, color: C.teal, border: "1px solid " + C.teal,
             borderRadius: R.sm, padding: "2px 7px", letterSpacing: 1, flexShrink: 0, fontWeight: 700,

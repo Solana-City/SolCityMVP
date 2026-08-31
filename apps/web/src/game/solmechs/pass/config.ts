@@ -8,18 +8,24 @@
  */
 import { PublicKey } from "@solana/web3.js";
 
-function env(name: string): string {
-  return (typeof process !== "undefined" && process.env?.[name]) || "";
-}
+/*
+ * Each var is read as a STATIC `process.env.NEXT_PUBLIC_…` expression.
+ *
+ * Next inlines these at build time by textual substitution, so it only sees
+ * literal member access — a helper doing `process.env[name]` is never
+ * replaced and reads as undefined in the browser. That silently left the sale
+ * permanently "not live yet" and the roster permanently ungated, with the
+ * variables correctly set.
+ */
 
 /** Core Candy Machine that mints the passes. */
-export const CANDY_MACHINE_ADDRESS = env("NEXT_PUBLIC_SOLMECHS_CANDY_MACHINE");
+export const CANDY_MACHINE_ADDRESS = process.env.NEXT_PUBLIC_SOLMECHS_CANDY_MACHINE ?? "";
 /** Core Collection every pass belongs to. Also the pass-ownership check. */
-export const COLLECTION_ADDRESS = env("NEXT_PUBLIC_SOLMECHS_COLLECTION");
+export const COLLECTION_ADDRESS = process.env.NEXT_PUBLIC_SOLMECHS_COLLECTION ?? "";
 /** Receives the sale proceeds. */
-export const TREASURY_ADDRESS = env("NEXT_PUBLIC_SOLMECHS_TREASURY");
+export const TREASURY_ADDRESS = process.env.NEXT_PUBLIC_SOLMECHS_TREASURY ?? "";
 /** Holds the prize pool. Published so the figure on the sale page is checkable. */
-export const PRIZE_POOL_ADDRESS = env("NEXT_PUBLIC_SOLMECHS_PRIZE_POOL");
+export const PRIZE_POOL_ADDRESS = process.env.NEXT_PUBLIC_SOLMECHS_PRIZE_POOL ?? "";
 
 function parse(addr: string): PublicKey | null {
   if (!addr) return null;
