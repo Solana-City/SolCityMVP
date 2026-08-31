@@ -81,7 +81,7 @@ export default function MainMenu({ onChoose, onClose, wins, losses }: MainMenuPr
           />
           <MenuRow
             label="ARENA PvP"
-            desc="Season ladder. One pass, an exclusive mech, USDC by placement."
+            desc="Ranked season ladder. Battle Pass to enter, prize pool by placement."
             badge="SOON"
             disabled
           />
