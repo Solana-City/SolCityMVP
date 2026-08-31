@@ -18,11 +18,11 @@ import { drawMech, DOLL_WIDTH, DOLL_HEIGHT, preloadBuild } from "@/game/solmechs
 import { useEffect, useRef } from "react";
 import { getMatrix } from "@/game/solmechs/data/catalog";
 import { validateTeam, takenCodes, TEAM_SIZE, type TeamBuild } from "@/game/solmechs/data/team";
-import { createUnit } from "@/game/solmechs/engine/BattleEngine";
+import { createUnit, availableMoves } from "@/game/solmechs/engine/BattleEngine";
 import type { MechBuild, ModuleSlot } from "@/game/solmechs/data/types";
 import { loadHangar, setTeam } from "@/game/solmechs/hangar";
 import Workshop from "./Workshop";
-import { C, T, SP, R, MONO, W, PANEL_HEIGHT } from "./theme";
+import { C, T, SP, R, MONO, W, PANEL_HEIGHT, frame } from "./theme";
 
 
 const SLOTS: ModuleSlot[] = ["matrix", "rightArm", "leftArm", "lowerBody"];
@@ -159,20 +159,32 @@ function SquadCard({ index, build, flagged, onEdit }: {
   }, [build]);
 
   const matrix = getMatrix(build.matrixCode);
-  const stats = useMemo(() => {
-    try { return createUnit("x", build).totalStats; } catch { return null; }
+  const unit = useMemo(() => {
+    try { return createUnit("x", build); } catch { return null; }
   }, [build]);
+  const stats = unit?.totalStats ?? null;
+  /** Distinct damage types this mech can actually deal. */
+  const damageTypes = useMemo(() => {
+    if (!unit) return [] as string[];
+    const seen = new Set<string>();
+    for (const o of availableMoves(unit)) {
+      if (o.move.baseDamage > 0 && o.move.damageType) seen.add(o.move.damageType);
+    }
+    return [...seen];
+  }, [unit]);
 
   return (
     <button
       onClick={onEdit}
       style={{
         ...sx.card,
-        borderColor: flagged ? C.bad : C.line,
+        // A clash is a rule violation, so it overrides the frame art entirely
+        // rather than tinting it.
+        ...(flagged ? { borderImage: "none", border: `2px solid ${C.bad}` } : null),
       }}
     >
       <div style={sx.cardHead}>
-        <span style={sx.cardIndex}>#{index + 1}</span>
+        <span style={sx.cardIndex}>{index === 0 ? "LEADS" : `RESERVE ${index}`}</span>
         <strong style={{ fontSize: 15, color: C.text }}>{matrix?.matrixName ?? "—"}</strong>
         {flagged && <span style={sx.clashTag}>CLASH</span>}
       </div>
@@ -182,8 +194,20 @@ function SquadCard({ index, build, flagged, onEdit }: {
         height={DOLL_HEIGHT * CARD_SCALE}
         style={{ imageRendering: "pixelated", width: "100%", height: "auto", display: "block" }}
       />
-      <div style={sx.codes}>
-        {build.rightArm} · {build.leftArm} · {build.lowerBody}
+      {/* What this mech actually threatens with. With only two damage types
+          in the game, a squad that brings one of them is a squad the other
+          side's defence answers for free — so it is the first thing to show. */}
+      <div style={sx.tagRow}>
+        {matrix?.role && <span style={sx.roleTag}>{matrix.role}</span>}
+        {damageTypes.map((d) => (
+          <span key={d} style={{
+            ...sx.dmgTag,
+            color: d === "Physical" ? C.warn : C.cyan,
+            borderColor: d === "Physical" ? C.warn : C.cyan,
+          }}>
+            {d.toUpperCase()}
+          </span>
+        ))}
       </div>
       {stats && (
         <div style={sx.cardStats}>
@@ -191,6 +215,9 @@ function SquadCard({ index, build, flagged, onEdit }: {
           ATK {stats.ATK} · DEF {stats.DEF} · ENG {stats.ENG} · SYS {stats.SYS}
         </div>
       )}
+      <div style={sx.codes}>
+        {build.rightArm} · {build.leftArm} · {build.lowerBody}
+      </div>
       <div style={sx.editHint}>EDIT ▸</div>
     </button>
   );
@@ -206,10 +233,10 @@ const sx: Record<string, React.CSSProperties> = {
     backgroundImage:
       `linear-gradient(${C.line}55 1px, transparent 1px), linear-gradient(90deg, ${C.line}55 1px, transparent 1px)`,
     backgroundSize: "26px 26px",
-    border: `2px solid ${C.line}`, borderRadius: 10, padding: 18,
+    ...frame(), padding: 18,
     width: W.wide, height: PANEL_HEIGHT,
     display: "flex", flexDirection: "column", gap: 12, overflow: "hidden",
-    boxShadow: `0 0 0 1px ${C.teal}33, 0 16px 60px rgba(0,0,0,.65)`,
+    boxShadow: `0 16px 60px rgba(0,0,0,.65)`,
     fontFamily: "system-ui,sans-serif",
   },
   header: { display: "flex", alignItems: "center", gap: 12, flexShrink: 0 },
@@ -219,15 +246,32 @@ const sx: Record<string, React.CSSProperties> = {
   grid: {
     display: "grid",
     gridTemplateColumns: "repeat(auto-fit, minmax(min(280px, 100%), 1fr))",
-    gap: 10, overflowY: "auto", overflowX: "hidden", alignItems: "start", minHeight: 0,
+    flex: 1, gap: 10, overflowY: "auto", overflowX: "hidden", minHeight: 0,
+    // Centred, not top-pinned: three fixed-height cards in a full-height panel
+    // otherwise leave the bottom half of the screen empty.
+    alignItems: "start", alignContent: "center",
   },
   card: {
-    background: C.ink, border: "2px solid", borderRadius: 8, padding: 10,
+    background: C.ink, ...frame(), padding: 10,
     cursor: "pointer", textAlign: "left", display: "flex", flexDirection: "column",
     gap: 5, minWidth: 0,
   },
   cardHead: { display: "flex", alignItems: "baseline", gap: 6 },
-  cardIndex: { fontSize: 12, color: C.faint, fontFamily: "monospace" },
+  cardIndex: {
+    fontSize: 11, letterSpacing: 1.5, fontWeight: 700,
+    // The order is a real rule — #1 is on the platform when the match starts
+    // — so it is spelled out rather than left as an ordinal to infer.
+    color: C.teal, fontFamily: "monospace",
+  },
+  tagRow: { display: "flex", flexWrap: "wrap", gap: 4, alignItems: "center" },
+  roleTag: {
+    fontSize: 11, fontWeight: 700, letterSpacing: 1, color: C.dim,
+    border: `1px solid ${C.line}`, borderRadius: 3, padding: "1px 6px",
+  },
+  dmgTag: {
+    fontSize: 11, fontWeight: 800, letterSpacing: 1,
+    border: "1px solid", borderRadius: 3, padding: "1px 6px",
+  },
   clashTag: {
     marginLeft: "auto", fontSize: 12, color: C.bad, border: `1px solid ${C.bad}`,
     borderRadius: 3, padding: "1px 4px", letterSpacing: 1,

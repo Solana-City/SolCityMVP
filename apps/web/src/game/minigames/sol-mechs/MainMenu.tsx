@@ -66,14 +66,12 @@ export default function MainMenu({ onChoose, onClose, wins, losses }: MainMenuPr
 
         <div style={eyebrow}>Choose a mode</div>
         <div style={sx.list}>
-          <MenuRow
-            label="ARENA PvE"
-            desc="Duel one rival mech. Best place to learn the rules."
-            onClick={() => onChoose("pve")}
-          />
+          {/* 1v1 is hidden for now, not removed — `onChoose("pve")` and the
+              hangar/battle phases behind it still work, so restoring the row
+              is a one-line change. 3v3 is the mode being tested. */}
           <MenuRow
             label="SQUAD 3v3"
-            desc="Three mechs, one at a time. Substituting is your whole round."
+            desc="Three mechs, one at a time. Break a limb and you take its stats with it."
             onClick={() => onChoose("squad")}
           />
           <MenuRow
