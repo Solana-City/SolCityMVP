@@ -1,5 +1,5 @@
 /**
- * Sol Mechs — Genesis pass, on-chain addresses.
+ * Sol Mechs — Battle Pass, on-chain addresses.
  *
  * Filled in by `scripts/solmechs-pass-setup.ts`, which creates the collection
  * and the candy machine and prints the env block to paste. Until then
@@ -42,10 +42,10 @@ export function isPassConfigured(): boolean {
 
 /** Collection metadata, used by the setup script and the sale page. */
 export const PASS_METADATA = {
-  name: "Sol Mechs Genesis Pass",
-  symbol: "SMGP",
+  name: "Sol Mechs Battle Pass — Season 1",
+  symbol: "SMBP",
   /** Per-item name; the candy machine appends the sequential id. */
-  itemNamePrefix: "Sol Mechs Genesis #",
+  itemNamePrefix: "Sol Mechs Battle Pass S1 #",
   /**
    * Royalty in basis points, enforced by the Core royalties plugin. Set at
    * creation — it cannot be added to a collection that already exists.

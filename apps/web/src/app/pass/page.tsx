@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Sol Mechs Genesis pass sale.
+ * Sol Mechs Season 1 Battle Pass sale.
  *
  * Its own route rather than a panel inside the city: this is the page a buyer
  * is linked to, and it has to load without walking the Phaser world first.

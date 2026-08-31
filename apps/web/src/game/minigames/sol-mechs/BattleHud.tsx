@@ -75,11 +75,50 @@ export interface UnitPanelProps {
   low: boolean;
   /** The rival's panel mirrors, as it does in Unity. */
   align?: "right";
+  /**
+   * Show the portrait disc.
+   *
+   * Off by default: the plate art reserves a third of its width for a square
+   * that a mech doll does not fill convincingly, and on a short screen that
+   * space is what pushes the bars down onto the mechs. When it returns it
+   * should hold the player's Solana City avatar, not the mech.
+   */
+  showPortrait?: boolean;
 }
 
 /** One side's corner HUD: profile plate over four part bars. */
-export function UnitPanel({ unit, name, clock, live, low, align }: UnitPanelProps) {
+export function UnitPanel({ unit, name, clock, live, low, align, showPortrait = false }: UnitPanelProps) {
   const right = align === "right";
+  // Without a portrait the framed plate is mostly an empty square, so the
+  // header collapses to a plain name + clock strip instead.
+  if (!showPortrait) {
+    return (
+      <div style={{ width: "100%", pointerEvents: "none" }}>
+        <div style={{
+          display: "flex", alignItems: "center", gap: 8,
+          flexDirection: right ? "row-reverse" : "row",
+          background: "rgba(8,4,16,.72)", border: `1px solid ${C.line}`,
+          borderRadius: 4, padding: "4px 8px",
+        }}>
+          <span style={{
+            fontSize: T.small, fontWeight: 800, color: C.text,
+            whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flex: 1,
+            textAlign: right ? "right" : "left",
+          }}>
+            {name}
+          </span>
+          <span style={{
+            fontFamily: MONO, fontSize: T.small, fontWeight: 800, letterSpacing: 1,
+            color: low ? C.bad : live ? C.teal : C.dim, flexShrink: 0,
+          }}>
+            {clock}
+          </span>
+        </div>
+        <BarStack unit={unit} right={right} />
+      </div>
+    );
+  }
+
   const portrait = right ? { right: PLATE.portrait.outer } : { left: PLATE.portrait.outer };
   const banner = right
     ? { right: PLATE.name.outer, left: PLATE.name.inner }
@@ -145,19 +184,29 @@ export function UnitPanel({ unit, name, clock, live, low, align }: UnitPanelProp
         </div>
       </div>
 
-      {/* A scrim, which Unity does not have and does not need: its bars sit on
-          the arena's dark upper stands, ours on a pale sky. Without it the
-          labels wash out exactly where the horizon line crosses them. */}
-      <div style={{
-        marginTop: 3, display: "flex", flexDirection: "column", gap: 3,
-        alignItems: right ? "flex-end" : "flex-start",
-        background: "rgba(8,4,16,.62)", border: `1px solid ${C.line}`,
-        borderRadius: 4, padding: "5px 6px",
-      }}>
-        {HUD_SLOTS.map((slot) => (
-          <PartBar key={slot} unit={unit} slot={slot} mirrored={right} />
-        ))}
-      </div>
+      <BarStack unit={unit} right={right} />
+    </div>
+  );
+}
+
+/**
+ * The four part bars, on a scrim.
+ *
+ * Unity needs no backing because its bars sit over the arena's dark upper
+ * stands; ours sit on a pale sky, and the horizon line runs straight through
+ * the labels without one.
+ */
+function BarStack({ unit, right }: { unit: MechUnit; right: boolean }) {
+  return (
+    <div style={{
+      marginTop: 3, display: "flex", flexDirection: "column", gap: 3,
+      alignItems: right ? "flex-end" : "flex-start",
+      background: "rgba(8,4,16,.62)", border: `1px solid ${C.line}`,
+      borderRadius: 4, padding: "5px 6px",
+    }}>
+      {HUD_SLOTS.map((slot) => (
+        <PartBar key={slot} unit={unit} slot={slot} mirrored={right} />
+      ))}
     </div>
   );
 }

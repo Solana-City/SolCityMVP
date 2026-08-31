@@ -1,5 +1,5 @@
 /**
- * Sol Mechs — create the Genesis pass sale on devnet.
+ * Sol Mechs — create the Season 1 Battle Pass sale on devnet.
  *
  * One-time setup. Creates the Core collection and the candy machine that
  * mints from it, then prints the env block to paste into `.env.local`.
@@ -40,7 +40,7 @@ const ROYALTY_BASIS_POINTS = 500;
 /** Metadata served from the app itself, so we control it and it is stable. */
 const METADATA_URI =
   process.env.SOLMECHS_METADATA_URI
-  || "https://solanacity.io/assets/minigames/sol-mechs/pass/genesis.json";
+  || "https://solanacity.io/assets/minigames/sol-mechs/pass/battle-pass-s1.json";
 
 function loadKeypairBytes(): Uint8Array {
   const raw = process.env.SOLMECHS_SETUP_KEYPAIR;
@@ -71,7 +71,7 @@ async function main(): Promise<void> {
   console.log(`\ncreating collection ${collection.publicKey} ...`);
   await createCollection(umi, {
     collection,
-    name: "Sol Mechs Genesis Pass",
+    name: "Sol Mechs Battle Pass — Season 1",
     uri: METADATA_URI,
     plugins: [
       {
@@ -97,7 +97,7 @@ async function main(): Promise<void> {
     itemsAvailable: BigInt(ITEMS_AVAILABLE),
     isMutable: true,
     hiddenSettings: some({
-      name: "Sol Mechs Genesis #$ID$",
+      name: "Sol Mechs Battle Pass S1 #$ID$",
       uri: METADATA_URI,
       // No reveal, so the hash is not a commitment to anything; it just has to
       // be 32 bytes.

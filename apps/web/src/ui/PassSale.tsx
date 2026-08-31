@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Sol Mechs — Genesis pass sale.
+ * Sol Mechs — Battle Pass sale.
  *
  * Reads supply and the prize pool straight from chain on every load. The pool
  * figure is the balance of a published address rather than a number this app
@@ -80,10 +80,13 @@ export default function PassSale() {
           alt="Sol Mechs"
           style={{ imageRendering: "pixelated", width: "min(280px, 70%)", height: "auto", display: "block", margin: "0 auto" }}
         />
-        <h1 style={sx.h1}>Genesis Pass</h1>
+        <div style={sx.eyebrow}>Season 1</div>
+        <h1 style={sx.h1}>
+          Battle Pass <span style={sx.beta}>BETA</span>
+        </h1>
         <p style={sx.lead}>
           Four mechs — Titan, Striker, Arclight and HeartCore — and entry to the
-          Season 1 ranked ladder. {SUPPLY.TOTAL.toLocaleString()} exist;
+          Season 1 ranked ladder. {SUPPLY.TOTAL.toLocaleString("en-US")} exist;
           whatever goes unsold is burned.
         </p>
 
@@ -170,7 +173,21 @@ const sx: Record<string, React.CSSProperties> = {
     border: `2px solid ${C.line}`, borderRadius: 12, padding: "32px 28px",
     boxShadow: "0 0 0 1px rgba(33,221,160,.2), 0 18px 60px rgba(0,0,0,.7)",
   },
-  h1: { margin: "18px 0 8px", fontSize: 30, color: C.text, textAlign: "center", letterSpacing: 1 },
+  eyebrow: {
+    marginTop: 18, fontSize: 12, letterSpacing: 3, fontWeight: 700,
+    color: C.teal, textTransform: "uppercase", textAlign: "center",
+  },
+  h1: {
+    margin: "6px 0 8px", fontSize: 30, color: C.text, textAlign: "center",
+    letterSpacing: 1, display: "flex", alignItems: "center",
+    justifyContent: "center", gap: 10,
+  },
+  beta: {
+    fontSize: 11, letterSpacing: 2, fontWeight: 800, color: C.ink,
+    background: C.teal, borderRadius: 4, padding: "3px 7px",
+    // Nudged up so it reads as a tag on the title, not a word in it.
+    position: "relative", top: -2,
+  },
   lead: { margin: "0 auto 22px", fontSize: 15, lineHeight: 1.6, textAlign: "center", maxWidth: 460 },
   stats: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 10 },
   stat: { background: C.ink, border: `1px solid ${C.line}`, borderRadius: 8, padding: "12px 14px" },

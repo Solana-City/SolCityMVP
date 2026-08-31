@@ -1,5 +1,5 @@
 /**
- * Sol Mechs — minting a Genesis pass.
+ * Sol Mechs — minting a Battle Pass.
  *
  * The buyer mints; the candy machine enforces price, supply and the per-wallet
  * limit. Nothing here can be talked out of those by a modified client, which

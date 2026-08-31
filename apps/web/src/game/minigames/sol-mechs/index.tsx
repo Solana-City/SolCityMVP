@@ -79,24 +79,36 @@ const CARD: React.CSSProperties = {
   boxShadow: "0 10px 30px rgba(0,0,0,.65)",
 };
 
+/**
+ * Widest the arena is allowed to get.
+ *
+ * The backdrop is stretched to the stage, so this is a distortion budget: the
+ * art is natively 1.177 and Unity itself displays it at 1.485, so 2.0 is
+ * already generous. It also sets how much vertical room the mechs get, which
+ * is what keeps them clear of the HUD.
+ */
+const MAX_ASPECT = 2;
+
 const sxBattle: Record<string, React.CSSProperties> = {
   /**
-   * The arena takes the panel's full width and all the height the footer
-   * leaves it — no aspect lock, no fitting.
+   * Centres the stage and gives it the height left over by the footer.
+   */
+  stageWrap: {
+    flex: 1, minHeight: 0, display: "flex", justifyContent: "center",
+  },
+  /**
+   * The arena, with its width driven by its HEIGHT and capped at MAX_ASPECT.
    *
-   * Three shapes failed before this one. Letterboxing a fixed canvas into a
-   * full-width row left it a stamp in a black box. Locking the stage to the
-   * canvas's aspect killed the letterbox but shrank the arena to whatever the
-   * footer left over, so a wide window was mostly dead space. Cropping it with
-   * `object-fit: cover` filled the space but zoomed in so far that the mechs
-   * ran under the controls.
-   *
-   * What works is giving the renderer the box and letting it draw to that
-   * shape — see BattleRenderer's `resize`.
+   * The renderer draws to whatever box it is given, so an uncapped stage on a
+   * wide, short window became a ~4.7:1 letterbox: the backdrop stretched
+   * horizontally and the mechs were squeezed up under the HUD. Deriving width
+   * from height bounds how stretched the backdrop can get, and `max-width`
+   * takes over on a narrow window, where the box simply becomes taller than
+   * MAX_ASPECT rather than overflowing.
    */
   stage: {
-    position: "relative", flex: 1, minHeight: 0, width: "100%",
-    overflow: "hidden", borderRadius: R.md,
+    position: "relative", height: "100%", aspectRatio: `${MAX_ASPECT}`,
+    maxWidth: "100%", overflow: "hidden", borderRadius: R.md,
     border: `2px solid ${C.line}`, background: C.ink,
   },
   canvas: {
@@ -489,7 +501,8 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
       {/* The Unity scene's arrangement: the arena is the full-width BACKDROP
           and the two HUDs sit over its top corners, with the controls and the
           combat log sharing a strip below. See BattleHud for the measurements. */}
-      <div style={sxBattle.stage}>
+      <div style={sxBattle.stageWrap}>
+        <div style={sxBattle.stage}>
         <canvas
           ref={canvasRef}
           width={CANVAS_W}
@@ -515,6 +528,7 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
             low={clock.p2 <= DEFAULT_CLOCK.warnAtMs}
             align="right"
           />
+        </div>
         </div>
       </div>
 

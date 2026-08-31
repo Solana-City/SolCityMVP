@@ -259,6 +259,7 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, onFinished, on
 
         {/* Same arrangement as the 1v1: the arena is the backdrop and the two
             HUDs sit over its top corners. See BattleHud for the measurements. */}
+        <div style={sx.stageWrap}>
         <div style={sx.stage}>
           <canvas
             ref={canvasRef}
@@ -286,6 +287,7 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, onFinished, on
               align="right"
             />
           </div>
+        </div>
         </div>
 
         <div style={sx.footRow}>
@@ -446,6 +448,16 @@ const CARD: React.CSSProperties = {
   boxShadow: "0 10px 30px rgba(0,0,0,.65)",
 };
 
+/**
+ * Widest the arena is allowed to get.
+ *
+ * The backdrop is stretched to the stage, so this is a distortion budget: the
+ * art is natively 1.177 and Unity itself displays it at 1.485, so 2.0 is
+ * already generous. It also sets how much vertical room the mechs get, which
+ * is what keeps them clear of the HUD.
+ */
+const MAX_ASPECT = 2;
+
 const sx: Record<string, React.CSSProperties> = {
   backdrop: {
     position: "fixed", inset: 0, background: "rgba(4,2,10,.9)", zIndex: 1000,
@@ -461,10 +473,20 @@ const sx: Record<string, React.CSSProperties> = {
   close: { background: "none", border: "none", color: C.dim, fontSize: 24, cursor: "pointer", lineHeight: 1, padding: 0 },
   squadRow: { display: "flex", gap: SP.md, flexWrap: "wrap", flexShrink: 0 },
   squadLabel: { fontSize: 12, color: C.faint, letterSpacing: 2, marginBottom: 3 },
-  /** Full width, no aspect lock — the renderer draws to the box. See the 1v1. */
+  /**
+   * Centres the stage and gives it the height left over by the footer.
+   */
+  stageWrap: {
+    flex: 1, minHeight: 0, display: "flex", justifyContent: "center",
+  },
+  /**
+   * The arena, with its width driven by its HEIGHT and capped at MAX_ASPECT.
+   *
+   * See the 1v1 for why the cap exists.
+   */
   stage: {
-    position: "relative", flex: 1, minHeight: 0, width: "100%",
-    overflow: "hidden", borderRadius: R.md,
+    position: "relative", height: "100%", aspectRatio: `${MAX_ASPECT}`,
+    maxWidth: "100%", overflow: "hidden", borderRadius: R.md,
     border: `2px solid ${C.line}`, background: C.ink,
   },
   canvas: {
