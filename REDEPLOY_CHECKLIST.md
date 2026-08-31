@@ -37,6 +37,12 @@ client/program layouts diverge and multiplayer breaks.
    the name post-init and propagate it via the ER, and (b) a `NameClaim` registry
    PDA so a name is owned first-come (a second wallet can't take it).
 
+5. **Sol Mechs season ladder.** A ranked PvP ladder with an on-chain
+   matchmaking queue, per-season Elo, energy and a prize pool. Does NOT belong
+   in `sol-city` — see the dedicated section below for why, the account
+   layouts, and the traps found while writing the TypeScript reference
+   implementation. Staged on branch `feature/sol-mechs`.
+
 ---
 
 ## PROGRAM changes — `programs/sol-city/src/lib.rs` (paste-ready)
@@ -296,6 +302,212 @@ Order: deploy program → verify → then push these together.
 - [ ] Set a name → it shows above YOUR head on the OTHER device (not the wallet).
 - [ ] A 2nd wallet trying to claim the SAME name is rejected ("name taken").
 - [ ] Full cross-device multiplayer still green (compare to Parabéns 2.0).
+
+---
+
+## Sol Mechs — season ladder (SEPARATE program, `sol-mechs`)
+
+Staged, not applied. Branch `feature/sol-mechs`. Nothing here touches
+`sol-city`; see "Why a separate program" below.
+
+The TypeScript in `apps/web/src/game/solmechs/` is the **reference
+implementation** — it is deliberately pure (no clock, storage or network) so
+the Rust can be transcribed from it. Run
+`npx tsx apps/web/src/game/solmechs/season/simulate.ts` to exercise the whole
+season model before writing any Rust.
+
+### Why a separate program
+
+- `PlayerState` must not change size. The checklist above already warns that
+  adding a field forces a `player_v3` seed bump and re-init for every existing
+  player. A battle state machine, a queue and a ladder are far more state than
+  `sol-city` should carry.
+- A bug in an untested battle program must not be able to take multiplayer
+  down. Separate program = separate upgrade authority, separate blast radius.
+- Cost: a second ER delegation setup, and a second deploy through Playground.
+
+### What the alpha needs on-chain
+
+1. **Battle rooms on the ER**, per `apps/web/src/game/solmechs/ONCHAIN.md` —
+   that design is unchanged and is the source for the room/action layout.
+   Simultaneous rounds mean **commit-reveal is mandatory**: without it the
+   second submitter reads the first's action off the chain.
+2. **A matchmaking queue.** The player never names an opponent; the program
+   picks one. This is the whole anti-collusion story — measured in the
+   simulator, buying feeder wallets is a net loss at every count once opponents
+   are assigned rather than chosen.
+3. **A season ladder** (rating per wallet per season).
+4. **Energy** (daily grant + capped paid packs), gating queue entry.
+5. **A prize pool PDA** funded by a share of purchases.
+
+### Account layouts
+
+Constants come from `season/config.ts`. **The program and the client must be
+built against the same values** — same warning as `BALANCE` in
+`BattleEngine.ts`: a mismatch does not error, it rejects honest results.
+
+```rust
+pub const SEASON_SEED: &[u8]  = b"mech_season";
+pub const LADDER_SEED: &[u8]  = b"mech_entry";
+pub const QUEUE_SEED: &[u8]   = b"mech_queue";
+pub const POOL_SEED: &[u8]    = b"mech_pool";
+
+/// Ring buffer length. MUST equal MATCHMAKING.RECENT_OPPONENTS (16).
+pub const RECENT: usize = 16;
+/// Queue capacity. Sized so pairing fits one transaction's compute budget.
+pub const QUEUE_CAP: usize = 64;
+
+#[account]
+pub struct Season {
+    pub id: u16,
+    pub starts_at: i64,
+    pub ends_at: i64,
+    pub entrants: u32,
+}
+
+#[account]
+pub struct LadderEntry {
+    pub authority: Pubkey,
+    pub season: u16,
+    pub rating: i32,
+    pub wins: u16,
+    pub losses: u16,
+    pub distinct_opponents: u16,
+    /// Ring buffer, newest first. Feeds the matchmaking rematch penalty AND
+    /// the repeat-pairing rating decay.
+    pub recent: [Pubkey; RECENT],
+    pub recent_len: u8,
+    // energy
+    pub energy: u8,
+    pub energy_day: u32,   // unix_timestamp / 86400
+    pub packs_today: u8,
+}
+
+#[account]
+pub struct MatchQueue {
+    pub season: u16,
+    pub len: u8,
+    pub tickets: [Ticket; QUEUE_CAP],
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy)]
+pub struct Ticket {
+    pub authority: Pubkey,
+    pub rating: i32,
+    pub enqueued_at: i64,
+    /// Copied from LadderEntry at enqueue. See "the ticket must be
+    /// self-contained" below.
+    pub recent: [Pubkey; RECENT],
+    pub recent_len: u8,
+}
+```
+
+### The traps (found while building the TS)
+
+**The ticket must be self-contained.** Pairing cannot read every queued
+player's `LadderEntry` — a transaction cannot carry 64 accounts. So the recent
+opponents are COPIED into the ticket at enqueue. This is why
+`season/matchmaking.ts` takes a bounded `recent: string[]` rather than a full
+meeting history; an earlier draft used an unbounded map and would not have
+ported.
+
+**Tie-breaking needs on-chain randomness.** `pairQueue` takes an injected
+`rand()` so that among equally-good candidates the choice is unpredictable —
+otherwise a client selects its opponent by timing its entry. In Rust this is
+the `SlotHashes` sysvar, not a client-supplied seed.
+
+**Energy day comes from `Clock`, not the client.** `season/energy.ts` uses
+`floor(now / 86_400_000)`; the program uses
+`Clock::get()?.unix_timestamp / 86_400`. A client-supplied timestamp is a
+client-controlled daily reset.
+
+**Rating math does NOT need to be bit-identical to the TS.** The program is
+authoritative: it computes and stores the rating, and the client READS it.
+The TS rating module exists for the simulator and for UI previews
+("you'll gain ~12"), where a rounding difference is invisible. This is the
+opposite of `calculateDamage`, where both sides compute and must agree — see
+the Balance note in `ONCHAIN.md`.
+
+Do NOT re-add a per-opponent gain ceiling. It was tried and reverted; see the
+comment in `season/config.ts`.
+
+### Instructions
+
+```
+init_season(id, starts_at, ends_at)
+init_ladder_entry()                      // init_if_needed, per wallet per season
+
+join_queue()                             // program pairs; see below
+cancel_queue()
+
+// battle: per ONCHAIN.md, on the ER
+open_room / join_room / commit_action / reveal_action / settle
+
+buy_energy_pack()                        // enforces PACKS_PER_DAY, sweeps to pool
+sweep_to_pool(lamports)                  // called by the pass sale + energy buys
+claim_prize(place)                       // claim-based, after season close
+```
+
+`join_queue` is where the design lives. It:
+
+1. rolls the daily energy grant from `Clock` and requires `energy >= 1`;
+2. requires a current-season pass in the caller's wallet (checking only at
+   settlement would let an expired account play a whole season and place);
+3. scans `MatchQueue.tickets` for the minimum
+   `|rating_gap| + REMATCH_PENALTY * recent_meetings`, accepting only while
+   that cost is under `tolerance(now - enqueued_at)`;
+4. on a match: spends 1 energy from both, removes both tickets, opens a room,
+   delegates both to the ER. On no match: appends the caller's ticket.
+
+### CLIENT changes (post-deploy)
+
+1. **`game/solmechs/season/*`** — already written and pure. After deploy these
+   stop being the source of truth for live state and become (a) the simulator,
+   (b) UI preview math, (c) the spec the Rust was transcribed from. Keep the
+   constants in lockstep with the program.
+2. **`game/solmechs/hangar.ts`** — `owned` is currently hardcoded to the full
+   roster with a comment saying to restore gating "once unlocking is real".
+   Replace with a pass-ownership read. Loadouts key by pass mint, not by
+   wallet + mechId, or a transferred pass loses its builds.
+3. **New `game/solana/mechProgram.ts`** — mirrors `program.ts`: program id,
+   seeds, PDA derivations, account decoders for `Season` / `LadderEntry` /
+   `MatchQueue`.
+4. **New `game/solana/mechInstructions.ts`** — `DISC` entries + builders,
+   mirroring `instructions.ts`.
+5. **`minigames/sol-mechs/index.tsx`** — the ranked entry point reads energy
+   from `LadderEntry`, calls `join_queue`, and waits for the room rather than
+   constructing a `LocalAIOpponent`. PvE stays local and unranked.
+6. **Leaderboard UI** — `getProgramAccounts(LadderEntry)` filtered by season,
+   sorted by rating, with the eligibility floors from `season/config.ts`
+   applied client-side for display.
+7. **Verify layouts** before pushing — same `simulateTransaction` technique as
+   item 6 above.
+
+### Post-deploy verification
+
+- [ ] `init_season` + `init_ladder_entry` succeed; entry defaults to rating 1000.
+- [ ] `join_queue` with 0 energy is rejected; after the daily roll it succeeds.
+- [ ] Two wallets queueing get paired into one room; **neither could name the
+      other**.
+- [ ] Queue a wallet against one it just played: the rematch penalty pushes the
+      pairing elsewhere when a third wallet is available.
+- [ ] Commit-reveal: a client that commits and never reveals forfeits.
+- [ ] A settled match updates BOTH ladder entries, and the ratings match what
+      `season/rating.ts` predicts to within rounding.
+- [ ] `buy_energy_pack` twice in one UTC day: the second is rejected.
+- [ ] Pool PDA balance equals the swept share of the recorded purchases.
+- [ ] Playing without a current-season pass is rejected at `join_queue`.
+
+### Open decisions (block writing the Rust)
+
+- **`QUEUE_CAP` vs compute budget.** Pairing is O(n) over the queue with a
+  32-byte-compare inner loop. 64 tickets may or may not fit; measure before
+  committing to the account size, since changing it later is a realloc.
+- **Where the pass sale lives.** Metaplex Candy Machine is already deployed on
+  devnet and needs no program of ours, so the sale can ship BEFORE this program
+  exists. Only `join_queue`'s pass check depends on the collection address.
+- **One `MatchQueue` or several by rating band.** One is simpler and correct;
+  several reduce contention if the queue is hot. Start with one.
 
 ---
 
