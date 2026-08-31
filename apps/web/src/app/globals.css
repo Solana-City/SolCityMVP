@@ -1,3 +1,10 @@
+/* Sol Mechs ships its own display face. Used by that mini-game only. */
+@font-face {
+  font-family: "MEK Mono";
+  src: url("/assets/minigames/sol-mechs/fonts/MEK-Mono.otf") format("opentype");
+  font-display: swap;
+}
+
 @tailwind base;
 @tailwind utilities;
 @tailwind components;

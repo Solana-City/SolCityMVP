@@ -22,7 +22,7 @@ import { createUnit, availableMoves } from "@/game/solmechs/engine/BattleEngine"
 import type { MechBuild, ModuleSlot } from "@/game/solmechs/data/types";
 import { loadHangar, setTeam } from "@/game/solmechs/hangar";
 import Workshop from "./Workshop";
-import { C, T, SP, R, MONO, W, PANEL_HEIGHT, frame } from "./theme";
+import { C, T, SP, R, MONO, W, PANEL_HEIGHT, DISPLAY, frame } from "./theme";
 
 
 const SLOTS: ModuleSlot[] = ["matrix", "rightArm", "leftArm", "lowerBody"];
@@ -87,7 +87,13 @@ export default function TeamBuilder({ onDeploy, onClose }: TeamBuilderProps) {
     <div style={sx.backdrop} onPointerDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div style={sx.frame}>
         <header style={sx.header}>
-          <h2 style={sx.title}>SQUAD</h2>
+            <img
+            src="/assets/minigames/sol-mechs/ui/logo.png"
+            alt="Sol Mechs"
+            style={{ imageRendering: "pixelated", height: 30, width: "auto", display: "block" }}
+            onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+          />
+        <h2 style={sx.title}>SQUAD</h2>
           <div style={{ flex: 1 }} />
           <button onClick={onClose} style={sx.close} aria-label="Close">×</button>
         </header>
@@ -240,7 +246,7 @@ const sx: Record<string, React.CSSProperties> = {
     fontFamily: "system-ui,sans-serif",
   },
   header: { display: "flex", alignItems: "center", gap: 12, flexShrink: 0 },
-  title: { margin: 0, fontSize: 20, color: C.teal, letterSpacing: 5, fontWeight: 800 },
+  title: { margin: 0, fontSize: 18, color: C.teal, letterSpacing: 4, fontWeight: 800, fontFamily: DISPLAY },
   close: { background: "none", border: "none", color: C.dim, fontSize: 26, cursor: "pointer", lineHeight: 1, padding: 0 },
   blurb: { fontSize: 12, color: C.dim, margin: 0, lineHeight: 1.65, flexShrink: 0 },
   grid: {

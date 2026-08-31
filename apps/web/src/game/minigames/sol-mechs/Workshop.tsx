@@ -35,7 +35,7 @@ import type { MechBuild, MechId, StatBlock, ModuleSlot, MechPart } from "@/game/
 import { addStats } from "@/game/solmechs/data/types";
 import { createUnit, calculateDamage } from "@/game/solmechs/engine/BattleEngine";
 import { loadHangar, setBuild as persistBuild, resetBuild, getBuild } from "@/game/solmechs/hangar";
-import { C, T, SP, R, MONO, W, PANEL_HEIGHT } from "./theme";
+import { C, T, SP, R, MONO, W, PANEL_HEIGHT, DISPLAY, frame } from "./theme";
 
 const UI = "/assets/minigames/sol-mechs/ui";
 const PIXELATED: React.CSSProperties = { imageRendering: "pixelated" };
@@ -269,6 +269,12 @@ export default function Workshop({ initialMech, onSaved, onMechChange, onClose, 
         <Corner top left /><Corner top /><Corner left /><Corner />
 
         <header style={sx.header}>
+          <img
+            src="/assets/minigames/sol-mechs/ui/logo.png"
+            alt="Sol Mechs"
+            style={{ imageRendering: "pixelated", height: 30, width: "auto", display: "block" }}
+            onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+          />
           <h2 style={sx.title}>WORKSHOP</h2>
           {teamContext && <span style={sx.teamTag}>{teamContext.label}</span>}
           <div style={{ flex: 1 }} />
@@ -538,7 +544,11 @@ const sx: Record<string, React.CSSProperties> = {
     padding: 18,
     // Sized to fit the viewport outright — the previous版 forced a min-width
     // per column, which is what produced the horizontal scrollbar.
-    width: W.wide, height: PANEL_HEIGHT,
+    width: W.wide,
+    // maxHeight, not height. Forcing the panel to fill the viewport spread
+    // three short columns over 850px and left air between the mech and its
+    // name; fitting the content removes the gap AND the scrollbar at once.
+    maxHeight: PANEL_HEIGHT,
     display: "flex", flexDirection: "column", gap: 14,
     overflow: "hidden",
     boxShadow: `0 0 0 1px ${C.teal}33, 0 16px 60px rgba(0,0,0,.65)`,
@@ -550,7 +560,7 @@ const sx: Record<string, React.CSSProperties> = {
     borderRadius: 4, padding: "3px 8px", letterSpacing: 2, fontWeight: 700,
   },
   teamHint: { fontSize: 12, color: C.faint, margin: "-6px 0 0", lineHeight: 1.5 },
-  title: { margin: 0, fontSize: 20, color: C.teal, letterSpacing: 5, fontWeight: 800 },
+  title: { margin: 0, fontSize: 18, color: C.teal, letterSpacing: 4, fontWeight: 800, fontFamily: DISPLAY },
   close: {
     background: "none", border: "none", color: C.dim, fontSize: 26,
     cursor: "pointer", lineHeight: 1, padding: 0,
@@ -568,20 +578,27 @@ const sx: Record<string, React.CSSProperties> = {
     gridTemplateColumns: "repeat(auto-fit, minmax(min(320px, 100%), 1fr))",
     gap: 12,
     minHeight: 0,
-    // Vertical only — any horizontal overflow is a layout bug to fix, never
-    // something to hand the user a scrollbar for.
-    overflowY: "auto",
     overflowX: "hidden",
-    // Panels take their natural height rather than being stretched to the
-    // tallest one — stretching is what clipped the preview's passives.
-    alignItems: "start",
+    // Columns match the tallest one, so the panel does not jump in height
+    // when a slot with moves replaces one without. This is safe now only
+    // because the PANEL fits its content — it was the forced full height,
+    // not the stretch, that spread everything out.
+    alignItems: "stretch",
   },
   previewPanel: {
-    background: C.ink, border: `1px solid ${C.line}`, borderRadius: 8,
-    padding: 12, textAlign: "center", minWidth: 0,
+    background: C.ink, ...frame(), padding: 12, textAlign: "center", minWidth: 0,
     display: "flex", flexDirection: "column",
   },
-  dollWrap: { display: "flex", alignItems: "center", justifyContent: "center", minWidth: 0 },
+  /**
+   * `flex: 1` is what centres the mech. The wrap used to be sized by the
+   * canvas alone, so the doll sat at the top of a taller panel with its
+   * name and passives pushed under it.
+   */
+  /** flex:1 centres the mech in whatever height the column ends up with. */
+  dollWrap: {
+    flex: 1, display: "flex", alignItems: "center", justifyContent: "center",
+    minWidth: 0, minHeight: 0,
+  },
   mechName: { color: C.text, fontSize: 22, fontWeight: 800, letterSpacing: 1, marginTop: 6 },
   mechRole: { color: C.teal, fontSize: 12, letterSpacing: 2, marginBottom: 10 },
   passives: { display: "flex", flexDirection: "column", gap: 4 },
@@ -590,7 +607,7 @@ const sx: Record<string, React.CSSProperties> = {
     border: `1px solid ${C.line}`, borderRadius: 4, padding: "5px 6px",
   },
   editorPanel: {
-    background: C.ink, border: `1px solid ${C.line}`, borderRadius: 8,
+    background: C.ink, ...frame(),
     padding: 12, minWidth: 0, display: "flex", flexDirection: "column",
   },
   /**
@@ -623,14 +640,14 @@ const sx: Record<string, React.CSSProperties> = {
   moveSupport: { fontSize: 12, color: C.blue, letterSpacing: 2, fontWeight: 700, flexShrink: 0 },
   note: { fontSize: 12, color: C.faint, lineHeight: 1.5, margin: "4px 0 0" },
   statsPanel: {
-    background: C.ink, border: `1px solid ${C.line}`, borderRadius: 8,
-    padding: 12, minWidth: 0,
+    background: C.ink, ...frame(), padding: 12, minWidth: 0,
   },
-  statRow: { marginBottom: 11 },
+  statRow: { marginBottom: 10 },
   statTop: { display: "flex", justifyContent: "space-between", alignItems: "baseline" },
-  statLabel: { fontSize: 13, color: C.text, fontWeight: 700, letterSpacing: 1, fontFamily: "monospace" },
-  statNums: { display: "flex", alignItems: "baseline", gap: 5, fontFamily: "monospace" },
-  statTotal: { fontSize: 17, color: C.text, fontWeight: 800 },
+  statLabel: { fontSize: 14, color: C.text, fontWeight: 700, letterSpacing: 2, fontFamily: DISPLAY },
+  statNums: { display: "flex", alignItems: "baseline", gap: 6, fontFamily: DISPLAY },
+  /** The number is the thing being compared, so it is the biggest type here. */
+  statTotal: { fontSize: 22, color: C.text, fontWeight: 800, letterSpacing: 1 },
   /** 9-slice of the original bar.png: 20px top, 60px sides, 80px bottom. */
   barFrame: {
     borderStyle: "solid",

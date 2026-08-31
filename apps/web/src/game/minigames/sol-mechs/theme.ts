@@ -56,7 +56,15 @@ export const T = {
 export const SP = { xs: 4, sm: 8, md: 12, lg: 16, xl: 22, xxl: 30 } as const;
 export const R = { sm: 6, md: 8, lg: 12, pill: 999 } as const;
 
-export const MONO = "ui-monospace, SFMono-Regular, Menlo, monospace";
+/**
+ * The game's own face, shipped with the Unity project (`Assets/Fonts`).
+ *
+ * Used for numbers, labels and titles — anything that should read as the
+ * game rather than as the browser. Body copy stays on the system stack,
+ * which is more legible at paragraph length.
+ */
+export const DISPLAY = '"MEK Mono", ui-monospace, monospace';
+export const MONO = '"MEK Mono", ui-monospace, SFMono-Regular, Menlo, monospace';
 export const SANS = "system-ui, -apple-system, Segoe UI, sans-serif";
 
 export const PIXELATED: React.CSSProperties = { imageRendering: "pixelated" };
