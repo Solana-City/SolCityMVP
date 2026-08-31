@@ -72,6 +72,32 @@ export const RATING = {
   SOFT_RESET: 0.5,
 } as const;
 
+export const MATCHMAKING = {
+  /**
+   * How many recent opponents a queue ticket carries.
+   *
+   * Bounded because the ticket must be self-contained: a program pairing from
+   * an on-chain queue cannot read every waiting player's full match history in
+   * one transaction. A ring buffer of this length is what the pairing cost is
+   * allowed to see.
+   */
+  RECENT_OPPONENTS: 16,
+  /** Rating gap accepted immediately on entering the queue. */
+  BASE_TOLERANCE: 100,
+  /** Extra gap accepted per second waited. */
+  WIDEN_PER_SECOND: 25,
+  /** Ceiling on the accepted gap, however long the wait. */
+  MAX_TOLERANCE: 600,
+  /**
+   * Cost, in rating-gap-equivalent points, added per prior meeting this
+   * season. A soft penalty, not a ban: in a thin queue a rematch has to stay
+   * possible or players sit unmatched.
+   */
+  REMATCH_PENALTY: 400,
+  /** After this wait, take the best available pairing regardless of gap. */
+  MAX_WAIT_MS: 90_000,
+} as const;
+
 export const ELIGIBILITY = {
   /** Matches required before an account can hold a paying place. */
   MIN_MATCHES: 20,
