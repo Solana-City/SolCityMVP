@@ -434,7 +434,13 @@ export default function Workshop({ initialMech, onSaved, onMechChange, onClose, 
                     <span style={sx.statNums}>
                       <span style={sx.statTotal}>{total}</span>
                       {fromLimbs !== 0 && (
-                        <span style={{ color: fromLimbs > 0 ? C.teal : C.bad, fontSize: 12 }}>
+                        <span style={{
+                          // What the limbs add is the number the editor exists
+                          // to move, so it reads as a figure rather than a
+                          // footnote on the total.
+                          color: fromLimbs > 0 ? C.teal : C.bad,
+                          fontSize: 15, fontWeight: 800,
+                        }}>
                           {fromLimbs > 0 ? "+" : ""}{fromLimbs}
                         </span>
                       )}

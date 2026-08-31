@@ -139,7 +139,10 @@ export function UnitPanel({ unit, name, clock, live, low, align, showPortrait = 
         <div style={{
           display: "flex", alignItems: "center", gap: 8,
           flexDirection: right ? "row-reverse" : "row",
-          background: "rgba(8,4,16,.72)", border: `1px solid ${C.line}`,
+          // Nearly opaque. At 72% the arena's skyline read through as blocks
+          // beside the name — the panel looked like it had stray elements in
+          // it when it was only showing the backdrop.
+          background: "rgba(8,4,16,.94)", border: `1px solid ${C.line}`,
           borderRadius: 4, padding: "4px 8px",
         }}>
           <span style={{
@@ -243,7 +246,7 @@ function BarStack({ unit, right }: { unit: MechUnit; right: boolean }) {
     <div style={{
       marginTop: 3, display: "flex", flexDirection: "column", gap: 3,
       alignItems: right ? "flex-end" : "flex-start",
-      background: "rgba(8,4,16,.62)", border: `1px solid ${C.line}`,
+      background: "rgba(8,4,16,.9)", border: `1px solid ${C.line}`,
       borderRadius: 4, padding: "5px 6px",
     }}>
       {HUD_SLOTS.map((slot) => (
