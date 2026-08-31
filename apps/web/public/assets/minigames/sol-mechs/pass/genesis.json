@@ -1,0 +1,22 @@
+{
+  "name": "Sol Mechs Genesis Pass",
+  "symbol": "SMGP",
+  "description": "Season 1 pass for Sol Mechs, inside Solana City. Grants the four Genesis mechs — Titan, Striker, Arclight and HeartCore — and entry to the ranked season ladder. 1,111 minted; whatever is unsold is burned.",
+  "image": "https://solanacity.io/assets/minigames/sol-mechs/ui/logo.png",
+  "external_url": "https://solanacity.io",
+  "attributes": [
+    { "trait_type": "Series", "value": "Genesis" },
+    { "trait_type": "Season", "value": "1" },
+    { "trait_type": "Mechs", "value": "4" },
+    { "trait_type": "Supply", "value": "1111" }
+  ],
+  "properties": {
+    "category": "image",
+    "files": [
+      {
+        "uri": "https://solanacity.io/assets/minigames/sol-mechs/ui/logo.png",
+        "type": "image/png"
+      }
+    ]
+  }
+}
