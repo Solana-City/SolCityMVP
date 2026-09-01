@@ -30,7 +30,7 @@ const TILESET_KEYS = [
   "ScBuildSTBrazilLighthouse",
   "SCBuildSTBrStands",
   "SCBuildMagicBlock02",
-  "SCBuildSTEarn02",
+  "SCBuildSTEarn",
   "SCBuildSolanaCity",
 ];
 

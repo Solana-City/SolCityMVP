@@ -10,11 +10,14 @@
  *                         decor, building ground floors, and every tile walled
  *                         off from the spawn
  *
- * Why this exists: SCBuildSTBrStands (the Superteam Brasil market stands) and
- * SCBuildSTEarn02 (the Superteam Earn tent) were authored in Tiled with no
- * collision shapes at all, so the player walks straight through them. Every
- * other building tileset carries its collision in the tile's `objectgroup`,
- * which Phaser turns into colliders via `setCollisionFromCollisionGroup()`.
+ * Why this exists: SCBuildSTBrStands (the Superteam Brasil market stands) was
+ * authored in Tiled with no collision shapes at all, so the player walks
+ * straight through it. Every other building tileset carries its collision in
+ * the tile's `objectgroup`, which Phaser turns into colliders via
+ * `setCollisionFromCollisionGroup()`. (SCBuildSTEarn used to be one of these
+ * too — the artist now authors its collision directly in Tiled, so it's no
+ * longer in TARGET_TILESETS; the ground-floor sweep below still catches any
+ * gaps in it like any other Build* layer.)
  *
  * Rather than hand-place walls in CityScene, this script writes the missing
  * collision into the map's embedded tilesets, so the fix flows through
@@ -51,22 +54,20 @@ const TILESET_DIR = path.join(WEB, "public/assets/tilesets");
  * script's own work — which is why the pass below can clear and re-derive them
  * on each run instead of only ever adding.
  */
-const TARGET_TILESETS = ["SCBuildSTBrStands", "SCBuildSTEarn02"];
+const TARGET_TILESETS = ["SCBuildSTBrStands"];
 
 /**
  * How many rows at the TOP of each of these structures are canopy the player
  * should be able to walk behind, exactly as they can walk into the upper storey
  * of every other building.
  *
- * Backfilling those two tilesets by opacity alone made the whole silhouette
- * solid, because a tileset has no idea where its tiles sit in a structure. That
- * left the market stalls and the ST Earn tent as the only buildings in the city
- * with no walk-behind at all — you could reach the lane north of them and not a
- * tile further, which is what "can't get behind the tent or the stands" was.
+ * Backfilling a tileset by opacity alone makes the whole silhouette solid,
+ * because a tileset has no idea where its tiles sit in a structure — that's
+ * what left the market stalls with no walk-behind at all, reachable only up
+ * to the lane north of them and not a tile further.
  *
  * Row counts come from the art: a stall is three rows of awning (dark green top
- * plus the striped valance) over two rows of counter, and the tent is five rows
- * of roof over the two where its poles and desk meet the ground.
+ * plus the striped valance) over two rows of counter.
  *
  * SolSentry and Peg-risk get the same treatment. They have no awning, which is
  * why they were left solid at first — but they are tall vertical cabinets, so
@@ -81,7 +82,6 @@ const CANOPY_TOP_ROWS = {
   BuildStand05: 3,
   BuildStand07: 3,
   BuildStand08: 3,
-  BuildSTEarn: 5,
   BuildStandSolSentry: 3,
   BuildStandPegana: 3,
 };
@@ -186,11 +186,18 @@ const AUTO_LAYER = "ColliderAuto";
  * hides); opening clears the tile's own collision box, which is safe here only
  * because those gids are used exactly once each in the whole map — the script
  * verifies that and refuses rather than silently unblocking tiles elsewhere.
+ *
+ * `r0` was 33 until 2026-09-01: the fountain had no real per-tile collision
+ * back then, so the box padded one row further north than the art to be safe.
+ * The artist has since authored real collision on DecorFountainBase (rows
+ * 34-39 — see CityScene.ts), which is now the correct back wall; leaving `r0`
+ * at 33 forced an extra invisible-wall row *in front of* that real wall, a
+ * one-tile phantom gap between the walkable grass and the actual structure.
  */
 const REGION_FIXES = [
   {
     name: "central fountain",
-    solid: { c0: 75, c1: 82, r0: 33, r1: 39 },
+    solid: { c0: 75, c1: 82, r0: 34, r1: 39 },
     walkable: [
       [78, 37], [79, 37],
       [78, 38], [79, 38],
@@ -429,7 +436,7 @@ for (const layer of tileLayers(map.layers)) {
   }
 }
 
-const barrier = map.layers.find((l) => l.name === "ColliderInvisible");
+const barrier = tileLayers(map.layers).find((l) => l.name === "ColliderInvisible");
 if (!barrier) throw new Error("ColliderInvisible layer missing — cannot seal cells");
 const BARRIER_GID = barrier.data.find((v) => v) ?? 0;
 if (!BARRIER_GID) throw new Error("ColliderInvisible layer is empty — no gid to paint with");
@@ -485,9 +492,12 @@ for (const fix of REGION_FIXES) {
           opened++;
         }
       } else if (!isSolid) {
-        // Paint the invisible barrier so this cell blocks.
-        const bc = col - (barrier.x ?? 0);
-        const br = row - (barrier.y ?? 0);
+        // Paint the invisible barrier so this cell blocks. Uses originOf, not
+        // barrier.x/y directly, so this still lands correctly if the layer
+        // ever picks up a parent-group offset (see originOf's own doc).
+        const origin = originOf(barrier);
+        const bc = col - origin.col;
+        const br = row - origin.row;
         barrier.data[br * barrier.width + bc] = BARRIER_GID;
         sealed++;
       }
