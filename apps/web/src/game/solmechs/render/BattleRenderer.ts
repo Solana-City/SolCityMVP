@@ -313,10 +313,21 @@ export class BattleRenderer {
     unitsAt?: RenderUnits;
     /** Extra pause before the beat, e.g. to let a switch read. */
     leadIn?: number;
-  }>): void {
+  }>): number[] {
+    /*
+     * Returns each beat's start offset in ms.
+     *
+     * The caller needs them because the HP bars live in React, not on the
+     * canvas: applying the whole resolved round at once dropped both bars on
+     * the first frame while the two attacks animated a second apart, so the
+     * damage arrived before the animation meant to explain it. With these
+     * offsets the screen can advance the board one attacker at a time.
+     */
+    const starts: number[] = [];
     let cursor = this.remainingMs();
     for (const beat of beats) {
       cursor += beat.leadIn ?? 0;
+      starts.push(cursor);
       if (beat.unitsAt) this.stateChanges.push({ at: performance.now() + cursor, units: beat.unitsAt });
       const before = this.busyUntil;
       this.playEvents(beat.events, beat.move, cursor);
@@ -324,6 +335,7 @@ export class BattleRenderer {
       cursor = Math.max(cursor, this.busyUntil - performance.now());
       if (this.busyUntil === before) cursor += BEAT_GAP;
     }
+    return starts;
   }
 
   playEvents(events: BattleEvent[], move?: MoveDefinition, delayMs = 0): void {

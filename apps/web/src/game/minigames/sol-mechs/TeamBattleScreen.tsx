@@ -10,7 +10,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   createTeamBattle, resolveTeamRound, resolveForcedSwitches, forfeitTeam, activeUnit, switchableIndices,
-  type TeamBattleState, type TeamAction, type TeamEvent, type TeamRoundActions,
+  type TeamBattleState, type TeamAction, type TeamEvent, type TeamRoundActions, type TeamResolveResult,
 } from "@/game/solmechs/engine/TeamBattle";
 import { availableMoves, legalTargets, calculateDamage, isDefeated } from "@/game/solmechs/engine/BattleEngine";
 import type { PlayerSide } from "@/game/solmechs/engine/BattleEngine";
@@ -59,7 +59,11 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, onFinished, on
   const stateRef = useRef<TeamBattleState | null>(null);
 
   const [state, setState] = useState<TeamBattleState>(() => {
-    const s = createTeamBattle(playerTeam, enemyTeam, { p1Name: "You", p2Name: "Rival" });
+    const s = createTeamBattle(playerTeam, enemyTeam, {
+      p1Name: "You", p2Name: "Rival",
+      // Equal-speed rounds are a coin flip; on-chain the seed comes from the room.
+      seed: Math.floor(Math.random() * 0x7fffffff),
+    });
     stateRef.current = s;
     return s;
   });
@@ -142,35 +146,53 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, onFinished, on
   }, []);
 
   const play = useCallback((
-    result: { state: TeamBattleState; events: TeamEvent[] },
+    result: TeamResolveResult,
     moves: Partial<Record<PlayerSide, MoveDefinition | undefined>> = {},
   ) => {
     const lines = result.events.map((e) => describe(e, result.state)).filter((l): l is string => l !== null);
     setLog((prev) => [...lines.reverse(), ...prev].slice(0, 60));
 
     const renderer = rendererRef.current;
-    const after = { p1: activeUnit(result.state.p1), p2: activeUnit(result.state.p2) };
-
-    // Substitutions resolve before any attack, so the replacement has to be on
-    // screen before the beats that follow it — but NOT before the round starts,
-    // or the outgoing mech never gets to be seen leaving.
     const switched = result.events.some((e) => e.type === "switch");
-    const beats = splitIntoBeats(result.events.filter(isBattleEvent), moves);
-    if (beats.length === 0) {
-      renderer?.setState(after);
+
+    /*
+     * One beat per step, and the BOARD advances with each.
+     *
+     * The engine returns a snapshot after every acting side, so the screen
+     * plays the faster mech's hit, registers its damage, and only then starts
+     * the slower one. Applying the whole resolved round up front — which is
+     * what this did — dropped both HP bars on the first frame, a second before
+     * the animation that was meant to explain the second one.
+     */
+    const steps = result.steps;
+    if (steps.length === 0) {
+      renderer?.setState({ p1: activeUnit(result.state.p1), p2: activeUnit(result.state.p2) });
+      stateRef.current = result.state;
+      setState(result.state);
     } else {
-      renderer?.playRound(
-        beats.map((b, i) => (i === 0 && switched
-          ? { ...b, unitsAt: after, leadIn: SWITCH_LEAD_IN }
-          : i === 0 ? { ...b, unitsAt: after } : b)),
-      );
+      const starts = renderer?.playRound(steps.map((st, i) => {
+        const units = { p1: activeUnit(st.state.p1), p2: activeUnit(st.state.p2) };
+        const beat = { events: st.events.filter(isBattleEvent), move: moves[st.side], unitsAt: units };
+        // A substitution needs a moment on screen before it is hit.
+        return i === 0 && switched ? { ...beat, leadIn: SWITCH_LEAD_IN } : beat;
+      })) ?? [];
+
+      steps.forEach((st, i) => {
+        window.setTimeout(() => {
+          stateRef.current = st.state;
+          setState(st.state);
+        }, Math.max(0, starts[i] ?? 0));
+      });
     }
-    stateRef.current = result.state;
-    setState(result.state);
 
     const wait = renderer?.remainingMs() ?? 0;
     setAnimating(true);
-    window.setTimeout(() => { setAnimating(false); setBusy(false); }, Math.max(wait, 200));
+    window.setTimeout(() => {
+      stateRef.current = result.state;
+      setState(result.state);
+      setAnimating(false);
+      setBusy(false);
+    }, Math.max(wait, 200));
   }, [describe]);
 
   /** Player commits their action; the rival commits blind; the round resolves. */

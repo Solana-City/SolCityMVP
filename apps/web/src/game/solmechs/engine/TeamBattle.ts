@@ -30,7 +30,7 @@
 import type { MechBuild, ModuleSlot } from "../data/types";
 import type { BattleEvent, PlayerSide, DefeatCause } from "./BattleEngine";
 import {
-  createUnit, cloneUnit, applyMove, validateMove, defeatCauseOf, isDefeated,
+  createUnit, cloneUnit, applyMove, validateMove, defeatCauseOf, isDefeated, tieBreak,
   effectiveStats, opponentOfSide,
 } from "./BattleEngine";
 import type { MechUnit } from "../data/types";
@@ -82,19 +82,32 @@ export interface TeamBattleState {
   p1: TeamSide;
   p2: TeamSide;
   status: TeamStatus;
-  /** 1-based; also breaks speed ties, as in the 1v1. */
+  /** 1-based. */
   round: number;
+  /** Breaks speed ties, seeded so a replay reconstructs the same battle. */
+  seed: number;
   history: TeamRoundActions[];
+}
+
+/** One side's slice of a round. See BattleEngine's RoundStep for why. */
+export interface TeamRoundStep {
+  side: PlayerSide;
+  events: TeamEvent[];
+  state: TeamBattleState;
 }
 
 export interface TeamResolveResult {
   state: TeamBattleState;
   events: TeamEvent[];
+  /** In resolution order: substitutions first, then each attacker. */
+  steps: TeamRoundStep[];
 }
 
 export interface CreateTeamBattleOptions {
   p1Name?: string;
   p2Name?: string;
+  /** Breaks speed ties. See BattleEngine's CreateBattleOptions. */
+  seed?: number;
 }
 
 function buildSide(team: TeamBuild, name: string): TeamSide {
@@ -139,6 +152,7 @@ export function createTeamBattle(
     p1, p2,
     status: { kind: "active" },
     round: 1,
+    seed: options.seed ?? 0,
     history: [],
   };
 }
@@ -153,17 +167,18 @@ function cloneState(state: TeamBattleState): TeamBattleState {
     p2: cloneSide(state.p2),
     status: state.status,
     round: state.round,
+    seed: state.seed,
     history: [...state.history],
   };
 }
 
-/** Speed order among a set of sides, ties alternating by round parity. */
+/** Speed order among a set of sides; ties are a seeded coin flip. */
 function bySpeed(state: TeamBattleState, sides: PlayerSide[]): PlayerSide[] {
   if (sides.length < 2) return sides;
   const spd = (s: PlayerSide) => effectiveStats(activeUnit(sideOf(state, s))).SPD;
   const [a, b] = sides;
   if (spd(a) !== spd(b)) return spd(a) > spd(b) ? [a, b] : [b, a];
-  return state.round % 2 === 1 ? [a, b] : [b, a];
+  return tieBreak(state.seed, state.round) ? [a, b] : [b, a];
 }
 
 /** Stages are per-limb buffs; a mech leaving the field drops them. */
@@ -187,10 +202,10 @@ function clearStages(unit: MechUnit): void {
  */
 export function resolveTeamRound(state: TeamBattleState, actions: TeamRoundActions): TeamResolveResult {
   if (state.status.kind === "finished") {
-    return { state, events: [{ type: "rejected", reason: "Battle is already over" }] };
+    return { state, events: [{ type: "rejected", reason: "Battle is already over" }], steps: [] };
   }
   if (state.status.kind === "awaiting-switch") {
-    return { state, events: [{ type: "rejected", reason: "A substitution is required first" }] };
+    return { steps: [], state, events: [{ type: "rejected", reason: "A substitution is required first" }] };
   }
 
   const next = cloneState(state);
@@ -219,22 +234,15 @@ export function resolveTeamRound(state: TeamBattleState, actions: TeamRoundActio
     });
   }
 
-  // ── 2. moves, in the speed order that now applies ───────────────────────
-  //
-  // Legality is judged against the board as it stands AFTER substitutions but
-  // BEFORE any attack — see BattleEngine.resolveRound. Validating mid-round
-  // let the faster mech delete the exact limb the slower one had committed to
-  // firing, wiping its whole round.
-  const moving = (["p1", "p2"] as PlayerSide[]).filter((s) => get(s)?.kind === "move");
-  const legality: Partial<Record<PlayerSide, string | null>> = {};
-  for (const side of moving) {
-    const action = get(side) as Extract<TeamAction, { kind: "move" }>;
-    legality[side] = validateMove(
-      activeUnit(sideOf(next, side)),
-      activeUnit(sideOf(next, opponentOfSide(side))),
-      action.sourceSlot, action.moveIndex, action.targetSlot,
-    );
+  // Substitutions have all resolved by here, so the board the attacks are
+  // judged against — and the one the screen should be showing — is this one.
+  const steps: TeamRoundStep[] = [];
+  if (events.some((e) => e.type === "switch")) {
+    steps.push({ side: "p1", events: [], state: cloneState(next) });
   }
+
+  // ── 2. moves, in speed order ────────────────────────────────────────────
+  const moving = (["p1", "p2"] as PlayerSide[]).filter((s) => get(s)?.kind === "move");
 
   for (const side of bySpeed(next, moving)) {
     const action = get(side) as Extract<TeamAction, { kind: "move" }>;
@@ -243,17 +251,24 @@ export function resolveTeamRound(state: TeamBattleState, actions: TeamRoundActio
     const actor = activeUnit(me);
     const target = activeUnit(foe);
 
-    // Only death stops a committed action.
     if (isDefeated(actor)) {
       events.push({ type: "rejected", reason: `${actor.name} was down before it could act` });
       continue;
     }
-    const illegal = legality[side];
+
+    // Judged HERE, against the live board — see BattleEngine.resolveRound.
+    // Strip the arm the slower mech was going to swing with and the swing does
+    // not happen.
+    const illegal = validateMove(
+      actor, target, action.sourceSlot, action.moveIndex, action.targetSlot,
+    );
     if (illegal) {
       events.push({ type: "rejected", reason: illegal });
       continue;
     }
-    events.push(...applyMove(actor, target, side, action.sourceSlot, action.moveIndex, action.targetSlot));
+    const produced = applyMove(actor, target, side, action.sourceSlot, action.moveIndex, action.targetSlot);
+    events.push(...produced);
+    steps.push({ side, events: produced, state: cloneState(next) });
   }
 
   next.history.push(actions);
@@ -281,17 +296,17 @@ export function resolveTeamRound(state: TeamBattleState, actions: TeamRoundActio
     const winner = opponentOfSide(loser);
     next.status = { kind: "finished", winner };
     events.push({ type: "victory", winner });
-    return { state: next, events };
+    return { state: next, events, steps };
   }
 
   if (owing.length > 0) {
     next.status = { kind: "awaiting-switch", sides: owing };
     for (const side of owing) events.push({ type: "must-switch", side });
-    return { state: next, events };
+    return { state: next, events, steps };
   }
 
   next.round += 1;
-  return { state: next, events };
+  return { state: next, events, steps };
 }
 
 /**
@@ -303,7 +318,7 @@ export function resolveForcedSwitches(
   picks: Partial<Record<PlayerSide, number>>,
 ): TeamResolveResult {
   if (state.status.kind !== "awaiting-switch") {
-    return { state, events: [{ type: "rejected", reason: "No substitution is pending" }] };
+    return { steps: [], state, events: [{ type: "rejected", reason: "No substitution is pending" }] };
   }
   const next = cloneState(state);
   const events: TeamEvent[] = [];
@@ -328,7 +343,7 @@ export function resolveForcedSwitches(
   next.status = { kind: "active" };
   next.round += 1;
   events.push({ type: "round-start", round: next.round });
-  return { state: next, events };
+  return { state: next, events, steps: [] };
 }
 
 /**
@@ -341,12 +356,13 @@ export function forfeitTeam(
   reason: "timeout" | "abandoned" = "timeout",
 ): TeamResolveResult {
   if (state.status.kind === "finished") {
-    return { state, events: [{ type: "rejected", reason: "Battle is already over" }] };
+    return { state, events: [{ type: "rejected", reason: "Battle is already over" }], steps: [] };
   }
   const next = cloneState(state);
   const winner = opponentOfSide(side);
   next.status = { kind: "finished", winner };
   return {
+    steps: [],
     state: next,
     events: [
       { type: "forfeit", side, reason },

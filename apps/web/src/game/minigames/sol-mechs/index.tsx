@@ -266,7 +266,7 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
     const rivalAction = await aiRef.current.chooseAction(current, "p2");
 
     const round: RoundActions = { p1: action, p2: rivalAction };
-    const { state: nextState, events } = resolveRound(current, round);
+    const { state: nextState, events, steps } = resolveRound(current, round);
 
     // Effects are picked from the pre-round moves; afterwards the limb that
     // fired may already be gone.
@@ -279,17 +279,41 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
     pushLog(lines.reverse());
 
     const renderer = rendererRef.current;
-    renderer?.setState(nextState);
-    // One beat per attacker, chained — the faster mech's hit plays out in full
-    // before the slower one begins.
-    renderer?.playRound(splitIntoBeats(events, { p1: p1Move, p2: p2Move }));
+    const moveOf = (side: PlayerSide) => (side === "p1" ? p1Move : p2Move);
 
-    stateRef.current = nextState;
-    setBattle(nextState);
+    /*
+     * One beat per attacker, chained, and the BOARD advances with it.
+     *
+     * The engine hands back a snapshot per acting side, so the screen shows
+     * the faster mech's hit land and its damage register, then the slower
+     * one's. Applying `nextState` up front instead — which is what this did —
+     * dropped both HP bars on the first frame, a second before the animation
+     * that was meant to explain the second one.
+     */
+    const starts = renderer?.playRound(
+      steps.map((st) => ({ events: st.events, move: moveOf(st.side) })),
+    ) ?? [];
+
+    const timers: number[] = [];
+    steps.forEach((st, i) => {
+      timers.push(window.setTimeout(() => {
+        renderer?.setState({ p1: st.state.p1, p2: st.state.p2 });
+        stateRef.current = st.state;
+        setBattle(st.state);
+      }, Math.max(0, starts[i] ?? 0)));
+    });
 
     const wait = renderer?.remainingMs() ?? 0;
     setAnimating(true);
-    window.setTimeout(() => { setAnimating(false); setBusy(false); }, Math.max(wait, 200));
+    window.setTimeout(() => {
+      // The last snapshot equals nextState, but a round where nobody acted
+      // produces no steps — settle on the resolved state either way.
+      stateRef.current = nextState;
+      setBattle(nextState);
+      setAnimating(false);
+      setBusy(false);
+    }, Math.max(wait, 200));
+    void timers;
   }, [describe, pushLog, credit]);
 
   // Settle once someone wins.
@@ -327,6 +351,9 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
     const fresh = createBattle(playerBuild, PRESET_BUILDS[foe], {
       p1Name: MATRICES.find((m) => m.id === mech)!.matrixName,
       p2Name: MATRICES.find((m) => m.id === foe)!.matrixName,
+      // A real seed per battle, so equal-speed rounds are a genuine coin flip.
+      // On-chain this comes from the room instead, so both sides agree.
+      seed: Math.floor(Math.random() * 0x7fffffff),
       // Local play opens on the faster mech, so building for SPD pays off.
     });
     stateRef.current = fresh;

@@ -132,8 +132,15 @@ export interface BattleState {
   p1: MechUnit;
   p2: MechUnit;
   status: BattleStatus;
-  /** 1-based. Also breaks speed ties — see resolveRound. */
+  /** 1-based. */
   round: number;
+  /**
+   * Fixed at creation and never changed. Speed ties are broken from
+   * `hash(seed, round)` rather than from `Math.random`, so a round is still a
+   * pure function of the state and the actions — which is what lets `replay`
+   * reconstruct a battle and lets a verifier check one.
+   */
+  seed: number;
   /** Every round played, in order — the replayable battle record. */
   history: RoundActions[];
 }
@@ -187,6 +194,12 @@ export function createUnit(name: string, build: MechBuild): MechUnit {
 export interface CreateBattleOptions {
   p1Name?: string;
   p2Name?: string;
+  /**
+   * Breaks speed ties. Defaults to 0 so the engine stays deterministic on its
+   * own; the caller supplies a real one per battle, and on-chain it comes from
+   * the room so both sides agree.
+   */
+  seed?: number;
 }
 
 export function createBattle(
@@ -199,8 +212,24 @@ export function createBattle(
     p2: createUnit(options.p2Name ?? "Player 2", p2Build),
     status: { kind: "active" },
     round: 1,
+    seed: options.seed ?? 0,
     history: [],
   };
+}
+
+/**
+ * Deterministic coin flip from the battle seed and the round.
+ *
+ * An xorshift mix rather than `Math.random`: both clients — and later the
+ * program — must agree on who went first, and a real RNG would make the same
+ * action list replay to two different battles.
+ */
+export function tieBreak(seed: number, round: number): boolean {
+  let x = (seed ^ Math.imul(round, 0x9E3779B1)) >>> 0;
+  x ^= x << 13; x >>>= 0;
+  x ^= x >>> 17;
+  x ^= x << 5; x >>>= 0;
+  return (x & 1) === 0;
 }
 
 // ==================== QUERIES ====================
@@ -462,12 +491,30 @@ export function orderOfPlay(state: BattleState): [PlayerSide, PlayerSide] {
   const s1 = effectiveStats(state.p1).SPD;
   const s2 = effectiveStats(state.p2).SPD;
   if (s1 !== s2) return s1 > s2 ? ["p1", "p2"] : ["p2", "p1"];
-  return state.round % 2 === 1 ? ["p1", "p2"] : ["p2", "p1"];
+  // Equal speed is a coin flip, not an alternation: alternating by round made
+  // the order predictable, so a player could plan around going first.
+  return tieBreak(state.seed, state.round) ? ["p1", "p2"] : ["p2", "p1"];
+}
+
+/**
+ * One side's slice of a round: what it did, and the board immediately after.
+ *
+ * The screen needs these because a round is watched, not read. The canvas
+ * animates the two attacks a second apart, so applying the whole resolved
+ * state at once made both HP bars drop on the first frame — the damage
+ * arrived before the animation that was supposed to explain it.
+ */
+export interface RoundStep {
+  side: PlayerSide;
+  events: BattleEvent[];
+  state: BattleState;
 }
 
 export interface ResolveResult {
   state: BattleState;
   events: BattleEvent[];
+  /** In resolution order. Empty when nobody acted. */
+  steps: RoundStep[];
 }
 
 /**
@@ -499,44 +546,46 @@ export interface ResolveResult {
  */
 export function resolveRound(state: BattleState, actions: RoundActions): ResolveResult {
   if (state.status.kind === "finished") {
-    return { state, events: [{ type: "rejected", reason: "Battle is already over" }] };
+    return { state, events: [{ type: "rejected", reason: "Battle is already over" }], steps: [] };
   }
 
   const next = cloneState(state);
   const events: BattleEvent[] = [{ type: "round-start", round: next.round }];
+  const steps: RoundStep[] = [];
   const [first, second] = orderOfPlay(state);
-
-  // Judged against the pre-round board, before anything has been applied.
-  const legality: Partial<Record<PlayerSide, string | null>> = {};
-  for (const side of ["p1", "p2"] as PlayerSide[]) {
-    const action = side === "p1" ? actions.p1 : actions.p2;
-    if (!action) continue;
-    legality[side] = validateMove(
-      unitFor(state, side),
-      unitFor(state, opponentOf(side)),
-      action.sourceSlot, action.moveIndex, action.targetSlot,
-    );
-  }
 
   for (const side of [first, second]) {
     const action = side === "p1" ? actions.p1 : actions.p2;
     if (!action) continue;
 
     const actor = unitFor(next, side);
-    // Only death stops a committed action.
     if (isDefeated(actor)) {
       events.push({ type: "rejected", reason: `${actor.name} was down before it could act` });
       continue;
     }
 
-    const illegal = legality[side];
+    const foe = unitFor(next, opponentOf(side));
+
+    /*
+     * Legality is judged HERE, against the board as it stands when this side
+     * acts — not against the board both players saw when they committed.
+     *
+     * That is what makes destroying a limb worth doing: strip the arm the
+     * slower mech was going to swing with and the swing does not happen. It
+     * is the same rule as a Pokémon that faints before its move goes off, and
+     * it is the reason speed matters at all beyond who lands damage first.
+     */
+    const illegal = validateMove(
+      actor, foe, action.sourceSlot, action.moveIndex, action.targetSlot,
+    );
     if (illegal) {
       events.push({ type: "rejected", reason: illegal });
       continue;
     }
 
-    const foe = unitFor(next, opponentOf(side));
-    events.push(...applyMove(actor, foe, side, action.sourceSlot, action.moveIndex, action.targetSlot));
+    const produced = applyMove(actor, foe, side, action.sourceSlot, action.moveIndex, action.targetSlot);
+    events.push(...produced);
+    steps.push({ side, events: produced, state: cloneState(next) });
   }
 
   next.history.push(actions);
@@ -557,11 +606,11 @@ export function resolveRound(state: BattleState, actions: RoundActions): Resolve
     const winner = opponentOf(loser);
     next.status = { kind: "finished", winner };
     events.push({ type: "victory", winner });
-    return { state: next, events };
+    return { state: next, events, steps };
   }
 
   next.round += 1;
-  return { state: next, events };
+  return { state: next, events, steps };
 }
 
 /**
@@ -573,13 +622,14 @@ export function resolveRound(state: BattleState, actions: RoundActions): Resolve
  */
 export function forfeit(state: BattleState, side: PlayerSide, reason: ForfeitReason = "timeout"): ResolveResult {
   if (state.status.kind === "finished") {
-    return { state, events: [{ type: "rejected", reason: "Battle is already over" }] };
+    return { state, events: [{ type: "rejected", reason: "Battle is already over" }], steps: [] };
   }
   const next = cloneState(state);
   const winner = opponentOf(side);
   next.status = { kind: "finished", winner };
   return {
     state: next,
+    steps: [],
     events: [
       { type: "forfeit", side, reason },
       { type: "victory", winner },
@@ -625,6 +675,7 @@ function cloneState(state: BattleState): BattleState {
     p2: cloneUnit(state.p2),
     status: state.status,
     round: state.round,
+    seed: state.seed,
     history: [...state.history],
   };
 }
