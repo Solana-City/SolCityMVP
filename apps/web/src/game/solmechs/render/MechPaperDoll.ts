@@ -75,8 +75,14 @@ export const DOLL_HEIGHT = Math.ceil(MAX_DY + PART_FRAME);
 const ORIGIN_X = -MIN_DX;
 const ORIGIN_Y = 0;
 
-/** Draw order, back to front. */
-const DRAW_ORDER = ["leftArm", "lowerBody", "matrix", "rightArm"] as const;
+/**
+ * Draw order, back to front.
+ *
+ * Legs sit ABOVE the matrix so a belt or hip plate drawn on the legs covers
+ * the bottom of the torso instead of being covered by it. The artist draws to
+ * this order, so it is fixed rather than per-mech.
+ */
+const DRAW_ORDER = ["leftArm", "matrix", "lowerBody", "rightArm"] as const;
 type SocketName = (typeof DRAW_ORDER)[number];
 
 const imageCache = new Map<string, HTMLImageElement>();
