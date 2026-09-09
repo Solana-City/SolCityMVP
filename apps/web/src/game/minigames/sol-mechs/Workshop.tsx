@@ -300,120 +300,47 @@ export default function Workshop({ initialMech, onSaved, onMechChange, onClose, 
                 style={{
                   ...PIXELATED, display: "block",
                   width: "100%", height: "auto",
-                  maxHeight: "42vh", objectFit: "contain",
+                  maxHeight: "30vh", objectFit: "contain",
                 }}
               />
             </div>
             <div style={sx.mechName}>{matrix.matrixName}</div>
             <div style={sx.mechRole}>{matrix.role}</div>
-            <div style={sx.passives}>
-              <span style={sx.passive}>{matrix.passive1}</span>
-              <span style={sx.passive}>{matrix.passive2}</span>
-            </div>
           </section>
 
-          {/* ── slots + moves ───────────────────────────────────────── */}
+          {/* ── modules: every slot on screen, each with its own arrows ── */}
           <section style={sx.editorPanel}>
-            <div style={sx.slotRow}>
-              {SLOTS.map((slot) => {
-                const on = slot === activeSlot;
-                return (
-                  <button
-                    key={slot}
-                    onClick={() => setActiveSlot(slot)}
-                    style={{
-                      ...sx.slotTab,
-                      borderColor: on ? C.teal : "transparent",
-                      background: on ? C.raised : "transparent",
-                    }}
-                    title={SLOT_META[slot].label}
-                  >
-                    <img
-                      src={`${UI}/slot-${SLOT_META[slot].icon}-${on ? "on" : "off"}.png`}
-                      alt={SLOT_META[slot].label}
-                      style={{ ...PIXELATED, width: 40, height: 44, display: "block" }}
-                    />
-                  </button>
-                );
-              })}
-              <div style={{ flex: 1 }} />
-              <label style={sx.lock} title="Unity shipped with this on, which leaves one part per slot.">
-                <input
-                  type="checkbox"
-                  checked={lockToFamily}
-                  onChange={(e) => setLockToFamily(e.target.checked)}
-                  style={{ accentColor: C.teal, margin: 0 }}
+            <div style={sx.colTitle}>Module</div>
+            {SLOTS.map((slot) => {
+              const opts = optionsFor(slot);
+              const code = slot === "matrix" ? build.matrixCode : build[slot];
+              const current = opts.find((o) => o.code === code);
+              const i = opts.findIndex((o) => o.code === code);
+              return (
+                <SlotRow
+                  key={slot}
+                  slot={slot}
+                  selected={slot === activeSlot}
+                  name={current?.name ?? "—"}
+                  position={opts.length > 1 ? `${i + 1}/${opts.length}` : ""}
+                  canCycle={opts.length > 1}
+                  onSelect={() => setActiveSlot(slot)}
+                  onCycle={(d) => cycle(slot, d)}
                 />
-                Family lock
-              </label>
-            </div>
+              );
+            })}
 
-            <div style={sx.cycler}>
-              <Arrow dir="left" onClick={() => cycle(activeSlot, -1)} disabled={options.length < 2} />
-              <div style={sx.cyclerBody}>
-                <div style={sx.slotLabel}>{SLOT_META[activeSlot].label}</div>
-                <div style={sx.partName}>
-                  {options[index]?.name ?? "—"}
-                </div>
-                <div style={sx.partMeta}>
-                  <span style={{ color: C.faint }}>{currentCode}</span>
-                  {crossChassis && <span style={{ color: C.warn }}> · cross-chassis</span>}
-                  {options.length > 1 && (
-                    <span style={{ color: C.faint }}> · {index + 1}/{options.length}</span>
-                  )}
-                </div>
-              </div>
-              <Arrow dir="right" onClick={() => cycle(activeSlot, 1)} disabled={options.length < 2} />
-            </div>
-
-            {lockToFamily && options.length < 2 && (
-              <p style={sx.warn}>Family lock leaves one part per slot — turn it off to mix chassis.</p>
-            )}
-
-            <div style={sx.sectionLabel}>
-              {activeSlot === "matrix" ? "CHASSIS PASSIVES" : "MOVES"}
-            </div>
-
-            {activeSlot === "matrix" ? (
-              <div style={sx.moveList}>
-                {[matrix.passive1, matrix.passive2].map((p) => (
-                  <div key={p} style={sx.moveRow}>
-                    <span style={sx.moveName}>{p}</span>
-                  </div>
-                ))}
-                <p style={sx.note}>
-                  Passives are not simulated yet — they are shown for reference only.
-                </p>
-              </div>
-            ) : (
-              <div style={sx.moveList}>
-                {activePart?.moves.map((mv, i) => {
-                  const hit = preview.perMove.get(`${activeSlot}:${i}`);
-                  return (
-                    <div key={mv.name} style={sx.moveRow}>
-                      <div style={{ minWidth: 0 }}>
-                        <div style={sx.moveName}>{mv.name}</div>
-                        <div style={sx.moveMeta}>
-                          {mv.damageType}
-                          {mv.targetType !== "single" && ` · ${mv.targetType}`}
-                          {mv.effect && ` · ${mv.effect}`}
-                        </div>
-                      </div>
-                      {hit !== undefined ? (
-                        <div style={{ textAlign: "right", flexShrink: 0 }}>
-                          <div style={sx.moveDmg}>{hit}</div>
-                          <div style={sx.moveDmgTag}>DMG</div>
-                        </div>
-                      ) : (
-                        <div style={sx.moveSupport}>SUPPORT</div>
-                      )}
-                    </div>
-                  );
-                })}
-                <p style={sx.note}>
-                  Damage vs a stock {getMatrixById(REFERENCE_OPPONENT)?.matrixName} (median defences).
-                </p>
-              </div>
+            <label style={sx.lock} title="Unity shipped with this on, which leaves one part per slot.">
+              <input
+                type="checkbox"
+                checked={lockToFamily}
+                onChange={(e) => setLockToFamily(e.target.checked)}
+                style={{ accentColor: C.teal, margin: 0 }}
+              />
+              Family lock
+            </label>
+            {lockToFamily && (
+              <p style={sx.warn}>Family lock keeps every part on one chassis.</p>
             )}
           </section>
 
@@ -473,6 +400,59 @@ export default function Workshop({ initialMech, onSaved, onMechChange, onClose, 
           </section>
         </div>
 
+        {/* ── the selected module's abilities, always on screen ─────── */}
+        <section style={sx.movePanel}>
+          <div style={sx.moveTag}>{activeSlot === "matrix" ? "PASSIVES" : "MOVE"}</div>
+          <div style={sx.moveCards}>
+            {activeSlot === "matrix" ? (
+              [matrix.passive1, matrix.passive2].map((name) => (
+                <div key={name} style={sx.moveCard}>
+                  <div style={sx.moveCardName}>{name}</div>
+                  <div style={sx.moveCardSrc}>{matrix.matrixName}</div>
+                  <div style={sx.moveCardNote}>Not simulated yet — shown for reference.</div>
+                </div>
+              ))
+            ) : equipped[activeSlot]?.moves.length ? (
+              equipped[activeSlot]!.moves.map((mv, i) => {
+                const hit = preview.perMove.get(`${activeSlot}:${i}`);
+                return (
+                  <div key={mv.name} style={sx.moveCard}>
+                    <div style={sx.moveCardName}>{mv.name}</div>
+                    <div style={sx.moveCardSrc}>{equipped[activeSlot]?.partName}</div>
+                    <dl style={sx.moveSpecs}>
+                      <div style={sx.spec}>
+                        <dt style={sx.specKey}>Damage</dt>
+                        <dd style={sx.specVal}>{hit ?? 0}</dd>
+                      </div>
+                      <div style={sx.spec}>
+                        <dt style={sx.specKey}>Type</dt>
+                        <dd style={sx.specVal}>{mv.damageType.toUpperCase()}</dd>
+                      </div>
+                      <div style={sx.spec}>
+                        <dt style={sx.specKey}>Target</dt>
+                        <dd style={sx.specVal}>{mv.targetType.toUpperCase()}</dd>
+                      </div>
+                      {mv.effect && (
+                        <div style={sx.spec}>
+                          <dt style={sx.specKey}>Effect</dt>
+                          <dd style={{ ...sx.specVal, color: C.teal }}>{mv.effect}</dd>
+                        </div>
+                      )}
+                    </dl>
+                  </div>
+                );
+              })
+            ) : (
+              <div style={sx.moveCard}><div style={sx.moveCardSrc}>No moves on this part.</div></div>
+            )}
+          </div>
+          {activeSlot !== "matrix" && (
+            <p style={sx.note}>
+              Damage vs a stock {getMatrixById(REFERENCE_OPPONENT)?.matrixName} (median defences).
+            </p>
+          )}
+        </section>
+
         <footer style={sx.footer}>
           <button onClick={revert} style={sx.btnGhost}>RESET TO STOCK</button>
           <div style={{ flex: 1 }} />
@@ -492,6 +472,49 @@ export default function Workshop({ initialMech, onSaved, onMechChange, onClose, 
           </button>
         </footer>
       </div>
+    </div>
+  );
+}
+
+/**
+ * One module slot: arrows either side of the Unity row panel.
+ *
+ * The arrows change the part directly, so a slot never has to be selected
+ * before it can be edited — the old screen made you pick a tab first, which
+ * turned a four-part loadout into four separate trips. Selecting a row still
+ * matters, but only to say which part's abilities the panel below describes.
+ *
+ * The panel art already carries its own slot glyph, so nothing is overlaid on
+ * the disc; only the part name is drawn, into the dark bar the sprite leaves
+ * for it (25%-98% across, 28%-67% down, measured off the imported sprite).
+ */
+function SlotRow({ slot, selected, name, position, canCycle, onSelect, onCycle }: {
+  slot: ModuleSlot;
+  selected: boolean;
+  name: string;
+  position: string;
+  canCycle: boolean;
+  onSelect: () => void;
+  onCycle: (dir: -1 | 1) => void;
+}) {
+  return (
+    <div style={sx.slotRowWrap}>
+      <Arrow dir="left" onClick={() => onCycle(-1)} disabled={!canCycle} />
+      <button
+        onClick={onSelect}
+        title={SLOT_META[slot].label}
+        style={{
+          ...sx.rowPanel,
+          backgroundImage: `url(${UI}/row-${SLOT_META[slot].icon}.png)`,
+          // Selection is a glow, not a border: the sprite is not a rectangle,
+          // so a box around it would not follow its shape.
+          filter: selected ? "brightness(1.25)" : "none",
+        }}
+      >
+        <span style={{ ...sx.rowName, color: selected ? C.text : C.body }}>{name}</span>
+        {position && <span style={sx.rowPos}>{position}</span>}
+      </button>
+      <Arrow dir="right" onClick={() => onCycle(1)} disabled={!canCycle} />
     </div>
   );
 }
@@ -605,8 +628,8 @@ const sx: Record<string, React.CSSProperties> = {
     flex: 1, display: "flex", alignItems: "center", justifyContent: "center",
     minWidth: 0, minHeight: 0,
   },
-  mechName: { color: C.text, fontSize: 22, fontWeight: 800, letterSpacing: 1, marginTop: 6 },
-  mechRole: { color: C.teal, fontSize: 12, letterSpacing: 2, marginBottom: 10 },
+  mechName: { color: C.text, fontSize: 19, fontWeight: 800, letterSpacing: 1, marginTop: 4, fontFamily: DISPLAY },
+  mechRole: { color: C.teal, fontSize: 12, letterSpacing: 2, marginBottom: 2 },
   passives: { display: "flex", flexDirection: "column", gap: 4 },
   passive: {
     fontSize: 12, color: C.dim, background: C.raised,
@@ -633,7 +656,7 @@ const sx: Record<string, React.CSSProperties> = {
   partName: { fontSize: 19, color: C.text, fontWeight: 700, lineHeight: 1.25, wordBreak: "break-word" },
   partMeta: { fontSize: 12, fontFamily: "monospace", marginTop: 2 },
   warn: { fontSize: 12, color: C.warn, margin: "0 0 8px", lineHeight: 1.5 },
-  sectionLabel: { fontSize: 12, color: C.faint, letterSpacing: 3, margin: "2px 0 8px" },
+  sectionLabel: { fontSize: 12, color: C.faint, letterSpacing: 3, margin: "0 0 4px" },
   moveList: { display: "flex", flexDirection: "column", gap: 6 },
   moveRow: {
     display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8,
@@ -645,10 +668,76 @@ const sx: Record<string, React.CSSProperties> = {
   moveDmgTag: { fontSize: 12, color: C.faint, letterSpacing: 2 },
   moveSupport: { fontSize: 12, color: C.blue, letterSpacing: 2, fontWeight: 700, flexShrink: 0 },
   note: { fontSize: 12, color: C.faint, lineHeight: 1.5, margin: "4px 0 0" },
+  /** Column heading, in the game face — "Module", "SOL Mech". */
+  colTitle: {
+    fontSize: 17, fontWeight: 800, letterSpacing: 3, color: C.text,
+    fontFamily: DISPLAY, textAlign: "center", marginBottom: 4,
+  },
+
+  /** One module slot: arrow, panel, arrow. */
+  slotRowWrap: { display: "flex", alignItems: "center", gap: 4 },
+  /**
+   * The Unity row sprite (198x58). Its own glyph is baked in on the left, so
+   * only the name is drawn — into the dark bar the art leaves at 25%-98%.
+   */
+  rowPanel: {
+    position: "relative", flex: 1, minWidth: 0,
+    aspectRatio: "198 / 58",
+    // `background` is a SHORTHAND and resets every background-* longhand, so
+    // it has to come FIRST — declared after, it silently wiped the size and
+    // repeat rules and the sprite tiled across the row.
+    background: "transparent",
+    backgroundSize: "100% 100%",
+    backgroundRepeat: "no-repeat",
+    border: "none", padding: 0,
+    cursor: "pointer", imageRendering: "pixelated",
+    transition: "filter .12s",
+  },
+  rowName: {
+    position: "absolute", left: "27%", right: "13%", top: "28%", height: "39%",
+    display: "flex", alignItems: "center",
+    fontSize: 13, fontWeight: 700, fontFamily: DISPLAY, letterSpacing: 0.5,
+    whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+  },
+  rowPos: {
+    position: "absolute", right: "3%", top: "28%", height: "39%",
+    display: "flex", alignItems: "center",
+    fontSize: 10, fontFamily: MONO, color: C.faint,
+  },
+
+  /** Abilities of whichever module is selected, across the full width. */
+  movePanel: {
+    ...frame(), background: C.ink, padding: "8px 12px", flexShrink: 0,
+    display: "flex", flexDirection: "column", gap: 6,
+  },
+  moveTag: {
+    fontSize: 15, fontWeight: 800, letterSpacing: 4,
+    color: C.teal, fontFamily: DISPLAY,
+  },
+  moveCards: {
+    display: "grid", gap: 10,
+    gridTemplateColumns: "repeat(auto-fit, minmax(min(260px, 100%), 1fr))",
+  },
+  moveCard: {
+    background: C.panel, border: `1px solid ${C.line}`, borderRadius: 6,
+    padding: "6px 10px", minWidth: 0,
+  },
+  moveCardName: { fontSize: 15, fontWeight: 800, color: C.text, fontFamily: DISPLAY },
+  moveCardSrc: { fontSize: 12, color: C.purple, fontWeight: 700, marginBottom: 4 },
+  moveCardNote: { fontSize: 11, color: C.faint, lineHeight: 1.5 },
+  /** Key/value grid, so the four specs line up across cards. */
+  moveSpecs: {
+    margin: 0, display: "grid", gap: "2px 10px",
+    gridTemplateColumns: "auto 1fr",
+  },
+  spec: { display: "contents" },
+  specKey: { fontSize: 12, color: C.faint, margin: 0 },
+  specVal: { fontSize: 12, color: C.body, margin: 0, fontFamily: MONO, fontWeight: 700 },
+
   statsPanel: {
     background: C.ink, ...frame(), padding: 12, minWidth: 0,
   },
-  statRow: { marginBottom: 10 },
+  statRow: { marginBottom: 4 },
   statTop: { display: "flex", justifyContent: "space-between", alignItems: "baseline" },
   statLabel: { fontSize: 14, color: C.text, fontWeight: 700, letterSpacing: 2, fontFamily: DISPLAY },
   statNums: { display: "flex", alignItems: "baseline", gap: 6, fontFamily: DISPLAY },
@@ -664,9 +753,9 @@ const sx: Record<string, React.CSSProperties> = {
   barTrack: { position: "relative", height: 9, background: "#000", overflow: "hidden" },
   barBase: { position: "absolute", left: 0, top: 0, height: "100%", background: C.blue },
   barLimb: { position: "absolute", top: 0, height: "100%", background: C.teal },
-  statRole: { fontSize: 12, color: C.faint, marginTop: 3 },
+  statRole: { fontSize: 11, color: C.faint, marginTop: 1, lineHeight: 1.2 },
   initiative: {
-    marginTop: 12, padding: "8px 6px", borderRadius: 5, border: "1px solid",
+    marginTop: 8, padding: "5px 6px", borderRadius: 5, border: "1px solid",
     fontSize: 12, fontWeight: 800, textAlign: "center", letterSpacing: 1,
   },
   legend: {
