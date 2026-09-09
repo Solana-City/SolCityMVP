@@ -62,7 +62,8 @@ const PLATE = {
  * part name ON the bar. Ours carries the name and the number BESIDE it, which
  * needs the full width to stay readable at this scale.
  */
-const BAR_WIDTH = "100%";
+/** Bars sit straight on the arena art, so every glyph carries its own shadow. */
+const SHADOW = "0 1px 2px #000, 0 0 3px #000, 0 0 6px #000";
 
 /** Stats a move can stage, in the order the icons should read. */
 const STAGED_STATS = ["ATK", "DEF", "ENG", "SPD", "SYS"] as const;
@@ -235,19 +236,17 @@ export function UnitPanel({ unit, name, clock, live, low, align, showPortrait = 
 }
 
 /**
- * The four part bars, on a scrim.
+ * The four part bars, straight on the arena.
  *
- * Unity needs no backing because its bars sit over the arena's dark upper
- * stands; ours sit on a pale sky, and the horizon line runs straight through
- * the labels without one.
+ * They used to sit on a dark plate, which read as a card covering the mechs.
+ * The plate is gone and every glyph carries SHADOW instead, so the labels stay
+ * legible over the pale sky without anything boxing them in.
  */
 function BarStack({ unit, right }: { unit: MechUnit; right: boolean }) {
   return (
     <div style={{
-      marginTop: 3, display: "flex", flexDirection: "column", gap: 3,
-      alignItems: right ? "flex-end" : "flex-start",
-      background: "rgba(8,4,16,.9)", border: `1px solid ${C.line}`,
-      borderRadius: 4, padding: "5px 6px",
+      marginTop: 3, display: "flex", flexDirection: "column", gap: 2,
+      alignItems: "stretch",
     }}>
       {HUD_SLOTS.map((slot) => (
         <PartBar key={slot} unit={unit} slot={slot} mirrored={right} />
@@ -260,22 +259,25 @@ function PartBar({ unit, slot, mirrored }: { unit: MechUnit; slot: ModuleSlot; m
   const st = unit.partStatuses[slot];
   const pct = st.maxHP > 0 ? Math.max(0, st.currentHP / st.maxHP) * 100 : 0;
   const dead = st.currentHP <= 0;
-  // Whether the core can be shot at all is the single most decision-relevant
-  // fact on this panel, so it is spelled out on the Matrix row rather than
-  // implied by a padlock on whichever arm happens to be holding it shut.
+  // Whether the core can be shot at all is the most decision-relevant fact on
+  // the panel, so it is spelled out on the Matrix row.
   const sealed = !canAttackMatrix(unit);
 
   return (
     <div style={{
-      width: BAR_WIDTH, display: "flex", alignItems: "center", gap: 4,
+      position: "relative",
+      display: "flex", alignItems: "center", gap: 4,
       flexDirection: mirrored ? "row-reverse" : "row",
     }}>
+      {/* Fixed widths, so all four bars start and end on the same lines
+          however long the label or the number happens to be. */}
       <span style={{
-        fontSize: T.eyebrow, fontWeight: 700, fontFamily: MONO,
-        color: dead ? C.faint : C.dim, flexShrink: 0,
+        width: 40, flexShrink: 0,
+        textAlign: mirrored ? "right" : "left",
+        fontSize: 11, fontWeight: 700, fontFamily: MONO,
+        color: dead ? C.faint : C.dim,
         textDecoration: dead ? "line-through" : "none",
-        // A shadow, not a panel: these sit directly on the arena art.
-        textShadow: "0 1px 2px #000, 0 0 3px #000",
+        textShadow: SHADOW,
       }}>
         {SLOT_TITLE[slot]}
       </span>
@@ -298,31 +300,46 @@ function PartBar({ unit, slot, mirrored }: { unit: MechUnit; slot: ModuleSlot; m
       </div>
 
       <span style={{
-        fontSize: T.eyebrow, fontFamily: MONO, fontWeight: 700,
-        color: dead ? C.faint : C.body, flexShrink: 0, minWidth: 26,
+        width: 28, flexShrink: 0,
         textAlign: mirrored ? "left" : "right",
-        textShadow: "0 1px 2px #000, 0 0 3px #000",
+        fontSize: 11, fontFamily: MONO, fontWeight: 700,
+        color: dead ? C.faint : C.text, textShadow: SHADOW,
       }}>
         {st.currentHP}
       </span>
 
-      <StageIcons unit={unit} slot={slot} />
+      {/*
+        Everything below is OUT of the flow.
 
-      {slot === "matrix" && (
-        <span
-          title={sealed
-            ? "Break an arm, or strip all three limbs, to expose the core"
-            : "The core can be attacked directly"}
-          style={{
-            fontSize: 9, fontWeight: 800, letterSpacing: 0.5, flexShrink: 0,
-            color: sealed ? C.teal : C.warn,
-            border: `1px solid ${sealed ? C.teal : C.warn}`,
-            borderRadius: 3, padding: "0 3px", lineHeight: "13px",
-          }}
-        >
-          {sealed ? "SEALED" : "OPEN"}
-        </span>
-      )}
+        Stat stages and the seal tag used to be flex children, so a buff
+        landing mid-fight shoved the bar and the HP number sideways and the
+        four rows stopped lining up. Absolute keeps the row identical whether
+        or not anything is attached to it.
+      */}
+      <span style={{
+        position: "absolute", top: "50%", transform: "translateY(-50%)",
+        [mirrored ? "right" : "left"]: "100%",
+        [mirrored ? "marginRight" : "marginLeft"]: 4,
+        display: "flex", alignItems: "center", gap: 2, pointerEvents: "none",
+      }}>
+        <StageIcons unit={unit} slot={slot} />
+        {slot === "matrix" && (
+          <span
+            title={sealed
+              ? "Break an arm, or strip all three limbs, to expose the core"
+              : "The core can be attacked directly"}
+            style={{
+              fontSize: 9, fontWeight: 800, letterSpacing: 0.5, whiteSpace: "nowrap",
+              color: sealed ? C.teal : C.warn,
+              border: `1px solid ${sealed ? C.teal : C.warn}`,
+              background: "rgba(8,4,16,.85)",
+              borderRadius: 3, padding: "0 3px", lineHeight: "13px",
+            }}
+          >
+            {sealed ? "SEALED" : "OPEN"}
+          </span>
+        )}
+      </span>
     </div>
   );
 }

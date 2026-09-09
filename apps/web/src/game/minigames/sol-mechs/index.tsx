@@ -21,7 +21,10 @@ import {
   type RoundActions,
 } from "@/game/solmechs/engine/BattleEngine";
 import { BattleRenderer, splitIntoBeats, CANVAS_W, CANVAS_H } from "@/game/solmechs/render/BattleRenderer";
-import { preloadAll, preloadBuild, drawMech, DOLL_WIDTH, DOLL_HEIGHT } from "@/game/solmechs/render/MechPaperDoll";
+import {
+  preloadAll, preloadBuild, drawMech, DOLL_WIDTH, DOLL_HEIGHT, mechBounds,
+  type MechBounds,
+} from "@/game/solmechs/render/MechPaperDoll";
 import { LocalAIOpponent } from "@/game/solmechs/opponent/LocalAIOpponent";
 import { MATRICES, PRESET_BUILDS } from "@/game/solmechs/data/catalog";
 import { recordResult, loadHangar, getBuild } from "@/game/solmechs/hangar";
@@ -679,6 +682,8 @@ function MechCard({ matrixName, role, build, custom, locked, selected, onSelect 
 }) {
   const ref = useRef<HTMLCanvasElement>(null);
   const raf = useRef(0);
+  // Cropped to the mech, not to the doll box — see mechBounds.
+  const [crop, setCrop] = useState<MechBounds>({ x: 0, y: 0, w: DOLL_WIDTH, h: DOLL_HEIGHT });
 
   useEffect(() => {
     preloadBuild(build);
@@ -686,13 +691,21 @@ function MechCard({ matrixName, role, build, custom, locked, selected, onSelect 
     if (!ctx || !ref.current) return;
     const c = ref.current;
     const loop = () => {
+      const box = mechBounds(build);
+      if (box && (box.x !== crop.x || box.y !== crop.y || box.w !== crop.w || box.h !== crop.h)) {
+        setCrop(box);
+      }
       ctx.clearRect(0, 0, c.width, c.height);
-      drawMech(ctx, build, { x: 0, y: 0, scale: CARD_SCALE });
+      drawMech(ctx, build, {
+        x: -crop.x * CARD_SCALE,
+        y: -crop.y * CARD_SCALE,
+        scale: CARD_SCALE,
+      });
       raf.current = requestAnimationFrame(loop);
     };
     raf.current = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf.current);
-  }, [build]);
+  }, [build, crop]);
 
   // Totals come from the engine's own assembly, never a local re-derivation.
   const stats = useMemo(() => {
@@ -736,15 +749,15 @@ function MechCard({ matrixName, role, build, custom, locked, selected, onSelect 
         )}
       </div>
       <div style={{ fontSize: T.small, color: C.teal, fontWeight: 600 }}>{role}</div>
-      {/* Sized by height, not width: the doll box is padded wide by the arm
-          sockets, so a width-driven canvas made every card far taller than the
-          mech inside it and pushed the roster off screen. */}
+      {/* Height-driven AND cropped: the doll box is padded wide by the arm
+          sockets, so an uncropped canvas drew the mech at about half the width
+          it appeared to occupy. */}
       <canvas
         ref={ref}
-        width={DOLL_WIDTH * CARD_SCALE}
-        height={DOLL_HEIGHT * CARD_SCALE}
+        width={crop.w * CARD_SCALE}
+        height={crop.h * CARD_SCALE}
         style={{
-          imageRendering: "pixelated", height: 150, width: "auto",
+          imageRendering: "pixelated", height: 132, width: "auto",
           maxWidth: "100%", display: "block", margin: "0 auto",
         }}
       />

@@ -264,6 +264,68 @@ export function preloadBuild(build: MechBuild): void {
   if (codes) for (const slot of DRAW_ORDER) sprite(codes[slot]);
 }
 
+/** Tight opaque box of an assembled mech, in doll-space pixels. */
+export interface MechBounds { x: number; y: number; w: number; h: number }
+
+const boundsCache = new Map<string, MechBounds>();
+
+/**
+ * The box the art actually fills, as opposed to the box it is drawn into.
+ *
+ * DOLL_WIDTH has to span both arm sockets plus a full 64px frame on each end,
+ * so an assembled mech covers roughly 55x79 of the 121x103 doll and the rest
+ * is transparent. Any panel that sizes a preview by the doll therefore draws
+ * a mech at about half the size of the space around it — which is exactly what
+ * made the Workshop and the squad cards look mostly empty.
+ *
+ * Measured by scanning alpha once per build and cached, since the answer only
+ * depends on the four part codes.
+ *
+ * Null while a sprite is still decoding — callers retry on the next frame.
+ */
+export function mechBounds(build: MechBuild): MechBounds | null {
+  const codes = resolveCodes(build);
+  if (!codes) return null;
+  const key = DRAW_ORDER.map((s) => codes[s]).join("|");
+  const cached = boundsCache.get(key);
+  if (cached) return cached;
+  if (typeof document === "undefined") return null;
+
+  const off = document.createElement("canvas");
+  off.width = DOLL_WIDTH;
+  off.height = DOLL_HEIGHT;
+  const ctx = off.getContext("2d", { willReadFrequently: true });
+  if (!ctx) return null;
+  // Bails on its own if any part is still loading, so a half-assembled mech
+  // can never be measured and cached.
+  if (!drawMech(ctx, build, { x: 0, y: 0, scale: 1 })) return null;
+
+  const { data } = ctx.getImageData(0, 0, DOLL_WIDTH, DOLL_HEIGHT);
+  let x0 = DOLL_WIDTH, y0 = DOLL_HEIGHT, x1 = -1, y1 = -1;
+  for (let y = 0; y < DOLL_HEIGHT; y += 1) {
+    for (let x = 0; x < DOLL_WIDTH; x += 1) {
+      if (data[(y * DOLL_WIDTH + x) * 4 + 3] <= 8) continue;
+      if (x < x0) x0 = x;
+      if (x > x1) x1 = x;
+      if (y < y0) y0 = y;
+      if (y > y1) y1 = y;
+    }
+  }
+  if (x1 < 0) return null;
+
+  // One pixel of slack all round. Socket offsets are fractional and drawMech
+  // rounds them per scale, so the box measured at scale 1 can land a device
+  // pixel inside the box drawn at scale 4 — enough to shave a foot.
+  x0 = Math.max(0, x0 - 1);
+  y0 = Math.max(0, y0 - 1);
+  x1 = Math.min(DOLL_WIDTH - 1, x1 + 1);
+  y1 = Math.min(DOLL_HEIGHT - 1, y1 + 1);
+
+  const box = { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 };
+  boundsCache.set(key, box);
+  return box;
+}
+
 /** Preload the whole catalog — 20 small PNGs, cheap enough to do once. */
 export function preloadAll(): void {
   for (let i = 1; i <= 5; i++) {

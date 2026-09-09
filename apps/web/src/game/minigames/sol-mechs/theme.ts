@@ -117,8 +117,16 @@ export const W = {
    * look lost on the platform.
    */
   battle: "min(1600px, 96vw)",
-  /** Workshop and squad builder: three working columns. */
+  /** Squad builder: three mech cards side by side. */
   wide: "min(1360px, 96vw)",
+  /**
+   * Workshop.
+   *
+   * Narrower than `wide` on purpose. Its three columns hold a cropped mech, a
+   * stack of 198x58 sprites and six stat bars — none of which get better with
+   * more width, and at 1360 the extra went into empty panel.
+   */
+  editor: "min(1120px, 96vw)",
 } as const;
 
 /** Full-height screens leave a little breathing room top and bottom. */

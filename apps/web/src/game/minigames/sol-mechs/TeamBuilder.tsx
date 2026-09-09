@@ -14,7 +14,10 @@
  * blocked rather than the team being silently rewritten underneath them.
  */
 import { useCallback, useMemo, useState } from "react";
-import { drawMech, DOLL_WIDTH, DOLL_HEIGHT, preloadBuild } from "@/game/solmechs/render/MechPaperDoll";
+import {
+  drawMech, DOLL_WIDTH, DOLL_HEIGHT, preloadBuild, mechBounds,
+  type MechBounds,
+} from "@/game/solmechs/render/MechPaperDoll";
 import { useEffect, useRef } from "react";
 import { getMatrix } from "@/game/solmechs/data/catalog";
 import { validateTeam, takenCodes, TEAM_SIZE, type TeamBuild } from "@/game/solmechs/data/team";
@@ -90,7 +93,7 @@ export default function TeamBuilder({ onDeploy, onClose }: TeamBuilderProps) {
             <img
             src="/assets/minigames/sol-mechs/ui/logo.png"
             alt="Sol Mechs"
-            style={{ imageRendering: "pixelated", height: 30, width: "auto", display: "block" }}
+            style={{ imageRendering: "pixelated", height: 24, width: "auto", display: "block" }}
             onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
           />
         <h2 style={sx.title}>SQUAD</h2>
@@ -149,6 +152,10 @@ function SquadCard({ index, build, flagged, onEdit }: {
 }) {
   const ref = useRef<HTMLCanvasElement>(null);
   const raf = useRef(0);
+  // Cropped to the mech rather than to the doll box — see mechBounds. Stretched
+  // to the card, the box put a 55px-wide mech in a 340px-tall picture and three
+  // of those are what made this screen scroll.
+  const [crop, setCrop] = useState<MechBounds>({ x: 0, y: 0, w: DOLL_WIDTH, h: DOLL_HEIGHT });
 
   useEffect(() => {
     preloadBuild(build);
@@ -156,13 +163,21 @@ function SquadCard({ index, build, flagged, onEdit }: {
     const ctx = c?.getContext("2d");
     if (!c || !ctx) return;
     const loop = () => {
+      const box = mechBounds(build);
+      if (box && (box.x !== crop.x || box.y !== crop.y || box.w !== crop.w || box.h !== crop.h)) {
+        setCrop(box);
+      }
       ctx.clearRect(0, 0, c.width, c.height);
-      drawMech(ctx, build, { x: 0, y: 0, scale: CARD_SCALE });
+      drawMech(ctx, build, {
+        x: -crop.x * CARD_SCALE,
+        y: -crop.y * CARD_SCALE,
+        scale: CARD_SCALE,
+      });
       raf.current = requestAnimationFrame(loop);
     };
     raf.current = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf.current);
-  }, [build]);
+  }, [build, crop]);
 
   const matrix = getMatrix(build.matrixCode);
   const unit = useMemo(() => {
@@ -196,9 +211,12 @@ function SquadCard({ index, build, flagged, onEdit }: {
       </div>
       <canvas
         ref={ref}
-        width={DOLL_WIDTH * CARD_SCALE}
-        height={DOLL_HEIGHT * CARD_SCALE}
-        style={{ imageRendering: "pixelated", width: "100%", height: "auto", display: "block" }}
+        width={crop.w * CARD_SCALE}
+        height={crop.h * CARD_SCALE}
+        style={{
+          imageRendering: "pixelated", display: "block", margin: "0 auto",
+          width: "auto", height: "auto", maxWidth: "100%", maxHeight: "20vh",
+        }}
       />
       {/* What this mech actually threatens with. With only two damage types
           in the game, a squad that brings one of them is a squad the other
@@ -239,28 +257,28 @@ const sx: Record<string, React.CSSProperties> = {
     backgroundImage:
       `linear-gradient(${C.line}55 1px, transparent 1px), linear-gradient(90deg, ${C.line}55 1px, transparent 1px)`,
     backgroundSize: "26px 26px",
-    ...frame(), padding: 18,
+    ...frame(), padding: 14,
     width: W.wide, height: PANEL_HEIGHT,
-    display: "flex", flexDirection: "column", gap: 12, overflow: "hidden",
+    display: "flex", flexDirection: "column", gap: 10, overflow: "hidden",
     boxShadow: `0 16px 60px rgba(0,0,0,.65)`,
     fontFamily: "system-ui,sans-serif",
   },
-  header: { display: "flex", alignItems: "center", gap: 12, flexShrink: 0 },
-  title: { margin: 0, fontSize: 18, color: C.teal, letterSpacing: 4, fontWeight: 800, fontFamily: DISPLAY },
-  close: { background: "none", border: "none", color: C.dim, fontSize: 26, cursor: "pointer", lineHeight: 1, padding: 0 },
-  blurb: { fontSize: 12, color: C.dim, margin: 0, lineHeight: 1.65, flexShrink: 0 },
+  header: { display: "flex", alignItems: "center", gap: 10, flexShrink: 0 },
+  title: { margin: 0, fontSize: 16, color: C.teal, letterSpacing: 4, fontWeight: 800, fontFamily: DISPLAY },
+  close: { background: "none", border: "none", color: C.dim, fontSize: 22, cursor: "pointer", lineHeight: 1, padding: 0 },
+  blurb: { fontSize: 12, color: C.dim, margin: 0, lineHeight: 1.5, flexShrink: 0 },
   grid: {
     display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(min(280px, 100%), 1fr))",
-    flex: 1, gap: 10, overflowY: "auto", overflowX: "hidden", minHeight: 0,
+    gridTemplateColumns: "repeat(auto-fit, minmax(min(240px, 100%), 1fr))",
+    flex: 1, gap: 10, minHeight: 0, overflow: "hidden",
     // Centred, not top-pinned: three fixed-height cards in a full-height panel
     // otherwise leave the bottom half of the screen empty.
     alignItems: "start", alignContent: "center",
   },
   card: {
-    background: C.ink, ...frame(), padding: 10,
+    background: C.ink, ...frame(), padding: 9,
     cursor: "pointer", textAlign: "left", display: "flex", flexDirection: "column",
-    gap: 5, minWidth: 0,
+    gap: 4, minWidth: 0,
   },
   cardHead: { display: "flex", alignItems: "baseline", gap: 6 },
   cardIndex: {
@@ -282,9 +300,9 @@ const sx: Record<string, React.CSSProperties> = {
     marginLeft: "auto", fontSize: 12, color: C.bad, border: `1px solid ${C.bad}`,
     borderRadius: 3, padding: "1px 4px", letterSpacing: 1,
   },
-  codes: { fontSize: 12, color: C.faint, fontFamily: "monospace" },
-  cardStats: { fontSize: 12, color: C.dim, lineHeight: 1.55, fontFamily: "monospace" },
-  editHint: { fontSize: 12, color: C.teal, letterSpacing: 2, marginTop: "auto", paddingTop: 4 },
+  codes: { fontSize: 11, color: C.faint, fontFamily: "monospace" },
+  cardStats: { fontSize: 11, color: C.dim, lineHeight: 1.45, fontFamily: "monospace" },
+  editHint: { fontSize: 11, color: C.teal, letterSpacing: 2, marginTop: "auto", paddingTop: 3 },
   errors: {
     background: "#2a0f18", border: `1px solid ${C.bad}`, borderRadius: 6,
     padding: 10, fontSize: 12, color: C.body, lineHeight: 1.7, flexShrink: 0,
@@ -292,10 +310,10 @@ const sx: Record<string, React.CSSProperties> = {
   footer: { display: "flex", alignItems: "center", gap: 10, flexShrink: 0, flexWrap: "wrap" },
   btnGhost: {
     background: "none", border: `1px solid ${C.line}`, color: C.dim, borderRadius: 6,
-    padding: "11px 16px", fontSize: 12, fontWeight: 700, cursor: "pointer", letterSpacing: 1,
+    padding: "8px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer", letterSpacing: 1,
   },
   btnPrimary: {
     background: C.teal, border: "none", color: C.ink, borderRadius: 6,
-    padding: "12px 26px", fontSize: 14, fontWeight: 800, letterSpacing: 1,
+    padding: "9px 22px", fontSize: 13, fontWeight: 800, letterSpacing: 1,
   },
 };

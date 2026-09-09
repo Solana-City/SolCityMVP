@@ -444,7 +444,7 @@ function SquadBar({ state, side, label, align }: {
               key={i}
               title={u.matrix.matrixName}
               style={{
-                fontSize: 12, padding: "3px 7px", borderRadius: 4, fontWeight: 700,
+                fontSize: 11, padding: "2px 6px", borderRadius: 4, fontWeight: 700,
                 border: `1px solid ${active ? C.teal : down ? "#4a2030" : C.line}`,
                 background: active ? C.raised : down ? "#2a0f18" : C.raised,
                 color: down ? C.faint : active ? C.teal : C.dim,
@@ -466,7 +466,7 @@ const CARD: React.CSSProperties = {
   background: "rgba(8,4,16,.93)",
   border: `1px solid ${C.lineBright}`,
   borderRadius: R.md,
-  padding: SP.md,
+  padding: SP.sm,
   boxShadow: "0 10px 30px rgba(0,0,0,.65)",
 };
 
@@ -486,7 +486,7 @@ const sx: Record<string, React.CSSProperties> = {
     display: "flex", alignItems: "center", justifyContent: "center", padding: 12,
   },
   frame: {
-    background: C.panel, border: `2px solid ${C.line}`, borderRadius: 10, padding: 16,
+    background: C.panel, border: `2px solid ${C.line}`, borderRadius: 10, padding: 12,
     width: W.battle, height: PANEL_HEIGHT, overflow: "hidden",
     display: "flex", flexDirection: "column", gap: SP.sm, fontFamily: "system-ui,sans-serif",
   },
@@ -494,7 +494,7 @@ const sx: Record<string, React.CSSProperties> = {
   title: { margin: 0, fontSize: 16, color: C.teal, letterSpacing: 4, fontWeight: 800 },
   close: { background: "none", border: "none", color: C.dim, fontSize: 24, cursor: "pointer", lineHeight: 1, padding: 0 },
   squadRow: { display: "flex", gap: SP.md, flexWrap: "wrap", flexShrink: 0 },
-  squadLabel: { fontSize: 12, color: C.faint, letterSpacing: 2, marginBottom: 3 },
+  squadLabel: { fontSize: 11, color: C.faint, letterSpacing: 2, marginBottom: 2 },
   /**
    * Centres the stage and gives it the height left over by the footer.
    */
@@ -525,16 +525,24 @@ const sx: Record<string, React.CSSProperties> = {
   },
   /** Actions left, log right, both raised onto cards. See the 1v1 for why. */
   footRow: { display: "flex", gap: SP.md, flexShrink: 0, alignItems: "stretch" },
-  controls: { ...CARD, flex: "1 1 55%", minWidth: 0, minHeight: 104 },
-  logColumn: { ...CARD, flex: "1 1 45%", minWidth: 0 },
-  prompt: { fontSize: 12, color: C.dim, marginBottom: 6, letterSpacing: 1 },
-  btnRow: { display: "flex", flexWrap: "wrap", gap: 6 },
-  btn: { ...actionButton(), minWidth: 112 },
+  controls: { ...CARD, flex: "0 1 42%", minWidth: 0 },
+  logColumn: { ...CARD, flex: "1 1 58%", minWidth: 0 },
+  prompt: { fontSize: 11, color: C.dim, marginBottom: 5, letterSpacing: 1 },
+  /**
+   * Two up, two down. A single row across a card this wide left the actions
+   * tiny against a lot of empty card, and the strip grew every time a mech
+   * had a fourth option.
+   */
+  btnRow: {
+    display: "grid", gap: 6,
+    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+  },
+  btn: { ...actionButton(), minWidth: 0 },
   btnTitle: { fontSize: 12, fontWeight: 700 },
-  btnSub: { fontSize: 12, color: C.faint, marginTop: 1 },
-  hint: { fontSize: 12, color: C.faint, marginTop: 6 },
+  btnSub: { fontSize: 11, color: C.faint, marginTop: 1 },
+  hint: { fontSize: 11, color: C.faint, marginTop: 5 },
   btnPrimary: {
     background: C.teal, border: "none", color: C.ink, borderRadius: 6,
-    padding: "11px 24px", fontSize: 13, fontWeight: 800, letterSpacing: 1, cursor: "pointer",
+    padding: "9px 20px", fontSize: 13, fontWeight: 800, letterSpacing: 1, cursor: "pointer",
   },
 };

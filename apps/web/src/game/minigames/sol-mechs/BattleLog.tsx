@@ -47,7 +47,7 @@ export function BattleLog({ lines, turns, initiallyCollapsed = false }: BattleLo
   const [open, setOpen] = useState(!initiallyCollapsed);
 
   return (
-    <div style={{ marginTop: 10 }}>
+    <div>
       <button
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
@@ -66,9 +66,9 @@ export function BattleLog({ lines, turns, initiallyCollapsed = false }: BattleLo
       {open ? (
         <div style={{
           ...LOG_FRAME,
-          height: 132, overflowY: "auto", padding: SP.sm,
-          fontSize: T.small, fontFamily: MONO,
-          color: C.body, lineHeight: 1.8,
+          height: 150, overflowY: "auto", padding: SP.sm,
+          fontSize: T.body, fontFamily: MONO,
+          color: C.body, lineHeight: 1.6,
         }}>
           {lines.map((line, i) => (
             <div
@@ -76,7 +76,10 @@ export function BattleLog({ lines, turns, initiallyCollapsed = false }: BattleLo
               style={{
                 // Newest line reads brightest and older ones recede, so the eye
                 // lands on what just happened without re-reading the whole panel.
-                color: i === 0 ? C.text : i < 4 ? C.body : C.faint,
+                // The newest line is the one being read; the tail is context.
+                // The old ramp faded to `faint` by the fourth line, which made
+                // most of the panel unreadable at a glance.
+                color: i === 0 ? C.text : i < 6 ? C.body : C.dim,
                 whiteSpace: "pre-wrap",
               }}
             >

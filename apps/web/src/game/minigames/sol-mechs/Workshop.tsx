@@ -26,7 +26,10 @@
  * responsive.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { drawMech, DOLL_WIDTH, DOLL_HEIGHT, preloadAll, preloadBuild } from "@/game/solmechs/render/MechPaperDoll";
+import {
+  drawMech, DOLL_WIDTH, DOLL_HEIGHT, preloadAll, preloadBuild, mechBounds,
+  type MechBounds,
+} from "@/game/solmechs/render/MechPaperDoll";
 import {
   MATRICES, getMatrixById, getPart, getMatrix, getSelectableParts, familyOf,
   PRESET_BUILDS, REFERENCE_OPPONENT,
@@ -151,6 +154,13 @@ export default function Workshop({ initialMech, onSaved, onMechChange, onClose, 
     }
   }, [build]);
 
+  /**
+   * The canvas is cropped to the mech, not to the doll box — see mechBounds.
+   * The full box is only the starting guess, replaced as soon as the sprites
+   * have decoded and the real bounds can be measured.
+   */
+  const [crop, setCrop] = useState<MechBounds>({ x: 0, y: 0, w: DOLL_WIDTH, h: DOLL_HEIGHT });
+
   // Live doll. Driven on rAF because the sprites decode asynchronously — a
   // single draw on mount would land before the art is ready.
   useEffect(() => {
@@ -158,14 +168,23 @@ export default function Workshop({ initialMech, onSaved, onMechChange, onClose, 
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext("2d");
     if (!canvas || !ctx) return;
+
     const loop = () => {
+      const box = mechBounds(build);
+      if (box && (box.x !== crop.x || box.y !== crop.y || box.w !== crop.w || box.h !== crop.h)) {
+        setCrop(box);
+      }
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      drawMech(ctx, build, { x: 0, y: 0, scale: PREVIEW_SCALE });
+      drawMech(ctx, build, {
+        x: -crop.x * PREVIEW_SCALE,
+        y: -crop.y * PREVIEW_SCALE,
+        scale: PREVIEW_SCALE,
+      });
       rafRef.current = requestAnimationFrame(loop);
     };
     rafRef.current = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(rafRef.current);
-  }, [build]);
+  }, [build, crop]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
@@ -272,7 +291,7 @@ export default function Workshop({ initialMech, onSaved, onMechChange, onClose, 
           <img
             src="/assets/minigames/sol-mechs/ui/logo.png"
             alt="Sol Mechs"
-            style={{ imageRendering: "pixelated", height: 30, width: "auto", display: "block" }}
+            style={{ imageRendering: "pixelated", height: 24, width: "auto", display: "block" }}
             onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
           />
           <h2 style={sx.title}>WORKSHOP</h2>
@@ -293,14 +312,16 @@ export default function Workshop({ initialMech, onSaved, onMechChange, onClose, 
             <div style={sx.dollWrap}>
               <canvas
                 ref={canvasRef}
-                width={DOLL_WIDTH * PREVIEW_SCALE}
-                height={DOLL_HEIGHT * PREVIEW_SCALE}
-                // Capped so a short viewport doesn't let the doll crowd the
-                // name and passives out of the panel.
+                width={crop.w * PREVIEW_SCALE}
+                height={crop.h * PREVIEW_SCALE}
+                // `width: auto`, not `100%`: stretching the canvas to the
+                // column was the other half of the oversized preview, blowing
+                // a 55px-wide mech up to whatever width the column happened to
+                // have. It draws at its own size now, capped by the viewport.
                 style={{
-                  ...PIXELATED, display: "block",
-                  width: "100%", height: "auto",
-                  maxHeight: "30vh", objectFit: "contain",
+                  ...PIXELATED, display: "block", margin: "0 auto",
+                  width: "auto", height: "auto",
+                  maxWidth: "100%", maxHeight: "23vh",
                 }}
               />
             </div>
@@ -355,31 +376,27 @@ export default function Workshop({ initialMech, onSaved, onMechChange, onClose, 
               const basePct = Math.min(100, (base / max) * 100);
               const limbPct = Math.min(100 - basePct, Math.max(0, (fromLimbs / max) * 100));
               return (
-                <div key={row.key} style={sx.statRow}>
-                  <div style={sx.statTop}>
-                    <span style={sx.statLabel}>{row.label}</span>
-                    <span style={sx.statNums}>
-                      <span style={sx.statTotal}>{total}</span>
-                      {fromLimbs !== 0 && (
-                        <span style={{
-                          // What the limbs add is the number the editor exists
-                          // to move, so it reads as a figure rather than a
-                          // footnote on the total.
-                          color: fromLimbs > 0 ? C.teal : C.bad,
-                          fontSize: 15, fontWeight: 800,
-                        }}>
-                          {fromLimbs > 0 ? "+" : ""}{fromLimbs}
-                        </span>
-                      )}
-                    </span>
-                  </div>
+                <div key={row.key} style={sx.statRow} title={row.role}>
+                  <span style={sx.statLabel}>{row.label}</span>
                   <div style={sx.barFrame}>
                     <div style={sx.barTrack}>
                       <div style={{ ...sx.barBase, width: `${basePct}%` }} />
                       <div style={{ ...sx.barLimb, left: `${basePct}%`, width: `${limbPct}%` }} />
                     </div>
                   </div>
-                  <div style={sx.statRole}>{row.role}</div>
+                  <span style={sx.statNums}>
+                    <span style={sx.statTotal}>{total}</span>
+                    {fromLimbs !== 0 && (
+                      <span style={{
+                        // What the limbs add is the number the editor exists to
+                        // move, so it reads as a figure, not a footnote.
+                        color: fromLimbs > 0 ? C.teal : C.bad,
+                        fontSize: 12, fontWeight: 800,
+                      }}>
+                        {fromLimbs > 0 ? "+" : ""}{fromLimbs}
+                      </span>
+                    )}
+                  </span>
                 </div>
               );
             })}
@@ -543,7 +560,7 @@ function Arrow({ dir, onClick, disabled }: { dir: "left" | "right"; onClick: () 
       onPointerUp={() => setDown(false)}
       onPointerLeave={() => setDown(false)}
       style={{
-        background: "none", border: "none", padding: "4px 2px", flexShrink: 0,
+        background: "none", border: "none", padding: "2px 0", flexShrink: 0,
         cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.2 : 1,
       }}
       aria-label={dir === "left" ? "Previous" : "Next"}
@@ -551,7 +568,7 @@ function Arrow({ dir, onClick, disabled }: { dir: "left" | "right"; onClick: () 
       <img
         src={`${UI}/arrow-${dir}${down ? "-pressed" : ""}.png`}
         alt=""
-        style={{ ...PIXELATED, width: 26, height: 46, display: "block" }}
+        style={{ ...PIXELATED, width: 18, height: 32, display: "block" }}
       />
     </button>
   );
@@ -570,28 +587,29 @@ const sx: Record<string, React.CSSProperties> = {
       `linear-gradient(${C.line}55 1px, transparent 1px), linear-gradient(90deg, ${C.line}55 1px, transparent 1px)`,
     backgroundSize: "26px 26px",
     border: `2px solid ${C.line}`, borderRadius: 10,
-    padding: 18,
-    // Sized to fit the viewport outright — the previous版 forced a min-width
-    // per column, which is what produced the horizontal scrollbar.
-    width: W.wide,
+    padding: 14,
+    // Sized to fit the viewport outright, and no wider than the columns can
+    // use — an earlier pass forced a min-width per column, which is what
+    // produced the horizontal scrollbar.
+    width: W.editor,
     // maxHeight, not height. Forcing the panel to fill the viewport spread
     // three short columns over 850px and left air between the mech and its
     // name; fitting the content removes the gap AND the scrollbar at once.
     maxHeight: PANEL_HEIGHT,
-    display: "flex", flexDirection: "column", gap: 14,
+    display: "flex", flexDirection: "column", gap: 10,
     overflow: "hidden",
     boxShadow: `0 0 0 1px ${C.teal}33, 0 16px 60px rgba(0,0,0,.65)`,
     fontFamily: "system-ui,sans-serif",
   },
-  header: { display: "flex", alignItems: "center", gap: 12, flexShrink: 0 },
+  header: { display: "flex", alignItems: "center", gap: 10, flexShrink: 0 },
   teamTag: {
     fontSize: 12, color: C.purple, border: `1px solid ${C.purple}`,
     borderRadius: 4, padding: "3px 8px", letterSpacing: 2, fontWeight: 700,
   },
   teamHint: { fontSize: 12, color: C.faint, margin: "-6px 0 0", lineHeight: 1.5 },
-  title: { margin: 0, fontSize: 18, color: C.teal, letterSpacing: 4, fontWeight: 800, fontFamily: DISPLAY },
+  title: { margin: 0, fontSize: 16, color: C.teal, letterSpacing: 4, fontWeight: 800, fontFamily: DISPLAY },
   close: {
-    background: "none", border: "none", color: C.dim, fontSize: 26,
+    background: "none", border: "none", color: C.dim, fontSize: 22,
     cursor: "pointer", lineHeight: 1, padding: 0,
   },
   body: {
@@ -604,7 +622,16 @@ const sx: Record<string, React.CSSProperties> = {
      * overflows once the container is narrower than that, which is what was
      * left over after the previous pass.
      */
-    gridTemplateColumns: "repeat(auto-fit, minmax(min(320px, 100%), 1fr))",
+    /*
+     * Proportional tracks, not three equal ones. auto-fit gave the preview the
+     * same width as the editor and the stats, so the mech sat in a box several
+     * times its own size while the columns that carry text were cramped.
+     *
+     * A cropped mech is ~55x79, so the preview is the narrowest track; the
+     * module rows are capped at 270 whatever they are given, so the editor is
+     * next; the stat bars are the only thing that reads better wider.
+     */
+    gridTemplateColumns: "minmax(0, 0.72fr) minmax(0, 1fr) minmax(0, 1.15fr)",
     gap: 12,
     minHeight: 0,
     overflowX: "hidden",
@@ -615,7 +642,7 @@ const sx: Record<string, React.CSSProperties> = {
     alignItems: "stretch",
   },
   previewPanel: {
-    background: C.ink, ...frame(), padding: 12, textAlign: "center", minWidth: 0,
+    background: C.ink, ...frame(), padding: 10, textAlign: "center", minWidth: 0,
     display: "flex", flexDirection: "column",
   },
   /**
@@ -628,8 +655,8 @@ const sx: Record<string, React.CSSProperties> = {
     flex: 1, display: "flex", alignItems: "center", justifyContent: "center",
     minWidth: 0, minHeight: 0,
   },
-  mechName: { color: C.text, fontSize: 19, fontWeight: 800, letterSpacing: 1, marginTop: 4, fontFamily: DISPLAY },
-  mechRole: { color: C.teal, fontSize: 12, letterSpacing: 2, marginBottom: 2 },
+  mechName: { color: C.text, fontSize: 16, fontWeight: 800, letterSpacing: 1, marginTop: 4, fontFamily: DISPLAY },
+  mechRole: { color: C.teal, fontSize: 11, letterSpacing: 2, marginBottom: 2 },
   passives: { display: "flex", flexDirection: "column", gap: 4 },
   passive: {
     fontSize: 12, color: C.dim, background: C.raised,
@@ -637,7 +664,7 @@ const sx: Record<string, React.CSSProperties> = {
   },
   editorPanel: {
     background: C.ink, ...frame(),
-    padding: 12, minWidth: 0, display: "flex", flexDirection: "column",
+    padding: 10, minWidth: 0, display: "flex", flexDirection: "column",
   },
   /**
    * Wraps. Four 40px tabs plus the nowrap "Family lock" label add up to ~307px
@@ -670,12 +697,22 @@ const sx: Record<string, React.CSSProperties> = {
   note: { fontSize: 12, color: C.faint, lineHeight: 1.5, margin: "4px 0 0" },
   /** Column heading, in the game face — "Module", "SOL Mech". */
   colTitle: {
-    fontSize: 17, fontWeight: 800, letterSpacing: 3, color: C.text,
-    fontFamily: DISPLAY, textAlign: "center", marginBottom: 4,
+    fontSize: 14, fontWeight: 800, letterSpacing: 3, color: C.text,
+    fontFamily: DISPLAY, textAlign: "center", marginBottom: 2,
   },
 
-  /** One module slot: arrow, panel, arrow. */
-  slotRowWrap: { display: "flex", alignItems: "center", gap: 4 },
+  /**
+   * One module slot: arrow, panel, arrow.
+   *
+   * Capped and centred rather than filled to the column. The panel keeps the
+   * sprite's 198x58, so its HEIGHT follows its width — across a full column it
+   * came out at ~139px a row, and four of those were most of the reason the
+   * editor needed scrolling. 270 puts the art back near its native 58.
+   */
+  slotRowWrap: {
+    display: "flex", alignItems: "center", gap: 2,
+    width: "100%", maxWidth: 270, margin: "0 auto 4px",
+  },
   /**
    * The Unity row sprite (198x58). Its own glyph is baked in on the left, so
    * only the name is drawn — into the dark bar the art leaves at 25%-98%.
@@ -696,7 +733,7 @@ const sx: Record<string, React.CSSProperties> = {
   rowName: {
     position: "absolute", left: "27%", right: "13%", top: "28%", height: "39%",
     display: "flex", alignItems: "center",
-    fontSize: 13, fontWeight: 700, fontFamily: DISPLAY, letterSpacing: 0.5,
+    fontSize: 12, fontWeight: 700, fontFamily: DISPLAY, letterSpacing: 0.5,
     whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
   },
   rowPos: {
@@ -707,22 +744,22 @@ const sx: Record<string, React.CSSProperties> = {
 
   /** Abilities of whichever module is selected, across the full width. */
   movePanel: {
-    ...frame(), background: C.ink, padding: "8px 12px", flexShrink: 0,
-    display: "flex", flexDirection: "column", gap: 6,
+    ...frame(), background: C.ink, padding: "6px 10px", flexShrink: 0,
+    display: "flex", flexDirection: "column", gap: 4,
   },
   moveTag: {
-    fontSize: 15, fontWeight: 800, letterSpacing: 4,
+    fontSize: 13, fontWeight: 800, letterSpacing: 4,
     color: C.teal, fontFamily: DISPLAY,
   },
   moveCards: {
-    display: "grid", gap: 10,
-    gridTemplateColumns: "repeat(auto-fit, minmax(min(260px, 100%), 1fr))",
+    display: "grid", gap: 8,
+    gridTemplateColumns: "repeat(auto-fit, minmax(min(230px, 100%), 1fr))",
   },
   moveCard: {
     background: C.panel, border: `1px solid ${C.line}`, borderRadius: 6,
     padding: "6px 10px", minWidth: 0,
   },
-  moveCardName: { fontSize: 15, fontWeight: 800, color: C.text, fontFamily: DISPLAY },
+  moveCardName: { fontSize: 14, fontWeight: 800, color: C.text, fontFamily: DISPLAY },
   moveCardSrc: { fontSize: 12, color: C.purple, fontWeight: 700, marginBottom: 4 },
   moveCardNote: { fontSize: 11, color: C.faint, lineHeight: 1.5 },
   /** Key/value grid, so the four specs line up across cards. */
@@ -735,16 +772,24 @@ const sx: Record<string, React.CSSProperties> = {
   specVal: { fontSize: 12, color: C.body, margin: 0, fontFamily: MONO, fontWeight: 700 },
 
   statsPanel: {
-    background: C.ink, ...frame(), padding: 12, minWidth: 0,
+    background: C.ink, ...frame(), padding: 10, minWidth: 0,
   },
-  statRow: { marginBottom: 4 },
+  /**
+   * One line per stat: label, bar, value. Each stat used to take three lines —
+   * a header row, the bar, then a description — which made six stats taller
+   * than the column they live in.
+   */
+  statRow: {
+    display: "flex", alignItems: "center", gap: 8, marginBottom: 4,
+  },
   statTop: { display: "flex", justifyContent: "space-between", alignItems: "baseline" },
-  statLabel: { fontSize: 14, color: C.text, fontWeight: 700, letterSpacing: 2, fontFamily: DISPLAY },
-  statNums: { display: "flex", alignItems: "baseline", gap: 6, fontFamily: DISPLAY },
-  /** The number is the thing being compared, so it is the biggest type here. */
-  statTotal: { fontSize: 22, color: C.text, fontWeight: 800, letterSpacing: 1 },
+  statLabel: { width: 34, flexShrink: 0, fontSize: 13, color: C.text, fontWeight: 700, letterSpacing: 1, fontFamily: DISPLAY },
+  statNums: { display: "flex", alignItems: "baseline", justifyContent: "flex-end", gap: 4, width: 62, flexShrink: 0, fontFamily: DISPLAY },
+  /** The number is the thing being compared, so it stays the biggest type. */
+  statTotal: { fontSize: 17, color: C.text, fontWeight: 800, letterSpacing: 1 },
   /** 9-slice of the original bar.png: 20px top, 60px sides, 80px bottom. */
   barFrame: {
+    flex: 1, minWidth: 0,
     borderStyle: "solid",
     borderWidth: "3px 5px 6px",
     borderImage: `url(${UI}/bar.png) 20 60 80 fill / 3px 5px 6px / 0 stretch`,
@@ -755,22 +800,22 @@ const sx: Record<string, React.CSSProperties> = {
   barLimb: { position: "absolute", top: 0, height: "100%", background: C.teal },
   statRole: { fontSize: 11, color: C.faint, marginTop: 1, lineHeight: 1.2 },
   initiative: {
-    marginTop: 8, padding: "5px 6px", borderRadius: 5, border: "1px solid",
+    marginTop: 6, padding: "4px 6px", borderRadius: 5, border: "1px solid",
     fontSize: 12, fontWeight: 800, textAlign: "center", letterSpacing: 1,
   },
   legend: {
     display: "flex", gap: 14, justifyContent: "center",
-    fontSize: 12, color: C.faint, marginTop: 8,
+    fontSize: 12, color: C.faint, marginTop: 6,
   },
   swatch: { display: "inline-block", width: 9, height: 9, marginRight: 4, verticalAlign: "middle" },
   footer: { display: "flex", alignItems: "center", gap: 10, flexShrink: 0, flexWrap: "wrap" },
   btnGhost: {
     background: "none", border: `1px solid ${C.line}`, color: C.dim,
-    borderRadius: 6, padding: "11px 16px", fontSize: 12, fontWeight: 700,
+    borderRadius: 6, padding: "8px 14px", fontSize: 12, fontWeight: 700,
     cursor: "pointer", letterSpacing: 1,
   },
   btnPrimary: {
     background: C.teal, border: "none", color: C.ink,
-    borderRadius: 6, padding: "12px 26px", fontSize: 14, fontWeight: 800, letterSpacing: 1,
+    borderRadius: 6, padding: "9px 22px", fontSize: 13, fontWeight: 800, letterSpacing: 1,
   },
 };
