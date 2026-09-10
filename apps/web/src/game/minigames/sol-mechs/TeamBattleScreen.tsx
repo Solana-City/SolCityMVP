@@ -12,7 +12,9 @@ import {
   createTeamBattle, resolveTeamRound, resolveForcedSwitches, forfeitTeam, activeUnit, switchableIndices,
   type TeamBattleState, type TeamAction, type TeamEvent, type TeamRoundActions, type TeamResolveResult,
 } from "@/game/solmechs/engine/TeamBattle";
-import { availableMoves, legalTargets, calculateDamage, isDefeated } from "@/game/solmechs/engine/BattleEngine";
+import {
+  availableMoves, legalTargets, legalSelfTargets, calculateDamage, isDefeated,
+} from "@/game/solmechs/engine/BattleEngine";
 import type { PlayerSide } from "@/game/solmechs/engine/BattleEngine";
 import { BattleRenderer, splitIntoBeats, CANVAS_W, CANVAS_H } from "@/game/solmechs/render/BattleRenderer";
 import { preloadBuild } from "@/game/solmechs/render/MechPaperDoll";
@@ -22,7 +24,7 @@ import { BattleLog } from "./BattleLog";
 import { useChessClock } from "./ClockBar";
 import { UnitPanel } from "./BattleHud";
 import { SQUAD_CLOCK, formatClock } from "@/game/solmechs/data/clock";
-import { C, T, SP, R, W, PANEL_HEIGHT, actionButton } from "./theme";
+import { C, T, SP, R, W, PANEL_HEIGHT, actionButton, frame, DISPLAY } from "./theme";
 
 /**
  * Narrows the team log to the events BattleRenderer understands. Switches and
@@ -260,6 +262,20 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, onFinished, on
   const foe = activeUnit(state.p2);
   const moves = useMemo(() => availableMoves(me), [me]);
   const targets = useMemo(() => legalTargets(foe), [foe]);
+  const selfTargets = useMemo(() => legalSelfTargets(me), [me]);
+
+  /**
+   * A pending move may be pointed at the rival OR at your own mech.
+   *
+   * Stages are per-limb, so a buff has to ask which limb — aiming it at the
+   * firing limb automatically meant the legs' buff could only ever buff the
+   * legs, and the arm you were about to swing with could never be the one you
+   * powered up.
+   */
+  const pendingMove = pending ? me.parts[pending.slot].moves[pending.moveIndex] : null;
+  const pendingSelf = pendingMove?.targetType === "self";
+  const pendingTargets = pendingSelf ? selfTargets : targets;
+  const pendingUnit = pendingSelf ? me : foe;
   const bench = switchableIndices(state.p1);
 
   const finished = state.status.kind === "finished";
@@ -299,6 +315,9 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, onFinished, on
             />
           </div>
           <span style={sx.roundChip}>ROUND {state.round}</span>
+          {finished && (
+            <ResultCard won={won} actions={state.history.length} onLeave={onClose} />
+          )}
           <div style={sx.hudRight}>
             <UnitPanel
               unit={foe}
@@ -315,15 +334,7 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, onFinished, on
         <div style={sx.footRow}>
         <div style={sx.controls}>
           {finished ? (
-            <div style={{ textAlign: "center", width: "100%" }}>
-              <div style={{ fontSize: 24, fontWeight: 800, color: won ? C.teal : C.bad }}>
-                {won ? "SQUAD VICTORY" : "SQUAD DEFEATED"}
-              </div>
-              <div style={{ color: C.faint, fontSize: 12, margin: "4px 0 12px" }}>
-                {state.history.length} actions
-              </div>
-              <button onClick={onClose} style={sx.btnPrimary}>LEAVE</button>
-            </div>
+            <div style={sx.prompt}>Match over.</div>
           ) : mustSwitch ? (
             <>
               <div style={sx.prompt}>Your mech is down — send out a replacement (free).</div>
@@ -347,7 +358,15 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, onFinished, on
                 {bench.map((i) => (
                   <button
                     key={i}
-                    onClick={() => { setPicking(false); submitForced(i); }}
+                    // A VOLUNTARY substitution is a normal round action, not a
+                    // forced one: submitForced bails unless the battle is
+                    // already awaiting a switch, so routing this through it
+                    // silently did nothing at all — the picker closed and the
+                    // round never resolved.
+                    onClick={() => {
+                      setPicking(false);
+                      submitRound({ kind: "switch", side: "p1", toIndex: i });
+                    }}
                     style={sx.btn}
                   >
                     <div style={sx.btnTitle}>#{i + 1} {state.p1.units[i].matrix.matrixName}</div>
@@ -361,26 +380,36 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, onFinished, on
             </>
           ) : pending ? (
             <>
-              <div style={sx.prompt}>Target for {me.parts[pending.slot].moves[pending.moveIndex].name}</div>
+              <div style={sx.prompt}>
+                {pendingSelf ? "Apply " : "Target for "}
+                {pendingMove?.name}
+                {pendingSelf ? " to which part?" : ""}
+              </div>
               <div style={sx.btnRow}>
-                {targets.map((slot) => (
+                {pendingTargets.map((slot) => (
                   <button
                     key={slot}
                     onClick={() => {
                       submitRound({ kind: "move", side: "p1", sourceSlot: pending.slot, moveIndex: pending.moveIndex, targetSlot: slot });
                       setPending(null);
                     }}
-                    style={{ ...sx.btn, background: slot === "matrix" ? "#5c1830" : C.raised }}
+                    style={{
+                      ...sx.btn,
+                      // Own mech reads blue, the rival's core red — so the two
+                      // pickers can't be confused for each other at a glance.
+                      background: pendingSelf ? C.raised : slot === "matrix" ? "#5c1830" : C.raised,
+                      borderColor: pendingSelf ? C.blue : undefined,
+                    }}
                   >
                     <div style={sx.btnTitle}>{SLOT_LABEL[slot]}</div>
-                    <div style={sx.btnSub}>{foe.partStatuses[slot].currentHP} HP</div>
+                    <div style={sx.btnSub}>{pendingUnit.partStatuses[slot].currentHP} HP</div>
                   </button>
                 ))}
                 <button onClick={() => setPending(null)} style={sx.btn}>
                   <div style={sx.btnTitle}>Back</div>
                 </button>
               </div>
-              {!targets.includes("matrix") && (
+              {!pendingSelf && !targets.includes("matrix") && (
                 <div style={sx.hint}>Matrix sealed — break an arm, or strip all three limbs.</div>
               )}
             </>
@@ -391,13 +420,9 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, onFinished, on
                 {moves.map((o) => (
                   <button
                     key={`${o.slot}-${o.moveIndex}`}
-                    onClick={() => {
-                      if (o.move.targetType === "self") {
-                        submitRound({ kind: "move", side: "p1", sourceSlot: o.slot, moveIndex: o.moveIndex, targetSlot: o.slot });
-                      } else {
-                        setPending({ slot: o.slot, moveIndex: o.moveIndex });
-                      }
-                    }}
+                    // Self-targeting moves go through the same picker now, so
+                    // the part being buffed is chosen rather than assumed.
+                    onClick={() => setPending({ slot: o.slot, moveIndex: o.moveIndex })}
                     style={sx.btn}
                   >
                     <div style={sx.btnTitle}>{o.move.name}</div>
@@ -423,6 +448,39 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, onFinished, on
             <BattleLog lines={log} turns={state.history.length} />
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * End of match, over the arena.
+ *
+ * This existed only as a line of text inside the actions card, which is a
+ * 46%-wide box under a full-height arena — the match ended and nothing on
+ * screen changed enough to notice. Sprites are Unity's own
+ * `arena/WinLoseCard` art (cub1 / defeat), reduced to their native pixel grid.
+ */
+function ResultCard({ won, actions, onLeave }: {
+  won: boolean; actions: number; onLeave: () => void;
+}) {
+  return (
+    <div style={sx.resultScrim}>
+      <div style={{ ...sx.resultCard, borderColor: won ? C.teal : C.bad }}>
+        <img
+          src={`/assets/minigames/sol-mechs/ui/${won ? "win-trophy" : "lose-rip"}.png`}
+          alt=""
+          style={{
+            imageRendering: "pixelated", display: "block", margin: "0 auto",
+            height: 108, width: "auto",
+          }}
+          onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+        />
+        <div style={{ ...sx.resultTitle, color: won ? C.teal : C.bad }}>
+          {won ? "SQUAD VICTORY" : "SQUAD DEFEATED"}
+        </div>
+        <div style={sx.resultMeta}>{actions} {actions === 1 ? "action" : "actions"}</div>
+        <button onClick={onLeave} style={sx.btnPrimary}>LEAVE</button>
       </div>
     </div>
   );
@@ -545,4 +603,19 @@ const sx: Record<string, React.CSSProperties> = {
     background: C.teal, border: "none", color: C.ink, borderRadius: 6,
     padding: "9px 20px", fontSize: 13, fontWeight: 800, letterSpacing: 1, cursor: "pointer",
   },
+
+  /** Dims the arena so the card is the only thing being read. */
+  resultScrim: {
+    position: "absolute", inset: 0, zIndex: 2,
+    display: "flex", alignItems: "center", justifyContent: "center",
+    background: "rgba(4,2,10,.72)",
+  },
+  resultCard: {
+    ...frame(), background: C.ink,
+    padding: "20px 40px", textAlign: "center",
+    display: "flex", flexDirection: "column", gap: 8, alignItems: "center",
+    boxShadow: "0 18px 60px rgba(0,0,0,.7)",
+  },
+  resultTitle: { fontSize: 26, fontWeight: 800, letterSpacing: 4, fontFamily: DISPLAY },
+  resultMeta: { color: C.faint, fontSize: 12, letterSpacing: 1 },
 };

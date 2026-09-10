@@ -321,6 +321,23 @@ export function legalTargets(defender: MechUnit): ModuleSlot[] {
   return targets;
 }
 
+/**
+ * Slots a SELF-targeting move may be pointed at — a buff or a repair.
+ *
+ * Stages are per-limb (see the damage formula), so which part you buff is a
+ * real decision: +ATK on the arm you intend to swing with is not the same
+ * move as +DEF on the leg you expect to lose. The screen used to aim these at
+ * the firing limb automatically, which quietly made Legs the only thing the
+ * legs' own buff could ever help.
+ *
+ * The Matrix is included: it takes stages and damage like any other slot, and
+ * it is the one part that cannot be broken while the mech is still standing.
+ */
+export function legalSelfTargets(unit: MechUnit): ModuleSlot[] {
+  return (["matrix", ...LIMB_SLOTS] as ModuleSlot[])
+    .filter((s) => s === "matrix" || !isPartBroken(unit, s));
+}
+
 // ==================== DAMAGE ====================
 
 /**

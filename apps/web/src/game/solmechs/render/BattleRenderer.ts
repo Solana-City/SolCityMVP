@@ -24,7 +24,7 @@
  * desync a battle — which matters once actions arrive over a network.
  */
 import type { BattleEvent, PlayerSide } from "../engine/BattleEngine";
-import { drawMech, DOLL_WIDTH, DOLL_HEIGHT, slotAnchor } from "./MechPaperDoll";
+import { drawMech, DOLL_WIDTH, DOLL_HEIGHT, slotAnchor, mechBounds } from "./MechPaperDoll";
 import type { MechBuild, MechUnit, ModuleSlot, MoveDefinition } from "../data/types";
 import { fxForMove, fxForStage, fxFrame, clipDuration, preloadFx, statBadge, FX_DESTROY, type FxClip } from "./AttackFx";
 
@@ -213,6 +213,32 @@ export class BattleRenderer {
   private get footLine(): number { return Math.round(this.h * FOOT_FRAC); }
   private get boxBottom(): number { return this.footLine + FOOT_INSET_SRC * MECH_SCALE; }
   private get boxTop(): number { return this.boxBottom - MECH_H; }
+
+  /**
+   * Where to put the doll box so THIS mech's feet land on the platform, plus
+   * the ground contact its shadow should sit under.
+   *
+   * FOOT_INSET_SRC is a single hand-tuned guess at how much empty frame the
+   * leg sprites carry below the feet, so it is only ever right for the mech it
+   * was tuned on — the others stand a few pixels high or low, and the shadow,
+   * pinned to the platform line, drifts away from whichever feet it belongs to.
+   * mechBounds measures the real ink per build, so both follow the art.
+   *
+   * Falls back to the old constant while a sprite is still decoding.
+   */
+  private footingFor(build: MechBuild, side: PlayerSide): { top: number; x: number; halfWidth: number } {
+    const box = mechBounds(build);
+    const anchorX = side === "p2" ? DOLL_WIDTH - FOOT_ANCHOR.x : FOOT_ANCHOR.x;
+    if (!box) {
+      return { top: this.boxTop, x: anchorX * MECH_SCALE, halfWidth: 30 };
+    }
+    // Bottom of the ink, not of the box.
+    const top = this.footLine - (box.y + box.h) * MECH_SCALE;
+    // Horizontal centre of the ink, mirrored with the mech.
+    const centre = box.x + box.w / 2;
+    const x = (side === "p2" ? DOLL_WIDTH - centre : centre) * MECH_SCALE;
+    return { top, x, halfWidth: Math.max(14, (box.w * MECH_SCALE) / 2.4) };
+  }
   private get p1X(): number { return Math.round(this.w * SIDE_FRAC); }
   private get p2X(): number { return this.w - Math.round(this.w * SIDE_FRAC) - MECH_W; }
 
@@ -532,7 +558,8 @@ export class BattleRenderer {
   private drawSide(ctx: CanvasRenderingContext2D, side: PlayerSide, now: number): void {
     const unit = this.unitFor(side);
     const baseX = this.baseX(side);
-    const y = this.boxTop;
+    const footing = this.footingFor(unit.build, side);
+    const y = footing.top;
 
     let dx = 0;
     const lunge = this.lunges.find((a) => a.side === side && now >= a.start);
@@ -545,15 +572,20 @@ export class BattleRenderer {
     }
     const hitFlash = flash ? 1 - (now - flash.start) / FLASH_DURATION : 0;
 
+    // Drawn AFTER dx is known and offset by it, so the shadow travels with the
+    // mech through a lunge or a recoil instead of staying behind on the
+    // platform. It sits on the feet line itself: measured from the art rather
+    // than pushed below it, which is what made the mechs look like they were
+    // hovering over their own shadow.
     ctx.save();
     ctx.globalAlpha = 0.35;
     ctx.fillStyle = "#000000";
     ctx.beginPath();
-    // Centred on the LEGS socket rather than the box, because the box is
-    // padded wide by the arm sockets and a box-centred shadow sits off to one
-    // side of the mech that casts it.
-    const footX = baseX + (side === "p2" ? DOLL_WIDTH - FOOT_ANCHOR.x : FOOT_ANCHOR.x) * MECH_SCALE;
-    ctx.ellipse(footX, this.footLine + 3, 30, 7, 0, 0, Math.PI * 2);
+    ctx.ellipse(
+      baseX + footing.x + dx, this.footLine + 1,
+      footing.halfWidth, Math.max(4, footing.halfWidth * 0.22),
+      0, 0, Math.PI * 2,
+    );
     ctx.fill();
     ctx.restore();
 
