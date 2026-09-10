@@ -487,7 +487,7 @@ const sx: Record<string, React.CSSProperties> = {
   },
   frame: {
     background: C.panel, border: `2px solid ${C.line}`, borderRadius: 10, padding: 12,
-    width: W.battle, height: PANEL_HEIGHT, overflow: "hidden",
+    width: W.wide, height: PANEL_HEIGHT, overflow: "hidden",
     display: "flex", flexDirection: "column", gap: SP.sm, fontFamily: "system-ui,sans-serif",
   },
   header: { display: "flex", alignItems: "center", gap: SP.md, flexShrink: 0 },
@@ -515,8 +515,8 @@ const sx: Record<string, React.CSSProperties> = {
     position: "absolute", inset: 0, width: "100%", height: "100%",
     imageRendering: "pixelated", display: "block",
   },
-  hudLeft: { position: "absolute", left: "1.2%", top: "2%", width: "min(310px, 30%)" },
-  hudRight: { position: "absolute", right: "1.2%", top: "2%", width: "min(310px, 30%)" },
+  hudLeft: { position: "absolute", left: "1.2%", top: "2%", width: "min(232px, 23%)" },
+  hudRight: { position: "absolute", right: "1.2%", top: "2%", width: "min(232px, 23%)" },
   roundChip: {
     position: "absolute", left: "50%", top: "3%", transform: "translateX(-50%)",
     fontSize: T.eyebrow, letterSpacing: 2, fontWeight: 700, color: C.text,
@@ -525,8 +525,8 @@ const sx: Record<string, React.CSSProperties> = {
   },
   /** Actions left, log right, both raised onto cards. See the 1v1 for why. */
   footRow: { display: "flex", gap: SP.md, flexShrink: 0, alignItems: "stretch" },
-  controls: { ...CARD, flex: "0 1 42%", minWidth: 0 },
-  logColumn: { ...CARD, flex: "1 1 58%", minWidth: 0 },
+  controls: { ...CARD, flex: "1 1 46%", minWidth: 0 },
+  logColumn: { ...CARD, flex: "1 1 54%", minWidth: 0 },
   prompt: { fontSize: 11, color: C.dim, marginBottom: 5, letterSpacing: 1 },
   /**
    * Two up, two down. A single row across a card this wide left the actions

@@ -737,7 +737,7 @@ const sx: Record<string, React.CSSProperties> = {
     whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
   },
   rowPos: {
-    position: "absolute", right: "3%", top: "28%", height: "39%",
+    position: "absolute", right: "6%", top: "28%", height: "39%",
     display: "flex", alignItems: "center",
     fontSize: 10, fontFamily: MONO, color: C.faint,
   },

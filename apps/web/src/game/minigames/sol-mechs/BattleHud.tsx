@@ -140,6 +140,8 @@ export function UnitPanel({ unit, name, clock, live, low, align, showPortrait = 
         <div style={{
           display: "flex", alignItems: "center", gap: 8,
           flexDirection: right ? "row-reverse" : "row",
+          width: "fit-content", maxWidth: "100%",
+          [right ? "marginLeft" : "marginRight"]: "auto",
           // Nearly opaque. At 72% the arena's skyline read through as blocks
           // beside the name — the panel looked like it had stray elements in
           // it when it was only showing the backdrop.
@@ -148,8 +150,7 @@ export function UnitPanel({ unit, name, clock, live, low, align, showPortrait = 
         }}>
           <span style={{
             fontSize: T.small, fontWeight: 800, color: C.text,
-            whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flex: 1,
-            textAlign: right ? "right" : "left",
+            whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0,
           }}>
             {name}
           </span>
@@ -272,11 +273,10 @@ function PartBar({ unit, slot, mirrored }: { unit: MechUnit; slot: ModuleSlot; m
       {/* Fixed widths, so all four bars start and end on the same lines
           however long the label or the number happens to be. */}
       <span style={{
-        width: 40, flexShrink: 0,
+        width: 34, flexShrink: 0,
         textAlign: mirrored ? "right" : "left",
-        fontSize: 11, fontWeight: 700, fontFamily: MONO,
-        color: dead ? C.faint : C.dim,
-        textDecoration: dead ? "line-through" : "none",
+        fontSize: 10, fontWeight: 700, fontFamily: MONO,
+        color: dead ? C.bad : C.dim,
         textShadow: SHADOW,
       }}>
         {SLOT_TITLE[slot]}
@@ -300,10 +300,12 @@ function PartBar({ unit, slot, mirrored }: { unit: MechUnit; slot: ModuleSlot; m
       </div>
 
       <span style={{
-        width: 28, flexShrink: 0,
+        width: 26, flexShrink: 0,
         textAlign: mirrored ? "left" : "right",
-        fontSize: 11, fontFamily: MONO, fontWeight: 700,
-        color: dead ? C.faint : C.text, textShadow: SHADOW,
+        fontSize: 10, fontFamily: MONO, fontWeight: 700,
+        // A destroyed limb's 0 in `faint` was invisible against the arena, so
+        // the row read as having no number at all rather than as being at zero.
+        color: dead ? C.bad : C.text, textShadow: SHADOW,
       }}>
         {st.currentHP}
       </span>

@@ -258,7 +258,7 @@ const sx: Record<string, React.CSSProperties> = {
       `linear-gradient(${C.line}55 1px, transparent 1px), linear-gradient(90deg, ${C.line}55 1px, transparent 1px)`,
     backgroundSize: "26px 26px",
     ...frame(), padding: 14,
-    width: W.wide, height: PANEL_HEIGHT,
+    width: W.editor, maxHeight: PANEL_HEIGHT,
     display: "flex", flexDirection: "column", gap: 10, overflow: "hidden",
     boxShadow: `0 16px 60px rgba(0,0,0,.65)`,
     fontFamily: "system-ui,sans-serif",
@@ -270,10 +270,8 @@ const sx: Record<string, React.CSSProperties> = {
   grid: {
     display: "grid",
     gridTemplateColumns: "repeat(auto-fit, minmax(min(240px, 100%), 1fr))",
-    flex: 1, gap: 10, minHeight: 0, overflow: "hidden",
-    // Centred, not top-pinned: three fixed-height cards in a full-height panel
-    // otherwise leave the bottom half of the screen empty.
-    alignItems: "start", alignContent: "center",
+    flex: "0 1 auto", gap: 10, minHeight: 0, overflow: "hidden",
+    alignItems: "start", alignContent: "start",
   },
   card: {
     background: C.ink, ...frame(), padding: 9,
