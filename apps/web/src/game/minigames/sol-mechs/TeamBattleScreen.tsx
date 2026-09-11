@@ -116,7 +116,10 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, onFinished, on
       case "must-switch": return `${who(e.side)} must substitute.`;
       case "forfeit": return `  ** ${who(e.side)} ran out of time.`;
       case "victory": return `=== ${who(e.winner)} win${e.winner === "p1" ? "" : "s"}! ===`;
-      case "rejected": return `  ${e.reason}.`;
+      // Engine reasons name slots by their code ("rightArm is broken"); the
+      // log is player-facing, so they are swapped for the labels used on screen.
+      case "rejected":
+        return `  ${e.reason.replace(/\b(rightArm|leftArm|lowerBody)\b/g, (s) => SLOT_LABEL[s as ModuleSlot])}.`;
       default: return null;
     }
   }, []);
