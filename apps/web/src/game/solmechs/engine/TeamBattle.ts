@@ -31,7 +31,7 @@ import type { MechBuild, ModuleSlot } from "../data/types";
 import type { BattleEvent, PlayerSide, DefeatCause } from "./BattleEngine";
 import {
   createUnit, cloneUnit, applyMove, validateMove, defeatCauseOf, isDefeated, tieBreak,
-  effectiveStats, opponentOfSide,
+  effectiveStats, opponentOfSide, legalTargets,
 } from "./BattleEngine";
 import type { MechUnit } from "../data/types";
 import { TEAM_SIZE, type TeamBuild } from "../data/team";
@@ -214,6 +214,8 @@ export function resolveTeamRound(state: TeamBattleState, actions: TeamRoundActio
 
   // ── 1. substitutions ────────────────────────────────────────────────────
   const switching = (["p1", "p2"] as PlayerSide[]).filter((s) => get(s)?.kind === "switch");
+  /** Sides whose active mech was replaced this round — see the retarget below. */
+  const switchedIn = new Set<PlayerSide>();
   for (const side of bySpeed(next, switching)) {
     const action = get(side) as Extract<TeamAction, { kind: "switch" }>;
     const me = sideOf(next, side);
@@ -228,6 +230,7 @@ export function resolveTeamRound(state: TeamBattleState, actions: TeamRoundActio
     const fromIndex = me.activeIndex;
     clearStages(me.units[fromIndex]);
     me.activeIndex = action.toIndex;
+    switchedIn.add(side);
     events.push({
       type: "switch", side, fromIndex, toIndex: action.toIndex,
       mechName: activeUnit(me).matrix.matrixName,
@@ -259,14 +262,27 @@ export function resolveTeamRound(state: TeamBattleState, actions: TeamRoundActio
     // Judged HERE, against the live board — see BattleEngine.resolveRound.
     // Strip the arm the slower mech was going to swing with and the swing does
     // not happen.
+    // The mech this attack was aimed at was switched out this round. The
+    // attack still lands on whatever came in — that is what makes switching
+    // cost the round — so a slot that is not legal on the incoming mech (its
+    // core still sealed, or a limb it came back without) is redirected to the
+    // first legal one instead of fizzling. Without this, switching out a mech
+    // whose core was exposed dodged the very attack coming for it for free.
+    let targetSlot = action.targetSlot;
+    const firing = actor.parts[action.sourceSlot]?.moves[action.moveIndex];
+    if (switchedIn.has(opponentOfSide(side)) && firing && firing.targetType !== "self") {
+      const legal = legalTargets(target);
+      if (!legal.includes(targetSlot) && legal.length > 0) targetSlot = legal[0];
+    }
+
     const illegal = validateMove(
-      actor, target, action.sourceSlot, action.moveIndex, action.targetSlot,
+      actor, target, action.sourceSlot, action.moveIndex, targetSlot,
     );
     if (illegal) {
       events.push({ type: "rejected", reason: illegal });
       continue;
     }
-    const produced = applyMove(actor, target, side, action.sourceSlot, action.moveIndex, action.targetSlot);
+    const produced = applyMove(actor, target, side, action.sourceSlot, action.moveIndex, targetSlot);
     events.push(...produced);
     steps.push({ side, events: produced, state: cloneState(next) });
   }
