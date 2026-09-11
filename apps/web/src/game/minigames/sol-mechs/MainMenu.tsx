@@ -53,7 +53,7 @@ export default function MainMenu({ onChoose, onClose, wins, losses }: MainMenuPr
             onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
           />
           <p style={sx.tagline}>
-            Modular mech duels. Break a limb and you take its stats with it.
+            Assemble your Mech team to battle!
           </p>
           {played > 0 && (
             <div style={sx.record}>
@@ -71,7 +71,7 @@ export default function MainMenu({ onChoose, onClose, wins, losses }: MainMenuPr
               is a one-line change. 3v3 is the mode being tested. */}
           <MenuRow
             label="SQUAD 3v3"
-            desc="Three mechs, one at a time. Break a limb and you take its stats with it."
+            desc="Three mechs, one at a time."
             onClick={() => onChoose("squad")}
           />
           <MenuRow
