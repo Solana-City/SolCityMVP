@@ -29,7 +29,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   drawMech, DOLL_WIDTH, DOLL_HEIGHT, preloadAll, preloadBuild, mechBounds,
   type MechBounds,
-} from "@/game/solmechs/render/MechPaperDoll";
+} from "@/game/solmechs/render/paperDoll";
 import {
   MATRICES, getMatrixById, getPart, getMatrix, getSelectableParts, familyOf,
   PRESET_BUILDS, REFERENCE_OPPONENT,

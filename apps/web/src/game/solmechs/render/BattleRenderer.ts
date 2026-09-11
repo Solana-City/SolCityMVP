@@ -24,7 +24,7 @@
  * desync a battle — which matters once actions arrive over a network.
  */
 import type { BattleEvent, PlayerSide } from "../engine/BattleEngine";
-import { drawMech, DOLL_WIDTH, DOLL_HEIGHT, slotAnchor, mechBounds } from "./MechPaperDoll";
+import { drawMech, DOLL_WIDTH, DOLL_HEIGHT, slotAnchor, mechBounds } from "./paperDoll";
 import type { MechBuild, MechUnit, ModuleSlot, MoveDefinition } from "../data/types";
 import { fxForMove, fxForStage, fxFrame, clipDuration, preloadFx, statBadge, FX_DESTROY, type FxClip } from "./AttackFx";
 

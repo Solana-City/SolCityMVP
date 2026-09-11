@@ -24,7 +24,7 @@ import { BattleRenderer, splitIntoBeats, CANVAS_W, CANVAS_H } from "@/game/solme
 import {
   preloadAll, preloadBuild, drawMech, DOLL_WIDTH, DOLL_HEIGHT, mechBounds,
   type MechBounds,
-} from "@/game/solmechs/render/MechPaperDoll";
+} from "@/game/solmechs/render/paperDoll";
 import { LocalAIOpponent } from "@/game/solmechs/opponent/LocalAIOpponent";
 import { MATRICES, PRESET_BUILDS } from "@/game/solmechs/data/catalog";
 import { recordResult, loadHangar, getBuild } from "@/game/solmechs/hangar";

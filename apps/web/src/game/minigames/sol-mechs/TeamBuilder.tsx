@@ -17,7 +17,7 @@ import { useCallback, useMemo, useState } from "react";
 import {
   drawMech, DOLL_WIDTH, DOLL_HEIGHT, preloadBuild, mechBounds,
   type MechBounds,
-} from "@/game/solmechs/render/MechPaperDoll";
+} from "@/game/solmechs/render/paperDoll";
 import { useEffect, useRef } from "react";
 import { getMatrix } from "@/game/solmechs/data/catalog";
 import { validateTeam, takenCodes, TEAM_SIZE, type TeamBuild } from "@/game/solmechs/data/team";

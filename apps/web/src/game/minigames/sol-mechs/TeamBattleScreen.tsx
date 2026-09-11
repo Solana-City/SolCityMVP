@@ -17,7 +17,7 @@ import {
 } from "@/game/solmechs/engine/BattleEngine";
 import type { PlayerSide } from "@/game/solmechs/engine/BattleEngine";
 import { BattleRenderer, splitIntoBeats, CANVAS_W, CANVAS_H } from "@/game/solmechs/render/BattleRenderer";
-import { preloadBuild } from "@/game/solmechs/render/MechPaperDoll";
+import { preloadBuild } from "@/game/solmechs/render/paperDoll";
 import type { TeamBuild } from "@/game/solmechs/data/team";
 import type { ModuleSlot, MoveDefinition } from "@/game/solmechs/data/types";
 import { BattleLog } from "./BattleLog";

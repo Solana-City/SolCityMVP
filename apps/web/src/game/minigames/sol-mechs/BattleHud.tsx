@@ -24,7 +24,7 @@
  * seal the Matrix.
  */
 import { useEffect, useRef } from "react";
-import { drawMech, DOLL_WIDTH, DOLL_HEIGHT, preloadBuild } from "@/game/solmechs/render/MechPaperDoll";
+import { drawMech, DOLL_WIDTH, DOLL_HEIGHT, preloadBuild } from "@/game/solmechs/render/paperDoll";
 import { canAttackMatrix, getStage } from "@/game/solmechs/engine/BattleEngine";
 import type { MechUnit, ModuleSlot, MechBuild } from "@/game/solmechs/data/types";
 import { C, T, MONO, PIXELATED } from "./theme";
