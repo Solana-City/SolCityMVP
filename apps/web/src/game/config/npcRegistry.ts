@@ -22,6 +22,24 @@ export interface NPCDefinition {
    */
   spriteKey?: string;
   /**
+   * Optional second sheet, swapped in while this NPC is walking and swapped
+   * back on arrival. Same 64×64 walk-grid contract as `spriteKey`.
+   *
+   * Only needed for art drawn as two sheets — Caramel Dog ships a sitting idle
+   * and a separate trot cycle. NPCs whose single sheet already carries a
+   * standing frame in column 0 leave this unset.
+   */
+  spriteWalkKey?: string;
+  /**
+   * How far this NPC may stray from its spawn tile while wandering, in world
+   * pixels. Defaults to 18 (under one tile) — enough to look alive in place.
+   *
+   * Raise it for an NPC that should actually roam. The wander is clamped to a
+   * box of this radius around the spawn, so the value doubles as the leash
+   * that keeps it inside its own district.
+   */
+  wanderRadius?: number;
+  /**
    * Set to false to hide this NPC from the city without removing its
    * definition (e.g. temporarily disabled while content is reworked).
    * Defaults to true.
@@ -73,8 +91,10 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     id: "sol-guide",
     name: "Sol",
     role: "City Guide",
-    tileX: 99,
-    tileY: 99,
+    // Central fountain plaza, on the path just below the steps the player
+    // spawns on (col 78, row 38).
+    tileX: 78,
+    tileY: 40,
     color: 0x14f195,
     dialog: [
       "Hey there! Welcome to Solana City — I'm Sol, your guide.",
@@ -87,8 +107,10 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     id: "sushi-man",
     name: "Sushi Man",
     role: "Food Cart",
-    tileX: 145,
-    tileY: 104,
+    // In front of the food cart (GameAssetFoodCar, cols 109-112 / rows 40-43),
+    // on the green plot east of the Superteam Earn tent.
+    tileX: 110,
+    tileY: 43,
     color: 0xff6b35,
     dialog: [
       "Irasshaimase! Welcome to my cart.",
@@ -103,8 +125,10 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     id: "kite-pro",
     name: "Kite Pro",
     role: "Kite Clash",
-    tileX: 150,
-    tileY: 120,
+    // Superteam Brazil zone — out on the open sand, south of the market
+    // stands, where there is vertical room for the kite.
+    tileX: 40,
+    tileY: 79,
     color: 0x00b4d8,
     dialog: [
       "Hey! Want to take a kite up and see who else is flying right now?",
@@ -125,8 +149,10 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     id: "swap-npc",
     name: "Jupiter Cat",
     role: "Token Swap",
-    tileX: 119,
-    tileY: 92,
+    // On the sidewalk in front of the Jupiter building (BuildJupiter,
+    // cols 91-101 / rows 17-32).
+    tileX: 96,
+    tileY: 32,
     color: 0x14f195,
     dialog: [
       "Welcome to the Swap Station!",
@@ -141,8 +167,9 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     id: "send-npc",
     name: "Steve Sends",
     role: "Send Tokens",
-    tileX: 98,
-    tileY: 104,
+    // Central fountain plaza, three tiles south of Sol down the same path.
+    tileX: 78,
+    tileY: 43,
     color: 0x00d1ff,
     dialog: [
       "Steve Sends, at your service.",
@@ -156,10 +183,9 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     id: "pratik",
     name: "Pratik",
     role: "Superteam Earn",
-    // Front-left of the STEarn tent, on open grass — visible from the path,
-    // never hidden behind the greenhouse or inside the tent itself.
-    tileX: 115,
-    tileY: 103,
+    // In front of the Superteam Earn tent (BuildSTEarn, cols 89-95 / rows 38-44).
+    tileX: 92,
+    tileY: 44,
     color: 0x9945ff,
     dialog: [
       "Hey! I run the Superteam Earn hub, where builders get paid to work on Solana.",
@@ -173,8 +199,10 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     id: "magic-man",
     name: "Magic Man",
     role: "Privacy Operator",
-    tileX: 113,
-    tileY: 117,
+    // In front of the MagicBlock building (BuildMagicBlock, base cols 88-95 /
+    // rows 52-55).
+    tileX: 91,
+    tileY: 55,
     color: 0xc026d3,
     dialog: [
       "In this city, every transaction is a public confession.",
@@ -191,10 +219,13 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     id: "mech-handler",
     name: "Rade",
     role: "Sol Mechs Hangar",
-    // Open 5x5 plaza, ~22 tiles clear of every other NPC — room for the
-    // hangar building to go up around this spot without displacing anyone.
-    tileX: 131,
-    tileY: 113,
+    // SCMap01.1: on the street at the fence of the empty lot east of the
+    // canal — the fenced plot with the construction signs is where a hangar
+    // building can go up. Checked against the map's colliders: reachable from
+    // the spawn, ~19 tiles from the nearest NPC. (The old-map spot, 131/113,
+    // fell outside the walkable city on this map.)
+    tileX: 118,
+    tileY: 60,
     color: 0xff5468,
     dialog: [
       "You made it. This is the Sol Mechs hangar — five chassis on the racks, all combat-rated.",
@@ -206,13 +237,38 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     // handler's own art is drawn. Same for the portrait: the Unity source
     // only ships 2048x2048 busts, well over this repo's 256x256 convention.
   },
+  {
+    id: "caramel-dog",
+    name: "Caramel Dog",
+    role: "Beach Mascot",
+    // Open sand in the Superteam Brazil zone. Chosen so the wander box below
+    // lands on 100% walkable beach — clear of the stands to the north and the
+    // lighthouse to the east — so the dog never picks a blocked target and
+    // stalls in place.
+    tileX: 41,
+    tileY: 85,
+    color: 0xd2833c,
+    dialog: [
+      "Woof!",
+      "The caramel dog sniffs your shoes, decides you are alright, and wags its tail.",
+      "It trots a few steps down the beach, then looks back to check you are still watching.",
+    ],
+    action: { type: "placeholder", label: "Pet the dog" },
+    spriteKey: "avatar-caramel-dog",
+    spriteWalkKey: "avatar-caramel-dog-walk",
+    // ~7 tiles. Keeps it roaming the open sand of the ST Brasil beach without
+    // reaching the stands to the north or the water to the south.
+    wanderRadius: 168,
+  },
   // ── Expansion district NPCs ──────────────────────────────────────
   {
     id: "kuka",
     name: "Kuka",
     role: "Superteam Brazil Lead",
-    tileX: 130,
-    tileY: 92,
+    // In front of the ST Brasil lighthouse, on the sidewalk between the flag
+    // lamp post and the welcome sign.
+    tileX: 56,
+    tileY: 87,
     color: 0xffd700,
     dialog: [
       "Hello, I'm Kuka. The Lead of Superteam Brazil.",
@@ -226,8 +282,10 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     id: "bk-indies",
     name: "BK",
     role: "Indies on Solana",
-    tileX: 79,
-    tileY: 104,
+    // On the sidewalk in front of the Indies on Solana storefront
+    // (BuildIndies, base rows 40-45 around cols 59-68).
+    tileX: 62,
+    tileY: 45,
     color: 0x7c3aed,
     dialog: [
       "Hello! I'm BK, the leader of Indies on Solana. A community initiative by the Indies for the Indies.",
@@ -241,8 +299,10 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     id: "mr-bananas",
     name: "Mr. Bananas",
     role: "MonkeDAO",
-    tileX: 67,
-    tileY: 93,
+    // In front of the banana stand at the MonkeDAO block (BuildMonkeDaoStand,
+    // base cols 47-51 / rows 29-31).
+    tileX: 49,
+    tileY: 31,
     color: 0xffd700,
     dialog: [
       "Hey bro! Do you know MonkeDAO? I'm Bananas about it. That's why they call me MR. Bananas.",

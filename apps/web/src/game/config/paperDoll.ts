@@ -62,6 +62,17 @@ export interface LayerVariant {
    *     covers the crown, stays on "full" rather than this).
    */
   hatCoverage?: "full" | "band" | "suppress";
+  /**
+   * Reserves this item to a specific achievement so it's excluded from the
+   * random booster pool — it has to be earned the intended way, not rolled.
+   * Undefined + not in FREE_ITEMS ⇒ it drops from booster packs.
+   *
+   * Covers quest rewards and the NPC-granted Superteam Brasil set (see
+   * progression/outfitRewards.ts); `unlockHint` spells out the route for each.
+   */
+  unlockVia?: "quest";
+  /** Overrides the default locked-item hint shown in the wardrobe. */
+  unlockHint?: string;
 }
 
 /**
@@ -90,7 +101,7 @@ export type Loadout = Partial<Record<LayerCategory, string>>;
 
 export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
   back: [
-    { id: "Jetpack",         name: "Jetpack",        textureKey: "pd-back-Jetpack",         file: "back/Jetpack.png" },
+    { id: "Jetpack",         name: "Jetpack",        textureKey: "pd-back-Jetpack",         file: "back/Jetpack.png", unlockVia: "quest", unlockHint: "Quest reward" },
     { id: "backpack_brown",  name: "Brown Backpack", textureKey: "pd-back-backpack_brown",  file: "back/backpack_brown.png" },
     { id: "backpack_red",    name: "Red Backpack",   textureKey: "pd-back-backpack_red",    file: "back/backpack_red.png" },
   ],
@@ -123,6 +134,11 @@ export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
   tshirt: [
     { id: "Blue_tshirt",  name: "Blue T-Shirt",  textureKey: "pd-tshirt-Blue_tshirt",  file: "tshirt/Blue_tshirt.png" },
     { id: "White_tshirt", name: "White T-Shirt", textureKey: "pd-tshirt-White_tshirt", file: "tshirt/White_tshirt.png" },
+    // Superteam Brasil set — earned, never dropped by a booster (see unlockVia).
+    { id: "STB_shirt", name: "Superteam Brasil Shirt", textureKey: "pd-tshirt-STB_shirt",
+      file: "tshirt/STB_shirt.png", unlockVia: "quest", unlockHint: "Talk to Kuka" },
+    { id: "Brazilian_shirt", name: "Brazil Shirt", textureKey: "pd-tshirt-Brazilian_shirt",
+      file: "tshirt/Brazilian_shirt.png", unlockVia: "quest", unlockHint: "Talk to every citizen in the city" },
   ],
   accessory: [
     { id: "Golden_ring", name: "Golden Ring", textureKey: "pd-accessory-Golden_ring", file: "accessory/Golden_ring.png" },
@@ -155,6 +171,9 @@ export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
     { id: "hat_black",  name: "Black Hat",  textureKey: "pd-hat-hat_black",  file: "hat/hat_black.png" },
     { id: "hat_red",    name: "Red Hat",    textureKey: "pd-hat-hat_red",    file: "hat/hat_red.png" },
     { id: "red_belt",   name: "Red Bandana",textureKey: "pd-hat-red_belt",   file: "hat/red_belt.png", hatCoverage: "band" },
+    // Superteam Brasil set — earned, never dropped by a booster (see unlockVia).
+    { id: "STB_cap", name: "Superteam Brasil Cap", textureKey: "pd-hat-STB_cap",
+      file: "hat/STB_cap.png", unlockVia: "quest", unlockHint: "Win a round of Kite Clash" },
   ],
 };
 
@@ -220,6 +239,40 @@ export function getVariant(category: LayerCategory, variantId?: string): LayerVa
  *  can pick from or that a random pedestrian could roll. */
 export function getEnabledVariants(category: LayerCategory): LayerVariant[] {
   return LAYER_VARIANTS[category].filter((v) => v.enabled !== false);
+}
+
+// ── Unlock economy (gacha) ──────────────────────────────────────────────────
+//
+// Only a small starter set is free; everything else is locked and earned via a
+// quest, an NPC, or a random booster pack. Identity layers (skin, eyesFace)
+// stay fully free — they aren't cosmetics to collect.
+const FREE_ITEMS: Partial<Record<LayerCategory, "*" | string[]>> = {
+  skin: "*",
+  eyesFace: "*",
+  hair: ["Black_hair", "Brown_hair"],
+  tshirt: ["Blue_tshirt", "White_tshirt"],
+  pants: ["Blue_pants", "Grey_pants"],
+  // hat, accessory, back: nothing free — all via quest / NPC / booster.
+};
+
+/** True if this item needs no unlock (starter set / identity layer). */
+export function isFreeItem(category: LayerCategory, id: string): boolean {
+  const free = FREE_ITEMS[category];
+  return free === "*" || (Array.isArray(free) && free.includes(id));
+}
+
+/** Hint shown on a locked wardrobe item — its explicit `unlockHint`, else the
+ *  default booster hint. */
+export function unlockHintFor(variant: LayerVariant): string {
+  return variant.unlockHint ?? "🎁 Booster";
+}
+
+/** Items that can drop from a booster pack: not free, and not reserved to a
+ *  quest/NPC. Shared by the client preview and (later) the on-chain VRF draw. */
+export function getBoosterPool(): { category: LayerCategory; variant: LayerVariant }[] {
+  return getAllLayerVariants().filter(
+    ({ category, variant }) => !isFreeItem(category, variant.id) && !variant.unlockVia,
+  );
 }
 
 /** All (category, variant) pairs — used by BootScene to preload every

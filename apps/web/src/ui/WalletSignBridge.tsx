@@ -16,17 +16,20 @@ import type { Transaction } from "@solana/web3.js";
  * Renders nothing — pure side-effect.
  */
 export default function WalletSignBridge() {
-  const { sendTransaction, signTransaction } = useWallet() as {
+  const { sendTransaction, signTransaction, signMessage } = useWallet() as {
     sendTransaction?: Function;
     signTransaction?: Function;
+    signMessage?: (message: Uint8Array) => Promise<Uint8Array>;
   };
   const { connection } = useConnection();
 
   const sendRef = useRef(sendTransaction);
   const signRef = useRef(signTransaction);
+  const signMsgRef = useRef(signMessage);
   const connRef = useRef(connection);
   sendRef.current = sendTransaction;
   signRef.current = signTransaction;
+  signMsgRef.current = signMessage;
   connRef.current = connection;
 
   useEffect(() => {
@@ -62,11 +65,27 @@ export default function WalletSignBridge() {
         }
       };
 
+      // Sign an arbitrary MESSAGE (not a transaction) — used to derive a
+      // deterministic session key: the same wallet always produces the same
+      // ed25519 signature for a fixed message, so the session key is identical
+      // on every device/browser and never falls out of sync with the ER.
+      const signMessageHandler = async (message: Uint8Array) => {
+        try {
+          if (!signMsgRef.current) throw new Error("Wallet cannot sign messages");
+          const sig = await signMsgRef.current(message);
+          bus.emit("wallet:signedMessage", sig);
+        } catch (err) {
+          bus.emit("wallet:signMessageError", err);
+        }
+      };
+
       bus.on("wallet:needSign", handler);
       bus.on("wallet:needSignOnly", signOnlyHandler);
+      bus.on("wallet:needSignMessage", signMessageHandler);
       off = () => {
         bus.off("wallet:needSign", handler);
         bus.off("wallet:needSignOnly", signOnlyHandler);
+        bus.off("wallet:needSignMessage", signMessageHandler);
       };
       // Signal readiness so CityScene can detect WalletSignBridge is live
       // and skip the fixed 700ms delay on the next wallet connect.

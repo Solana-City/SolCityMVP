@@ -17,4 +17,7 @@ idl-build = ["anchor-lang/idl-build"]
 default = []
 
 [dependencies]
-anchor-lang = "0.30.1"
+anchor-lang = { version = "0.30.1", features = ["init-if-needed"] }
+# MagicBlock ephemeral VRF — verifiable randomness for the outfit booster.
+# The `anchor` feature provides the #[vrf] macro + invoke_signed_vrf helper.
+ephemeral-vrf-sdk = { version = "0.3.0", features = ["anchor"] }

@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import dynamic from "next/dynamic";
 import type { NPCDefinition, NPCAction } from "@/game/config/npcRegistry";
+import type { GameWithSceneReady, SolCityWalletHost } from "@/game/scenes/CityScene";
 import type { MiniGameContext, MiniGameResult } from "@/game/minigames/types";
 import { launch as launchMiniGame } from "@/game/minigames";
 import { usePinchZoom } from "@/ui/usePinchZoom";
@@ -27,6 +28,7 @@ const MwaRegistration     = dynamic(() => import("@/ui/MwaRegistration"),     { 
 const RotatePrompt        = dynamic(() => import("@/ui/RotatePrompt"),        { ssr: false });
 const WardrobePanel       = dynamic(() => import("@/ui/WardrobePanel"),       { ssr: false });
 const ConnectScreen       = dynamic(() => import("@/ui/ConnectScreen"),       { ssr: false });
+const SWUpdater           = dynamic(() => import("@/ui/SWUpdater"),            { ssr: false });
 const WhereIsNPCCard      = dynamic(() => import("@/ui/WhereIsNPCCard"),      { ssr: false });
 const QuestPanel          = dynamic(() => import("@/ui/QuestPanel"),          { ssr: false });
 const PlayerCard          = dynamic(() => import("@/ui/PlayerCard"),          { ssr: false });
@@ -57,14 +59,10 @@ export default function Home() {
   const [profileOpen, setProfileOpen] = useState(false);
   const [wardrobeOpen, setWardrobeOpen] = useState(false);
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
-  // Login-gate phase: "connecting" holds the ConnectScreen up (with a spinner)
-  // from wallet-connect until the on-chain session is established, so the player
-  // never enters the world before delegation confirms.
-  const [sessionPhase, setSessionPhase] = useState<"idle" | "connecting" | "ready">("idle");
   const [logOpen, setLogOpen] = useState(false);
   const [mobilePanel, setMobilePanel] = useState<"hunt" | "quests" | null>(null);
-  // Wallet address that connected before the Phaser game was ready — replayed once game loads.
-  const pendingWalletRef = useRef<string | null | undefined>(undefined);
+  /** Last wallet state actually handed to Phaser; undefined = nothing sent yet. */
+  const lastSentWalletRef = useRef<string | null | undefined>(undefined);
   // Chat hidden by default on touch devices, visible on desktop
   const [chatOpen, setChatOpen] = useState(() =>
     typeof window === "undefined"
@@ -158,9 +156,11 @@ export default function Home() {
 
   // Records result to the ephemeral rollup (session key, no popup), then closes.
   const handleMiniGameResult = useCallback(async (result: MiniGameResult) => {
-    game?.events.emit("minigame:result", { success: result.success });
+    // The id rides along so the scene can tell WHICH game was won — the
+    // Superteam Brasil cap is a Kite Clash reward, not a reward for any win.
+    game?.events.emit("minigame:result", { id: activeMiniGame?.id, success: result.success });
     handleMiniGameClose();
-  }, [game, handleMiniGameClose]);
+  }, [game, activeMiniGame, handleMiniGameClose]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -174,59 +174,54 @@ export default function Home() {
     return () => window.removeEventListener("keydown", handler);
   }, []);
 
-  // Session lifecycle from CityScene drives the login gate.
-  useEffect(() => {
-    if (!game) return;
-    const onConnecting = () => setSessionPhase("connecting");
-    const onReady = () => setSessionPhase("ready");
-    game.events.on("game:sessionConnecting", onConnecting);
-    game.events.on("game:sessionReady", onReady);
-    return () => {
-      game.events.off("game:sessionConnecting", onConnecting);
-      game.events.off("game:sessionReady", onReady);
-    };
-  }, [game]);
-
-  // Hard backstop, independent of the game: if a wallet is connected and the
-  // session still hasn't reported ready after 20s, force the gate down so the
-  // spinner can NEVER load forever — covers a missed sessionReady event or a
-  // connect() that hangs past the scene's own watchdog.
-  useEffect(() => {
-    if (!walletAddress || sessionPhase === "ready") return;
-    const t = setTimeout(() => setSessionPhase("ready"), 20_000);
-    return () => clearTimeout(t);
-  }, [walletAddress, sessionPhase]);
-
   const handleWalletChange = useCallback((wallet: string | null) => {
     setWalletAddress(wallet);
-    // Reset the gate when the wallet drops so a fresh connect re-arms it.
-    if (!wallet) setSessionPhase("idle");
-    if (!game) {
-      // Game still loading — store and replay once it's ready
-      pendingWalletRef.current = wallet;
-      return;
-    }
-    if (wallet) {
-      game.events.emit("wallet:connected", wallet);
-    } else {
-      game.events.emit("wallet:disconnected");
-    }
+    // Mirror it somewhere CityScene can read on its own. If the wallet connects
+    // while BootScene is still preloading there is no scene to push to yet, and
+    // the push below can only fire once; CityScene reads this at startup so a
+    // wallet that arrived early is never stranded.
+    (globalThis as SolCityWalletHost).__solCityWallet = wallet;
+  }, []);
+
+  // CityScene only starts listening for "wallet:connected" at the end of its
+  // create(). `game` goes non-null the instant `new Phaser.Game()` returns —
+  // long before BootScene has preloaded — so waiting on `game` alone emitted
+  // into an emitter with no subscribers and Phaser dropped it silently. That
+  // left the player connected in React but never logged into the game or the
+  // multiplayer session until they disconnected and connected again.
+  //
+  // Counter, not a boolean, so a scene restart re-runs the sync below.
+  const [sceneReadyTick, setSceneReadyTick] = useState(0);
+  useEffect(() => {
+    if (!game) return;
+    const onReady = () => {
+      // A fresh scene knows nothing — resend whatever we have.
+      lastSentWalletRef.current = undefined;
+      setSceneReadyTick((t) => t + 1);
+    };
+    game.events.on("scene:ready", onReady);
+    if ((game as GameWithSceneReady).__solCitySceneReady) onReady();
+    return () => { game.events.off("scene:ready", onReady); };
   }, [game]);
 
-  // Replay a wallet connection that arrived before the game was ready
+  // The single place that tells Phaser about the wallet. Runs once the scene is
+  // listening, and dedupes so a re-render never opens a second session.
   useEffect(() => {
-    if (!game || pendingWalletRef.current === undefined) return;
-    const wallet = pendingWalletRef.current;
-    pendingWalletRef.current = undefined;
-    if (wallet) {
-      game.events.emit("wallet:connected", wallet);
-    } else {
+    if (!game || sceneReadyTick === 0) return;
+    if (lastSentWalletRef.current === walletAddress) return;
+    const firstSync = lastSentWalletRef.current === undefined;
+    lastSentWalletRef.current = walletAddress;
+    if (walletAddress) {
+      game.events.emit("wallet:connected", walletAddress);
+    } else if (!firstSync) {
       game.events.emit("wallet:disconnected");
     }
-  }, [game]);
+  }, [game, sceneReadyTick, walletAddress]);
 
   return (
     <ErrorBoundary>
+      {/* Seamless SW updates so a stale/broken cached build self-recovers. */}
+      <SWUpdater />
       <SolanaProvider>
         {/* Blocks the game canvas while the device is in portrait — Seeker/mobile */}
         <RotatePrompt />
@@ -234,7 +229,7 @@ export default function Home() {
         <MwaRegistration />
         {/* Headless bridge so Phaser can request wallet signatures */}
         <WalletSignBridge />
-        <ConnectScreen sessionPhase={sessionPhase} />
+        <ConnectScreen />
         <main className="w-screen app-viewport relative">
           <PhaserGame onGameReady={setGame} />
 

@@ -1,5 +1,5 @@
 import * as Phaser from "phaser";
-import { TILE_SIZE, PLAYABLE_ZONE } from "../config/constants";
+import { TILE_SIZE } from "../config/constants";
 import { PedestrianSprite, makePedestrianLoadout, type PedestrianContext } from "./PedestrianSprite";
 import { getTargetPedIndex, advanceFindSlot, getCurrentSlot, resetCitizenTimer, ROTATION_BATCH_MS } from "../minigames/whereIsNPC/WhereIsNPCGame";
 
@@ -26,26 +26,48 @@ function getPedestrianCount(): number {
 // no one sprints across the map or crawls.
 const SPEED_BANDS = [22, 24, 26, 28, 30];
 
-// 32 zones covering the full PLAYABLE_ZONE (col1:42 col2:162 row1:68 row2:130)
-const SPAWN_ZONES: [number, number, number, number][] = [
-  // North strip (row ~72-80)
-  [ 55, 74, 8, 4], [ 75, 74, 8, 4], [ 95, 74, 8, 4], [115, 74, 8, 4],
-  [135, 74, 8, 4], [155, 74, 6, 4],
-  // Upper-mid strip (row ~85-95)
-  [ 50, 90, 5, 6], [ 68, 90, 7, 6], [ 88, 90, 8, 6], [108, 90, 8, 6],
-  [128, 90, 7, 6], [148, 90, 7, 6],
-  // Center (row ~98-108)
-  [ 50,102, 5, 6], [ 70,102, 8, 6], [ 90,102, 8, 6], [110,102, 8, 6],
-  [130,102, 8, 6], [150,102, 6, 6],
-  // Lower-mid strip (row ~112-120)
-  [ 55,116, 8, 5], [ 75,116, 8, 5], [ 95,116, 8, 5], [115,116, 8, 5],
-  [135,116, 8, 5], [155,116, 5, 5],
-  // South strip (row ~123-128)
-  [ 60,126, 8, 3], [ 80,126, 8, 3], [100,126, 8, 3], [120,126, 8, 3],
-  [140,126, 8, 3],
-  // Interior pockets (plazas / crossroads)
-  [100, 99, 5, 5], [ 80,109, 5, 5], [120,109, 5, 5], [160, 99, 3, 6],
-];
+/**
+ * Where a citizen may stand: every tile actually reachable on foot from the
+ * player's spawn, flood-filled from the live collision layers at startup.
+ *
+ * This replaces a hand-written table of 32 spawn zones that still described the
+ * old 200x200 city (cols 42-162, rows 68-130). Against SCMap01.1 (135x115) a
+ * third of that box does not exist and the rest covers only ~20% of the walkable
+ * streets, so citizens piled into one corner. Worse, the zone pick only asked
+ * "is this exact tile a collider" — nothing stopped it landing someone in the
+ * sea or inside a sealed courtyard, where they were stuck for good.
+ *
+ * Deriving the set from reachability makes both failures unrepresentable: a tile
+ * is a candidate only if the player could walk to it.
+ */
+function collectWalkableTiles(
+  map: Phaser.Tilemaps.Tilemap,
+  isBlocked: (col: number, row: number) => boolean,
+  fromCol: number,
+  fromRow: number,
+): { col: number; row: number }[] {
+  const { width, height } = map;
+  const seen = new Uint8Array(width * height);
+  const out: { col: number; row: number }[] = [];
+  if (isBlocked(fromCol, fromRow)) return out;
+
+  const stack: [number, number][] = [[fromCol, fromRow]];
+  seen[fromRow * width + fromCol] = 1;
+  while (stack.length > 0) {
+    const [col, row] = stack.pop()!;
+    out.push({ col, row });
+    for (const [dc, dr] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+      const nc = col + dc;
+      const nr = row + dr;
+      if (nc < 0 || nc >= width || nr < 0 || nr >= height) continue;
+      const i = nr * width + nc;
+      if (seen[i] || isBlocked(nc, nr)) continue;
+      seen[i] = 1;
+      stack.push([nc, nr]);
+    }
+  }
+  return out;
+}
 
 export class PedestrianManager {
   private pedestrians: PedestrianSprite[] = [];
@@ -54,16 +76,35 @@ export class PedestrianManager {
   private collisionLayers: Phaser.Tilemaps.TilemapLayer[] = [];
   private rotationBatch = 0;
   private count = PEDESTRIAN_COUNT_DESKTOP;
+  /** Every tile a citizen may stand on — see collectWalkableTiles. */
+  private walkable: { col: number; row: number }[] = [];
   /** Arcade group — lets us do pedGroup vs pedGroup in one collider call */
   private pedGroup!: Phaser.Physics.Arcade.Group;
 
   getPedGroup(): Phaser.Physics.Arcade.Group { return this.pedGroup; }
 
-  spawn(scene: Phaser.Scene, collisionLayers: Phaser.Tilemaps.TilemapLayer[]): void {
+  spawn(
+    scene: Phaser.Scene,
+    collisionLayers: Phaser.Tilemaps.TilemapLayer[],
+    map: Phaser.Tilemaps.Tilemap,
+    spawnCol: number,
+    spawnRow: number,
+  ): void {
     this.scene = scene;
     this.collisionLayers = collisionLayers;
     this.count = getPedestrianCount();
     this.pedGroup = scene.physics.add.group();
+
+    this.walkable = collectWalkableTiles(
+      map,
+      (col, row) => this.isBlocked(col, row),
+      spawnCol,
+      spawnRow,
+    );
+    if (this.walkable.length === 0) {
+      console.warn("[pedestrians] no walkable tiles found — crowd disabled");
+      return;
+    }
 
     for (let i = 0; i < this.count; i++) {
       scene.time.delayedCall(i * 80, () => {
@@ -215,28 +256,7 @@ export class PedestrianManager {
   };
 
   private spawnOne(i: number): PedestrianSprite {
-    const PZ = PLAYABLE_ZONE;
-    const zone = SPAWN_ZONES[i % SPAWN_ZONES.length];
-    const [zCol, zRow, rCol, rRow] = zone;
-
-    let col = Math.round(zCol + (Math.random() * 2 - 1) * rCol);
-    let row = Math.round(zRow + (Math.random() * 2 - 1) * rRow);
-    col = Math.max(PZ.col1 + 2, Math.min(PZ.col2 - 2, col));
-    row = Math.max(PZ.row1 + 2, Math.min(PZ.row2 - 2, row));
-
-    // Scan downward up to 8 tiles to escape any collider
-    let tries = 0;
-    while (this.isBlocked(col, row) && tries < 8) {
-      row++;
-      tries++;
-    }
-    // If still blocked, shift right and try again
-    if (this.isBlocked(col, row)) {
-      col += 2;
-      row = Math.max(PZ.row1 + 2, Math.min(PZ.row2 - 2,
-        Math.round(zRow + (Math.random() * 2 - 1) * rRow)));
-    }
-
+    const { col, row } = this.pickSpawnTile();
     const wx = col * TILE_SIZE + TILE_SIZE / 2;
     const wy = row * TILE_SIZE + TILE_SIZE / 2;
     const loadout = makePedestrianLoadout(i * 31337 + 17);
@@ -254,15 +274,17 @@ export class PedestrianManager {
     return Math.abs(wx - cam.midPoint.x) < halfW && Math.abs(wy - cam.midPoint.y) < halfH;
   }
 
-  /** Least-crowded of three random zones — respawns drift toward empty
+  /** Least-crowded of three random walkable tiles — spawns drift toward empty
    *  streets instead of piling onto already busy ones. */
-  private pickRespawnZone(): [number, number, number, number] {
-    let best = SPAWN_ZONES[Math.floor(Math.random() * SPAWN_ZONES.length)];
+  private pickSpawnTile(): { col: number; row: number } {
+    let best = this.walkable[Math.floor(Math.random() * this.walkable.length)];
     let bestCount = Infinity;
     for (let k = 0; k < 3; k++) {
-      const zone = SPAWN_ZONES[Math.floor(Math.random() * SPAWN_ZONES.length)];
-      const n = this.countPedsNear(zone[0] * TILE_SIZE, zone[1] * TILE_SIZE, TILE_SIZE * 10);
-      if (n < bestCount) { bestCount = n; best = zone; }
+      const tile = this.walkable[Math.floor(Math.random() * this.walkable.length)];
+      const n = this.countPedsNear(
+        tile.col * TILE_SIZE, tile.row * TILE_SIZE, TILE_SIZE * 10,
+      );
+      if (n < bestCount) { bestCount = n; best = tile; }
     }
     return best;
   }
@@ -292,15 +314,7 @@ export class PedestrianManager {
       const newSeed = i * 31337 + 17;
       const loadout = makePedestrianLoadout(newSeed);
       const speed   = SPEED_BANDS[Math.floor(Math.random() * SPEED_BANDS.length)];
-      const PZ = PLAYABLE_ZONE;
-      const [zCol, zRow, rCol, rRow] = this.pickRespawnZone();
-      let col = Math.max(PZ.col1 + 2, Math.min(PZ.col2 - 2,
-        Math.round(zCol + (Math.random() * 2 - 1) * rCol)));
-      let row = Math.max(PZ.row1 + 2, Math.min(PZ.row2 - 2,
-        Math.round(zRow + (Math.random() * 2 - 1) * rRow)));
-
-      let t = 0;
-      while (this.isBlocked(col, row) && t < 8) { row++; t++; }
+      const { col, row } = this.pickSpawnTile();
 
       const newPed = new PedestrianSprite(
         this.scene,

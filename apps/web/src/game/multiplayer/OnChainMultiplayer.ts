@@ -1003,6 +1003,12 @@ export class OnChainMultiplayer {
   // Delegation will be re-enabled when launching on mainnet where MagicBlock
   // infrastructure is production-grade.
 
+  /** Surfaces the current connect stage on the login gate (real progress, so a
+   *  stall is visible at the exact step instead of a time-based guess). */
+  private progress(label: string): void {
+    try { (globalThis as any).__solCityGameEvents?.emit("game:sessionProgress", label); } catch {}
+  }
+
   private async startMagicBlockMultiplayer(wallet: PublicKey, displayName?: string): Promise<void> {
     const walletStr = wallet.toBase58();
     const [playerPDA] = derivePlayerPDA(wallet);
@@ -1037,11 +1043,12 @@ export class OnChainMultiplayer {
       const sessionKey = this.sessionKeys.getSessionPublicKey();
       const name = displayName ?? walletStr.slice(0, 8);
 
-      const SESSION_FUND_LAMPORTS = 5_000_000; // 0.005 SOL — covers ~1000 position updates
+      const SESSION_FUND_LAMPORTS = 2_000_000; // 0.002 SOL — cheaper init for low-balance test wallets (ER fees are tiny)
       const sessionBalance = await this.baseConnection.getBalance(sessionKey).catch(() => 0);
       const needsFunding = sessionBalance < 500_000;
 
       if (!existing) {
+        this.progress("Creating your player (sign)…");
         console.log("… new player — init + auth" + (needsFunding ? " + fund" : "") + " (1 sign prompt)");
         // Logged + confirmed by POLLING the PDA (confirmTransaction's router WS
         // is unreliable). Without this the init failure was invisible — no log
@@ -1059,6 +1066,7 @@ export class OnChainMultiplayer {
             tx.add(SystemProgram.transfer({ fromPubkey: wallet, toPubkey: sessionKey, lamports: SESSION_FUND_LAMPORTS }));
           }
           const sig = await this.signAndSendViaWallet(tx);
+          this.progress("Confirming your player…");
           pdaReady = await this.waitForAccount(playerPDA, 12, 800);
           if (pdaReady) {
             this.sessionKeys["authorized"] = true;
@@ -1073,6 +1081,7 @@ export class OnChainMultiplayer {
           console.warn("✗ init/auth failed:", err?.message);
         }
       } else if (!isDelegated) {
+        this.progress("Authorizing session…");
         console.log("✓ PDA on base — auth" + (needsFunding ? " + fund (1 sign prompt)" : " (may skip if cached)"));
         await this.sessionKeys.authorize(wallet, this.baseConnection, undefined, needsFunding ? SESSION_FUND_LAMPORTS : 0);
         console.log("✓ session authorized");
@@ -1080,8 +1089,10 @@ export class OnChainMultiplayer {
         // Delegated: the ER copy is the authoritative session state.
         // Re-authorize on the rollup only if its stored key differs from ours
         // — when in sync this whole branch needs no wallet prompt.
+        this.progress("Syncing session key…");
         await this.syncSessionKeyOnEr(wallet, playerPDA);
         if (needsFunding) {
+          this.progress("Funding session (sign)…");
           console.log("… funding session key (1 sign prompt)");
           const { blockhash } = await this.baseRpcWithRetry(() => this.baseConnection.getLatestBlockhash());
           const fundTx = new Transaction({ recentBlockhash: blockhash, feePayer: wallet })
@@ -1100,6 +1111,7 @@ export class OnChainMultiplayer {
         console.warn("○ delegation skipped — player PDA not initialized");
         this.useEphemeral = false;
       } else if (!isDelegated) {
+        this.progress("Delegating to rollup (sign)…");
         console.log("… delegating PDA to ephemeral rollup (1 sign prompt)");
         this.useEphemeral = await this.delegateToEphemeral(wallet);
       } else {
@@ -1375,6 +1387,7 @@ export class OnChainMultiplayer {
       `… ER session key ${erSession ? `stale (${erSession.toBase58().slice(0, 8)}… on ER)` : "unreadable"}` +
       " — re-authorizing on the rollup (1 sign prompt)"
     );
+    this.progress("Re-authorizing on rollup (sign)…");
     const ix = buildAuthorizeSessionIx(wallet, sessionKey);
     const { blockhash } = await OnChainMultiplayer.withTimeout(
       this.ephemeralConnection.getLatestBlockhash(), 5_000

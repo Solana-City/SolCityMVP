@@ -43,6 +43,24 @@ export const DELEGATION_PROGRAM_ID = new PublicKey(
 // programs/sol-city/src/lib.rs.
 export const PLAYER_SEED = "player_v2";
 export const HUNT_SEED = "hunt";
+export const UNLOCKS_SEED = "unlocks";
+
+/**
+ * Master switch for the on-chain (VRF) booster. OFF until the program with
+ * open_booster/UnlockState is deployed AND the client ix accounts are filled
+ * from the new IDL. While false the booster runs the client-side preview
+ * (Math.random + localStorage). Flip via NEXT_PUBLIC_BOOSTER_ONCHAIN=1.
+ */
+export const BOOSTER_ONCHAIN =
+  (typeof process !== "undefined" && process.env.NEXT_PUBLIC_BOOSTER_ONCHAIN === "1") || false;
+
+/**
+ * MagicBlock ephemeral-VRF oracle queue — base devnet (`DEFAULT_QUEUE`).
+ * Matches ephemeral_vrf_sdk::consts::DEFAULT_QUEUE used in open_booster.
+ */
+export const VRF_QUEUE_DEVNET = new PublicKey(
+  "Cuj97ggrhhidhbu39TijNVqE74xvKJ69gDervRUXAxGh"
+);
 
 /**
  * Derives the player state PDA for a given wallet.
@@ -88,6 +106,56 @@ export function decodeHuntState(data: Uint8Array): HuntState | null {
   const foundAt = Number(buf.readBigInt64LE(o)); o += 8;
   const deadline = Number(buf.readBigInt64LE(o)); o += 8;
   return { round, winner, foundAt, deadline };
+}
+
+/**
+ * Per-wallet booster unlock store — seed ["unlocks", wallet].
+ * Matches UnlockState in programs/sol-city/src/lib.rs.
+ */
+export function deriveUnlockPDA(
+  wallet: PublicKey,
+  programId: PublicKey = SOL_CITY_PROGRAM_ID
+): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from(UNLOCKS_SEED), wallet.toBuffer()],
+    programId
+  );
+}
+
+export const UNLOCK_BITS = 32; // bytes → 256 possible item indices
+
+export interface UnlockState {
+  authority: PublicKey;
+  bits: Uint8Array;      // UNLOCK_BITS bytes
+  pending: boolean;      // a pack is awaiting its VRF callback
+  poolCount: number;     // u16 — index space of the pending draw
+}
+
+/**
+ * Decodes an UnlockState account. Layout after the 8-byte discriminator:
+ *   authority: Pubkey(32) | bits: [u8;32] | pending: bool(1) | poolCount: u16(2)
+ */
+export function decodeUnlockState(data: Uint8Array): UnlockState | null {
+  const need = 8 + 32 + UNLOCK_BITS + 1 + 2;
+  if (data.length < need) return null;
+  const buf = Buffer.from(data);
+  let o = 8;
+  const authority = new PublicKey(buf.subarray(o, o + 32)); o += 32;
+  const bits = new Uint8Array(buf.subarray(o, o + UNLOCK_BITS)); o += UNLOCK_BITS;
+  const pending = buf.readUInt8(o) === 1; o += 1;
+  const poolCount = buf.readUInt16LE(o); o += 2;
+  return { authority, bits, pending, poolCount };
+}
+
+/** The set of unlocked booster-pool indices encoded in a bitset. */
+export function unlockedIndices(bits: Uint8Array): Set<number> {
+  const out = new Set<number>();
+  for (let byte = 0; byte < bits.length; byte++) {
+    for (let bit = 0; bit < 8; bit++) {
+      if (bits[byte] & (1 << bit)) out.add(byte * 8 + bit);
+    }
+  }
+  return out;
 }
 
 /**

@@ -1,5 +1,6 @@
 import * as Phaser from "phaser";
-import { PLAYER_SPEED, TILE_SIZE, PLAYABLE_ZONE } from "../config/constants";
+import { PublicKey } from "@solana/web3.js";
+import { PLAYER_SPEED, TILE_SIZE } from "../config/constants";
 import { Direction } from "../entities/SimpleSprite";
 import { AvatarSprite } from "../entities/AvatarSprite";
 import { loadSavedLoadout, DEFAULT_LOADOUT, type Loadout } from "../config/paperDoll";
@@ -12,12 +13,27 @@ import { PedestrianManager } from "../entities/PedestrianManager";
 import { hasAlreadyFoundCurrent, markCurrentFound, isCitizenExpired, advanceFindSlot, resetCitizenTimer, isHuntOnChain, getRoundIndex } from "../minigames/whereIsNPC/WhereIsNPCGame";
 import { ProfileManager, profileManager } from "../config/profileManager";
 import { AchievementEngine } from "../progression/achievementEngine";
+import { onMiniGameFinished, watchNpcConversations, stopWatchingNpcConversations } from "../progression/outfitRewards";
 import { showEmoji, EmojiDef } from "../chat/EmojiSystem";
 import { soundManager } from "../audio/SoundManager";
 
 // Pixel-perfect zoom values and snapping live in config/zoomConfig.ts —
 // shared with ZoomControl and the pinch-zoom hook.
 import { loadZoom, snapZoom, viewScale } from "../config/zoomConfig";
+
+/**
+ * Set on the Phaser.Game once CityScene.create() has registered its listeners.
+ * React reads it so a wallet that connected during boot still gets delivered
+ * even if it subscribes to "scene:ready" after the event already fired.
+ */
+export type GameWithSceneReady = Phaser.Game & { __solCitySceneReady?: boolean };
+
+/**
+ * The connected wallet, mirrored by React on every change so CityScene can PULL
+ * it at startup instead of relying on having been subscribed when it was
+ * pushed. See the handshake in create().
+ */
+export type SolCityWalletHost = typeof globalThis & { __solCityWallet?: string | null };
 
 export class CityScene extends Phaser.Scene {
   private avatar!: AvatarSprite;
@@ -62,46 +78,63 @@ export class CityScene extends Phaser.Scene {
   private npcSprites: NPCSprite[] = [];
   private pedestrians!: PedestrianManager;
   private interactionBlocked = false;
-  // Locks movement while a wallet session is being established (init + delegate
-  // + confirm). Keeps the player on the login gate until moves will actually
-  // land on-chain, so no "simulation"/failing txs fire before signing.
-  private sessionLocked = false;
   private walletAddress: string | null = null;
+  /** Wallet whose session handshake is in flight — see the connect guard. */
+  private walletConnecting: string | null = null;
   private profile!: ProfileManager;
   private touchDx = 0;
   private touchDy = 0;
-  /**
-   * Crop origin of the loaded map in original (200x200) tile coordinates.
-   * Desktop loads the full city.json → origin (0,0). Mobile loads the
-   * pre-cropped city-mobile.json (120x62 tiles starting at the playable
-   * zone) whose layers carry offsetx/offsety restoring original world
-   * positions — so world-pixel math stays in original coordinates, but
-   * tile-index lookups into map data must subtract this origin.
-   */
-  private originCol = 0;
-  private originRow = 0;
+  /** Every game-level listener this scene added, so shutdown can undo them. */
+  private gameEventHandlers: Array<[string, (...args: never[]) => void]> = [];
 
   constructor() {
     super({ key: "CityScene" });
   }
 
+  /**
+   * Subscribe to a GAME-level event and remember it for teardown.
+   *
+   * `game.events` outlives the scene, so anything registered on it in create()
+   * survives a scene restart and a second create() would stack a duplicate of
+   * every handler — two wallet sessions opened for one connect, every chat line
+   * appended twice, and so on. Scene-level `this.events` cleans itself up; this
+   * is the bus that does not.
+   */
+  private onGameEvent(name: string, fn: (...args: never[]) => void): void {
+    this.game.events.on(name, fn);
+    this.gameEventHandlers.push([name, fn]);
+  }
+
+  private teardownGameEvents(): void {
+    for (const [name, fn] of this.gameEventHandlers) {
+      this.game.events.off(name, fn);
+    }
+    this.gameEventHandlers = [];
+  }
+
   create(): void {
+    // Drop every game-level listener when this scene goes away, and stop the
+    // outfit-reward subscription with it — both live on buses that outlast the
+    // scene, so without this a restart would double them.
+    this.events.once("shutdown", () => {
+      this.teardownGameEvents();
+      stopWatchingNpcConversations();
+    });
+
     // ── Tiled map with real sprite art ────────────────────────────────────
 
     const map = this.make.tilemap({ key: "city-map" });
     const tileSize = map.tileWidth;   // 24
 
-    const isMobileMap = window.matchMedia("(pointer: coarse)").matches;
-    this.originCol = isMobileMap ? PLAYABLE_ZONE.col1 : 0;
-    this.originRow = isMobileMap ? PLAYABLE_ZONE.row1 : 0;
-
-    // Add all tileset spritesheets loaded in BootScene
+    // Add all tileset spritesheets loaded in BootScene. Names MUST match the
+    // embedded tileset names in city.json and the loaded image keys.
     const allTilesets = [
-      "SCTileGrass", "SCBuildSTEarn", "SCBuildMonkeyDAO",
-      "SCBuildSTBrazil", "SCBuildJupter", "SCTileFountain",
-      "SCTileGround", "SCVegetationSet", "SCPalm", "SCBuildIndies",
-      "SCUrbanEquipament", "SCBuildGenericBuild", "SCBuildKeepGreen",
-      "SCBuildMagicBlock", "SCLogoIcon", "SCGameAssets",
+      "SCTileGrass", "SCBuildMonkeyDAO", "SCBuildSTBrazil", "SCBuildJupter",
+      "SCTileFountain", "SCTileGround", "SCVegetationSet", "SCPalm",
+      "SCBuildIndies", "SCUrbanEquipament", "SCBuildGenericBuild",
+      "SCBuildKeepGreen", "SCGameAssets", "ScTileBeach",
+      "ScBuildSTBrazilLighthouse", "SCBuildSTBrStands", "SCBuildMagicBlock02",
+      "SCBuildSTEarn02", "SCBuildSolanaCity",
     ]
       .map(n => map.addTilesetImage(n, n))
       .filter((ts): ts is Phaser.Tilemaps.Tileset => ts !== null);
@@ -116,7 +149,29 @@ export class CityScene extends Phaser.Scene {
     // the south and behind when approaching from the north.
     // NOTE: "Decor" is intentionally excluded — DecorFountain is a flat
     // plaza structure and must use fixed depth, not Y-sort.
-    const Y_SORT_PREFIXES = ["Vegetation", "DecorLight", "Build", "GameAsset"];
+    const Y_SORT_PREFIXES = ["Vegetation", "DecorLight", "Build", "GameAsset", "Rock"];
+
+    // Standing decoration that has NO collision but still has to sort against
+    // buildings — e.g. the ST Brasil welcome sign, which stands in front of the
+    // lighthouse. Without this they fall through to `depth = layer index`, a
+    // number in the tens, while any Y-sorted building sits at its bottom-Y in
+    // the thousands — so the building always paints over them.
+    const Y_SORT_NO_COLLISION_PREFIXES = ["DecorSign"];
+
+    // Layers that always draw above the player: the SolanaCity gantry banners
+    // the player walks under, the planter palms flanking the central bridge
+    // whose fronds hang over the walkway, and the beach parasols the player
+    // stands beneath.
+    //
+    // Y-sorting is not an option for these. A tilemap layer carries ONE depth,
+    // and each of these layers holds several copies spread across the map —
+    // the banners at rows 67, 82 and 98, the palm pairs at rows 74, 90 and 105,
+    // the parasols scattered down the sand — so any single base row is right
+    // for one copy and wrong for the rest. They were all falling through to
+    // `depth = layer index` and the player walked over the top of them.
+    const ABOVE_HEAD_PREFIXES = [
+      "DecorBilboard", "DecorPalmBridge", "DecorSTBrUmbrella", "DecorSolanaUmbrella",
+    ];
 
     // Create all tile layers in order from the JSON.
     // Do NOT pass x/y — Phaser defaults to layerData.x/y which already
@@ -129,45 +184,56 @@ export class CityScene extends Phaser.Scene {
 
       layer.setCollisionFromCollisionGroup();
 
-      // DecorFountain: partial Tiled objectgroup shapes leave many faces open,
-      // so the player's small body slips through even "collidable" rim tiles.
-      //
-      // Fix: force full 4-face collision on the inner water basin only.
-      // Bounds: cols 95-103, rows 91-99 (the water + rim area).
-      // Rows 88-90 (decorative arch) and outer corner tiles are intentionally
-      // EXCLUDED — they sit in walkable areas around the fountain perimeter
-      // and must not block the player.
-      // Corridor tiles (cols 99-100, rows 97+) get resetCollision() so the
-      // player can walk in/out through the staircase freely.
-      if (layerName === "DecorFountain") {
+      // Collider*: barrier layers — ColliderInvisible is hand-drawn in Tiled,
+      // ColliderAuto is generated by patch-map-collision.mjs (solid decor the
+      // tilesets forgot, plus everything walled off from the spawn, so the sea
+      // and interior pockets can never be walked or spawned into). Their tiles
+      // aren't decorated with per-tile collision shapes, so force full collision
+      // on every painted tile and hide the layer.
+      if (layerName.startsWith("Collider")) {
         layer.forEachTile((tile: Phaser.Tilemaps.Tile) => {
-          if (tile.index <= 0) return;
-          // tile.x/tile.y are map-data coordinates — shift back to original
-          // 200x200 coordinates before comparing against the corridor bounds.
-          const col = tile.x + this.originCol;
-          const row = tile.y + this.originRow;
-          const inCorridor = col >= 99 && col <= 100 && row >= 97;
-          if (inCorridor) {
-            tile.resetCollision();
-          } else {
-            tile.setCollision(true, true, true, true);
-          }
-        }, this, 95 - this.originCol, 91 - this.originRow, 9, 9); // cols 95-103, rows 91-99 in original coords
+          if (tile.index > 0) tile.setCollision(true, true, true, true);
+        });
+        layer.setVisible(false);
       }
 
       const collidingTiles = layer.filterTiles((t: Phaser.Tilemaps.Tile) => t.collides);
 
+      // Phaser reports a grouped layer as "Group/Name". Match the rules below
+      // on the leaf, so a layer keeps its render behaviour wherever the artist
+      // files it in Tiled — the bridge palms live inside the Ground group, and
+      // matching the full path silently dropped them to `depth = layer index`.
+      const leafName = layerName.slice(layerName.lastIndexOf("/") + 1);
+      const isAboveHead = ABOVE_HEAD_PREFIXES.some(p => leafName.startsWith(p));
+
       if (collidingTiles.length > 0) {
-        if (Y_SORT_PREFIXES.some(p => layerName.startsWith(p))) {
+        if (isAboveHead) {
+          // Blocks (planter bases) but still draws over the player.
+          layer.setDepth(FOREGROUND_DEPTH);
+          this.overheadLayers.push(layer);
+        } else if (Y_SORT_PREFIXES.some(p => leafName.startsWith(p))) {
           // Isolated vertical object (trunk, palm, lamp post) → y-sort.
-          // depth = bottom-world-Y of the southernmost collidable tile.
-          let maxBottomY = 0;
+          // depth = bottom-world-Y of the southernmost collidable ROW that
+          // actually carries the object's mass.
+          //
+          // Not simply the southernmost collidable tile: a layer often holds a
+          // building plus a detached prop. BuildIndies carries the house AND
+          // the "GAMES on SOLANA" sign, whose two feet sit one row south of the
+          // house's front wall — and those two tiles dragged the whole layer's
+          // depth down a row, so anyone standing in FRONT of the house was
+          // drawn behind it, which reads as walking under the facade. A handful
+          // of tiles does not define where a building meets the ground.
+          const tilesPerRow = new Map<number, number>();
           for (const tile of collidingTiles) {
-            const worldY = layer.tileToWorldY(tile.y)!;
-            if (worldY + map.tileHeight > maxBottomY) {
-              maxBottomY = worldY + map.tileHeight;
-            }
+            tilesPerRow.set(tile.y, (tilesPerRow.get(tile.y) ?? 0) + 1);
           }
+          const busiestRow = Math.max(...tilesPerRow.values());
+          let baseTileY = -1;
+          for (const [tileY, count] of tilesPerRow) {
+            if (count * 4 < busiestRow) continue; // sparse outlier row
+            if (tileY > baseTileY) baseTileY = tileY;
+          }
+          const maxBottomY = layer.tileToWorldY(baseTileY)! + map.tileHeight;
           layer.setDepth(maxBottomY);
           // Y-sorted layers can render above the player → candidate for fade.
           this.overheadLayers.push(layer);
@@ -176,10 +242,22 @@ export class CityScene extends Phaser.Scene {
           layer.setDepth(i);
         }
         this.collisionLayers.push(layer);
-      } else if (FOREGROUND_PREFIXES.some(p => layerName.startsWith(p))) {
-        // Pure-canopy layer (no collision) → always above the player.
+      } else if (isAboveHead || FOREGROUND_PREFIXES.some(p => leafName.startsWith(p))) {
+        // Overhead structure or pure canopy → always above the player.
         layer.setDepth(FOREGROUND_DEPTH);
         // Always above the player → always a fade candidate.
+        this.overheadLayers.push(layer);
+      } else if (Y_SORT_NO_COLLISION_PREFIXES.some(p => leafName.startsWith(p))) {
+        // Collision-free standing decor → y-sort off its own painted base, so
+        // it sits in front of buildings whose base is further north and behind
+        // the player once they walk past it.
+        let maxBottomY = 0;
+        layer.forEachTile((tile: Phaser.Tilemaps.Tile) => {
+          if (tile.index <= 0) return;
+          const bottom = layer.tileToWorldY(tile.y)! + map.tileHeight;
+          if (bottom > maxBottomY) maxBottomY = bottom;
+        });
+        layer.setDepth(maxBottomY);
         this.overheadLayers.push(layer);
       } else {
         // Ground / background layer → always below the player.
@@ -187,9 +265,10 @@ export class CityScene extends Phaser.Scene {
       }
     }
 
-    // Spawn inside the fountain plaza center (col 99, row 97).
-    const spawnX = 99 * tileSize + tileSize / 2;
-    const spawnY = 97 * tileSize + tileSize / 2;
+    // Spawn on the central fountain's walkway (col 78, row 38) — the two-tile
+    // flight of steps climbing from the south path up to the sculpture.
+    const spawnX = 78 * tileSize + tileSize / 2;
+    const spawnY = 38 * tileSize + tileSize / 2;
     this.avatar = new AvatarSprite(this, spawnX, spawnY, loadSavedLoadout());
 
     const container = this.avatar.getContainer();
@@ -204,66 +283,14 @@ export class CityScene extends Phaser.Scene {
 
     this.createFootDust();
 
-    // Invisible walls — MagicBlock building outer columns patch.
-    //
-    // Tileset analysis (cols 111-120):
-    //   rows 103-108 → all overhead/decorative tiles (no collision) — this is
-    //                   the back street; players must walk through freely.
-    //   rows 109-111 → col 111 and col 120 have no collision tile; cols 112-119 do.
-    //   row  112+    → full collision on all columns; no patch needed.
-    //
-    // Therefore: only patch the two outer columns for the 3-row gap (109-111).
-    const T = tileSize;
-    const mbWalls = this.physics.add.staticGroup();
-    const addWall = (wx: number, wy: number, w: number, h: number) => {
-      const r = this.add.rectangle(wx, wy, w, h).setVisible(false);
-      this.physics.add.existing(r, true);
-      mbWalls.add(r);
-    };
-    // Left outer wall: col 111, rows 109-111 (3 rows)
-    addWall(111 * T + T / 2, 109 * T + (3 * T) / 2, T, 3 * T);
-    // Right outer wall: col 120, rows 109-111 (3 rows)
-    addWall(120 * T + T / 2, 109 * T + (3 * T) / 2, T, 3 * T);
-    this.physics.add.collider(container, mbWalls);
+    // Where the player can go = the tilesets' authored collision + the
+    // ColliderInvisible barrier layer + the world bounds (the map edges). No
+    // hand-placed walls — the map itself defines the playable area now.
+    this.physics.world.setBounds(0, 0, map.widthInPixels, map.heightInPixels);
+    this.cameras.main.setBounds(0, 0, map.widthInPixels, map.heightInPixels);
 
-    // ── Playable-zone boundary walls ──────────────────────────────────────────
-    // Invisible strips that stop players leaving the built area.
-    // ZONE_DEBUG=true renders them red so you can verify placement in-game.
-    // Flip to false (and redeploy) once positions are confirmed.
-    const ZONE_DEBUG = false;
-    const WALL_THICKNESS = 3; // tiles
-    const PZ = PLAYABLE_ZONE;
-    const zoneX1    = PZ.col1 * T;
-    const zoneY1    = PZ.row1 * T;
-    const zoneW     = (PZ.col2 - PZ.col1) * T;
-    const zoneH     = (PZ.row2 - PZ.row1) * T;
-    const wallThick = WALL_THICKNESS * T;
-    const zoneWalls = this.physics.add.staticGroup();
-    const addZoneWall = (wx: number, wy: number, w: number, h: number) => {
-      const r = this.add.rectangle(wx, wy, w, h, 0xff0000, ZONE_DEBUG ? 0.4 : 0);
-      if (!ZONE_DEBUG) r.setVisible(false);
-      this.physics.add.existing(r, true);
-      zoneWalls.add(r);
-    };
-    addZoneWall(zoneX1 + zoneW / 2,            zoneY1 - wallThick / 2,            zoneW,              wallThick); // north
-    addZoneWall(zoneX1 + zoneW / 2,            zoneY1 + zoneH + wallThick / 2,    zoneW,              wallThick); // south
-    addZoneWall(zoneX1 - wallThick / 2,         zoneY1 + zoneH / 2,                wallThick, zoneH + wallThick * 2); // west
-    addZoneWall(zoneX1 + zoneW + wallThick / 2, zoneY1 + zoneH / 2,                wallThick, zoneH + wallThick * 2); // east
-    this.physics.add.collider(container, zoneWalls);
-
-    // Bounds must cover where the map content actually renders. On mobile the
-    // cropped map's layers are offset to original world positions, so the
-    // bounds rectangle starts at the crop origin — with (0,0) bounds the
-    // player would spawn outside them and collideWorldBounds would shove it
-    // into the empty area beyond the map.
-    const boundsX = this.originCol * tileSize;
-    const boundsY = this.originRow * tileSize;
-    this.physics.world.setBounds(boundsX, boundsY, map.widthInPixels, map.heightInPixels);
-    this.cameras.main.setBounds(boundsX, boundsY, map.widthInPixels, map.heightInPixels);
-
-    // "YOU" label — small and tucked just above the tallest outfit piece (hat)
-    // so it reads as a nameplate without covering the hat.
-    const youLabel = this.add.text(0, -44, "YOU", {
+    // "YOU" label — small and tucked just above the hat, close to the head.
+    const youLabel = this.add.text(0, -36, "YOU", {
       fontSize: "6px", fontFamily: '"Press Start 2P", monospace',
       color: "#ffffff", align: "center",
       resolution: 3,
@@ -318,13 +345,17 @@ export class CityScene extends Phaser.Scene {
       this.registry.set("achievementEngine", engine);
     }
 
+    // Superteam Brasil outfit grants (Kuka, and the full citizen roll call).
+    // Re-subscribes rather than stacking, so a scene restart is harmless.
+    watchNpcConversations();
+
     // Chat system
     this.chat = new ChatManager();
     this.chat.addSystemMessage("Welcome to The Solana City");
     this.registry.set("chatManager", this.chat);
 
     // Listen for chat input from React UI
-    this.game.events.on("chat:send", (text: string) => {
+    this.onGameEvent("chat:send", (text: string) => {
       const channel = this.chat.getActiveChannel();
       const color = getChannelColor(channel);
 
@@ -343,7 +374,19 @@ export class CityScene extends Phaser.Scene {
       }
     });
 
-    this.game.events.on("chat:focus", (focused: boolean) => {
+    // Cross-browser chat messages received via Solana Memo / onLogs.
+    // Registered here, NOT inside the wallet:connected handler where it used to
+    // live: game.events outlives a session, so every reconnect added another
+    // copy and each network message got appended to the chat once per connect.
+    this.onGameEvent("chat:network", ({ wallet, name, text }: { wallet?: string; name: string; text: string }) => {
+      const color = getChannelColor("global");
+      this.chat.addMessage("global", name, name, text, color);
+      // Float the message over the sender's avatar, if they're in view.
+      const avatar = wallet ? this.remotePlayers.get(wallet) : undefined;
+      if (avatar) this.showBubble(avatar.getContainer(), text, color);
+    });
+
+    this.onGameEvent("chat:focus", (focused: boolean) => {
       this.chatInputActive = focused;
       // Disable Phaser keyboard capture so typing in chat doesn't trigger WASD
       if (this.input.keyboard) {
@@ -357,14 +400,14 @@ export class CityScene extends Phaser.Scene {
     // (setupEmojiKeys intentionally not called.)
 
     // Emoji trigger from React UI button
-    this.game.events.on("emoji:trigger", (emoji: EmojiDef) => {
+    this.onGameEvent("emoji:trigger", (emoji: EmojiDef) => {
       showEmoji(this, this.avatar.getContainer(), emoji);
       this.chat.addMessage("local", "local", this.profile.get().displayName, emoji.symbol, emoji.color);
     });
 
     // Facial expression trigger from the React expressions picker. Swaps the
     // player's own face for a few seconds, then auto-reverts. Local only.
-    this.game.events.on("expression:trigger", (expr: { textureKey: string }) => {
+    this.onGameEvent("expression:trigger", (expr: { textureKey: string }) => {
       this.avatar.setExpression(expr.textureKey);
       soundManager.play("emote");
       this.network.sendExpression(expr.textureKey); // let others see the reaction
@@ -376,10 +419,125 @@ export class CityScene extends Phaser.Scene {
     });
 
     // Wardrobe panel — live preview while panel is open, persisted on Save.
-    this.game.events.on("wardrobe:loadout", (loadout: Loadout) => {
+    this.onGameEvent("wardrobe:loadout", (loadout: Loadout) => {
       this.avatar.setLoadout(loadout);
       this.network.updateLoadout(loadout); // broadcast so others re-render our look
     });
+
+    // ── Network + wallet, before the world is populated ───────────────────
+    // This block used to sit AFTER the NPC and pedestrian setup below. That
+    // made login hostage to world population: anything throwing while placing
+    // NPCs or flood-filling the crowd meant `this.network` was never built and
+    // the "wallet:connected" listener never registered, so connecting a wallet
+    // did nothing at all for the rest of the session — silently, since the
+    // throw only showed up in the console. Infrastructure comes first.
+
+    // On-chain multiplayer via MagicBlock Ephemeral Rollups
+    this.network = new OnChainMultiplayer();
+    this.registry.set("network", this.network);
+
+    // Register callbacks immediately so they are active during discovery.
+    // CRITICAL: setupNetworkCallbacks must be called BEFORE network.connect()
+    // because discoverPlayers/discoverPlayersFromBase fire addCallbacks during
+    // connect(). If callbacks are registered after connect(), discovered players
+    // never get sprites in the scene.
+    this.setupNetworkCallbacks();
+
+    // Expose game event bus globally so the multiplayer layer can
+    // ask React (which owns useWallet) to sign transactions.
+    (globalThis as any).__solCityGameEvents = this.game.events;
+
+    // Keep multiplayer score in sync with local profile
+    this.profile.onChange((p) => {
+      this.network?.updateScore(p.score);
+    });
+
+    // Listen for wallet connection from React to start on-chain session
+    this.onGameEvent("wallet:connected", async (walletAddress: string) => {
+      // A reconnect cancels any pending flap-disconnect for this wallet.
+      if (this.walletFlapTimer) { clearTimeout(this.walletFlapTimer); this.walletFlapTimer = null; }
+      // Ignore re-fires for a wallet we're already connected to (adapter flaps).
+      if (this.network.connected && this.walletAddress === walletAddress) return;
+      // ...and for one whose handshake is still running. connect() takes seconds
+      // (PDA init, then delegation), and network.connected stays false the whole
+      // time, so the check above alone would let a second event start a parallel
+      // session on the same PDA — which lands as a broken session the player can
+      // only escape by disconnecting and connecting again.
+      if (this.walletConnecting === walletAddress) return;
+      this.walletConnecting = walletAddress;
+      // Enter the map immediately; the on-chain session comes up in the
+      // background (moves before delegation land as sim/base, as before).
+      try {
+        this.walletAddress = walletAddress;
+        this.profile.setWallet(walletAddress);
+        const displayName = this.profile.get().displayName;
+        this.network.updateScore(this.profile.get().score);
+
+        // WalletSignBridge polls every 300ms to register on __solCityGameEvents.
+        // On auto-reconnect the wallet:connected event fires before it registers,
+        // causing all requestWalletSign calls to time out (60s) and fail.
+        // Wait up to 1s for "walletBridge:ready"; fall through immediately if
+        // already registered (normal case after user manually clicks Connect).
+        await new Promise<void>(resolve => {
+          const bus = (globalThis as any).__solCityGameEvents;
+          const fallback = setTimeout(resolve, 1000);
+          bus?.once("walletBridge:ready", () => { clearTimeout(fallback); resolve(); });
+        });
+
+        await this.network.connect(new PublicKey(walletAddress), displayName, loadSavedLoadout());
+        this.chat.addSystemMessage("Multiplayer session started.");
+
+        // Warnings from multiplayer (e.g. delegated PDA detected)
+        this.game.events.once("multiplayer:warning", (msg: string) => {
+          this.chat.addSystemMessage(msg);
+        });
+      } catch (err: any) {
+        console.error("[CityScene] session error:", err);
+        this.chat.addSystemMessage("Session offline (local mode)");
+      } finally {
+        // Cleared either way: a failed handshake must stay retryable.
+        if (this.walletConnecting === walletAddress) this.walletConnecting = null;
+      }
+    });
+
+    this.onGameEvent("wallet:disconnected", () => {
+      // Debounce: a transient flap fires disconnect then connect right after.
+      // Wait; if a reconnect cancels this, the session is never torn down (no
+      // undelegate/rotate, so no 6000). Only a real disconnect proceeds.
+      if (this.walletFlapTimer) return;
+      this.walletFlapTimer = setTimeout(() => {
+        this.walletFlapTimer = null;
+        if (!this.network.connected) return;
+        this.network.disconnect();
+        this.chat.addSystemMessage("Session ended");
+      }, 1200);
+    });
+
+    // ── Wallet handshake ──────────────────────────────────────────────────
+    // Announce that the two listeners above are live, then PULL whatever React
+    // already has. Both halves are needed.
+    //
+    // Push alone loses the wallet: PhaserGame calls onGameReady the instant
+    // `new Phaser.Game()` returns, long before BootScene finishes preloading
+    // and far before this line, so React emitting on `game` by itself lands on
+    // an emitter with no subscribers and Phaser drops it silently.
+    //
+    // Waiting for "scene:ready" fixes that but introduces its own single point
+    // of failure — if anything further down create() throws, the event never
+    // goes out and the wallet is stranded for the whole session. Reading the
+    // mirrored value here means the handshake completes whichever side is late,
+    // and this runs immediately after the listeners rather than at the end of
+    // create() so no later failure can skip it.
+    //
+    // Emitting both ways is safe: the connect handler ignores a wallet whose
+    // handshake is already in flight.
+    (this.game as GameWithSceneReady).__solCitySceneReady = true;
+    this.game.events.emit("scene:ready");
+
+    const pendingWallet = (globalThis as SolCityWalletHost).__solCityWallet;
+    if (pendingWallet) {
+      this.game.events.emit("wallet:connected", pendingWallet);
+    }
 
     // NPCs — position read from Tiled NPC layer, scanned to first walkable row
     for (const def of NPC_REGISTRY) {
@@ -399,16 +557,11 @@ export class CityScene extends Phaser.Scene {
 
     // Pedestrians + "Where Is NPC?" hunt game
     this.pedestrians = new PedestrianManager();
-    this.pedestrians.spawn(this, this.collisionLayers);
+    this.pedestrians.spawn(this, this.collisionLayers, map, 78, 38);
     this.pedestrians.setupColliders(
       container,
       this.npcSprites.map(n => n.getContainer()),
     );
-    // Pedestrians must also respect the playable-zone boundary and the
-    // MagicBlock building patch walls (same groups as the player colliders above).
-    const pedGroup = this.pedestrians.getPedGroup();
-    this.physics.add.collider(pedGroup, zoneWalls);
-    this.physics.add.collider(pedGroup, mbWalls);
 
     // Citizen expiry + target sync. When the current citizen's per-citizen
     // countdown runs out unfound, rotate to the next one and reset the
@@ -434,7 +587,7 @@ export class CityScene extends Phaser.Scene {
     });
 
     // React UI requests current target info (on mount or round change)
-    this.game.events.on("whereIsNPC:requestTarget", () => {
+    this.onGameEvent("whereIsNPC:requestTarget", () => {
       const loadout = this.pedestrians.getTargetLoadout();
       if (loadout) this.game.events.emit("whereIsNPC:targetInfo", loadout);
     });
@@ -448,27 +601,27 @@ export class CityScene extends Phaser.Scene {
     });
 
     // NPC interaction listener from React
-    this.game.events.on("npc:close", () => {
+    this.onGameEvent("npc:close", () => {
       this.interactionBlocked = false;
     });
 
     // Camera zoom from UI control — always snap to a pixel-perfect value
-    this.game.events.on("camera:zoom", (zoom: number) => {
+    this.onGameEvent("camera:zoom", (zoom: number) => {
       const z = snapZoom(zoom);
       this.cameras.main.setZoom(z);
       this.applyZoomSmoothing(z);
     });
 
     // Mobile touch input
-    this.game.events.on("touch:joystick", ({ dx, dy }: { dx: number; dy: number }) => {
+    this.onGameEvent("touch:joystick", ({ dx, dy }: { dx: number; dy: number }) => {
       this.touchDx = dx;
       this.touchDy = dy;
     });
-    this.game.events.on("touch:stop", () => {
+    this.onGameEvent("touch:stop", () => {
       this.touchDx = 0;
       this.touchDy = 0;
     });
-    this.game.events.on("touch:interact", () => {
+    this.onGameEvent("touch:interact", () => {
       if (this.chatInputActive || this.interactionBlocked) return;
       if (this.tryHuntInteraction()) return;
       const nearby = this.npcSprites.find((n) => n.isInRange);
@@ -491,134 +644,30 @@ export class CityScene extends Phaser.Scene {
     this.input.keyboard?.on("keydown-E", tryInteract);
     this.input.keyboard?.on("keydown-SPACE", tryInteract);
 
-    // On-chain multiplayer via MagicBlock Ephemeral Rollups
-    this.network = new OnChainMultiplayer();
-    this.registry.set("network", this.network);
-
-    // Register callbacks immediately so they are active during discovery.
-    // CRITICAL: setupNetworkCallbacks must be called BEFORE network.connect()
-    // because discoverPlayers/discoverPlayersFromBase fire addCallbacks during
-    // connect(). If callbacks are registered after connect(), discovered players
-    // never get sprites in the scene.
-    this.setupNetworkCallbacks();
-
-    // Expose game event bus globally so the multiplayer layer can
-    // ask React (which owns useWallet) to sign transactions.
-    (globalThis as any).__solCityGameEvents = this.game.events;
-
-    // Keep multiplayer score in sync with local profile
-    this.profile.onChange((p) => {
-      this.network?.updateScore(p.score);
-    });
-
-    // Listen for wallet connection from React to start on-chain session
-    this.game.events.on("wallet:connected", async (walletAddress: string) => {
-      // A reconnect cancels any pending flap-disconnect for this wallet.
-      if (this.walletFlapTimer) { clearTimeout(this.walletFlapTimer); this.walletFlapTimer = null; }
-      // Ignore re-fires for a wallet we're already connected to (adapter flaps).
-      // The session is already live, so make sure the login gate is DOWN — a
-      // re-fire must never leave the player stuck on the spinner.
-      if (this.network.connected && this.walletAddress === walletAddress) {
-        this.sessionLocked = false;
-        this.game.events.emit("game:sessionReady");
-        return;
-      }
-      // Hold the player on the login gate + block movement until the session is
-      // fully established (delegation confirmed). This prevents moves from being
-      // signed/sent before the PDA is delegated (which would fail or log as sim).
-      this.sessionLocked = true;
-      this.walletAddress = walletAddress;
-      const { PublicKey } = await import("@solana/web3.js");
-      this.profile.setWallet(walletAddress);
-
-      this.game.events.emit("game:sessionConnecting");
-      // Watchdog: never trap the player on the gate. If connect() stalls (RPC
-      // hang, wallet on the wrong network, etc.), release into the world anyway
-      // after 18s so they're not stuck staring at the spinner.
-      const gateWatchdog = setTimeout(() => {
-        if (!this.sessionLocked) return;
-        this.sessionLocked = false;
-        this.game.events.emit("game:sessionReady");
-        this.chat.addSystemMessage("Entering — session still finalizing in background.");
-      }, 18_000);
-      try {
-        const displayName = this.profile.get().displayName;
-        this.network.updateScore(this.profile.get().score);
-
-        // WalletSignBridge polls every 300ms to register on __solCityGameEvents.
-        // On auto-reconnect the wallet:connected event fires before it registers,
-        // causing all requestWalletSign calls to time out (60s) and fail.
-        // Wait up to 1s for "walletBridge:ready"; fall through immediately if
-        // already registered (normal case after user manually clicks Connect).
-        await new Promise<void>(resolve => {
-          const bus = (globalThis as any).__solCityGameEvents;
-          const fallback = setTimeout(resolve, 1000);
-          bus?.once("walletBridge:ready", () => { clearTimeout(fallback); resolve(); });
-        });
-
-        await this.network.connect(new PublicKey(walletAddress), displayName, loadSavedLoadout());
-        this.chat.addSystemMessage("Multiplayer session started.");
-
-        // Warnings from multiplayer (e.g. delegated PDA detected)
-        this.game.events.once("multiplayer:warning", (msg: string) => {
-          this.chat.addSystemMessage(msg);
-        });
-
-        // Cross-browser chat messages received via Solana Memo / onLogs
-        this.game.events.on("chat:network", ({ wallet, name, text }: { wallet?: string; name: string; text: string }) => {
-          const color = getChannelColor("global");
-          this.chat.addMessage("global", name, name, text, color);
-          // Float the message over the sender's avatar, if they're in view.
-          const avatar = wallet ? this.remotePlayers.get(wallet) : undefined;
-          if (avatar) this.showBubble(avatar.getContainer(), text, color);
-        });
-      } catch (err: any) {
-        console.error("[CityScene] session error:", err);
-        this.chat.addSystemMessage("Session offline (local mode)");
-      } finally {
-        // Release the gate whether the session came up on-chain or fell back to
-        // local mode — never trap the player on the login screen.
-        clearTimeout(gateWatchdog);
-        this.sessionLocked = false;
-        this.game.events.emit("game:sessionReady");
-      }
-    });
-
-    this.game.events.on("wallet:disconnected", () => {
-      // Debounce: a transient flap fires disconnect then connect right after.
-      // Wait; if a reconnect cancels this, the session is never torn down (no
-      // undelegate/rotate, so no 6000). Only a real disconnect proceeds.
-      if (this.walletFlapTimer) return;
-      this.walletFlapTimer = setTimeout(() => {
-        this.walletFlapTimer = null;
-        if (!this.network.connected) return;
-        this.network.disconnect();
-        this.chat.addSystemMessage("Session ended");
-      }, 1200);
-    });
-
     // Record on-chain when the player completes a swap/transfer/bounty.
     // ActionPanel emits these events after a successful transaction.
-    this.game.events.on("game:swap",     () => this.network?.recordAction("swap"));
-    this.game.events.on("game:transfer", () => this.network?.recordAction("transfer"));
-    this.game.events.on("game:bounty",   () => this.network?.recordAction("bounty"));
+    this.onGameEvent("game:swap",     () => this.network?.recordAction("swap"));
+    this.onGameEvent("game:transfer", () => this.network?.recordAction("transfer"));
+    this.onGameEvent("game:bounty",   () => this.network?.recordAction("bounty"));
 
     // Mini-game lifecycle — pause/resume the scene around fullscreen overlays.
     // game.events (not scene.events) keeps the listener alive while paused.
-    this.game.events.on("minigame:launch", () => {
+    this.onGameEvent("minigame:launch", () => {
       this.interactionBlocked = true;
       this.playerBody.setVelocity(0);
       this.avatar.idle();
       this.scene.pause();
     });
-    this.game.events.on("minigame:close", () => {
+    this.onGameEvent("minigame:close", () => {
       this.scene.resume();
       this.interactionBlocked = false;
     });
     // Record result to ephemeral rollup via session key — no wallet popup.
-    this.game.events.on("minigame:result", ({ success }: { success: boolean }) => {
+    this.onGameEvent("minigame:result", ({ id, success }: { id?: string; success: boolean }) => {
       this.network?.recordMiniGame(success);
+      if (id) onMiniGameFinished(id, success);
     });
+
   }
 
   /** One-time setup: a tiny dust dot texture + a manual particle emitter. */
@@ -677,7 +726,7 @@ export class CityScene extends Phaser.Scene {
   }
 
   update(): void {
-    if (this.chatInputActive || this.interactionBlocked || this.sessionLocked) {
+    if (this.chatInputActive || this.interactionBlocked) {
       this.playerBody.setVelocity(0);
       this.avatar.idle();
       // Still check NPC proximity for prompt display even when blocked
@@ -746,19 +795,26 @@ export class CityScene extends Phaser.Scene {
     this.avatar.updateDepth();
 
     // ── Overhead fade ─────────────────────────────────────────────────────
-    // When a y-sorted or foreground layer renders above the player AND has a
-    // tile at the player's world position, smoothly fade it to 0.25 so the
-    // player (and NPCs / remote players) remain visible through rooftops and
-    // tree canopies. Lerp ensures a smooth transition both ways.
+    // Fade a layer only while it actually HIDES the player: it has to draw
+    // above them AND cover their body.
+    //
+    // The body part matters. `avatar.y` is the feet, and testing that tile
+    // alone fired whenever the player merely stood on a tile the layer
+    // happened to paint — brushing the front of a building, or walking past
+    // its base — which read as the whole building blinking translucent for no
+    // reason. The player is drawn upward from their feet, so occlusion happens
+    // at the torso and head; sample there instead.
     {
       const px = this.avatar.x;
       const py = this.avatar.y;
       for (const layer of this.overheadLayers) {
         // Layer is "overhead" only when it draws above the player's depth.
         const isAbove = layer.depth > py;
-        const target = isAbove && layer.getTileAtWorldXY(px, py) !== null
-          ? 0.25
-          : 1.0;
+        const covers = isAbove && (
+          layer.getTileAtWorldXY(px, py - TILE_SIZE) !== null ||
+          layer.getTileAtWorldXY(px, py - TILE_SIZE * 1.5) !== null
+        );
+        const target = covers ? 0.25 : 1.0;
         if (Math.abs(layer.alpha - target) > 0.004) {
           layer.alpha = Phaser.Math.Linear(layer.alpha, target, 0.12);
         }
@@ -915,7 +971,7 @@ export class CityScene extends Phaser.Scene {
     const shortAddr = `${wallet.slice(0, 4)}…${wallet.slice(-4)}`;
     const displayName = player.displayName ?? shortAddr;
 
-    const label = this.add.text(0, -44, displayName, {
+    const label = this.add.text(0, -36, displayName, {
       fontSize: "6px", fontFamily: '"Press Start 2P", monospace',
       color: "#aaaacc", align: "center",
       resolution: 3,
@@ -1053,11 +1109,9 @@ export class CityScene extends Phaser.Scene {
   ): { wx: number; wy: number } {
     // A tile position is blocked if ANY layer has a collidable tile there.
     // Uses Phaser's tile.collides flag set by setCollisionFromCollisionGroup().
-    // col/row arrive in original 200x200 coordinates — shift by the crop
-    // origin so lookups hit the right tiles in the (possibly cropped) map data.
     const isTileBlocked = (c: number, r: number): boolean =>
       map.layers.some(layerData => {
-        const tile = map.getTileAt(c - this.originCol, r - this.originRow, false, layerData.name);
+        const tile = map.getTileAt(c, r, false, layerData.name);
         return tile !== null && tile.collides;
       });
 
