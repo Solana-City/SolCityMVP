@@ -448,7 +448,7 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, onFinished, on
         </div>
 
           <div style={sx.logColumn}>
-            <BattleLog lines={log} turns={state.history.length} />
+            <BattleLog lines={log} turns={state.history.length} fill />
           </div>
         </div>
       </div>
@@ -541,6 +541,9 @@ const CARD: React.CSSProperties = {
  */
 const MAX_ASPECT = 2;
 
+/** Height of the actions + log strip — see footRow. */
+const FOOT_H = 250;
+
 const sx: Record<string, React.CSSProperties> = {
   backdrop: {
     position: "fixed", inset: 0, background: "rgba(4,2,10,.9)", zIndex: 1000,
@@ -585,9 +588,16 @@ const sx: Record<string, React.CSSProperties> = {
     borderRadius: R.pill, padding: "4px 12px", whiteSpace: "nowrap",
   },
   /** Actions left, log right, both raised onto cards. See the 1v1 for why. */
-  footRow: { display: "flex", gap: SP.md, flexShrink: 0, alignItems: "stretch" },
-  controls: { ...CARD, flex: "1 1 46%", minWidth: 0 },
-  logColumn: { ...CARD, flex: "1 1 54%", minWidth: 0 },
+  /**
+   * Fixed height. Sized by its content, this strip grew and shrank as the
+   * panel switched between the action list, a target picker with its hint
+   * line and "Resolving…" — and since the arena takes whatever height is left,
+   * the whole scene rescaled every time a move was picked. FOOT_H is the
+   * tallest state: prompt, three rows of buttons, hint.
+   */
+  footRow: { display: "flex", gap: SP.md, flexShrink: 0, alignItems: "stretch", height: FOOT_H },
+  controls: { ...CARD, flex: "1 1 46%", minWidth: 0, overflow: "hidden" },
+  logColumn: { ...CARD, flex: "1 1 54%", minWidth: 0, display: "flex", flexDirection: "column" },
   prompt: { fontSize: 11, color: C.dim, marginBottom: 5, letterSpacing: 1 },
   /**
    * Two up, two down. A single row across a card this wide left the actions

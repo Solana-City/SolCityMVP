@@ -41,13 +41,15 @@ export interface BattleLogProps {
   turns: number;
   /** Start collapsed — useful on short screens. */
   initiallyCollapsed?: boolean;
+  /** Grow to the parent's height instead of a fixed 150px record. */
+  fill?: boolean;
 }
 
-export function BattleLog({ lines, turns, initiallyCollapsed = false }: BattleLogProps) {
+export function BattleLog({ lines, turns, initiallyCollapsed = false, fill = false }: BattleLogProps) {
   const [open, setOpen] = useState(!initiallyCollapsed);
 
   return (
-    <div>
+    <div style={fill ? { flex: 1, minHeight: 0, display: "flex", flexDirection: "column" } : undefined}>
       <button
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
@@ -66,7 +68,7 @@ export function BattleLog({ lines, turns, initiallyCollapsed = false }: BattleLo
       {open ? (
         <div style={{
           ...LOG_FRAME,
-          height: 150, overflowY: "auto", padding: SP.sm,
+          ...(fill ? { flex: 1, minHeight: 0 } : { height: 150 }), overflowY: "auto", padding: SP.sm,
           fontSize: T.body, fontFamily: MONO,
           color: C.body, lineHeight: 1.6,
         }}>
