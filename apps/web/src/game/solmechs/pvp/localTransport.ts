@@ -22,8 +22,21 @@ const CHANNEL = "solmechs-pvp-v1";
 const SEEK_MS = 800;
 const HANDSHAKE_MS = 2_500;
 const PING_MS = 2_000;
-/** Silence after which the other tab is treated as closed. */
-const GONE_MS = 10_000;
+/**
+ * Silence after which the other tab is treated as closed.
+ *
+ * Generous on purpose. In a two-tab test one tab is always in the background,
+ * and browsers throttle background timers — down to once a minute after a few
+ * minutes hidden — so its pings can legitimately stall. A real close is caught
+ * straight away by the `leave` sent on pagehide; this only covers a crash.
+ */
+const GONE_MS = 90_000;
+/** Searching this long without hearing any other tab shows NO_PEER_HINT. */
+const NO_PEER_HINT_MS = 5_000;
+const NO_PEER_HINT =
+  "No other tab has answered. Open the second tab in this same browser window and press FIND MATCH "
+  + "there too — a private window, another browser, the app preview, or 127.0.0.1 instead of "
+  + "localhost cannot see this one.";
 
 type Msg =
   | { t: "seek"; from: string }
@@ -70,6 +83,8 @@ export class LocalTransport implements PvpTransport {
   private readonly goneListeners = new Set<() => void>();
   private pingTimer: ReturnType<typeof setInterval> | null = null;
   private disposed = false;
+  /** Last time any other tab was heard on the channel, for NO_PEER_HINT. */
+  private lastPeerAt = 0;
 
   constructor(name?: string) {
     this.name = name ?? `Tab ${this.id.slice(0, 4).toUpperCase()}`;
@@ -90,7 +105,20 @@ export class LocalTransport implements PvpTransport {
         reject(abortError());
         return;
       }
-      const seek = () => this.post({ t: "seek", from: this.id });
+      // BroadcastChannel only reaches tabs that share this origin AND this
+      // browser's storage. A tab anywhere else never hears us, so after a few
+      // silent seconds the lobby says so instead of spinning forever.
+      const startedAt = Date.now();
+      let hinting = false;
+      const seek = () => {
+        this.post({ t: "seek", from: this.id });
+        const now = Date.now();
+        const alone = now - startedAt > NO_PEER_HINT_MS && now - this.lastPeerAt > NO_PEER_HINT_MS;
+        if (alone !== hinting) {
+          hinting = alone;
+          onStatus("searching", alone ? NO_PEER_HINT : undefined);
+        }
+      };
       const timer = setInterval(seek, SEEK_MS);
       const finish = () => {
         clearInterval(timer);
@@ -159,6 +187,7 @@ export class LocalTransport implements PvpTransport {
   private onMessage(msg: Msg): void {
     if (this.disposed || msg.from === this.id) return;
     const now = Date.now();
+    this.lastPeerAt = now;
     const s = this.search;
 
     switch (msg.t) {

@@ -110,9 +110,12 @@ export default function PvpLobby({ team, transport, onMatched, onCancel }: PvpLo
               <div style={sx.headline}>
                 {status.phase === "preparing" ? "Getting ready" : "Searching for an opponent"}
               </div>
-              <div style={sx.detail}>
-                {status.detail ?? (status.phase === "searching" ? formatElapsed(elapsed) : "…")}
-              </div>
+              {status.phase === "searching" && <div style={sx.detail}>{formatElapsed(elapsed)}</div>}
+              {status.detail && (
+                <div style={{ ...sx.hint, color: status.phase === "searching" ? C.warn : C.body }}>
+                  {status.detail}
+                </div>
+              )}
             </>
           )}
           {status.phase === "found" && (
@@ -192,6 +195,7 @@ const sx: Record<string, React.CSSProperties> = {
   },
   headline: { fontSize: 20, fontWeight: 800, color: C.text, fontFamily: DISPLAY, letterSpacing: 1 },
   detail: { fontSize: T.body, color: C.body, fontFamily: MONO, maxWidth: 440, lineHeight: 1.5 },
+  hint: { fontSize: T.small, maxWidth: 460, lineHeight: 1.5 },
   opponent: { fontSize: T.body, color: C.text, fontWeight: 700 },
   divider: { width: "100%", height: 1, background: C.line, margin: `${SP.xs}px 0` },
   squad: { display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "center" },
