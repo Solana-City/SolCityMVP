@@ -37,3 +37,12 @@ export const slotAnchor: typeof V1.slotAnchor = PARTS_V2 ? V2.slotAnchor : V1.sl
 export const preloadBuild: typeof V1.preloadBuild = PARTS_V2 ? V2.preloadBuild : V1.preloadBuild;
 export const preloadAll: typeof V1.preloadAll = PARTS_V2 ? V2.preloadAll : V1.preloadAll;
 export const mechBounds: typeof V1.mechBounds = PARTS_V2 ? V2.mechBounds : V1.mechBounds;
+
+/**
+ * Ink height of a typical assembled mech, in doll pixels.
+ *
+ * The arena sizes mechs by this rather than by a fixed scale: the 128px set is
+ * ~40% taller in the frame than the 64px one, so the same 2x that suited the
+ * old parts made the new ones tower over the ring and run up under the HUD.
+ */
+export const INK_HEIGHT: number = PARTS_V2 ? 112 : 80;

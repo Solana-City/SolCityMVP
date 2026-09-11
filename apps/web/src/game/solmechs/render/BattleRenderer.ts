@@ -24,7 +24,7 @@
  * desync a battle — which matters once actions arrive over a network.
  */
 import type { BattleEvent, PlayerSide } from "../engine/BattleEngine";
-import { drawMech, DOLL_WIDTH, DOLL_HEIGHT, slotAnchor, mechBounds } from "./paperDoll";
+import { drawMech, DOLL_WIDTH, DOLL_HEIGHT, slotAnchor, mechBounds, INK_HEIGHT } from "./paperDoll";
 import type { MechBuild, MechUnit, ModuleSlot, MoveDefinition } from "../data/types";
 import { fxForMove, fxForStage, fxFrame, clipDuration, preloadFx, statBadge, FX_DESTROY, type FxClip } from "./AttackFx";
 
@@ -72,9 +72,15 @@ const SIDE_FRAC = 0.08;
  */
 const FOOT_INSET_SRC = 10;
 
-const MECH_SCALE = 2;
-const MECH_W = DOLL_WIDTH * MECH_SCALE;
-const MECH_H = DOLL_HEIGHT * MECH_SCALE;
+/**
+ * How tall a mech stands, as a fraction of the arena's height.
+ *
+ * A fraction rather than a fixed 2x, for two reasons: the arena is sized by
+ * the window, so a fixed scale made mechs huge on a short screen; and the two
+ * part formats differ in size, so one scale could not suit both. At 0.34 the
+ * top of the mech clears the corner HUDs with room to spare.
+ */
+const MECH_HEIGHT_FRAC = 0.34;
 
 // ── timing (ms) ──────────────────────────────────────────────────────────
 /** Lunge start → impact. The effect and the damage land at this offset. */
@@ -211,8 +217,13 @@ export class BattleRenderer {
 
   /** Feet line, doll box and spawn columns, all derived from the live size. */
   private get footLine(): number { return Math.round(this.h * FOOT_FRAC); }
-  private get boxBottom(): number { return this.footLine + FOOT_INSET_SRC * MECH_SCALE; }
-  private get boxTop(): number { return this.boxBottom - MECH_H; }
+  private get boxBottom(): number { return this.footLine + FOOT_INSET_SRC * this.scale; }
+  private get boxTop(): number { return this.boxBottom - this.mechH; }
+
+  /** Doll-to-canvas scale, from the arena's live height. */
+  private get scale(): number { return Math.max(1, (this.h * MECH_HEIGHT_FRAC) / INK_HEIGHT); }
+  private get mechW(): number { return DOLL_WIDTH * this.scale; }
+  private get mechH(): number { return DOLL_HEIGHT * this.scale; }
 
   /**
    * Where to put the doll box so THIS mech's feet land on the platform, plus
@@ -230,17 +241,19 @@ export class BattleRenderer {
     const box = mechBounds(build);
     const anchorX = side === "p2" ? DOLL_WIDTH - FOOT_ANCHOR.x : FOOT_ANCHOR.x;
     if (!box) {
-      return { top: this.boxTop, x: anchorX * MECH_SCALE, halfWidth: 30 };
+      return { top: this.boxTop, x: anchorX * this.scale, halfWidth: 30 };
     }
-    // Bottom of the ink, not of the box.
-    const top = this.footLine - (box.y + box.h) * MECH_SCALE;
+    // Bottom of the ink, not of the box. mechBounds pads its box by a pixel
+    // on every side, so the last row of real ink is one above its edge —
+    // counting the pad stood every mech a scaled pixel or two off the floor.
+    const top = this.footLine - (box.y + box.h - 1) * this.scale;
     // Horizontal centre of the ink, mirrored with the mech.
     const centre = box.x + box.w / 2;
-    const x = (side === "p2" ? DOLL_WIDTH - centre : centre) * MECH_SCALE;
-    return { top, x, halfWidth: Math.max(14, (box.w * MECH_SCALE) / 2.4) };
+    const x = (side === "p2" ? DOLL_WIDTH - centre : centre) * this.scale;
+    return { top, x, halfWidth: Math.max(14, (box.w * this.scale) / 2.4) };
   }
   private get p1X(): number { return Math.round(this.w * SIDE_FRAC); }
-  private get p2X(): number { return this.w - Math.round(this.w * SIDE_FRAC) - MECH_W; }
+  private get p2X(): number { return this.w - Math.round(this.w * SIDE_FRAC) - this.mechW; }
 
   start(): void {
     if (this.running) return;
@@ -303,8 +316,8 @@ export class BattleRenderer {
     const flipped = side === "p2";
     const dx = flipped ? DOLL_WIDTH - a.x : a.x;
     return {
-      x: this.baseX(side) + dx * MECH_SCALE,
-      y: this.boxTop + a.y * MECH_SCALE,
+      x: this.baseX(side) + dx * this.scale,
+      y: this.footingFor(this.unitFor(side).build, side).top + a.y * this.scale,
     };
   }
 
@@ -581,9 +594,13 @@ export class BattleRenderer {
     ctx.globalAlpha = 0.35;
     ctx.fillStyle = "#000000";
     ctx.beginPath();
+    // Centred a little ABOVE the soles, so the feet overlap the shadow's far
+    // half. Centred on the soles, half the ellipse showed below them and the
+    // mech read as hovering over it.
+    const ry = Math.max(3, footing.halfWidth * 0.2);
     ctx.ellipse(
-      baseX + footing.x + dx, this.footLine + 1,
-      footing.halfWidth, Math.max(4, footing.halfWidth * 0.22),
+      baseX + footing.x + dx, this.footLine - ry * 0.35,
+      footing.halfWidth, ry,
       0, 0, Math.PI * 2,
     );
     ctx.fill();
@@ -592,7 +609,7 @@ export class BattleRenderer {
     const drawn = drawMech(ctx, unit.build, {
       x: baseX + dx,
       y,
-      scale: MECH_SCALE,
+      scale: this.scale,
       flip: side === "p2",
       hitFlash,
       brokenSlots: {
@@ -605,11 +622,11 @@ export class BattleRenderer {
     if (!drawn) {
       ctx.save();
       ctx.fillStyle = "#2a1c4d";
-      ctx.fillRect(baseX, y, MECH_W, MECH_H);
+      ctx.fillRect(baseX, y, this.mechW, this.mechH);
       ctx.fillStyle = "#7a68a8";
       ctx.font = "12px monospace";
       ctx.textAlign = "center";
-      ctx.fillText(unit.matrix.matrixName, baseX + MECH_W / 2, y + MECH_H / 2);
+      ctx.fillText(unit.matrix.matrixName, baseX + this.mechW / 2, y + this.mechH / 2);
       ctx.restore();
     }
   }

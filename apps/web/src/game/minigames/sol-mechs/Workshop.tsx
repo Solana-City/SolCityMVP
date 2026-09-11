@@ -84,10 +84,9 @@ export interface WorkshopProps {
   onClose: () => void;
   /**
    * Team mode. When present the Workshop edits THIS build instead of the
-   * hangar's per-mech loadout, and codes already claimed by the rest of the
-   * squad are removed from every cycler — the uniqueness rule is enforced by
-   * simply not offering the clash, rather than by letting the player build
-   * something the team screen then rejects.
+   * hangar's per-mech loadout. Parts already on another squad mech are still
+   * listed, marked IN USE; the squad screen blocks DEPLOY while two mechs
+   * share one.
    */
   teamContext?: {
     build: MechBuild;
@@ -98,7 +97,7 @@ export interface WorkshopProps {
   };
 }
 
-export default function Workshop({ initialMech, onSaved, onMechChange, onClose, teamContext }: WorkshopProps) {
+export default function Workshop({ initialMech, onSaved, onClose, teamContext }: WorkshopProps) {
   const [build, setBuildState] = useState<MechBuild>(
     () => teamContext?.build ?? getBuild(loadHangar(), initialMech),
   );
@@ -193,19 +192,19 @@ export default function Workshop({ initialMech, onSaved, onMechChange, onClose, 
   }, [onClose]);
 
   /** Options for a slot — every matrix, or the parts legal for this chassis. */
-  const optionsFor = useCallback((slot: ModuleSlot): Array<{ code: string; name: string }> => {
+  const optionsFor = useCallback((slot: ModuleSlot): Array<{ code: string; name: string; taken: boolean }> => {
     const all = slot === "matrix"
       ? MATRICES.map((m) => ({ code: m.matrixCode, name: m.matrixName }))
       : getSelectableParts(slot, build.matrixCode, lockToFamily)
           .map((p: MechPart) => ({ code: p.partCode, name: p.partName }));
 
+    // Team mode used to HIDE parts already on another squad mech. That kept a
+    // clash from being built, but it hid most of the catalog with it — a part
+    // could not be moved between mechs, or even seen, without first stripping
+    // it off the other one. Everything is listed now and a part in use
+    // elsewhere is marked; the squad screen still refuses to deploy a clash.
     const taken = teamContext?.taken[slot];
-    if (!taken) return all;
-    // Keep whatever is currently equipped even if a teammate also holds it,
-    // so an already-clashing squad can still be cycled OUT of the clash
-    // instead of trapping the player on a code they can't move off.
-    const current = slot === "matrix" ? build.matrixCode : build[slot];
-    return all.filter((o) => o.code === current || !taken.has(o.code));
+    return all.map((o) => ({ ...o, taken: taken?.has(o.code) ?? false }));
   }, [build, lockToFamily, teamContext]);
 
   const currentCode = activeSlot === "matrix" ? build.matrixCode : build[activeSlot];
@@ -217,26 +216,9 @@ export default function Workshop({ initialMech, onSaved, onMechChange, onClose, 
     const idx = options.findIndex((o) => o.code === code);
     const next = options[(((idx < 0 ? 0 : idx) + dir) + options.length) % options.length].code;
 
-    // Changing the MATRIX is changing which mech you're working on, so in solo
-    // mode it loads that mech's stored loadout. Carrying the previous mech's
-    // limbs across meant selecting a chassis showed someone else's build and
-    // saving then overwrote whatever that mech actually had stored.
-    //
-    // Team mode keeps the carry-across: there a slot is one build being
-    // assembled, and pulling in a per-mech save would fight the squad the
-    // player is composing.
-    if (slot === "matrix" && !teamContext) {
-      const nextMech = getMatrix(next)?.id;
-      const loaded = nextMech ? getBuild(loadHangar(), nextMech) : { ...build, matrixCode: next };
-      setBuildState(loaded);
-      // Freshly loaded from storage, so there is nothing to save yet.
-      setDirty(false);
-      // Tell the hangar straight away, so its selection follows the Workshop
-      // even if the player leaves without saving.
-      if (nextMech) onMechChange?.(nextMech);
-      return;
-    }
-
+    // The matrix is a part like any other: cycling it swaps the matrix and
+    // nothing else. It used to load the stored loadout of the chassis you
+    // cycled to, which replaced every limb the player had just put on.
     const updated = slot === "matrix" ? { ...build, matrixCode: next } : { ...build, [slot]: next };
     setBuildState(updated);
     setDirty(true);
@@ -244,7 +226,7 @@ export default function Workshop({ initialMech, onSaved, onMechChange, onClose, 
     // rather than waiting for a save — the team screen has to re-check
     // uniqueness as you go.
     teamContext?.onChange(updated);
-  }, [build, optionsFor, teamContext, onMechChange]);
+  }, [build, optionsFor, teamContext]);
 
   const save = useCallback(() => {
     if (teamContext) {
@@ -301,8 +283,8 @@ export default function Workshop({ initialMech, onSaved, onMechChange, onClose, 
         </header>
         {teamContext && (
           <p style={sx.teamHint}>
-            Parts already carried by the rest of the squad are hidden — each part may
-            appear once per team.
+            Each part may appear once per squad. Parts marked IN USE are on another
+            mech — take them off it before deploying.
           </p>
         )}
 
@@ -344,6 +326,7 @@ export default function Workshop({ initialMech, onSaved, onMechChange, onClose, 
                   selected={slot === activeSlot}
                   name={current?.name ?? "—"}
                   position={opts.length > 1 ? `${i + 1}/${opts.length}` : ""}
+                  inUse={current?.taken ?? false}
                   canCycle={opts.length > 1}
                   onSelect={() => setActiveSlot(slot)}
                   onCycle={(d) => cycle(slot, d)}
@@ -418,15 +401,29 @@ export default function Workshop({ initialMech, onSaved, onMechChange, onClose, 
         </div>
 
         {/* ── the selected module's abilities, always on screen ─────── */}
+        {/* Fixed height, whatever is selected. Each ability is two lines — name
+            and source, then its specs as chips — so switching between a part
+            with no moves and one with two never pushes the columns above. */}
         <section style={sx.movePanel}>
-          <div style={sx.moveTag}>{activeSlot === "matrix" ? "PASSIVES" : "MOVE"}</div>
+          <div style={sx.moveTagRow}>
+            <span style={sx.moveTag}>{activeSlot === "matrix" ? "PASSIVES" : "MOVES"}</span>
+            {activeSlot !== "matrix" && (
+              <span style={sx.note}>
+                damage vs a stock {getMatrixById(REFERENCE_OPPONENT)?.matrixName}
+              </span>
+            )}
+          </div>
           <div style={sx.moveCards}>
             {activeSlot === "matrix" ? (
               [matrix.passive1, matrix.passive2].map((name) => (
                 <div key={name} style={sx.moveCard}>
-                  <div style={sx.moveCardName}>{name}</div>
-                  <div style={sx.moveCardSrc}>{matrix.matrixName}</div>
-                  <div style={sx.moveCardNote}>Not simulated yet — shown for reference.</div>
+                  <div style={sx.moveHead}>
+                    <span style={sx.moveCardName}>{name}</span>
+                    <span style={sx.moveCardSrc}>{matrix.matrixName}</span>
+                  </div>
+                  <div style={sx.chips}>
+                    <span style={sx.moveCardNote}>Not simulated yet — shown for reference.</span>
+                  </div>
                 </div>
               ))
             ) : equipped[activeSlot]?.moves.length ? (
@@ -434,40 +431,23 @@ export default function Workshop({ initialMech, onSaved, onMechChange, onClose, 
                 const hit = preview.perMove.get(`${activeSlot}:${i}`);
                 return (
                   <div key={mv.name} style={sx.moveCard}>
-                    <div style={sx.moveCardName}>{mv.name}</div>
-                    <div style={sx.moveCardSrc}>{equipped[activeSlot]?.partName}</div>
-                    <dl style={sx.moveSpecs}>
-                      <div style={sx.spec}>
-                        <dt style={sx.specKey}>Damage</dt>
-                        <dd style={sx.specVal}>{hit ?? 0}</dd>
-                      </div>
-                      <div style={sx.spec}>
-                        <dt style={sx.specKey}>Type</dt>
-                        <dd style={sx.specVal}>{mv.damageType.toUpperCase()}</dd>
-                      </div>
-                      <div style={sx.spec}>
-                        <dt style={sx.specKey}>Target</dt>
-                        <dd style={sx.specVal}>{mv.targetType.toUpperCase()}</dd>
-                      </div>
-                      {mv.effect && (
-                        <div style={sx.spec}>
-                          <dt style={sx.specKey}>Effect</dt>
-                          <dd style={{ ...sx.specVal, color: C.teal }}>{mv.effect}</dd>
-                        </div>
-                      )}
-                    </dl>
+                    <div style={sx.moveHead}>
+                      <span style={sx.moveCardName}>{mv.name}</span>
+                      <span style={sx.moveCardSrc}>{equipped[activeSlot]?.partName}</span>
+                    </div>
+                    <div style={sx.chips}>
+                      <Spec k="DMG" v={String(hit ?? 0)} strong />
+                      <Spec k="TYPE" v={mv.damageType.toUpperCase()} />
+                      <Spec k="TARGET" v={mv.targetType.toUpperCase()} />
+                      {mv.effect && <Spec k="EFFECT" v={mv.effect} accent />}
+                    </div>
                   </div>
                 );
               })
             ) : (
-              <div style={sx.moveCard}><div style={sx.moveCardSrc}>No moves on this part.</div></div>
+              <div style={sx.moveCard}><span style={sx.moveCardNote}>No moves on this part.</span></div>
             )}
           </div>
-          {activeSlot !== "matrix" && (
-            <p style={sx.note}>
-              Damage vs a stock {getMatrixById(REFERENCE_OPPONENT)?.matrixName} (median defences).
-            </p>
-          )}
         </section>
 
         <footer style={sx.footer}>
@@ -505,11 +485,13 @@ export default function Workshop({ initialMech, onSaved, onMechChange, onClose, 
  * the disc; only the part name is drawn, into the dark bar the sprite leaves
  * for it (25%-98% across, 28%-67% down, measured off the imported sprite).
  */
-function SlotRow({ slot, selected, name, position, canCycle, onSelect, onCycle }: {
+function SlotRow({ slot, selected, name, position, inUse, canCycle, onSelect, onCycle }: {
   slot: ModuleSlot;
   selected: boolean;
   name: string;
   position: string;
+  /** Equipped here AND on another squad mech. */
+  inUse: boolean;
   canCycle: boolean;
   onSelect: () => void;
   onCycle: (dir: -1 | 1) => void;
@@ -529,10 +511,28 @@ function SlotRow({ slot, selected, name, position, canCycle, onSelect, onCycle }
         }}
       >
         <span style={{ ...sx.rowName, color: selected ? C.text : C.body }}>{name}</span>
-        {position && <span style={sx.rowPos}>{position}</span>}
+        {inUse
+          ? <span style={sx.rowTaken}>IN USE</span>
+          : position && <span style={sx.rowPos}>{position}</span>}
       </button>
       <Arrow dir="right" onClick={() => onCycle(1)} disabled={!canCycle} />
     </div>
+  );
+}
+
+/** One spec as an inline chip, so four of them fit on a single line. */
+function Spec({ k, v, strong, accent }: { k: string; v: string; strong?: boolean; accent?: boolean }) {
+  return (
+    <span style={sx.chip}>
+      <span style={sx.chipKey}>{k}</span>
+      <span style={{
+        ...sx.chipVal,
+        color: accent ? C.teal : strong ? C.text : C.body,
+        fontSize: strong ? 13 : 11,
+      }}>
+        {v}
+      </span>
+    </span>
   );
 }
 
@@ -634,7 +634,9 @@ const sx: Record<string, React.CSSProperties> = {
     gridTemplateColumns: "minmax(0, 0.72fr) minmax(0, 1fr) minmax(0, 1.15fr)",
     gap: 12,
     minHeight: 0,
-    overflowX: "hidden",
+    // `overflow`, not `overflowX`: hiding only one axis makes the other compute
+    // to auto, which is where the stray scrollbar on the stats column came from.
+    overflow: "hidden",
     // Columns match the tallest one, so the panel does not jump in height
     // when a slot with moves replaces one without. This is safe now only
     // because the PANEL fits its content — it was the forced full height,
@@ -694,7 +696,7 @@ const sx: Record<string, React.CSSProperties> = {
   moveDmg: { fontSize: 24, color: C.teal, fontWeight: 800, fontFamily: "monospace", lineHeight: 1 },
   moveDmgTag: { fontSize: 12, color: C.faint, letterSpacing: 2 },
   moveSupport: { fontSize: 12, color: C.blue, letterSpacing: 2, fontWeight: 700, flexShrink: 0 },
-  note: { fontSize: 12, color: C.faint, lineHeight: 1.5, margin: "4px 0 0" },
+  note: { fontSize: 11, color: C.faint, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" },
   /** Column heading, in the game face — "Module", "SOL Mech". */
   colTitle: {
     fontSize: 14, fontWeight: 800, letterSpacing: 3, color: C.text,
@@ -741,35 +743,52 @@ const sx: Record<string, React.CSSProperties> = {
     display: "flex", alignItems: "center",
     fontSize: 10, fontFamily: MONO, color: C.faint,
   },
+  rowTaken: {
+    position: "absolute", right: "5%", top: "28%", height: "39%",
+    display: "flex", alignItems: "center",
+    fontSize: 9, fontWeight: 800, letterSpacing: 0.5, fontFamily: MONO, color: C.warn,
+  },
 
   /** Abilities of whichever module is selected, across the full width. */
   movePanel: {
     ...frame(), background: C.ink, padding: "6px 10px", flexShrink: 0,
-    display: "flex", flexDirection: "column", gap: 4,
+    display: "flex", flexDirection: "column", gap: 5,
+    // Sized for the tag row plus one two-line card INSIDE the 9-slice frame,
+    // whose border takes its own share — at 96 the chip row was cut in half.
+    height: 122, overflow: "hidden",
   },
+  moveTagRow: { display: "flex", alignItems: "baseline", gap: 10, minWidth: 0 },
   moveTag: {
-    fontSize: 13, fontWeight: 800, letterSpacing: 4,
+    fontSize: 12, fontWeight: 800, letterSpacing: 4,
     color: C.teal, fontFamily: DISPLAY,
   },
+  /** One row of cards, however many abilities — never a second row. */
   moveCards: {
-    display: "grid", gap: 8,
-    gridTemplateColumns: "repeat(auto-fit, minmax(min(230px, 100%), 1fr))",
+    display: "grid", gap: 8, minHeight: 0,
+    gridAutoFlow: "column", gridAutoColumns: "minmax(0, 1fr)",
   },
   moveCard: {
     background: C.panel, border: `1px solid ${C.line}`, borderRadius: 6,
-    padding: "6px 10px", minWidth: 0,
+    padding: "5px 10px", minWidth: 0,
+    display: "flex", flexDirection: "column", gap: 4, justifyContent: "center",
   },
-  moveCardName: { fontSize: 14, fontWeight: 800, color: C.text, fontFamily: DISPLAY },
-  moveCardSrc: { fontSize: 12, color: C.purple, fontWeight: 700, marginBottom: 4 },
-  moveCardNote: { fontSize: 11, color: C.faint, lineHeight: 1.5 },
-  /** Key/value grid, so the four specs line up across cards. */
-  moveSpecs: {
-    margin: 0, display: "grid", gap: "2px 10px",
-    gridTemplateColumns: "auto 1fr",
+  moveHead: {
+    display: "flex", alignItems: "baseline", gap: 8, minWidth: 0,
+    whiteSpace: "nowrap", overflow: "hidden",
   },
-  spec: { display: "contents" },
-  specKey: { fontSize: 12, color: C.faint, margin: 0 },
-  specVal: { fontSize: 12, color: C.body, margin: 0, fontFamily: MONO, fontWeight: 700 },
+  moveCardName: { fontSize: 13, fontWeight: 800, color: C.text, fontFamily: DISPLAY, flexShrink: 0 },
+  moveCardSrc: {
+    fontSize: 11, color: C.purple, fontWeight: 700,
+    overflow: "hidden", textOverflow: "ellipsis",
+  },
+  moveCardNote: { fontSize: 11, color: C.faint, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" },
+  chips: { display: "flex", alignItems: "center", gap: 6, minWidth: 0, overflow: "hidden", whiteSpace: "nowrap" },
+  chip: {
+    display: "inline-flex", alignItems: "baseline", gap: 4, flexShrink: 0,
+    border: `1px solid ${C.line}`, borderRadius: 4, padding: "1px 6px",
+  },
+  chipKey: { fontSize: 9, color: C.faint, letterSpacing: 1, fontWeight: 700 },
+  chipVal: { fontFamily: MONO, fontWeight: 700 },
 
   statsPanel: {
     background: C.ink, ...frame(), padding: 10, minWidth: 0,

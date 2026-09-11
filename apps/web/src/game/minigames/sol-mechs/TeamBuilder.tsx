@@ -4,14 +4,13 @@
  * Sol Mechs — squad builder for 3v3.
  *
  * Three slots, each edited through the same Workshop used for solo builds.
- * The uniqueness rule is enforced by *omission*: the Workshop is handed the
- * codes the other two mechs already carry and simply doesn't offer them, so
- * a clash normally can't be created in the first place.
+ * The Workshop is handed the codes the other two mechs already carry and marks
+ * them IN USE rather than hiding them, so every part stays visible and can be
+ * moved between mechs.
  *
- * The validator still runs on top of that, because a squad saved under an
- * older catalog — or one the player loaded from elsewhere — can arrive
- * already broken. When it does, the offending mechs are flagged and DEPLOY is
- * blocked rather than the team being silently rewritten underneath them.
+ * That makes the validator the rule's only enforcement: a clashing squad is
+ * flagged card by card and DEPLOY is blocked, rather than the team being
+ * silently rewritten underneath the player.
  */
 import { useCallback, useMemo, useState } from "react";
 import {
