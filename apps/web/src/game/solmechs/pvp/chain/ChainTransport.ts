@@ -231,6 +231,12 @@ export class ChainTransport implements PvpTransport {
     onStatus: (phase: SearchPhase, detail?: string) => void,
     signal: AbortSignal,
   ): Promise<P.DuelistAccount> {
+    // Solana City derives its session key from a wallet signature, so the key
+    // is the same on every device. Load that one first: the key this browser
+    // merely last stored could differ, and the Duelist would then point at a
+    // key the city does not use — costing a `set_session` approval.
+    await this.sessionKeys.ensureForWallet(this.wallet);
+
     const lobby = P.lobbyPda(this.program);
     // Delegation state is read from the BASE layer: a delegated account is
     // owned by the delegation program there, while the rollup may still show
