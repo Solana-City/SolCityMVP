@@ -5,7 +5,8 @@ Status as of this branch:
 | Piece | State |
 | --- | --- |
 | Single-player battle result → on-chain score | **Working today**, no program change |
-| Paired PvP battles on an Ephemeral Rollup | **Designed, not built** — needs a program redeploy |
+| Casual PvP: lobby pairing + commit–reveal on the ER, client-resolved | **Built, not deployed** — `programs/sol-mechs`, see REDEPLOY_CHECKLIST.md |
+| Verified PvP results / season ladder (this document) | **Designed, not built** |
 
 ## What already works
 

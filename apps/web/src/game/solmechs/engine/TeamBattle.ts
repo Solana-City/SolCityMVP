@@ -86,6 +86,8 @@ export interface TeamBattleState {
   round: number;
   /** Breaks speed ties, seeded so a replay reconstructs the same battle. */
   seed: number;
+  /** See CreateTeamBattleOptions.invertTies. */
+  invertTies?: boolean;
   history: TeamRoundActions[];
 }
 
@@ -108,6 +110,16 @@ export interface CreateTeamBattleOptions {
   p2Name?: string;
   /** Breaks speed ties. See BattleEngine's CreateBattleOptions. */
   seed?: number;
+  /**
+   * Inverts the speed-tie coin flip.
+   *
+   * In a networked match each client runs the engine with ITSELF as p1, so
+   * the two simulations have p1 and p2 swapped. Speed order is symmetric, but
+   * the tie flip is not: without inverting it on one side, the two clients
+   * disagree about who acts first on every tie and their boards diverge. The
+   * host plays with this off, the guest with it on.
+   */
+  invertTies?: boolean;
 }
 
 function buildSide(team: TeamBuild, name: string): TeamSide {
@@ -153,6 +165,7 @@ export function createTeamBattle(
     status: { kind: "active" },
     round: 1,
     seed: options.seed ?? 0,
+    invertTies: options.invertTies ?? false,
     history: [],
   };
 }
@@ -168,6 +181,7 @@ function cloneState(state: TeamBattleState): TeamBattleState {
     status: state.status,
     round: state.round,
     seed: state.seed,
+    invertTies: state.invertTies,
     history: [...state.history],
   };
 }
@@ -178,7 +192,7 @@ function bySpeed(state: TeamBattleState, sides: PlayerSide[]): PlayerSide[] {
   const spd = (s: PlayerSide) => effectiveStats(activeUnit(sideOf(state, s))).SPD;
   const [a, b] = sides;
   if (spd(a) !== spd(b)) return spd(a) > spd(b) ? [a, b] : [b, a];
-  return tieBreak(state.seed, state.round) ? [a, b] : [b, a];
+  return tieBreak(state.seed, state.round) !== Boolean(state.invertTies) ? [a, b] : [b, a];
 }
 
 /** Stages are per-limb buffs; a mech leaving the field drops them. */

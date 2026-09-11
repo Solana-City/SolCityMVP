@@ -13,8 +13,9 @@ import {
   type TeamBattleState, type TeamAction, type TeamEvent, type TeamRoundActions, type TeamResolveResult,
 } from "@/game/solmechs/engine/TeamBattle";
 import {
-  availableMoves, legalTargets, legalSelfTargets, calculateDamage, isDefeated,
+  availableMoves, legalTargets, legalSelfTargets, isDefeated,
 } from "@/game/solmechs/engine/BattleEngine";
+import type { SquadOpponent } from "@/game/solmechs/opponent/SquadOpponent";
 import type { PlayerSide } from "@/game/solmechs/engine/BattleEngine";
 import { BattleRenderer, splitIntoBeats, CANVAS_W, CANVAS_H } from "@/game/solmechs/render/BattleRenderer";
 import { preloadBuild } from "@/game/solmechs/render/paperDoll";
@@ -51,11 +52,13 @@ const SWITCH_LEAD_IN = 420;
 export interface TeamBattleScreenProps {
   playerTeam: TeamBuild;
   enemyTeam: TeamBuild;
+  /** The CPU, or another player over a PvP transport. */
+  opponent: SquadOpponent;
   onFinished: (playerWon: boolean, state: TeamBattleState) => void;
   onClose: () => void;
 }
 
-export default function TeamBattleScreen({ playerTeam, enemyTeam, onFinished, onClose }: TeamBattleScreenProps) {
+export default function TeamBattleScreen({ playerTeam, enemyTeam, opponent, onFinished, onClose }: TeamBattleScreenProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const hudLeftRef = useRef<HTMLDivElement>(null);
   const hudRightRef = useRef<HTMLDivElement>(null);
@@ -64,9 +67,11 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, onFinished, on
 
   const [state, setState] = useState<TeamBattleState>(() => {
     const s = createTeamBattle(playerTeam, enemyTeam, {
-      p1Name: "You", p2Name: "Rival",
-      // Equal-speed rounds are a coin flip; on-chain the seed comes from the room.
-      seed: Math.floor(Math.random() * 0x7fffffff),
+      p1Name: "You", p2Name: opponent.name,
+      // Both come from the opponent, so a remote match agrees on speed ties —
+      // see TeamBattle `invertTies`.
+      seed: opponent.seed,
+      invertTies: opponent.invertTies,
     });
     stateRef.current = s;
     return s;
@@ -78,10 +83,17 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, onFinished, on
   /** True while the renderer is mid-sequence; blocks input and the rival. */
   const [animating, setAnimating] = useState(false);
   const settledRef = useRef(false);
+  /** True while a remote opponent has not yet answered this step. */
+  const [waiting, setWaiting] = useState(false);
+  const [netError, setNetError] = useState<string | null>(null);
 
   /** Runs while the round is being chosen; stops while it resolves. */
+  // A remote rival's clock runs on their own client; this one only sees its
+  // own. Their timeout reaches us as them leaving the match.
   const thinking: PlayerSide[] =
-    state.status.kind === "active" && !animating && !busy ? ["p1", "p2"] : [];
+    state.status.kind === "active" && !animating && !busy
+      ? (opponent.remote ? ["p1"] : ["p1", "p2"])
+      : [];
 
   const { clock, credit } = useChessClock({
     config: SQUAD_CLOCK,
@@ -91,9 +103,10 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, onFinished, on
       const cur = stateRef.current;
       if (!cur || cur.status.kind === "finished") return;
       const { state: ended } = forfeitTeam(cur, side, "timeout");
-      setLog((prev) => [`  ** ${side === "p1" ? "You" : "Rival"} ran out of time.`, ...prev]);
+      setLog((prev) => [`  ** ${side === "p1" ? "You" : opponent.name} ran out of time.`, ...prev]);
       stateRef.current = ended;
       setState(ended);
+      if (side === "p1") opponent.resign();
     },
   });
 
@@ -102,7 +115,7 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, onFinished, on
   }, [playerTeam, enemyTeam]);
 
   const describe = useCallback((e: TeamEvent, s: TeamBattleState): string | null => {
-    const who = (side: PlayerSide) => (side === "p1" ? "You" : "Rival");
+    const who = (side: PlayerSide) => (side === "p1" ? "You" : opponent.name);
     switch (e.type) {
       case "attack": return `${who(e.side)} used ${e.moveName}.`;
       case "damage": return `  ${who(e.side)} ${SLOT_LABEL[e.targetSlot]} −${e.amount} (${e.remaining} left).`;
@@ -124,33 +137,7 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, onFinished, on
         return `  ${e.reason.replace(/\b(rightArm|leftArm|lowerBody)\b/g, (s) => SLOT_LABEL[s as ModuleSlot])}.`;
       default: return null;
     }
-  }, []);
-
-  /** The rival's pick for a round, chosen WITHOUT seeing the player's. */
-  const rivalChoice = useCallback((s: TeamBattleState): TeamAction | null => {
-    const me = activeUnit(s.p2);
-    const foe = activeUnit(s.p1);
-    const opts = availableMoves(me).filter((o) => o.move.targetType !== "self");
-    if (opts.length === 0) {
-      const sw = switchableIndices(s.p2);
-      if (sw.length) return { kind: "switch", side: "p2", toIndex: sw[0] };
-      const all = availableMoves(me);
-      return all.length
-        ? { kind: "move", side: "p2", sourceSlot: all[0].slot, moveIndex: all[0].moveIndex, targetSlot: all[0].slot }
-        : null;
-    }
-    const targets = legalTargets(foe);
-    let best: { a: TeamAction; sc: number } | null = null;
-    for (const o of opts) for (const t of targets) {
-      let sc = calculateDamage(o.move, me, foe, o.slot, t);
-      if (t === "matrix") sc *= 2;
-      if (sc >= foe.partStatuses[t].currentHP) sc += 45;
-      if (!best || sc > best.sc) {
-        best = { a: { kind: "move", side: "p2", sourceSlot: o.slot, moveIndex: o.moveIndex, targetSlot: t }, sc };
-      }
-    }
-    return best?.a ?? null;
-  }, []);
+  }, [opponent]);
 
   const play = useCallback((
     result: TeamResolveResult,
@@ -202,14 +189,26 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, onFinished, on
     }, Math.max(wait, 200));
   }, [describe]);
 
-  /** Player commits their action; the rival commits blind; the round resolves. */
-  const submitRound = useCallback((action: TeamAction | null) => {
+  /**
+   * The player commits; the rival's action arrives through the opponent —
+   * picked blind by the CPU, or exchanged commit–reveal with another player.
+   */
+  const submitRound = useCallback(async (action: TeamAction | null) => {
     const cur = stateRef.current;
     if (!cur || cur.status.kind !== "active") return;
     setBusy(true);
     credit("p1");
     credit("p2");
-    const rival = rivalChoice(cur);
+    let rival: TeamAction | null;
+    try {
+      setWaiting(opponent.remote);
+      rival = await opponent.exchangeRound(cur, action);
+    } catch (err) {
+      setWaiting(false);
+      if (stateRef.current?.status.kind !== "finished") setNetError((err as Error)?.message ?? String(err));
+      return;
+    }
+    setWaiting(false);
     const round: TeamRoundActions = { p1: action, p2: rival };
     // Moves are read from the PRE-round state; afterwards the limb that fired
     // may already be gone, or the mech may have been substituted out.
@@ -218,21 +217,33 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, onFinished, on
         ? activeUnit(side === "p1" ? cur.p1 : cur.p2).parts[a.sourceSlot]?.moves[a.moveIndex]
         : undefined;
     play(resolveTeamRound(cur, round), { p1: moveOf(action, "p1"), p2: moveOf(rival, "p2") });
-  }, [rivalChoice, play, credit]);
+  }, [opponent, play, credit]);
 
-  /** Forced substitution after a KO — free, and both sides send in together. */
-  const submitForced = useCallback((myIndex?: number) => {
+  /**
+   * Forced substitution after a KO — free, and both sides send in together.
+   * It is an exchange even when this side owes nothing, so a remote match
+   * stays in step: both clients reach this state at the same moment.
+   */
+  const submitForced = useCallback(async (myIndex?: number) => {
     const cur = stateRef.current;
     if (!cur || cur.status.kind !== "awaiting-switch") return;
     setBusy(true);
-    const picks: Partial<Record<"p1" | "p2", number>> = {};
-    if (cur.status.sides.includes("p1") && myIndex !== undefined) picks.p1 = myIndex;
-    if (cur.status.sides.includes("p2")) {
-      const opts = switchableIndices(cur.p2);
-      if (opts.length) picks.p2 = opts[0];
+    const owes = cur.status.sides.includes("p1");
+    let theirs: number | undefined;
+    try {
+      setWaiting(opponent.remote);
+      theirs = await opponent.exchangeForced(cur, owes ? myIndex : undefined);
+    } catch (err) {
+      setWaiting(false);
+      if (stateRef.current?.status.kind !== "finished") setNetError((err as Error)?.message ?? String(err));
+      return;
     }
+    setWaiting(false);
+    const picks: Partial<Record<"p1" | "p2", number>> = {};
+    if (owes && myIndex !== undefined) picks.p1 = myIndex;
+    if (cur.status.sides.includes("p2") && theirs !== undefined) picks.p2 = theirs;
     play(resolveForcedSwitches(cur, picks));
-  }, [play]);
+  }, [opponent, play]);
 
   // Renderer lifetime.
   useEffect(() => {
@@ -271,9 +282,26 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, onFinished, on
   useEffect(() => {
     if (state.status.kind !== "awaiting-switch" || animating || busy) return;
     if (state.status.sides.includes("p1")) return;
-    const t = setTimeout(() => submitForced(), AI_DELAY);
+    const t = setTimeout(() => { void submitForced(); }, opponent.remote ? 150 : AI_DELAY);
     return () => clearTimeout(t);
-  }, [state, animating, busy, submitForced]);
+  }, [state, animating, busy, submitForced, opponent]);
+
+  // A remote opponent leaving — resigning, closing the tab, running out of
+  // their own clock — ends the match in this player's favour.
+  useEffect(() => opponent.onGone(() => {
+    const cur = stateRef.current;
+    if (!cur || cur.status.kind === "finished") return;
+    const { state: ended } = forfeitTeam(cur, "p2", "abandoned");
+    setLog((prev) => [`  ** ${opponent.name} left the match.`, ...prev]);
+    setNetError(null);
+    setWaiting(false);
+    stateRef.current = ended;
+    setState(ended);
+  }), [opponent]);
+
+  useEffect(() => opponent.onDesync(() => {
+    setLog((prev) => ["  ** Warning: your board and your opponent's disagree (desync).", ...prev]);
+  }), [opponent]);
 
   // Settle once, when it's over.
   useEffect(() => {
@@ -346,10 +374,10 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, onFinished, on
           <div ref={hudRightRef} style={sx.hudRight}>
             <UnitPanel
               unit={foe}
-              name="Rival"
-              clock={formatClock(clock.p2)}
-              live={thinking.includes("p2")}
-              low={clock.p2 <= SQUAD_CLOCK.warnAtMs}
+              name={opponent.name}
+              clock={opponent.remote ? "LIVE" : formatClock(clock.p2)}
+              live={opponent.remote ? waiting : thinking.includes("p2")}
+              low={!opponent.remote && clock.p2 <= SQUAD_CLOCK.warnAtMs}
               align="right"
             />
           </div>
@@ -373,7 +401,11 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, onFinished, on
               </div>
             </>
           ) : !canAct ? (
-            <div style={sx.prompt}>Resolving…</div>
+            <div style={sx.prompt}>
+              {netError
+                ? `Connection problem: ${netError}`
+                : waiting ? `Waiting for ${opponent.name}…` : "Resolving…"}
+            </div>
           ) : picking ? (
             <>
               <div style={sx.promptRow}>

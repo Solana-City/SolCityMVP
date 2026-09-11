@@ -1,0 +1,20 @@
+[package]
+name = "sol-mechs"
+version = "0.1.0"
+description = "Sol Mechs casual PvP: lobby pairing and commit-reveal action exchange on a MagicBlock Ephemeral Rollup"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "sol_mechs"
+
+[features]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+cpi = ["no-entrypoint"]
+idl-build = ["anchor-lang/idl-build"]
+default = []
+
+[dependencies]
+anchor-lang = "0.30.1"

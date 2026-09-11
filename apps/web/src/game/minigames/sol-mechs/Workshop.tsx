@@ -12,11 +12,8 @@
  * "owned mechs" chip row, which showed a single entry and left no way to
  * change it.
  *
- * Cycling the matrix in solo mode LOADS that mech's stored loadout, because
- * picking a chassis is picking which mech you are working on. Carrying the
- * previous mech's limbs across instead made the screen show a build that
- * wasn't the selected mech's, and saving then overwrote whatever that mech
- * really had stored.
+ * It edits one slot of the player's squad. There is no standalone editor:
+ * every mode fights the squad, so a build made anywhere else was never used.
  *
  * Palette and chrome are lifted from the Unity Workshop comps
  * (Sprites/Interface guidance/MechEditorSprites/Workshop): the four brand
@@ -37,7 +34,6 @@ import {
 import type { MechBuild, MechId, StatBlock, ModuleSlot, MechPart } from "@/game/solmechs/data/types";
 import { addStats } from "@/game/solmechs/data/types";
 import { createUnit, calculateDamage } from "@/game/solmechs/engine/BattleEngine";
-import { loadHangar, setBuild as persistBuild, resetBuild, getBuild } from "@/game/solmechs/hangar";
 import { C, T, SP, R, MONO, W, PANEL_HEIGHT, DISPLAY, frame } from "./theme";
 
 const UI = "/assets/minigames/sol-mechs/ui";
@@ -73,22 +69,13 @@ const STAT_MAX: Record<string, number> = {
 };
 
 export interface WorkshopProps {
-  initialMech: MechId;
-  onSaved?: (mech: MechId, build: MechBuild) => void;
-  /**
-   * Fired as soon as the player cycles to a different chassis, before any
-   * save. Lets the hangar's selection track the Workshop so leaving without
-   * saving doesn't snap back to the mech they started on.
-   */
-  onMechChange?: (mech: MechId) => void;
   onClose: () => void;
   /**
-   * Team mode. When present the Workshop edits THIS build instead of the
-   * hangar's per-mech loadout. Parts already on another squad mech are still
-   * listed, marked IN USE; the squad screen blocks DEPLOY while two mechs
-   * share one.
+   * The squad slot being edited. Parts already on another squad mech are
+   * still listed, marked IN USE; the squad screen blocks DEPLOY while two
+   * mechs share one.
    */
-  teamContext?: {
+  teamContext: {
     build: MechBuild;
     /** Codes taken by the OTHER team members, per slot. */
     taken: Partial<Record<ModuleSlot, Set<string>>>;
@@ -97,14 +84,11 @@ export interface WorkshopProps {
   };
 }
 
-export default function Workshop({ initialMech, onSaved, onClose, teamContext }: WorkshopProps) {
-  const [build, setBuildState] = useState<MechBuild>(
-    () => teamContext?.build ?? getBuild(loadHangar(), initialMech),
-  );
+export default function Workshop({ onClose, teamContext }: WorkshopProps) {
+  const [build, setBuildState] = useState<MechBuild>(() => teamContext.build);
   const [activeSlot, setActiveSlot] = useState<ModuleSlot>("matrix");
   const [lockToFamily, setLockToFamily] = useState(false);
   const [dirty, setDirty] = useState(false);
-  const [saved, setSaved] = useState(false);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rafRef = useRef(0);
@@ -229,31 +213,16 @@ export default function Workshop({ initialMech, onSaved, onClose, teamContext }:
   }, [build, optionsFor, teamContext]);
 
   const save = useCallback(() => {
-    if (teamContext) {
-      teamContext.onChange(build);
-      setDirty(false);
-      onClose();
-      return;
-    }
-    if (!mech) return;
-    persistBuild(mech, build);
+    teamContext.onChange(build);
     setDirty(false);
-    setSaved(true);
-    onSaved?.(mech, build);
-    window.setTimeout(() => setSaved(false), 1500);
-  }, [mech, build, onSaved, teamContext, onClose]);
+    onClose();
+  }, [build, teamContext, onClose]);
 
   const revert = useCallback(() => {
     if (!mech) return;
-    if (teamContext) {
-      setBuildState(PRESET_BUILDS[mech]);
-      teamContext.onChange(PRESET_BUILDS[mech]);
-      setDirty(true);
-      return;
-    }
-    resetBuild(mech);
     setBuildState(PRESET_BUILDS[mech]);
-    setDirty(false);
+    teamContext.onChange(PRESET_BUILDS[mech]);
+    setDirty(true);
   }, [mech, teamContext]);
 
   if (!matrix || !totals) return null;
@@ -453,19 +422,10 @@ export default function Workshop({ initialMech, onSaved, onClose, teamContext }:
         <footer style={sx.footer}>
           <button onClick={revert} style={sx.btnGhost}>RESET TO STOCK</button>
           <div style={{ flex: 1 }} />
-          {saved && <span style={{ color: C.teal, fontSize: 12, fontWeight: 700 }}>SAVED</span>}
-          <button
-            onClick={save}
-            // Team edits already propagate live, so the button is a "done"
-            // rather than a commit and stays enabled.
-            disabled={!teamContext && !dirty}
-            style={{
-              ...sx.btnPrimary,
-              opacity: teamContext || dirty ? 1 : 0.35,
-              cursor: teamContext || dirty ? "pointer" : "default",
-            }}
-          >
-            {teamContext ? "DONE" : "SAVE BUILD"}
+          {/* Edits already propagate live to the squad, so this is a "done"
+              rather than a commit, and always enabled. */}
+          <button onClick={save} style={{ ...sx.btnPrimary, cursor: "pointer" }}>
+            DONE
           </button>
         </footer>
       </div>

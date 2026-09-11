@@ -33,9 +33,13 @@ const CARD_SCALE = 2;
 export interface TeamBuilderProps {
   onDeploy: (team: TeamBuild) => void;
   onClose: () => void;
+  /** Primary button text — "DEPLOY SQUAD" against the CPU, "FIND MATCH" for PvP. */
+  deployLabel?: string;
+  /** Shown above the footer, e.g. why PvP cannot start yet. */
+  notice?: string | null;
 }
 
-export default function TeamBuilder({ onDeploy, onClose }: TeamBuilderProps) {
+export default function TeamBuilder({ onDeploy, onClose, deployLabel = "DEPLOY SQUAD", notice }: TeamBuilderProps) {
   const [mechs, setMechs] = useState<MechBuild[]>(() => loadHangar().team.slice(0, TEAM_SIZE));
   const [editing, setEditing] = useState<number | null>(null);
 
@@ -67,13 +71,11 @@ export default function TeamBuilder({ onDeploy, onClose }: TeamBuilderProps) {
 
   if (editing !== null) {
     const build = mechs[editing];
-    const matrix = getMatrix(build.matrixCode);
     const taken: Partial<Record<ModuleSlot, Set<string>>> = {};
     for (const slot of SLOTS) taken[slot] = takenCodes(team, editing, slot);
 
     return (
       <Workshop
-        initialMech={matrix?.id ?? "titan"}
         onClose={() => setEditing(null)}
         teamContext={{
           build,
@@ -120,6 +122,8 @@ export default function TeamBuilder({ onDeploy, onClose }: TeamBuilderProps) {
           ))}
         </div>
 
+        {notice && <div style={sx.notice}>{notice}</div>}
+
         {!validation.ok && (
           <div style={sx.errors}>
             {validation.messages.map((m) => <div key={m}>· {m}</div>)}
@@ -138,7 +142,7 @@ export default function TeamBuilder({ onDeploy, onClose }: TeamBuilderProps) {
               cursor: validation.ok ? "pointer" : "not-allowed",
             }}
           >
-            DEPLOY SQUAD
+            {deployLabel}
           </button>
         </footer>
       </div>
@@ -300,6 +304,10 @@ const sx: Record<string, React.CSSProperties> = {
   codes: { fontSize: 11, color: C.faint, fontFamily: "monospace" },
   cardStats: { fontSize: 11, color: C.dim, lineHeight: 1.45, fontFamily: "monospace" },
   editHint: { fontSize: 11, color: C.teal, letterSpacing: 2, marginTop: "auto", paddingTop: 3 },
+  notice: {
+    background: C.ink, border: `1px solid ${C.warn}`, borderRadius: 6,
+    padding: 10, fontSize: 13, color: C.text, lineHeight: 1.5, flexShrink: 0,
+  },
   errors: {
     background: "#2a0f18", border: `1px solid ${C.bad}`, borderRadius: 6,
     padding: 10, fontSize: 12, color: C.body, lineHeight: 1.7, flexShrink: 0,

@@ -28,7 +28,10 @@ import {
 import { LocalAIOpponent } from "@/game/solmechs/opponent/LocalAIOpponent";
 import { MATRICES, PRESET_BUILDS } from "@/game/solmechs/data/catalog";
 import { recordResult, loadHangar, getBuild } from "@/game/solmechs/hangar";
-import Workshop from "./Workshop";
+import { useWallet } from "@solana/wallet-adapter-react";
+import PvpLobby from "./PvpLobby";
+import { openPvpTransport, PvpSession, type PvpTransport } from "@/game/solmechs/pvp";
+import { LocalSquadAI, RemoteSquadOpponent, type SquadOpponent } from "@/game/solmechs/opponent/SquadOpponent";
 import MainMenu from "./MainMenu";
 import { BattleLog } from "./BattleLog";
 import { useChessClock } from "./ClockBar";
@@ -44,7 +47,11 @@ import TeamBattleScreen from "./TeamBattleScreen";
 import { validateTeam, type TeamBuild } from "@/game/solmechs/data/team";
 import { LIMB_SLOTS, type MechId, type ModuleSlot, type MechBuild, type MoveDefinition } from "@/game/solmechs/data/types";
 
-type Phase = "menu" | "hangar" | "workshop" | "squad" | "team-battle" | "battle" | "result";
+type Phase =
+  | "menu" | "hangar" | "squad" | "team-battle" | "battle" | "result"
+  | "pvp-squad" | "pvp-lobby" | "pvp-battle";
+
+const PVP_PHASES: Phase[] = ["pvp-squad", "pvp-lobby", "pvp-battle"];
 
 /** Paper-doll scale for the roster cards. */
 const CARD_SCALE = 2;
@@ -170,6 +177,23 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
   const [animating, setAnimating] = useState(false);
   const [pendingMove, setPendingMove] = useState<{ slot: Exclude<ModuleSlot, "matrix">; moveIndex: number } | null>(null);
   const [playerTeam, setPlayerTeam] = useState<TeamBuild | null>(null);
+  /** The squad battle's opponent — the CPU, or a matched player. */
+  const [squadOpponent, setSquadOpponent] = useState<SquadOpponent | null>(null);
+  /** The matched player's squad. The CPU always fields `rivalTeam`. */
+  const [enemyTeam, setEnemyTeam] = useState<TeamBuild | null>(null);
+  const [pvpTransport, setPvpTransport] = useState<PvpTransport | null>(null);
+  const [pvpNotice, setPvpNotice] = useState<string | null>(null);
+  const { publicKey, signTransaction } = useWallet();
+
+  // A PvP transport lives only while the player is on a PvP screen.
+  const pvpTransportRef = useRef<PvpTransport | null>(null);
+  pvpTransportRef.current = pvpTransport;
+  useEffect(() => {
+    if (!pvpTransport || PVP_PHASES.includes(phase)) return;
+    pvpTransport.dispose();
+    setPvpTransport(null);
+  }, [phase, pvpTransport]);
+  useEffect(() => () => pvpTransportRef.current?.dispose(), []);
   /** Which chassis this wallet may field. Resolved from chain. */
   const ownership = useOwnership();
 
@@ -390,7 +414,10 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
         onChoose={(choice) => {
           if (choice === "pve") setPhase("hangar");
           else if (choice === "squad") setPhase("squad");
-          else setPhase("workshop");
+          else {
+            setPvpNotice(null);
+            setPhase("pvp-squad");
+          }
         }}
       />
     );
@@ -401,16 +428,21 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
     return (
       <TeamBuilder
         onClose={() => setPhase("menu")}
-        onDeploy={(team) => { setPlayerTeam(team); setPhase("team-battle"); }}
+        onDeploy={(team) => {
+          setPlayerTeam(team);
+          setSquadOpponent(new LocalSquadAI());
+          setPhase("team-battle");
+        }}
       />
     );
   }
 
-  if (phase === "team-battle" && playerTeam) {
+  if (phase === "team-battle" && playerTeam && squadOpponent) {
     return (
       <TeamBattleScreen
         playerTeam={playerTeam}
         enemyTeam={rivalTeam}
+        opponent={squadOpponent}
         onClose={() => setPhase("menu")}
         onFinished={(playerWon, s) => {
           recordResult(playerWon);
@@ -430,16 +462,60 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
     );
   }
 
-  // ==================== WORKSHOP ====================
-  if (phase === "workshop") {
+  // ==================== PvP ====================
+  if (phase === "pvp-squad") {
     return (
-      <Workshop
-        initialMech={playerMech}
-        // Follow the chassis the player left the Workshop on, so hitting
-        // DEPLOY next deploys what they were just editing.
-        onSaved={(mech) => setPlayerMech(mech)}
-        onMechChange={(mech) => setPlayerMech(mech)}
+      <TeamBuilder
+        deployLabel="FIND MATCH"
+        notice={pvpNotice}
         onClose={() => setPhase("menu")}
+        onDeploy={(team) => {
+          const opened = pvpTransport
+            ? { ok: true as const, transport: pvpTransport }
+            : openPvpTransport({ wallet: publicKey ?? null, signTransaction });
+          if (!opened.ok) {
+            setPvpNotice(opened.reason);
+            return;
+          }
+          setPvpNotice(null);
+          setPlayerTeam(team);
+          setPvpTransport(opened.transport);
+          setPhase("pvp-lobby");
+        }}
+      />
+    );
+  }
+
+  if (phase === "pvp-lobby" && playerTeam && pvpTransport) {
+    return (
+      <PvpLobby
+        team={playerTeam}
+        transport={pvpTransport}
+        onCancel={() => setPhase("pvp-squad")}
+        onMatched={(match) => {
+          setEnemyTeam(match.opponent.team);
+          setSquadOpponent(new RemoteSquadOpponent(new PvpSession(pvpTransport, match)));
+          setPhase("pvp-battle");
+        }}
+      />
+    );
+  }
+
+  if (phase === "pvp-battle" && playerTeam && enemyTeam && squadOpponent) {
+    const leave = () => {
+      squadOpponent.resign();
+      setSquadOpponent(null);
+      setPhase("pvp-squad");
+    };
+    return (
+      <TeamBattleScreen
+        playerTeam={playerTeam}
+        enemyTeam={enemyTeam}
+        opponent={squadOpponent}
+        onClose={leave}
+        // Casual play: nothing is recorded. Leaving frees both players to
+        // search again straight away.
+        onFinished={() => { void pvpTransport?.leave(); }}
       />
     );
   }
@@ -487,16 +563,6 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
           })}
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", flexShrink: 0 }}>
-          <button
-            onClick={() => setPhase("workshop")}
-            style={{
-              padding: "12px 18px", background: "none", color: C.dim,
-              border: `1px solid ${C.line}`, borderRadius: 8, fontSize: 13,
-              fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap",
-            }}
-          >
-            WORKSHOP
-          </button>
           <button
             onClick={() => startBattle(playerMech)}
             disabled={lockReason(ownership, playerMech) !== null}

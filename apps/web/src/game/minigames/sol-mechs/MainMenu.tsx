@@ -22,7 +22,7 @@ import { SpriteButton } from "./SpriteButton";
 
 const UI = "/assets/minigames/sol-mechs/ui";
 
-export type MenuChoice = "pve" | "squad" | "workshop";
+export type MenuChoice = "pve" | "squad" | "pvp";
 
 export interface MainMenuProps {
   onChoose: (choice: MenuChoice) => void;
@@ -68,20 +68,21 @@ export default function MainMenu({ onChoose, onClose, wins, losses }: MainMenuPr
         <div style={sx.list}>
           {/* 1v1 is hidden for now, not removed — `onChoose("pve")` and the
               hangar/battle phases behind it still work, so restoring the row
-              is a one-line change. 3v3 is the mode being tested. */}
+              is a one-line change. There is no standalone editor: every mode
+              fights the squad, so the squad screen is where builds are made. */}
           <MenuRow
-            label="SQUAD 3v3"
-            desc="Three mechs, one at a time."
+            label="3v3 vs CPU"
+            desc="Your squad against the computer."
             onClick={() => onChoose("squad")}
           />
           <MenuRow
-            label="SOL MECH EDITOR"
-            desc="Swap parts across chassis and save a loadout."
-            onClick={() => onChoose("workshop")}
+            label="PvP"
+            desc="Battle other players online. Just for fun."
+            onClick={() => onChoose("pvp")}
           />
           <MenuRow
-            label="ARENA PvP"
-            desc="Ranked season ladder. Battle Pass to enter, prize pool by placement."
+            label="SEASON PASS"
+            desc="Ranked season with points and energy."
             badge="SOON"
             disabled
           />

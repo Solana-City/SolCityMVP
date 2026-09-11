@@ -305,7 +305,73 @@ Order: deploy program → verify → then push these together.
 
 ---
 
-## Sol Mechs — season ladder (SEPARATE program, `sol-mechs`)
+## Sol Mechs — casual PvP (program `sol-mechs`) — deploy this first
+
+Branch `feature/sol-mechs`. A separate program from `sol-city`: its own
+program id and upgrade authority, and nothing in `sol-city` changes.
+
+**What it does.** One lobby slot pairs two players. Each step, both commit
+`sha256(match_id ‖ step ‖ action ‖ salt)` and only then reveal, so neither
+can answer the other's choice. Both clients resolve the battle with the
+TypeScript engine; the program simulates no combat and records no result.
+Verified results are the season ladder, below.
+
+**Source.** `programs/sol-mechs/src/lib.rs` — anchor-lang 0.30.1, with the
+same hand-rolled delegation CPI `sol-city::delegate` uses in production, so
+no SDK dependency. **Not compiled on this machine** (no Rust toolchain here):
+the first build is in Playground, and any compile error surfaces there.
+
+### Deploy (Solana Playground)
+
+1. beta.solpg.io → new Anchor project `sol-mechs`.
+2. Paste `programs/sol-mechs/src/lib.rs` over `src/lib.rs`; dependency
+   `anchor-lang = "0.30.1"` (same as `sol-city`).
+3. Build. Playground rewrites `declare_id!` with its own program id.
+4. Deploy to devnet. The Playground wallet needs devnet SOL for the program
+   account — estimate 2–4 SOL for a program this size.
+5. Put the program id into `declare_id!` in the repo copy and commit it.
+6. Set `NEXT_PUBLIC_SOLMECHS_PROGRAM=<program id>` in Vercel (and
+   `apps/web/.env.local` for local runs), then redeploy the site.
+
+There is no init step to run by hand: the first player to search creates and
+delegates the Lobby in the same wallet transaction as their own Duelist.
+
+### Client (already in the branch)
+
+- `game/solmechs/pvp/chain/mechProgram.ts` — PDAs, instruction builders,
+  account decoders. Byte offsets mirror the struct field order in lib.rs.
+- `game/solmechs/pvp/chain/ChainTransport.ts` — setup, lobby, commit/reveal,
+  opponent watching. Uses Solana City's session key; rollup transactions are
+  session-signed, no popups.
+- Without the env var, PvP runs on `LocalTransport` (two tabs of one
+  browser). `?pvp=local` forces that even when the program is configured.
+
+### Post-deploy verification
+
+- [ ] Wallet A: PvP → FIND MATCH → one wallet approval, then "Searching".
+- [ ] Wallet B, another device: FIND MATCH → one approval → both screens show
+      "Opponent found" with the other's squad.
+- [ ] A round shows the same HP numbers on both screens; no "desync" line in
+      either log.
+- [ ] Identical squads on both sides (a speed tie every round) still agree.
+- [ ] A KO where only one side owes a substitution, and one where both do.
+- [ ] Closing one side mid-match: the other sees "left the match" and wins.
+- [ ] After a match, both can FIND MATCH again with no new approval.
+- [ ] Same wallet on a second device: one `set_session` approval, then plays.
+
+### Known limits (fine for casual play, not for stakes)
+
+- Results are neither verified nor recorded. A modified client can misreport
+  its own board; the desync warning catches honest divergence, not cheating.
+- The speed-tie seed derives from the match id, so it is predictable.
+- One lobby slot, first come first served. The season queue replaces it.
+- Accounts stay delegated; there is no undelegate/close instruction yet.
+- Disconnects are detected by the other client (leave / heartbeat), not by a
+  program timeout.
+
+---
+
+## Sol Mechs — season ladder (extends `sol-mechs`, after casual PvP)
 
 Staged, not applied. Branch `feature/sol-mechs`. Nothing here touches
 `sol-city`; see "Why a separate program" below.
