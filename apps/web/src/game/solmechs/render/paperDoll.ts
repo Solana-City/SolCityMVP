@@ -46,3 +46,11 @@ export const mechBounds: typeof V1.mechBounds = PARTS_V2 ? V2.mechBounds : V1.me
  * old parts made the new ones tower over the ring and run up under the HUD.
  */
 export const INK_HEIGHT: number = PARTS_V2 ? 112 : 80;
+
+/**
+ * Tallest mech ANY combination of parts can assemble into, in doll pixels —
+ * highest top of any part to lowest bottom of any part, measured off the
+ * shipped PNGs. The arena uses it to guarantee a head never reaches the HUD,
+ * whatever the player has built.
+ */
+export const INK_MAX_HEIGHT: number = PARTS_V2 ? 113 : 84;

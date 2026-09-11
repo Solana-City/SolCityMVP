@@ -24,7 +24,7 @@
  * desync a battle — which matters once actions arrive over a network.
  */
 import type { BattleEvent, PlayerSide } from "../engine/BattleEngine";
-import { drawMech, DOLL_WIDTH, DOLL_HEIGHT, slotAnchor, mechBounds, INK_HEIGHT } from "./paperDoll";
+import { drawMech, DOLL_WIDTH, DOLL_HEIGHT, slotAnchor, mechBounds, INK_HEIGHT, INK_MAX_HEIGHT } from "./paperDoll";
 import type { MechBuild, MechUnit, ModuleSlot, MoveDefinition } from "../data/types";
 import { fxForMove, fxForStage, fxFrame, clipDuration, preloadFx, statBadge, FX_DESTROY, type FxClip } from "./AttackFx";
 
@@ -63,7 +63,7 @@ const ARENA_SRC = "/assets/minigames/sol-mechs/ui/arena.png";
 const FOOT_FRAC = 0.80;
 
 /** Inset from each edge, as a fraction, so both mechs land on the platform. */
-const SIDE_FRAC = 0.08;
+const SIDE_FRAC = 0.13;
 
 /**
  * The leg sprites carry 7-13px of empty frame below the feet. Without
@@ -80,7 +80,7 @@ const FOOT_INSET_SRC = 10;
  * part formats differ in size, so one scale could not suit both. At 0.34 the
  * top of the mech clears the corner HUDs with room to spare.
  */
-const MECH_HEIGHT_FRAC = 0.34;
+const MECH_HEIGHT_FRAC = 0.46;
 
 // ── timing (ms) ──────────────────────────────────────────────────────────
 /** Lunge start → impact. The effect and the damage land at this offset. */
@@ -221,7 +221,30 @@ export class BattleRenderer {
   private get boxTop(): number { return this.boxBottom - this.mechH; }
 
   /** Doll-to-canvas scale, from the arena's live height. */
-  private get scale(): number { return Math.max(1, (this.h * MECH_HEIGHT_FRAC) / INK_HEIGHT); }
+  /**
+   * Canvas px a mech's head must stay below — the bottom edge of the HUD laid
+   * over the arena. Reported by the screen, which owns that HUD; 0 until it
+   * has measured, in which case only MECH_HEIGHT_FRAC applies.
+   */
+  private topInset = 0;
+
+  setTopInset(px: number): void {
+    this.topInset = Math.max(0, Math.round(px));
+  }
+
+  /**
+   * Doll-to-canvas scale: MECH_HEIGHT_FRAC of the arena, capped so the tallest
+   * mech any parts can build still has its head under the HUD. The cap uses
+   * the worst case rather than the mechs on screen, so a substitution never
+   * resizes the scene.
+   */
+  private get scale(): number {
+    const wanted = (this.h * MECH_HEIGHT_FRAC) / INK_HEIGHT;
+    const room = this.topInset > 0 ? (this.footLine - this.topInset) / INK_MAX_HEIGHT : Infinity;
+    // Floor well below 1x. A floor AT 1x broke the guarantee on short windows:
+    // at a 249px-tall arena it held the tallest mech 17px up under the HUD.
+    return Math.max(0.5, Math.min(wanted, room));
+  }
   private get mechW(): number { return DOLL_WIDTH * this.scale; }
   private get mechH(): number { return DOLL_HEIGHT * this.scale; }
 

@@ -57,6 +57,8 @@ export interface TeamBattleScreenProps {
 
 export default function TeamBattleScreen({ playerTeam, enemyTeam, onFinished, onClose }: TeamBattleScreenProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const hudLeftRef = useRef<HTMLDivElement>(null);
+  const hudRightRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<BattleRenderer | null>(null);
   const stateRef = useRef<TeamBattleState | null>(null);
 
@@ -243,6 +245,27 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, onFinished, on
     return () => { r.destroy(); rendererRef.current = null; };
   }, []);
 
+  // Tell the renderer where the HUD ends, so the mechs can be as big as the
+  // arena allows without a head ever running under the stat bars. Measured,
+  // not assumed: the HUD is a fixed pixel size while the arena scales with the
+  // window, so the share of the arena it covers changes with every resize.
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const huds = [hudLeftRef.current, hudRightRef.current].filter((h): h is HTMLDivElement => h !== null);
+    if (!canvas || huds.length === 0) return;
+    const HEAD_GAP = 8;
+    const update = () => {
+      const top = canvas.getBoundingClientRect().top;
+      const bottom = Math.max(...huds.map((h) => h.getBoundingClientRect().bottom));
+      rendererRef.current?.setTopInset(bottom - top + HEAD_GAP);
+    };
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(canvas);
+    for (const h of huds) ro.observe(h);
+    return () => ro.disconnect();
+  }, []);
+
   // A forced substitution the player doesn't owe (only the rival lost a mech)
   // resolves itself, so the match never waits on a choice nobody has to make.
   useEffect(() => {
@@ -308,7 +331,7 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, onFinished, on
             height={CANVAS_H}
             style={sx.canvas}
           />
-          <div style={sx.hudLeft}>
+          <div ref={hudLeftRef} style={sx.hudLeft}>
             <UnitPanel
               unit={me}
               name="You"
@@ -321,7 +344,7 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, onFinished, on
           {finished && (
             <ResultCard won={won} actions={state.history.length} onLeave={onClose} />
           )}
-          <div style={sx.hudRight}>
+          <div ref={hudRightRef} style={sx.hudRight}>
             <UnitPanel
               unit={foe}
               name="Rival"
