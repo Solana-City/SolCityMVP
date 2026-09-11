@@ -10,8 +10,8 @@
  * were boxed down to fit 160px on import. At the size a mech is drawn, the
  * originals carried no detail the smaller frames lose.
  *
- * Four moves post-date the Unity library (Solus Burst, Blade Rush, Boost Dash,
- * Nano Repair) and have no entry there. They fall through to a by-damage-type
+ * Three moves post-date the Unity library (Solus Burst, Blade Rush, Boost Dash)
+ * and have no entry there. They fall through to a by-damage-type
  * default rather than being left silent, which is flagged at each site below.
  */
 import type { DamageType, MoveDefinition } from "../data/types";

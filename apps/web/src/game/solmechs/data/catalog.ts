@@ -166,10 +166,9 @@ const RAW_LEFT_ARMS: RawPart[] = [
   {
     code: "LA04", name: "HeartCore Disabler", mech: "heartcore",
     stats: [100, 10, 10, 20, 10, 30],
-    moves: [
-      { name: "Disable Motors", dmg: 40, type: "Energy", target: 0, effect: "-1 SYS" },
-      { name: "Nano Repair", dmg: 0, type: "Energy", target: 1, effect: "+30HP" },
-    ],
+    // One move per part. Unity's LA04 also carried Nano Repair (+30HP self),
+    // the only part with two; it was dropped to keep every limb to one move.
+    moves: [{ name: "Disable Motors", dmg: 40, type: "Energy", target: 0, effect: "-1 SYS" }],
   },
   {
     code: "LA05", name: "Solus Blade", mech: "solus",

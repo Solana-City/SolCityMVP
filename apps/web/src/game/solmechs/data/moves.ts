@@ -6,7 +6,7 @@
  *
  *   "-1 DEF"   one stage of DEF off the target
  *   "+1 ATK"   one stage of ATK onto the target (self-buff legs)
- *   "+30HP"    flat heal, no spaces (Nano Repair)
+ *   "+30HP"    flat heal, no spaces (no part uses one at present)
  *
  * BattleManager.cs read these with ad-hoc string checks at damage time. Doing
  * it once at load keeps the engine working on structured StatModifiers, so the

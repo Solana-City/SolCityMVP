@@ -49,8 +49,20 @@ export function BattleLog({ lines, turns, initiallyCollapsed = false, fill = fal
   const [open, setOpen] = useState(!initiallyCollapsed);
 
   return (
-    <div style={fill ? { flex: 1, minHeight: 0, display: "flex", flexDirection: "column" } : undefined}>
-      <button
+    <div style={fill ? { flex: 1, minHeight: 0, display: "flex", flexDirection: "column", position: "relative" } : undefined}>
+      {/* Filling a short card, the header row would cost a third of the
+          record's height, so the title rides on the frame's top edge instead
+          and the log is always open. */}
+      {fill && (
+        <span style={{
+          position: "absolute", top: 0, right: 16, zIndex: 1,
+          ...eyebrow, fontSize: 10, lineHeight: "12px", marginBottom: 0,
+          background: C.ink, padding: "0 6px",
+        }}>
+          COMBAT LOG · {turns} {turns === 1 ? "ACTION" : "ACTIONS"}
+        </span>
+      )}
+      {!fill && <button
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         style={{
@@ -63,14 +75,15 @@ export function BattleLog({ lines, turns, initiallyCollapsed = false, fill = fal
         <span>COMBAT LOG</span>
         <span style={{ flex: 1, height: 1, background: C.line }} />
         <span>{turns} {turns === 1 ? "ACTION" : "ACTIONS"}</span>
-      </button>
+      </button>}
 
-      {open ? (
+      {open || fill ? (
         <div style={{
           ...LOG_FRAME,
-          ...(fill ? { flex: 1, minHeight: 0 } : { height: 150 }), overflowY: "auto", padding: SP.sm,
-          fontSize: T.body, fontFamily: MONO,
-          color: C.body, lineHeight: 1.6,
+          ...(fill
+            ? { flex: 1, minHeight: 0, padding: "4px 8px", fontSize: T.small, lineHeight: 1.45 }
+            : { height: 150, padding: SP.sm, fontSize: T.body, lineHeight: 1.6 }),
+          overflowY: "auto", fontFamily: MONO, color: C.body,
         }}>
           {lines.map((line, i) => (
             <div

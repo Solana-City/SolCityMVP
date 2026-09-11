@@ -310,16 +310,15 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, onFinished, on
   return (
     <div style={sx.backdrop}>
       <div style={sx.frame}>
+        {/* One line: the squads ride in the header rather than a row of their
+            own, and the arena gets that height back. */}
         <header style={sx.header}>
           <h2 style={sx.title}>SQUAD BATTLE</h2>
+          <SquadBar state={state} side="p1" label="YOU" />
           <div style={{ flex: 1 }} />
+          <SquadBar state={state} side="p2" label="RIVAL" align="right" />
           <button onClick={onClose} style={sx.close} aria-label="Close">×</button>
         </header>
-
-        <div style={sx.squadRow}>
-          <SquadBar state={state} side="p1" label="YOUR SQUAD" />
-          <SquadBar state={state} side="p2" label="RIVAL" align="right" />
-        </div>
 
         {/* Same arrangement as the 1v1: the arena is the backdrop and the two
             HUDs sit over its top corners. See BattleHud for the measurements. */}
@@ -377,8 +376,9 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, onFinished, on
             <div style={sx.prompt}>Resolving…</div>
           ) : picking ? (
             <>
-              <div style={sx.prompt}>
-                Substitute — this is your action for the round.
+              <div style={sx.promptRow}>
+                <span style={sx.promptText}>Substitute — this is your action for the round.</span>
+                <button onClick={() => setPicking(false)} style={sx.back}>◂ BACK</button>
               </div>
               <div style={sx.btnRow}>
                 {bench.map((i) => (
@@ -399,17 +399,20 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, onFinished, on
                     <div style={sx.btnSub}>Matrix {state.p1.units[i].partStatuses.matrix.currentHP}</div>
                   </button>
                 ))}
-                <button onClick={() => setPicking(false)} style={sx.btn}>
-                  <div style={sx.btnTitle}>Back</div>
-                </button>
               </div>
             </>
           ) : pending ? (
             <>
-              <div style={sx.prompt}>
-                {pendingSelf ? "Apply " : "Target for "}
-                {pendingMove?.name}
-                {pendingSelf ? " to which part?" : ""}
+              <div style={sx.promptRow}>
+                <span style={sx.promptText}>
+                  {pendingSelf ? "Apply " : "Target for "}
+                  {pendingMove?.name}
+                  {pendingSelf ? " to which part?" : ""}
+                </span>
+                {!pendingSelf && !targets.includes("matrix") && (
+                  <span style={sx.hint}>Matrix sealed — break an arm, or strip all three limbs.</span>
+                )}
+                <button onClick={() => setPending(null)} style={sx.back}>◂ BACK</button>
               </div>
               <div style={sx.btnRow}>
                 {pendingTargets.map((slot) => (
@@ -431,13 +434,7 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, onFinished, on
                     <div style={sx.btnSub}>{pendingUnit.partStatuses[slot].currentHP} HP</div>
                   </button>
                 ))}
-                <button onClick={() => setPending(null)} style={sx.btn}>
-                  <div style={sx.btnTitle}>Back</div>
-                </button>
               </div>
-              {!pendingSelf && !targets.includes("matrix") && (
-                <div style={sx.hint}>Matrix sealed — break an arm, or strip all three limbs.</div>
-              )}
             </>
           ) : (
             <>
@@ -517,9 +514,12 @@ function SquadBar({ state, side, label, align }: {
 }) {
   const s = side === "p1" ? state.p1 : state.p2;
   return (
-    <div style={{ flex: 1, textAlign: align ?? "left", minWidth: 0 }}>
+    <div style={{
+      display: "flex", alignItems: "center", gap: 6, minWidth: 0,
+      flexDirection: align ? "row-reverse" : "row",
+    }}>
       <div style={sx.squadLabel}>{label}</div>
-      <div style={{ display: "flex", gap: 4, justifyContent: align ? "flex-end" : "flex-start" }}>
+      <div style={{ display: "flex", gap: 4 }}>
         {s.units.map((u, i) => {
           const down = isDefeated(u);
           const active = i === s.activeIndex;
@@ -564,8 +564,17 @@ const CARD: React.CSSProperties = {
  */
 const MAX_ASPECT = 2;
 
-/** Height of the actions + log strip — see footRow. */
-const FOOT_H = 250;
+/** One-line action button, border included. */
+const BTN_H = 38;
+/** Prompt line (+ its gap) above the buttons. */
+const PROMPT_H = 18 + 5;
+
+/**
+ * Height of the actions + log strip — see footRow. Exactly the prompt line
+ * and two rows of buttons inside the card's padding, so nothing sits empty
+ * under the last row.
+ */
+const FOOT_H = PROMPT_H + 2 * BTN_H + 6 + 2 * SP.sm + 2;
 
 const sx: Record<string, React.CSSProperties> = {
   backdrop: {
@@ -574,14 +583,16 @@ const sx: Record<string, React.CSSProperties> = {
   },
   frame: {
     background: C.panel, border: `2px solid ${C.line}`, borderRadius: 10, padding: 12,
-    width: W.wide, height: PANEL_HEIGHT, overflow: "hidden",
+    // The whole window, less the backdrop's padding. The shared PANEL_HEIGHT
+    // leaves 6% spare for menus; here every pixel of height is arena width.
+    width: W.wide, height: "min(calc(100vh - 24px), 1000px)", overflow: "hidden",
     display: "flex", flexDirection: "column", gap: SP.sm, fontFamily: "system-ui,sans-serif",
   },
   header: { display: "flex", alignItems: "center", gap: SP.md, flexShrink: 0 },
   title: { margin: 0, fontSize: 16, color: C.teal, letterSpacing: 4, fontWeight: 800 },
   close: { background: "none", border: "none", color: C.dim, fontSize: 24, cursor: "pointer", lineHeight: 1, padding: 0 },
   squadRow: { display: "flex", gap: SP.md, flexWrap: "wrap", flexShrink: 0 },
-  squadLabel: { fontSize: 11, color: C.faint, letterSpacing: 2, marginBottom: 2 },
+  squadLabel: { fontSize: 11, color: C.faint, letterSpacing: 2 },
   /**
    * Centres the stage and gives it the height left over by the footer.
    */
@@ -615,13 +626,28 @@ const sx: Record<string, React.CSSProperties> = {
    * Fixed height. Sized by its content, this strip grew and shrank as the
    * panel switched between the action list, a target picker with its hint
    * line and "Resolving…" — and since the arena takes whatever height is left,
-   * the whole scene rescaled every time a move was picked. FOOT_H is the
-   * tallest state: prompt, three rows of buttons, hint.
+   * the whole scene rescaled every time a move was picked. Every state now
+   * fits one prompt line and at most two rows of buttons: Back and the sealed
+   * hint live on the prompt line instead of taking a cell or a row.
    */
   footRow: { display: "flex", gap: SP.md, flexShrink: 0, alignItems: "stretch", height: FOOT_H },
   controls: { ...CARD, flex: "1 1 46%", minWidth: 0, overflow: "hidden" },
   logColumn: { ...CARD, flex: "1 1 54%", minWidth: 0, display: "flex", flexDirection: "column" },
-  prompt: { fontSize: 11, color: C.dim, marginBottom: 5, letterSpacing: 1 },
+  prompt: {
+    fontSize: 11, color: C.dim, letterSpacing: 1,
+    height: 18, lineHeight: "18px", marginBottom: 5,
+    whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+  },
+  promptRow: { display: "flex", alignItems: "center", gap: 10, height: 18, marginBottom: 5, minWidth: 0 },
+  promptText: {
+    fontSize: 11, color: C.dim, letterSpacing: 1,
+    whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0,
+  },
+  back: {
+    marginLeft: "auto", flexShrink: 0, padding: 0,
+    background: "none", border: "none", cursor: "pointer", fontFamily: "inherit",
+    color: C.teal, fontSize: 11, fontWeight: 700, letterSpacing: 1,
+  },
   /**
    * Two up, two down. A single row across a card this wide left the actions
    * tiny against a lot of empty card, and the strip grew every time a mech
@@ -630,11 +656,22 @@ const sx: Record<string, React.CSSProperties> = {
   btnRow: {
     display: "grid", gap: 6,
     gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+    gridAutoRows: `${BTN_H}px`,
   },
-  btn: { ...actionButton(), minWidth: 0 },
-  btnTitle: { fontSize: 12, fontWeight: 700 },
-  btnSub: { fontSize: 11, color: C.faint, marginTop: 1 },
-  hint: { fontSize: 11, color: C.faint, marginTop: 5 },
+  /**
+   * One line: name, then its detail in the same row. Title over subtitle made
+   * each button ~60px tall, and four of them took more of the screen than the
+   * information on them was worth.
+   */
+  btn: {
+    ...actionButton(), minWidth: 0,
+    height: BTN_H, boxSizing: "border-box", padding: "0 10px",
+    display: "flex", alignItems: "center", gap: 8,
+    whiteSpace: "nowrap", overflow: "hidden",
+  },
+  btnTitle: { fontSize: 12, fontWeight: 700, flexShrink: 0 },
+  btnSub: { fontSize: 11, color: C.faint, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" },
+  hint: { fontSize: 11, color: C.faint, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0 },
   btnPrimary: {
     background: C.teal, border: "none", color: C.ink, borderRadius: 6,
     padding: "9px 20px", fontSize: 13, fontWeight: 800, letterSpacing: 1, cursor: "pointer",
