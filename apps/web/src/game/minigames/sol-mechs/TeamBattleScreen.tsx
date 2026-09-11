@@ -44,6 +44,18 @@ const SLOT_LABEL: Record<ModuleSlot, string> = {
   rightArm: "R.Arm", leftArm: "L.Arm", lowerBody: "Legs", matrix: "MATRIX",
 };
 
+/**
+ * Every part of the rival is offered as a target, always.
+ *
+ * Substitutions resolve before moves, so an attack aimed at a part the mech on
+ * screen no longer has — or at a core it still has sealed — lands on the mech
+ * that switches in, if that mech has it. Hiding those parts took the read away:
+ * the player could not aim for the reserve they expected. Without a switch the
+ * attack misses, and the engine says so in the log. The picker marks such
+ * parts rather than removing them.
+ */
+const ENEMY_SLOTS: ModuleSlot[] = ["rightArm", "leftArm", "lowerBody", "matrix"];
+
 /** ms the AI "thinks" for, so its turn is legible rather than instant. */
 const AI_DELAY = 620;
 /** Pause after a substitution so the replacement registers before it is hit. */
@@ -328,7 +340,9 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, opponent, onFi
    */
   const pendingMove = pending ? me.parts[pending.slot].moves[pending.moveIndex] : null;
   const pendingSelf = pendingMove?.targetType === "self";
-  const pendingTargets = pendingSelf ? selfTargets : targets;
+  const pendingTargets = pendingSelf ? selfTargets : ENEMY_SLOTS;
+  /** Parts that miss unless the rival switches — see ENEMY_SLOTS. */
+  const offTarget = (slot: ModuleSlot) => !pendingSelf && !targets.includes(slot);
   const pendingUnit = pendingSelf ? me : foe;
   const bench = switchableIndices(state.p1);
 
@@ -441,8 +455,8 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, opponent, onFi
                   {pendingMove?.name}
                   {pendingSelf ? " to which part?" : ""}
                 </span>
-                {!pendingSelf && !targets.includes("matrix") && (
-                  <span style={sx.hint}>Matrix sealed — break an arm, or strip all three limbs.</span>
+                {pendingTargets.some(offTarget) && (
+                  <span style={sx.hint}>Dimmed parts only land if {opponent.name} switches mechs.</span>
                 )}
                 <button onClick={() => setPending(null)} style={sx.back}>◂ BACK</button>
               </div>
@@ -460,10 +474,17 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, opponent, onFi
                       // pickers can't be confused for each other at a glance.
                       background: pendingSelf ? C.raised : slot === "matrix" ? "#5c1830" : C.raised,
                       borderColor: pendingSelf ? C.blue : undefined,
+                      opacity: offTarget(slot) ? 0.62 : 1,
                     }}
                   >
                     <div style={sx.btnTitle}>{SLOT_LABEL[slot]}</div>
-                    <div style={sx.btnSub}>{pendingUnit.partStatuses[slot].currentHP} HP</div>
+                    {offTarget(slot) ? (
+                      <div style={{ ...sx.btnSub, color: slot === "matrix" ? C.warn : C.bad, fontWeight: 700 }}>
+                        {slot === "matrix" ? "sealed on this mech" : "destroyed on this mech"}
+                      </div>
+                    ) : (
+                      <div style={sx.btnSub}>{pendingUnit.partStatuses[slot].currentHP} HP</div>
+                    )}
                   </button>
                 ))}
               </div>

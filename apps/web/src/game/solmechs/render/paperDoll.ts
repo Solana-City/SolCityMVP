@@ -1,10 +1,9 @@
 /**
  * Sol Mechs — which paper doll the build draws with.
  *
- * Both part formats ship side by side while the new art is being evaluated.
- * `?parts=v2` switches to the 128x128 set, `?parts=v1` switches back, and the
- * choice is remembered in localStorage so it survives navigating into the
- * city and back. Default is v1.
+ * Both part formats still ship. The 128x128 set is the default; `?parts=v1`
+ * switches to the old 64x64 set and `?parts=v2` back, and the choice is
+ * remembered in localStorage so it survives navigating into the city.
  *
  * Decided once, at module load: the doll dimensions feed module-level layout
  * constants in the renderer, so flipping formats mid-session would leave them
@@ -17,12 +16,12 @@ const STORAGE_KEY = "solmechs:parts";
 
 function readFlag(): boolean {
   try {
-    if (typeof window === "undefined") return false;
+    if (typeof window === "undefined") return true;
     const q = new URLSearchParams(window.location.search).get("parts");
     if (q === "v1" || q === "v2") window.localStorage.setItem(STORAGE_KEY, q);
-    return window.localStorage.getItem(STORAGE_KEY) === "v2";
+    return window.localStorage.getItem(STORAGE_KEY) !== "v1";
   } catch {
-    return false;
+    return true;
   }
 }
 
