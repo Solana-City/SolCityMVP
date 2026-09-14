@@ -82,6 +82,20 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, opponent, onFi
   const stageRef = useRef<HTMLDivElement>(null);
   /** A narrow arena (a phone in landscape) gets the icon-only strip. */
   const [narrowStage, setNarrowStage] = useState(false);
+  const controlsRef = useRef<HTMLDivElement>(null);
+  /**
+   * The action card is narrow (a phone): shorter prompts, smaller tiles, no
+   * badge on move buttons (the info strip carries it). Text is sized to fit,
+   * never cut off with an ellipsis.
+   */
+  const [tight, setTight] = useState(false);
+  useEffect(() => {
+    const el = controlsRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => setTight(el.getBoundingClientRect().width < 520));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
   useEffect(() => {
     const el = stageRef.current;
     if (!el) return;
@@ -470,6 +484,7 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, opponent, onFi
               clock={formatClock(clock.p1)}
               live={thinking.includes("p1")}
               low={clock.p1 <= SQUAD_CLOCK.warnAtMs}
+              compact={narrowStage}
             />
           </div>
           <span style={sx.roundChip}>ROUND {state.round}</span>
@@ -484,18 +499,19 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, opponent, onFi
               live={opponent.remote ? waiting : thinking.includes("p2")}
               low={!opponent.remote && clock.p2 <= SQUAD_CLOCK.warnAtMs}
               align="right"
+              compact={narrowStage}
             />
           </div>
         </div>
         </div>
 
         <div style={sx.footRow}>
-        <div style={sx.controls}>
+        <div ref={controlsRef} style={sx.controls}>
           {finished ? (
             <div style={sx.prompt}>Match over.</div>
           ) : mustSwitch ? (
             <>
-              <div style={sx.prompt}>Your mech is down. Send out a replacement (free).</div>
+              <div style={sx.prompt}>{tight ? "Pick a free replacement" : "Your mech is down. Send out a replacement (free)."}</div>
               <div style={sx.btnRow}>
                 {bench.map((i) => (
                   <button key={i} onClick={() => submitForced(i)} style={sx.btn}>
@@ -513,7 +529,7 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, opponent, onFi
           ) : picking ? (
             <>
               <div style={sx.promptRow}>
-                <span style={sx.promptText}>Substitute: this uses your action for the round.</span>
+                <span style={sx.promptText}>{tight ? "Swap uses your turn" : "Substitute: this uses your action for the round."}</span>
                 <button onClick={() => setPicking(false)} style={sx.back}>◂ BACK</button>
               </div>
               <div style={sx.btnRow}>
@@ -541,9 +557,9 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, opponent, onFi
               <div style={sx.promptRow}>
                 <span style={sx.promptText}>
                   {pendingSelf ? "Pick your part" : "Pick a part to hit"}
-                  <span style={{ color: C.faint }}> · or click it on the mech</span>
+                  {!tight && <span style={{ color: C.faint }}> · or click it on the mech</span>}
                 </span>
-                {pendingTargets.some(offTarget) && (
+                {!tight && pendingTargets.some(offTarget) && (
                   <span style={sx.hint}>Dimmed parts only land if {opponent.name} switches mechs.</span>
                 )}
                 <button onClick={() => setPending(null)} style={sx.back}>◂ BACK</button>
@@ -564,11 +580,13 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, opponent, onFi
                       opacity: offTarget(slot) ? 0.62 : 1,
                     }}
                   >
-                    <Sprite src={SLOT_ICON[slot]} h={22} dim={offTarget(slot)} />
-                    <div style={sx.btnTitle}>{SLOT_LABEL[slot]}</div>
+                    <Sprite src={SLOT_ICON[slot]} h={tight ? 18 : 22} dim={offTarget(slot)} />
+                    <div style={{ ...sx.btnTitle, ...(tight ? sx.tightTitle : null) }}>{SLOT_LABEL[slot]}</div>
                     {offTarget(slot) ? (
                       <div style={{ ...sx.btnSub, color: slot === "matrix" ? C.warn : C.bad, fontWeight: 700 }}>
-                        {slot === "matrix" ? "sealed on this mech" : "destroyed on this mech"}
+                        {tight
+                          ? (slot === "matrix" ? "SEALED" : "GONE")
+                          : (slot === "matrix" ? "sealed on this mech" : "destroyed on this mech")}
                       </div>
                     ) : (
                       <div style={sx.btnSub}>{pendingUnit.partStatuses[slot].currentHP} HP</div>
@@ -591,24 +609,22 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, opponent, onFi
                     onMouseLeave={() => setHoverMove(null)}
                     onFocus={() => setHoverMove({ slot: o.slot, moveIndex: o.moveIndex })}
                     onBlur={() => setHoverMove(null)}
-                    style={sx.btn}
+                    style={{ ...sx.btn, ...(tight ? sx.tightBtn : null) }}
                   >
-                    <CategoryTile m={o.move} size={24} />
-                    <div style={{ ...sx.btnTitle, flexShrink: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>{o.move.name}</div>
-                    <MoveBadge m={o.move} />
+                    <CategoryTile m={o.move} size={tight ? 20 : 24} />
+                    <div style={{ ...sx.btnTitle, ...(tight ? sx.tightTitle : null) }}>{o.move.name}</div>
+                    {!tight && <MoveBadge m={o.move} />}
                   </button>
                 ))}
                 {bench.length > 0 && (
                   <button
                     onClick={() => setPicking(true)}
                     className={armsDown ? "sm-pulse" : undefined}
-                    style={{ ...sx.btn, borderColor: C.blue }}
+                    style={{ ...sx.btn, ...(tight ? sx.tightBtn : null), borderColor: C.blue }}
                   >
-                    <Bust build={state.p1.units[bench[0]].build} size={24} />
-                    <div style={{ ...sx.btnTitle, color: C.blue }}>SUBSTITUTE</div>
-                    {/* Reads the live rule rather than asserting one, so the
-                        label can't lie if the default is changed. */}
-                    <div style={sx.btnSub}>your action this round</div>
+                    <Bust build={state.p1.units[bench[0]].build} size={tight ? 20 : 24} />
+                    <div style={{ ...sx.btnTitle, ...(tight ? sx.tightTitle : null), color: C.blue }}>SUBSTITUTE</div>
+                    {!tight && <div style={sx.btnSub}>your action this round</div>}
                   </button>
                 )}
               </div>
@@ -664,7 +680,7 @@ function BenchLabel({ unit }: { unit: import("@/game/solmechs/data/types").MechU
   return (
     <>
       <Bust build={unit.build} size={26} />
-      <div style={{ ...sx.btnTitle, flexShrink: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>
+      <div style={sx.btnTitle}>
         {unit.matrix.matrixName}
       </div>
       <span style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
@@ -881,12 +897,12 @@ const sx: Record<string, React.CSSProperties> = {
   prompt: {
     fontSize: 11, color: C.dim, letterSpacing: 1,
     height: 18, lineHeight: "18px", marginBottom: 5,
-    whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+    whiteSpace: "nowrap", overflow: "hidden",
   },
   promptRow: { display: "flex", alignItems: "center", gap: 10, height: 18, marginBottom: 5, minWidth: 0 },
   promptText: {
     fontSize: 11, color: C.dim, letterSpacing: 1,
-    whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0,
+    whiteSpace: "nowrap", overflow: "hidden", minWidth: 0,
   },
   back: {
     marginLeft: "auto", flexShrink: 0, padding: 0,
@@ -915,7 +931,9 @@ const sx: Record<string, React.CSSProperties> = {
     whiteSpace: "nowrap", overflow: "hidden",
   },
   btnTitle: { fontSize: 12, fontWeight: 700, flexShrink: 0 },
-  btnSub: { fontSize: 11, color: C.faint, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" },
+  btnSub: { fontSize: 11, color: C.faint, minWidth: 0, overflow: "hidden" },
+  tightBtn: { padding: "0 6px", gap: 5 },
+  tightTitle: { fontSize: 11 },
   /** Info strip over the arena floor. Fixed height, never wraps. */
   strip: {
     position: "absolute", left: "1.2%", right: "1.2%", bottom: "2.5%", height: 44, zIndex: 1,
@@ -927,9 +945,9 @@ const sx: Record<string, React.CSSProperties> = {
   stripCompact: { height: 30, gap: 8, padding: "0 8px", left: "3%", right: "3%" },
   stripCell: { display: "inline-flex", alignItems: "center", gap: 6, flexShrink: 0, minWidth: 0 },
   stripKey: { fontSize: 10, fontWeight: 800, letterSpacing: 1.5, color: C.dim },
-  stripName: { fontSize: 13, fontWeight: 800, color: C.text, overflow: "hidden", textOverflow: "ellipsis", minWidth: 0 },
+  stripName: { fontSize: 13, fontWeight: 800, color: C.text, flexShrink: 0 },
   stripNum: { fontFamily: "monospace", fontSize: 16, fontWeight: 800, color: C.text },
-  hint: { fontSize: 11, color: C.faint, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0 },
+  hint: { fontSize: 11, color: C.faint, whiteSpace: "nowrap", overflow: "hidden", minWidth: 0 },
   btnPrimary: {
     background: C.teal, border: "none", color: C.ink, borderRadius: 6,
     padding: "9px 20px", fontSize: 13, fontWeight: 800, letterSpacing: 1, cursor: "pointer",

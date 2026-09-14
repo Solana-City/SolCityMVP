@@ -127,10 +127,12 @@ export interface UnitPanelProps {
    * should hold the player's Solana City avatar, not the mech.
    */
   showPortrait?: boolean;
+  /** Small arena: smaller type, and the clock drops under the name if needed. */
+  compact?: boolean;
 }
 
 /** One side's corner HUD: profile plate over four part bars. */
-export function UnitPanel({ unit, name, clock, live, low, align, showPortrait = false }: UnitPanelProps) {
+export function UnitPanel({ unit, name, clock, live, low, align, showPortrait = false, compact = false }: UnitPanelProps) {
   const right = align === "right";
   // Without a portrait the framed plate is mostly an empty square, so the
   // header collapses to a plain name + clock strip instead.
@@ -138,24 +140,23 @@ export function UnitPanel({ unit, name, clock, live, low, align, showPortrait = 
     return (
       <div style={{ width: "100%", pointerEvents: "none" }}>
         <div style={{
-          display: "flex", alignItems: "center", gap: 8,
-          flexDirection: right ? "row-reverse" : "row",
+          display: "flex", alignItems: "center", gap: compact ? 4 : 8,
+          flexDirection: right ? "row-reverse" : "row", flexWrap: compact ? "wrap" : "nowrap",
           width: "fit-content", maxWidth: "100%",
           [right ? "marginLeft" : "marginRight"]: "auto",
           // Nearly opaque. At 72% the arena's skyline read through as blocks
           // beside the name — the panel looked like it had stray elements in
           // it when it was only showing the backdrop.
           background: "rgba(8,4,16,.94)", border: `1px solid ${C.line}`,
-          borderRadius: 4, padding: "4px 8px",
+          borderRadius: 4, padding: compact ? "2px 4px" : "4px 8px",
         }}>
           <span style={{
-            fontSize: T.small, fontWeight: 800, color: C.text,
-            whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0,
+            fontSize: compact ? 10 : T.small, fontWeight: 800, color: C.text, whiteSpace: "nowrap",
           }}>
             {name}
           </span>
           <span style={{
-            fontFamily: MONO, fontSize: T.small, fontWeight: 800, letterSpacing: 1,
+            fontFamily: MONO, fontSize: compact ? 10 : T.small, fontWeight: 800, letterSpacing: compact ? 0 : 1,
             color: low ? C.bad : live ? C.teal : C.dim, flexShrink: 0,
           }}>
             {clock}

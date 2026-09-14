@@ -122,7 +122,7 @@ export function Bust({ build, size = SIZE }: { build: MechBuild; size?: number }
     };
     tryDraw();
     return () => cancelAnimationFrame(raf);
-  }, [build]);
+  }, [build, size]);
   return (
     <canvas
       ref={ref}
