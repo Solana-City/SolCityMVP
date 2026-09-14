@@ -627,7 +627,7 @@ function HowToPlayCard({ isTouch, onStart }: { isTouch: boolean; onStart: (compl
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === " " || e.key === "Enter" || e.key === "ArrowRight") { e.preventDefault(); next(); }
+      if (e.key === " " || e.key === "Enter" || e.key === "ArrowRight" || e.key === "e" || e.key === "E") { e.preventDefault(); next(); }
       else if (e.key === "ArrowLeft") { e.preventDefault(); back(); }
     };
     window.addEventListener("keydown", onKey);

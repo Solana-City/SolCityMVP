@@ -91,6 +91,21 @@ function IntroCards({ spec, onDone }: { spec: IntroSpec; onDone: () => void }) {
   const [i, setI] = useState(0);
   const step = spec.steps[i];
   const last = i === spec.steps.length - 1;
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "e" || e.key === "E" || e.key === "Enter" || e.key === "ArrowRight") {
+        e.preventDefault();
+        if (last) onDone(); else setI((n) => n + 1);
+      } else if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        setI((n) => Math.max(0, n - 1));
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [last, onDone]);
+
   return (
     <>
       <div style={{ display: "flex", alignItems: "center", marginBottom: 10 }}>

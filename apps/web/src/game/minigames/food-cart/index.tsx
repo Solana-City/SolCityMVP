@@ -1061,6 +1061,20 @@ function HowToPlay({ onDone }: { onDone: () => void }) {
   const step = steps[i];
   const last = i === steps.length - 1;
 
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "e" || e.key === "E" || e.key === "Enter" || e.key === "ArrowRight") {
+        e.preventDefault();
+        if (last) onDone(); else setI((n) => n + 1);
+      } else if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        setI((n) => Math.max(0, n - 1));
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [last, onDone]);
+
   return (
     <div className="absolute inset-0 flex items-center justify-center" style={{ background: "rgba(4,6,16,0.9)", zIndex: 70, padding: 16 }}>
       <style>{`@keyframes sc-timer { from { width: 100%; background: #14F195; } 70% { background: #ffaa00; } to { width: 8%; background: #ff4444; } } .sc-timer-demo { animation: sc-timer 3s linear infinite; }`}</style>

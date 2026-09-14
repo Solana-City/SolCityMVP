@@ -252,7 +252,7 @@ export default function CityGuide({ onDone }: { onDone: () => void }) {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "ArrowRight" || e.key === "Enter") { e.preventDefault(); if (last) finish(); else setI((n) => n + 1); }
+      if (e.key === "ArrowRight" || e.key === "Enter" || e.key === "e" || e.key === "E") { e.preventDefault(); if (last) finish(); else setI((n) => n + 1); }
       else if (e.key === "ArrowLeft") { e.preventDefault(); setI((n) => Math.max(0, n - 1)); }
     };
     window.addEventListener("keydown", onKey);

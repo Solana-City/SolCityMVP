@@ -160,7 +160,13 @@ export default function RulesScreen({ onClose }: RulesScreenProps) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
-      else if (e.key === "ArrowRight" || e.key === "Enter") setPage((n) => n + 1);
+      else if (e.key === "ArrowRight" || e.key === "Enter" || e.key === "e" || e.key === "E") {
+        // Like NEXT: on the last page it closes the rules.
+        setPageRaw((n) => {
+          if (n >= pages.length - 1) { onClose(); return n; }
+          return n + 1;
+        });
+      }
       else if (e.key === "ArrowLeft") setPage((n) => n - 1);
     };
     window.addEventListener("keydown", onKey);
