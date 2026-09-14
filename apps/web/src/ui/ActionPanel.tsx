@@ -461,10 +461,10 @@ type EarnCategory = {
 };
 
 const EARN_CATEGORIES: EarnCategory[] = [
-  { type: "bounty",    label: "Bounties",         sublabel: "Quick tasks, fast pay",  color: "#14F195", viewAllUrl: "https://superteam.fun/earn/all?tab=bounties"    },
-  { type: "project",   label: "Projects",          sublabel: "Longer engagements",     color: "#00D1FF", viewAllUrl: "https://superteam.fun/earn/all?tab=projects"    },
-  { type: "grant",     label: "Grants",            sublabel: "Build something bigger", color: "#9945FF", viewAllUrl: "https://superteam.fun/earn/grants"              },
-  { type: "hackathon", label: "Hackathon Tracks",  sublabel: "Compete and win",        color: "#FFD700", viewAllUrl: "https://superteam.fun/earn/hackathon/frontier"  },
+  { type: "bounty",    label: "Bounties",         sublabel: "Short tasks",            color: "#14F195", viewAllUrl: "https://superteam.fun/earn/all?tab=bounties"    },
+  { type: "project",   label: "Projects",          sublabel: "Longer work",            color: "#00D1FF", viewAllUrl: "https://superteam.fun/earn/all?tab=projects"    },
+  { type: "grant",     label: "Grants",            sublabel: "Funding to build",       color: "#9945FF", viewAllUrl: "https://superteam.fun/earn/grants"              },
+  { type: "hackathon", label: "Hackathons",        sublabel: "Build and compete",      color: "#FFD700", viewAllUrl: "https://superteam.fun/earn/hackathon/frontier"  },
 ];
 
 
@@ -481,17 +481,9 @@ function BountiesPanel({ onClose }: { onClose: () => void }) {
         SUPERTEAM EARN
       </h3>
 
-      <div style={{ marginBottom: 14 }}>
-        <p style={{ fontSize: "9px", color: "#ccccdd", marginBottom: 6, lineHeight: 1.5 }}>
-          Get paid to work on Solana. Tasks for designers, devs, and writers.
-        </p>
-        <p style={{ fontSize: "8px", color: "#14F195", marginBottom: 5 }}>
-          Rewards from $50 to $5,000+ · Paid in USDC · Open to everyone
-        </p>
-        <p style={{ fontSize: "8px", color: "#777788", lineHeight: 1.5 }}>
-          Whether you have 2 hours or 2 weeks, there's something here for you.
-        </p>
-      </div>
+      <p style={{ fontSize: "8px", color: "#b9b9cc", margin: "0 0 14px", lineHeight: 1.6 }}>
+        Pick a category. Only selected work gets paid, in USDC.
+      </p>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 12 }}>
         {EARN_CATEGORIES.map((cat) => (
@@ -512,18 +504,9 @@ function BountiesPanel({ onClose }: { onClose: () => void }) {
             <div style={{ fontSize: "8px", color: cat.color, fontWeight: "bold", marginBottom: 4 }}>
               {cat.label}
             </div>
-            <div style={{ fontSize: "8px", color: "#777788", marginBottom: 10 }}>
+            <div style={{ fontSize: "8px", color: "#777788" }}>
               {cat.sublabel}
             </div>
-            <a
-              href={cat.viewAllUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={(e) => e.stopPropagation()}
-              style={{ fontSize: "7px", color: cat.color, textDecoration: "none", borderBottom: `1px solid ${cat.color}44`, paddingBottom: 1 }}
-            >
-              View All →
-            </a>
           </div>
         ))}
       </div>
@@ -603,38 +586,14 @@ function EarnListingsStage({
         {/* ── Grants: informational panel (always shown) ── */}
         {isGrants && (
           <div style={{ marginBottom: 14 }}>
-            <p style={{ fontSize: "8px", color: "#888899", marginBottom: 10, lineHeight: 1.6 }}>
-              Equity-free funding to build something real on Solana. No pitch deck, no investor meetings.
-            </p>
-            <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 10 }}>
-              <StepCard
-                number={1}
-                title="What is a grant?"
-                color="#9945FF"
-                description="No equity taken. You keep 100% of your project and ship on your own terms."
-              />
-              <StepCard
-                number={2}
-                title="Who can apply?"
-                color="#00D1FF"
-                description="Developers, designers, researchers, and community builders with a clear idea and the skills to ship it."
-              />
-              <StepCard
-                number={3}
-                title="How much can I get?"
-                color="#14F195"
-                description="Community grants start at a few hundred USDC. Larger ecosystem grants can reach $50,000+. Always paid in USDC."
-              />
-              <StepCard
-                number={4}
-                title="How do I apply?"
-                color="#FFD700"
-                description="Browse open grants, write a short proposal. Most decisions take 1-3 weeks. No VC meetings required."
-              />
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 10 }}>
+              <StepCard number={1} title="Propose" color="#9945FF" description="Send a short plan for what you will build." />
+              <StepCard number={2} title="Get approved" color="#00D1FF" description="The grant team reviews it, usually in 1 to 3 weeks." />
+              <StepCard number={3} title="Build" color="#14F195" description="Paid in USDC. No equity taken." />
             </div>
             {/* Divider before live listings */}
-            <div style={{ fontSize: "7px", color: "#333344", textAlign: "center", marginBottom: 10, letterSpacing: 2 }}>
-              ── CURRENT OPEN GRANTS ──
+            <div style={{ fontSize: "7px", color: "#555566", textAlign: "center", marginBottom: 10, letterSpacing: 2 }}>
+              OPEN GRANTS
             </div>
           </div>
         )}
@@ -653,8 +612,8 @@ function EarnListingsStage({
               {failed
                 ? "Couldn't load listings right now."
                 : isGrants
-                  ? "No open grants at the moment. New rounds open regularly, check back soon."
-                  : "No open listings right now. Check back soon!"}
+                  ? "No open grants right now."
+                  : "No open listings right now."}
             </div>
             <a
               href={category.viewAllUrl}
