@@ -8,6 +8,7 @@ import type { MiniGameContext, MiniGameResult } from "@/game/minigames/types";
 import { launch as launchMiniGame } from "@/game/minigames";
 import { usePinchZoom } from "@/ui/usePinchZoom";
 import { incrementQuest } from "@/game/quests/QuestManager";
+import { guideSeen, markGuideSeen } from "@/ui/CityGuide";
 
 // All Solana/wallet-adapter code must be client-only — these packages
 // access `window`/`navigator` at module-load time and crash the SSR pass.
@@ -72,6 +73,19 @@ export default function Home() {
   );
 
   usePinchZoom();
+
+  // First visit: once the player is in the city (past the connect screen)
+  // and the scene is up, Sol's city guide opens by itself. Marked seen right
+  // away so closing it early never makes it pop again; Sol replays it.
+  useEffect(() => {
+    const onEnter = () => {
+      if (guideSeen()) return;
+      markGuideSeen();
+      window.setTimeout(() => setActiveAction({ type: "tutor", label: "Start the tour" }), 900);
+    };
+    window.addEventListener("solcity:entered-city", onEnter);
+    return () => window.removeEventListener("solcity:entered-city", onEnter);
+  }, []);
 
   // Long-pressing an image or the canvas on a phone opens the browser's
   // "save image / open in new tab" sheet, which interrupts play mid-gesture.

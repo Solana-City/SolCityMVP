@@ -9,6 +9,7 @@ import { transactionLog } from "@/game/telemetry/transactionLog";
 import { profileManager } from "@/game/config/profileManager";
 import { Connection } from "@solana/web3.js";
 import { ProtocolIntroGate, type IntroSpec } from "@/ui/ProtocolIntro";
+import CityGuide from "@/ui/CityGuide";
 
 /** Pratik: how Superteam Earn pays, before the bounty list. */
 const EARN_INTRO: IntroSpec = {
@@ -689,36 +690,7 @@ function EarnListingsStage({
 // ── Tutor Panel ───────────────────────────────────────────────────────
 
 function TutorPanel({ onClose }: { onClose: () => void }) {
-  const { connected } = useWallet();
-  const { setVisible: openWalletModal } = useWalletModal();
-
-  return (
-    <>
-      <h3 style={{ fontFamily: '"Press Start 2P", monospace', fontSize: "8px", color: "#14F195", marginBottom: 16 }}>
-        GETTING STARTED
-      </h3>
-      <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 16 }}>
-        <StepCard number={1} title="Connect your wallet" color="#9945FF"
-          description="Your wallet is your identity here. Phantom and Solflare work great."
-          action={!connected ? (
-            <button onClick={() => openWalletModal(true)}
-              style={{ ...btnStyle("rgba(153,69,255,0.8)"), marginTop: 8, fontSize: "7px", padding: "6px 12px" }}>
-              CONNECT NOW
-            </button>
-          ) : (
-            <span style={{ fontSize: "8px", color: "#14F195", display: "block", marginTop: 4 }}>✓ Connected</span>
-          )}
-        />
-        <StepCard number={2} title="Swap tokens" color="#FFD700"
-          description="Walk to Jupiter Cat (gold NPC, north) and press E to exchange tokens via Jupiter." />
-        <StepCard number={3} title="Send SOL" color="#00D1FF"
-          description="Visit Steve Sends (blue NPC) to transfer SOL to any wallet on devnet." />
-        <StepCard number={4} title="Explore & earn" color="#9945FF"
-          description="Check the Superteam Hub for bounties. Every interaction earns score and unlocks outfits!" />
-      </div>
-      <button onClick={onClose} style={btnStyle("#14F195", "#000")} className="w-full py-2.5">START EXPLORING</button>
-    </>
-  );
+  return <CityGuide onDone={onClose} />;
 }
 
 // ── Private Payment Panel (MagicBlock PER) ───────────────────────────

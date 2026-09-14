@@ -16,7 +16,14 @@ export default function ConnectScreen() {
     if (!connected) setDismissed(false);
   }, [connected]);
 
-  if (connected || dismissed) return null;
+  // Tell the page the player is in the city (connected or guest), so the
+  // first-time city guide can open over the map instead of this screen.
+  const entered = connected || dismissed;
+  useEffect(() => {
+    if (entered) window.dispatchEvent(new Event("solcity:entered-city"));
+  }, [entered]);
+
+  if (entered) return null;
 
   return (
     <div

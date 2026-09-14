@@ -97,10 +97,10 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     tileY: 40,
     color: 0x14f195,
     dialog: [
-      "Hey there! Welcome to Solana City. I'm Sol, your guide.",
-      "Everything you need to get started is in the panel below. See you around!",
+      "Hi, I'm Sol, your city guide!",
+      "Want a quick tour of how everything works?",
     ],
-    action: { type: "tutor", label: "Got it!" },
+    action: { type: "tutor", label: "Start the tour" },
     spriteKey: "Sol",
   },
   {
