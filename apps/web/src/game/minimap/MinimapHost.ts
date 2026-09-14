@@ -5,9 +5,10 @@
  * the layers CityScene created, and the place labels come from the layer
  * names, so editing city.json in Tiled updates the map on the next load.
  *
- * React polls `snapshot()` on its own animation frame for the moving parts
- * (you, other players, wandering NPCs) instead of the scene pushing events
- * every frame.
+ * NPCs are pinned where they spawn (their home spot), with a portrait cut
+ * from their own sprite sheet. React polls `snapshot()` on its own animation
+ * frame for the moving parts (you, other players) instead of the scene
+ * pushing events every frame.
  */
 import * as Phaser from "phaser";
 import { LANDMARK_LAYERS, npcCategory, type MinimapCategory } from "./categories";
@@ -24,6 +25,8 @@ export interface MinimapPoint {
   category: MinimapCategory;
   x: number;
   y: number;
+  /** Head-and-shoulders crop of the NPC's sprite, square. NPCs only. */
+  portrait?: HTMLCanvasElement;
 }
 
 export interface MinimapSnapshot {
@@ -123,6 +126,16 @@ export function publishMinimap(
     });
   }
 
+  // Portraits and spawn points don't change, so both are resolved once.
+  const npcPoints: MinimapPoint[] = sources.npcs().map((n) => {
+    const home = n.getSpawn();
+    return {
+      id: n.def.id, name: n.def.name, role: n.def.role,
+      category: npcCategory(n.def.action), x: home.x, y: home.y,
+      portrait: npcPortrait(scene, n.textureKey) ?? undefined,
+    };
+  });
+
   const host: MinimapHost = {
     image,
     worldW,
@@ -130,13 +143,7 @@ export function publishMinimap(
     landmarks,
     snapshot: () => ({
       player: sources.player(),
-      npcs: sources.npcs().map((n) => {
-        const c = n.getContainer();
-        return {
-          id: n.def.id, name: n.def.name, role: n.def.role,
-          category: npcCategory(n.def.action), x: c.x, y: c.y,
-        };
-      }),
+      npcs: npcPoints,
       players: sources.players().map((p) => {
         const c = p.avatar.getContainer();
         return { id: p.wallet, name: p.name, category: "players" as const, x: c.x, y: c.y };
@@ -149,6 +156,44 @@ export function publishMinimap(
   scene.events.once("shutdown", () => {
     if ((globalThis as Host).__solCityMinimap === host) (globalThis as Host).__solCityMinimap = null;
   });
+}
+
+/**
+ * The NPC as it stands facing the camera (frame 0 of its sheet), cropped to
+ * the top of its artwork so the face fills a small round marker.
+ */
+function npcPortrait(scene: Phaser.Scene, key: string): HTMLCanvasElement | null {
+  const frame = scene.textures.getFrame(key, 0) ?? scene.textures.getFrame(key);
+  if (!frame) return null;
+  const src = frame.source.image as CanvasImageSource;
+  const fw = frame.cutWidth;
+  const fh = frame.cutHeight;
+  const tmp = document.createElement("canvas");
+  tmp.width = fw;
+  tmp.height = fh;
+  const tctx = tmp.getContext("2d", { willReadFrequently: true });
+  if (!tctx) return null;
+  tctx.drawImage(src, frame.cutX, frame.cutY, fw, fh, 0, 0, fw, fh);
+  const { data } = tctx.getImageData(0, 0, fw, fh);
+  let x0 = fw, y0 = fh, x1 = -1, y1 = -1;
+  for (let y = 0; y < fh; y++) {
+    for (let x = 0; x < fw; x++) {
+      if (data[(y * fw + x) * 4 + 3] < 24) continue;
+      if (x < x0) x0 = x; if (x > x1) x1 = x;
+      if (y < y0) y0 = y; if (y > y1) y1 = y;
+    }
+  }
+  if (x1 < 0) return null;
+  const w = x1 - x0 + 1;
+  const h = y1 - y0 + 1;
+  // A square from the top: the head and a bit of the body.
+  const side = Math.max(8, Math.min(w, Math.round(h * 0.62)));
+  const sx = Math.round(x0 + (w - side) / 2);
+  const out = document.createElement("canvas");
+  out.width = side;
+  out.height = side;
+  out.getContext("2d")!.drawImage(tmp, sx, y0, side, side, 0, 0, side, side);
+  return out;
 }
 
 /**

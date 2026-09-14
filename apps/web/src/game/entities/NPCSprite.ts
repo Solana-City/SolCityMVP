@@ -48,6 +48,13 @@ export class NPCSprite {
   private unsubBus: (() => void) | null = null;
   private collisionLayers: Phaser.Tilemaps.TilemapLayer[] = [];
   readonly def: NPCDefinition;
+  /** Texture the NPC is drawn from (after the fallback), for previews. */
+  readonly textureKey: string;
+
+  /** Where this NPC spawns and wanders around, in world px. */
+  getSpawn(): { x: number; y: number } {
+    return { x: this.originX, y: this.originY };
+  }
 
   constructor(
     scene: Phaser.Scene,
@@ -66,6 +73,7 @@ export class NPCSprite {
 
     const desiredKey = def.spriteKey ?? "avatar-player";
     const spriteKey = scene.textures.exists(desiredKey) ? desiredKey : "avatar-player";
+    this.textureKey = spriteKey;
     // Row order belongs to the TEXTURE, not the NPC: Dom's NPC sheets are
     // down/up/right/left, but the main_char fallback sheet is the player
     // order down/right/up/left. Using the NPC mapping on the fallback made

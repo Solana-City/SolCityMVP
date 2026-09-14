@@ -1,8 +1,9 @@
 "use client";
 
 /**
- * City minimap: a compact corner view that follows you, and a full map you
- * can pan, zoom and filter by category.
+ * City minimap: a round, collapsible corner view that follows you, and a full
+ * map you can pan, zoom and filter by category. NPCs appear as portrait pins
+ * on the spot where they spawn.
  *
  * The picture comes from MinimapHost, which draws it from the live tilemap;
  * markers are read off the scene every animation frame, so wandering NPCs and
@@ -20,6 +21,7 @@ const PIXEL_FONT = '"Press Start 2P", monospace';
 const PANEL_BG = "rgba(8,10,22,0.72)";
 const PANEL_BORDER = "1px solid rgba(153,69,255,0.28)";
 const WATER = "#0b3a5c";
+const COLLAPSED_KEY = "solcity:minimap-collapsed";
 
 function emitGame(name: string, ...args: unknown[]) {
   (globalThis as { __solCityGameEvents?: { emit: (n: string, ...a: unknown[]) => void } })
@@ -84,6 +86,49 @@ function drawMarker(ctx: CanvasRenderingContext2D, cat: MinimapCategory, x: numb
   ctx.restore();
 }
 
+/**
+ * An NPC as a map pin: its portrait in a ring of its category colour, with a
+ * tail pointing at its spawn spot. Falls back to the category shape.
+ * Returns the pin head centre, for hit-testing.
+ */
+function drawPin(ctx: CanvasRenderingContext2D, point: MinimapPoint, x: number, y: number, r: number, highlight = false) {
+  if (!point.portrait) {
+    drawMarker(ctx, point.category, x, y, Math.max(3, r * 0.5));
+    return { x, y };
+  }
+  const color = CATEGORY_META[point.category].color;
+  const cy = y - r - Math.max(3, r * 0.45);
+  ctx.save();
+  // Tail
+  ctx.beginPath();
+  ctx.moveTo(x - r * 0.45, cy + r * 0.7);
+  ctx.lineTo(x, y);
+  ctx.lineTo(x + r * 0.45, cy + r * 0.7);
+  ctx.closePath();
+  ctx.fillStyle = color;
+  ctx.fill();
+  // Head
+  ctx.beginPath();
+  ctx.arc(x, cy, r, 0, Math.PI * 2);
+  ctx.fillStyle = "#101426";
+  ctx.fill();
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(x, cy, r - 1, 0, Math.PI * 2);
+  ctx.clip();
+  ctx.imageSmoothingEnabled = false;
+  const side = (r - 1) * 2;
+  ctx.drawImage(point.portrait, x - side / 2, cy - side / 2 + r * 0.12, side, side);
+  ctx.restore();
+  ctx.beginPath();
+  ctx.arc(x, cy, r, 0, Math.PI * 2);
+  ctx.lineWidth = highlight ? 3 : Math.max(1.5, r * 0.2);
+  ctx.strokeStyle = highlight ? "#ffffff" : color;
+  ctx.stroke();
+  ctx.restore();
+  return { x, y: cy };
+}
+
 /** You: a teal disc with a pulsing ring, always drawn last. */
 function drawYou(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, t: number) {
   const pulse = (t % 1400) / 1400;
@@ -111,7 +156,18 @@ function Swatch({ cat, size = 14 }: { cat: MinimapCategory; size?: number }) {
     c.width = size * dpr;
     c.height = size * dpr;
     ctx.scale(dpr, dpr);
-    drawMarker(ctx, cat, size / 2, size / 2, size * 0.33);
+    if (cat === "landmark" || cat === "players") {
+      drawMarker(ctx, cat, size / 2, size / 2, size * 0.33);
+    } else {
+      // NPC categories are portrait pins on the map, so the legend shows the ring.
+      ctx.beginPath();
+      ctx.arc(size / 2, size / 2, size * 0.36, 0, Math.PI * 2);
+      ctx.fillStyle = "#101426";
+      ctx.fill();
+      ctx.lineWidth = Math.max(2, size * 0.16);
+      ctx.strokeStyle = CATEGORY_META[cat].color;
+      ctx.stroke();
+    }
   }, [cat, size]);
   return <canvas ref={ref} style={{ width: size, height: size, flexShrink: 0, display: "block" }} />;
 }
@@ -178,12 +234,27 @@ export default function Minimap({ compact }: { compact?: "mobile" | "desktop" })
     return () => window.removeEventListener("keydown", onKey);
   }, [open, setOpenAndNotify]);
 
+  const [collapsed, setCollapsed] = useState(false);
+  useEffect(() => {
+    try { setCollapsed(localStorage.getItem(COLLAPSED_KEY) === "1"); } catch { /* storage blocked */ }
+  }, []);
+  const toggleCollapsed = useCallback(() => {
+    setCollapsed((v) => {
+      try { localStorage.setItem(COLLAPSED_KEY, v ? "0" : "1"); } catch { /* storage blocked */ }
+      return !v;
+    });
+  }, []);
+
   if (!host) return null;
   const mobile = compact === "mobile";
 
   return (
     <>
-      <CompactMap host={host} mobile={mobile} onOpen={() => setOpenAndNotify(true)} />
+      {collapsed ? (
+        <CollapsedMap mobile={mobile} onExpand={toggleCollapsed} onOpen={() => setOpenAndNotify(true)} />
+      ) : (
+        <CompactMap host={host} mobile={mobile} onOpen={() => setOpenAndNotify(true)} onCollapse={toggleCollapsed} />
+      )}
       {/* Portalled: the compact map lives inside the HUD's stacking context,
           which would otherwise keep the modal under the touch controls. */}
       {open && createPortal(<FullMap host={host} onClose={() => setOpenAndNotify(false)} />, document.body)}
@@ -191,82 +262,142 @@ export default function Minimap({ compact }: { compact?: "mobile" | "desktop" })
   );
 }
 
-function CompactMap({ host, mobile, onOpen }: { host: MinimapHost; mobile: boolean; onOpen: () => void }) {
+function CompactMap({ host, mobile, onOpen, onCollapse }: {
+  host: MinimapHost; mobile: boolean; onOpen: () => void; onCollapse: () => void;
+}) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const W = mobile ? 118 : 250;
-  const H = mobile ? 92 : 150;
-  // World px shown across the width: about 60 tiles on desktop, 36 on a phone.
-  const zoom = W / (mobile ? 860 : 1440);
+  const D = mobile ? 112 : 176;
+  // World px shown across the diameter: about 46 tiles on desktop, 30 on a phone.
+  const zoom = D / (mobile ? 720 : 1100);
 
   useEffect(() => {
     const c = canvasRef.current;
     const ctx = c?.getContext("2d");
     if (!c || !ctx) return;
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    c.width = W * dpr;
-    c.height = H * dpr;
+    c.width = D * dpr;
+    c.height = D * dpr;
+    const R = D / 2;
     let raf = 0;
     const loop = (t: number) => {
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       const snap = host.snapshot();
       const me = snap.player ?? { x: host.worldW / 2, y: host.worldH / 2 };
       const v: View = { cx: me.x, cy: me.y, zoom };
-      drawBase(ctx, host, v, W, H);
-      const r = mobile ? 3 : 3.6;
+      ctx.clearRect(0, 0, D, D);
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(R, R, R, 0, Math.PI * 2);
+      ctx.clip();
+      drawBase(ctx, host, v, D, D);
+      const inside = (p: { x: number; y: number }, pad: number) => Math.hypot(p.x - R, p.y - R) < R - pad;
       for (const l of host.landmarks) {
-        const p = toScreen(v, W, H, l.x, l.y);
-        if (p.x > -8 && p.x < W + 8 && p.y > -8 && p.y < H + 8) drawMarker(ctx, "landmark", p.x, p.y, r * 0.8);
+        const p = toScreen(v, D, D, l.x, l.y);
+        if (inside(p, 4)) drawMarker(ctx, "landmark", p.x, p.y, mobile ? 2.4 : 3);
       }
-      for (const n of snap.npcs) {
-        const p = toScreen(v, W, H, n.x, n.y);
-        if (p.x > -8 && p.x < W + 8 && p.y > -8 && p.y < H + 8) drawMarker(ctx, n.category, p.x, p.y, r);
+      const pinR = mobile ? 6 : 8;
+      // South-most last, so nearer pins overlap the ones behind them.
+      for (const n of [...snap.npcs].sort((a, b) => a.y - b.y)) {
+        const p = toScreen(v, D, D, n.x, n.y);
+        if (inside(p, pinR)) drawPin(ctx, n, p.x, p.y, pinR);
       }
       for (const o of snap.players) {
-        const p = toScreen(v, W, H, o.x, o.y);
-        drawMarker(ctx, "players", p.x, p.y, r);
+        const p = toScreen(v, D, D, o.x, o.y);
+        if (inside(p, 3)) drawMarker(ctx, "players", p.x, p.y, mobile ? 2.6 : 3.2);
       }
-      drawYou(ctx, W / 2, H / 2, mobile ? 3.5 : 4, t);
+      drawYou(ctx, R, R, mobile ? 3.5 : 4.5, t);
+      // Vignette toward the rim.
+      const g = ctx.createRadialGradient(R, R, R * 0.62, R, R, R);
+      g.addColorStop(0, "rgba(4,6,14,0)");
+      g.addColorStop(1, "rgba(4,6,14,0.6)");
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, D, D);
+      ctx.restore();
       raf = requestAnimationFrame(loop);
     };
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
-  }, [host, mobile, W, H, zoom]);
+  }, [host, mobile, D, zoom]);
 
+  const chip = mobile ? 22 : 26;
   return (
-    <button
-      onClick={onOpen}
-      aria-label="Open city map"
-      title="City map [M]"
-      style={{
-        position: "relative", display: "block", padding: 0, cursor: "pointer",
-        width: W, height: H, borderRadius: mobile ? 10 : 12, overflow: "hidden",
-        border: PANEL_BORDER, background: PANEL_BG,
-        boxShadow: "0 4px 22px rgba(0,0,0,0.45)",
-        WebkitTapHighlightColor: "transparent", touchAction: "manipulation",
-      }}
-    >
-      <canvas ref={canvasRef} style={{ width: W, height: H, display: "block" }} />
-      {/* Soft edge so the map reads as a window onto the city, not a screenshot. */}
+    <div style={{ position: "relative", width: D, height: D, flexShrink: 0 }}>
+      <button
+        onClick={onOpen}
+        aria-label="Open city map"
+        title="City map [M]"
+        style={{
+          position: "absolute", inset: 0, padding: 0, cursor: "pointer",
+          borderRadius: "50%", overflow: "hidden",
+          border: "3px solid rgba(153,69,255,0.55)", background: PANEL_BG,
+          boxShadow: "0 0 0 1px rgba(20,241,149,0.25), 0 6px 24px rgba(0,0,0,0.5)",
+          WebkitTapHighlightColor: "transparent", touchAction: "manipulation",
+        }}
+      >
+        <canvas ref={canvasRef} style={{ width: "100%", height: "100%", display: "block" }} />
+      </button>
+      {/* Label on the rim, north. */}
       <span style={{
-        position: "absolute", inset: 0, pointerEvents: "none",
-        boxShadow: "inset 0 0 18px rgba(4,6,14,0.75)",
-      }} />
-      <span style={{
-        position: "absolute", left: 6, top: 6, pointerEvents: "none",
-        fontFamily: PIXEL_FONT, fontSize: mobile ? 6 : 7, color: "#e2e8f0",
-        background: "rgba(8,10,22,0.8)", borderRadius: 4, padding: "3px 5px",
+        position: "absolute", left: "50%", top: -2, transform: "translateX(-50%)", pointerEvents: "none",
+        fontFamily: PIXEL_FONT, fontSize: mobile ? 5 : 6, color: "#e2e8f0", whiteSpace: "nowrap",
+        background: "rgba(8,10,22,0.92)", border: PANEL_BORDER, borderRadius: 6, padding: "3px 6px",
       }}>
         MAP{mobile ? "" : " [M]"}
       </span>
-      <span style={{
-        position: "absolute", right: 6, top: 5, pointerEvents: "none",
-        fontSize: mobile ? 11 : 12, color: "#e2e8f0", lineHeight: 1,
-        background: "rgba(8,10,22,0.8)", borderRadius: 4, padding: "2px 4px",
-      }}>
+      <button
+        onClick={onCollapse}
+        aria-label="Hide minimap"
+        title="Hide minimap"
+        style={{ ...rimBtn(chip), left: mobile ? -2 : 4, bottom: mobile ? -2 : 4 }}
+      >
+        −
+      </button>
+      <button
+        onClick={onOpen}
+        aria-label="Open full map"
+        title="Full map [M]"
+        style={{ ...rimBtn(chip), right: mobile ? -2 : 4, bottom: mobile ? -2 : 4, fontSize: mobile ? 11 : 13 }}
+      >
         ⤢
-      </span>
-    </button>
+      </button>
+    </div>
   );
+}
+
+/** The minimap folded away: one round button that brings it back. */
+function CollapsedMap({ mobile, onExpand, onOpen }: { mobile: boolean; onExpand: () => void; onOpen: () => void }) {
+  const size = mobile ? 36 : 40;
+  return (
+    <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+      <button
+        onClick={onOpen}
+        aria-label="Open full map"
+        title="Full map [M]"
+        style={{ ...rimBtn(size), position: "static", fontFamily: PIXEL_FONT, fontSize: 7 }}
+      >
+        MAP
+      </button>
+      <button
+        onClick={onExpand}
+        aria-label="Show minimap"
+        title="Show minimap"
+        style={{ ...rimBtn(size * 0.7), position: "static", fontSize: 14 }}
+      >
+        +
+      </button>
+    </div>
+  );
+}
+
+function rimBtn(size: number): React.CSSProperties {
+  return {
+    position: "absolute", width: size, height: size, borderRadius: "50%", padding: 0,
+    display: "flex", alignItems: "center", justifyContent: "center",
+    background: "rgba(8,10,22,0.92)", border: "1px solid rgba(153,69,255,0.55)",
+    color: "#e2e8f0", fontSize: Math.round(size * 0.6), lineHeight: 1, cursor: "pointer",
+    boxShadow: "0 2px 10px rgba(0,0,0,0.5)",
+    WebkitTapHighlightColor: "transparent", touchAction: "manipulation",
+  };
 }
 
 // ── Full map ────────────────────────────────────────────────────────────────
@@ -290,6 +421,8 @@ function FullMap({ host, onClose }: { host: MinimapHost; onClose: () => void }) 
   const viewRef = useRef<View | null>(null);
   const targetRef = useRef<View | null>(null);
   const pointsRef = useRef<MinimapPoint[]>([]);
+  /** Where each NPC pin head was drawn last frame, for hit-testing. */
+  const headsRef = useRef(new Map<string, { x: number; y: number }>());
   const enabledRef = useRef(enabled);
   enabledRef.current = enabled;
   const selectedRef = useRef(selected);
@@ -374,14 +507,23 @@ function FullMap({ host, onClose }: { host: MinimapHost; onClose: () => void }) 
           drawTag(ctx, l.name, p.x, p.y, CATEGORY_META.landmark.color, v.zoom >= fitZoom() * 1.3);
         }
       }
-      for (const n of [...snap.npcs, ...snap.players]) {
+      const pinR = Math.max(9, Math.min(18, v.zoom * 40));
+      const heads = new Map<string, { x: number; y: number }>();
+      for (const n of [...snap.npcs].sort((a, b) => a.y - b.y)) {
         if (!on.has(n.category)) continue;
         const p = toScreen(v, w, h, n.x, n.y);
-        if (p.x < -20 || p.x > w + 20 || p.y < -20 || p.y > h + 20) continue;
-        drawMarker(ctx, n.category, p.x, p.y, n.category === "players" ? r * 0.8 : r);
+        if (p.x < -40 || p.x > w + 40 || p.y < -40 || p.y > h + 40) continue;
+        heads.set(n.id, drawPin(ctx, n, p.x, p.y, pinR, selectedRef.current === n.id));
+        if (showNames || selectedRef.current === n.id) drawName(ctx, n.name, p.x, p.y + 3);
+      }
+      headsRef.current = heads;
+      for (const n of snap.players) {
+        if (!on.has(n.category)) continue;
+        const p = toScreen(v, w, h, n.x, n.y);
+        drawMarker(ctx, n.category, p.x, p.y, r * 0.8);
         if (showNames || selectedRef.current === n.id) drawName(ctx, n.name, p.x, p.y + r + 3);
       }
-      const sel = selectedRef.current && all.find((p) => p.id === selectedRef.current);
+      const sel = selectedRef.current && all.find((p) => p.id === selectedRef.current && !p.portrait);
       if (sel) {
         const p = toScreen(v, w, h, sel.x, sel.y);
         const pulse = (t % 1000) / 1000;
@@ -414,9 +556,11 @@ function FullMap({ host, onClose }: { host: MinimapHost; onClose: () => void }) 
     let best: { p: MinimapPoint; d: number } | null = null;
     for (const p of pointsRef.current) {
       if (!enabledRef.current.has(p.category)) continue;
-      const s = toScreen(v, w, h, p.x, p.y);
+      const head = headsRef.current.get(p.id);
+      const s = head ?? toScreen(v, w, h, p.x, p.y);
+      const reach = head ? Math.max(9, Math.min(18, v.zoom * 40)) + 4 : r;
       const d = Math.hypot(s.x - sx, s.y - sy);
-      if (d <= r && (!best || d < best.d)) best = { p, d };
+      if (d <= reach && (!best || d < best.d)) best = { p, d };
     }
     return best?.p ?? null;
   }, [w, h]);
@@ -583,7 +727,7 @@ function FullMap({ host, onClose }: { host: MinimapHost; onClose: () => void }) 
                 border: "1px solid transparent",
               }}
             >
-              <Swatch cat={cat} size={12} />
+              {p.portrait ? <Portrait point={p} size={26} /> : <Swatch cat={cat} size={12} />}
               <span style={{ minWidth: 0 }}>
                 <span style={{ display: "block", fontSize: 12, color: "#e2e8f0", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.name}</span>
                 {p.role && <span style={{ display: "block", fontSize: 10, color: "#8b93a7" }}>{p.role}</span>}
@@ -659,7 +803,7 @@ function FullMap({ host, onClose }: { host: MinimapHost; onClose: () => void }) 
                 boxShadow: "0 8px 24px rgba(0,0,0,0.5)",
               }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                  <Swatch cat={card.point.category} size={12} />
+                  {card.point.portrait ? <Portrait point={card.point} size={30} /> : <Swatch cat={card.point.category} size={12} />}
                   <span style={{ fontSize: 13, color: "#f1f5f9", fontWeight: 700 }}>{card.point.name}</span>
                 </div>
                 <div style={{ fontSize: 11, color: "#8b93a7", marginTop: 3 }}>
@@ -684,6 +828,29 @@ function FullMap({ host, onClose }: { host: MinimapHost; onClose: () => void }) 
         </div>
       </div>
     </div>
+  );
+}
+
+/** An NPC's portrait in a ring of its category colour, for lists and cards. */
+function Portrait({ point, size }: { point: MinimapPoint; size: number }) {
+  const ref = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    const c = ref.current;
+    const ctx = c?.getContext("2d");
+    if (!c || !ctx || !point.portrait) return;
+    c.width = point.portrait.width;
+    c.height = point.portrait.height;
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(point.portrait, 0, 0);
+  }, [point]);
+  return (
+    <span style={{
+      width: size, height: size, borderRadius: "50%", overflow: "hidden", flexShrink: 0,
+      background: "#101426", border: `2px solid ${CATEGORY_META[point.category].color}`,
+      display: "block",
+    }}>
+      <canvas ref={ref} style={{ width: "100%", height: "100%", display: "block", imageRendering: "pixelated" }} />
+    </span>
   );
 }
 

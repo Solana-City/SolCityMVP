@@ -298,16 +298,18 @@ export default function Home() {
             {isTouch ? (
               /* ── Mobile: compact horizontal strip + zoom below ── */
               <div className="flex flex-col items-end gap-2">
+                <Minimap compact="mobile" />
                 <div className="flex items-center gap-1.5">
                   <PfpButton gameRef={game} size={32} onClick={() => setProfileOpen(true)} />
                   <WardrobeButton size={32} onClick={() => setWardrobeOpen(true)} />
                   <WalletBar onWalletChange={handleWalletChange} />
                 </div>
                 <ZoomControl />
-                <Minimap compact="mobile" />
               </div>
             ) : (
-              /* ── Desktop: unified card panel ── */
+              /* ── Desktop: round minimap over the unified card panel ── */
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
+              <Minimap compact="desktop" />
               <div style={{
                 background: "rgba(8,10,22,0.58)",
                 border: "1px solid rgba(153,69,255,0.2)",
@@ -361,12 +363,9 @@ export default function Home() {
                   </div>
                 </div>
               </div>
-            )}
-            {!isTouch && (
-              <div style={{ marginTop: 8 }}>
-                <Minimap compact="desktop" />
               </div>
             )}
+
           </div>
 
           <ToastStack />
