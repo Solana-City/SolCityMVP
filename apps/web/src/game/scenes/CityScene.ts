@@ -915,7 +915,7 @@ export class CityScene extends Phaser.Scene {
       "Oh! You recognized me. Sharp eyes, citizen.",
       "Wow, you actually found me. I wasn't making it easy!",
       "Hey, how did you spot me so fast?",
-      "Alright, alright — you got me. Well done.",
+      "Alright, alright, you got me. Well done.",
       "I can't believe it! Nobody finds me this quickly.",
       "You have a talent for this. Have we met before?",
       "Caught! You must walk these streets a lot.",

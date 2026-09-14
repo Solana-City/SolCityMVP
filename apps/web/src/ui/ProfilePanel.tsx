@@ -643,7 +643,7 @@ function SettingsTab() {
           </span>
         </div>
         <div className="text-xs mt-3" style={{ color: "#444455", lineHeight: 1.5, fontSize: 8 }}>
-          All in-game effects — clicks, chimes, footsteps. Saved on this device.
+          All in-game effects: clicks, chimes, footsteps. Saved on this device.
         </div>
       </div>
     </div>

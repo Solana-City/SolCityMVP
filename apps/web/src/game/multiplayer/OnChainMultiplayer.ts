@@ -826,7 +826,7 @@ export class OnChainMultiplayer {
     if (!this.wallet || !isProgramDeployed()) return false;
     const sessionKey = this.sessionKeys.getSessionPublicKey();
     const entry = transactionLog.record({
-      kind: "hunt", layer: "base", label: "Find someone — claim", status: "pending",
+      kind: "hunt", layer: "base", label: "Find someone: claim", status: "pending",
     });
     const sig = await this.sendHuntIx(buildClaimFindIx(sessionKey, round));
     // Confirm the outcome by reading the hunt: the winner is set to our session
@@ -1073,7 +1073,7 @@ export class OnChainMultiplayer {
             transactionLog.markConfirmed(initEntry.id, sig);
             console.log("✓ initialized + authorized:", sig.slice(0, 12));
           } else {
-            transactionLog.markFailed(initEntry.id, "player PDA not found after send — init did not land");
+            transactionLog.markFailed(initEntry.id, "player PDA not found after send, init did not land");
             console.warn("✗ init sent but PDA never appeared:", sig.slice(0, 12));
           }
         } catch (err: any) {
@@ -1292,7 +1292,7 @@ export class OnChainMultiplayer {
           return;
         }
       }
-      transactionLog.markFailed(entryId, "dropped — never landed on the rollup");
+      transactionLog.markFailed(entryId, "dropped, never landed on the rollup");
       console.warn("[Multiplayer] move tx dropped (no status after 5s):", sig.slice(0, 12));
       this.lastVerifyOkAt = 0; // unhealthy — verify the next move too
     } catch {
@@ -1411,7 +1411,7 @@ export class OnChainMultiplayer {
         return;
       }
     }
-    throw new Error("ER authorize dropped — no status after 5s");
+    throw new Error("ER authorize dropped, no status after 5s");
   }
 
   /**
@@ -1880,7 +1880,7 @@ export class OnChainMultiplayer {
       const bus = (globalThis as any).__solCityGameEvents as Phaser.Events.EventEmitter | undefined;
       if (!bus) {
         clearTimeout(timeout);
-        reject(new Error("wallet bus not available — session offline"));
+        reject(new Error("wallet bus not available, session offline"));
         return;
       }
 
@@ -1908,7 +1908,7 @@ export class OnChainMultiplayer {
       const bus = (globalThis as any).__solCityGameEvents as Phaser.Events.EventEmitter | undefined;
       if (!bus) {
         clearTimeout(timeout);
-        reject(new Error("wallet bus not available — session offline"));
+        reject(new Error("wallet bus not available, session offline"));
         return;
       }
 

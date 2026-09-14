@@ -577,7 +577,7 @@ function EarnListingsStage({
                 number={4}
                 title="How do I apply?"
                 color="#FFD700"
-                description="Browse open grants, write a short proposal. Most decisions take 1–3 weeks. No VC meetings required."
+                description="Browse open grants, write a short proposal. Most decisions take 1-3 weeks. No VC meetings required."
               />
             </div>
             {/* Divider before live listings */}

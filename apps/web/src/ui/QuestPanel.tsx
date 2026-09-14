@@ -47,7 +47,7 @@ function QuestLeaderboardModal({ onClose }: { onClose: () => void }) {
           </div>
           {entries.length === 0 ? (
             <div style={{ color: "#444466", fontSize: 9, padding: "20px 0", textAlign: "center" }}>
-              No points yet — complete quests to appear here!
+              No points yet. Complete quests to appear here!
             </div>
           ) : entries.map((e, i) => (
             <div key={e.wallet} style={{
@@ -274,7 +274,7 @@ export default function QuestPanel({ wallet }: Props) {
                         boxShadow: "0 2px 12px rgba(20,241,149,0.25)",
                       }}
                     >
-                      CLAIM — {quest.rewardLabel}
+                      CLAIM · {quest.rewardLabel}
                     </button>
                   )}
                   {claimed && (

@@ -97,7 +97,7 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     tileY: 40,
     color: 0x14f195,
     dialog: [
-      "Hey there! Welcome to Solana City — I'm Sol, your guide.",
+      "Hey there! Welcome to Solana City. I'm Sol, your guide.",
       "Everything you need to get started is in the panel below. See you around!",
     ],
     action: { type: "tutor", label: "Got it!" },
@@ -114,7 +114,7 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     color: 0xff6b35,
     dialog: [
       "Irasshaimase! Welcome to my cart.",
-      "Orders are piling up — burger or sushi, it doesn't matter.",
+      "Orders are piling up. Burger or sushi, it doesn't matter.",
       "I just need someone who can assemble them in the right order, fast.",
       "Think you've got the hands for it?",
     ],
@@ -132,7 +132,7 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     color: 0x00b4d8,
     dialog: [
       "Hey! Want to take a kite up and see who else is flying right now?",
-      "Stay airborne to rack up points — the further out you let your line, the faster you score.",
+      "Stay airborne to rack up points. The further out you let your line, the faster you score.",
       "But flying high makes you an easy target. Cut a rival's line for a bonus, if you dare.",
     ],
     action: { type: "minigame", label: "Launch Kite", miniGameId: "kite-clash" },
@@ -174,7 +174,7 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     dialog: [
       "Steve Sends, at your service.",
       "Need to move SOL or any token to another wallet? This is your stop.",
-      "Drop in the destination address and the amount — it lands on the other side in seconds.",
+      "Drop in the destination address and the amount, and it lands on the other side in seconds.",
     ],
     action: { type: "transfer", label: "Send tokens" },
     spriteKey: "avatar-send-npc",
@@ -214,6 +214,28 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     ],
     action: { type: "private-payment", label: "Send privately" },
     spriteKey: "Magic Man",
+  },
+  {
+    id: "mech-handler",
+    name: "Rade",
+    role: "Sol Mechs Hangar",
+    // SCMap01.1: on the street at the fence of the empty lot east of the
+    // canal — the fenced plot with the construction signs is where a hangar
+    // building can go up. Checked against the map's colliders: reachable from
+    // the spawn, ~19 tiles from the nearest NPC. (The old-map spot, 131/113,
+    // fell outside the walkable city on this map.)
+    tileX: 118,
+    tileY: 60,
+    color: 0xff5468,
+    dialog: [
+      "Hey, I'm Rade. Welcome to the Sol Mechs hangar!",
+      "Build a squad of three mechs, mix parts across chassis and take them into 3v3 battles.",
+      "Warm up against the CPU or battle other players online. The rules are in the menu whenever you need them.",
+    ],
+    action: { type: "minigame", label: "Enter the Hangar", miniGameId: "sol-mechs" },
+    // No spriteKey yet — falls back to the default avatar sheet until the
+    // handler's own art is drawn. Same for the portrait: the Unity source
+    // only ships 2048x2048 busts, well over this repo's 256x256 convention.
   },
   {
     id: "caramel-dog",
@@ -289,39 +311,5 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     ],
     action: { type: "link", label: "Visit MonkeDAO", url: "https://monkedao.io/" },
     spriteKey: "Mr. Bananas",
-  },
-  {
-    id: "liza",
-    name: "Michele",
-    role: "DRiP Collector",
-    enabled: false,
-    tileX: 168,
-    tileY: 155,
-    color: 0x00d1ff,
-    dialog: [
-      "I collect NFTs the way some people collect trading cards — but these ones are free.",
-      "DRiP drops original art from independent creators straight into your Solana wallet. No minting fees, no gas wars.",
-      "Every week I get something new. Some pieces are 1-of-1 gems, others are open editions. All on-chain.",
-      "Subscribe to a creator you like and the drop just arrives. It's the most relaxed way to own art on Solana.",
-    ],
-    action: { type: "link", label: "Open DRiP", url: "https://drip.haus/" },
-    spriteKey: "avatar-liza",
-  },
-  {
-    id: "juan",
-    name: "Dom",
-    role: "Solana Mobile",
-    enabled: false,
-    tileX: 28,
-    tileY: 48,
-    color: 0x9945ff,
-    dialog: [
-      "Out here on the frontier — best place to test the Seeker.",
-      "Solana Mobile built a phone for people who actually use crypto. Hardware seed vault, one-tap signing, no extension drama.",
-      "The dApp Store is growing fast. Games, DeFi, wallets — all optimised for mobile-first.",
-      "If you're building on Solana, submitting your PWA to the dApp Store is low-hanging fruit. I'd do it.",
-    ],
-    action: { type: "link", label: "Solana Mobile", url: "https://solanamobile.com/" },
-    spriteKey: "avatar-juan",
   },
 ];

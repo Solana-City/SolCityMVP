@@ -1,5 +1,5 @@
 export const metadata = {
-  title: "Privacy Policy — The Solana City",
+  title: "Privacy Policy | The Solana City",
   description: "Privacy Policy for The Solana City",
 };
 
@@ -40,7 +40,7 @@ export default function PrivacyPage() {
 
         <section>
           <h2 style={{ color: "#ccccee", fontSize: 12, marginBottom: 12 }}>2. Data We Collect</h2>
-          <p><strong style={{ color: "#ccccee" }}>Wallet address.</strong> When you connect a Solana wallet, we read your public key to identify your in-game character. We never access your private key, seed phrase, or signing credentials — all signing happens inside your wallet app.</p>
+          <p><strong style={{ color: "#ccccee" }}>Wallet address.</strong> When you connect a Solana wallet, we read your public key to identify your in-game character. We never access your private key, seed phrase, or signing credentials. All signing happens inside your wallet app.</p>
           <p style={{ marginTop: 12 }}><strong style={{ color: "#ccccee" }}>On-chain activity.</strong> Transactions you initiate (token swaps, SOL transfers, minigame settlements) are recorded on the Solana blockchain, which is public by design. We do not control or store this data.</p>
           <p style={{ marginTop: 12 }}><strong style={{ color: "#ccccee" }}>Display name &amp; avatar.</strong> Any display name or profile picture you set is stored in your browser&apos;s localStorage. It is not transmitted to our servers.</p>
           <p style={{ marginTop: 12 }}><strong style={{ color: "#ccccee" }}>Game state.</strong> Player position and in-game events are relayed through our multiplayer server to synchronise sessions. This data is ephemeral and not stored long-term.</p>
@@ -61,10 +61,10 @@ export default function PrivacyPage() {
           <h2 style={{ color: "#ccccee", fontSize: 12, marginBottom: 12 }}>4. Third-Party Services</h2>
           <p>Sol City interacts with the following third-party services by design:</p>
           <ul style={{ paddingLeft: 20, marginTop: 12, display: "flex", flexDirection: "column", gap: 8 }}>
-            <li><strong style={{ color: "#ccccee" }}>Solana Network</strong> — public blockchain; all transactions are public.</li>
-            <li><strong style={{ color: "#ccccee" }}>Jupiter Aggregator</strong> — used for token swap quotes. Governed by Jupiter&apos;s own privacy policy.</li>
-            <li><strong style={{ color: "#ccccee" }}>MagicBlock</strong> — ephemeral rollup for low-latency game actions. No personal data is shared.</li>
-            <li><strong style={{ color: "#ccccee" }}>Vercel</strong> — hosting provider. May collect standard server access logs (IP address, request path, timestamp).</li>
+            <li><strong style={{ color: "#ccccee" }}>Solana Network</strong>: public blockchain; all transactions are public.</li>
+            <li><strong style={{ color: "#ccccee" }}>Jupiter Aggregator</strong>: used for token swap quotes. Governed by Jupiter&apos;s own privacy policy.</li>
+            <li><strong style={{ color: "#ccccee" }}>MagicBlock</strong>: ephemeral rollup for low-latency game actions. No personal data is shared.</li>
+            <li><strong style={{ color: "#ccccee" }}>Vercel</strong>: hosting provider. May collect standard server access logs (IP address, request path, timestamp).</li>
           </ul>
         </section>
 

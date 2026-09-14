@@ -1,0 +1,971 @@
+"use client";
+
+/**
+ * Sol Mechs — battle overlay.
+ *
+ * Follows the house minigame convention: the scene renders on a <canvas>
+ * owned by BattleRenderer, with the HUD and controls as DOM on top.
+ *
+ * The flow is hangar → workshop → battle → result. The hangar shows each
+ * mech as the build that will actually deploy — its saved loadout, not the
+ * stock chassis — so what the roster advertises and what the engine fights
+ * are the same thing. The battle is driven entirely by the pure engine, so
+ * swapping LocalAIOpponent for a network provider later changes only where
+ * player 2's actions come from.
+ */
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
+import type { MiniGameComponentProps, MiniGameBaseContext } from "../types";
+import {
+  createBattle, resolveRound, forfeit, availableMoves, legalTargets, createUnit,
+  type BattleState, type BattleAction, type BattleEvent, type PlayerSide,
+  type RoundActions,
+} from "@/game/solmechs/engine/BattleEngine";
+import { BattleRenderer, splitIntoBeats, CANVAS_W, CANVAS_H } from "@/game/solmechs/render/BattleRenderer";
+import {
+  preloadAll, preloadBuild, drawMech, DOLL_WIDTH, DOLL_HEIGHT, mechBounds,
+  type MechBounds,
+} from "@/game/solmechs/render/paperDoll";
+import { LocalAIOpponent } from "@/game/solmechs/opponent/LocalAIOpponent";
+import { MATRICES, PRESET_BUILDS } from "@/game/solmechs/data/catalog";
+import { recordResult, loadHangar, getBuild } from "@/game/solmechs/hangar";
+import { useWallet } from "@solana/wallet-adapter-react";
+import PvpLobby from "./PvpLobby";
+import RulesScreen from "./RulesScreen";
+import { openPvpTransport, PvpSession, type PvpTransport } from "@/game/solmechs/pvp";
+import { LocalSquadAI, RemoteSquadOpponent, type SquadOpponent } from "@/game/solmechs/opponent/SquadOpponent";
+import MainMenu from "./MainMenu";
+import { BattleLog } from "./BattleLog";
+import { useChessClock } from "./ClockBar";
+import { UnitPanel } from "./BattleHud";
+import { SpriteButton } from "./SpriteButton";
+import { useOwnership } from "./useOwnership";
+import { lockReason } from "@/game/solmechs/ownership";
+import { formatClock } from "@/game/solmechs/data/clock";
+import { DEFAULT_CLOCK } from "@/game/solmechs/data/clock";
+import { C, T, SP, R, MONO, backdrop, panel, eyebrow, button, actionButton, W, PANEL_HEIGHT } from "./theme";
+import TeamBuilder from "./TeamBuilder";
+import TeamBattleScreen from "./TeamBattleScreen";
+import { validateTeam, type TeamBuild } from "@/game/solmechs/data/team";
+import { LIMB_SLOTS, type MechId, type ModuleSlot, type MechBuild, type MoveDefinition } from "@/game/solmechs/data/types";
+
+type Phase =
+  | "menu" | "hangar" | "squad" | "team-battle" | "battle" | "result"
+  | "pvp-squad" | "pvp-lobby" | "pvp-battle" | "rules";
+
+const PVP_PHASES: Phase[] = ["pvp-squad", "pvp-lobby", "pvp-battle"];
+
+/** Paper-doll scale for the roster cards. */
+const CARD_SCALE = 2;
+
+const SLOT_LABEL: Record<ModuleSlot, string> = {
+  rightArm: "R.Arm",
+  leftArm: "L.Arm",
+  lowerBody: "Legs",
+  matrix: "MATRIX",
+};
+
+const PIXELATED: React.CSSProperties = { imageRendering: "pixelated" };
+
+/**
+ * Unity's per-slot glyphs (Interface guidance/arena/log_*.png). Used on the
+ * target buttons so picking a limb is a picture of that limb rather than an
+ * abbreviation the player has to decode mid-fight.
+ */
+const SLOT_ICON: Record<ModuleSlot, string> = {
+  matrix:    "/assets/minigames/sol-mechs/ui/slotmini-matrix.png",
+  rightArm:  "/assets/minigames/sol-mechs/ui/slotmini-rightarm.png",
+  leftArm:   "/assets/minigames/sol-mechs/ui/slotmini-leftarm.png",
+  lowerBody: "/assets/minigames/sol-mechs/ui/slotmini-legs.png",
+};
+
+/**
+ * The raised surface the footer controls sit on.
+ *
+ * They were a bare region under the arena, which read as a dead cut between
+ * the scene and the things you can click. Raising them onto a card with a
+ * bright edge and a drop shadow makes the strip look attached to the screen.
+ */
+const CARD: React.CSSProperties = {
+  background: "rgba(8,4,16,.93)",
+  border: `1px solid ${C.lineBright}`,
+  borderRadius: R.md,
+  padding: SP.md,
+  boxShadow: "0 10px 30px rgba(0,0,0,.65)",
+};
+
+/**
+ * Widest the arena is allowed to get.
+ *
+ * The backdrop is stretched to the stage, so this is a distortion budget: the
+ * art is natively 1.177 and Unity itself displays it at 1.485, so 2.0 is
+ * already generous. It also sets how much vertical room the mechs get, which
+ * is what keeps them clear of the HUD.
+ */
+const MAX_ASPECT = 2;
+
+const sxBattle: Record<string, React.CSSProperties> = {
+  /**
+   * Centres the stage and gives it the height left over by the footer.
+   */
+  stageWrap: {
+    flex: 1, minHeight: 0, display: "flex", justifyContent: "center",
+  },
+  /**
+   * The arena, with its width driven by its HEIGHT and capped at MAX_ASPECT.
+   *
+   * The renderer draws to whatever box it is given, so an uncapped stage on a
+   * wide, short window became a ~4.7:1 letterbox: the backdrop stretched
+   * horizontally and the mechs were squeezed up under the HUD. Deriving width
+   * from height bounds how stretched the backdrop can get, and `max-width`
+   * takes over on a narrow window, where the box simply becomes taller than
+   * MAX_ASPECT rather than overflowing.
+   */
+  stage: {
+    position: "relative", height: "100%", aspectRatio: `${MAX_ASPECT}`,
+    maxWidth: "100%", overflow: "hidden", borderRadius: R.md,
+    border: `2px solid ${C.line}`, background: C.ink,
+  },
+  canvas: {
+    position: "absolute", inset: 0, width: "100%", height: "100%",
+    // No object-fit: BattleRenderer sizes the backing store to this element, so
+    // the drawing is already the right shape. Fitting it would re-introduce the
+    // letterbox (or the crop) this exists to avoid.
+    imageRendering: "pixelated", display: "block",
+  },
+  /** Unity puts the two HUDs over the arena's top corners, mirrored. */
+  hudLeft: { position: "absolute", left: "1.2%", top: "2%", width: "min(310px, 30%)" },
+  hudRight: { position: "absolute", right: "1.2%", top: "2%", width: "min(310px, 30%)" },
+  roundChip: {
+    position: "absolute", left: "50%", top: "2%", transform: "translateX(-50%)",
+    fontSize: T.eyebrow, letterSpacing: 2, fontWeight: 700, color: C.text,
+    background: "rgba(11,6,22,.82)", border: `1px solid ${C.line}`,
+    borderRadius: R.pill, padding: "4px 12px", whiteSpace: "nowrap",
+  },
+  /** Actions left, log right — the Unity arrangement, as a pair of cards. */
+  footRow: {
+    display: "flex", gap: SP.md, flexShrink: 0, alignItems: "stretch",
+  },
+  controls: { ...CARD, flex: "1 1 55%", minWidth: 0, minHeight: 104 },
+  logColumn: { ...CARD, flex: "1 1 45%", minWidth: 0 },
+  resultCard: { ...CARD, flex: 1, minWidth: 0, padding: `${SP.xl}px ${SP.lg}px` },
+};
+
+function SlotIcon({ slot, size = 20 }: { slot: ModuleSlot; size?: number }) {
+  return (
+    <img
+      src={SLOT_ICON[slot]}
+      alt=""
+      style={{ ...PIXELATED, height: size, width: "auto", display: "block", flexShrink: 0 }}
+      onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+    />
+  );
+}
+
+export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentProps<MiniGameBaseContext>) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const rendererRef = useRef<BattleRenderer | null>(null);
+  const aiRef = useRef(new LocalAIOpponent("veteran"));
+  // The renderer and the AI both need the current state outside React's render
+  // cycle, so it lives in a ref as well as in state.
+  const stateRef = useRef<BattleState | null>(null);
+
+  const [phase, setPhase] = useState<Phase>("menu");
+  const [playerMech, setPlayerMech] = useState<MechId>("titan");
+  const [battle, setBattle] = useState<BattleState | null>(null);
+  const [log, setLog] = useState<string[]>([]);
+  const [busy, setBusy] = useState(false);
+  /** True while the renderer is mid-sequence; blocks input and the AI. */
+  const [animating, setAnimating] = useState(false);
+  const [pendingMove, setPendingMove] = useState<{ slot: Exclude<ModuleSlot, "matrix">; moveIndex: number } | null>(null);
+  const [playerTeam, setPlayerTeam] = useState<TeamBuild | null>(null);
+  /** The squad battle's opponent — the CPU, or a matched player. */
+  const [squadOpponent, setSquadOpponent] = useState<SquadOpponent | null>(null);
+  /** The matched player's squad. The CPU always fields `rivalTeam`. */
+  const [enemyTeam, setEnemyTeam] = useState<TeamBuild | null>(null);
+  const [pvpTransport, setPvpTransport] = useState<PvpTransport | null>(null);
+  const [pvpNotice, setPvpNotice] = useState<string | null>(null);
+  const { publicKey, signTransaction } = useWallet();
+
+  // A PvP transport lives only while the player is on a PvP screen.
+  const pvpTransportRef = useRef<PvpTransport | null>(null);
+  pvpTransportRef.current = pvpTransport;
+  useEffect(() => {
+    if (!pvpTransport || PVP_PHASES.includes(phase)) return;
+    pvpTransport.dispose();
+    setPvpTransport(null);
+  }, [phase, pvpTransport]);
+  useEffect(() => () => pvpTransportRef.current?.dispose(), []);
+  /** Which chassis this wallet may field. Resolved from chain. */
+  const ownership = useOwnership();
+
+  /**
+   * Both clocks run while the round is being chosen and stop while it
+   * resolves — the player is not charged for watching the animation.
+   */
+  const thinking: PlayerSide[] =
+    phase === "battle" && battle?.status.kind === "active" && !animating && !busy
+      ? ["p1", "p2"]
+      : [];
+
+  const { clock, credit } = useChessClock({
+    config: DEFAULT_CLOCK,
+    thinking,
+    paused: phase !== "battle" || battle?.status.kind === "finished",
+    onTimeout: (side) => {
+      const current = stateRef.current;
+      if (!current || current.status.kind === "finished") return;
+      const { state: ended, events } = forfeit(current, side, "timeout");
+      pushLog(events.map((e) => describeRef.current(e, ended)).filter((l): l is string => l !== null).reverse());
+      stateRef.current = ended;
+      setBattle(ended);
+    },
+  });
+
+  /**
+   * The 3v3 opponent. Fixed rather than random so a squad can be tuned
+   * against a known wall, and verified legal at module scope — an illegal
+   * rival would be a rule the player is held to and the AI isn't.
+   */
+  const rivalTeam: TeamBuild = useMemo(() => {
+    const team: TeamBuild = {
+      mechs: [
+        PRESET_BUILDS.arclight,
+        PRESET_BUILDS.heartcore,
+        { matrixCode: "M02", rightArm: "RA01", leftArm: "LA01", lowerBody: "IN01" },
+      ],
+    };
+    const check = validateTeam(team);
+    if (!check.ok) console.error("[SolMechs] rival squad is illegal:", check.messages);
+    return team;
+  }, []);
+
+  useEffect(() => { preloadAll(); }, []);
+
+  // Escape closes from anywhere except mid-resolution.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !busy) onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [busy, onClose]);
+
+  const pushLog = useCallback((lines: string[]) => {
+    // Newest first, capped — the panel is short and scrolling it during a
+    // fight pulls attention off the mechs.
+    setLog((prev) => [...lines, ...prev].slice(0, 40));
+  }, []);
+
+  const describe = useCallback((e: BattleEvent, state: BattleState): string | null => {
+    const name = (s: PlayerSide) => (s === "p1" ? state.p1.name : state.p2.name);
+    switch (e.type) {
+      case "attack": return `${name(e.side)} used ${e.moveName}.`;
+      case "damage": return `  ${name(e.side)}'s ${SLOT_LABEL[e.targetSlot]} took ${e.amount} (${e.percent.toFixed(0)}%).`;
+      case "heal": return `  ${name(e.side)}'s ${SLOT_LABEL[e.targetSlot]} recovered ${e.amount}.`;
+      case "stage": return `  ${name(e.side)}'s ${SLOT_LABEL[e.targetSlot]} ${e.stat} ${e.delta > 0 ? "rose" : "fell"}.`;
+      case "part-broken": return `  ** ${e.partName} destroyed!`;
+      case "matrix-unlocked": return `  ** ${name(e.side)}'s MATRIX is exposed!`;
+      case "defeat-cause":
+        return e.cause === "matrix-destroyed"
+          ? `  ** ${name(e.side)}'s Matrix is destroyed.`
+          : `  ** ${name(e.side)} has lost every limb.`;
+      case "forfeit":
+        return `  ** ${name(e.side)} ran out of time.`;
+      case "victory": return `=== ${name(e.winner)} wins! ===`;
+      case "rejected": return `  ${e.reason}.`;
+      default: return null;
+    }
+  }, []);
+
+  const describeRef = useRef(describe);
+  describeRef.current = describe;
+
+  const submitRound = useCallback(async (action: BattleAction | null): Promise<void> => {
+    const current = stateRef.current;
+    if (!current) return;
+
+    setBusy(true);
+    // Submitting hands back the increment — the Fischer half of the clock.
+    credit("p1");
+    credit("p2");
+    // The rival chooses from the PRE-round state and never sees the player's
+    // pick — that is what makes this simultaneous rather than the rival simply
+    // answering. Both commitments then resolve together in speed order.
+    const rivalAction = await aiRef.current.chooseAction(current, "p2");
+
+    const round: RoundActions = { p1: action, p2: rivalAction };
+    const { state: nextState, events, steps } = resolveRound(current, round);
+
+    // Effects are picked from the pre-round moves; afterwards the limb that
+    // fired may already be gone.
+    const p1Move = action ? current.p1.parts[action.sourceSlot]?.moves[action.moveIndex] : undefined;
+    const p2Move = rivalAction ? current.p2.parts[rivalAction.sourceSlot]?.moves[rivalAction.moveIndex] : undefined;
+
+    const lines = events
+      .map((e) => describe(e, nextState))
+      .filter((l): l is string => l !== null);
+    pushLog(lines.reverse());
+
+    const renderer = rendererRef.current;
+    const moveOf = (side: PlayerSide) => (side === "p1" ? p1Move : p2Move);
+
+    /*
+     * One beat per attacker, chained, and the BOARD advances with it.
+     *
+     * The engine hands back a snapshot per acting side, so the screen shows
+     * the faster mech's hit land and its damage register, then the slower
+     * one's. Applying `nextState` up front instead — which is what this did —
+     * dropped both HP bars on the first frame, a second before the animation
+     * that was meant to explain the second one.
+     */
+    const starts = renderer?.playRound(
+      steps.map((st) => ({ events: st.events, move: moveOf(st.side) })),
+    ) ?? [];
+
+    const timers: number[] = [];
+    steps.forEach((st, i) => {
+      timers.push(window.setTimeout(() => {
+        renderer?.setState({ p1: st.state.p1, p2: st.state.p2 });
+        stateRef.current = st.state;
+        setBattle(st.state);
+      }, Math.max(0, starts[i] ?? 0)));
+    });
+
+    const wait = renderer?.remainingMs() ?? 0;
+    setAnimating(true);
+    window.setTimeout(() => {
+      // The last snapshot equals nextState, but a round where nobody acted
+      // produces no steps — settle on the resolved state either way.
+      stateRef.current = nextState;
+      setBattle(nextState);
+      setAnimating(false);
+      setBusy(false);
+    }, Math.max(wait, 200));
+    void timers;
+  }, [describe, pushLog, credit]);
+
+  // Settle once someone wins.
+  useEffect(() => {
+    if (!battle || battle.status.kind !== "finished") return;
+    setPhase("result");
+    const won = battle.status.winner === "p1";
+    recordResult(won);
+    void onResult({
+      success: won,
+      metadata: {
+        game: "sol-mechs",
+        playerMech,
+        opponentMech: battle.p2.matrix.id,
+        turns: battle.history.length,
+        // The full action list is what an on-chain verifier replays to confirm
+        // this result, so it travels with the outcome.
+        actions: battle.history,
+      },
+    });
+  }, [battle, onResult, playerMech]);
+
+  const startBattle = useCallback((mech: MechId) => {
+    // Opponent is any mech other than the player's, so a match never opens as
+    // a mirror of the build you just picked.
+    const others = MATRICES.filter((m) => m.id !== mech);
+    const foe = others[Math.floor(Math.random() * others.length)].id;
+
+    // The player fights their Workshop loadout; the AI fights stock, so a
+    // customized build is measured against a known baseline.
+    const playerBuild = getBuild(loadHangar(), mech);
+    preloadBuild(playerBuild);
+    preloadBuild(PRESET_BUILDS[foe]);
+
+    const fresh = createBattle(playerBuild, PRESET_BUILDS[foe], {
+      p1Name: MATRICES.find((m) => m.id === mech)!.matrixName,
+      p2Name: MATRICES.find((m) => m.id === foe)!.matrixName,
+      // A real seed per battle, so equal-speed rounds are a genuine coin flip.
+      // On-chain this comes from the room instead, so both sides agree.
+      seed: Math.floor(Math.random() * 0x7fffffff),
+      // Local play opens on the faster mech, so building for SPD pays off.
+    });
+    stateRef.current = fresh;
+    setBattle(fresh);
+    setLog([`${fresh.p1.name} vs ${fresh.p2.name}: battle start.`]);
+    setPendingMove(null);
+    setPhase("battle");
+  }, []);
+
+  // Renderer lives as long as the battle canvas is mounted.
+  useEffect(() => {
+    if (phase !== "battle") return;
+    const canvas = canvasRef.current;
+    const initial = stateRef.current;
+    if (!canvas || !initial) return;
+
+    const renderer = new BattleRenderer(canvas, initial);
+    rendererRef.current = renderer;
+    renderer.start();
+    return () => { renderer.destroy(); rendererRef.current = null; };
+  }, [phase]);
+
+  // ==================== MAIN MENU ====================
+  if (phase === "menu") {
+    const h = loadHangar();
+    return (
+      <MainMenu
+        wins={h.wins}
+        losses={h.losses}
+        onClose={onClose}
+        onChoose={(choice) => {
+          if (choice === "pve") setPhase("hangar");
+          else if (choice === "squad") setPhase("squad");
+          else if (choice === "rules") setPhase("rules");
+          else {
+            setPvpNotice(null);
+            setPhase("pvp-squad");
+          }
+        }}
+      />
+    );
+  }
+
+  // ==================== RULES ====================
+  if (phase === "rules") {
+    return <RulesScreen onClose={() => setPhase("menu")} />;
+  }
+
+  // ==================== SQUAD (3v3) ====================
+  if (phase === "squad") {
+    return (
+      <TeamBuilder
+        onClose={() => setPhase("menu")}
+        onDeploy={(team) => {
+          setPlayerTeam(team);
+          setSquadOpponent(new LocalSquadAI());
+          setPhase("team-battle");
+        }}
+      />
+    );
+  }
+
+  if (phase === "team-battle" && playerTeam && squadOpponent) {
+    return (
+      <TeamBattleScreen
+        playerTeam={playerTeam}
+        enemyTeam={rivalTeam}
+        opponent={squadOpponent}
+        onClose={() => setPhase("menu")}
+        onFinished={(playerWon, s) => {
+          recordResult(playerWon);
+          void onResult({
+            success: playerWon,
+            metadata: {
+              game: "sol-mechs",
+              mode: "3v3",
+              turns: s.history.length,
+              // The action list is what an on-chain verifier replays, so it
+              // travels with the outcome exactly as in the 1v1 path.
+              actions: s.history,
+            },
+          });
+        }}
+      />
+    );
+  }
+
+  // ==================== PvP ====================
+  if (phase === "pvp-squad") {
+    return (
+      <TeamBuilder
+        deployLabel="FIND MATCH"
+        notice={pvpNotice}
+        onClose={() => setPhase("menu")}
+        onDeploy={(team) => {
+          const opened = pvpTransport
+            ? { ok: true as const, transport: pvpTransport }
+            : openPvpTransport({ wallet: publicKey ?? null, signTransaction });
+          if (!opened.ok) {
+            setPvpNotice(opened.reason);
+            return;
+          }
+          setPvpNotice(null);
+          setPlayerTeam(team);
+          setPvpTransport(opened.transport);
+          setPhase("pvp-lobby");
+        }}
+      />
+    );
+  }
+
+  if (phase === "pvp-lobby" && playerTeam && pvpTransport) {
+    return (
+      <PvpLobby
+        team={playerTeam}
+        transport={pvpTransport}
+        onCancel={() => setPhase("pvp-squad")}
+        onMatched={(match) => {
+          setEnemyTeam(match.opponent.team);
+          setSquadOpponent(new RemoteSquadOpponent(new PvpSession(pvpTransport, match)));
+          setPhase("pvp-battle");
+        }}
+      />
+    );
+  }
+
+  if (phase === "pvp-battle" && playerTeam && enemyTeam && squadOpponent) {
+    const leave = () => {
+      squadOpponent.resign();
+      setSquadOpponent(null);
+      setPhase("pvp-squad");
+    };
+    return (
+      <TeamBattleScreen
+        playerTeam={playerTeam}
+        enemyTeam={enemyTeam}
+        opponent={squadOpponent}
+        onClose={leave}
+        // Casual play: nothing is recorded. Leaving frees both players to
+        // search again straight away.
+        onFinished={() => { void pvpTransport?.leave(); }}
+      />
+    );
+  }
+
+  // ==================== HANGAR ====================
+  if (phase === "hangar") {
+    const hangar = loadHangar();
+    return (
+      <Shell onClose={onClose} onBack={() => setPhase("menu")} title="Sol Mechs" subtitle="SELECT MECH" fit wide>
+        <p style={{ color: C.text, fontSize: T.lead, margin: 0, flexShrink: 0, fontWeight: 600 }}>
+          Pick the mech you&apos;ll deploy. Two ways to win a fight:
+        </p>
+        <p style={{ color: C.body, fontSize: T.body, margin: "0 0 4px", lineHeight: 1.6 }}>
+          break an <strong style={{ color: C.body }}>arm</strong> to expose the Matrix and blow the core,
+          or strip <strong style={{ color: C.body }}>all three limbs</strong>. Each limb you take also
+          costs them the stats that limb was providing.
+        </p>
+        {/* Only the roster scrolls, so DEPLOY stays reachable without hunting
+            for it at the bottom of a list. */}
+        <div style={{
+          flex: 1, minHeight: 0, overflowY: "auto", overflowX: "hidden", paddingRight: 2,
+          display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(190px,1fr))",
+          gap: 10, alignContent: "start",
+        }}>
+          {MATRICES.map((m) => {
+            // Cards render the SAVED build, not the stock chassis. Showing base
+            // chassis stats here was what made a customized mech look like it
+            // was being ignored: the hangar advertised one thing and the
+            // battle deployed another.
+            const build = getBuild(hangar, m.id);
+            const custom = hangar.builds[m.id] !== undefined;
+            const locked = lockReason(ownership, m.id);
+            return (
+              <MechCard
+                key={m.matrixCode}
+                matrixName={m.matrixName}
+                role={m.role}
+                build={build}
+                custom={custom}
+                locked={locked}
+                selected={playerMech === m.id}
+                onSelect={() => { if (!locked) setPlayerMech(m.id); }}
+              />
+            );
+          })}
+        </div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", flexShrink: 0 }}>
+          <button
+            onClick={() => startBattle(playerMech)}
+            disabled={lockReason(ownership, playerMech) !== null}
+            style={{
+              flex: 1, padding: "12px 0", background: C.teal,
+              color: C.ink, border: "none", borderRadius: 8, fontSize: 15,
+              fontWeight: 700, cursor: "pointer",
+              opacity: lockReason(ownership, playerMech) ? 0.45 : 1,
+            }}
+          >
+            DEPLOY
+          </button>
+        </div>
+      </Shell>
+    );
+  }
+
+  if (!battle) return null;
+
+  // ==================== BATTLE / RESULT ====================
+  const canAct = battle.status.kind === "active" && !busy && !animating;
+  const moves = availableMoves(battle.p1);
+  const targets = legalTargets(battle.p2);
+  const selectedMove = pendingMove
+    ? battle.p1.parts[pendingMove.slot].moves[pendingMove.moveIndex]
+    : null;
+
+  const onTargetPicked = (slot: ModuleSlot) => {
+    if (!pendingMove || !canAct) return;
+    void submitRound({
+      side: "p1",
+      sourceSlot: pendingMove.slot,
+      moveIndex: pendingMove.moveIndex,
+      targetSlot: slot,
+    });
+    setPendingMove(null);
+  };
+
+  return (
+    <Shell onClose={onClose} title="Sol Mechs" subtitle="BATTLE" fit wide>
+      {/* The Unity scene's arrangement: the arena is the full-width BACKDROP
+          and the two HUDs sit over its top corners, with the controls and the
+          combat log sharing a strip below. See BattleHud for the measurements. */}
+      <div style={sxBattle.stageWrap}>
+        <div style={sxBattle.stage}>
+        <canvas
+          ref={canvasRef}
+          width={CANVAS_W}
+          height={CANVAS_H}
+          style={sxBattle.canvas}
+        />
+        <div style={sxBattle.hudLeft}>
+          <UnitPanel
+            unit={battle.p1}
+            name="You"
+            clock={formatClock(clock.p1)}
+            live={thinking.includes("p1")}
+            low={clock.p1 <= DEFAULT_CLOCK.warnAtMs}
+          />
+        </div>
+        <span style={sxBattle.roundChip}>ROUND {battle.round}</span>
+        <div style={sxBattle.hudRight}>
+          <UnitPanel
+            unit={battle.p2}
+            name="Rival"
+            clock={formatClock(clock.p2)}
+            live={thinking.includes("p2")}
+            low={clock.p2 <= DEFAULT_CLOCK.warnAtMs}
+            align="right"
+          />
+        </div>
+        </div>
+      </div>
+
+      <div style={sxBattle.footRow}>
+      {phase === "result" && battle.status.kind === "finished" ? (
+        <div style={{ ...sxBattle.resultCard, textAlign: "center" }}>
+          <div style={{
+            fontSize: T.display, fontWeight: 800, letterSpacing: 1,
+            color: battle.status.winner === "p1" ? C.teal : C.bad,
+          }}>
+            {battle.status.winner === "p1" ? "VICTORY" : "DEFEAT"}
+          </div>
+          <div style={{ color: C.dim, fontSize: T.body, margin: "6px 0 18px" }}>
+            {battle.history.length} rounds
+            {clock.p1 <= 0 || clock.p2 <= 0 ? " · decided on time" : ""}
+          </div>
+          <button onClick={() => setPhase("menu")} style={btnStyle(C.teal)}>MAIN MENU</button>
+          <button onClick={onClose} style={{ ...btnStyle(C.line), color: "#fff", marginLeft: 8 }}>LEAVE</button>
+        </div>
+      ) : (
+        <div style={sxBattle.controls}>
+          {!canAct ? (
+            <div style={{ color: C.dim, fontSize: T.body, textAlign: "center", padding: "18px 0" }}>
+              {battle.p2.name} is choosing…
+            </div>
+          ) : !pendingMove ? (
+            <>
+              <div style={{ ...eyebrow, marginBottom: SP.sm }}>Select action</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {moves.map((o) => (
+                  <SpriteButton
+                    key={`${o.slot}-${o.moveIndex}`}
+                    onClick={() => {
+                      // Self-target moves have exactly one sensible target —
+                      // the limb they came from — so they skip target picking.
+                      if (o.move.targetType === "self") {
+                        void submitRound({ side: "p1", sourceSlot: o.slot, moveIndex: o.moveIndex, targetSlot: o.slot });
+                      } else {
+                        setPendingMove({ slot: o.slot, moveIndex: o.moveIndex });
+                      }
+                    }}
+                  >
+                    <div style={{ fontWeight: 800, fontSize: T.body }}>{o.move.name}</div>
+                    <div style={{ fontSize: T.small, color: C.dim, marginTop: 2 }}>
+                      {SLOT_LABEL[o.slot]} · {o.move.baseDamage > 0 ? `${o.move.baseDamage} ${o.move.damageType}` : o.move.effect || "Effect"}
+                    </div>
+                  </SpriteButton>
+                ))}
+              </div>
+            </>
+          ) : (
+            <>
+              <div style={{ ...eyebrow, marginBottom: SP.sm }}>
+                TARGET FOR {selectedMove?.name.toUpperCase()}
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {targets.map((slot) => (
+                  <SpriteButton
+                    key={slot}
+                    onClick={() => onTargetPicked(slot)}
+                    selected={slot === "matrix"}
+                    style={{ display: "flex", alignItems: "center", gap: 8 }}
+                  >
+                    <SlotIcon slot={slot} size={slot === "matrix" ? 18 : 24} />
+                    <div>
+                      <div style={{ fontWeight: 800, fontSize: T.body }}>{SLOT_LABEL[slot]}</div>
+                      <div style={{ fontSize: T.small, color: C.dim, marginTop: 2 }}>
+                        {battle.p2.partStatuses[slot].currentHP} HP
+                      </div>
+                    </div>
+                  </SpriteButton>
+                ))}
+                <SpriteButton onClick={() => setPendingMove(null)}>
+                  <div style={{ fontWeight: 800, fontSize: T.body }}>Back</div>
+                </SpriteButton>
+              </div>
+              {!targets.includes("matrix") && (
+                <div style={{ fontSize: T.small, color: C.warn, marginTop: SP.sm }}>
+                  Matrix is sealed. Destroy an arm to expose it.
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
+        <div style={sxBattle.logColumn}>
+          <BattleLog lines={log} turns={battle.history.length} />
+        </div>
+      </div>
+    </Shell>
+  );
+}
+
+/**
+ * One roster entry: the assembled mech as it will actually deploy.
+ *
+ * Draws the saved build's paper doll and its real assembled totals, so the
+ * card and the battle can't disagree. `custom` badges a build the player
+ * edited, which is the feedback that was missing when the hangar listed bare
+ * chassis stats.
+ */
+function MechCard({ matrixName, role, build, custom, locked, selected, onSelect }: {
+  matrixName: string;
+  role: string;
+  build: MechBuild;
+  custom: boolean;
+  /** Null when playable; otherwise why it is not. */
+  locked: "pass" | "reward" | null;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  const ref = useRef<HTMLCanvasElement>(null);
+  const raf = useRef(0);
+  // Cropped to the mech, not to the doll box — see mechBounds.
+  const [crop, setCrop] = useState<MechBounds>({ x: 0, y: 0, w: DOLL_WIDTH, h: DOLL_HEIGHT });
+
+  useEffect(() => {
+    preloadBuild(build);
+    const ctx = ref.current?.getContext("2d");
+    if (!ctx || !ref.current) return;
+    const c = ref.current;
+    const loop = () => {
+      const box = mechBounds(build);
+      if (box && (box.x !== crop.x || box.y !== crop.y || box.w !== crop.w || box.h !== crop.h)) {
+        setCrop(box);
+      }
+      ctx.clearRect(0, 0, c.width, c.height);
+      drawMech(ctx, build, {
+        x: -crop.x * CARD_SCALE,
+        y: -crop.y * CARD_SCALE,
+        scale: CARD_SCALE,
+      });
+      raf.current = requestAnimationFrame(loop);
+    };
+    raf.current = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(raf.current);
+  }, [build, crop]);
+
+  // Totals come from the engine's own assembly, never a local re-derivation.
+  const stats = useMemo(() => {
+    try { return createUnit(matrixName, build).totalStats; } catch { return null; }
+  }, [matrixName, build]);
+
+  return (
+    <button
+      onClick={onSelect}
+      disabled={locked !== null}
+      style={{
+        background: selected ? C.raised : C.panel,
+        border: `2px solid ${selected ? C.teal : C.line}`,
+        borderRadius: 8, padding: 10, textAlign: "left",
+        cursor: locked ? "not-allowed" : "pointer",
+        // Dimmed, not hidden. A locked chassis with its real stats on show is
+        // what the pass is for; hiding it would sell nothing.
+        opacity: locked ? 0.45 : 1,
+        color: "#fff", display: "flex", flexDirection: "column", gap: 4,
+      }}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 6 }}>
+        <strong style={{ fontSize: T.lead, color: C.text }}>{matrixName}</strong>
+        {locked === "pass" && (
+          <span style={{
+            fontSize: T.eyebrow, color: C.warn, border: `1px solid ${C.warn}`,
+            borderRadius: R.sm, padding: "2px 7px", letterSpacing: 1, flexShrink: 0, fontWeight: 700,
+          }}>PASS</span>
+        )}
+        {locked === "reward" && (
+          <span style={{
+            fontSize: T.eyebrow, color: C.dim, border: `1px solid ${C.line}`,
+            borderRadius: R.sm, padding: "2px 7px", letterSpacing: 1, flexShrink: 0, fontWeight: 700,
+          }}>REWARD</span>
+        )}
+        {custom && !locked && (
+          <span style={{
+            fontSize: T.eyebrow, color: C.teal, border: "1px solid " + C.teal,
+            borderRadius: R.sm, padding: "2px 7px", letterSpacing: 1, flexShrink: 0, fontWeight: 700,
+          }}>CUSTOM</span>
+        )}
+      </div>
+      <div style={{ fontSize: T.small, color: C.teal, fontWeight: 600 }}>{role}</div>
+      {/* Height-driven AND cropped: the doll box is padded wide by the arm
+          sockets, so an uncropped canvas drew the mech at about half the width
+          it appeared to occupy. */}
+      <canvas
+        ref={ref}
+        width={crop.w * CARD_SCALE}
+        height={crop.h * CARD_SCALE}
+        style={{
+          imageRendering: "pixelated", height: 132, width: "auto",
+          maxWidth: "100%", display: "block", margin: "0 auto",
+        }}
+      />
+      {stats && (
+        <div style={{ fontSize: T.small, color: C.body, lineHeight: 1.75, fontFamily: MONO }}>
+          HP {stats.HP} · SPD {stats.SPD}<br />
+          ATK {stats.ATK} · DEF {stats.DEF}<br />
+          ENG {stats.ENG} · SYS {stats.SYS}
+        </div>
+      )}
+    </button>
+  );
+}
+
+/**
+ * Battle-screen buttons. A thin adapter over the shared `button()` so the call
+ * sites stay readable while the tokens stay in one place.
+ */
+function btnStyle(bg: string, block = false): React.CSSProperties {
+  const tone: "primary" | "danger" | "neutral" =
+    bg === C.teal ? "primary" : bg === "#5c1830" ? "danger" : "neutral";
+  return {
+    ...button(tone),
+    textAlign: "left",
+    minWidth: block ? 132 : undefined,
+    padding: block ? "10px 14px" : "12px 22px",
+  };
+}
+
+function MechStatus({ state, side, align }: { state: BattleState; side: PlayerSide; align?: "right" }) {
+  const unit = side === "p1" ? state.p1 : state.p2;
+  return (
+    <div style={{ flex: 1, textAlign: align ?? "left" }}>
+      <div style={{ fontSize: T.lead, fontWeight: 800, color: C.text, marginBottom: 3 }}>{unit.name}</div>
+      <Bar
+        label="MATRIX"
+        current={unit.partStatuses.matrix.currentHP}
+        max={unit.partStatuses.matrix.maxHP}
+        color={C.teal}
+      />
+      {LIMB_SLOTS.map((slot) => (
+        <Bar
+          key={slot}
+          label={SLOT_LABEL[slot]}
+          current={unit.partStatuses[slot].currentHP}
+          max={unit.partStatuses[slot].maxHP}
+          color={C.blue}
+        />
+      ))}
+    </div>
+  );
+}
+
+function Bar({ label, current, max, color }: { label: string; current: number; max: number; color: string }) {
+  const pct = max > 0 ? Math.max(0, current / max) * 100 : 0;
+  const dead = current <= 0;
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 2 }}>
+      <span style={{ fontSize: T.eyebrow, color: dead ? C.faint : C.dim, width: 54, fontFamily: MONO, fontWeight: 700 }}>
+        {label}
+      </span>
+      {/* 9-slice of the Unity bar frame (MechEditorSprites/Workshop/bar.png),
+          the same chrome the Workshop's stat bars use. */}
+      <div style={{
+        flex: 1,
+        borderStyle: "solid", borderWidth: "2px 4px 5px",
+        borderImage: "url(/assets/minigames/sol-mechs/ui/bar.png) 20 60 80 fill / 2px 4px 5px / 0 stretch",
+      }}>
+        <div style={{ height: 9, background: "#000", overflow: "hidden" }}>
+          <div style={{ width: `${pct}%`, height: "100%", background: dead ? "#4a2030" : color, transition: "width .25s" }} />
+        </div>
+      </div>
+      <span style={{ fontSize: T.small, color: C.body, width: 38, fontFamily: MONO, textAlign: "right" }}>{current}</span>
+    </div>
+  );
+}
+
+/**
+ * Overlay chrome, in two layouts.
+ *
+ *  - `fit` (battle): fixed height, nothing scrolls, and the canvas shrinks
+ *    into whatever space is left so the arena is never cropped.
+ *  - default (hangar, result): the content is a LIST, so it scrolls. Forcing
+ *    the fit layout on it just clipped the roster with no way to reach the
+ *    buttons underneath.
+ */
+function Shell({ children, onClose, onBack, title, subtitle = "", fit = false, wide = false }: {
+  children: React.ReactNode;
+  onClose: () => void;
+  /** When present, shows a back arrow to the previous screen. */
+  onBack?: () => void;
+  title: string;
+  subtitle?: string;
+  /** Fill the height and never scroll — for the battle, where the canvas shrinks. */
+  fit?: boolean;
+  /** Take the battle-sized width. Menus and lists stay narrow. */
+  wide?: boolean;
+}) {
+  return (
+    <div style={backdrop}>
+      <div style={{
+        ...panel(wide ? W.battle : W.narrow),
+        padding: SP.lg,
+        height: fit ? PANEL_HEIGHT : undefined,
+        display: "flex", flexDirection: "column", gap: SP.md, overflow: "hidden",
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: SP.md, flexShrink: 0 }}>
+          {onBack && (
+            <button onClick={onBack} aria-label="Back" style={{ ...button("ghost"), padding: "8px 12px", fontSize: T.lead }}>
+              &lsaquo;
+            </button>
+          )}
+          <img
+            src="/assets/minigames/sol-mechs/ui/logo.png"
+            alt={title}
+            style={{ imageRendering: "pixelated", height: 34, width: "auto", display: "block" }}
+            onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+          />
+          <span style={{ ...eyebrow, marginRight: "auto" }}>{subtitle}</span>
+          <button onClick={onClose} aria-label="Close" style={{
+            background: "none", border: "none", color: C.dim,
+            fontSize: 30, cursor: "pointer", lineHeight: 1, padding: 4,
+          }}>&times;</button>
+        </div>
+
+        <div style={{
+          flex: 1, minHeight: 0, display: "flex", flexDirection: "column", gap: SP.md,
+          // Only the fit layout keeps everything on screen; list layouts scroll
+          // vertically and never sideways.
+          overflowY: fit ? "hidden" : "auto",
+          overflowX: "hidden",
+        }}>
+          {children}
+        </div>
+      </div>
+    </div>
+  );
+}

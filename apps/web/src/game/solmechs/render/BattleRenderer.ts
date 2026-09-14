@@ -1,0 +1,753 @@
+/**
+ * Sol Mechs — battle scene renderer.
+ *
+ * Draws the two mechs facing each other in the sidescroller layout the Unity
+ * battle scene used, and stages the aftermath of an action as a timed
+ * sequence.
+ *
+ * ## Why a timeline
+ *
+ * The engine resolves a whole action at once and hands back its events in one
+ * array — attack, damage, part destroyed, stage change. Playing those
+ * simultaneously reads as a single confusing frame: the mech lunges, the
+ * number pops and the limb explodes on the same tick, and the player cannot
+ * tell what caused what.
+ *
+ * So `playEvents` compiles the array into cues with start times: the attacker
+ * winds up, the impact effect lands ON the struck limb at the peak of the
+ * lunge, the number and shake follow the hit, and a destroyed part detonates
+ * after that. `isBusy()` reports while a sequence is running so the UI can
+ * hold input until it finishes.
+ *
+ * The renderer still decides nothing about the fight. It is fed resolved
+ * state and a resolved event log, so a dropped or skipped animation can never
+ * desync a battle — which matters once actions arrive over a network.
+ */
+import type { BattleEvent, PlayerSide } from "../engine/BattleEngine";
+import { drawMech, DOLL_WIDTH, DOLL_HEIGHT, slotAnchor, mechBounds, INK_HEIGHT, INK_MAX_HEIGHT } from "./paperDoll";
+import type { MechBuild, MechUnit, ModuleSlot, MoveDefinition } from "../data/types";
+import { fxForMove, fxForStage, fxFrame, clipDuration, preloadFx, statBadge, FX_DESTROY, type FxClip } from "./AttackFx";
+
+/** Doll-space position of the legs socket — the mech's real ground contact. */
+const FOOT_ANCHOR = slotAnchor("lowerBody");
+
+export interface RenderUnits {
+  p1: MechUnit;
+  p2: MechUnit;
+}
+
+export const CANVAS_W = 900;
+/**
+ * Unity's aspect, not the art's.
+ *
+ * arena.png is 5580x4740 (1.177), but the battle scene draws it into a
+ * 1240x835 Image with `m_PreserveAspect: 0` — so the original squashes it to
+ * 1.485 and that wider frame is what the arena is composed for. Matching the
+ * art's own aspect instead, as this did, left a tall canvas that could only be
+ * letterboxed into the screen's stage.
+ *
+ * Nothing else needs to change: the backdrop is drawn stretched to the canvas,
+ * and the mechs are placed by FRACTIONS of the canvas, so both follow.
+ */
+export const CANVAS_H = 606;
+
+const ARENA_SRC = "/assets/minigames/sol-mechs/ui/arena.png";
+
+/**
+ * Where the mechs' feet meet the neon platform, as a fraction of the arena's
+ * height. Probed off the art: the platform ellipse runs from ~0.70 to ~0.95
+ * and is widest around 0.75-0.80, so this stands them on it without covering
+ * the front rim. A fraction, not a pixel count, because the canvas takes its
+ * size from the element — see `resize`.
+ */
+const FOOT_FRAC = 0.80;
+
+/** Inset from each edge, as a fraction, so both mechs land on the platform. */
+const SIDE_FRAC = 0.13;
+
+/**
+ * The leg sprites carry 7-13px of empty frame below the feet. Without
+ * compensating, the mechs float that far above the platform — which is what
+ * the first pass at this got wrong.
+ */
+const FOOT_INSET_SRC = 10;
+
+/**
+ * How tall a mech stands, as a fraction of the arena's height.
+ *
+ * A fraction rather than a fixed 2x, for two reasons: the arena is sized by
+ * the window, so a fixed scale made mechs huge on a short screen; and the two
+ * part formats differ in size, so one scale could not suit both. At 0.34 the
+ * top of the mech clears the corner HUDs with room to spare.
+ */
+const MECH_HEIGHT_FRAC = 0.46;
+
+// ── timing (ms) ──────────────────────────────────────────────────────────
+/** Lunge start → impact. The effect and the damage land at this offset. */
+const WINDUP = 240;
+/** How long the attacker's lunge takes end to end. */
+const LUNGE = 460;
+/** Impact → a destroyed limb detonating, so the two read as cause and effect. */
+const BREAK_DELAY = 260;
+/** Held at the peak of the lunge, so a hit lands with weight. */
+const HITSTOP = 90;
+const FLASH_DURATION = 300;
+/**
+ * Damage numbers stay up long enough to actually be read — they were gone
+ * before the eye finished moving to them. They keep drifting the whole time
+ * but only fade over the last stretch, so most of their life is at full
+ * opacity.
+ */
+const FLOATER_DURATION = 1900;
+/** Fraction of a floater's life spent fading out at the end. */
+const FLOATER_FADE = 0.35;
+const SHAKE_DURATION = 260;
+/** How long a stat-stage badge sits over the affected limb. */
+const BADGE_DURATION = 1100;
+/**
+ * Tail after the last cue before input is handed back. Deliberately shorter
+ * than a floater's life: the numbers linger over the next action rather than
+ * making the player wait for them.
+ */
+const SEQUENCE_TAIL = 260;
+/** Pause between beats that produced no animation, so they still read. */
+const BEAT_GAP = 320;
+
+interface Anim {
+  start: number;
+  side: PlayerSide;
+}
+
+interface LungeAnim extends Anim {
+  /** Peak hold, so the mech freezes for a beat on contact. */
+  hitstop: boolean;
+}
+
+interface FxAnim {
+  start: number;
+  clip: FxClip;
+  /** Canvas-space centre, resolved when the cue was scheduled. */
+  x: number;
+  y: number;
+  scale: number;
+}
+
+interface Floater {
+  start: number;
+  x: number;
+  y: number;
+  text: string;
+  color: string;
+  /** Larger for heavier hits and for a destroyed part. */
+  size: number;
+}
+
+interface Shake {
+  start: number;
+  magnitude: number;
+}
+
+/** A single-frame stat icon (ATK_Up, DEF_Down, …) popped over a limb. */
+interface Badge {
+  start: number;
+  img: HTMLImageElement;
+  x: number;
+  y: number;
+}
+
+export class BattleRenderer {
+  private ctx: CanvasRenderingContext2D;
+  private raf = 0;
+  private state: RenderUnits;
+  private lunges: LungeAnim[] = [];
+  private flashes: Anim[] = [];
+  private fx: FxAnim[] = [];
+  private floaters: Floater[] = [];
+  private shakes: Shake[] = [];
+  private badges: Badge[] = [];
+  /** Deferred setState calls, so a substitution swaps the mech mid-sequence. */
+  private stateChanges: Array<{ at: number; units: RenderUnits }> = [];
+  private running = false;
+  /** performance.now() when the current sequence hands input back. */
+  private busyUntil = 0;
+  private arena = new Image();
+
+  /**
+   * Live canvas size, tracking the element.
+   *
+   * The canvas used to be a fixed 900x606 that the page scaled with
+   * `object-fit`, which forced a choice between letterboxing it (dead bars) and
+   * cropping it (feet cut off, and everything zoomed). Sizing the backing store
+   * to the element instead means the arena always fills its box exactly: the
+   * backdrop stretches to whatever shape it is given — which is what Unity does
+   * too, its arena Image has `m_PreserveAspect: 0` — while the mechs are drawn
+   * at 1:1 on top and so never distort.
+   */
+  private w = CANVAS_W;
+  private h = CANVAS_H;
+  private ro: ResizeObserver | null = null;
+
+  constructor(private canvas: HTMLCanvasElement, initial: RenderUnits) {
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("2D context unavailable");
+    this.ctx = ctx;
+    this.state = initial;
+    this.arena.src = ARENA_SRC;
+    this.resize();
+    if (typeof ResizeObserver !== "undefined") {
+      this.ro = new ResizeObserver(() => this.resize());
+      this.ro.observe(canvas);
+    }
+    preloadFx();
+  }
+
+  /** Match the backing store to the element's laid-out size. */
+  private resize(): void {
+    const r = this.canvas.getBoundingClientRect();
+    // Before layout the rect is 0x0; keep the design size until it isn't.
+    const w = Math.max(1, Math.round(r.width)) || CANVAS_W;
+    const h = Math.max(1, Math.round(r.height)) || CANVAS_H;
+    if (r.width < 1 || r.height < 1) return;
+    if (w === this.w && h === this.h) return;
+    this.w = w;
+    this.h = h;
+    this.canvas.width = w;
+    this.canvas.height = h;
+  }
+
+  /** Feet line, doll box and spawn columns, all derived from the live size. */
+  private get footLine(): number { return Math.round(this.h * FOOT_FRAC); }
+  private get boxBottom(): number { return this.footLine + FOOT_INSET_SRC * this.scale; }
+  private get boxTop(): number { return this.boxBottom - this.mechH; }
+
+  /** Doll-to-canvas scale, from the arena's live height. */
+  /**
+   * Canvas px a mech's head must stay below — the bottom edge of the HUD laid
+   * over the arena. Reported by the screen, which owns that HUD; 0 until it
+   * has measured, in which case only MECH_HEIGHT_FRAC applies.
+   */
+  private topInset = 0;
+
+  setTopInset(px: number): void {
+    this.topInset = Math.max(0, Math.round(px));
+  }
+
+  /**
+   * Doll-to-canvas scale: MECH_HEIGHT_FRAC of the arena, capped so the tallest
+   * mech any parts can build still has its head under the HUD. The cap uses
+   * the worst case rather than the mechs on screen, so a substitution never
+   * resizes the scene.
+   */
+  private get scale(): number {
+    const wanted = (this.h * MECH_HEIGHT_FRAC) / INK_HEIGHT;
+    const room = this.topInset > 0 ? (this.footLine - this.topInset) / INK_MAX_HEIGHT : Infinity;
+    // Floor well below 1x. A floor AT 1x broke the guarantee on short windows:
+    // at a 249px-tall arena it held the tallest mech 17px up under the HUD.
+    return Math.max(0.5, Math.min(wanted, room));
+  }
+  private get mechW(): number { return DOLL_WIDTH * this.scale; }
+  private get mechH(): number { return DOLL_HEIGHT * this.scale; }
+
+  /**
+   * Where to put the doll box so THIS mech's feet land on the platform, plus
+   * the ground contact its shadow should sit under.
+   *
+   * FOOT_INSET_SRC is a single hand-tuned guess at how much empty frame the
+   * leg sprites carry below the feet, so it is only ever right for the mech it
+   * was tuned on — the others stand a few pixels high or low, and the shadow,
+   * pinned to the platform line, drifts away from whichever feet it belongs to.
+   * mechBounds measures the real ink per build, so both follow the art.
+   *
+   * Falls back to the old constant while a sprite is still decoding.
+   */
+  private footingFor(build: MechBuild, side: PlayerSide): { top: number; x: number; halfWidth: number } {
+    const box = mechBounds(build);
+    const anchorX = side === "p2" ? DOLL_WIDTH - FOOT_ANCHOR.x : FOOT_ANCHOR.x;
+    if (!box) {
+      return { top: this.boxTop, x: anchorX * this.scale, halfWidth: 30 };
+    }
+    // Bottom of the ink, not of the box. mechBounds pads its box by a pixel
+    // on every side, so the last row of real ink is one above its edge —
+    // counting the pad stood every mech a scaled pixel or two off the floor.
+    const top = this.footLine - (box.y + box.h - 1) * this.scale;
+    // Horizontal centre of the ink, mirrored with the mech.
+    const centre = box.x + box.w / 2;
+    const x = (side === "p2" ? DOLL_WIDTH - centre : centre) * this.scale;
+    return { top, x, halfWidth: Math.max(14, (box.w * this.scale) / 2.4) };
+  }
+  private get p1X(): number { return Math.round(this.w * SIDE_FRAC); }
+  private get p2X(): number { return this.w - Math.round(this.w * SIDE_FRAC) - this.mechW; }
+
+  start(): void {
+    if (this.running) return;
+    this.running = true;
+    const loop = () => {
+      this.draw(performance.now());
+      this.raf = requestAnimationFrame(loop);
+    };
+    this.raf = requestAnimationFrame(loop);
+  }
+
+  destroy(): void {
+    this.ro?.disconnect();
+    this.ro = null;
+    this.running = false;
+    cancelAnimationFrame(this.raf);
+  }
+
+  /** Drop every queued cue — used when a battle screen resets. */
+  clear(): void {
+    this.lunges = []; this.flashes = []; this.fx = [];
+    this.floaters = []; this.shakes = []; this.badges = [];
+    this.stateChanges = [];
+    this.busyUntil = 0;
+  }
+
+  setState(state: RenderUnits): void {
+    this.state = state;
+  }
+
+  /** True while a sequence is still playing — the UI gates input on this. */
+  isBusy(): boolean {
+    return performance.now() < this.busyUntil;
+  }
+
+  /** ms until the current sequence finishes; 0 when idle. */
+  remainingMs(): number {
+    return Math.max(0, this.busyUntil - performance.now());
+  }
+
+  // ── positioning ────────────────────────────────────────────────────────
+
+  private unitFor(side: PlayerSide): MechUnit {
+    return side === "p1" ? this.state.p1 : this.state.p2;
+  }
+
+  private baseX(side: PlayerSide): number {
+    return side === "p1" ? this.p1X : this.p2X;
+  }
+
+  /**
+   * Canvas-space centre of one slot on one mech.
+   *
+   * Player 2 is drawn mirrored, so its doll-space x has to be reflected about
+   * the doll box before scaling — otherwise every effect aimed at the rival's
+   * right arm lands on its left.
+   */
+  private anchorOf(side: PlayerSide, slot: ModuleSlot): { x: number; y: number } {
+    const a = slotAnchor(slot);
+    const flipped = side === "p2";
+    const dx = flipped ? DOLL_WIDTH - a.x : a.x;
+    return {
+      x: this.baseX(side) + dx * this.scale,
+      y: this.footingFor(this.unitFor(side).build, side).top + a.y * this.scale,
+    };
+  }
+
+  // ── sequencing ─────────────────────────────────────────────────────────
+
+  /**
+   * Compile one action's events into a timed sequence.
+   *
+   * Walks the log in the order the engine emitted it and assigns each cue an
+   * absolute start time, so effects land in causal order rather than all at
+   * once.
+   */
+  /**
+   * Stage a whole round.
+   *
+   * A round contains up to four beats — two substitutions and two attacks —
+   * and playing them together was the bug: everything landed on one frame and
+   * the player could not tell what caused what.
+   *
+   * This splits the engine's event log at each `attack` and plays the segments
+   * back to back, each waiting for the previous to finish. Anything before the
+   * first attack (substitutions) is its own opening beat.
+   *
+   * `unitsAt` lets a beat swap the mech on screen when it begins, so a
+   * substitution's replacement appears at the moment of the switch instead of
+   * popping in before the round has played.
+   */
+  playRound(beats: Array<{
+    events: BattleEvent[];
+    move?: MoveDefinition;
+    /** Applied when this beat starts, for substitutions. */
+    unitsAt?: RenderUnits;
+    /** Extra pause before the beat, e.g. to let a switch read. */
+    leadIn?: number;
+  }>): number[] {
+    /*
+     * Returns each beat's start offset in ms.
+     *
+     * The caller needs them because the HP bars live in React, not on the
+     * canvas: applying the whole resolved round at once dropped both bars on
+     * the first frame while the two attacks animated a second apart, so the
+     * damage arrived before the animation meant to explain it. With these
+     * offsets the screen can advance the board one attacker at a time.
+     */
+    const starts: number[] = [];
+    let cursor = this.remainingMs();
+    for (const beat of beats) {
+      cursor += beat.leadIn ?? 0;
+      starts.push(cursor);
+      if (beat.unitsAt) this.stateChanges.push({ at: performance.now() + cursor, units: beat.unitsAt });
+      const before = this.busyUntil;
+      this.playEvents(beat.events, beat.move, cursor);
+      // Chain: the next beat starts when this one has finished, not now.
+      cursor = Math.max(cursor, this.busyUntil - performance.now());
+      if (this.busyUntil === before) cursor += BEAT_GAP;
+    }
+    return starts;
+  }
+
+  playEvents(events: BattleEvent[], move?: MoveDefinition, delayMs = 0): void {
+    // `last` tracks when the ACTION is done, which gates input. Floaters are
+    // excluded on purpose: they outlive the sequence so the numbers stay
+    // readable into the next round instead of holding the player up.
+    //
+    // `delayMs` staggers a second call behind the first: a round has two
+    // attackers, and they must land one after the other rather than on top of
+    // each other.
+    const now = performance.now() + delayMs;
+    let impactAt = now + WINDUP;
+    let last = now;
+
+    for (const e of events) {
+      switch (e.type) {
+        case "attack": {
+          this.lunges.push({ start: now, side: e.side, hitstop: true });
+          // The clip is chosen from the move when the caller knows it; the
+          // event only carries a name, and matching on that alone would miss
+          // the four moves the Unity library never covered.
+          const clip = move ? fxForMove(move) : undefined;
+          if (clip) {
+            // Self-buffs play on the caster; everything else waits for the
+            // impact cue below, where the struck slot is known.
+            if (move && move.targetType === "self") {
+              const at = this.anchorOf(e.side, e.sourceSlot);
+              this.fx.push({ start: impactAt, clip, x: at.x, y: at.y, scale: 1 });
+              last = Math.max(last, impactAt + clipDuration(clip));
+            }
+          }
+          last = Math.max(last, now + LUNGE);
+          break;
+        }
+
+        case "damage": {
+          const at = this.anchorOf(e.side, e.targetSlot);
+          if (move && move.targetType !== "self") {
+            const clip = fxForMove(move);
+            this.fx.push({ start: impactAt, clip, x: at.x, y: at.y, scale: 1 });
+            last = Math.max(last, impactAt + clipDuration(clip));
+          }
+          this.flashes.push({ start: impactAt, side: e.side });
+          // Shake scales with how much of that part just went, so a chip and
+          // a near-kill don't feel the same.
+          this.shakes.push({ start: impactAt, magnitude: 2 + Math.min(9, e.percent / 9) });
+          this.floaters.push({
+            start: impactAt, x: at.x, y: at.y,
+            text: `-${e.amount}`, color: "#ff5468",
+            size: e.percent > 45 ? 26 : e.percent > 20 ? 21 : 17,
+          });
+          break;
+        }
+
+        case "heal": {
+          const at = this.anchorOf(e.side, e.targetSlot);
+          this.floaters.push({
+            start: impactAt, x: at.x, y: at.y,
+            text: `+${e.amount}`, color: "#21dda0", size: 20,
+          });
+          last = Math.max(last, impactAt + 200);
+          break;
+        }
+
+        case "stage": {
+          const at = this.anchorOf(e.side, e.targetSlot);
+          // Offset from the damage cue so a hit that also debuffs reads as two
+          // beats instead of one pile-up.
+          const stageAt = impactAt + 140;
+          // Unity's per-stat badge says WHICH stat moved; the animated arrow is
+          // only a fallback for a stat with no icon.
+          const badge = statBadge(e.stat, e.delta);
+          if (badge) {
+            this.badges.push({ start: stageAt, img: badge, x: at.x, y: at.y - 6 });
+            last = Math.max(last, stageAt + BADGE_DURATION);
+          } else {
+            const clip = fxForStage(e.delta);
+            this.fx.push({ start: stageAt, clip, x: at.x, y: at.y, scale: 0.85 });
+            last = Math.max(last, stageAt + clipDuration(clip));
+          }
+          break;
+        }
+
+        case "part-broken": {
+          const at = this.anchorOf(e.side, e.slot);
+          const breakAt = impactAt + BREAK_DELAY;
+          this.fx.push({ start: breakAt, clip: FX_DESTROY, x: at.x, y: at.y, scale: 1.15 });
+          this.shakes.push({ start: breakAt, magnitude: 13 });
+          this.floaters.push({
+            start: breakAt + 120, x: at.x, y: at.y - 20,
+            text: "DESTROYED", color: "#ffd166", size: 15,
+          });
+          last = Math.max(last, breakAt + clipDuration(FX_DESTROY) + 300);
+          break;
+        }
+
+        case "matrix-unlocked": {
+          const at = this.anchorOf(e.side, "matrix");
+          const openAt = impactAt + BREAK_DELAY + 220;
+          this.floaters.push({
+            start: openAt, x: at.x, y: at.y - 26,
+            text: "MATRIX EXPOSED", color: "#ff5468", size: 16,
+          });
+          last = Math.max(last, openAt + 200);
+          break;
+        }
+      }
+    }
+
+    this.busyUntil = Math.max(this.busyUntil, last + SEQUENCE_TAIL);
+  }
+
+  // ── drawing ────────────────────────────────────────────────────────────
+
+  private draw(now: number): void {
+    const ctx = this.ctx;
+
+    // Apply any state swap whose moment has arrived (substitutions).
+    while (this.stateChanges.length > 0 && this.stateChanges[0].at <= now) {
+      this.state = this.stateChanges.shift()!.units;
+    }
+
+    this.lunges = this.lunges.filter((a) => now - a.start < LUNGE);
+    this.flashes = this.flashes.filter((f) => now - f.start < FLASH_DURATION);
+    this.fx = this.fx.filter((f) => now - f.start < clipDuration(f.clip));
+    this.floaters = this.floaters.filter((f) => now - f.start < FLOATER_DURATION);
+    this.shakes = this.shakes.filter((s) => now - s.start < SHAKE_DURATION);
+    this.badges = this.badges.filter((b) => now - b.start < BADGE_DURATION);
+
+    // Screen shake displaces the whole scene, so it has to wrap every draw.
+    let sx = 0, sy = 0;
+    for (const s of this.shakes) {
+      const t = (now - s.start) / SHAKE_DURATION;
+      if (t < 0) continue;
+      const decay = (1 - t) ** 2;
+      // Alternating sign per frame reads as a rattle rather than a drift.
+      sx += Math.sin((now - s.start) * 0.9) * s.magnitude * decay;
+      sy += Math.cos((now - s.start) * 1.1) * s.magnitude * decay * 0.5;
+    }
+
+    ctx.save();
+    ctx.clearRect(0, 0, this.w, this.h);
+    this.drawBackground(ctx);
+    ctx.translate(sx, sy);
+
+    for (const side of ["p1", "p2"] as PlayerSide[]) this.drawSide(ctx, side, now);
+    this.drawFx(ctx, now);
+    this.drawBadges(ctx, now);
+    this.drawFloaters(ctx, now);
+    ctx.restore();
+  }
+
+  private drawBackground(ctx: CanvasRenderingContext2D): void {
+    const arena = this.arena;
+    if (arena.complete && arena.naturalWidth > 0) {
+      // Bottom-aligned: the platform belongs at the foot of the frame, and
+      // whatever skyline fits above it is a bonus.
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(arena, 0, 0, this.w, this.h);
+      return;
+    }
+    // Backdrop still decoding — the old gradient keeps the scene readable
+    // rather than flashing empty on the first frame.
+    const sky = ctx.createLinearGradient(0, 0, 0, this.h);
+    sky.addColorStop(0, "#120a24");
+    sky.addColorStop(0.55, "#231145");
+    sky.addColorStop(1, "#0d0718");
+    ctx.fillStyle = sky;
+    ctx.fillRect(0, 0, this.w, this.h);
+    ctx.fillStyle = "#1b1030";
+    ctx.fillRect(0, this.footLine, this.w, this.h - this.footLine);
+  }
+
+  /**
+   * Lunge offset for a side.
+   *
+   * Eases out to the impact point, holds there for HITSTOP so contact has
+   * weight, then eases back. A plain sine would sail through the moment of
+   * impact and rob it of the pause.
+   */
+  private lungeOffset(anim: LungeAnim, now: number): number {
+    const t = now - anim.start;
+    const dir = anim.side === "p1" ? 1 : -1;
+    const reach = 26;
+    if (t < WINDUP) {
+      const p = t / WINDUP;
+      return dir * reach * (1 - (1 - p) ** 3);
+    }
+    if (anim.hitstop && t < WINDUP + HITSTOP) return dir * reach;
+    const p = Math.min(1, (t - WINDUP - HITSTOP) / (LUNGE - WINDUP - HITSTOP));
+    return dir * reach * (1 - p);
+  }
+
+  private drawSide(ctx: CanvasRenderingContext2D, side: PlayerSide, now: number): void {
+    const unit = this.unitFor(side);
+    const baseX = this.baseX(side);
+    const footing = this.footingFor(unit.build, side);
+    const y = footing.top;
+
+    let dx = 0;
+    const lunge = this.lunges.find((a) => a.side === side && now >= a.start);
+    if (lunge) dx += this.lungeOffset(lunge, now);
+
+    const flash = this.flashes.find((f) => f.side === side && now >= f.start);
+    if (flash) {
+      const t = (now - flash.start) / FLASH_DURATION;
+      dx += Math.sin(t * Math.PI) * 9 * (side === "p1" ? -1 : 1);
+    }
+    const hitFlash = flash ? 1 - (now - flash.start) / FLASH_DURATION : 0;
+
+    // Drawn AFTER dx is known and offset by it, so the shadow travels with the
+    // mech through a lunge or a recoil instead of staying behind on the
+    // platform. It sits on the feet line itself: measured from the art rather
+    // than pushed below it, which is what made the mechs look like they were
+    // hovering over their own shadow.
+    ctx.save();
+    ctx.globalAlpha = 0.35;
+    ctx.fillStyle = "#000000";
+    ctx.beginPath();
+    // Centred a little ABOVE the soles, so the feet overlap the shadow's far
+    // half. Centred on the soles, half the ellipse showed below them and the
+    // mech read as hovering over it.
+    const ry = Math.max(3, footing.halfWidth * 0.2);
+    ctx.ellipse(
+      baseX + footing.x + dx, this.footLine - ry * 0.35,
+      footing.halfWidth, ry,
+      0, 0, Math.PI * 2,
+    );
+    ctx.fill();
+    ctx.restore();
+
+    const drawn = drawMech(ctx, unit.build, {
+      x: baseX + dx,
+      y,
+      scale: this.scale,
+      flip: side === "p2",
+      hitFlash,
+      brokenSlots: {
+        rightArm: unit.partStatuses.rightArm.currentHP <= 0,
+        leftArm: unit.partStatuses.leftArm.currentHP <= 0,
+        lowerBody: unit.partStatuses.lowerBody.currentHP <= 0,
+      },
+    });
+
+    if (!drawn) {
+      ctx.save();
+      ctx.fillStyle = "#2a1c4d";
+      ctx.fillRect(baseX, y, this.mechW, this.mechH);
+      ctx.fillStyle = "#7a68a8";
+      ctx.font = "12px monospace";
+      ctx.textAlign = "center";
+      ctx.fillText(unit.matrix.matrixName, baseX + this.mechW / 2, y + this.mechH / 2);
+      ctx.restore();
+    }
+  }
+
+  private drawFx(ctx: CanvasRenderingContext2D, now: number): void {
+    for (const f of this.fx) {
+      const t = now - f.start;
+      if (t < 0) continue;
+      const frame = Math.min(f.clip.frames, Math.floor((t / 1000) * f.clip.fps) + 1);
+      const img = fxFrame(f.clip, frame);
+      if (!img.complete || img.naturalWidth === 0) continue;
+
+      const h = f.clip.size * f.scale;
+      const w = h * (img.naturalWidth / img.naturalHeight);
+
+      ctx.save();
+      ctx.imageSmoothingEnabled = false;
+      // Additive suits the energy/plasma clips — it reads as emitted light.
+      // The impact clips keep normal blending so they stay solid and readable
+      // against the bright mechs.
+      if (f.clip.additive) ctx.globalCompositeOperation = "lighter";
+      ctx.drawImage(img, Math.round(f.x - w / 2), Math.round(f.y - h / 2), Math.round(w), Math.round(h));
+      ctx.restore();
+    }
+  }
+
+  private drawBadges(ctx: CanvasRenderingContext2D, now: number): void {
+    for (const b of this.badges) {
+      const t = (now - b.start) / BADGE_DURATION;
+      if (t < 0 || !b.img.complete || b.img.naturalWidth === 0) continue;
+      // Pops in, drifts up a little, fades over the last third.
+      const pop = t < 0.12 ? 0.5 + (t / 0.12) * 0.5 : 1;
+      const size = 34 * pop;
+      const y = b.y - t * 16;
+      ctx.save();
+      ctx.imageSmoothingEnabled = false;
+      ctx.globalAlpha = t > 0.66 ? Math.max(0, (1 - t) / 0.34) : 1;
+      ctx.drawImage(b.img, Math.round(b.x - size / 2), Math.round(y - size / 2), Math.round(size), Math.round(size));
+      ctx.restore();
+    }
+  }
+
+  private drawFloaters(ctx: CanvasRenderingContext2D, now: number): void {
+    ctx.save();
+    ctx.textAlign = "center";
+    for (const f of this.floaters) {
+      const t = (now - f.start) / FLOATER_DURATION;
+      if (t < 0) continue;
+
+      // Pops slightly oversized then settles — a flat rise reads as inert.
+      const pop = t < 0.07 ? 1 + (0.07 - t) * 4.8 : 1;
+      // Rises fast at first and then eases almost to a stop, so the number
+      // hangs where it can be read instead of sliding away at constant speed.
+      const rise = 1 - (1 - t) ** 3;
+      const y = f.y - 16 - rise * 52;
+      // Full opacity for most of its life, fading only at the tail.
+      const fadeFrom = 1 - FLOATER_FADE;
+      ctx.globalAlpha = t > fadeFrom ? Math.max(0, (1 - t) / FLOATER_FADE) : 1;
+
+      ctx.font = `bold ${Math.round(f.size * pop)}px ui-monospace, monospace`;
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = "rgba(0,0,0,.85)";
+      ctx.strokeText(f.text, f.x, y);
+      ctx.fillStyle = f.color;
+      ctx.fillText(f.text, f.x, y);
+    }
+    ctx.restore();
+  }
+}
+
+/**
+ * Split a round's event log into one beat per attacker.
+ *
+ * The engine emits a round as one flat array; playing it as one sequence made
+ * both mechs lunge, both numbers pop and both limbs break on the same frame.
+ * Cutting at each `attack` gives the renderer the beats to chain, and each
+ * beat carries the move that produced it so the right effect plays.
+ *
+ * Anything before the first attack is its own opening beat — that is where
+ * substitutions live in the 3v3.
+ */
+export function splitIntoBeats(
+  events: BattleEvent[],
+  moves: Partial<Record<PlayerSide, MoveDefinition | undefined>>,
+): Array<{ events: BattleEvent[]; move?: MoveDefinition }> {
+  const beats: Array<{ events: BattleEvent[]; move?: MoveDefinition }> = [];
+  let current: BattleEvent[] = [];
+  let side: PlayerSide | undefined;
+
+  for (const e of events) {
+    if (e.type === "attack") {
+      if (current.length) beats.push({ events: current, move: side ? moves[side] : undefined });
+      current = [e];
+      side = e.side;
+      continue;
+    }
+    current.push(e);
+  }
+  if (current.length) beats.push({ events: current, move: side ? moves[side] : undefined });
+  return beats;
+}

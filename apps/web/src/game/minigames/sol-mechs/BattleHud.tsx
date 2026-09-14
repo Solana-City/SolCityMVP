@@ -1,0 +1,376 @@
+"use client";
+
+/**
+ * Sol Mechs — battle HUD, rebuilt from the Unity battle scene.
+ *
+ * The layout here is not a guess. `3_PilotMechBattleV1.unity` was parsed for
+ * its RectTransforms against a 1240x1080 reference canvas, and the arrangement
+ * it describes is:
+ *
+ *   - the arena is the full-width BACKDROP, not a boxed-off picture;
+ *   - PlayerHUD sits at 14% x 24% of the canvas, EnemyHUD mirrored at 86%,
+ *     both OVER the arena;
+ *   - each HUD is a `profile.png` plate (250x100 units) above four 160x20
+ *     part bars stacked 25 units apart;
+ *   - the action buttons and the combat log share a strip across the bottom.
+ *
+ * Two earlier passes got this wrong in opposite directions: one stacked each
+ * side's bars into narrow columns flanking the arena, the other ran both
+ * sides' bars mirrored across the full width. Neither is what the game does,
+ * and the second left the arena as a postage stamp in a wide black box.
+ *
+ * Kept from those passes because they are strictly more informative than the
+ * original: numeric HP beside every bar, and a marker on the limbs that still
+ * seal the Matrix.
+ */
+import { useEffect, useRef } from "react";
+import { drawMech, DOLL_WIDTH, DOLL_HEIGHT, preloadBuild } from "@/game/solmechs/render/paperDoll";
+import { canAttackMatrix, getStage } from "@/game/solmechs/engine/BattleEngine";
+import type { MechUnit, ModuleSlot, MechBuild } from "@/game/solmechs/data/types";
+import { C, T, MONO, PIXELATED } from "./theme";
+
+const UI = "/assets/minigames/sol-mechs/ui";
+
+/** Matrix first, then the limbs — the Unity order. */
+const HUD_SLOTS: ModuleSlot[] = ["matrix", "rightArm", "leftArm", "lowerBody"];
+
+const SLOT_TITLE: Record<ModuleSlot, string> = {
+  matrix: "MATRIX",
+  rightArm: "R.ARM",
+  leftArm: "L.ARM",
+  lowerBody: "LEGS",
+};
+
+/**
+ * Hotspots inside `profile.png`, as percentages of the plate.
+ *
+ * Found by flood-filling the plate's dark fillable regions on the imported
+ * 344x136 copy — the frame draws a portrait square, a name banner and a
+ * status bar with a clock face beside it, and these are those three holes.
+ * Percentages rather than pixels because the plate scales with the stage.
+ */
+const PLATE = {
+  src: `${UI}/profile.png`,
+  aspect: 344 / 136,
+  portrait: { outer: "3.5%", top: "8.8%", w: "32.3%", h: "81.6%" },
+  name: { outer: "37.8%", inner: "4.4%", top: "14.7%", h: "33.1%" },
+  clock: { outer: "38.5%", inner: "23.0%", top: "57.4%", h: "24.2%" },
+} as const;
+
+/**
+ * Unity runs the bars at 160 units against the plate's 250 (64%) and writes the
+ * part name ON the bar. Ours carries the name and the number BESIDE it, which
+ * needs the full width to stay readable at this scale.
+ */
+/** Bars sit straight on the arena art, so every glyph carries its own shadow. */
+const SHADOW = "0 1px 2px #000, 0 0 3px #000, 0 0 6px #000";
+
+/** Stats a move can stage, in the order the icons should read. */
+const STAGED_STATS = ["ATK", "DEF", "ENG", "SPD", "SYS"] as const;
+
+/**
+ * Stat stages currently applied to a limb, drawn with Unity's own status
+ * sprites (`Interface guidance/status/ATK_Up.png` and friends).
+ *
+ * The renderer already pops one of these over a limb the moment a stage
+ * lands, but that badge is gone in a second. A buff decides damage for the
+ * rest of the fight, so it belongs in the panel you can look at, not only in
+ * the animation you might have missed.
+ */
+function StageIcons({ unit, slot }: { unit: MechUnit; slot: ModuleSlot }) {
+  const active = STAGED_STATS
+    .map((stat) => ({ stat, n: getStage(unit, slot, stat) }))
+    .filter((s) => s.n !== 0);
+  if (active.length === 0) return null;
+  return (
+    <span style={{ display: "inline-flex", gap: 1, alignItems: "center", flexShrink: 0 }}>
+      {active.map(({ stat, n }) => (
+        <span key={stat} style={{ position: "relative", display: "inline-flex", alignItems: "center" }}>
+          <img
+            src={`${UI.replace("/ui", "/vfx/stat")}/${stat}_${n > 0 ? "Up" : "Down"}.png`}
+            alt={`${stat} ${n > 0 ? "up" : "down"} ${Math.abs(n)}`}
+            title={`${stat} ${n > 0 ? "+" : ""}${n}`}
+            style={{ ...PIXELATED, height: 16, width: "auto", display: "block" }}
+            onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+          />
+          {Math.abs(n) > 1 && (
+            <span style={{
+              fontSize: 8, fontWeight: 800, fontFamily: MONO,
+              color: n > 0 ? C.teal : C.bad, marginLeft: -2,
+            }}>
+              {Math.abs(n)}
+            </span>
+          )}
+        </span>
+      ))}
+    </span>
+  );
+}
+
+export interface UnitPanelProps {
+  unit: MechUnit;
+  /** Player name shown on the plate's banner. */
+  name: string;
+  clock: string;
+  /** This side is currently spending time. */
+  live: boolean;
+  /** Under the warning threshold. */
+  low: boolean;
+  /** The rival's panel mirrors, as it does in Unity. */
+  align?: "right";
+  /**
+   * Show the portrait disc.
+   *
+   * Off by default: the plate art reserves a third of its width for a square
+   * that a mech doll does not fill convincingly, and on a short screen that
+   * space is what pushes the bars down onto the mechs. When it returns it
+   * should hold the player's Solana City avatar, not the mech.
+   */
+  showPortrait?: boolean;
+}
+
+/** One side's corner HUD: profile plate over four part bars. */
+export function UnitPanel({ unit, name, clock, live, low, align, showPortrait = false }: UnitPanelProps) {
+  const right = align === "right";
+  // Without a portrait the framed plate is mostly an empty square, so the
+  // header collapses to a plain name + clock strip instead.
+  if (!showPortrait) {
+    return (
+      <div style={{ width: "100%", pointerEvents: "none" }}>
+        <div style={{
+          display: "flex", alignItems: "center", gap: 8,
+          flexDirection: right ? "row-reverse" : "row",
+          width: "fit-content", maxWidth: "100%",
+          [right ? "marginLeft" : "marginRight"]: "auto",
+          // Nearly opaque. At 72% the arena's skyline read through as blocks
+          // beside the name — the panel looked like it had stray elements in
+          // it when it was only showing the backdrop.
+          background: "rgba(8,4,16,.94)", border: `1px solid ${C.line}`,
+          borderRadius: 4, padding: "4px 8px",
+        }}>
+          <span style={{
+            fontSize: T.small, fontWeight: 800, color: C.text,
+            whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0,
+          }}>
+            {name}
+          </span>
+          <span style={{
+            fontFamily: MONO, fontSize: T.small, fontWeight: 800, letterSpacing: 1,
+            color: low ? C.bad : live ? C.teal : C.dim, flexShrink: 0,
+          }}>
+            {clock}
+          </span>
+        </div>
+        <BarStack unit={unit} right={right} />
+      </div>
+    );
+  }
+
+  const portrait = right ? { right: PLATE.portrait.outer } : { left: PLATE.portrait.outer };
+  const banner = right
+    ? { right: PLATE.name.outer, left: PLATE.name.inner }
+    : { left: PLATE.name.outer, right: PLATE.name.inner };
+  const clockBox = right
+    ? { right: PLATE.clock.outer, left: PLATE.clock.inner }
+    : { left: PLATE.clock.outer, right: PLATE.clock.inner };
+
+  return (
+    <div style={{ width: "100%", pointerEvents: "none" }}>
+      <div style={{
+        position: "relative", width: "100%", aspectRatio: `${PLATE.aspect}`,
+        backgroundImage: `url(${PLATE.src})`,
+        backgroundSize: "100% 100%", backgroundRepeat: "no-repeat",
+        // The plate art is drawn facing left; the rival's is the same sprite
+        // flipped, which is how the scene does it too.
+        transform: right ? "scaleX(-1)" : undefined,
+        ...PIXELATED,
+      }}>
+        {/* Un-flipped so the text and portrait read normally on the mirrored plate. */}
+        <div style={{
+          position: "absolute", inset: 0,
+          transform: right ? "scaleX(-1)" : undefined,
+        }}>
+          <div style={{
+            position: "absolute", ...portrait,
+            top: PLATE.portrait.top, width: PLATE.portrait.w, height: PLATE.portrait.h,
+            overflow: "hidden", display: "flex", alignItems: "flex-end", justifyContent: "center",
+          }}>
+            <Portrait build={unit.build} />
+          </div>
+
+          <div style={{
+            position: "absolute", ...banner,
+            top: PLATE.name.top, height: PLATE.name.h,
+            display: "flex", alignItems: "center",
+            justifyContent: right ? "flex-end" : "flex-start",
+            padding: "0 6%", overflow: "hidden",
+          }}>
+            <span style={{
+              fontSize: T.small, fontWeight: 800, color: C.text, letterSpacing: 0.5,
+              whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+            }}>
+              {name}
+            </span>
+          </div>
+
+          <div style={{
+            position: "absolute", ...clockBox,
+            top: PLATE.clock.top, height: PLATE.clock.h,
+            display: "flex", alignItems: "center",
+            justifyContent: right ? "flex-end" : "flex-start",
+            padding: "0 6%", overflow: "hidden",
+          }}>
+            <span style={{
+              fontFamily: MONO, fontSize: T.small, fontWeight: 800, letterSpacing: 1,
+              color: low ? C.bad : live ? C.teal : C.dim,
+              transition: "color .2s", whiteSpace: "nowrap",
+            }}>
+              {clock}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <BarStack unit={unit} right={right} />
+    </div>
+  );
+}
+
+/**
+ * The four part bars, straight on the arena.
+ *
+ * They used to sit on a dark plate, which read as a card covering the mechs.
+ * The plate is gone and every glyph carries SHADOW instead, so the labels stay
+ * legible over the pale sky without anything boxing them in.
+ */
+function BarStack({ unit, right }: { unit: MechUnit; right: boolean }) {
+  return (
+    <div style={{
+      marginTop: 3, display: "flex", flexDirection: "column", gap: 2,
+      alignItems: "stretch",
+    }}>
+      {HUD_SLOTS.map((slot) => (
+        <PartBar key={slot} unit={unit} slot={slot} mirrored={right} />
+      ))}
+    </div>
+  );
+}
+
+function PartBar({ unit, slot, mirrored }: { unit: MechUnit; slot: ModuleSlot; mirrored: boolean }) {
+  const st = unit.partStatuses[slot];
+  const pct = st.maxHP > 0 ? Math.max(0, st.currentHP / st.maxHP) * 100 : 0;
+  const dead = st.currentHP <= 0;
+  // Whether the core can be shot at all is the most decision-relevant fact on
+  // the panel, so it is spelled out on the Matrix row.
+  const sealed = !canAttackMatrix(unit);
+
+  return (
+    <div style={{
+      position: "relative",
+      display: "flex", alignItems: "center", gap: 4,
+      flexDirection: mirrored ? "row-reverse" : "row",
+    }}>
+      {/* Fixed widths, so all four bars start and end on the same lines
+          however long the label or the number happens to be. */}
+      <span style={{
+        width: 34, flexShrink: 0,
+        textAlign: mirrored ? "right" : "left",
+        fontSize: 10, fontWeight: 700, fontFamily: MONO,
+        color: dead ? C.bad : C.dim,
+        textShadow: SHADOW,
+      }}>
+        {SLOT_TITLE[slot]}
+      </span>
+
+      {/* 9-slice of the Unity bar frame, same chrome as the Workshop. */}
+      <div style={{
+        flex: 1, minWidth: 0,
+        borderStyle: "solid", borderWidth: "2px 4px 5px",
+        borderImage: `url(${UI}/bar.png) 20 60 80 fill / 2px 4px 5px / 0 stretch`,
+      }}>
+        <div style={{
+          height: 8, background: "#000", overflow: "hidden",
+          display: "flex", flexDirection: mirrored ? "row-reverse" : "row",
+        }}>
+          <div style={{
+            width: `${pct}%`, height: "100%", transition: "width .3s",
+            background: dead ? "#4a2030" : slot === "matrix" ? C.teal : C.blue,
+          }} />
+        </div>
+      </div>
+
+      <span style={{
+        width: 26, flexShrink: 0,
+        textAlign: mirrored ? "left" : "right",
+        fontSize: 10, fontFamily: MONO, fontWeight: 700,
+        // A destroyed limb's 0 in `faint` was invisible against the arena, so
+        // the row read as having no number at all rather than as being at zero.
+        color: dead ? C.bad : C.text, textShadow: SHADOW,
+      }}>
+        {st.currentHP}
+      </span>
+
+      {/*
+        Everything below is OUT of the flow.
+
+        Stat stages and the seal tag used to be flex children, so a buff
+        landing mid-fight shoved the bar and the HP number sideways and the
+        four rows stopped lining up. Absolute keeps the row identical whether
+        or not anything is attached to it.
+      */}
+      <span style={{
+        position: "absolute", top: "50%", transform: "translateY(-50%)",
+        [mirrored ? "right" : "left"]: "100%",
+        [mirrored ? "marginRight" : "marginLeft"]: 4,
+        display: "flex", alignItems: "center", gap: 2, pointerEvents: "none",
+      }}>
+        <StageIcons unit={unit} slot={slot} />
+        {slot === "matrix" && (
+          <span
+            title={sealed
+              ? "Break an arm, or strip all three limbs, to expose the core"
+              : "The core can be attacked directly"}
+            style={{
+              fontSize: 9, fontWeight: 800, letterSpacing: 0.5, whiteSpace: "nowrap",
+              color: sealed ? C.teal : C.warn,
+              border: `1px solid ${sealed ? C.teal : C.warn}`,
+              background: "rgba(8,4,16,.85)",
+              borderRadius: 3, padding: "0 3px", lineHeight: "13px",
+            }}
+          >
+            {sealed ? "SEALED" : "OPEN"}
+          </span>
+        )}
+      </span>
+    </div>
+  );
+}
+
+function Portrait({ build }: { build: MechBuild }) {
+  const ref = useRef<HTMLCanvasElement>(null);
+  const raf = useRef(0);
+  useEffect(() => {
+    preloadBuild(build);
+    const c = ref.current;
+    const ctx = c?.getContext("2d");
+    if (!c || !ctx) return;
+    const loop = () => {
+      ctx.clearRect(0, 0, c.width, c.height);
+      drawMech(ctx, build, { x: 0, y: 0, scale: 1 });
+      raf.current = requestAnimationFrame(loop);
+    };
+    raf.current = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(raf.current);
+  }, [build]);
+
+  return (
+    <canvas
+      ref={ref}
+      width={DOLL_WIDTH}
+      height={DOLL_HEIGHT}
+      // Sized by HEIGHT: the doll is taller than it is wide, so fitting the
+      // width would leave it swimming in the square.
+      style={{ ...PIXELATED, height: "94%", width: "auto", display: "block" }}
+    />
+  );
+}
