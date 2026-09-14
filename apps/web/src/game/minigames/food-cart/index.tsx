@@ -151,6 +151,20 @@ export default function FoodCartGame({
     try { return localStorage.getItem(HOW_TO_KEY) === "1" ? "playing" : "intro"; } catch { return "playing"; }
   });
   const [helpOpen, setHelpOpen]         = useState(false);
+  /**
+   * Phones (landscape is ~844x390): the desktop panel stacks queue, recipe
+   * and the ingredient grid, which left the grid below the fold while the
+   * clock ran. The compact board puts the order on the left and all nine
+   * pieces on the right, so the whole game fits one screen.
+   */
+  const [compact, setCompact]           = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(max-height: 560px), (max-width: 720px)");
+    const read = () => setCompact(mq.matches);
+    read();
+    mq.addEventListener("change", read);
+    return () => mq.removeEventListener("change", read);
+  }, []);
   const [timeLeft, setTimeLeft]         = useState(totalSeconds);
   const [pickedId, setPickedId]         = useState<{ id: IngId; correct: boolean } | null>(null);
   const [failReason, setFailReason]     = useState<"timeout" | "wrong" | null>(null);
@@ -303,11 +317,31 @@ export default function FoodCartGame({
         />
       )}
 
-      {/* Backdrop dismiss (playing only) */}
-      {phase === "playing" && (
+      {/* Backdrop dismiss (playing only; not on phones, where a stray tap
+          beside the board would quit mid-order) */}
+      {phase === "playing" && !compact && (
         <div className="absolute inset-0" onClick={onClose} />
       )}
 
+      {compact ? (
+        <CompactBoard
+          orders={orders}
+          orderIdx={orderIdx}
+          currentStep={currentStep}
+          nextIngId={nextIngId}
+          phase={phase}
+          pickedId={pickedId}
+          doneCount={doneCount}
+          timeLeft={timeLeft}
+          timerPct={timerPct}
+          urgent={urgent}
+          floats={floats}
+          orderBanner={orderBanner}
+          onPick={handlePick}
+          onHelp={() => setHelpOpen(true)}
+          onClose={onClose}
+        />
+      ) : (
       <div
         className="relative flex flex-col rounded-2xl overflow-hidden sc-slide sc-panel"
         style={{
@@ -666,6 +700,7 @@ export default function FoodCartGame({
           </div>
         )}
       </div>
+      )}
 
       {/* ── Result overlays ─────────────────────────────────────────────── */}
       {phase === "result_success" && (
@@ -675,6 +710,175 @@ export default function FoodCartGame({
         <FailureCard reason={failReason} wrongId={wrongId} onContinue={handleSettle} />
       )}
       {(phase === "intro" || helpOpen) && <HowToPlay onDone={finishIntro} />}
+    </div>
+  );
+}
+
+// ─── Compact board (phones) ───────────────────────────────────────────────────
+
+function CompactBoard({
+  orders, orderIdx, currentStep, nextIngId, phase, pickedId, doneCount,
+  timeLeft, timerPct, urgent, floats, orderBanner, onPick, onHelp, onClose,
+}: {
+  orders: Order[];
+  orderIdx: number;
+  currentStep: number;
+  nextIngId: IngId | undefined;
+  phase: Phase;
+  pickedId: { id: IngId; correct: boolean } | null;
+  doneCount: number;
+  timeLeft: number;
+  timerPct: number;
+  urgent: boolean;
+  floats: FloatText[];
+  orderBanner: boolean;
+  onPick: (id: IngId) => void;
+  onHelp: () => void;
+  onClose: () => void;
+}) {
+  const recipe = orders[orderIdx]?.recipe;
+  const PIX = '"Press Start 2P", monospace';
+  return (
+    <div
+      className="relative flex flex-col rounded-2xl overflow-hidden sc-slide"
+      style={{
+        width: "min(820px, calc(100vw - 16px))",
+        height: "min(380px, calc(100dvh - 16px))",
+        background: "rgba(8,8,22,0.99)",
+        border: "1px solid rgba(153,69,255,0.3)",
+        fontFamily: PIX,
+        zIndex: 1,
+      }}
+    >
+      {/* One slim header row */}
+      <div className="flex items-center shrink-0" style={{ gap: 10, padding: "6px 10px", borderBottom: "1px solid rgba(153,69,255,0.18)" }}>
+        <span style={{ color: "#fff", fontSize: 9 }}>SUSHI STATION</span>
+        <div style={{ display: "flex", gap: 4 }}>
+          {orders.map((o, i) => (
+            <span key={i} style={{
+              width: 22, height: 8, borderRadius: 4,
+              background: o.done ? "#14F195" : i === orderIdx ? "#9945FF" : "rgba(255,255,255,0.12)",
+            }} />
+          ))}
+        </div>
+        <span style={{ color: "#14F195", fontSize: 8 }}>{doneCount}/{orders.length}</span>
+        <div style={{ flex: 1 }} />
+        <span className={urgent ? "sc-urgent" : ""} style={{ color: urgent ? "#ff4444" : "#fff", fontSize: 13 }}>
+          {String(Math.floor(timeLeft / 60)).padStart(2, "0")}:{String(timeLeft % 60).padStart(2, "0")}
+        </span>
+        <button
+          onClick={onHelp}
+          aria-label="How to play"
+          style={{
+            width: 30, height: 30, borderRadius: 8, background: "rgba(255,107,53,0.14)",
+            border: "1px solid rgba(255,107,53,0.6)", color: "#FFA06B", fontFamily: PIX, fontSize: 10, touchAction: "manipulation",
+          }}
+        >
+          ?
+        </button>
+        <button
+          onClick={onClose}
+          aria-label="Close"
+          style={{
+            width: 30, height: 30, borderRadius: 8, background: "transparent",
+            border: "1px solid rgba(255,255,255,0.15)", color: "#8888aa", fontSize: 16, lineHeight: 1, touchAction: "manipulation",
+          }}
+        >
+          ×
+        </button>
+      </div>
+      <div style={{ height: 4, background: "rgba(255,255,255,0.05)", flexShrink: 0 }}>
+        <div style={{
+          height: "100%", width: `${timerPct}%`,
+          background: timerPct > 40 ? "#14F195" : timerPct > 20 ? "#ffaa00" : "#ff4444",
+          transition: "width 0.95s linear, background 0.4s",
+        }} />
+      </div>
+
+      <div className="flex flex-1 min-h-0" style={{ gap: 10, padding: 10 }}>
+        {/* Left: the order being made */}
+        <div className="flex flex-col min-w-0" style={{ width: "38%", gap: 8 }}>
+          <div style={{ color: "#9945FF", fontSize: 7, letterSpacing: 1.5 }}>{recipe?.name.toUpperCase()}</div>
+          <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+            {recipe?.steps.map((sid, si) => {
+              const done = si < currentStep;
+              const active = si === currentStep && phase === "playing";
+              return (
+                <div key={si} style={{
+                  width: 46, height: 46, borderRadius: 9, display: "flex", alignItems: "center", justifyContent: "center",
+                  background: done ? "rgba(20,241,149,0.12)" : active ? "rgba(153,69,255,0.16)" : "rgba(255,255,255,0.03)",
+                  border: `2px solid ${done ? "rgba(20,241,149,0.5)" : active ? "#9945FF" : "rgba(255,255,255,0.08)"}`,
+                  opacity: si > currentStep ? 0.45 : 1,
+                }}>
+                  <Sprite id={sid} size={34} />
+                </div>
+              );
+            })}
+          </div>
+
+          {/* The next piece, big */}
+          <div className="sc-glow flex items-center flex-1 min-h-0" style={{
+            gap: 10, padding: 8, borderRadius: 12,
+            background: "rgba(153,69,255,0.07)", border: "1px solid rgba(153,69,255,0.42)",
+            position: "relative",
+          }}>
+            {orderBanner ? (
+              <div style={{ width: "100%", textAlign: "center", color: "#14F195", fontSize: 10 }}>ORDER DONE!</div>
+            ) : nextIngId && phase === "playing" ? (
+              <>
+                <div style={{ position: "relative", flexShrink: 0 }}>
+                  <Sprite id={nextIngId} size={64} />
+                  {floats.map(f => (
+                    <span key={f.id} className="sc-float" style={{
+                      position: "absolute", top: -4, left: "50%", transform: "translateX(-50%)",
+                      color: "#14F195", fontSize: 9, whiteSpace: "nowrap", textShadow: "0 0 10px #14F195",
+                    }}>
+                      {f.text}
+                    </span>
+                  ))}
+                </div>
+                <div className="min-w-0">
+                  <div style={{ color: "#9945FF", fontSize: 7, marginBottom: 5 }}>NEXT</div>
+                  <div style={{ color: "#fff", fontSize: 9, lineHeight: 1.5 }}>{ING[nextIngId].label}</div>
+                </div>
+              </>
+            ) : null}
+          </div>
+        </div>
+
+        {/* Right: all nine pieces, sized to fill the height */}
+        <div className="flex-1 min-w-0" style={{
+          display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gridTemplateRows: "repeat(3, 1fr)", gap: 6,
+        }}>
+          {INGREDIENTS.map(ing => {
+            const isPicked = pickedId?.id === ing.id;
+            const isCorrect = isPicked && pickedId?.correct;
+            const isWrong = isPicked && !pickedId?.correct;
+            const isNext = ing.id === nextIngId && phase === "playing" && !pickedId;
+            const isDisabled = phase !== "playing" || !!pickedId;
+            return (
+              <button
+                key={ing.id}
+                onClick={() => onPick(ing.id)}
+                disabled={isDisabled}
+                className={`flex flex-col items-center justify-center ${isCorrect ? "sc-correct" : isWrong ? "sc-wrong" : ""}`}
+                style={{
+                  gap: 3, borderRadius: 10, minHeight: 0, padding: 2, touchAction: "manipulation",
+                  background: isWrong ? "rgba(255,50,50,0.2)" : isCorrect ? "rgba(20,241,149,0.15)" : isNext ? "rgba(153,69,255,0.16)" : "rgba(153,69,255,0.06)",
+                  border: `2px solid ${isWrong ? "rgba(255,50,50,0.65)" : isCorrect ? "rgba(20,241,149,0.55)" : isNext ? "#9945FF" : "rgba(153,69,255,0.18)"}`,
+                  opacity: isDisabled && !isPicked ? 0.5 : 1,
+                  fontFamily: PIX,
+                }}
+              >
+                <Sprite id={ing.id} size={40} />
+                <span style={{ fontSize: 6, color: isNext ? "#ccaaff" : "#8888aa", lineHeight: 1.2, textAlign: "center" }}>
+                  {ing.label}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }
