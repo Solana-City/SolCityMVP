@@ -48,7 +48,7 @@ export function isPassConfigured(): boolean {
 
 /** Collection metadata, used by the setup script and the sale page. */
 export const PASS_METADATA = {
-  name: "Sol Mechs Battle Pass — Season 1",
+  name: "Sol Mechs Battle Pass Season 1",
   symbol: "SMBP",
   /** Per-item name; the candy machine appends the sequential id. */
   itemNamePrefix: "Sol Mechs Battle Pass S1 #",

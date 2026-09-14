@@ -35,7 +35,7 @@ const GONE_MS = 90_000;
 const NO_PEER_HINT_MS = 5_000;
 const NO_PEER_HINT =
   "No other tab has answered. Open the second tab in this same browser window and press FIND MATCH "
-  + "there too — a private window, another browser, the app preview, or 127.0.0.1 instead of "
+  + "there too. A private window, another browser, the app preview, or 127.0.0.1 instead of "
   + "localhost cannot see this one.";
 
 type Msg =

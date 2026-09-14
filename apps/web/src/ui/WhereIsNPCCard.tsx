@@ -184,7 +184,7 @@ function LeaderboardModal({ onClose }: { onClose: () => void }) {
         <div style={{ padding: "8px 20px 18px" }}>
           {entries.length === 0 ? (
             <div style={{ color: "#444466", fontSize: 9, padding: "20px 0", textAlign: "center" }}>
-              No finds yet — be the first!
+              No finds yet. Be the first!
             </div>
           ) : entries.map((e, i) => (
             <div key={e.wallet} style={{

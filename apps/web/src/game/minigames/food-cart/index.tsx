@@ -557,7 +557,7 @@ export default function FoodCartGame({
         <div className="p-3 shrink-0">
           <div style={{ color: "#444466", fontSize: 7, letterSpacing: 2.5, textTransform: "uppercase", marginBottom: 10 }}>
             Ingredients
-            <span style={{ color: "#222244", marginLeft: 8 }}>(keys 1–9)</span>
+            <span style={{ color: "#222244", marginLeft: 8 }}>(keys 1-9)</span>
           </div>
           <div
             style={{

@@ -104,7 +104,7 @@ export default function TeamBuilder({ onDeploy, onClose, deployLabel = "DEPLOY S
 
         <p style={sx.blurb}>
           Three mechs, sent out one at a time. Substituting costs your turn, and a mech
-          returns with the damage it left with — only its stat buffs reset.
+          returns with the damage it left with. Only its stat buffs reset.
           <br />
           <strong style={{ color: C.text }}>Each part may appear once per squad</strong>, matrices
           included.
@@ -209,7 +209,7 @@ function SquadCard({ index, build, flagged, onEdit }: {
     >
       <div style={sx.cardHead}>
         <span style={sx.cardIndex}>{index === 0 ? "LEADS" : `RESERVE ${index}`}</span>
-        <strong style={{ fontSize: 15, color: C.text }}>{matrix?.matrixName ?? "—"}</strong>
+        <strong style={{ fontSize: 15, color: C.text }}>{matrix?.matrixName ?? "-"}</strong>
         {flagged && <span style={sx.clashTag}>CLASH</span>}
       </div>
       <canvas

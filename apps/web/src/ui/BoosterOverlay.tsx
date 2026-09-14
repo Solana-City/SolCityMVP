@@ -133,7 +133,7 @@ export default function BoosterOverlay({
                 : "booster-glow 2.2s ease-in-out infinite",
             }}>🎁</div>
             <div style={{ fontSize: 7, color: "#8a8aa7", lineHeight: 1.7, marginBottom: 18 }}>
-              {PACK_SIZE} random pieces — hats, backpacks, hair, and more.
+              {PACK_SIZE} random pieces: hats, backpacks, hair, and more.
             </div>
             <button onClick={open} disabled={phase === "opening"} style={btn("primary")}>
               {phase === "opening" ? "OPENING…" : "OPEN PACK"}

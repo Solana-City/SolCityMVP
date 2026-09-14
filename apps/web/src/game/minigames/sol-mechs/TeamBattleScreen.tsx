@@ -88,7 +88,7 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, opponent, onFi
     stateRef.current = s;
     return s;
   });
-  const [log, setLog] = useState<string[]>(["Squad battle — 3 v 3."]);
+  const [log, setLog] = useState<string[]>(["Squad battle: 3 v 3."]);
   const [pending, setPending] = useState<{ slot: Exclude<ModuleSlot, "matrix">; moveIndex: number } | null>(null);
   const [picking, setPicking] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -404,7 +404,7 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, opponent, onFi
             <div style={sx.prompt}>Match over.</div>
           ) : mustSwitch ? (
             <>
-              <div style={sx.prompt}>Your mech is down — send out a replacement (free).</div>
+              <div style={sx.prompt}>Your mech is down. Send out a replacement (free).</div>
               <div style={sx.btnRow}>
                 {bench.map((i) => (
                   <button key={i} onClick={() => submitForced(i)} style={sx.btn}>
@@ -423,7 +423,7 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, opponent, onFi
           ) : picking ? (
             <>
               <div style={sx.promptRow}>
-                <span style={sx.promptText}>Substitute — this is your action for the round.</span>
+                <span style={sx.promptText}>Substitute: this uses your action for the round.</span>
                 <button onClick={() => setPicking(false)} style={sx.back}>◂ BACK</button>
               </div>
               <div style={sx.btnRow}>

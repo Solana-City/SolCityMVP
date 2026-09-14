@@ -297,7 +297,7 @@ function Header({
               fontSize: 7,
               opacity: resetting ? 0.6 : 1,
             }}
-            title="Undelegate the current player PDA and reconnect from scratch — use this to force a fresh delegate_pda signature if your wallet's PDA is stuck delegated from a past session"
+            title="Undelegate the current player PDA and reconnect from scratch. Use this to force a fresh delegate_pda signature if your wallet's PDA is stuck delegated from a past session"
           >
             {resetting ? "resetting…" : "reset session"}
           </button>

@@ -288,7 +288,7 @@ export default function KiteClashGame({ onResult, onClose }: MiniGameComponentPr
           cursor: "pointer",
         }}
       >
-        ESC — Close
+        ESC to close
       </button>
 
       {/* Controls hint — desktop only (on mobile the touch buttons replace this) */}

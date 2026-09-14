@@ -262,7 +262,7 @@ export class ChainTransport implements PvpTransport {
     }
 
     if (ixs.length > 0) {
-      onStatus("preparing", "Creating your PvP account — approve once in your wallet.");
+      onStatus("preparing", "Creating your PvP account. Approve once in your wallet.");
       await this.sendBase(ixs);
     }
 
@@ -283,7 +283,7 @@ export class ChainTransport implements PvpTransport {
     );
 
     if (!me.session.equals(this.sessionPub)) {
-      onStatus("preparing", "Authorizing this device — approve once in your wallet.");
+      onStatus("preparing", "Authorizing this device. Approve once in your wallet.");
       await this.sendEr([P.setSessionIx(this.program, this.wallet, this.sessionPub)], "wallet");
       me = await this.pollUntil(
         () => this.readEr(this.mePda, P.decodeDuelist),

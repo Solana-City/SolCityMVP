@@ -414,7 +414,7 @@ export function validateMove(
     if (targetSlot !== "matrix" && isPartBroken(attacker, targetSlot)) return `${targetSlot} is broken`;
     return null;
   }
-  if (targetSlot === "matrix" && !canAttackMatrix(defender)) return "Matrix locked — destroy an arm first";
+  if (targetSlot === "matrix" && !canAttackMatrix(defender)) return "Matrix locked, destroy an arm first";
   if (targetSlot !== "matrix" && isPartBroken(defender, targetSlot)) return "That part is already destroyed";
   return null;
 }

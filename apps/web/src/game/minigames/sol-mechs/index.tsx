@@ -30,6 +30,7 @@ import { MATRICES, PRESET_BUILDS } from "@/game/solmechs/data/catalog";
 import { recordResult, loadHangar, getBuild } from "@/game/solmechs/hangar";
 import { useWallet } from "@solana/wallet-adapter-react";
 import PvpLobby from "./PvpLobby";
+import RulesScreen from "./RulesScreen";
 import { openPvpTransport, PvpSession, type PvpTransport } from "@/game/solmechs/pvp";
 import { LocalSquadAI, RemoteSquadOpponent, type SquadOpponent } from "@/game/solmechs/opponent/SquadOpponent";
 import MainMenu from "./MainMenu";
@@ -49,7 +50,7 @@ import { LIMB_SLOTS, type MechId, type ModuleSlot, type MechBuild, type MoveDefi
 
 type Phase =
   | "menu" | "hangar" | "squad" | "team-battle" | "battle" | "result"
-  | "pvp-squad" | "pvp-lobby" | "pvp-battle";
+  | "pvp-squad" | "pvp-lobby" | "pvp-battle" | "rules";
 
 const PVP_PHASES: Phase[] = ["pvp-squad", "pvp-lobby", "pvp-battle"];
 
@@ -385,7 +386,7 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
     });
     stateRef.current = fresh;
     setBattle(fresh);
-    setLog([`${fresh.p1.name} vs ${fresh.p2.name} — battle start.`]);
+    setLog([`${fresh.p1.name} vs ${fresh.p2.name}: battle start.`]);
     setPendingMove(null);
     setPhase("battle");
   }, []);
@@ -414,6 +415,7 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
         onChoose={(choice) => {
           if (choice === "pve") setPhase("hangar");
           else if (choice === "squad") setPhase("squad");
+          else if (choice === "rules") setPhase("rules");
           else {
             setPvpNotice(null);
             setPhase("pvp-squad");
@@ -421,6 +423,11 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
         }}
       />
     );
+  }
+
+  // ==================== RULES ====================
+  if (phase === "rules") {
+    return <RulesScreen onClose={() => setPhase("menu")} />;
   }
 
   // ==================== SQUAD (3v3) ====================
@@ -529,7 +536,7 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
           Pick the mech you&apos;ll deploy. Two ways to win a fight:
         </p>
         <p style={{ color: C.body, fontSize: T.body, margin: "0 0 4px", lineHeight: 1.6 }}>
-          break an <strong style={{ color: C.body }}>arm</strong> to expose the Matrix and blow the core —
+          break an <strong style={{ color: C.body }}>arm</strong> to expose the Matrix and blow the core,
           or strip <strong style={{ color: C.body }}>all three limbs</strong>. Each limb you take also
           costs them the stats that limb was providing.
         </p>
@@ -712,7 +719,7 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
               </div>
               {!targets.includes("matrix") && (
                 <div style={{ fontSize: T.small, color: C.warn, marginTop: SP.sm }}>
-                  Matrix is sealed — destroy an arm to expose it.
+                  Matrix is sealed. Destroy an arm to expose it.
                 </div>
               )}
             </>

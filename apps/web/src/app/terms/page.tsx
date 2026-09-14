@@ -1,5 +1,5 @@
 export const metadata = {
-  title: "Terms of Service — The Solana City",
+  title: "Terms of Service | The Solana City",
   description: "Terms of Service for The Solana City",
 };
 

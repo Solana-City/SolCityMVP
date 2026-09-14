@@ -22,7 +22,7 @@ import { SpriteButton } from "./SpriteButton";
 
 const UI = "/assets/minigames/sol-mechs/ui";
 
-export type MenuChoice = "pve" | "squad" | "pvp";
+export type MenuChoice = "pve" | "squad" | "pvp" | "rules";
 
 export interface MainMenuProps {
   onChoose: (choice: MenuChoice) => void;
@@ -85,6 +85,11 @@ export default function MainMenu({ onChoose, onClose, wins, losses }: MainMenuPr
             desc="Ranked season with points and energy."
             badge="SOON"
             disabled
+          />
+          <MenuRow
+            label="RULES"
+            desc="How battles work."
+            onClick={() => onChoose("rules")}
           />
         </div>
       </div>

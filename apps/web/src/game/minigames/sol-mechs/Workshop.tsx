@@ -253,7 +253,7 @@ export default function Workshop({ onClose, teamContext }: WorkshopProps) {
         {teamContext && (
           <p style={sx.teamHint}>
             Each part may appear once per squad. Parts marked IN USE are on another
-            mech — take them off it before deploying.
+            mech. Take them off it before deploying.
           </p>
         )}
 
@@ -293,7 +293,7 @@ export default function Workshop({ onClose, teamContext }: WorkshopProps) {
                   key={slot}
                   slot={slot}
                   selected={slot === activeSlot}
-                  name={current?.name ?? "—"}
+                  name={current?.name ?? "-"}
                   position={opts.length > 1 ? `${i + 1}/${opts.length}` : ""}
                   inUse={current?.taken ?? false}
                   canCycle={opts.length > 1}
@@ -391,7 +391,7 @@ export default function Workshop({ onClose, teamContext }: WorkshopProps) {
                     <span style={sx.moveCardSrc}>{matrix.matrixName}</span>
                   </div>
                   <div style={sx.chips}>
-                    <span style={sx.moveCardNote}>Not simulated yet — shown for reference.</span>
+                    <span style={sx.moveCardNote}>Not simulated yet. Shown for reference.</span>
                   </div>
                 </div>
               ))

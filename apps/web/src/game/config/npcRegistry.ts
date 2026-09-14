@@ -97,7 +97,7 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     tileY: 40,
     color: 0x14f195,
     dialog: [
-      "Hey there! Welcome to Solana City — I'm Sol, your guide.",
+      "Hey there! Welcome to Solana City. I'm Sol, your guide.",
       "Everything you need to get started is in the panel below. See you around!",
     ],
     action: { type: "tutor", label: "Got it!" },
@@ -114,7 +114,7 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     color: 0xff6b35,
     dialog: [
       "Irasshaimase! Welcome to my cart.",
-      "Orders are piling up — burger or sushi, it doesn't matter.",
+      "Orders are piling up. Burger or sushi, it doesn't matter.",
       "I just need someone who can assemble them in the right order, fast.",
       "Think you've got the hands for it?",
     ],
@@ -132,7 +132,7 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     color: 0x00b4d8,
     dialog: [
       "Hey! Want to take a kite up and see who else is flying right now?",
-      "Stay airborne to rack up points — the further out you let your line, the faster you score.",
+      "Stay airborne to rack up points. The further out you let your line, the faster you score.",
       "But flying high makes you an easy target. Cut a rival's line for a bonus, if you dare.",
     ],
     action: { type: "minigame", label: "Launch Kite", miniGameId: "kite-clash" },
@@ -174,7 +174,7 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     dialog: [
       "Steve Sends, at your service.",
       "Need to move SOL or any token to another wallet? This is your stop.",
-      "Drop in the destination address and the amount — it lands on the other side in seconds.",
+      "Drop in the destination address and the amount, and it lands on the other side in seconds.",
     ],
     action: { type: "transfer", label: "Send tokens" },
     spriteKey: "avatar-send-npc",
@@ -228,9 +228,9 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     tileY: 60,
     color: 0xff5468,
     dialog: [
-      "You made it. This is the Sol Mechs hangar — five chassis on the racks, all combat-rated.",
-      "Rules are simple: arms and legs take hits, but the Matrix is sealed. Blow off an arm and the core is exposed. That's your win condition.",
-      "Parts mix across chassis, so don't feel married to a stock loadout. Pick a mech and I'll fire up the arena.",
+      "Hey, I'm Rade. Welcome to the Sol Mechs hangar!",
+      "Build a squad of three mechs, mix parts across chassis and take them into 3v3 battles.",
+      "Warm up against the CPU or battle other players online. The rules are in the menu whenever you need them.",
     ],
     action: { type: "minigame", label: "Enter the Hangar", miniGameId: "sol-mechs" },
     // No spriteKey yet — falls back to the default avatar sheet until the

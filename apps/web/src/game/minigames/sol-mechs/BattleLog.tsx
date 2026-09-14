@@ -110,7 +110,7 @@ export function BattleLog({ lines, turns, initiallyCollapsed = false, fill = fal
           padding: "6px 8px", fontSize: T.small, fontFamily: MONO,
           color: C.body, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
         }}>
-          {lines[0] ?? "—"}
+          {lines[0] ?? "-"}
         </div>
       )}
     </div>

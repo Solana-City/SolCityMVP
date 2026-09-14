@@ -85,7 +85,7 @@ export default function PassSale() {
           Battle Pass <span style={sx.beta}>BETA</span>
         </h1>
         <p style={sx.lead}>
-          Four mechs — Titan, Striker, Arclight and HeartCore — and entry to the
+          Four mechs (Titan, Striker, Arclight and HeartCore) and entry to the
           Season 1 ranked ladder. {SUPPLY.TOTAL.toLocaleString("en-US")} exist;
           whatever goes unsold is burned.
         </p>
@@ -106,7 +106,7 @@ export default function PassSale() {
               />
               <Stat
                 label="Prize pool"
-                value={pool === null ? "—" : `${sol(pool)} SOL`}
+                value={pool === null ? "-" : `${sol(pool)} SOL`}
                 sub={PRIZE_POOL_ADDRESS ? "on-chain, verifiable" : undefined}
               />
               <Stat label="Max per wallet" value={String(PER_WALLET_LIMIT)} />
@@ -129,7 +129,7 @@ export default function PassSale() {
                   disabled={busy || soldOut}
                   style={{ ...sx.mint, opacity: busy || soldOut ? 0.45 : 1 }}
                 >
-                  {busy ? "MINTING…" : soldOut ? "SOLD OUT" : `MINT — ${sol(PASS_PRICE_LAMPORTS)} SOL`}
+                  {busy ? "MINTING…" : soldOut ? "SOLD OUT" : `MINT · ${sol(PASS_PRICE_LAMPORTS)} SOL`}
                 </button>
               </>
             )}
@@ -143,7 +143,7 @@ export default function PassSale() {
 
             <p style={sx.footer}>
               Devnet. Candy machine{" "}
-              <code style={sx.code}>{CANDY_MACHINE_ADDRESS || "—"}</code>
+              <code style={sx.code}>{CANDY_MACHINE_ADDRESS || "-"}</code>
             </p>
           </>
         )}
