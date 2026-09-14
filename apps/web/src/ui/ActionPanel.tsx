@@ -8,6 +8,24 @@ import type { EarnListing, EarnListingType } from "@/game/solana/superteamEarn";
 import { transactionLog } from "@/game/telemetry/transactionLog";
 import { profileManager } from "@/game/config/profileManager";
 import { Connection } from "@solana/web3.js";
+import { ProtocolIntroGate, type IntroSpec } from "@/ui/ProtocolIntro";
+
+/** Jupiter Cat: what a swap is, before the swap form. */
+const SWAP_INTRO: IntroSpec = {
+  id: "swap",
+  title: "HOW A SWAP WORKS",
+  color: "#14F195",
+  nodes: [
+    { sheet: "main_char.png", label: "YOU" },
+    { sheet: "Jupiter Joe.png", label: "JUPITER" },
+    { sheet: "main_char.png", label: "YOU" },
+  ],
+  steps: [
+    { title: "PICK", line: "Choose the token you have and the one you want.", edge: 0, chip: "SOL" },
+    { title: "BEST PRICE", line: "Jupiter checks Solana markets for the best rate.", edge: 1 },
+    { title: "SWAP", line: "Sign once. The new token lands in your wallet.", edge: 1, chip: "USDC" },
+  ],
+};
 
 function emitGameEvent(event: string): void {
   ((globalThis as any).__solCityGameEvents)?.emit(event);
@@ -70,7 +88,7 @@ export default function ActionPanel({ action, onClose }: ActionPanelProps) {
           >×</button>
 
           {action.type === "tutor"           && <TutorPanel           onClose={onClose} />}
-          {action.type === "swap"            && <SwapPanel            onClose={onClose} />}
+          {action.type === "swap"            && <ProtocolIntroGate spec={SWAP_INTRO}><SwapPanel onClose={onClose} /></ProtocolIntroGate>}
           {action.type === "transfer"        && <TransferPanel        onClose={onClose} />}
           {action.type === "bounties"        && <BountiesPanel        onClose={onClose} />}
           {action.type === "private-payment" && <PrivatePaymentPanel  onClose={onClose} />}
@@ -106,7 +124,7 @@ export default function ActionPanel({ action, onClose }: ActionPanelProps) {
         </button>
 
         {action.type === "tutor"           && <TutorPanel           onClose={onClose} />}
-        {action.type === "swap"            && <SwapPanel            onClose={onClose} />}
+        {action.type === "swap"            && <ProtocolIntroGate spec={SWAP_INTRO}><SwapPanel onClose={onClose} /></ProtocolIntroGate>}
         {action.type === "transfer"        && <TransferPanel        onClose={onClose} />}
         {action.type === "bounties"        && <BountiesPanel        onClose={onClose} />}
         {action.type === "private-payment" && <PrivatePaymentPanel  onClose={onClose} />}

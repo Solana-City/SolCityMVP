@@ -155,10 +155,8 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     tileY: 32,
     color: 0x14f195,
     dialog: [
-      "Welcome to the Swap Station!",
-      "I can help you exchange any Solana token for another.",
-      "Powered by Jupiter, the swaps are fast, gasless, and MEV-protected.",
-      "Just pick your tokens and the amount. I'll handle the rest.",
+      "Want a different token? I can swap it for you.",
+      "Pick what you have and what you want. Jupiter finds the best price.",
     ],
     action: { type: "swap", label: "Open swap" },
     spriteKey: "Jupiter Joe",
