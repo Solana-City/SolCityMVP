@@ -24,7 +24,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  drawMech, DOLL_WIDTH, DOLL_HEIGHT, preloadAll, preloadBuild, mechBounds,
+  drawMech, DOLL_WIDTH, DOLL_HEIGHT, preloadAll, preloadBuild, stableBounds,
   type MechBounds,
 } from "@/game/solmechs/render/paperDoll";
 import {
@@ -34,6 +34,7 @@ import {
 import type { MechBuild, MechId, StatBlock, ModuleSlot, MechPart } from "@/game/solmechs/data/types";
 import { addStats } from "@/game/solmechs/data/types";
 import { createUnit, calculateDamage } from "@/game/solmechs/engine/BattleEngine";
+import { squadPositionLabel } from "@/game/solmechs/data/team";
 import { C, T, SP, R, MONO, W, PANEL_HEIGHT, DISPLAY, frame } from "./theme";
 
 const UI = "/assets/minigames/sol-mechs/ui";
@@ -77,8 +78,8 @@ export interface WorkshopProps {
    */
   teamContext: {
     build: MechBuild;
-    /** Codes taken by the OTHER team members, per slot. */
-    taken: Partial<Record<ModuleSlot, Set<string>>>;
+    /** Codes taken by the OTHER team members, per slot, to the mech holding each. */
+    taken: Partial<Record<ModuleSlot, Map<string, number>>>;
     label: string;
     onChange: (build: MechBuild) => void;
   };
@@ -138,7 +139,8 @@ export default function Workshop({ onClose, teamContext }: WorkshopProps) {
   }, [build]);
 
   /**
-   * The canvas is cropped to the mech, not to the doll box — see mechBounds.
+   * The canvas is cropped to the mech, not to the doll box, and to the SAME box
+   * for every build (see stableBounds), so swapping a part never rescales it.
    * The full box is only the starting guess, replaced as soon as the sprites
    * have decoded and the real bounds can be measured.
    */
@@ -153,7 +155,7 @@ export default function Workshop({ onClose, teamContext }: WorkshopProps) {
     if (!canvas || !ctx) return;
 
     const loop = () => {
-      const box = mechBounds(build);
+      const box = stableBounds();
       if (box && (box.x !== crop.x || box.y !== crop.y || box.w !== crop.w || box.h !== crop.h)) {
         setCrop(box);
       }
@@ -176,7 +178,7 @@ export default function Workshop({ onClose, teamContext }: WorkshopProps) {
   }, [onClose]);
 
   /** Options for a slot — every matrix, or the parts legal for this chassis. */
-  const optionsFor = useCallback((slot: ModuleSlot): Array<{ code: string; name: string; taken: boolean }> => {
+  const optionsFor = useCallback((slot: ModuleSlot): Array<{ code: string; name: string; takenBy: number | undefined }> => {
     const all = slot === "matrix"
       ? MATRICES.map((m) => ({ code: m.matrixCode, name: m.matrixName }))
       : getSelectableParts(slot, build.matrixCode, lockToFamily)
@@ -188,7 +190,7 @@ export default function Workshop({ onClose, teamContext }: WorkshopProps) {
     // it off the other one. Everything is listed now and a part in use
     // elsewhere is marked; the squad screen still refuses to deploy a clash.
     const taken = teamContext?.taken[slot];
-    return all.map((o) => ({ ...o, taken: taken?.has(o.code) ?? false }));
+    return all.map((o) => ({ ...o, takenBy: taken?.get(o.code) }));
   }, [build, lockToFamily, teamContext]);
 
   const currentCode = activeSlot === "matrix" ? build.matrixCode : build[activeSlot];
@@ -250,12 +252,26 @@ export default function Workshop({ onClose, teamContext }: WorkshopProps) {
           <div style={{ flex: 1 }} />
           <button onClick={onClose} style={sx.close} aria-label="Close">×</button>
         </header>
-        {teamContext && (
-          <p style={sx.teamHint}>
-            Each part may appear once per squad. Parts marked IN USE are on another
-            mech. Take them off it before deploying.
-          </p>
-        )}
+        {teamContext && (() => {
+          // Checked live, per equipped part, so a clash is named the moment it
+          // is made instead of only as a blocked DEPLOY on the squad screen.
+          const clashes = SLOTS.flatMap((slot) => {
+            const code = slot === "matrix" ? build.matrixCode : build[slot];
+            const holder = teamContext.taken[slot]?.get(code);
+            if (holder === undefined) return [];
+            const name = slot === "matrix" ? getMatrix(code)?.matrixName : getPart(code)?.partName;
+            return [`${name ?? code} is already on ${squadPositionLabel(holder)}`];
+          });
+          return clashes.length ? (
+            <p style={{ ...sx.teamHint, color: C.warn }}>
+              {clashes.join(". ")}. Each part may appear once per squad: change it here or on that mech.
+            </p>
+          ) : (
+            <p style={sx.teamHint}>
+              Each part may appear once per squad. A part already on another mech is marked with where it is.
+            </p>
+          );
+        })()}
 
         <div style={sx.body}>
           {/* ── preview ─────────────────────────────────────────────── */}
@@ -295,7 +311,7 @@ export default function Workshop({ onClose, teamContext }: WorkshopProps) {
                   selected={slot === activeSlot}
                   name={current?.name ?? "-"}
                   position={opts.length > 1 ? `${i + 1}/${opts.length}` : ""}
-                  inUse={current?.taken ?? false}
+                  takenBy={current?.takenBy}
                   canCycle={opts.length > 1}
                   onSelect={() => setActiveSlot(slot)}
                   onCycle={(d) => cycle(slot, d)}
@@ -445,13 +461,13 @@ export default function Workshop({ onClose, teamContext }: WorkshopProps) {
  * the disc; only the part name is drawn, into the dark bar the sprite leaves
  * for it (25%-98% across, 28%-67% down, measured off the imported sprite).
  */
-function SlotRow({ slot, selected, name, position, inUse, canCycle, onSelect, onCycle }: {
+function SlotRow({ slot, selected, name, position, takenBy, canCycle, onSelect, onCycle }: {
   slot: ModuleSlot;
   selected: boolean;
   name: string;
   position: string;
-  /** Equipped here AND on another squad mech. */
-  inUse: boolean;
+  /** Squad index of the other mech that also has this part equipped. */
+  takenBy: number | undefined;
   canCycle: boolean;
   onSelect: () => void;
   onCycle: (dir: -1 | 1) => void;
@@ -471,8 +487,8 @@ function SlotRow({ slot, selected, name, position, inUse, canCycle, onSelect, on
         }}
       >
         <span style={{ ...sx.rowName, color: selected ? C.text : C.body }}>{name}</span>
-        {inUse
-          ? <span style={sx.rowTaken}>IN USE</span>
+        {takenBy !== undefined
+          ? <span style={sx.rowTaken}>{takenBy === 0 ? "ON LEADS" : `ON RES ${takenBy}`}</span>
           : position && <span style={sx.rowPos}>{position}</span>}
       </button>
       <Arrow dir="right" onClick={() => onCycle(1)} disabled={!canCycle} />

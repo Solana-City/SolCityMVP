@@ -14,12 +14,15 @@
  */
 import { useCallback, useMemo, useState } from "react";
 import {
-  drawMech, DOLL_WIDTH, DOLL_HEIGHT, preloadBuild, mechBounds,
+  drawMech, DOLL_WIDTH, DOLL_HEIGHT, preloadAll, preloadBuild, stableBounds,
   type MechBounds,
 } from "@/game/solmechs/render/paperDoll";
 import { useEffect, useRef } from "react";
 import { getMatrix } from "@/game/solmechs/data/catalog";
-import { validateTeam, takenCodes, TEAM_SIZE, type TeamBuild } from "@/game/solmechs/data/team";
+import {
+  validateTeam, takenBy, squadPositionLabel, TEAM_SIZE, type TeamBuild, type TeamViolation,
+} from "@/game/solmechs/data/team";
+import { getPart } from "@/game/solmechs/data/catalog";
 import { createUnit, availableMoves } from "@/game/solmechs/engine/BattleEngine";
 import type { MechBuild, ModuleSlot } from "@/game/solmechs/data/types";
 import { loadHangar, setTeam } from "@/game/solmechs/hangar";
@@ -29,6 +32,9 @@ import { C, T, SP, R, MONO, W, PANEL_HEIGHT, DISPLAY, frame } from "./theme";
 
 const SLOTS: ModuleSlot[] = ["matrix", "rightArm", "leftArm", "lowerBody"];
 const CARD_SCALE = 2;
+const PART_SLOT_LABEL: Record<ModuleSlot, string> = {
+  matrix: "MTX", rightArm: "R.ARM", leftArm: "L.ARM", lowerBody: "LEGS",
+};
 
 export interface TeamBuilderProps {
   onDeploy: (team: TeamBuild) => void;
@@ -43,15 +49,17 @@ export default function TeamBuilder({ onDeploy, onClose, deployLabel = "DEPLOY S
   const [mechs, setMechs] = useState<MechBuild[]>(() => loadHangar().team.slice(0, TEAM_SIZE));
   const [editing, setEditing] = useState<number | null>(null);
 
+  // Every part's art, so the shared preview crop (stableBounds) can resolve.
+  useEffect(() => { preloadAll(); }, []);
+
   const team: TeamBuild = useMemo(() => ({ mechs }), [mechs]);
   const validation = useMemo(() => validateTeam(team), [team]);
 
-  /** Mech indices involved in any clash, for badging the cards. */
-  const flagged = useMemo(() => {
-    const s = new Set<number>();
-    for (const v of validation.violations) for (const i of v.mechIndices) s.add(i);
-    return s;
-  }, [validation]);
+  /** Each mech's clashes, so a card can mark the exact part, not the whole mech. */
+  const clashesOf = useCallback(
+    (i: number) => validation.violations.filter((v) => v.mechIndices.includes(i)),
+    [validation],
+  );
 
   const updateAt = useCallback((index: number, build: MechBuild) => {
     setMechs((prev) => prev.map((b, i) => (i === index ? build : b)));
@@ -71,8 +79,8 @@ export default function TeamBuilder({ onDeploy, onClose, deployLabel = "DEPLOY S
 
   if (editing !== null) {
     const build = mechs[editing];
-    const taken: Partial<Record<ModuleSlot, Set<string>>> = {};
-    for (const slot of SLOTS) taken[slot] = takenCodes(team, editing, slot);
+    const taken: Partial<Record<ModuleSlot, Map<string, number>>> = {};
+    for (const slot of SLOTS) taken[slot] = takenBy(team, editing, slot);
 
     return (
       <Workshop
@@ -116,7 +124,7 @@ export default function TeamBuilder({ onDeploy, onClose, deployLabel = "DEPLOY S
               key={i}
               index={i}
               build={build}
-              flagged={flagged.has(i)}
+              clashes={clashesOf(i)}
               onEdit={() => setEditing(i)}
             />
           ))}
@@ -150,12 +158,14 @@ export default function TeamBuilder({ onDeploy, onClose, deployLabel = "DEPLOY S
   );
 }
 
-function SquadCard({ index, build, flagged, onEdit }: {
-  index: number; build: MechBuild; flagged: boolean; onEdit: () => void;
+function SquadCard({ index, build, clashes, onEdit }: {
+  index: number; build: MechBuild; clashes: TeamViolation[]; onEdit: () => void;
 }) {
+  const flagged = clashes.length > 0;
   const ref = useRef<HTMLCanvasElement>(null);
   const raf = useRef(0);
-  // Cropped to the mech rather than to the doll box — see mechBounds. Stretched
+  // Cropped to the mech rather than to the doll box, one box for every build
+  // (see stableBounds) so swapping parts never rescales the mech. Stretched
   // to the card, the box put a 55px-wide mech in a 340px-tall picture and three
   // of those are what made this screen scroll.
   const [crop, setCrop] = useState<MechBounds>({ x: 0, y: 0, w: DOLL_WIDTH, h: DOLL_HEIGHT });
@@ -166,7 +176,7 @@ function SquadCard({ index, build, flagged, onEdit }: {
     const ctx = c?.getContext("2d");
     if (!c || !ctx) return;
     const loop = () => {
-      const box = mechBounds(build);
+      const box = stableBounds();
       if (box && (box.x !== crop.x || box.y !== crop.y || box.w !== crop.w || box.h !== crop.h)) {
         setCrop(box);
       }
@@ -202,15 +212,18 @@ function SquadCard({ index, build, flagged, onEdit }: {
       onClick={onEdit}
       style={{
         ...sx.card,
-        // A clash is a rule violation, so it overrides the frame art entirely
-        // rather than tinting it.
-        ...(flagged ? { borderImage: "none", border: `2px solid ${C.bad}` } : null),
+        // The card only gets a warning edge; the part rows below say exactly
+        // which part clashes. A solid red card read as "this whole mech is
+        // broken" when one part of it was shared with another mech.
+        // An outline, not a border: swapping the frame art for a plain border
+        // changed the border width and so the card's size.
+        ...(flagged ? { outline: `2px solid ${C.warn}`, outlineOffset: -4 } : null),
       }}
     >
       <div style={sx.cardHead}>
-        <span style={sx.cardIndex}>{index === 0 ? "LEADS" : `RESERVE ${index}`}</span>
+        <span style={sx.cardIndex}>{squadPositionLabel(index).toUpperCase()}</span>
         <strong style={{ fontSize: 15, color: C.text }}>{matrix?.matrixName ?? "-"}</strong>
-        {flagged && <span style={sx.clashTag}>CLASH</span>}
+        {flagged && <span style={sx.clashTag}>{clashes.length === 1 ? "1 CLASH" : `${clashes.length} CLASHES`}</span>}
       </div>
       <canvas
         ref={ref}
@@ -242,8 +255,21 @@ function SquadCard({ index, build, flagged, onEdit }: {
           ATK {stats.ATK} · DEF {stats.DEF} · ENG {stats.ENG} · SYS {stats.SYS}
         </div>
       )}
-      <div style={sx.codes}>
-        {build.rightArm} · {build.leftArm} · {build.lowerBody}
+      <div style={sx.partList}>
+        {SLOTS.map((slot) => {
+          const code = slot === "matrix" ? build.matrixCode : build[slot];
+          const clash = clashes.find((v) => v.slot === slot);
+          const others = clash?.mechIndices.filter((m) => m !== index) ?? [];
+          return (
+            <div key={slot} style={{ ...sx.partRow, color: clash ? C.bad : C.faint }}>
+              <span style={sx.partSlot}>{PART_SLOT_LABEL[slot]}</span>
+              <span style={sx.partName}>
+                {slot === "matrix" ? matrix?.matrixName ?? code : getPart(code)?.partName ?? code}
+              </span>
+              {clash && <span style={sx.partClash}>also on {others.map(squadPositionLabel).join(", ")}</span>}
+            </div>
+          );
+        })}
       </div>
       <div style={sx.editHint}>EDIT ▸</div>
     </button>
@@ -298,10 +324,14 @@ const sx: Record<string, React.CSSProperties> = {
     border: "1px solid", borderRadius: 3, padding: "1px 6px",
   },
   clashTag: {
-    marginLeft: "auto", fontSize: 12, color: C.bad, border: `1px solid ${C.bad}`,
+    marginLeft: "auto", fontSize: 12, color: C.warn, border: `1px solid ${C.warn}`,
     borderRadius: 3, padding: "1px 4px", letterSpacing: 1,
   },
-  codes: { fontSize: 11, color: C.faint, fontFamily: "monospace" },
+  partList: { display: "flex", flexDirection: "column", gap: 1 },
+  partRow: { display: "flex", gap: 6, fontSize: 11, alignItems: "baseline", minWidth: 0, whiteSpace: "nowrap" },
+  partSlot: { width: 38, flexShrink: 0, fontFamily: "monospace", fontSize: 10 },
+  partName: { overflow: "hidden", textOverflow: "ellipsis", minWidth: 0 },
+  partClash: { marginLeft: "auto", fontWeight: 700, flexShrink: 0 },
   cardStats: { fontSize: 11, color: C.dim, lineHeight: 1.45, fontFamily: "monospace" },
   editHint: { fontSize: 11, color: C.teal, letterSpacing: 2, marginTop: "auto", paddingTop: 3 },
   notice: {

@@ -91,9 +91,26 @@ export function validateTeam(team: TeamBuild): TeamValidation {
     ok: violations.length === 0,
     violations,
     messages: violations.map(
-      (v) => `${SLOT_LABEL[v.slot]} "${nameFor(v.slot, v.code)}" is used by mechs ${v.mechIndices.map((i) => i + 1).join(" and ")}.`,
+      (v) => `${SLOT_LABEL[v.slot]} "${nameFor(v.slot, v.code)}" is on both ${v.mechIndices.map(squadPositionLabel).join(" and ")}. Give one of them a different ${SLOT_LABEL[v.slot]}.`,
     ),
   };
+}
+
+/** The squad position a mech index is shown as: it sets the send-out order. */
+export function squadPositionLabel(index: number): string {
+  return index === 0 ? "Leads" : `Reserve ${index}`;
+}
+
+/**
+ * Codes held by the OTHER team members for a slot, with which mech holds
+ * each, so an editor can say where a part already is, not only that it is.
+ */
+export function takenBy(team: TeamBuild, mechIndex: number, slot: ModuleSlot): Map<string, number> {
+  const taken = new Map<string, number>();
+  team.mechs.forEach((build, i) => {
+    if (i !== mechIndex && !taken.has(codesOf(build)[slot])) taken.set(codesOf(build)[slot], i);
+  });
+  return taken;
 }
 
 /**

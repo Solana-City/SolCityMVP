@@ -13,6 +13,7 @@
 import type { BattleAction, BattleState, PlayerSide } from "../engine/BattleEngine";
 import { availableMoves, legalTargets, canAttackMatrix, calculateDamage } from "../engine/BattleEngine";
 import type { ModuleSlot } from "../data/types";
+import { bestSelfTarget, selfMoveIsUseful } from "./selfTarget";
 
 export interface OpponentProvider {
   /** Resolve to the action this opponent takes, or null to forfeit the turn. */
@@ -57,11 +58,16 @@ export class LocalAIOpponent implements OpponentProvider {
 
     for (const opt of options) {
       if (opt.move.targetType === "self") {
-        // Self-buffs are worth taking early, when there are turns left to
-        // spend the boost, but are dead weight once the core is exposed.
-        const score = canAttackMatrix(foe) ? -50 : 25 + opt.move.statModifiers.length * 10;
+        // Aimed where it helps (see selfTarget), and only taken when it
+        // changes something. Shoring up an exposed core beats a routine buff;
+        // once the rival's core is open, attacking beats both.
+        const targetSlot = bestSelfTarget(me, opt.move);
+        const defensive = opt.move.statModifiers.some((m) => m.stat === "DEF" || m.stat === "SYS");
+        const score = !selfMoveIsUseful(me, opt.move, targetSlot) || canAttackMatrix(foe)
+          ? -50
+          : (defensive && targetSlot === "matrix" ? 45 : 25) + opt.move.statModifiers.length * 10;
         const action: BattleAction = {
-          side, sourceSlot: opt.slot, moveIndex: opt.moveIndex, targetSlot: opt.slot,
+          side, sourceSlot: opt.slot, moveIndex: opt.moveIndex, targetSlot,
         };
         if (!best || score > best.score) best = { action, score };
         continue;

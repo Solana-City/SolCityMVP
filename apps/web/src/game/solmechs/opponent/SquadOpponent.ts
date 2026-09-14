@@ -14,6 +14,7 @@ import {
 import { availableMoves, calculateDamage, legalTargets } from "../engine/BattleEngine";
 import { fromWire, toWire, type WireAction } from "../pvp/protocol";
 import type { PvpSession } from "../pvp/session";
+import { bestSelfTarget, selfMoveIsUseful } from "./selfTarget";
 
 export interface SquadOpponent {
   readonly name: string;
@@ -40,11 +41,19 @@ export function chooseRivalRound(s: TeamBattleState): TeamAction | null {
   const foe = activeUnit(s.p1);
   const opts = availableMoves(me).filter((o) => o.move.targetType !== "self");
   if (opts.length === 0) {
+    // Nothing left that deals damage: bring in the healthiest reserve.
     const sw = switchableIndices(s.p2);
-    if (sw.length) return { kind: "switch", side: "p2", toIndex: sw[0] };
-    const all = availableMoves(me);
-    return all.length
-      ? { kind: "move", side: "p2", sourceSlot: all[0].slot, moveIndex: all[0].moveIndex, targetSlot: all[0].slot }
+    if (sw.length) {
+      const health = (i: number) => s.p2.units[i].matrixHP / Math.max(1, s.p2.units[i].matrixMaxHP);
+      return { kind: "switch", side: "p2", toIndex: [...sw].sort((a, b) => health(b) - health(a))[0] };
+    }
+    // Last mech standing: its self moves go where they help (usually the
+    // exposed matrix), never back onto the full-HP legs that fired them.
+    const self = availableMoves(me)
+      .map((o) => ({ o, target: bestSelfTarget(me, o.move) }))
+      .sort((a, b) => Number(selfMoveIsUseful(me, b.o.move, b.target)) - Number(selfMoveIsUseful(me, a.o.move, a.target)))[0];
+    return self
+      ? { kind: "move", side: "p2", sourceSlot: self.o.slot, moveIndex: self.o.moveIndex, targetSlot: self.target }
       : null;
   }
   const targets = legalTargets(foe);
