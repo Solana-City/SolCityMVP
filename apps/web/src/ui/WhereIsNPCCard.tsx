@@ -300,25 +300,7 @@ export default function WhereIsNPCCard({ gameRef, wallet }: Props) {
       {showLeaderboard && <LeaderboardModal onClose={() => setShowLeaderboard(false)} />}
 
       {showInfo && (
-        <div style={{
-          position: "fixed", top: 12, left: isTouch ? 236 : 224, zIndex: 200,
-          background: "#0c0f1e", border: "1px solid rgba(153,69,255,0.3)",
-          borderRadius: 12, padding: "14px 16px", width: 248,
-          fontSize: 9, color: "#a0a0cc", lineHeight: 1.65,
-          boxShadow: "0 8px 32px rgba(0,0,0,0.55)",
-          fontFamily: '"Press Start 2P", monospace',
-          animation: "slideUp 0.15s ease",
-        }} onClick={() => setShowInfo(false)}>
-          <div style={{ color: "#c084fc", marginBottom: 10, fontFamily: '"Press Start 2P", monospace', fontSize: 7, letterSpacing: 0.5 }}>
-            HOW TO PLAY
-          </div>
-          Find the citizen shown below. Walk up to them and {isTouch ? "tap" : "press"}{" "}
-          <span style={{ color: "#14F195", fontWeight: 600 }}>{isTouch ? "ACT" : "E"}</span> to greet them.
-          <br /><br />
-          A new citizen appears every{" "}
-          <span style={{ color: "#FFD700", fontWeight: 600 }}>5 minutes</span>.
-          First to find them wins the round!
-        </div>
+        <HuntHowTo loadout={targetLoadout} isTouch={isTouch} onClose={() => setShowInfo(false)} />
       )}
 
       <div className="hunt-card" style={{
@@ -437,5 +419,125 @@ export default function WhereIsNPCCard({ gameRef, wallet }: Props) {
         )}
       </div>
     </>
+  );
+}
+
+// ── How to play (cards) ───────────────────────────────────────────────────────
+
+const PIX = '"Press Start 2P", monospace';
+
+function HuntKey({ label }: { label: string }) {
+  return (
+    <span style={{
+      display: "inline-flex", alignItems: "center", justifyContent: "center", minWidth: 34, height: 32, padding: "0 6px",
+      borderRadius: 5, background: "#f8fafc", color: "#0a0a14", fontFamily: PIX, fontSize: 11, boxShadow: "0 4px 0 #64748b",
+    }}>
+      {label}
+    </span>
+  );
+}
+
+function HuntHowTo({ loadout, isTouch, onClose }: { loadout: Loadout | null; isTouch: boolean; onClose: () => void }) {
+  const [i, setI] = useState(0);
+  const target = loadout
+    ? <MiniAvatar loadout={loadout} size={96} />
+    : <div aria-hidden style={{ width: 96, height: 96, backgroundImage: 'url("/assets/sprites/main_char.png")', backgroundSize: "384px 384px", backgroundPosition: "0 0", imageRendering: "pixelated" }} />;
+
+  const steps = [
+    {
+      title: "WHO TO FIND",
+      line: "The card shows who to find. Look for them in the city.",
+      scene: (
+        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <div style={{ border: "2px solid rgba(153,69,255,0.6)", borderRadius: 10, padding: 4, background: "rgba(153,69,255,0.08)" }}>{target}</div>
+          <PixelImg src={ICON.hunt} size={40} />
+        </div>
+      ),
+    },
+    {
+      title: "SAY HI",
+      line: isTouch ? "Walk up to them and tap ACT." : "Walk up to them and press E.",
+      scene: (
+        <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
+          {target}
+          {isTouch
+            ? <img src="/assets/ui/btn_act.png" alt="" style={{ height: 60, imageRendering: "pixelated" }} />
+            : <HuntKey label="E" />}
+        </div>
+      ),
+    },
+    {
+      title: "BE FIRST",
+      line: "The first player to find them wins. A new citizen every 5 minutes.",
+      scene: (
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 14 }}>
+          <RankBadge rank={1} size={44} />
+          <div style={{ width: 180, height: 8, background: "rgba(255,255,255,0.08)", borderRadius: 4, overflow: "hidden" }}>
+            <div className="hunt-timer-demo" style={{ height: "100%", background: "linear-gradient(90deg, #9945FF, #c084fc)" }} />
+          </div>
+        </div>
+      ),
+    },
+  ];
+  const step = steps[i];
+  const last = i === steps.length - 1;
+  const next = () => (last ? onClose() : setI((n) => n + 1));
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "e" || e.key === "E" || e.key === "Enter" || e.key === "ArrowRight") { e.preventDefault(); if (last) onClose(); else setI((n) => n + 1); }
+      else if (e.key === "ArrowLeft") { e.preventDefault(); setI((n) => Math.max(0, n - 1)); }
+      else if (e.key === "Escape") { e.preventDefault(); onClose(); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [last, onClose]);
+
+  return (
+    <div
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      style={{ position: "fixed", inset: 0, zIndex: 200, background: "rgba(4,6,16,0.6)", display: "flex", alignItems: "center", justifyContent: "center", padding: 12 }}
+    >
+      <style>{`@keyframes hunt-timer { from { width: 100%; } to { width: 4%; } } .hunt-timer-demo { animation: hunt-timer 3s linear infinite; }`}</style>
+      <div style={{
+        width: "min(400px, 100%)", maxHeight: "100%", overflowY: "auto", padding: 16, borderRadius: 14,
+        background: "#0c0f1e", border: "1px solid rgba(153,69,255,0.45)", boxShadow: "0 12px 40px rgba(0,0,0,0.6)", fontFamily: PIX,
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+          <PixelImg src={ICON.hunt} size={16} />
+          <span style={{ color: "#c084fc", fontSize: 8 }}>FIND SOMEONE</span>
+          <span style={{ marginLeft: "auto", color: "#555577", fontSize: 7 }}>{i + 1}/{steps.length}</span>
+          <button onClick={onClose} aria-label="Close" style={{ background: "none", border: "none", color: "#666688", fontSize: 16, cursor: "pointer", lineHeight: 1, padding: "0 2px" }}>×</button>
+        </div>
+        <div key={i} style={{
+          height: isTouch ? 118 : 140, borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center",
+          background: "radial-gradient(circle at 50% 60%, rgba(153,69,255,0.14), rgba(12,15,30,0) 70%), #10132a",
+          border: "1px solid rgba(153,69,255,0.18)", overflow: "hidden",
+        }}>
+          {step.scene}
+        </div>
+        <div style={{ textAlign: "center", color: "#fff", fontSize: 9, margin: "12px 0 6px" }}>{step.title}</div>
+        <div style={{ textAlign: "center", color: "#a0a0cc", fontSize: 8, lineHeight: 1.7, minHeight: "3.4em", marginBottom: 12 }}>{step.line}</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <button
+            onClick={() => setI((n) => Math.max(0, n - 1))}
+            style={{ background: "transparent", border: "1px solid #333355", color: "#8888aa", borderRadius: 8, padding: "9px 12px", cursor: "pointer", fontFamily: PIX, fontSize: 7, visibility: i === 0 ? "hidden" : "visible" }}
+          >
+            BACK
+          </button>
+          <div style={{ flex: 1, display: "flex", justifyContent: "center", gap: 5 }}>
+            {steps.map((st, n) => (
+              <span key={st.title} style={{ width: n === i ? 16 : 6, height: 6, borderRadius: 3, background: n === i ? "#9945FF" : "#333355", transition: "width .2s" }} />
+            ))}
+          </div>
+          <button
+            onClick={next}
+            style={{ background: "#9945FF", color: "#fff", border: "none", borderRadius: 8, padding: "10px 16px", cursor: "pointer", fontFamily: PIX, fontSize: 7 }}
+          >
+            {last ? "GOT IT" : "NEXT"}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
