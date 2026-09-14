@@ -13,6 +13,8 @@ import { useEffect, useState } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import { getMinimapHost } from "@/game/minimap/MinimapHost";
+import { Bust } from "@/game/minigames/sol-mechs/SquadPortraits";
+import { PRESET_BUILDS } from "@/game/solmechs/data/catalog";
 
 const PIXEL = '"Press Start 2P", monospace';
 const GREEN = "#14F195";
@@ -75,14 +77,14 @@ function Label({ children, color = "#cbd5e1" }: { children: React.ReactNode; col
 }
 
 /** A citizen with its job underneath, for the apps and games scenes. */
-function Role({ sheet, img, label, color }: { sheet?: string; img?: string; label: string; color: string }) {
+function Role({ sheet, img, node, label, color }: { sheet?: string; img?: string; node?: React.ReactNode; label: string; color: string }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
       <div style={{
         width: 58, height: 58, borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center",
         background: `${color}1f`, boxShadow: `inset 0 0 0 2px ${color}88`,
       }}>
-        {sheet ? <Citizen sheet={sheet} size={52} /> : img ? <Img src={img} h={40} /> : null}
+        {node ?? (sheet ? <Citizen sheet={sheet} size={52} /> : img ? <Img src={img} h={40} /> : null)}
       </div>
       <Label color={color}>{label}</Label>
     </div>
@@ -192,9 +194,9 @@ function useSteps(touch: boolean): Step[] {
       line: "Play mini-games around the city to earn points and unlock outfits.",
       scene: (
         <div style={{ display: "flex", gap: 22, justifyContent: "center" }}>
-          <Role img="/assets/minigames/kite/kites/kite_brazil.png" label="KITES" color="#FFA94D" />
-          <Role sheet="Sushi Man.png" label="FOOD CART" color="#FFA94D" />
-          <Role img="/assets/minigames/sol-mechs/drones/titan/idle1.png" label="SOL MECHS" color="#FFA94D" />
+          <Role img="/assets/minigames/kite/kites/kite_stb.png" label="KITES" color="#FFA94D" />
+          <Role img="/assets/minigames/food-cart/salmon-nigiri.png" label="FOOD CART" color="#FFA94D" />
+          <Role node={<Bust build={PRESET_BUILDS.titan} size={48} />} label="SOL MECHS" color="#FFA94D" />
         </div>
       ),
     },
