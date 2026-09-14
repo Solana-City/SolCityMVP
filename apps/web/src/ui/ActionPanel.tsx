@@ -10,6 +10,23 @@ import { profileManager } from "@/game/config/profileManager";
 import { Connection } from "@solana/web3.js";
 import { ProtocolIntroGate, type IntroSpec } from "@/ui/ProtocolIntro";
 
+/** Pratik: how Superteam Earn pays, before the bounty list. */
+const EARN_INTRO: IntroSpec = {
+  id: "earn",
+  title: "HOW EARN WORKS",
+  color: "#9945FF",
+  nodes: [
+    { sheet: "main_char.png", label: "YOU" },
+    { sheet: "Pratik.png", label: "EARN" },
+    { sheet: "main_char.png", label: "PAID" },
+  ],
+  steps: [
+    { title: "FIND", line: "Browse bounties and projects that fit your skills.", edge: 0 },
+    { title: "SUBMIT", line: "Do the work and submit it on Superteam Earn.", edge: 0 },
+    { title: "GET PAID", line: "Winners are paid in USDC.", edge: 1, chip: "USDC" },
+  ],
+};
+
 /** Steve Sends: what a transfer is, before the send form. */
 const TRANSFER_INTRO: IntroSpec = {
   id: "transfer",
@@ -107,7 +124,7 @@ export default function ActionPanel({ action, onClose }: ActionPanelProps) {
           {action.type === "tutor"           && <TutorPanel           onClose={onClose} />}
           {action.type === "swap"            && <ProtocolIntroGate spec={SWAP_INTRO}><SwapPanel onClose={onClose} /></ProtocolIntroGate>}
           {action.type === "transfer"        && <ProtocolIntroGate spec={TRANSFER_INTRO}><TransferPanel onClose={onClose} /></ProtocolIntroGate>}
-          {action.type === "bounties"        && <BountiesPanel        onClose={onClose} />}
+          {action.type === "bounties"        && <ProtocolIntroGate spec={EARN_INTRO}><BountiesPanel onClose={onClose} /></ProtocolIntroGate>}
           {action.type === "private-payment" && <PrivatePaymentPanel  onClose={onClose} />}
         </div>
       </div>
@@ -143,7 +160,7 @@ export default function ActionPanel({ action, onClose }: ActionPanelProps) {
         {action.type === "tutor"           && <TutorPanel           onClose={onClose} />}
         {action.type === "swap"            && <ProtocolIntroGate spec={SWAP_INTRO}><SwapPanel onClose={onClose} /></ProtocolIntroGate>}
         {action.type === "transfer"        && <ProtocolIntroGate spec={TRANSFER_INTRO}><TransferPanel onClose={onClose} /></ProtocolIntroGate>}
-        {action.type === "bounties"        && <BountiesPanel        onClose={onClose} />}
+        {action.type === "bounties"        && <ProtocolIntroGate spec={EARN_INTRO}><BountiesPanel onClose={onClose} /></ProtocolIntroGate>}
         {action.type === "private-payment" && <PrivatePaymentPanel  onClose={onClose} />}
       </div>
     </div>
