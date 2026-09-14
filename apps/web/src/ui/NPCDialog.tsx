@@ -244,7 +244,7 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
               style={{ ...skipStyle, padding: "7px 9px", touchAction: "manipulation" }}
               aria-label="Skip dialog"
             >
-              SKIP >>
+              {"SKIP >>"}
             </button>
           )}
           <button
@@ -388,7 +388,7 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
                   title="Skip to the end [Q]"
                   aria-label="Skip dialog"
                 >
-                  SKIP >> <span style={{ opacity: 0.6 }}>[Q]</span>
+                  {"SKIP >>"} <span style={{ opacity: 0.6 }}>[Q]</span>
                 </button>
               )}
               <button
