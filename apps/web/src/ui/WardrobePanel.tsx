@@ -1,5 +1,6 @@
 "use client";
 
+import { PixelImg, ICON, LockIcon } from "@/ui/PixelIcons";
 import { useState, useCallback, useEffect, useRef } from "react";
 import {
   LAYER_ORDER,
@@ -158,7 +159,7 @@ function AvatarPreview({ loadout, facingUp, scale = 3 }: { loadout: Loadout; fac
   );
 }
 
-export function ChromaPreview({ file, size, facingUp }: { file: string; size: number; facingUp?: boolean }) {
+export function ChromaPreview({ file, size, facingUp, crop }: { file: string; size: number; facingUp?: boolean; crop?: boolean }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   // Backpacks are barely visible from the front (just the strap tops) —
   // show the "up" (back) row instead so items are actually distinguishable
@@ -179,9 +180,28 @@ export function ChromaPreview({ file, size, facingUp }: { file: string; size: nu
       const oc = off.getContext("2d")!;
       oc.drawImage(img, 0, 0);
       removeChroma(oc, img.naturalWidth, img.naturalHeight);
-      ctx.drawImage(off, 0, rowY, SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT, 0, 0, size, size);
+      if (!crop) {
+        ctx.drawImage(off, 0, rowY, SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT, 0, 0, size, size);
+        return;
+      }
+      // Icon mode: zoom to the item itself (a hat is a few pixels at the top
+      // of a 64px frame), centred in a square.
+      const { data } = oc.getImageData(0, rowY, SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT);
+      let x0 = SPRITE_FRAME_WIDTH, y0 = SPRITE_FRAME_HEIGHT, x1 = -1, y1 = -1;
+      for (let y = 0; y < SPRITE_FRAME_HEIGHT; y++) {
+        for (let x = 0; x < SPRITE_FRAME_WIDTH; x++) {
+          if (data[(y * SPRITE_FRAME_WIDTH + x) * 4 + 3] < 16) continue;
+          if (x < x0) x0 = x; if (x > x1) x1 = x;
+          if (y < y0) y0 = y; if (y > y1) y1 = y;
+        }
+      }
+      if (x1 < 0) return;
+      const side = Math.max(x1 - x0 + 1, y1 - y0 + 1) + 2;
+      const cx = (x0 + x1 + 1) / 2;
+      const cy = (y0 + y1 + 1) / 2;
+      ctx.drawImage(off, cx - side / 2, rowY + cy - side / 2, side, side, 0, 0, size, size);
     };
-  }, [file, size, rowY]);
+  }, [file, size, rowY, crop]);
   return (
     <canvas
       ref={canvasRef}
@@ -192,16 +212,15 @@ export function ChromaPreview({ file, size, facingUp }: { file: string; size: nu
   );
 }
 
-const CATEGORY_ICONS: Record<LayerCategory, string> = {
-  back:      "🎒",
-  skin:      "🧬",
-  eyesFace:  "👁",
-  pants:     "👖",
-  tshirt:    "👕",
-  accessory: "💍",
-  hair:      "💇",
-  hat:       "🎩",
-};
+/**
+ * Category icon: the category's own first item, drawn from its sprite sheet,
+ * so the tabs show a real hat, shirt or backpack instead of an emoji.
+ */
+function CategoryIcon({ cat, size }: { cat: LayerCategory; size: number }) {
+  const first = getEnabledVariants(cat)[0];
+  if (!first) return null;
+  return <ChromaPreview file={first.file} size={size} facingUp={cat === "back"} crop />;
+}
 
 const OPTIONAL: LayerCategory[] = ["hat", "accessory", "back"];
 
@@ -332,7 +351,7 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
           background: "rgba(153,69,255,0.06)",
         }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <span style={{ fontSize: 13 }}>👗</span>
+            <PixelImg src={ICON.wardrobe} size={18} />
             <span style={{
               fontFamily: '"Press Start 2P", monospace',
               fontSize: 8,
@@ -360,7 +379,7 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
               onMouseEnter={e => e.currentTarget.style.background = "rgba(153,69,255,0.25)"}
               onMouseLeave={e => e.currentTarget.style.background = "rgba(153,69,255,0.14)"}
             >
-              🎁 OPEN PACK
+              OPEN PACK
             </button>
             {/* Random button */}
             <button
@@ -381,7 +400,7 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
               onMouseEnter={e => e.currentTarget.style.background = "rgba(20,241,149,0.2)"}
               onMouseLeave={e => e.currentTarget.style.background = "rgba(20,241,149,0.1)"}
             >
-              🎲 RANDOM
+              RANDOM
             </button>
             <button onClick={onClose} style={{
               background: "none", border: "none", color: "#444466",
@@ -476,8 +495,8 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
                     onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = "rgba(153,69,255,0.08)"; }}
                     onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = "transparent"; }}
                   >
-                    <span style={{ fontSize: isMobile ? 14 : 11, flexShrink: 0, position: "relative" }}>
-                      {CATEGORY_ICONS[cat]}
+                    <span style={{ flexShrink: 0, position: "relative", lineHeight: 0 }}>
+                      <CategoryIcon cat={cat} size={isMobile ? 26 : 22} />
                       {isMobile && (
                         <span style={{
                           position: "absolute", top: -2, right: -4,
@@ -511,7 +530,7 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
               padding: "12px 16px 10px",
               borderBottom: "1px solid rgba(153,69,255,0.08)",
             }}>
-              <span style={{ fontSize: 12 }}>{CATEGORY_ICONS[activeCategory]}</span>
+              <CategoryIcon cat={activeCategory} size={22} />
               <span style={{
                 fontFamily: '"Press Start 2P", monospace',
                 fontSize: 7,
@@ -571,8 +590,7 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
                             position: "absolute", inset: 0,
                             display: "flex", alignItems: "center", justifyContent: "center",
                             background: "rgba(6,8,20,0.55)", borderRadius: 6,
-                            fontSize: 18,
-                          }}>🔒</span>
+                          }}><LockIcon size={20} /></span>
                         )}
                       </div>
                       <span style={{

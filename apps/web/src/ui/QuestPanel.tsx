@@ -1,5 +1,6 @@
 "use client";
 
+import { PixelImg, ICON, CheckBox, RankBadge } from "@/ui/PixelIcons";
 import { useState, useEffect, useCallback } from "react";
 import {
   DAILY_QUESTS, getQuestProgress, claimQuest,
@@ -30,7 +31,7 @@ function QuestLeaderboardModal({ onClose }: { onClose: () => void }) {
           display: "flex", alignItems: "center", justifyContent: "space-between",
         }}>
           <span style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 8, color: "#14F195", letterSpacing: 0.5 }}>
-            🏆 QUEST LEADERBOARD
+            <span style={{ marginRight: 6, verticalAlign: "middle", display: "inline-block" }}><RankBadge rank={1} size={16} /></span>QUEST LEADERBOARD
           </span>
           <button onClick={onClose} style={{
             background: "none", border: "none", color: "#555", fontSize: 15,
@@ -147,7 +148,7 @@ export default function QuestPanel({ wallet }: Props) {
           cursor: "pointer",
           userSelect: "none",
         }} onClick={() => setCollapsed(v => !v)}>
-          <span style={{ fontSize: 11, lineHeight: 1 }}>📋</span>
+          <PixelImg src={ICON.tasks} size={16} />
           <span style={{
             fontFamily: '"Press Start 2P", monospace', fontSize: 7,
             color: "#14F195", letterSpacing: 0.5, flex: 1,
@@ -169,7 +170,7 @@ export default function QuestPanel({ wallet }: Props) {
             title="Quest Leaderboard"
             onMouseEnter={e => (e.currentTarget.style.background = "rgba(20,241,149,0.16)")}
             onMouseLeave={e => (e.currentTarget.style.background = "rgba(20,241,149,0.08)")}
-          >🏆</button>
+          ><RankBadge rank={1} size={14} /></button>
           <span className="quest-collapse" style={{ color: "#444466", fontSize: 8, marginLeft: 2 }}>
             {collapsed ? "▲" : "▼"}
           </span>
@@ -218,9 +219,7 @@ export default function QuestPanel({ wallet }: Props) {
                 }}>
                   {/* Title row */}
                   <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 5 }}>
-                    <span style={{ fontSize: 9, lineHeight: 1 }}>
-                      {claimed ? "✅" : p.completed ? "⭐" : "🔲"}
-                    </span>
+                    <CheckBox state={claimed ? "claimed" : p.completed ? "done" : "todo"} size={12} />
                     <span style={{
                       fontFamily: '"Press Start 2P", monospace', fontSize: 7,
                       color: claimed ? "#14F195" : p.completed ? "#FFD700" : "#c084fc",

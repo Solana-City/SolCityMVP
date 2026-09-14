@@ -1,5 +1,6 @@
 "use client";
 
+import { PixelImg, ICON, RankBadge } from "@/ui/PixelIcons";
 import { useState, useEffect, useRef, useCallback } from "react";
 import {
   getRoundIndex, getCitizenMsRemaining, CITIZEN_MS, recordFind, getMyScore,
@@ -170,7 +171,7 @@ function LeaderboardModal({ onClose }: { onClose: () => void }) {
           display: "flex", alignItems: "center", justifyContent: "space-between",
         }}>
           <span style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 8, color: "#c084fc", letterSpacing: 0.5 }}>
-            🏆 LEADERBOARD
+            <span style={{ marginRight: 6, verticalAlign: "middle", display: "inline-block" }}><RankBadge rank={1} size={16} /></span>LEADERBOARD
           </span>
           <button onClick={onClose} style={{
             background: "none", border: "none", color: "#555", fontSize: 15,
@@ -196,7 +197,7 @@ function LeaderboardModal({ onClose }: { onClose: () => void }) {
                 fontFamily: '"Press Start 2P", monospace', fontSize: 7,
                 color: i === 0 ? "#FFD700" : i === 1 ? "#c0c0cc" : i === 2 ? "#cd7f32" : "#333355",
                 minWidth: 24,
-              }}>#{i + 1}</span>
+              }}><RankBadge rank={i + 1} size={18} /></span>
               <span style={{ flex: 1, fontSize: 9, color: "#9090cc" }}>{e.display}</span>
               <span style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 7, color: "#14F195" }}>
                 {e.count} ★
@@ -339,7 +340,7 @@ export default function WhereIsNPCCard({ gameRef, wallet }: Props) {
           cursor: "pointer",
           userSelect: "none",
         }} onClick={() => setCollapsed(v => !v)}>
-          <span style={{ fontSize: 11, lineHeight: 1 }}>🔍</span>
+          <PixelImg src={ICON.hunt} size={16} />
           <span style={{
             fontFamily: '"Press Start 2P", monospace', fontSize: 7,
             color: "#c084fc", letterSpacing: 0.5, flex: 1,
@@ -354,7 +355,7 @@ export default function WhereIsNPCCard({ gameRef, wallet }: Props) {
           }}
             onClick={e => { e.stopPropagation(); setShowInfo(v => !v); }}
             title="How to play"
-          >ℹ</button>
+          >?</button>
           <span className="hunt-collapse" style={{ color: "#444466", fontSize: 8, marginLeft: 2 }}>
             {collapsed ? "▲" : "▼"}
           </span>
@@ -400,7 +401,7 @@ export default function WhereIsNPCCard({ gameRef, wallet }: Props) {
             <div>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5 }}>
                 <span style={{ fontSize: 8, color: "#6060aa" }}>
-                  ⏱ {mm}:{ss}
+                  {mm}:{ss}
                 </span>
                 <span style={{ fontSize: 8, color: "#6060aa" }}>next citizen</span>
               </div>
@@ -429,7 +430,7 @@ export default function WhereIsNPCCard({ gameRef, wallet }: Props) {
                 borderRadius: 7, padding: "5px 10px",
                 color: "#9945FF", fontSize: 9, cursor: "pointer",
               }}>
-                🏆
+                <RankBadge rank={1} size={16} />
               </button>
             </div>
           </div>

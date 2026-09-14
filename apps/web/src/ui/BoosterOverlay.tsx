@@ -131,7 +131,9 @@ export default function BoosterOverlay({
               animation: phase === "opening"
                 ? "booster-shake 0.16s linear infinite, booster-glow 0.5s ease-in-out infinite"
                 : "booster-glow 2.2s ease-in-out infinite",
-            }}>🎁</div>
+            }}>
+              <img src="/assets/ui/ico_wardrop.png" alt="" draggable={false} style={{ width: 64, height: 64, imageRendering: "pixelated" }} />
+            </div>
             <div style={{ fontSize: 7, color: "#8a8aa7", lineHeight: 1.7, marginBottom: 18 }}>
               {PACK_SIZE} random pieces: hats, backpacks, hair, and more.
             </div>

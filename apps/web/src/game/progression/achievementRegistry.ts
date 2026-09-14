@@ -26,7 +26,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   {
     id: "first-swap",
     title: "First Swap",
-    description: "You made your first token swap with Jupiter Cat.",
+    description: "Swap once with Jupiter Cat.",
     icon: "💱",
     tier: "common",
     check: (p) => p.swapCount >= 1,
@@ -35,7 +35,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   {
     id: "first-transfer",
     title: "First Transfer",
-    description: "You sent tokens through the Post Office.",
+    description: "Send once with Steve Sends.",
     icon: "📨",
     tier: "common",
     check: (p) => p.transferCount >= 1,
@@ -43,7 +43,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   {
     id: "first-bounty",
     title: "First Bounty",
-    description: "You completed your first Superteam bounty.",
+    description: "Finish a Superteam bounty.",
     icon: "🎯",
     tier: "common",
     check: (p) => p.bountyCount >= 1,
@@ -54,7 +54,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   {
     id: "met-sol",
     title: "New in Town",
-    description: "You met Sol, the city guide.",
+    description: "Talk to Sol.",
     icon: "👋",
     tier: "common",
     check: (p) => p.visitedNPCs.includes("sol-guide"),
@@ -62,7 +62,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   {
     id: "met-everyone",
     title: "Social Butterfly",
-    description: "You talked to every NPC in the city.",
+    description: "Talk to every citizen.",
     icon: "🦋",
     tier: "rare",
     check: (p) =>
@@ -76,7 +76,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   {
     id: "trader-10",
     title: "Active Trader",
-    description: "Complete 10 token swaps.",
+    description: "Swap 10 times.",
     icon: "📈",
     tier: "rare",
     check: (p) => p.swapCount >= 10,
@@ -85,7 +85,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   {
     id: "builder-3",
     title: "Sol City Builder",
-    description: "Complete 3 Superteam bounties.",
+    description: "Finish 3 bounties.",
     icon: "🛠️",
     tier: "rare",
     check: (p) => p.bountyCount >= 3,
@@ -96,7 +96,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   {
     id: "score-1000",
     title: "Citizen of the Year",
-    description: "Reach a score of 1000.",
+    description: "Reach 1000 points.",
     icon: "🏆",
     tier: "legendary",
     check: (p) => p.score >= 1000,

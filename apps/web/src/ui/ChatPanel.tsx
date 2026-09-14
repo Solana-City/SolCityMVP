@@ -221,7 +221,6 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
               }}
               title={`${em.label} [${em.key}]`}
             >
-              <span>{em.uiSymbol}</span>
               <span>{em.symbol}</span>
             </button>
           ))}
@@ -240,7 +239,10 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
           }}
           title="Emotes"
         >
-          🎭
+          <img
+            src="/assets/ui/ico_chat.png" width={16} height={16} alt="Emotes" draggable={false}
+            style={{ imageRendering: "pixelated", display: "block", opacity: showEmojis ? 1 : 0.75 }}
+          />
         </button>
         <button
           onClick={() => { window.dispatchEvent(new Event("solcity:openExpressionWheel")); setShowEmojis(false); }}

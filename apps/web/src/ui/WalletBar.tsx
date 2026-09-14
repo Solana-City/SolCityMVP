@@ -256,7 +256,7 @@ export default function WalletBar({ onWalletChange, layout = "default" }: Wallet
           }}
           title={hasSGT ? "Seeker Genesis Token holder" : "Android / Seeker device detected"}
         >
-          {hasSGT ? "⬡ SEEKER" : "📱 MOBILE"}
+          {hasSGT ? "SEEKER" : "MOBILE"}
         </span>
       )}
       <span

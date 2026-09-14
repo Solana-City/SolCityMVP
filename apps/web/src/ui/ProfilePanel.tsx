@@ -1,5 +1,6 @@
 "use client";
 
+import { AchievementIcon, LockIcon, SpeakerIcon, RankBadge } from "@/ui/PixelIcons";
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
@@ -542,8 +543,11 @@ export default function ProfilePanel({ gameRef, isOpen, onClose }: ProfilePanelP
                     opacity: unlocked ? 1 : 0.45,
                   }}
                 >
-                  <span style={{ fontSize: 15, filter: unlocked ? "none" : "grayscale(1)" }}>
-                    {unlocked ? ach.icon : "🔒"}
+                  <span style={{ position: "relative", lineHeight: 0, filter: unlocked ? "none" : "grayscale(1)", flexShrink: 0 }}>
+                    <AchievementIcon id={ach.id} size={28} />
+                    {!unlocked && (
+                      <span style={{ position: "absolute", right: -4, bottom: -4 }}><LockIcon size={12} /></span>
+                    )}
                   </span>
                   <div className="min-w-0 flex-1">
                     <div
@@ -620,10 +624,10 @@ function SettingsTab() {
             title={muted ? "Unmute" : "Mute"}
             style={{
               background: "none", border: "none", cursor: "pointer",
-              fontSize: 15, lineHeight: 1, padding: 0,
+              lineHeight: 0, padding: 0,
             }}
           >
-            {muted ? "🔇" : "🔊"}
+            <SpeakerIcon size={18} muted={muted} color={muted ? "#666677" : "#c084fc"} />
           </button>
         </div>
         <div className="flex items-center gap-2">
@@ -684,7 +688,7 @@ function LeaderboardRow({
           className="text-xs flex-shrink-0"
           style={{ color: rankColor, width: 18, textAlign: "right", fontWeight: rank <= 3 ? "bold" : "normal" }}
         >
-          {rank <= 3 ? ["🥇","🥈","🥉"][rank - 1] : rank}
+          <RankBadge rank={rank} size={16} />
         </span>
         <span
           className="text-xs truncate"

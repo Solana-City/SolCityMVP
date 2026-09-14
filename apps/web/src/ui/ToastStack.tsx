@@ -1,5 +1,6 @@
 "use client";
 
+import { PixelImg, ICON, AchievementIcon } from "@/ui/PixelIcons";
 import { useEffect, useState } from "react";
 import { progressionBus, type ProgressionEvent } from "@/game/progression/progressionBus";
 import { TIER_COLORS, ACHIEVEMENTS } from "@/game/progression/achievementRegistry";
@@ -16,7 +17,7 @@ import { TIER_COLORS, ACHIEVEMENTS } from "@/game/progression/achievementRegistr
 interface Toast {
   id: number;
   variant: "score" | "achievement" | "outfit" | "npc-first";
-  icon?: string;
+  icon?: React.ReactNode;
   title: string;
   subtitle?: string;
   color: string;
@@ -58,7 +59,7 @@ export default function ToastStack() {
           const color = def ? TIER_COLORS[def.tier] : "#14F195";
           addToast({
             variant: "achievement",
-            icon: event.icon,
+            icon: <AchievementIcon id={event.id} size={40} />,
             title: event.title,
             subtitle: event.description,
             color,
@@ -70,7 +71,7 @@ export default function ToastStack() {
         case "outfit-unlocked":
           addToast({
             variant: "outfit",
-            icon: "👕",
+            icon: <PixelImg src={ICON.wardrobe} size={20} />,
             title: "Outfit unlocked",
             subtitle: event.outfitName,
             color: "#9945FF",
@@ -82,7 +83,7 @@ export default function ToastStack() {
           if (event.firstTime) {
             addToast({
               variant: "npc-first",
-              icon: "💬",
+              icon: <PixelImg src={ICON.chat} size={20} />,
               title: `Met ${event.npcName}`,
               color: "#00D1FF",
               lifetime: 2500,
@@ -154,7 +155,7 @@ function SmallCard({ toast }: { toast: Toast }) {
         maxWidth: 400,
       }}
     >
-      {toast.icon && <div style={{ fontSize: "17px", flexShrink: 0 }}>{toast.icon}</div>}
+      {toast.icon && <div style={{ flexShrink: 0, lineHeight: 0 }}>{toast.icon}</div>}
       <div className="min-w-0">
         <div
           style={{
