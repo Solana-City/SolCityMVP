@@ -275,11 +275,12 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     color: 0xffd700,
     dialog: [
       "Hi, I'm Kuka, lead of Superteam Brazil!",
-      "We help Brazilian builders win on Solana. Join our workshops at The Garage!",
+      "Brazil won 2 prizes at the Cypherpunk Hackathon. At the next one, we're going for even more!",
+      "Get ready with our workshops at The Garage. Join us!",
     ],
     highlights: [
       { img: "/assets/minigames/kite/kites/kite_stb.png", label: "SUPERTEAM BR" },
-      { img: "/assets/minigames/sol-mechs/ui/win-trophy.png", label: "HACKATHON WINS" },
+      { img: "/assets/minigames/sol-mechs/ui/win-trophy.png", label: "2 PRIZES" },
       { img: "/assets/ui/ico_tasks.png", label: "WORKSHOPS" },
     ],
     action: { type: "link", label: "Follow @superteamBR", url: "https://x.com/superteamBR" },
