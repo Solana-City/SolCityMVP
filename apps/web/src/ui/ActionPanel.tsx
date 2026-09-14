@@ -724,6 +724,7 @@ type PayStatus =
 
 function PrivatePaymentPanel({ onClose }: { onClose: () => void }) {
   const { connected, publicKey, signTransaction, signMessage } = useWallet();
+  const { setVisible: openWalletModal } = useWalletModal();
   const [cluster, setCluster]           = useState<"mainnet" | "devnet">("devnet");
   const [status, setStatus]             = useState<PayStatus>("idle");
   const [authToken, setAuthToken]       = useState<string | null>(null);
@@ -737,6 +738,19 @@ function PrivatePaymentPanel({ onClose }: { onClose: () => void }) {
   const [lastAction, setLastAction]     = useState<"send" | "withdraw" | "deposit">("send");
   const [error, setError]               = useState<string | null>(null);
   const [activeTab, setActiveTab]       = useState<"deposit" | "send" | "withdraw">("send");
+  const [introOpen, setIntroOpen]       = useState(false);
+  useEffect(() => {
+    try { setIntroOpen(localStorage.getItem(PRIVATE_INTRO_KEY) !== "1"); } catch { /* storage blocked */ }
+  }, []);
+  const closeIntro = () => {
+    try { localStorage.setItem(PRIVATE_INTRO_KEY, "1"); } catch { /* storage blocked */ }
+    setIntroOpen(false);
+  };
+  // Nothing in the private account yet: step 1 is the only move that works.
+  const pickedTabRef = useRef(false);
+  useEffect(() => {
+    if (balance !== null && balance <= 0 && !pickedTabRef.current) setActiveTab("deposit");
+  }, [balance]);
 
   // Re-authenticate whenever cluster changes
   useEffect(() => {
@@ -844,15 +858,18 @@ function PrivatePaymentPanel({ onClose }: { onClose: () => void }) {
 
   const FUCHSIA = "#c026d3";
 
+  if (introOpen) return <PrivateIntro onDone={closeIntro} />;
+
   if (!connected) {
     return (
       <>
         <PanelHeader color={FUCHSIA} title="PRIVATE TRANSFER" />
         <ClusterToggle cluster={cluster} onChange={setCluster} />
-        <div style={{ textAlign: "center", padding: "24px 0", color: "#888899", fontSize: 9 }}>
-          Connect your wallet to access private payments.
+        <PrivateFlow active="deposit" />
+        <div style={{ textAlign: "center", padding: "4px 0 12px", color: "#b9b9cc", fontSize: 8 }}>
+          👛 Connect a wallet to start.
         </div>
-        <button onClick={onClose} style={btnStyle(FUCHSIA, "#fff")} className="w-full py-2.5 mt-2">CLOSE</button>
+        <button onClick={() => openWalletModal(true)} style={btnStyle(FUCHSIA, "#fff")} className="w-full py-2.5">CONNECT WALLET</button>
       </>
     );
   }
@@ -880,28 +897,35 @@ function PrivatePaymentPanel({ onClose }: { onClose: () => void }) {
           <div style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 7, color: FUCHSIA, marginBottom: 12 }}>
             {isWithdraw ? "WITHDRAWN" : "TRANSFER SHIELDED"}
           </div>
-          <div style={{ fontSize: 8, color: "#888899", lineHeight: 1.6, marginBottom: 4 }}>
-            {isWithdraw
-              ? "Funds returned to your wallet from the Private Ephemeral Rollup."
-              : "Settled privately via MagicBlock PER."}
+          <PrivateFlow active={isWithdraw ? "withdraw" : "send"} />
+          <div style={{ fontSize: 8, color: "#888899" }}>
+            {isWithdraw ? "Back in your wallet." : "Sent. No public trace."}
           </div>
-          {!isWithdraw && (
-            <div style={{ fontSize: 8, color: "#555566" }}>No on-chain trace. No explorer link.</div>
-          )}
         </div>
         <button onClick={() => setStatus("ready")} style={btnStyle(FUCHSIA, "#fff")} className="w-full py-2.5 mt-2">BACK</button>
       </>
     );
   }
 
+  const stepLine = PRIVATE_STEPS.find((st) => st.id === activeTab)!.line;
+
   return (
     <>
-      <PanelHeader color={FUCHSIA} title="PRIVATE TRANSFER" />
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+        <div style={{ flex: 1 }}><PanelHeader color={FUCHSIA} title="PRIVATE TRANSFER" /></div>
+        <button
+          onClick={() => setIntroOpen(true)}
+          title="How it works"
+          style={{ background: "transparent", border: `1px solid ${FUCHSIA}66`, color: FUCHSIA, borderRadius: 6, padding: "4px 7px", cursor: "pointer", fontFamily: '"Press Start 2P", monospace', fontSize: 7, marginRight: 22 }}
+        >
+          ? HOW
+        </button>
+      </div>
       <ClusterToggle cluster={cluster} onChange={setCluster} />
 
       {/* Private balance */}
       <div style={{ background: "#0d0d22", border: `1px solid ${FUCHSIA}33`, borderRadius: 8, padding: "10px 14px", marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <span style={{ fontSize: 8, color: "#777788" }}>Private USDC balance</span>
+        <span style={{ fontSize: 8, color: "#777788" }}>🔒 Private balance</span>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <span style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 8, color: FUCHSIA }}>
             {balance === null ? "…" : showBalance ? `${balance.toFixed(2)} USDC` : "●●●●"}
@@ -916,23 +940,13 @@ function PrivatePaymentPanel({ onClose }: { onClose: () => void }) {
         </div>
       </div>
 
-      {/* Tabs */}
-      <div style={{ display: "flex", gap: 4, marginBottom: 12 }}>
-        {(["send", "deposit", "withdraw"] as const).map(tab => (
-          <button
-            key={tab}
-            onClick={() => { setActiveTab(tab); setError(null); }}
-            style={{
-              flex: 1, padding: "6px 0", borderRadius: 6, border: "none", cursor: "pointer",
-              fontFamily: '"Press Start 2P", monospace', fontSize: 7,
-              background: activeTab === tab ? `${FUCHSIA}22` : "#0d0d22",
-              color: activeTab === tab ? FUCHSIA : "#444455",
-              borderBottom: activeTab === tab ? `2px solid ${FUCHSIA}` : "2px solid transparent",
-            }}
-          >
-            {tab === "send" ? "SEND" : tab === "deposit" ? "DEPOSIT" : "WITHDRAW"}
-          </button>
-        ))}
+      {/* The flow picture is the tab bar: tap an arrow to pick the step. */}
+      <PrivateFlow
+        active={activeTab}
+        onPick={(t) => { pickedTabRef.current = true; setActiveTab(t); setError(null); }}
+      />
+      <div style={{ fontSize: 8, color: "#b9b9cc", textAlign: "center", lineHeight: 1.6, marginBottom: 12 }}>
+        {stepLine}
       </div>
 
       {/* Send tab */}
@@ -970,9 +984,14 @@ function PrivatePaymentPanel({ onClose }: { onClose: () => void }) {
               <div style={{ fontSize: 15, fontFamily: "monospace", color: "#777788", letterSpacing: 4 }}>●●●●</div>
             )}
           </div>
-          <div style={{ fontSize: 7, color: "#555566", textAlign: "center", marginBottom: 12 }}>
-            Shielded via MagicBlock Private Ephemeral Rollup · Intel TDX
-          </div>
+          {balance !== null && balance <= 0 && (
+            <button
+              onClick={() => { pickedTabRef.current = true; setActiveTab("deposit"); }}
+              style={{ display: "block", width: "100%", background: `${FUCHSIA}18`, border: `1px dashed ${FUCHSIA}`, color: FUCHSIA, borderRadius: 8, padding: "8px 0", marginBottom: 10, cursor: "pointer", fontFamily: '"Press Start 2P", monospace', fontSize: 7 }}
+            >
+              EMPTY: DEPOSIT FIRST (STEP 1) ▸
+            </button>
+          )}
           {error && <div style={{ fontSize: 8, color: "#ff4444", marginBottom: 8, textAlign: "center" }}>{error}</div>}
           <div style={{ display: "flex", gap: 8 }}>
             <button
@@ -991,9 +1010,6 @@ function PrivatePaymentPanel({ onClose }: { onClose: () => void }) {
       {/* Deposit tab */}
       {activeTab === "deposit" && (
         <>
-          <div style={{ fontSize: 8, color: "#777788", marginBottom: 12, lineHeight: 1.6 }}>
-            Deposit USDC from your wallet into the Private Ephemeral Rollup to enable shielded transfers.
-          </div>
           <InputBox label="Amount to deposit (USDC)">
             <input
               type="text"
@@ -1021,9 +1037,6 @@ function PrivatePaymentPanel({ onClose }: { onClose: () => void }) {
       {/* Withdraw tab */}
       {activeTab === "withdraw" && (
         <>
-          <div style={{ fontSize: 8, color: "#777788", marginBottom: 12, lineHeight: 1.6 }}>
-            Withdraw USDC from your Private Ephemeral Rollup balance back to your wallet.
-          </div>
           <InputBox label="Amount to withdraw (USDC)">
             <input
               type="text"
@@ -1091,6 +1104,132 @@ function ClusterToggle({ cluster, onChange, disabled }: {
         ))}
       </div>
     </div>
+  );
+}
+
+
+// ── Private payments: the flow as a picture ─────────────────────────────
+
+type PrivateStep = "deposit" | "send" | "withdraw";
+
+const PRIVATE_STEPS: Array<{ id: PrivateStep; num: number; label: string; line: string }> = [
+  { id: "deposit",  num: 1, label: "DEPOSIT",  line: "Move USDC from your wallet into your private account." },
+  { id: "send",     num: 2, label: "SEND",     line: "Send from the private account. Nobody sees who got what." },
+  { id: "withdraw", num: 3, label: "WITHDRAW", line: "Bring USDC back to your wallet anytime." },
+];
+
+const PRIVATE_INTRO_KEY = "solcity:private-intro-seen";
+
+/**
+ * Wallet -> private account -> friend, with the withdraw loop back underneath.
+ * The active step's arrow is lit and a coin travels along it. Each arrow and
+ * its label is also the button for that step, so this doubles as the tabs.
+ */
+function PrivateFlow({ active, onPick, big }: {
+  active: PrivateStep; onPick?: (s: PrivateStep) => void; big?: boolean;
+}) {
+  const F = "#c026d3";
+  const paths: Record<PrivateStep, string> = {
+    deposit: "M 84 62 L 126 62",
+    send: "M 194 62 L 236 62",
+    withdraw: "M 160 112 Q 160 134 105 134 Q 50 134 50 112",
+  };
+  const labelPos: Record<PrivateStep, { x: number; y: number }> = {
+    deposit: { x: 105, y: 16 },
+    send: { x: 215, y: 16 },
+    withdraw: { x: 105, y: 150 },
+  };
+  const node = (x: number, label: string, glyph: string, glow: boolean) => (
+    <g>
+      <rect x={x - 30} y={34} width={60} height={56} rx={10}
+        fill={glow ? "#2a0f33" : "#12122a"} stroke={glow ? F : "#2a2a45"} strokeWidth={glow ? 2 : 1} />
+      <text x={x} y={70} textAnchor="middle" fontSize={26}>{glyph}</text>
+      <text x={x} y={104} textAnchor="middle" fontSize={7} fill={glow ? "#f5d0fe" : "#8b8ba7"}
+        fontFamily='"Press Start 2P", monospace'>{label}</text>
+    </g>
+  );
+  return (
+    <svg viewBox="0 0 320 160" style={{ width: "100%", height: "auto", display: "block", marginBottom: big ? 4 : 10 }}>
+      <defs>
+        <marker id="pf-arrow-on" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill={F} />
+        </marker>
+        <marker id="pf-arrow-off" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="#3a3a55" />
+        </marker>
+      </defs>
+
+      {node(50, "WALLET", "👛", active === "withdraw")}
+      {node(160, "PRIVATE", "🔒", true)}
+      {node(270, "FRIEND", "👤", active === "send")}
+
+      {PRIVATE_STEPS.map((st) => {
+        const on = st.id === active;
+        const lp = labelPos[st.id];
+        return (
+          <g key={st.id} onClick={onPick ? () => onPick(st.id) : undefined} style={{ cursor: onPick ? "pointer" : "default" }}>
+            <path d={paths[st.id]} fill="none" stroke="transparent" strokeWidth={22} />
+            <path d={paths[st.id]} fill="none" stroke={on ? F : "#3a3a55"} strokeWidth={on ? 3 : 2}
+              strokeDasharray={on ? "6 4" : undefined} markerEnd={`url(#pf-arrow-${on ? "on" : "off"})`}>
+              {on && <animate attributeName="stroke-dashoffset" from="20" to="0" dur="0.8s" repeatCount="indefinite" />}
+            </path>
+            {on && (
+              <circle r={5} fill="#FFD700" stroke="#7a5b00" strokeWidth={1}>
+                <animateMotion dur="1.4s" repeatCount="indefinite" path={paths[st.id]} />
+              </circle>
+            )}
+            {st.id !== "withdraw" && (
+              <line x1={lp.x} y1={lp.y + 5} x2={lp.x} y2={56} stroke={on ? F : "#2a2a45"} strokeWidth={1} />
+            )}
+            <rect x={lp.x - 34} y={lp.y - 9} width={68} height={14} rx={7}
+              fill={on ? F : "#0d0d22"} stroke={on ? F : "#2a2a45"} />
+            <text x={lp.x} y={lp.y + 1.5} textAnchor="middle" fontSize={6.5}
+              fill={on ? "#fff" : "#8b8ba7"} fontFamily='"Press Start 2P", monospace'>
+              {st.num} {st.label}
+            </text>
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
+
+/** First visit: the three steps as cards, one at a time. */
+function PrivateIntro({ onDone }: { onDone: () => void }) {
+  const [i, setI] = useState(0);
+  const step = PRIVATE_STEPS[i];
+  const last = i === PRIVATE_STEPS.length - 1;
+  const F = "#c026d3";
+  return (
+    <>
+      <div style={{ display: "flex", alignItems: "center", marginBottom: 10 }}>
+        <h3 style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 8, color: F, margin: 0 }}>HOW PRIVATE TRANSFERS WORK</h3>
+        <span style={{ marginLeft: "auto", marginRight: 26, fontSize: 7, color: "#555566" }}>{i + 1}/{PRIVATE_STEPS.length}</span>
+      </div>
+      <PrivateFlow active={step.id} big />
+      <div style={{ textAlign: "center", fontSize: 9, color: "#fff", margin: "6px 0 6px" }}>
+        {step.num}. {step.label}
+      </div>
+      <div style={{ textAlign: "center", fontSize: 8, color: "#b9b9cc", lineHeight: 1.7, minHeight: "3.4em", marginBottom: 12 }}>
+        {step.line}
+      </div>
+      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        <button
+          onClick={() => setI((n) => Math.max(0, n - 1))}
+          style={{ background: "transparent", border: "1px solid #333344", color: "#888899", borderRadius: 8, padding: "9px 12px", cursor: "pointer", fontFamily: '"Press Start 2P", monospace', fontSize: 7, visibility: i === 0 ? "hidden" : "visible" }}
+        >
+          BACK
+        </button>
+        <div style={{ flex: 1, display: "flex", justifyContent: "center", gap: 5 }}>
+          {PRIVATE_STEPS.map((s, n) => (
+            <span key={s.id} style={{ width: n === i ? 16 : 6, height: 6, borderRadius: 3, background: n === i ? F : "#333344", transition: "width .2s" }} />
+          ))}
+        </div>
+        <button onClick={() => (last ? onDone() : setI((n) => n + 1))} style={btnStyle(F, "#fff")} className="px-4 py-2.5">
+          {last ? "START" : "NEXT"}
+        </button>
+      </div>
+    </>
   );
 }
 
