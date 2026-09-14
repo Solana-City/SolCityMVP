@@ -168,6 +168,38 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
     whiteSpace: "nowrap",
   };
 
+  /** Picture cards for the NPC, on the last line once it has typed out. */
+  const Highlights = ({ compact }: { compact?: boolean }) =>
+    npc.highlights && npc.highlights.length > 0 && isLastLine && doneTyping ? (
+      <div style={{ display: "flex", gap: compact ? 6 : 10, margin: compact ? "0 0 10px" : "0 16px 14px", justifyContent: "flex-start" }}>
+        {npc.highlights.map((h) => (
+          <div key={h.label} style={{
+            display: "flex", alignItems: "center", gap: 6, padding: compact ? "4px 7px 4px 4px" : "6px 10px 6px 6px",
+            borderRadius: 8, background: `${color}14`, border: `1px solid ${color}44`, minWidth: 0,
+          }}>
+            <span style={{
+              width: compact ? 24 : 30, height: compact ? 24 : 30, flexShrink: 0, borderRadius: 6,
+              display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.25)", overflow: "hidden",
+            }}>
+              {h.sheet ? (
+                <span aria-hidden style={{
+                  width: compact ? 24 : 30, height: compact ? 24 : 30, display: "block",
+                  backgroundImage: `url("/assets/sprites/${h.sheet}")`,
+                  backgroundSize: `${(compact ? 24 : 30) * 4.4}px`, backgroundPosition: `${-(compact ? 24 : 30) * 0.2}px ${-(compact ? 24 : 30) * 0.06}px`,
+                  imageRendering: "pixelated",
+                }} />
+              ) : (
+                <img src={h.img} alt="" draggable={false} style={{ maxWidth: "88%", maxHeight: "88%", imageRendering: "pixelated" }} />
+              )}
+            </span>
+            <span style={{ fontFamily: '"Press Start 2P", monospace', fontSize: compact ? 6 : 7, color: "#d0d0e8", whiteSpace: "nowrap" }}>
+              {h.label}
+            </span>
+          </div>
+        ))}
+      </div>
+    ) : null;
+
   /** Dot row showing progress through dialog lines */
   const Dots = () => (
     <div style={{ display: "flex", gap: 5, alignItems: "center" }}>
@@ -264,6 +296,8 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
             <span style={{ opacity: 0.5, animation: "cursorBlink 0.7s step-end infinite" }}>▌</span>
           )}
         </p>
+
+        <Highlights compact />
 
         {/* Footer: progress dots + continue hint / action button */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -414,6 +448,8 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
               <span style={{ opacity: 0.5, animation: "cursorBlink 0.7s step-end infinite" }}>▌</span>
             )}
           </p>
+
+          <Highlights />
 
           {/* Footer */}
           <div style={{

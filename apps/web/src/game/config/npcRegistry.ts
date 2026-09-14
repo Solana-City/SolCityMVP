@@ -6,8 +6,22 @@ export interface NPCAction {
   orderType?: "sushi";
 }
 
+/** A picture + a word or two, shown on an NPC's last dialog line. */
+export interface NPCHighlight {
+  /** Image under /public, e.g. "/assets/minigames/kite/kites/kite_stb.png". */
+  img?: string;
+  /** Or a 256x256 character sheet in /assets/sprites (frame 0 is used). */
+  sheet?: string;
+  label: string;
+}
+
 export interface NPCDefinition {
   id: string;
+  /**
+   * Up to three picture cards shown with the last dialog line, so what the
+   * NPC is about reads at a glance instead of in a paragraph.
+   */
+  highlights?: NPCHighlight[];
   name: string;
   role: string;
   tileX: number;
@@ -240,8 +254,7 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     color: 0xd2833c,
     dialog: [
       "Woof!",
-      "The caramel dog sniffs your shoes, decides you are alright, and wags its tail.",
-      "It trots a few steps down the beach, then looks back to check you are still watching.",
+      "The caramel dog wags its tail and trots down the beach.",
     ],
     action: { type: "placeholder", label: "Pet the dog" },
     spriteKey: "avatar-caramel-dog",
@@ -261,9 +274,13 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     tileY: 87,
     color: 0xffd700,
     dialog: [
-      "Hello, I'm Kuka. The Lead of Superteam Brazil.",
-      "Past year Brazil won 2 prizes on the Cypherpunk Hackathon. We are making our part to get even more Brazilians on Solana.",
-      "We are now hosting iRL and online sessions for Brazilian builders at The Garage, our Build Station with workshops and prep activities. Join us!",
+      "Hi, I'm Kuka, lead of Superteam Brazil!",
+      "We help Brazilian builders win on Solana. Join our workshops at The Garage!",
+    ],
+    highlights: [
+      { img: "/assets/minigames/kite/kites/kite_stb.png", label: "SUPERTEAM BR" },
+      { img: "/assets/minigames/sol-mechs/ui/win-trophy.png", label: "HACKATHON WINS" },
+      { img: "/assets/ui/ico_tasks.png", label: "WORKSHOPS" },
     ],
     action: { type: "link", label: "Follow @superteamBR", url: "https://x.com/superteamBR" },
     spriteKey: "Kuka",
@@ -278,9 +295,13 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     tileY: 45,
     color: 0x7c3aed,
     dialog: [
-      "Hello! I'm BK, the leader of Indies on Solana. A community initiative by the Indies for the Indies.",
-      "Do you like games? There are lots of fun games being developed on Solana right now.",
-      "On Indies on Solana, Season 2 will start soon. Registrations are open!",
+      "Hi, I'm BK from Indies on Solana!",
+      "We help indie devs build games on Solana. Season 2 sign-ups are open!",
+    ],
+    highlights: [
+      { img: "/assets/ui/controller.png", label: "INDIE GAMES" },
+      { sheet: "BK.png", label: "BY INDIES" },
+      { img: "/assets/minigames/sol-mechs/ui/win-trophy.png", label: "SEASON 2" },
     ],
     action: { type: "link", label: "Visit Indies on Solana", url: "https://indiesonsolana.com/" },
     spriteKey: "BK",
@@ -295,9 +316,13 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     tileY: 31,
     color: 0xffd700,
     dialog: [
-      "Hey bro! Do you know MonkeDAO? I'm Bananas about it. That's why they call me MR. Bananas.",
-      "We empower our members to leverage each other's expertise, driving collective success.",
-      "If you're passionate about shaping the future of social organizations, we want you to be part of our journey!",
+      "Hey bro! I'm Mr. Bananas, and I'm bananas about MonkeDAO.",
+      "Members help each other grow. Come join the community!",
+    ],
+    highlights: [
+      { sheet: "Mr. Bananas.png", label: "MONKEDAO" },
+      { img: "/assets/ui/ico_chat.png", label: "COMMUNITY" },
+      { img: "/assets/ui/ico_achievements.png", label: "GROW TOGETHER" },
     ],
     action: { type: "link", label: "Visit MonkeDAO", url: "https://monkedao.io/" },
     spriteKey: "Mr. Bananas",
