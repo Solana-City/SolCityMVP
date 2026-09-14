@@ -36,6 +36,18 @@ export interface RenderUnits {
   p2: MechUnit;
 }
 
+/**
+ * Parts marked on a mech while a move is being chosen: every slot it could
+ * hit, and the one under the pointer (or already committed) as `hot`.
+ */
+export interface Targeting {
+  side: PlayerSide;
+  slots: ModuleSlot[];
+  hot: ModuleSlot | null;
+  /** Bracket colour: red for an attack, teal for your own part. */
+  color: string;
+}
+
 export const CANVAS_W = 900;
 /**
  * Unity's aspect, not the art's.
@@ -171,6 +183,7 @@ export class BattleRenderer {
   /** performance.now() when the current sequence hands input back. */
   private busyUntil = 0;
   private arena = new Image();
+  private targeting: Targeting | null = null;
 
   /**
    * Live canvas size, tracking the element.
@@ -305,6 +318,34 @@ export class BattleRenderer {
 
   setState(state: RenderUnits): void {
     this.state = state;
+  }
+
+  setTargeting(t: Targeting | null): void {
+    this.targeting = t;
+  }
+
+  /**
+   * The slot (among `slots`) whose part is nearest a pointer position, if it
+   * is close enough to count as pointing at it. Lets a player click the part
+   * on the mech itself instead of its button.
+   */
+  slotAt(side: PlayerSide, slots: ModuleSlot[], clientX: number, clientY: number): ModuleSlot | null {
+    const r = this.canvas.getBoundingClientRect();
+    const x = clientX - r.left;
+    const y = clientY - r.top;
+    const reach = this.partRadius() * 1.7;
+    let best: { slot: ModuleSlot; d: number } | null = null;
+    for (const slot of slots) {
+      const a = this.anchorOf(side, slot);
+      const d = Math.hypot(a.x - x, a.y - y);
+      if (d <= reach && (!best || d < best.d)) best = { slot, d };
+    }
+    return best?.slot ?? null;
+  }
+
+  /** Half-size of a part's bracket, in canvas px. */
+  private partRadius(): number {
+    return Math.max(10, 15 * this.scale);
   }
 
   /** True while a sequence is still playing — the UI gates input on this. */
@@ -544,6 +585,7 @@ export class BattleRenderer {
     ctx.translate(sx, sy);
 
     for (const side of ["p1", "p2"] as PlayerSide[]) this.drawSide(ctx, side, now);
+    this.drawTargeting(ctx, now);
     this.drawFx(ctx, now);
     this.drawBadges(ctx, now);
     this.drawFloaters(ctx, now);
@@ -652,6 +694,54 @@ export class BattleRenderer {
       ctx.fillText(unit.matrix.matrixName, baseX + this.mechW / 2, y + this.mechH / 2);
       ctx.restore();
     }
+  }
+
+  /**
+   * Corner brackets on each part the pending move can reach; the hot part gets
+   * a pulsing, filled lock-on so the player sees exactly what they will hit.
+   */
+  private drawTargeting(ctx: CanvasRenderingContext2D, now: number): void {
+    const t = this.targeting;
+    if (!t) return;
+    const base = this.partRadius();
+    const pulse = (Math.sin(now / 140) + 1) / 2;
+    ctx.save();
+    ctx.lineCap = "square";
+    for (const slot of t.slots) {
+      const hot = slot === t.hot;
+      const a = this.anchorOf(t.side, slot);
+      const r = hot ? base * (1.05 + pulse * 0.12) : base;
+      const arm = r * 0.55;
+      if (hot) {
+        ctx.fillStyle = t.color;
+        ctx.globalAlpha = 0.18 + pulse * 0.12;
+        ctx.fillRect(a.x - r, a.y - r, r * 2, r * 2);
+      }
+      ctx.globalAlpha = hot ? 1 : 0.55 + pulse * 0.2;
+      ctx.lineWidth = hot ? 3 : 2;
+      // Dark underline first so the bracket reads on bright armour.
+      for (const [stroke, width] of [["rgba(0,0,0,0.75)", ctx.lineWidth + 2], [t.color, ctx.lineWidth]] as const) {
+        ctx.strokeStyle = stroke;
+        ctx.lineWidth = width;
+        ctx.beginPath();
+        for (const [sx, sy] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
+          const cx = a.x + sx * r;
+          const cy = a.y + sy * r;
+          ctx.moveTo(cx, cy - sy * arm);
+          ctx.lineTo(cx, cy);
+          ctx.lineTo(cx - sx * arm, cy);
+        }
+        ctx.stroke();
+      }
+      if (hot) {
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = t.color;
+        ctx.beginPath();
+        ctx.arc(a.x, a.y, Math.max(2.5, r * 0.14), 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    ctx.restore();
   }
 
   private drawFx(ctx: CanvasRenderingContext2D, now: number): void {

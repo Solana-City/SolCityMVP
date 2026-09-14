@@ -94,7 +94,7 @@ function Portrait({ unit, active }: { unit: MechUnit; active: boolean }) {
 }
 
 /** Head and shoulders of the assembled mech, drawn once its art has decoded. */
-function Bust({ build }: { build: MechBuild }) {
+export function Bust({ build, size = SIZE }: { build: MechBuild; size?: number }) {
   const ref = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
     preloadBuild(build);
@@ -126,9 +126,9 @@ function Bust({ build }: { build: MechBuild }) {
   return (
     <canvas
       ref={ref}
-      width={SIZE * 2}
-      height={SIZE * 2}
-      style={{ width: SIZE, height: SIZE, imageRendering: "pixelated", display: "block" }}
+      width={size * 2}
+      height={size * 2}
+      style={{ width: size, height: size, imageRendering: "pixelated", display: "block", flexShrink: 0 }}
     />
   );
 }

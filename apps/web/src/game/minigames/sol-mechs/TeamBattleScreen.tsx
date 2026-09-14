@@ -17,14 +17,18 @@ import {
 } from "@/game/solmechs/engine/BattleEngine";
 import type { SquadOpponent } from "@/game/solmechs/opponent/SquadOpponent";
 import type { PlayerSide } from "@/game/solmechs/engine/BattleEngine";
-import { BattleRenderer, splitIntoBeats, CANVAS_W, CANVAS_H } from "@/game/solmechs/render/BattleRenderer";
+import { BattleRenderer, splitIntoBeats, CANVAS_W, CANVAS_H, type Targeting } from "@/game/solmechs/render/BattleRenderer";
 import { preloadBuild } from "@/game/solmechs/render/paperDoll";
 import type { TeamBuild } from "@/game/solmechs/data/team";
 import type { ModuleSlot, MoveDefinition } from "@/game/solmechs/data/types";
 import { BattleLog } from "./BattleLog";
 import { useChessClock } from "./ClockBar";
 import { UnitPanel } from "./BattleHud";
-import { SquadPortraits } from "./SquadPortraits";
+import { SquadPortraits, Bust } from "./SquadPortraits";
+import {
+  CategoryTile, MoveBadge, MOVE_CATEGORY, SLOT_ICON, Sprite,
+  damageTypeIcon, moveCategory, statIcon,
+} from "./moveInfo";
 import { SQUAD_CLOCK, formatClock } from "@/game/solmechs/data/clock";
 import { C, T, SP, R, W, PANEL_HEIGHT, actionButton, frame, DISPLAY } from "./theme";
 
@@ -75,6 +79,16 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, opponent, onFi
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const hudLeftRef = useRef<HTMLDivElement>(null);
   const hudRightRef = useRef<HTMLDivElement>(null);
+  const stageRef = useRef<HTMLDivElement>(null);
+  /** A narrow arena (a phone in landscape) gets the icon-only strip. */
+  const [narrowStage, setNarrowStage] = useState(false);
+  useEffect(() => {
+    const el = stageRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => setNarrowStage(el.getBoundingClientRect().width < 680));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
   const rendererRef = useRef<BattleRenderer | null>(null);
   const stateRef = useRef<TeamBattleState | null>(null);
 
@@ -92,6 +106,12 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, opponent, onFi
   const [log, setLog] = useState<string[]>(["Squad battle: 3 v 3."]);
   const [pending, setPending] = useState<{ slot: Exclude<ModuleSlot, "matrix">; moveIndex: number } | null>(null);
   const [picking, setPicking] = useState(false);
+  /** Move under the pointer in the action list, previewed before it is picked. */
+  const [hoverMove, setHoverMove] = useState<{ slot: Exclude<ModuleSlot, "matrix">; moveIndex: number } | null>(null);
+  /** Part under the pointer while choosing a target (button or the mech itself). */
+  const [hoverTarget, setHoverTarget] = useState<ModuleSlot | null>(null);
+  /** The part just committed to, kept marked while the round plays. */
+  const [locked, setLocked] = useState<{ side: PlayerSide; slot: ModuleSlot; self: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
   /** True while the renderer is mid-sequence; blocks input and the rival. */
   const [animating, setAnimating] = useState(false);
@@ -346,12 +366,72 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, opponent, onFi
   const offTarget = (slot: ModuleSlot) => !pendingSelf && !targets.includes(slot);
   const pendingUnit = pendingSelf ? me : foe;
   const bench = switchableIndices(state.p1);
+  /** Both arms gone: nothing left that deals damage. */
+  const armsDown = me.partStatuses.rightArm.currentHP <= 0 && me.partStatuses.leftArm.currentHP <= 0;
+
+  const commitMove = useCallback((slot: ModuleSlot) => {
+    if (!pending) return;
+    const self = me.parts[pending.slot].moves[pending.moveIndex]?.targetType === "self";
+    setLocked({ side: self ? "p1" : "p2", slot, self });
+    submitRound({ kind: "move", side: "p1", sourceSlot: pending.slot, moveIndex: pending.moveIndex, targetSlot: slot });
+    setPending(null);
+    setHoverTarget(null);
+    setHoverMove(null);
+  }, [pending, me, submitRound]);
+
+  // Release the lock-on once the round has played and input is back.
+  useEffect(() => { if (canAct) setLocked(null); }, [canAct]);
+  useEffect(() => { if (!pending) setHoverTarget(null); }, [pending]);
+
+  // What the arena marks: the pending move's reachable parts (hot one under
+  // the pointer), a hovered move's reach as a preview, or the locked target.
+  const targeting: Targeting | null = useMemo(() => {
+    const RED = "#ff5468";
+    if (pending && pendingMove) {
+      const slots = pendingSelf ? selfTargets : targets;
+      return { side: pendingSelf ? "p1" : "p2", slots, hot: hoverTarget, color: pendingSelf ? C.teal : RED };
+    }
+    if (locked) return { side: locked.side, slots: [locked.slot], hot: locked.slot, color: locked.self ? C.teal : RED };
+    if (hoverMove && canAct) {
+      const m = me.parts[hoverMove.slot].moves[hoverMove.moveIndex];
+      if (!m) return null;
+      const self = m.targetType === "self";
+      return { side: self ? "p1" : "p2", slots: self ? selfTargets : targets, hot: null, color: self ? C.teal : RED };
+    }
+    return null;
+  }, [pending, pendingMove, pendingSelf, selfTargets, targets, hoverTarget, locked, hoverMove, canAct, me]);
+
+  useEffect(() => { rendererRef.current?.setTargeting(targeting); }, [targeting]);
+
+  /** Pointer over the arena while choosing: point at a part to aim, click to commit. */
+  const aimSlots = pending ? (pendingSelf ? selfTargets : targets) : [];
+  const onArenaMove = (e: React.PointerEvent) => {
+    if (!pending || !canAct) return;
+    const slot = rendererRef.current?.slotAt(pendingSelf ? "p1" : "p2", aimSlots, e.clientX, e.clientY) ?? null;
+    if (slot !== hoverTarget) setHoverTarget(slot);
+  };
+  const onArenaClick = (e: React.PointerEvent) => {
+    if (!pending || !canAct) return;
+    const slot = rendererRef.current?.slotAt(pendingSelf ? "p1" : "p2", aimSlots, e.clientX, e.clientY) ?? null;
+    if (slot) commitMove(slot);
+  };
+
+  // The move the info strip describes: the one being aimed, else the hovered one.
+  const infoMove = pending
+    ? { slot: pending.slot, move: pendingMove }
+    : hoverMove && canAct
+      ? { slot: hoverMove.slot, move: me.parts[hoverMove.slot].moves[hoverMove.moveIndex] ?? null }
+      : null;
 
   const finished = state.status.kind === "finished";
   const won = finished && state.status.kind === "finished" && state.status.winner === "p1";
 
   return (
     <div style={sx.backdrop}>
+      <style>{`
+        @keyframes sm-pulse-kf { 0%, 100% { box-shadow: 0 0 0 0 rgba(95,160,255,.7); } 50% { box-shadow: 0 0 0 6px rgba(95,160,255,0); } }
+        .sm-pulse { animation: sm-pulse-kf 1.2s ease-out infinite; }
+      `}</style>
       <div style={sx.frame}>
         {/* One line: the squads ride in the header rather than a row of their
             own, and the arena gets that height back. */}
@@ -366,13 +446,23 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, opponent, onFi
         {/* Same arrangement as the 1v1: the arena is the backdrop and the two
             HUDs sit over its top corners. See BattleHud for the measurements. */}
         <div style={sx.stageWrap}>
-        <div style={sx.stage}>
+        <div ref={stageRef} style={sx.stage}>
           <canvas
             ref={canvasRef}
             width={CANVAS_W}
             height={CANVAS_H}
-            style={sx.canvas}
+            onPointerMove={onArenaMove}
+            onPointerLeave={() => pending && setHoverTarget(null)}
+            onPointerUp={onArenaClick}
+            style={{ ...sx.canvas, cursor: pending && hoverTarget ? "crosshair" : "default" }}
           />
+          {/* One fixed-height strip over the arena floor: the move being looked
+              at, as icons, or what to do when both arms are gone. */}
+          {!finished && (infoMove?.move ? (
+            <MoveInfoStrip move={infoMove.move} fromSlot={infoMove.slot} aiming={!!pending} compact={narrowStage} />
+          ) : canAct && armsDown ? (
+            <ArmsDownStrip canSwap={bench.length > 0} compact={narrowStage} />
+          ) : null)}
           <div ref={hudLeftRef} style={sx.hudLeft}>
             <UnitPanel
               unit={me}
@@ -409,8 +499,7 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, opponent, onFi
               <div style={sx.btnRow}>
                 {bench.map((i) => (
                   <button key={i} onClick={() => submitForced(i)} style={sx.btn}>
-                    <div style={sx.btnTitle}>#{i + 1} {state.p1.units[i].matrix.matrixName}</div>
-                    <div style={sx.btnSub}>Matrix {state.p1.units[i].partStatuses.matrix.currentHP}</div>
+                    <BenchLabel unit={state.p1.units[i]} />
                   </button>
                 ))}
               </div>
@@ -442,8 +531,7 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, opponent, onFi
                     }}
                     style={sx.btn}
                   >
-                    <div style={sx.btnTitle}>#{i + 1} {state.p1.units[i].matrix.matrixName}</div>
-                    <div style={sx.btnSub}>Matrix {state.p1.units[i].partStatuses.matrix.currentHP}</div>
+                    <BenchLabel unit={state.p1.units[i]} />
                   </button>
                 ))}
               </div>
@@ -452,9 +540,8 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, opponent, onFi
             <>
               <div style={sx.promptRow}>
                 <span style={sx.promptText}>
-                  {pendingSelf ? "Apply " : "Target for "}
-                  {pendingMove?.name}
-                  {pendingSelf ? " to which part?" : ""}
+                  {pendingSelf ? "Pick your part" : "Pick a part to hit"}
+                  <span style={{ color: C.faint }}> · or click it on the mech</span>
                 </span>
                 {pendingTargets.some(offTarget) && (
                   <span style={sx.hint}>Dimmed parts only land if {opponent.name} switches mechs.</span>
@@ -465,10 +552,9 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, opponent, onFi
                 {pendingTargets.map((slot) => (
                   <button
                     key={slot}
-                    onClick={() => {
-                      submitRound({ kind: "move", side: "p1", sourceSlot: pending.slot, moveIndex: pending.moveIndex, targetSlot: slot });
-                      setPending(null);
-                    }}
+                    onClick={() => commitMove(slot)}
+                    onMouseEnter={() => setHoverTarget(offTarget(slot) ? null : slot)}
+                    onMouseLeave={() => setHoverTarget(null)}
                     style={{
                       ...sx.btn,
                       // Own mech reads blue, the rival's core red — so the two
@@ -478,6 +564,7 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, opponent, onFi
                       opacity: offTarget(slot) ? 0.62 : 1,
                     }}
                   >
+                    <Sprite src={SLOT_ICON[slot]} h={22} dim={offTarget(slot)} />
                     <div style={sx.btnTitle}>{SLOT_LABEL[slot]}</div>
                     {offTarget(slot) ? (
                       <div style={{ ...sx.btnSub, color: slot === "matrix" ? C.warn : C.bad, fontWeight: 700 }}>
@@ -499,17 +586,25 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, opponent, onFi
                     key={`${o.slot}-${o.moveIndex}`}
                     // Self-targeting moves go through the same picker now, so
                     // the part being buffed is chosen rather than assumed.
-                    onClick={() => setPending({ slot: o.slot, moveIndex: o.moveIndex })}
+                    onClick={() => { setPending({ slot: o.slot, moveIndex: o.moveIndex }); setHoverMove(null); }}
+                    onMouseEnter={() => setHoverMove({ slot: o.slot, moveIndex: o.moveIndex })}
+                    onMouseLeave={() => setHoverMove(null)}
+                    onFocus={() => setHoverMove({ slot: o.slot, moveIndex: o.moveIndex })}
+                    onBlur={() => setHoverMove(null)}
                     style={sx.btn}
                   >
-                    <div style={sx.btnTitle}>{o.move.name}</div>
-                    <div style={sx.btnSub}>
-                      {SLOT_LABEL[o.slot]} · {o.move.baseDamage > 0 ? `${o.move.baseDamage} ${o.move.damageType}` : o.move.effect || "Effect"}
-                    </div>
+                    <CategoryTile m={o.move} size={24} />
+                    <div style={{ ...sx.btnTitle, flexShrink: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>{o.move.name}</div>
+                    <MoveBadge m={o.move} />
                   </button>
                 ))}
                 {bench.length > 0 && (
-                  <button onClick={() => setPicking(true)} style={{ ...sx.btn, borderColor: C.blue }}>
+                  <button
+                    onClick={() => setPicking(true)}
+                    className={armsDown ? "sm-pulse" : undefined}
+                    style={{ ...sx.btn, borderColor: C.blue }}
+                  >
+                    <Bust build={state.p1.units[bench[0]].build} size={24} />
                     <div style={{ ...sx.btnTitle, color: C.blue }}>SUBSTITUTE</div>
                     {/* Reads the live rule rather than asserting one, so the
                         label can't lie if the default is changed. */}
@@ -559,6 +654,140 @@ function ResultCard({ won, actions, onLeave }: {
         <div style={sx.resultMeta}>{actions} {actions === 1 ? "action" : "actions"}</div>
         <button onClick={onLeave} style={sx.btnPrimary}>LEAVE</button>
       </div>
+    </div>
+  );
+}
+
+/** A reserve on a swap button: its portrait, name and core HP bar. */
+function BenchLabel({ unit }: { unit: import("@/game/solmechs/data/types").MechUnit }) {
+  const hp = unit.matrixMaxHP > 0 ? Math.max(0, unit.matrixHP / unit.matrixMaxHP) : 0;
+  return (
+    <>
+      <Bust build={unit.build} size={26} />
+      <div style={{ ...sx.btnTitle, flexShrink: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>
+        {unit.matrix.matrixName}
+      </div>
+      <span style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
+        <Sprite src={SLOT_ICON.matrix} h={16} />
+        <span style={{ width: 34, height: 5, background: "#000", borderRadius: 2, overflow: "hidden" }}>
+          <span style={{ display: "block", width: `${hp * 100}%`, height: "100%", background: hp > 0.5 ? C.teal : hp > 0.2 ? C.warn : C.bad }} />
+        </span>
+      </span>
+    </>
+  );
+}
+
+const PART_WORD: Record<ModuleSlot, string> = {
+  rightArm: "R.ARM", leftArm: "L.ARM", lowerBody: "LEGS", matrix: "MATRIX",
+};
+
+/**
+ * The move being looked at, laid out as icons: category, damage and type,
+ * who it hits, and its stat rider. Fixed height and one line per cell, so
+ * swapping between moves never moves anything.
+ */
+function MoveInfoStrip({ move, fromSlot, aiming, compact }: {
+  move: import("@/game/solmechs/data/types").MoveDefinition; fromSlot: ModuleSlot; aiming: boolean; compact: boolean;
+}) {
+  const cat = MOVE_CATEGORY[moveCategory(move)];
+  const self = move.targetType === "self";
+  const mod = move.statModifiers[0];
+  if (compact) {
+    // Icons and numbers only: category, damage + type, rider, and whose part.
+    return (
+      <div style={{ ...sx.strip, ...sx.stripCompact, borderColor: `${cat.color}99` }}>
+        <Sprite src={cat.icon} h={20} />
+        {move.baseDamage > 0 && (
+          <span style={sx.stripCell}>
+            {damageTypeIcon(move) !== cat.icon && <Sprite src={damageTypeIcon(move)} h={18} />}
+            <span style={{ ...sx.stripNum, fontSize: 13 }}>{move.baseDamage}</span>
+          </span>
+        )}
+        {mod && (
+          <span style={sx.stripCell}>
+            <Sprite src={statIcon(mod.stat, mod.amount > 0)} h={18} />
+            <span style={{ ...sx.stripNum, fontSize: 13, color: mod.amount > 0 ? C.teal : C.bad }}>
+              {mod.amount > 0 ? "+" : ""}{mod.amount}
+            </span>
+          </span>
+        )}
+        <span style={{ ...sx.stripKey, marginLeft: "auto", color: self ? C.teal : "#ff5468" }}>{self ? "YOURS" : "RIVAL"}</span>
+      </div>
+    );
+  }
+  return (
+    <div style={{ ...sx.strip, borderColor: `${cat.color}99` }}>
+      <span style={{ ...sx.stripCell, color: cat.color }}>
+        <Sprite src={cat.icon} h={26} />
+        <span style={{ ...sx.stripKey, color: cat.color }}>{cat.label}</span>
+      </span>
+      <span style={{ ...sx.stripCell, flex: "1 1 auto", minWidth: 0 }}>
+        <span style={{ ...sx.stripName }}>{move.name}</span>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 3, flexShrink: 0, color: C.faint, fontSize: 10 }}>
+          <Sprite src={SLOT_ICON[fromSlot]} h={14} />{PART_WORD[fromSlot]}
+        </span>
+      </span>
+      {move.baseDamage > 0 && (
+        <span style={sx.stripCell}>
+          <Sprite src={damageTypeIcon(move)} h={24} />
+          <span style={sx.stripNum}>{move.baseDamage}</span>
+          <span style={sx.stripKey}>{move.damageType === "Energy" ? "ENG" : "PHY"}</span>
+        </span>
+      )}
+      {mod && (
+        <span style={sx.stripCell}>
+          <Sprite src={statIcon(mod.stat, mod.amount > 0)} h={24} />
+          <span style={{ ...sx.stripNum, color: mod.amount > 0 ? C.teal : C.bad }}>
+            {mod.amount > 0 ? "+" : ""}{mod.amount}
+          </span>
+          <span style={sx.stripKey}>{mod.stat}</span>
+        </span>
+      )}
+      <span style={{ ...sx.stripCell, color: self ? C.teal : "#ff5468" }}>
+        <span style={{ ...sx.stripKey, color: "inherit" }}>{aiming ? "AIM" : "HITS"}</span>
+        <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: 1 }}>{self ? "YOUR PART" : "RIVAL PART"}</span>
+      </span>
+    </div>
+  );
+}
+
+/** Both arms gone: the two ways out, as pictures. */
+function ArmsDownStrip({ canSwap, compact }: { canSwap: boolean; compact: boolean }) {
+  if (compact) {
+    return (
+      <div style={{ ...sx.strip, ...sx.stripCompact, borderColor: `${C.warn}aa` }}>
+        <Sprite src="/assets/minigames/sol-mechs/vfx/boom/3.png" h={20} />
+        <span style={{ ...sx.stripKey, color: C.warn }}>NO ARMS</span>
+        {canSwap && <span style={{ ...sx.stripKey, color: C.blue, marginLeft: "auto" }}>SWAP</span>}
+        {canSwap && <span style={{ ...sx.stripKey, color: C.faint }}>/</span>}
+        <span style={{ ...sx.stripCell, marginLeft: canSwap ? 0 : "auto" }}>
+          <Sprite src="/assets/minigames/sol-mechs/vfx/stat/DEF_Up.png" h={18} />
+          <Sprite src={SLOT_ICON.matrix} h={18} />
+        </span>
+      </div>
+    );
+  }
+  return (
+    <div style={{ ...sx.strip, borderColor: `${C.warn}aa` }}>
+      <span style={{ ...sx.stripCell, position: "relative" }}>
+        <Sprite src={SLOT_ICON.rightArm} h={24} dim />
+        <Sprite src={SLOT_ICON.leftArm} h={24} dim />
+        <Sprite src="/assets/minigames/sol-mechs/vfx/boom/3.png" h={22} style={{ marginLeft: -26 }} />
+        <span style={{ ...sx.stripKey, color: C.warn }}>ARMS DOWN</span>
+      </span>
+      {canSwap && (
+        <span style={sx.stripCell}>
+          <Sprite src="/assets/minigames/sol-mechs/ui/arrow-left.png" h={18} />
+          <Sprite src="/assets/minigames/sol-mechs/ui/arrow-right.png" h={18} />
+          <span style={{ fontSize: 11, fontWeight: 800, color: C.blue }}>SUBSTITUTE</span>
+        </span>
+      )}
+      {canSwap && <span style={{ ...sx.stripKey, color: C.faint }}>OR</span>}
+      <span style={sx.stripCell}>
+        <Sprite src="/assets/minigames/sol-mechs/vfx/stat/DEF_Up.png" h={22} />
+        <Sprite src={SLOT_ICON.matrix} h={22} />
+        <span style={{ fontSize: 11, fontWeight: 800, color: C.teal, whiteSpace: "nowrap" }}>BUFF YOUR MATRIX</span>
+      </span>
     </div>
   );
 }
@@ -687,6 +916,19 @@ const sx: Record<string, React.CSSProperties> = {
   },
   btnTitle: { fontSize: 12, fontWeight: 700, flexShrink: 0 },
   btnSub: { fontSize: 11, color: C.faint, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" },
+  /** Info strip over the arena floor. Fixed height, never wraps. */
+  strip: {
+    position: "absolute", left: "1.2%", right: "1.2%", bottom: "2.5%", height: 44, zIndex: 1,
+    display: "flex", alignItems: "center", gap: 14, padding: "0 12px",
+    background: "rgba(8,4,16,.88)", border: "1px solid", borderRadius: R.md,
+    boxShadow: "0 6px 20px rgba(0,0,0,.55)", overflow: "hidden", whiteSpace: "nowrap",
+    pointerEvents: "none",
+  },
+  stripCompact: { height: 30, gap: 8, padding: "0 8px", left: "3%", right: "3%" },
+  stripCell: { display: "inline-flex", alignItems: "center", gap: 6, flexShrink: 0, minWidth: 0 },
+  stripKey: { fontSize: 10, fontWeight: 800, letterSpacing: 1.5, color: C.dim },
+  stripName: { fontSize: 13, fontWeight: 800, color: C.text, overflow: "hidden", textOverflow: "ellipsis", minWidth: 0 },
+  stripNum: { fontFamily: "monospace", fontSize: 16, fontWeight: 800, color: C.text },
   hint: { fontSize: 11, color: C.faint, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0 },
   btnPrimary: {
     background: C.teal, border: "none", color: C.ink, borderRadius: 6,
