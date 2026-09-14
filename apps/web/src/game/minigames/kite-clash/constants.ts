@@ -43,16 +43,29 @@ export function windDragMultiplier(exposure: number): number {
 }
 
 // ── Cut-attempt probability model (Section 5b) ───────────────────────────────
-export const CUT_NEUTRAL_CHANCE = 0.35;
 export function cutSuccessChance(targetExposure: number): number {
   return clamp(0.15 + 0.35 * targetExposure, 0.15, 0.5);
 }
-export function resolveCutAttempt(targetExposure: number): "success" | "neutral" | "backfire" {
+/**
+ * Backfire depends on the ATTACKER's own exposure: cutting with a tight,
+ * reeled-in line is safe, cutting with lots of line out is a gamble. It
+ * used to be "whatever is left after success + a fixed neutral", which made
+ * a careful player's attempt on a reeled-in rival backfire 50% of the time
+ * per roll, with no way to tell why the run ended.
+ */
+export function cutBackfireChance(attackerExposure: number): number {
+  return clamp(0.04 + 0.26 * attackerExposure, 0.04, 0.3);
+}
+export function resolveCutAttempt(
+  targetExposure: number,
+  attackerExposure: number,
+): "success" | "neutral" | "backfire" {
   const successChance = cutSuccessChance(targetExposure);
+  const backfireChance = cutBackfireChance(attackerExposure);
   const roll = Math.random();
   if (roll < successChance) return "success";
-  if (roll < successChance + CUT_NEUTRAL_CHANCE) return "neutral";
-  return "backfire";
+  if (roll < successChance + backfireChance) return "backfire";
+  return "neutral";
 }
 /** Resolution ticks, not every frame — feels like discrete attempts. */
 export const CUT_RESOLUTION_INTERVAL_MS = 500;
@@ -68,6 +81,11 @@ export const CUT_DEPTH_TOLERANCE = 0.4;
 export const RIVAL_SPAWN_DELAY_MS = 4_000;
 export const RIVAL_RESPAWN_COOLDOWN_MS = 5_000;
 export const RIVAL_LINE_OSCILLATION_PERIOD_MS = 6_000;
+/** Sustained line crossing the rival needs before its cut roll fires.
+ *  Drawn as a red ring filling at the crossing point. */
+export const RIVAL_ATTACK_BUILDUP_MS = 3_000;
+/** Rival glide speed cap, so it never teleports across the sky. */
+export const RIVAL_MAX_SPEED_PX_PER_SEC = 260;
 export const RIVAL_SKIN_COLOR = "#FF6B35";
 export const PLAYER_SKIN_COLOR = "#9945FF";
 

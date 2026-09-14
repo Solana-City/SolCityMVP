@@ -15,6 +15,11 @@ export interface OpponentKiteState {
   skinColor: string;
   /** True for the brief window after a respawn/relaunch, before it's a valid cut target. */
   alive: boolean;
+  /** Where this kite's handler stands, 0..1 of the screen width. Fixed for
+   *  the kite's life so its line never jumps sides. */
+  anchorX: number;
+  /** 0..1 buildup of this opponent's cut attempt on the player's line. */
+  threat: number;
 }
 
 export type CutOutcome = "success" | "neutral" | "backfire";

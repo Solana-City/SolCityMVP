@@ -22,6 +22,16 @@ const WIND_FRAME_BASE: Record<EngineSnapshot["windTier"], number> = { LOW: 2, ME
  * crisp DOM text over a game canvas rather than canvas-drawn text.
  */
 const JOYSTICK_R = 48; // px
+const HOW_TO_PLAY_SEEN_KEY = "solcity.kiteClash.howToPlaySeen";
+
+function readHowToPlaySeen(): boolean {
+  try { return localStorage.getItem(HOW_TO_PLAY_SEEN_KEY) === "1"; } catch { return false; }
+}
+function markHowToPlaySeen(): void {
+  try { localStorage.setItem(HOW_TO_PLAY_SEEN_KEY, "1"); } catch { /* storage blocked */ }
+}
+
+const OUTLINE = "0 2px 0 #000, 2px 0 0 #000, -2px 0 0 #000, 0 -2px 0 #000";
 
 export default function KiteClashGame({ onResult, onClose }: MiniGameComponentProps<MiniGameBaseContext>) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -30,6 +40,17 @@ export default function KiteClashGame({ onResult, onClose }: MiniGameComponentPr
   const [snapshot, setSnapshot] = useState<EngineSnapshot | null>(null);
   const [isTouch, setIsTouch] = useState(false);
   const [windShimmer, setWindShimmer] = useState(false);
+  const [howToOpen, setHowToOpen] = useState(false);
+
+  const openHowTo = useCallback(() => {
+    setHowToOpen(true);
+    engineRef.current?.setBriefing(true);
+  }, []);
+  const closeHowTo = useCallback(() => {
+    markHowToPlaySeen();
+    setHowToOpen(false);
+    engineRef.current?.setBriefing(false);
+  }, []);
 
   useEffect(() => {
     const id = setInterval(() => setWindShimmer((v) => !v), 350);
@@ -91,6 +112,11 @@ export default function KiteClashGame({ onResult, onClose }: MiniGameComponentPr
       },
     });
     engineRef.current = engine;
+    // First visit: the run waits behind the how-to-play card.
+    if (!readHowToPlaySeen()) {
+      setHowToOpen(true);
+      engine.setBriefing(true);
+    }
     engine.start();
 
     const onResize = () => engine.resize();
@@ -104,11 +130,18 @@ export default function KiteClashGame({ onResult, onClose }: MiniGameComponentPr
 
   useEffect(() => {
     const onEsc = (e: KeyboardEvent) => {
+      if (howToOpen) {
+        if (e.key === "Escape" || e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          closeHowTo();
+        }
+        return;
+      }
       if (e.key === "Escape") onClose();
     };
     window.addEventListener("keydown", onEsc);
     return () => window.removeEventListener("keydown", onEsc);
-  }, [onClose]);
+  }, [onClose, howToOpen, closeHowTo]);
 
   const windFrame = Math.max(
     1,
@@ -226,7 +259,7 @@ export default function KiteClashGame({ onResult, onClose }: MiniGameComponentPr
       </div>
 
       {/* Center: READY! overlay */}
-      {snapshot?.phase === "ready" && (
+      {snapshot?.phase === "ready" && !howToOpen && !snapshot.briefing && (
         <div
           className="kc-ready"
           style={{
@@ -249,6 +282,25 @@ export default function KiteClashGame({ onResult, onClose }: MiniGameComponentPr
           >
             READY!
           </span>
+        </div>
+      )}
+
+      {/* Rival cut warning: mirrors the red ring at the crossing point */}
+      {snapshot?.phase === "playing" && snapshot.rivalThreat > 0 && (
+        <div
+          style={{
+            position: "absolute",
+            top: "22%",
+            left: "50%",
+            transform: "translateX(-50%)",
+            fontSize: 10,
+            color: "#ff5a5a",
+            textShadow: OUTLINE,
+            pointerEvents: "none",
+            whiteSpace: "nowrap",
+          }}
+        >
+          RIVAL IS CUTTING YOUR LINE! MOVE AWAY
         </div>
       )}
 
@@ -289,6 +341,25 @@ export default function KiteClashGame({ onResult, onClose }: MiniGameComponentPr
         }}
       >
         ESC to close
+      </button>
+      <button
+        onClick={openHowTo}
+        aria-label="How to play"
+        style={{
+          position: "absolute",
+          top: 14,
+          left: "calc(50% + 72px)",
+          background: "rgba(0,0,0,0.35)",
+          border: "1px solid rgba(255,255,255,0.2)",
+          color: "#cbd5e1",
+          fontFamily: '"Press Start 2P", monospace',
+          fontSize: 8,
+          borderRadius: 6,
+          padding: "4px 8px",
+          cursor: "pointer",
+        }}
+      >
+        ?
       </button>
 
       {/* Controls hint — desktop only (on mobile the touch buttons replace this) */}
@@ -386,6 +457,10 @@ export default function KiteClashGame({ onResult, onClose }: MiniGameComponentPr
         </div>
       )}
 
+      {howToOpen && (
+        <HowToPlayCard isTouch={isTouch} onStart={closeHowTo} />
+      )}
+
       {/* End screen */}
       {snapshot?.phase === "ended" && (
         <div
@@ -400,9 +475,14 @@ export default function KiteClashGame({ onResult, onClose }: MiniGameComponentPr
             background: "rgba(6,10,20,0.72)",
           }}
         >
-          <div style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 15, color: "#ff6b6b" }}>
-            LINE CUT!
+          <div style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 15, color: "#ff6b6b", textAlign: "center", padding: "0 16px" }}>
+            {snapshot.endReason?.title ?? "LINE CUT!"}
           </div>
+          {snapshot.endReason && (
+            <div style={{ fontSize: 9, color: "#cbd5e1", lineHeight: 1.8, maxWidth: 440, textAlign: "center", padding: "0 20px" }}>
+              {snapshot.endReason.detail}
+            </div>
+          )}
           <div style={{ fontSize: 10, color: "#e2e8f0" }}>
             Final score: <span style={{ color: "#FFD700" }}>{snapshot.score}</span>
           </div>
@@ -440,6 +520,102 @@ export default function KiteClashGame({ onResult, onClose }: MiniGameComponentPr
           </button>
         </div>
       )}
+    </div>
+  );
+}
+
+function HowToPlayCard({ isTouch, onStart }: { isTouch: boolean; onStart: () => void }) {
+  const rows: { key: string; text: string }[] = isTouch
+    ? [
+        { key: "JOYSTICK", text: "Steer your kite around the sky." },
+        { key: "HOLD REEL", text: "Reel your line in. Release to let it out: more line = more points, but riskier." },
+        { key: "HOLD CUT", text: "When your line crosses the orange dashed line, a circle appears. Hold the button to cut it." },
+      ]
+    : [
+        { key: "WASD / ARROWS", text: "Steer your kite around the sky." },
+        { key: "HOLD SPACE", text: "Reel your line in. Release to let it out: more line = more points, but riskier." },
+        { key: "SPACE TO CUT", text: "When your line crosses the orange dashed line, a circle appears. Hold Space there to cut it." },
+      ];
+  return (
+    <div
+      style={{
+        position: "absolute",
+        inset: 0,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        background: "rgba(6,10,20,0.78)",
+        padding: 16,
+        zIndex: 5,
+      }}
+    >
+      <div
+        style={{
+          width: "100%",
+          maxWidth: 520,
+          maxHeight: "100%",
+          overflowY: "auto",
+          background: "rgba(10,14,30,0.97)",
+          border: "2px solid #FFA94D",
+          borderRadius: 12,
+          padding: "18px 18px 16px",
+        }}
+      >
+        <div style={{ fontSize: 13, color: "#FFA94D", textAlign: "center", marginBottom: 14, textShadow: OUTLINE }}>
+          HOW TO PLAY
+        </div>
+        {rows.map((r) => (
+          <div key={r.key} style={{ display: "flex", gap: 12, alignItems: "flex-start", marginBottom: 12 }}>
+            <span
+              style={{
+                flexShrink: 0,
+                minWidth: 118,
+                fontSize: 8,
+                color: "#0a0a14",
+                background: "#FFD700",
+                borderRadius: 4,
+                padding: "5px 6px",
+                textAlign: "center",
+              }}
+            >
+              {r.key}
+            </span>
+            <span style={{ fontSize: 8, color: "#e2e8f0", lineHeight: 1.8 }}>{r.text}</span>
+          </div>
+        ))}
+        <div
+          style={{
+            fontSize: 8,
+            color: "#fca5a5",
+            lineHeight: 1.8,
+            background: "rgba(255,59,59,0.1)",
+            border: "1px solid rgba(255,59,59,0.35)",
+            borderRadius: 6,
+            padding: "8px 10px",
+            margin: "4px 0 14px",
+          }}
+        >
+          Watch out: while the lines stay crossed, a RED RING fills around the crossing. When it closes the rival tries
+          to cut you. Steer away to reset it. Cutting with lots of line out can snap your own line.
+        </div>
+        <div style={{ display: "flex", justifyContent: "center" }}>
+          <button
+            onClick={onStart}
+            style={{
+              background: "linear-gradient(135deg, #9945FF, #c084fc)",
+              border: "none",
+              borderRadius: 8,
+              padding: "10px 24px",
+              color: "#0a0a14",
+              fontFamily: '"Press Start 2P", monospace',
+              fontSize: 9,
+              cursor: "pointer",
+            }}
+          >
+            {isTouch ? "GOT IT" : "GOT IT (SPACE)"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

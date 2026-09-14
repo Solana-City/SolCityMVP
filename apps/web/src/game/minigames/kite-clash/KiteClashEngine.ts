@@ -54,6 +54,17 @@ export interface EngineSnapshot {
   nearbyOpponent: boolean;
   /** nearbyOpponent && currently holding the reel-in key — cut roll is actively ticking. */
   cutReady: boolean;
+  /** 0..1 buildup of the rival's cut on the player's line (red ring). */
+  rivalThreat: number;
+  /** Why the run ended, shown on the end screen. Null while playing. */
+  endReason: EndReason | null;
+  /** How-to-play card is open: gameplay is frozen. */
+  briefing: boolean;
+}
+
+export interface EndReason {
+  title: string;
+  detail: string;
 }
 
 export interface KiteClashEngineCallbacks {
@@ -118,6 +129,9 @@ export class KiteClashEngine {
   private touchMove = { dx: 0, dy: 0 };
 
   private phase: RunPhase = "ready";
+  private briefing = false;
+  private endReason: EndReason | null = null;
+  private rivalThreat = 0;
   private readyUntilMs = 0;
   private runNumber = 1;
 
@@ -201,6 +215,13 @@ export class KiteClashEngine {
     this.loop(this.lastTs);
   }
 
+  /** Freeze gameplay behind the how-to-play card. The ready countdown
+   *  restarts when the card closes so the player never drops in cold. */
+  setBriefing(open: boolean): void {
+    this.briefing = open;
+    if (!open && this.phase === "ready") this.readyUntilMs = this.elapsedMs + READY_OVERLAY_MS;
+  }
+
   destroy(): void {
     if (this.rafId !== null) cancelAnimationFrame(this.rafId);
     window.removeEventListener("keydown", this.onKeyDown);
@@ -213,6 +234,8 @@ export class KiteClashEngine {
     this.multiplierIdx = 0;
     this.lineLength = START_LINE_LENGTH;
     this.cutMessage = null;
+    this.endReason = null;
+    this.rivalThreat = 0;
     this.nearbyOpponentId = null;
     this.crossingPoint = null;
     this.severedKites = [];
@@ -320,6 +343,10 @@ export class KiteClashEngine {
     }
     this.severedKites = this.severedKites.filter((k) => k.ageMs < SEVERED_KITE_LIFETIME_MS);
 
+    if (this.briefing) {
+      if (this.phase === "ready") this.readyUntilMs = this.elapsedMs + READY_OVERLAY_MS;
+      return;
+    }
     if (this.phase === "ready" && this.elapsedMs >= this.readyUntilMs) this.phase = "playing";
     if (this.phase !== "playing") {
       this.opponents.update(dt);
@@ -390,7 +417,7 @@ export class KiteClashEngine {
     let crossing: { x: number; y: number } | null = null;
     for (const o of activeOpponents) {
       if (Math.abs(o.exposure - exposure) > CUT_DEPTH_TOLERANCE) continue;
-      const opponentLine = this.opponentLineSegment(o.position);
+      const opponentLine = this.opponentLineSegment(o.position, o.anchorX);
       const hit = segmentIntersection(playerLine[0], playerLine[1], opponentLine[0], opponentLine[1]);
       if (hit) {
         nearbyId = o.id;
@@ -406,14 +433,25 @@ export class KiteClashEngine {
       if (this.cutResolveTimerMs >= CUT_RESOLUTION_INTERVAL_MS) {
         this.cutResolveTimerMs = 0;
         this.tryResolveCutAttempt(nearbyId, exposure);
+        if (this.phase !== "playing") return; // own cut backfired
       }
     } else {
       this.cutResolveTimerMs = 0;
     }
 
     const rivalOutcome = this.opponents.rollOpponentAttacksOnPlayer(exposure, !!nearbyId, dt);
+    const threatened = this.opponents.getActiveOpponents().find((o) => o.id === nearbyId);
+    this.rivalThreat = threatened ? threatened.threat : 0;
     if (rivalOutcome === "success") {
-      this.endRun("The rival cut your line!", this.crossingPoint ?? undefined);
+      this.endRun(
+        {
+          title: "THE RIVAL CUT YOUR LINE",
+          detail: "Your line stayed crossed with the orange line until the red ring filled. Steer away before it closes, or cut first with Space.",
+        },
+        this.crossingPoint ?? undefined,
+      );
+    } else if (rivalOutcome === "neutral" && nearbyId) {
+      this.flashCutMessage("The rival's cut slipped! Get clear!");
     } else if (rivalOutcome === "backfire") {
       // The rival severed its own line — send its kite tumbling away.
       const rival = activeOpponents.find((o) => o.id === nearbyId);
@@ -440,7 +478,13 @@ export class KiteClashEngine {
       this.triggerCutJuice(vfxOrigin, false);
       this.flashCutMessage(`Line cut! +${result.scoreBonus}`);
     } else if (result.outcome === "backfire") {
-      this.endRun("Your own line was cut!", vfxOrigin);
+      this.endRun(
+        {
+          title: "YOUR CUT BACKFIRED",
+          detail: "Your own line snapped while you were cutting. The more line you have out, the riskier a cut is: reel in tight (hold Space) before crossing.",
+        },
+        vfxOrigin,
+      );
     }
   }
 
@@ -453,13 +497,16 @@ export class KiteClashEngine {
     this.cutMessageUntilMs = this.elapsedMs + 1800;
   }
 
-  private endRun(reason: string, vfxOrigin?: { x: number; y: number }): void {
+  private endRun(reason: EndReason, vfxOrigin?: { x: number; y: number }): void {
+    if (this.phase === "ended") return;
     this.phase = "ended";
+    this.endReason = reason;
+    this.rivalThreat = 0;
     // The player's kite tumbles away with the wind — the normal player kite
     // stops being drawn during the "ended" phase, this replaces it.
     this.spawnSeveredKite(this.playerPos, exposureFromLineLength(this.lineLength), true);
     this.triggerCutJuice(vfxOrigin ?? this.playerPos, true);
-    this.flashCutMessage(reason);
+    this.flashCutMessage(reason.title);
   }
 
   private spawnCutVfx(pos: { x: number; y: number }): void {
@@ -522,6 +569,9 @@ export class KiteClashEngine {
       cutMessage: this.cutMessage,
       nearbyOpponent: this.nearbyOpponentId !== null,
       cutReady: this.nearbyOpponentId !== null && this.isHoldingReelKey(),
+      rivalThreat: this.rivalThreat,
+      endReason: this.endReason,
+      briefing: this.briefing,
     });
   }
 
@@ -553,7 +603,7 @@ export class KiteClashEngine {
       // off-screen at a different point than the player's spool, so the
       // two lines visibly cross when the kites get close. This is the
       // "lines crossing" cue the cut mechanic is built around.
-      this.renderOpponentLine(ctx, o.position);
+      this.renderOpponentLine(ctx, o.position, o.anchorX);
     }
     this.renderLine(ctx, this.playerPos);
     for (const o of opponents) {
@@ -801,13 +851,15 @@ export class KiteClashEngine {
   /** A rival's off-screen anchor — different point than the player's own
    * spool so the two lines read as two separate kites/handlers, the same
    * geometry used to test whether the lines actually cross. */
-  private opponentLineAnchor(kitePos: { x: number; y: number }): { x: number; y: number } {
-    const anchorX = kitePos.x < this.width / 2 ? this.width * 0.12 : this.width * 0.88;
-    return { x: anchorX, y: this.height + 20 };
+  private opponentLineAnchor(anchorX: number): { x: number; y: number } {
+    return { x: this.width * anchorX, y: this.height + 20 };
   }
 
-  private opponentLineSegment(kitePos: { x: number; y: number }): [{ x: number; y: number }, { x: number; y: number }] {
-    return [this.opponentLineAnchor(kitePos), kitePos];
+  private opponentLineSegment(
+    kitePos: { x: number; y: number },
+    anchorX: number,
+  ): [{ x: number; y: number }, { x: number; y: number }] {
+    return [this.opponentLineAnchor(anchorX), kitePos];
   }
 
   private renderLine(ctx: CanvasRenderingContext2D, kitePos: { x: number; y: number }): void {
@@ -823,8 +875,8 @@ export class KiteClashEngine {
   /** PLACEHOLDER — a rival's line, anchored off-screen below at the edge
    * rather than the player's own spool, so the two lines read as two
    * separate kites whose strings can visibly cross. */
-  private renderOpponentLine(ctx: CanvasRenderingContext2D, kitePos: { x: number; y: number }): void {
-    const anchor = this.opponentLineAnchor(kitePos);
+  private renderOpponentLine(ctx: CanvasRenderingContext2D, kitePos: { x: number; y: number }, anchorX: number): void {
+    const anchor = this.opponentLineAnchor(anchorX);
     ctx.strokeStyle = "rgba(255,107,53,0.55)";
     ctx.setLineDash([6, 5]);
     ctx.lineWidth = 1.5;
@@ -850,6 +902,21 @@ export class KiteClashEngine {
     ctx.arc(pos.x, pos.y, active ? 10 : 7, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
+
+    // The rival's cut buildup: a red ring closing around the crossing.
+    // When it completes the rival rolls its cut, so this is the warning.
+    if (this.rivalThreat > 0) {
+      const r = 18;
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = "rgba(0,0,0,0.45)";
+      ctx.beginPath();
+      ctx.arc(pos.x, pos.y, r, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.strokeStyle = this.rivalThreat > 0.66 ? "#ff3b3b" : "#ff7a45";
+      ctx.beginPath();
+      ctx.arc(pos.x, pos.y, r, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * this.rivalThreat);
+      ctx.stroke();
+    }
     ctx.restore();
   }
 
