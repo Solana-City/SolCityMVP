@@ -26,7 +26,7 @@ export function getEntry(id: string): MiniGameEntry | undefined {
  *
  * Example:
  *   import { launch } from "@/game/minigames";
- *   launch("food-cart", { wallet, cartPda, orderPda, orderType: "burger", expiresAt, amountLamports });
+ *   launch("food-cart", { wallet, orderType: "sushi", expiresAt });
  */
 export function launch(id: string, context: MiniGameContext): void {
   const events = (globalThis as any).__solCityGameEvents as

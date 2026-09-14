@@ -4,15 +4,14 @@ export interface MiniGameBaseContext {
   wallet: PublicKey | null;
 }
 
+/**
+ * Food Cart runs with no money involved: no escrow accounts, no order
+ * payment, no refunds. Only the round's deadline is passed in.
+ */
 export interface FoodCartContext extends MiniGameBaseContext {
-  /** null until real on-chain order accounts are wired in */
-  cartPda: PublicKey | null;
-  /** null until real on-chain order accounts are wired in */
-  orderPda: PublicKey | null;
-  orderType: "burger" | "sushi";
+  orderType: "sushi";
   /** Unix timestamp */
   expiresAt: number;
-  amountLamports: number;
 }
 
 export type MiniGameContext = MiniGameBaseContext | FoodCartContext;

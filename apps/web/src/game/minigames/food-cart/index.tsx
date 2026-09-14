@@ -93,18 +93,20 @@ const KEY_MAP: Record<string, IngId> = Object.fromEntries(
   INGREDIENTS.map(i => [i.hotkey, i.id])
 );
 
-interface Recipe { id: string; name: string; emoji: string; steps: IngId[]; }
+interface Recipe { id: string; name: string; steps: IngId[]; }
 
 const RECIPES: Recipe[] = [
-  { id: "classic",  name: "Classic Set",     emoji: "🍱", steps: ["salmon-nigiri",  "tuna-nigiri",   "cucumber-maki", "inari"        ] },
-  { id: "sashimi",  name: "Sashimi Plate",   emoji: "🐟", steps: ["salmon-sashimi", "tuna-sashimi",  "white-fish"                    ] },
-  { id: "special",  name: "Chef's Special",  emoji: "⭐", steps: ["shrimp-nigiri",  "salmon-nigiri", "avocado-maki"                  ] },
-  { id: "deluxe",   name: "Deluxe Set",      emoji: "👑", steps: ["tuna-nigiri",    "shrimp-nigiri", "cucumber-maki", "tuna-sashimi" ] },
+  { id: "classic",  name: "Classic Set",     steps: ["salmon-nigiri",  "tuna-nigiri",   "cucumber-maki", "inari"        ] },
+  { id: "sashimi",  name: "Sashimi Plate",   steps: ["salmon-sashimi", "tuna-sashimi",  "white-fish"                    ] },
+  { id: "special",  name: "Chef's Special",  steps: ["shrimp-nigiri",  "salmon-nigiri", "avocado-maki"                  ] },
+  { id: "deluxe",   name: "Deluxe Set",      steps: ["tuna-nigiri",    "shrimp-nigiri", "cucumber-maki", "tuna-sashimi" ] },
 ];
+
+const HOW_TO_KEY = "solcity:foodCart:howToSeen";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-type Phase = "playing" | "order_complete" | "result_success" | "result_failure" | "settling";
+type Phase = "intro" | "playing" | "order_complete" | "result_success" | "result_failure" | "settling";
 
 interface Order { recipe: Recipe; step: number; done: boolean; }
 interface FloatText { id: number; text: string; }
@@ -144,7 +146,11 @@ export default function FoodCartGame({
 
   const [orders, setOrders]             = useState<Order[]>(() => pickOrders(3));
   const [orderIdx, setOrderIdx]         = useState(0);
-  const [phase, setPhase]               = useState<Phase>("playing");
+  // First visit opens on the how-to cards; the timer only starts after them.
+  const [phase, setPhase]               = useState<Phase>(() => {
+    try { return localStorage.getItem(HOW_TO_KEY) === "1" ? "playing" : "intro"; } catch { return "playing"; }
+  });
+  const [helpOpen, setHelpOpen]         = useState(false);
   const [timeLeft, setTimeLeft]         = useState(totalSeconds);
   const [pickedId, setPickedId]         = useState<{ id: IngId; correct: boolean } | null>(null);
   const [failReason, setFailReason]     = useState<"timeout" | "wrong" | null>(null);
@@ -175,9 +181,9 @@ export default function FoodCartGame({
     return () => { document.getElementById("sc-minigame-styles")?.remove(); };
   }, []);
 
-  // Countdown — only while playing
+  // Countdown — only while playing, and not while the help cards are open
   useEffect(() => {
-    if (phase !== "playing") return;
+    if (phase !== "playing" || helpOpen) return;
     const tick = setInterval(() => {
       setTimeLeft(t => {
         if (t <= 1) {
@@ -191,7 +197,7 @@ export default function FoodCartGame({
       });
     }, 1000);
     return () => clearInterval(tick);
-  }, [phase]);
+  }, [phase, helpOpen]);
 
   // Pause between orders
   useEffect(() => {
@@ -218,7 +224,7 @@ export default function FoodCartGame({
   }, []);
 
   const handlePick = useCallback((id: IngId) => {
-    if (phase !== "playing" || !currentRecipe || pickedId) return;
+    if (phase !== "playing" || helpOpen || !currentRecipe || pickedId) return;
     const expected = currentRecipe.steps[currentStep];
 
     if (id === expected) {
@@ -253,11 +259,11 @@ export default function FoodCartGame({
         setPhase("result_failure");
       }, 620);
     }
-  }, [phase, currentRecipe, currentStep, orderIdx, pickedId, triggerFlash]);
+  }, [phase, helpOpen, currentRecipe, currentStep, orderIdx, pickedId, triggerFlash]);
 
   // Keyboard: 1–9 for ingredients, Escape to dismiss
   useEffect(() => {
-    if (phase !== "playing") return;
+    if (phase !== "playing" || helpOpen) return;
     const handler = (e: KeyboardEvent) => {
       const active = document.activeElement;
       if (active && (active.tagName === "INPUT" || active.tagName === "TEXTAREA")) return;
@@ -267,15 +273,20 @@ export default function FoodCartGame({
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [phase, onClose, handlePick]);
+  }, [phase, helpOpen, onClose, handlePick]);
 
   const handleSettle = useCallback(() => {
     if (settledRef.current) return;
     settledRef.current = true;
     const ok = phase === "result_success";
-    setPhase("settling");
     void onResult({ success: ok, metadata: { completedOrders: doneCount, orderType: context.orderType } });
   }, [phase, doneCount, context.orderType, onResult]);
+
+  const finishIntro = useCallback(() => {
+    try { localStorage.setItem(HOW_TO_KEY, "1"); } catch { /* storage blocked */ }
+    setHelpOpen(false);
+    setPhase((p) => (p === "intro" ? "playing" : p));
+  }, []);
 
   // ─── Layout ──────────────────────────────────────────────────────────────
 
@@ -320,10 +331,19 @@ export default function FoodCartGame({
               Mini Game
             </div>
             <div style={{ color: "#fff", fontSize: 12, fontWeight: "bold", marginTop: 1 }}>
-              🍣 Sushi Station
+              Sushi Station
             </div>
           </div>
           <div className="flex items-center gap-5">
+            <button
+              onClick={() => setHelpOpen(true)}
+              style={{
+                background: "rgba(255,107,53,0.12)", border: "1px solid rgba(255,107,53,0.6)", color: "#FFA06B",
+                borderRadius: 8, padding: "6px 9px", cursor: "pointer", fontFamily: '"Press Start 2P", monospace', fontSize: 7,
+              }}
+            >
+              ? HOW TO PLAY
+            </button>
             <div style={{ textAlign: "right" }}>
               <div style={{ color: "#6666aa", fontSize: 8, letterSpacing: 1 }}>ORDERS</div>
               <div style={{ color: "#14F195", fontSize: 11, fontWeight: "bold" }}>
@@ -404,7 +424,7 @@ export default function FoodCartGame({
                     {isDone ? "✓ Done" : isActive ? "● Active" : "Queued"}
                   </div>
                   <div style={{ color: isDone ? "#14F195" : "#ccccee", fontSize: 8, fontWeight: "bold" }}>
-                    {ord.recipe.emoji} {ord.recipe.name}
+                    {ord.recipe.name}
                   </div>
                   <div style={{ display: "flex", gap: 4, marginTop: 6, flexWrap: "wrap" }}>
                     {ord.recipe.steps.map((sid, si) => {
@@ -504,7 +524,7 @@ export default function FoodCartGame({
 
             {/* Recipe strip */}
             <div style={{ color: "#444466", fontSize: 7, letterSpacing: 2.5, textTransform: "uppercase" }}>
-              {currentRecipe?.emoji} {currentRecipe?.name}
+              {currentRecipe?.name}
             </div>
             {currentRecipe && (
               <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
@@ -541,7 +561,7 @@ export default function FoodCartGame({
                 className="sc-slide rounded-xl px-4 py-3 flex items-center gap-3 shrink-0"
                 style={{ background: "rgba(20,241,149,0.1)", border: "1px solid rgba(20,241,149,0.35)" }}
               >
-                <span style={{ fontSize: 16 }}>⭐</span>
+                {currentRecipe && <Sprite id={currentRecipe.steps[0]} size={28} />}
                 <div>
                   <div style={{ color: "#14F195", fontSize: 11, fontWeight: "bold" }}>Order Complete!</div>
                   <div style={{ color: "#6666aa", fontSize: 8 }}>
@@ -648,244 +668,234 @@ export default function FoodCartGame({
       </div>
 
       {/* ── Result overlays ─────────────────────────────────────────────── */}
-      {(phase === "result_success" || (phase === "settling" && failReason === null)) && (
-        <SuccessCard
-          completed={doneCount}
-          total={orders.length}
-          settling={phase === "settling"}
-          onContinue={handleSettle}
-        />
+      {phase === "result_success" && (
+        <SuccessCard completed={doneCount} total={orders.length} onContinue={handleSettle} />
       )}
-      {(phase === "result_failure" || (phase === "settling" && failReason !== null)) && (
-        <FailureCard
-          reason={failReason}
-          wrongId={wrongId}
-          settling={phase === "settling"}
-          onContinue={handleSettle}
-        />
+      {phase === "result_failure" && (
+        <FailureCard reason={failReason} wrongId={wrongId} onContinue={handleSettle} />
       )}
+      {(phase === "intro" || helpOpen) && <HowToPlay onDone={finishIntro} />}
     </div>
   );
 }
 
-// ─── Success card ─────────────────────────────────────────────────────────────
+// ─── Result cards ─────────────────────────────────────────────────────────────
+// No money in this game: results are the orders you served, nothing else.
 
-function SuccessCard({
-  completed,
-  total,
-  settling,
-  onContinue,
-}: {
-  completed: number;
-  total: number;
-  settling: boolean;
-  onContinue: () => void;
-}) {
+const CHEF = "/assets/sprites/Sushi Man.png";
+
+function Chef({ size }: { size: number }) {
   return (
-    <div
-      className="absolute inset-0 z-10 flex items-center justify-center"
-      style={{ background: "rgba(4,14,10,0.85)" }}
-    >
+    <div aria-hidden style={{
+      width: size, height: size, backgroundImage: `url("${CHEF}")`,
+      backgroundSize: `${size * 4}px ${size * 4}px`, backgroundPosition: "0 0", imageRendering: "pixelated",
+    }} />
+  );
+}
+
+function ResultShell({ tone, children }: { tone: "good" | "bad"; children: React.ReactNode }) {
+  const good = tone === "good";
+  return (
+    <div className="absolute inset-0 z-10 flex items-center justify-center" style={{ background: good ? "rgba(4,14,10,0.85)" : "rgba(12,4,4,0.85)" }}>
       <div
         className="rounded-2xl flex flex-col items-center gap-5 p-8 sc-slide"
         style={{
-          background: "linear-gradient(160deg, rgba(10,28,18,0.99) 0%, rgba(8,18,12,0.99) 100%)",
-          border: "1px solid rgba(20,241,149,0.45)",
-          boxShadow: "0 0 80px rgba(20,241,149,0.18), inset 0 1px 0 rgba(20,241,149,0.1)",
-          minWidth: 300,
-          maxWidth: 380,
-          fontFamily: '"Press Start 2P", monospace',
+          background: good ? "rgba(10,24,16,0.99)" : "rgba(22,8,8,0.99)",
+          border: `1px solid ${good ? "rgba(20,241,149,0.45)" : "rgba(255,60,60,0.38)"}`,
+          minWidth: 280, maxWidth: 360, fontFamily: '"Press Start 2P", monospace',
         }}
       >
-        <div style={{ fontSize: 46, lineHeight: 1, filter: "drop-shadow(0 0 24px rgba(20,241,149,0.55))" }}>
-          🎉
-        </div>
-
-        <div style={{ textAlign: "center" }}>
-          <div style={{ color: "#14F195", fontSize: 16, fontWeight: "bold", letterSpacing: -0.5 }}>
-            All Orders Delivered!
-          </div>
-          <div style={{ color: "#446655", fontSize: 10, marginTop: 6 }}>
-            {completed} of {total} completed
-          </div>
-        </div>
-
-        {/* Reward breakdown */}
-        <div
-          className="w-full rounded-xl p-4 flex flex-col gap-2"
-          style={{ background: "rgba(20,241,149,0.06)", border: "1px solid rgba(20,241,149,0.15)" }}
-        >
-          <div className="flex justify-between items-center">
-            <span style={{ color: "#446655", fontSize: 9 }}>Order revenue</span>
-            <span style={{ color: "#14F195", fontSize: 10, fontWeight: "bold" }}>+0.01 SOL</span>
-          </div>
-          <div className="flex justify-between items-center">
-            <span style={{ color: "#446655", fontSize: 9 }}>Customer refund</span>
-            <span style={{ color: "#aaaacc", fontSize: 10 }}>−0.005 SOL</span>
-          </div>
-          <div className="flex justify-between items-center">
-            <span style={{ color: "#446655", fontSize: 9 }}>Treasury (5%)</span>
-            <span style={{ color: "#aaaacc", fontSize: 10 }}>−0.0005 SOL</span>
-          </div>
-          <div
-            className="flex justify-between items-center pt-2 mt-1"
-            style={{ borderTop: "1px solid rgba(20,241,149,0.15)" }}
-          >
-            <span style={{ color: "#14F195", fontSize: 10, fontWeight: "bold" }}>You keep</span>
-            <span style={{ color: "#14F195", fontSize: 12, fontWeight: "bold" }}>+0.0045 SOL</span>
-          </div>
-        </div>
-
-        {settling ? (
-          <div
-            className="flex items-center gap-2 rounded-lg px-3 py-2"
-            style={{ background: "rgba(153,69,255,0.08)", border: "1px solid rgba(153,69,255,0.2)" }}
-          >
-            <span style={{ fontSize: 9 }}>⛓</span>
-            <span style={{ color: "#7755aa", fontSize: 8 }}>Settling on-chain...</span>
-          </div>
-        ) : (
-          <button
-            onClick={onContinue}
-            style={{
-              width: "100%",
-              padding: "12px 24px",
-              borderRadius: 12,
-              background: "linear-gradient(135deg, #14F195, #0cbe75)",
-              color: "#021a0e",
-              fontSize: 11,
-              fontWeight: "bold",
-              fontFamily: '"Press Start 2P", monospace',
-              border: "none",
-              cursor: "pointer",
-              boxShadow: "0 0 28px rgba(20,241,149,0.35)",
-              transition: "transform 0.1s, box-shadow 0.1s",
-            }}
-            onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.transform = "scale(1.04)"; }}
-            onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.transform = "scale(1)"; }}
-          >
-            Collect Reward ✓
-          </button>
-        )}
+        {children}
       </div>
     </div>
   );
 }
 
-// ─── Failure card ─────────────────────────────────────────────────────────────
-
-function FailureCard({
-  reason,
-  wrongId,
-  settling,
-  onContinue,
-}: {
-  reason: "timeout" | "wrong" | null;
-  wrongId: IngId | null;
-  settling: boolean;
-  onContinue: () => void;
-}) {
+function SuccessCard({ completed, total, onContinue }: { completed: number; total: number; onContinue: () => void }) {
   return (
-    <div
-      className="absolute inset-0 z-10 flex items-center justify-center"
-      style={{ background: "rgba(12,4,4,0.85)" }}
-    >
-      <div
-        className="rounded-2xl flex flex-col items-center gap-5 p-8 sc-slide"
+    <ResultShell tone="good">
+      <Chef size={96} />
+      <div style={{ textAlign: "center" }}>
+        <div style={{ color: "#14F195", fontSize: 14, fontWeight: "bold" }}>ALL ORDERS SERVED</div>
+        <div style={{ display: "flex", gap: 6, justifyContent: "center", marginTop: 12 }}>
+          {Array.from({ length: total }, (_, i) => (
+            <div key={i} style={{
+              width: 34, height: 34, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center",
+              background: i < completed ? "rgba(20,241,149,0.14)" : "rgba(255,255,255,0.04)",
+              border: `1px solid ${i < completed ? "rgba(20,241,149,0.5)" : "rgba(255,255,255,0.1)"}`,
+            }}>
+              <Sprite id={RECIPES[i % RECIPES.length].steps[0]} size={26} />
+            </div>
+          ))}
+        </div>
+      </div>
+      <button
+        onClick={onContinue}
         style={{
-          background: "linear-gradient(160deg, rgba(22,8,8,0.99) 0%, rgba(16,6,6,0.99) 100%)",
-          border: "1px solid rgba(255,60,60,0.38)",
-          boxShadow: "0 0 80px rgba(255,60,60,0.12), inset 0 1px 0 rgba(255,60,60,0.08)",
-          minWidth: 300,
-          maxWidth: 380,
-          fontFamily: '"Press Start 2P", monospace',
+          width: "100%", padding: "12px 24px", borderRadius: 12, background: "#14F195", color: "#021a0e",
+          fontSize: 10, fontFamily: '"Press Start 2P", monospace', border: "none", cursor: "pointer",
         }}
       >
-        <div style={{ fontSize: 46, lineHeight: 1 }}>
-          {reason === "timeout" ? "⏱️" : "❌"}
+        CONTINUE
+      </button>
+    </ResultShell>
+  );
+}
+
+function FailureCard({ reason, wrongId, onContinue }: { reason: "timeout" | "wrong" | null; wrongId: IngId | null; onContinue: () => void }) {
+  return (
+    <ResultShell tone="bad">
+      {reason === "wrong" && wrongId ? (
+        <div style={{ position: "relative", width: 76, height: 76, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <Sprite id={wrongId} size={70} />
+          <svg viewBox="0 0 76 76" style={{ position: "absolute", inset: 0 }}>
+            <path d="M 14 14 L 62 62 M 62 14 L 14 62" stroke="#ff4d4d" strokeWidth="7" strokeLinecap="round" />
+          </svg>
         </div>
+      ) : (
+        <div style={{ width: 150, height: 14, borderRadius: 7, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,60,60,0.5)", overflow: "hidden" }}>
+          <div style={{ width: "0%", height: "100%", background: "#ff4444" }} />
+        </div>
+      )}
+      <div style={{ textAlign: "center" }}>
+        <div style={{ color: "#ff5555", fontSize: 14, fontWeight: "bold" }}>
+          {reason === "timeout" ? "TIME'S UP" : "WRONG PIECE"}
+        </div>
+        <div style={{ color: "#aa7777", fontSize: 8, marginTop: 8, lineHeight: 1.6 }}>
+          {reason === "timeout" ? "Serve faster next time." : "Follow the glowing piece."}
+        </div>
+      </div>
+      <button
+        onClick={onContinue}
+        style={{
+          width: "100%", padding: "11px 24px", borderRadius: 12, background: "rgba(255,60,60,0.12)", color: "#ff9999",
+          fontSize: 10, fontFamily: '"Press Start 2P", monospace', border: "1px solid rgba(255,60,60,0.35)", cursor: "pointer",
+        }}
+      >
+        CLOSE
+      </button>
+    </ResultShell>
+  );
+}
 
-        <div style={{ textAlign: "center" }}>
-          <div style={{ color: "#ff5555", fontSize: 16, fontWeight: "bold", letterSpacing: -0.5 }}>
-            {reason === "timeout" ? "Time's Up!" : "Wrong Ingredient!"}
-          </div>
-          <div style={{ color: "#664444", fontSize: 10, marginTop: 6 }}>
-            {reason === "timeout"
-              ? "The customer waited too long."
-              : "That's not what they ordered."}
+// ─── How to play ──────────────────────────────────────────────────────────────
+
+interface HowStep { title: string; line: string; scene: React.ReactNode; }
+
+function HowToPlay({ onDone }: { onDone: () => void }) {
+  const [touch, setTouch] = useState(false);
+  useEffect(() => { setTouch(window.matchMedia("(pointer: coarse)").matches); }, []);
+  const [i, setI] = useState(0);
+
+  const example = RECIPES[0];
+  const tile = (id: IngId, state: "done" | "next" | "todo" | "wrong", size = 40) => (
+    <div style={{
+      width: size + 12, height: size + 12, borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center",
+      background: state === "done" ? "rgba(20,241,149,0.12)" : state === "next" ? "rgba(153,69,255,0.16)" : state === "wrong" ? "rgba(255,50,50,0.18)" : "rgba(255,255,255,0.03)",
+      border: `2px solid ${state === "done" ? "rgba(20,241,149,0.5)" : state === "next" ? "#9945FF" : state === "wrong" ? "rgba(255,50,50,0.7)" : "rgba(255,255,255,0.08)"}`,
+      opacity: state === "todo" ? 0.5 : 1, position: "relative",
+    }} className={state === "next" ? "sc-glow" : undefined}>
+      <Sprite id={id} size={size} />
+    </div>
+  );
+
+  const steps: HowStep[] = [
+    {
+      title: "TAKE THE ORDER",
+      line: "Each order is a set of sushi pieces, served left to right.",
+      scene: <div style={{ display: "flex", gap: 6 }}>{example.steps.map((id) => <div key={id}>{tile(id, "todo")}</div>)}</div>,
+    },
+    {
+      title: "SERVE THE GLOWING PIECE",
+      line: touch ? "Tap the piece that glows. Then the next one." : "Click the piece that glows, or press its number key.",
+      scene: (
+        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          {tile(example.steps[0], "done")}
+          {tile(example.steps[1], "next")}
+          {tile(example.steps[2], "todo")}
+          {!touch && (
+            <span style={{
+              marginLeft: 10, minWidth: 26, height: 26, borderRadius: 5, background: "#f8fafc", color: "#0a0a14",
+              display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 10, boxShadow: "0 3px 0 #64748b",
+            }}>
+              {ING[example.steps[1]].hotkey}
+            </span>
+          )}
+        </div>
+      ),
+    },
+    {
+      title: "NO WRONG PIECES",
+      line: "Serve a wrong piece and the order is ruined.",
+      scene: (
+        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          {tile(example.steps[0], "done")}
+          <div style={{ position: "relative" }}>
+            {tile("white-fish", "wrong")}
+            <svg viewBox="0 0 52 52" style={{ position: "absolute", inset: 0 }}>
+              <path d="M 12 12 L 40 40 M 40 12 L 12 40" stroke="#ff4d4d" strokeWidth="5" strokeLinecap="round" />
+            </svg>
           </div>
         </div>
-
-        {reason === "wrong" && wrongId && (
-          <div
-            className="flex items-center gap-4 rounded-xl px-4 py-3 w-full"
-            style={{ background: "rgba(255,60,60,0.08)", border: "1px solid rgba(255,60,60,0.22)" }}
-          >
-            <div
-              style={{
-                width: 52, height: 52, borderRadius: 10, flexShrink: 0,
-                background: "rgba(255,60,60,0.1)",
-                border: "1px solid rgba(255,60,60,0.25)",
-                display: "flex", alignItems: "center", justifyContent: "center",
-              }}
-            >
-              <Sprite id={wrongId} size={44} />
-            </div>
-            <div>
-              <div style={{ color: "#886666", fontSize: 8 }}>You served</div>
-              <div style={{ color: "#ffaaaa", fontSize: 11, fontWeight: "bold" }}>{ING[wrongId].label}</div>
-            </div>
+      ),
+    },
+    {
+      title: "BEAT THE CLOCK",
+      line: "Serve all 3 orders before the timer runs out.",
+      scene: (
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
+          <div style={{ display: "flex", gap: 6 }}>
+            {RECIPES.slice(0, 3).map((r) => <div key={r.id}>{tile(r.steps[0], "todo", 30)}</div>)}
           </div>
-        )}
-
-        {/* Penalty breakdown */}
-        <div
-          className="w-full rounded-xl p-4 flex flex-col gap-2"
-          style={{ background: "rgba(255,60,60,0.05)", border: "1px solid rgba(255,60,60,0.12)" }}
-        >
-          <div className="flex justify-between items-center">
-            <span style={{ color: "#664444", fontSize: 9 }}>Customer refund (escrow)</span>
-            <span style={{ color: "#ff8888", fontSize: 10, fontWeight: "bold" }}>−0.02 SOL</span>
-          </div>
-          <div
-            className="flex justify-between items-center pt-2 mt-1"
-            style={{ borderTop: "1px solid rgba(255,60,60,0.12)" }}
-          >
-            <span style={{ color: "#ff5555", fontSize: 10, fontWeight: "bold" }}>Net impact</span>
-            <span style={{ color: "#ff5555", fontSize: 12, fontWeight: "bold" }}>−0.02 SOL</span>
+          <div style={{ width: 200, height: 10, borderRadius: 5, background: "rgba(255,255,255,0.06)", overflow: "hidden" }}>
+            <div className="sc-timer-demo" style={{ height: "100%", background: "#14F195" }} />
           </div>
         </div>
+      ),
+    },
+  ];
+  const step = steps[i];
+  const last = i === steps.length - 1;
 
-        {settling ? (
-          <div
-            className="flex items-center gap-2 rounded-lg px-3 py-2"
-            style={{ background: "rgba(153,69,255,0.08)", border: "1px solid rgba(153,69,255,0.2)" }}
-          >
-            <span style={{ fontSize: 9 }}>⛓</span>
-            <span style={{ color: "#7755aa", fontSize: 8 }}>Settling on-chain...</span>
-          </div>
-        ) : (
+  return (
+    <div className="absolute inset-0 flex items-center justify-center" style={{ background: "rgba(4,6,16,0.9)", zIndex: 70, padding: 16 }}>
+      <style>{`@keyframes sc-timer { from { width: 100%; background: #14F195; } 70% { background: #ffaa00; } to { width: 8%; background: #ff4444; } } .sc-timer-demo { animation: sc-timer 3s linear infinite; }`}</style>
+      <div className="rounded-2xl sc-slide" style={{
+        width: "min(440px, 100%)", maxHeight: "100%", overflowY: "auto", padding: 16,
+        background: "rgba(8,8,22,0.99)", border: "1px solid rgba(255,107,53,0.55)", fontFamily: '"Press Start 2P", monospace',
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+          <Chef size={36} />
+          <span style={{ color: "#FFA06B", fontSize: 9 }}>HOW TO PLAY</span>
+          <span style={{ marginLeft: "auto", color: "#555566", fontSize: 7 }}>{i + 1}/{steps.length}</span>
+        </div>
+        <div key={i} className="sc-slide" style={{
+          height: 120, borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center",
+          background: "rgba(255,107,53,0.06)", border: "1px solid rgba(255,107,53,0.2)",
+        }}>
+          {step.scene}
+        </div>
+        <div style={{ textAlign: "center", color: "#fff", fontSize: 9, margin: "12px 0 6px" }}>{step.title}</div>
+        <div style={{ textAlign: "center", color: "#b9b9cc", fontSize: 8, lineHeight: 1.7, minHeight: "3.4em", marginBottom: 12 }}>{step.line}</div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           <button
-            onClick={onContinue}
-            style={{
-              width: "100%",
-              padding: "11px 24px",
-              borderRadius: 12,
-              background: "rgba(255,60,60,0.12)",
-              color: "#ff9999",
-              fontSize: 11,
-              fontWeight: "bold",
-              fontFamily: '"Press Start 2P", monospace',
-              border: "1px solid rgba(255,60,60,0.35)",
-              cursor: "pointer",
-              transition: "transform 0.1s, background 0.1s",
-            }}
-            onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.transform = "scale(1.04)"; (e.currentTarget as HTMLButtonElement).style.background = "rgba(255,60,60,0.2)"; }}
-            onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.transform = "scale(1)"; (e.currentTarget as HTMLButtonElement).style.background = "rgba(255,60,60,0.12)"; }}
+            onClick={() => setI((n) => Math.max(0, n - 1))}
+            style={{ background: "transparent", border: "1px solid #333344", color: "#888899", borderRadius: 8, padding: "9px 12px", cursor: "pointer", fontFamily: "inherit", fontSize: 7, visibility: i === 0 ? "hidden" : "visible" }}
           >
-            Close
+            BACK
           </button>
-        )}
+          <div style={{ flex: 1, display: "flex", justifyContent: "center", gap: 5 }}>
+            {steps.map((s, n) => (
+              <span key={s.title} style={{ width: n === i ? 16 : 6, height: 6, borderRadius: 3, background: n === i ? "#FF6B35" : "#333344", transition: "width .2s" }} />
+            ))}
+          </div>
+          <button
+            onClick={() => (last ? onDone() : setI((n) => n + 1))}
+            style={{ background: "#FF6B35", color: "#0a0a14", border: "none", borderRadius: 8, padding: "10px 16px", cursor: "pointer", fontFamily: "inherit", fontSize: 7 }}
+          >
+            {last ? "COOK!" : "NEXT"}
+          </button>
+        </div>
       </div>
     </div>
   );

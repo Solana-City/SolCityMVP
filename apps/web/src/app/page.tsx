@@ -159,14 +159,11 @@ export default function Home() {
     }
     if (action.type === "minigame") {
       if (action.miniGameId) {
-        // Build a stub context — PDAs are null until on-chain order accounts are wired in
+        // No wagering: the food cart gets only its round deadline.
         launchMiniGame(action.miniGameId, {
           wallet: null,
-          cartPda:       null,
-          orderPda:      null,
-          orderType:     action.orderType ?? "sushi",
-          expiresAt:     Math.floor(Date.now() / 1000) + 60,
-          amountLamports: 10_000_000,
+          orderType: "sushi",
+          expiresAt: Math.floor(Date.now() / 1000) + 60,
         });
         // Don't emit npc:close — CityScene is paused by minigame:launch;
         // minigame:close will resume it when the game ends.

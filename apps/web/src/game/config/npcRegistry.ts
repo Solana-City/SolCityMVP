@@ -3,7 +3,7 @@ export interface NPCAction {
   label: string;
   url?: string;
   miniGameId?: string;
-  orderType?: "burger" | "sushi";
+  orderType?: "sushi";
 }
 
 export interface NPCDefinition {
@@ -114,9 +114,7 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     color: 0xff6b35,
     dialog: [
       "Irasshaimase! Welcome to my cart.",
-      "Orders are piling up. Burger or sushi, it doesn't matter.",
-      "I just need someone who can assemble them in the right order, fast.",
-      "Think you've got the hands for it?",
+      "Customers are hungry. Build their sushi sets in order, before time runs out!",
     ],
     action: { type: "minigame", label: "Start cooking!", miniGameId: "food-cart", orderType: "sushi" },
     spriteKey: "Sushi Man",
