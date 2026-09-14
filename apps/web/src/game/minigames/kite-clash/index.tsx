@@ -23,6 +23,15 @@ const WIND_FRAME_BASE: Record<EngineSnapshot["windTier"], number> = { LOW: 2, ME
  */
 const JOYSTICK_R = 48; // px
 const HOW_TO_PLAY_SEEN_KEY = "solcity.kiteClash.howToPlaySeen";
+/** Set only when the player reaches the last card, not when they skip. */
+const HOW_TO_PLAY_DONE_KEY = "solcity.kiteClash.howToPlayDone";
+
+function readHowToPlayDone(): boolean {
+  try { return localStorage.getItem(HOW_TO_PLAY_DONE_KEY) === "1"; } catch { return false; }
+}
+function markHowToPlayDone(): void {
+  try { localStorage.setItem(HOW_TO_PLAY_DONE_KEY, "1"); } catch { /* storage blocked */ }
+}
 
 function readHowToPlaySeen(): boolean {
   try { return localStorage.getItem(HOW_TO_PLAY_SEEN_KEY) === "1"; } catch { return false; }
@@ -41,13 +50,20 @@ export default function KiteClashGame({ onResult, onClose }: MiniGameComponentPr
   const [isTouch, setIsTouch] = useState(false);
   const [windShimmer, setWindShimmer] = useState(false);
   const [howToOpen, setHowToOpen] = useState(false);
+  /** Highlight the tutorial button until the player has been through it. */
+  const [howToDone, setHowToDone] = useState(true);
+  useEffect(() => { setHowToDone(readHowToPlayDone()); }, []);
 
   const openHowTo = useCallback(() => {
     setHowToOpen(true);
     engineRef.current?.setBriefing(true);
   }, []);
-  const closeHowTo = useCallback(() => {
+  const closeHowTo = useCallback((completed = false) => {
     markHowToPlaySeen();
+    if (completed) {
+      markHowToPlayDone();
+      setHowToDone(true);
+    }
     setHowToOpen(false);
     engineRef.current?.setBriefing(false);
   }, []);
@@ -163,6 +179,10 @@ export default function KiteClashGame({ onResult, onClose }: MiniGameComponentPr
       <style>{`
         @keyframes kc-fadeOut { 0% { opacity: 1; } 70% { opacity: 1; } 100% { opacity: 0; } }
         @keyframes kc-pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.25); } }
+        @keyframes kc-glow { 0%, 100% { box-shadow: 0 0 0 0 rgba(255,215,0,0.75); } 50% { box-shadow: 0 0 0 9px rgba(255,215,0,0); } }
+        @keyframes kc-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
+        .kc-howto-glow { animation: kc-glow 1.3s ease-out infinite; }
+        .kc-howto-bob { animation: kc-bob 0.9s ease-in-out infinite; }
         .kc-ready { animation: kc-fadeOut 1.2s ease forwards; }
         .kc-multiplier-pulse { animation: kc-pulse 0.4s ease; }
       `}</style>
@@ -343,25 +363,36 @@ export default function KiteClashGame({ onResult, onClose }: MiniGameComponentPr
       >
         ESC to close
       </button>
-      <button
-        onClick={openHowTo}
-        aria-label="How to play"
-        style={{
-          position: "absolute",
-          top: 14,
-          left: "calc(50% + 72px)",
-          background: "rgba(0,0,0,0.35)",
-          border: "1px solid rgba(255,255,255,0.2)",
-          color: "#cbd5e1",
-          fontFamily: '"Press Start 2P", monospace',
-          fontSize: 8,
-          borderRadius: 6,
-          padding: "4px 8px",
-          cursor: "pointer",
-        }}
-      >
-        ?
-      </button>
+      {/* Tutorial button: labelled, orange, and pulsing with a pointer until
+          the player has finished the cards once. */}
+      {snapshot?.phase !== "ended" && <div style={{ position: "absolute", top: 44, left: "50%", transform: "translateX(-50%)", display: "flex", flexDirection: "column", alignItems: "center", gap: 6, zIndex: 3 }}>
+        <button
+          onClick={openHowTo}
+          aria-label="How to play"
+          className={howToDone ? undefined : "kc-howto-glow"}
+          style={{
+            display: "flex", alignItems: "center", gap: 7,
+            background: howToDone ? "rgba(0,0,0,0.45)" : "#FFA94D",
+            border: `2px solid ${howToDone ? "rgba(255,169,77,0.6)" : "#FFD700"}`,
+            color: howToDone ? "#FFA94D" : "#0a0a14",
+            fontFamily: '"Press Start 2P", monospace',
+            fontSize: 9, borderRadius: 8, padding: "7px 12px", cursor: "pointer",
+          }}
+        >
+          <span style={{
+            width: 16, height: 16, borderRadius: "50%", display: "inline-flex", alignItems: "center", justifyContent: "center",
+            background: howToDone ? "#FFA94D" : "#0a0a14", color: howToDone ? "#0a0a14" : "#FFA94D", fontSize: 9,
+          }}>?</span>
+          HOW TO PLAY
+        </button>
+        {!howToDone && !howToOpen && (
+          <span className="kc-howto-bob" style={{
+            fontSize: 7, color: "#FFD700", textShadow: OUTLINE, whiteSpace: "nowrap", pointerEvents: "none",
+          }}>
+            ▲ NEW? START HERE
+          </span>
+        )}
+      </div>}
 
       {/* Controls hint — desktop only (on mobile the touch buttons replace this) */}
       {!isTouch && (
@@ -382,7 +413,7 @@ export default function KiteClashGame({ onResult, onClose }: MiniGameComponentPr
               ✂ HOLD SPACE TO CUT!
             </span>
           ) : (
-            "Cross your line over a rival's (orange) at a similar depth, then hold Space to cut it"
+            "Cross the orange line, hold Space"
           )}
         </div>
       )}
@@ -480,12 +511,23 @@ export default function KiteClashGame({ onResult, onClose }: MiniGameComponentPr
             {snapshot.endReason?.title ?? "LINE CUT!"}
           </div>
           {snapshot.endReason && (
-            <div style={{ fontSize: 9, color: "#cbd5e1", lineHeight: 1.8, maxWidth: 440, textAlign: "center", padding: "0 20px" }}>
-              {snapshot.endReason.detail}
-            </div>
+            <>
+              {/* The reason as a picture, with one short tip under it. */}
+              <div style={{
+                position: "relative", width: "min(280px, 70vw)", aspectRatio: "2 / 1", overflow: "hidden",
+                borderRadius: 8, border: "2px solid rgba(255,90,90,0.6)",
+                backgroundImage: `url(${KITE}/background.png)`, backgroundSize: "cover",
+                backgroundPosition: "center 30%", imageRendering: "pixelated",
+              }}>
+                {snapshot.endReason.kind === "rival" ? <CrossScene ring="threat" /> : <ReelScene />}
+              </div>
+              <div style={{ fontSize: 9, color: "#FFD700", textAlign: "center", padding: "0 20px" }}>
+                {snapshot.endReason.detail}
+              </div>
+            </>
           )}
           <div style={{ fontSize: 10, color: "#e2e8f0" }}>
-            Final score: <span style={{ color: "#FFD700" }}>{snapshot.score}</span>
+            SCORE <span style={{ color: "#FFD700", fontSize: 14 }}>{snapshot.score}</span>
           </div>
           <button
             onClick={() => engineRef.current?.relaunch()}
@@ -501,6 +543,19 @@ export default function KiteClashGame({ onResult, onClose }: MiniGameComponentPr
             }}
           >
             RELAUNCH
+          </button>
+          <button
+            onClick={openHowTo}
+            className={howToDone ? undefined : "kc-howto-glow"}
+            style={{
+              background: howToDone ? "transparent" : "#FFA94D",
+              border: `1px solid ${howToDone ? "rgba(255,169,77,0.6)" : "#FFD700"}`,
+              borderRadius: 8, padding: "8px 18px", cursor: "pointer",
+              color: howToDone ? "#FFA94D" : "#0a0a14",
+              fontFamily: '"Press Start 2P", monospace', fontSize: 8,
+            }}
+          >
+            ? HOW TO PLAY
           </button>
           <button
             onClick={() => {
@@ -538,7 +593,7 @@ interface HowToStep {
  * How to play, one idea per card: a small scene built from the game's own
  * art on top, the key and its sentence under it, NEXT to move on.
  */
-function HowToPlayCard({ isTouch, onStart }: { isTouch: boolean; onStart: () => void }) {
+function HowToPlayCard({ isTouch, onStart }: { isTouch: boolean; onStart: (completed?: boolean) => void }) {
   const steps: HowToStep[] = [
     {
       key: isTouch ? "JOYSTICK" : "WASD / ARROWS",
@@ -567,7 +622,7 @@ function HowToPlayCard({ isTouch, onStart }: { isTouch: boolean; onStart: () => 
   const [i, setI] = useState(0);
   const last = i === steps.length - 1;
   const step = steps[i];
-  const next = useCallback(() => { if (last) onStart(); else setI((n) => n + 1); }, [last, onStart]);
+  const next = useCallback(() => { if (last) onStart(true); else setI((n) => n + 1); }, [last, onStart]);
   const back = useCallback(() => setI((n) => Math.max(0, n - 1)), []);
 
   useEffect(() => {
@@ -645,7 +700,7 @@ function HowToPlayCard({ isTouch, onStart }: { isTouch: boolean; onStart: () => 
           </button>
         </div>
         {!last && (
-          <button onClick={onStart} style={{
+          <button onClick={() => onStart(false)} style={{
             display: "block", margin: "10px auto 0", background: "none", border: "none",
             color: "#64748b", fontFamily: '"Press Start 2P", monospace', fontSize: 7, cursor: "pointer",
           }}>

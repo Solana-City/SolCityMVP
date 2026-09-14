@@ -63,7 +63,10 @@ export interface EngineSnapshot {
 }
 
 export interface EndReason {
+  /** Which picture the end screen shows. */
+  kind: "rival" | "backfire";
   title: string;
+  /** One short tip. The end screen is read in a second, not studied. */
   detail: string;
 }
 
@@ -445,8 +448,9 @@ export class KiteClashEngine {
     if (rivalOutcome === "success") {
       this.endRun(
         {
-          title: "THE RIVAL CUT YOUR LINE",
-          detail: "Your line stayed crossed with the orange line until the red ring filled. Steer away before it closes, or cut first with Space.",
+          kind: "rival",
+          title: "RIVAL CUT YOU",
+          detail: "Steer away when the red ring fills.",
         },
         this.crossingPoint ?? undefined,
       );
@@ -480,8 +484,9 @@ export class KiteClashEngine {
     } else if (result.outcome === "backfire") {
       this.endRun(
         {
-          title: "YOUR CUT BACKFIRED",
-          detail: "Your own line snapped while you were cutting. The more line you have out, the riskier a cut is: reel in tight (hold Space) before crossing.",
+          kind: "backfire",
+          title: "YOUR LINE SNAPPED",
+          detail: "Reel in before you cut.",
         },
         vfxOrigin,
       );
