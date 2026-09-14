@@ -16,6 +16,7 @@ import { AchievementEngine } from "../progression/achievementEngine";
 import { onMiniGameFinished, watchNpcConversations, stopWatchingNpcConversations } from "../progression/outfitRewards";
 import { showEmoji, EmojiDef } from "../chat/EmojiSystem";
 import { soundManager } from "../audio/SoundManager";
+import { publishMinimap } from "../minimap/MinimapHost";
 
 // Pixel-perfect zoom values and snapping live in config/zoomConfig.ts —
 // shared with ZoomControl and the pinch-zoom hook.
@@ -177,10 +178,12 @@ export class CityScene extends Phaser.Scene {
     // Do NOT pass x/y — Phaser defaults to layerData.x/y which already
     // incorporates the Tiled offsetx/offsety for each layer. Passing 0,0
     // would override those offsets and shift every layer to the origin.
+    const allLayers: Phaser.Tilemaps.TilemapLayer[] = [];
     for (let i = 0; i < map.layers.length; i++) {
       const layerName = map.layers[i].name;
       const layer = map.createLayer(i, allTilesets);
       if (!layer) continue;
+      allLayers.push(layer);
 
       layer.setCollisionFromCollisionGroup();
 
@@ -554,6 +557,22 @@ export class CityScene extends Phaser.Scene {
       npcBody.setImmovable(true);
       this.physics.add.collider(container, npcContainer);
     }
+
+    // Minimap: drawn from these same layers, so it always matches the map.
+    publishMinimap(this, map, allLayers, {
+      player: () => {
+        const c = this.avatar?.getContainer();
+        return c ? { x: c.x, y: c.y } : null;
+      },
+      npcs: () => this.npcSprites,
+      players: () => [...this.remotePlayers].map(([wallet, avatar]) => ({
+        wallet, avatar, name: this.nameLabels.get(wallet)?.text ?? `${wallet.slice(0, 4)}...`,
+      })),
+    });
+    // The full map is a modal: keys typed while it is open must not walk.
+    this.onGameEvent("minimap:open", (open: boolean) => {
+      if (this.input.keyboard) this.input.keyboard.enabled = !open;
+    });
 
     // Pedestrians + "Where Is NPC?" hunt game
     this.pedestrians = new PedestrianManager();

@@ -34,6 +34,7 @@ const QuestPanel          = dynamic(() => import("@/ui/QuestPanel"),          { 
 const PlayerCard          = dynamic(() => import("@/ui/PlayerCard"),          { ssr: false });
 const AudioBridge         = dynamic(() => import("@/ui/AudioBridge"),         { ssr: false });
 const ExpressionWheel     = dynamic(() => import("@/ui/ExpressionWheel"),     { ssr: false });
+const Minimap             = dynamic(() => import("@/ui/Minimap"),             { ssr: false });
 
 import ErrorBoundary from "@/ui/ErrorBoundary";
 
@@ -303,6 +304,7 @@ export default function Home() {
                   <WalletBar onWalletChange={handleWalletChange} />
                 </div>
                 <ZoomControl />
+                <Minimap compact="mobile" />
               </div>
             ) : (
               /* ── Desktop: unified card panel ── */
@@ -358,6 +360,11 @@ export default function Home() {
                     <ZoomControl />
                   </div>
                 </div>
+              </div>
+            )}
+            {!isTouch && (
+              <div style={{ marginTop: 8 }}>
+                <Minimap compact="desktop" />
               </div>
             )}
           </div>
