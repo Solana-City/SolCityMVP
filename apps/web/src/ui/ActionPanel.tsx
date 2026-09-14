@@ -10,6 +10,23 @@ import { profileManager } from "@/game/config/profileManager";
 import { Connection } from "@solana/web3.js";
 import { ProtocolIntroGate, type IntroSpec } from "@/ui/ProtocolIntro";
 
+/** Steve Sends: what a transfer is, before the send form. */
+const TRANSFER_INTRO: IntroSpec = {
+  id: "transfer",
+  title: "HOW SENDING WORKS",
+  color: "#00D1FF",
+  nodes: [
+    { sheet: "main_char.png", label: "YOU" },
+    { sheet: "send-npc.png", label: "STEVE" },
+    { sheet: "Kuka.png", label: "FRIEND" },
+  ],
+  steps: [
+    { title: "ADDRESS", line: "Paste your friend's wallet address.", edge: 1 },
+    { title: "AMOUNT", line: "Choose how much SOL to send.", edge: 0, chip: "SOL" },
+    { title: "SEND", line: "Sign and it arrives in seconds. The transfer is public on-chain.", edge: 1, chip: "SOL" },
+  ],
+};
+
 /** Jupiter Cat: what a swap is, before the swap form. */
 const SWAP_INTRO: IntroSpec = {
   id: "swap",
@@ -89,7 +106,7 @@ export default function ActionPanel({ action, onClose }: ActionPanelProps) {
 
           {action.type === "tutor"           && <TutorPanel           onClose={onClose} />}
           {action.type === "swap"            && <ProtocolIntroGate spec={SWAP_INTRO}><SwapPanel onClose={onClose} /></ProtocolIntroGate>}
-          {action.type === "transfer"        && <TransferPanel        onClose={onClose} />}
+          {action.type === "transfer"        && <ProtocolIntroGate spec={TRANSFER_INTRO}><TransferPanel onClose={onClose} /></ProtocolIntroGate>}
           {action.type === "bounties"        && <BountiesPanel        onClose={onClose} />}
           {action.type === "private-payment" && <PrivatePaymentPanel  onClose={onClose} />}
         </div>
@@ -125,7 +142,7 @@ export default function ActionPanel({ action, onClose }: ActionPanelProps) {
 
         {action.type === "tutor"           && <TutorPanel           onClose={onClose} />}
         {action.type === "swap"            && <ProtocolIntroGate spec={SWAP_INTRO}><SwapPanel onClose={onClose} /></ProtocolIntroGate>}
-        {action.type === "transfer"        && <TransferPanel        onClose={onClose} />}
+        {action.type === "transfer"        && <ProtocolIntroGate spec={TRANSFER_INTRO}><TransferPanel onClose={onClose} /></ProtocolIntroGate>}
         {action.type === "bounties"        && <BountiesPanel        onClose={onClose} />}
         {action.type === "private-payment" && <PrivatePaymentPanel  onClose={onClose} />}
       </div>

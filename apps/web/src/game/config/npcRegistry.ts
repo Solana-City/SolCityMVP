@@ -170,9 +170,8 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     tileY: 43,
     color: 0x00d1ff,
     dialog: [
-      "Steve Sends, at your service.",
-      "Need to move SOL or any token to another wallet? This is your stop.",
-      "Drop in the destination address and the amount, and it lands on the other side in seconds.",
+      "Need to send SOL to a friend?",
+      "Paste their address, pick the amount, and it arrives in seconds.",
     ],
     action: { type: "transfer", label: "Send tokens" },
     spriteKey: "avatar-send-npc",
