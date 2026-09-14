@@ -134,14 +134,14 @@ export class BootScene extends Phaser.Scene {
       let i = 0;
       const processNext = () => {
         if (i < npcStart) {
-          applyChromaKey(this, variants[i].variant.textureKey);
+          applyLayerChromaKey(this, variants[i].category, variants[i].variant.textureKey);
         } else if (i < exprStart) {
           const npc = animatedNpcSheets[i - npcStart];
           // Flat: NPC art has pink background pockets enclosed by the sprite
           // (e.g. Kite Pro's kite) that a flood fill can't reach.
           applyChromaKey(this, npc.spriteKey!, npc.spriteAnimation!.frameWidth, npc.spriteAnimation!.frameHeight, false);
         } else if (i < total) {
-          applyChromaKey(this, exprKeys[i - exprStart]);
+          applyChromaKey(this, exprKeys[i - exprStart], SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT, false);
         } else {
           waitForGameFont(() => this.scene.start("CityScene"));
           return;
@@ -155,9 +155,9 @@ export class BootScene extends Phaser.Scene {
 
     // Apply chroma key to all paper doll layers — removes the pink background
     // (rgb 215,123,186) so layers composite transparently over each other.
-    for (const { variant } of getAllLayerVariants()) {
+    for (const { category, variant } of getAllLayerVariants()) {
       if (this.textures.exists(variant.textureKey)) {
-        applyChromaKey(this, variant.textureKey);
+        applyLayerChromaKey(this, category, variant.textureKey);
       }
     }
     for (const npc of animatedNpcSheets) {
@@ -165,7 +165,7 @@ export class BootScene extends Phaser.Scene {
       applyChromaKey(this, npc.spriteKey!, npc.spriteAnimation!.frameWidth, npc.spriteAnimation!.frameHeight, false);
     }
     for (const key of exprKeys) {
-      applyChromaKey(this, key);
+      applyChromaKey(this, key, SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT, false);
     }
 
     waitForGameFont(() => this.scene.start("CityScene"));
@@ -185,6 +185,17 @@ function waitForGameFont(onReady: () => void): void {
     document.fonts.load('10px "Press Start 2P"').then(() => undefined),
     timeout,
   ]).then(onReady).catch(onReady);
+}
+
+/**
+ * Paper-doll layers: only SKIN needs the edge flood fill, because the Pinki
+ * skin tone sits inside the key's tolerance. Every other layer is keyed flat,
+ * which also clears pink pockets the art encloses. The flood fill left those
+ * behind: the Ninja mask's eye slit, the gap under a cap's brim, and so on,
+ * drawn as solid pink over the face.
+ */
+function applyLayerChromaKey(scene: Phaser.Scene, category: string, key: string): void {
+  applyChromaKey(scene, key, SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT, category === "skin");
 }
 
 /**
