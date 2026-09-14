@@ -258,9 +258,9 @@ function CompactMap({ host, mobile, onOpen, onCollapse }: {
   host: MinimapHost; mobile: boolean; onOpen: () => void; onCollapse: () => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const D = mobile ? 112 : 176;
-  // World px shown across the diameter: about 46 tiles on desktop, 30 on a phone.
-  const zoom = D / (mobile ? 720 : 1100);
+  const D = mobile ? 84 : 176;
+  // World px shown across the diameter: about 46 tiles on desktop, 26 on a phone.
+  const zoom = D / (mobile ? 620 : 1100);
 
   useEffect(() => {
     const c = canvasRef.current;
@@ -287,7 +287,7 @@ function CompactMap({ host, mobile, onOpen, onCollapse }: {
         const p = toScreen(v, D, D, l.x, l.y);
         if (inside(p, 4)) drawMarker(ctx, "landmark", p.x, p.y, mobile ? 2.4 : 3);
       }
-      const bodyH = mobile ? 16 : 22;
+      const bodyH = mobile ? 13 : 22;
       // South-most last, so nearer pins overlap the ones behind them.
       for (const n of [...snap.npcs].sort((a, b) => a.y - b.y)) {
         const p = toScreen(v, D, D, n.x, n.y);
@@ -311,7 +311,7 @@ function CompactMap({ host, mobile, onOpen, onCollapse }: {
     return () => cancelAnimationFrame(raf);
   }, [host, mobile, D, zoom]);
 
-  const chip = mobile ? 22 : 26;
+  const chip = mobile ? 20 : 26;
   return (
     <div style={{ position: "relative", width: D, height: D, flexShrink: 0 }}>
       <button

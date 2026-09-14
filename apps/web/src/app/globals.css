@@ -47,10 +47,18 @@ body {
   -webkit-user-select: none;
 }
 
+/* No long-press "save image" sheet or drag ghost on game art (iOS/Android).
+   Paired with the contextmenu block in page.tsx. */
+html, body, img, canvas, button, a {
+  -webkit-touch-callout: none;
+  -webkit-user-drag: none;
+}
+
 /* Keep inputs/textareas selectable */
 input, textarea {
   user-select: text;
   -webkit-user-select: text;
+  -webkit-touch-callout: default;
 }
 
 /* Remove focus ring from buttons (game feels native, not web) */

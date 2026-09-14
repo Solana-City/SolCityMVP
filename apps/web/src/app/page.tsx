@@ -73,6 +73,23 @@ export default function Home() {
 
   usePinchZoom();
 
+  // Long-pressing an image or the canvas on a phone opens the browser's
+  // "save image / open in new tab" sheet, which interrupts play mid-gesture.
+  // Suppress the context menu everywhere except text fields (paste still works).
+  useEffect(() => {
+    const block = (e: Event) => {
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+      e.preventDefault();
+    };
+    document.addEventListener("contextmenu", block);
+    document.addEventListener("dragstart", block);
+    return () => {
+      document.removeEventListener("contextmenu", block);
+      document.removeEventListener("dragstart", block);
+    };
+  }, []);
+
   // Mobile panels and chat are mutually exclusive — the screen is too small
   // to stack overlays on top of the game view.
   const toggleMobilePanel = useCallback((panel: "hunt" | "quests") => {
@@ -296,15 +313,28 @@ export default function Home() {
             }}
           >
             {isTouch ? (
-              /* ── Mobile: compact horizontal strip + zoom below ── */
-              <div className="flex flex-col items-end gap-2">
-                <Minimap compact="mobile" />
-                <div className="flex items-center gap-1.5">
-                  <PfpButton gameRef={game} size={32} onClick={() => setProfileOpen(true)} />
-                  <WardrobeButton size={32} onClick={() => setWardrobeOpen(true)} />
-                  <WalletBar onWalletChange={handleWalletChange} />
+              /* ── Mobile: one compact block. The controls stack in a column
+                  as tall as the round minimap beside them, instead of the
+                  map, the wallet strip and zoom each taking a row. ── */
+              <div className="flex items-start gap-2">
+                <div className="flex flex-col items-end gap-1.5">
+                  <div className="flex items-center gap-1.5">
+                    <PfpButton gameRef={game} size={32} onClick={() => setProfileOpen(true)} />
+                    <WardrobeButton size={32} onClick={() => setWardrobeOpen(true)} />
+                    <WalletBar onWalletChange={handleWalletChange} />
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <div style={{ width: 116 }}>
+                      <TransactionLogPanel
+                        isOpen={logOpen}
+                        onToggle={() => setLogOpen((v) => !v)}
+                        gameRef={game}
+                      />
+                    </div>
+                    <ZoomControl />
+                  </div>
                 </div>
-                <ZoomControl />
+                <Minimap compact="mobile" />
               </div>
             ) : (
               /* ── Desktop: round minimap over the unified card panel ── */
@@ -441,8 +471,8 @@ function MobilePanelToggle({ iconSrc, label, active, onClick }: {
 }
 
 /** Rail button (below Chat) that opens the expression wheel on touch.
-    Matches the MobilePanelToggle chrome but shows the 😀 glyph — the wheel
-    isn't a panel, so it just fires the open event. */
+    Uses the pixel-art emote button (btn_emoji) so it matches the rest of
+    the rail; the wheel isn't a panel, so it just fires the open event. */
 function ExpressionToggle() {
   return (
     <button
@@ -458,11 +488,15 @@ function ExpressionToggle() {
       }}
     >
       <img
-        src="/assets/ui/bg_ico.png"
+        src="/assets/ui/btn_emoji_bg.png"
         width={36} height={36} alt="" draggable={false}
         style={{ imageRendering: "pixelated", position: "absolute", inset: 0 }}
       />
-      <span style={{ position: "relative", fontSize: 20, lineHeight: 1 }}>😀</span>
+      <img
+        src="/assets/ui/btn_emoji.png"
+        width={36} height={36} alt="Expressions" draggable={false}
+        style={{ imageRendering: "pixelated", position: "relative" }}
+      />
     </button>
   );
 }

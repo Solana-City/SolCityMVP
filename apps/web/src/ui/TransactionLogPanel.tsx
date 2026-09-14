@@ -222,7 +222,7 @@ function ToggleButton({
       }}
     >
       <PulseDot color={borderColor} active={pendingCount > 0} />
-      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>ONCHAIN</span>
+      <span style={{ whiteSpace: "nowrap" }}>ONCHAIN</span>
       <span style={{ color: "#666677", flexShrink: 0 }}>·</span>
       <span style={{ color: borderColor, flexShrink: 0 }}>{entryCount}</span>
     </button>

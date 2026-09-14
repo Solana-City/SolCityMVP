@@ -28,7 +28,7 @@ export default function ZoomControl() {
   const idx = zooms.indexOf(zoom);
   const canDec = idx > 0;
   const canInc = idx >= 0 && idx < zooms.length - 1;
-  const btnSize = isTouch ? 30 : 22;
+  const btnSize = isTouch ? 26 : 22;
 
   function change(next: number) {
     setZoom(next);
