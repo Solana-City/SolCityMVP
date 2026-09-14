@@ -194,7 +194,7 @@ export default function ExpressionWheel({ gameRef }: { gameRef: Phaser.Game | nu
     return () => { window.removeEventListener("keydown", onDown); window.removeEventListener("keyup", onUp); };
   }, [open, activeIndex, openWheel, closeWheel, trigger, repeatLast]);
 
-  // Touch/click opener from the floating button + ChatPanel 😀.
+  // Touch/click opener from the floating button + ChatPanel emote icon.
   useEffect(() => {
     const onOpenEvent = () => openWheel(false);
     window.addEventListener("solcity:openExpressionWheel", onOpenEvent);

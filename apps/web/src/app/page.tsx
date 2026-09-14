@@ -471,8 +471,8 @@ function MobilePanelToggle({ iconSrc, label, active, onClick }: {
 }
 
 /** Rail button (below Chat) that opens the expression wheel on touch.
-    Uses the pixel-art emote button (btn_emoji) so it matches the rest of
-    the rail; the wheel isn't a panel, so it just fires the open event. */
+    Same chrome as MobilePanelToggle with the pixel-art ico_emoji; the wheel
+    isn't a panel, so it just fires the open event. */
 function ExpressionToggle() {
   return (
     <button
@@ -488,13 +488,13 @@ function ExpressionToggle() {
       }}
     >
       <img
-        src="/assets/ui/btn_emoji_bg.png"
+        src="/assets/ui/bg_ico.png"
         width={36} height={36} alt="" draggable={false}
         style={{ imageRendering: "pixelated", position: "absolute", inset: 0 }}
       />
       <img
-        src="/assets/ui/btn_emoji.png"
-        width={36} height={36} alt="Expressions" draggable={false}
+        src="/assets/ui/ico_emoji.png"
+        width={24} height={24} alt="Expressions" draggable={false}
         style={{ imageRendering: "pixelated", position: "relative" }}
       />
     </button>

@@ -252,7 +252,10 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
           }}
           title="Face expressions"
         >
-          😀
+          <img
+            src="/assets/ui/ico_emoji.png" width={16} height={16} alt="Face expressions" draggable={false}
+            style={{ imageRendering: "pixelated", display: "block" }}
+          />
         </button>
         <input
           ref={inputRef}
