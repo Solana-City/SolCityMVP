@@ -80,6 +80,15 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
     }
   }, [npc, lineIndex, isTyping, onAction]);
 
+  /** Clicks on the bubble body only skip/advance text. On the last line the
+   *  action fires from its own button (or E/ACT), never from a stray click
+   *  anywhere on the bubble. */
+  const onBubbleClick = useCallback(() => {
+    if (!npc) return;
+    if (!isTyping && lineIndex >= npc.dialog.length - 1) return;
+    skipOrAdvance();
+  }, [npc, lineIndex, isTyping, skipOrAdvance]);
+
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (!npc) return;
@@ -141,7 +150,7 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
   if (isTouch) {
     return (
       <div
-        onClick={skipOrAdvance}
+        onClick={onBubbleClick}
         style={{
           position:     "fixed",
           bottom:       "calc(env(safe-area-inset-bottom, 0px) + 12px)",
@@ -157,7 +166,7 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
           borderRadius: 14,
           padding:      "12px 14px 14px",
           backdropFilter: "blur(8px)",
-          cursor:       "pointer",
+          cursor:       isLastLine && doneTyping ? "default" : "pointer",
           boxShadow:    `0 -4px 28px ${color}20`,
         }}
       >
@@ -278,12 +287,12 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
 
         <div
           className="relative rounded-xl flex-1"
-          onClick={skipOrAdvance}
+          onClick={onBubbleClick}
           style={{
             background:     "rgba(8,8,24,0.96)",
             border:         `2px solid ${color}`,
             backdropFilter: "blur(6px)",
-            cursor:         "pointer",
+            cursor:         isLastLine && doneTyping ? "default" : "pointer",
             boxShadow:      `0 0 36px ${color}20`,
           }}
         >
