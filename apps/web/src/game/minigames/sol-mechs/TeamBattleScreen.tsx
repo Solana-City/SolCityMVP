@@ -13,7 +13,7 @@ import {
   type TeamBattleState, type TeamAction, type TeamEvent, type TeamRoundActions, type TeamResolveResult,
 } from "@/game/solmechs/engine/TeamBattle";
 import {
-  availableMoves, legalTargets, legalSelfTargets, isDefeated,
+  availableMoves, legalTargets, legalSelfTargets,
 } from "@/game/solmechs/engine/BattleEngine";
 import type { SquadOpponent } from "@/game/solmechs/opponent/SquadOpponent";
 import type { PlayerSide } from "@/game/solmechs/engine/BattleEngine";
@@ -24,6 +24,7 @@ import type { ModuleSlot, MoveDefinition } from "@/game/solmechs/data/types";
 import { BattleLog } from "./BattleLog";
 import { useChessClock } from "./ClockBar";
 import { UnitPanel } from "./BattleHud";
+import { SquadPortraits } from "./SquadPortraits";
 import { SQUAD_CLOCK, formatClock } from "@/game/solmechs/data/clock";
 import { C, T, SP, R, W, PANEL_HEIGHT, actionButton, frame, DISPLAY } from "./theme";
 
@@ -356,9 +357,9 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, opponent, onFi
             own, and the arena gets that height back. */}
         <header style={sx.header}>
           <h2 style={sx.title}>SQUAD BATTLE</h2>
-          <SquadBar state={state} side="p1" label="YOU" />
+          <SquadPortraits side={state.p1} label="YOU" />
           <div style={{ flex: 1 }} />
-          <SquadBar state={state} side="p2" label="RIVAL" align="right" />
+          <SquadPortraits side={state.p2} label="RIVAL" align="right" />
           <button onClick={onClose} style={sx.close} aria-label="Close">×</button>
         </header>
 
@@ -562,42 +563,6 @@ function ResultCard({ won, actions, onLeave }: {
   );
 }
 
-function SquadBar({ state, side, label, align }: {
-  state: TeamBattleState; side: PlayerSide; label: string; align?: "right";
-}) {
-  const s = side === "p1" ? state.p1 : state.p2;
-  return (
-    <div style={{
-      display: "flex", alignItems: "center", gap: 6, minWidth: 0,
-      flexDirection: align ? "row-reverse" : "row",
-    }}>
-      <div style={sx.squadLabel}>{label}</div>
-      <div style={{ display: "flex", gap: 4 }}>
-        {s.units.map((u, i) => {
-          const down = isDefeated(u);
-          const active = i === s.activeIndex;
-          return (
-            <span
-              key={i}
-              title={u.matrix.matrixName}
-              style={{
-                fontSize: 11, padding: "2px 6px", borderRadius: 4, fontWeight: 700,
-                border: `1px solid ${active ? C.teal : down ? "#4a2030" : C.line}`,
-                background: active ? C.raised : down ? "#2a0f18" : C.raised,
-                color: down ? C.faint : active ? C.teal : C.dim,
-                textDecoration: down ? "line-through" : "none",
-                whiteSpace: "nowrap",
-              }}
-            >
-              {u.matrix.matrixName}
-            </span>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
 /** Matches the 1v1's footer cards. */
 const CARD: React.CSSProperties = {
   background: "rgba(8,4,16,.93)",
@@ -644,8 +609,6 @@ const sx: Record<string, React.CSSProperties> = {
   header: { display: "flex", alignItems: "center", gap: SP.md, flexShrink: 0 },
   title: { margin: 0, fontSize: 16, color: C.teal, letterSpacing: 4, fontWeight: 800 },
   close: { background: "none", border: "none", color: C.dim, fontSize: 24, cursor: "pointer", lineHeight: 1, padding: 0 },
-  squadRow: { display: "flex", gap: SP.md, flexWrap: "wrap", flexShrink: 0 },
-  squadLabel: { fontSize: 11, color: C.faint, letterSpacing: 2 },
   /**
    * Centres the stage and gives it the height left over by the footer.
    */
