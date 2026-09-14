@@ -1,11 +1,11 @@
 "use client";
 
 /**
- * Sol Mechs rules, as one screen of cards.
+ * Sol Mechs rules, as a short sequence of card pages.
  *
  * Each rule is a card: the game's own art for the idea, a short title and a
- * sentence or two. It covers what a player needs before a first battle and
- * nothing more, and fits on screen without scrolling.
+ * sentence or two. Nine cards at once was a wall of text, so they come three
+ * at a time: the basics, how a round plays, then tactics.
  */
 import { useEffect, useRef, useState } from "react";
 import {
@@ -123,16 +123,54 @@ const RULES: Rule[] = [
   },
 ];
 
+/** Pages of three, in the order a new player needs them. */
+const PAGES: Array<{ title: string; rules: string[] }> = [
+  { title: "THE BASICS", rules: ["YOUR SQUAD", "4 PARTS", "KNOCKOUT"] },
+  { title: "A ROUND", rules: ["VICTORY", "ROUNDS", "LOST ATTACKS"] },
+  { title: "TACTICS", rules: ["SWAPPING", "DAMAGE", "AIM ANYWHERE"] },
+];
+
 export interface RulesScreenProps {
   onClose: () => void;
 }
 
 export default function RulesScreen({ onClose }: RulesScreenProps) {
+  // Short or narrow screens (a phone in landscape) get one card per page:
+  // three side by side there leaves each card a sliver.
+  const [compact, setCompact] = useState(false);
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    const mq = window.matchMedia("(max-width: 900px), (max-height: 560px)");
+    const read = () => setCompact(mq.matches);
+    read();
+    mq.addEventListener("change", read);
+    return () => mq.removeEventListener("change", read);
+  }, []);
+  const pages = compact
+    ? PAGES.flatMap((g, gi) => g.rules.map((r, ri) => ({ title: `${g.title} ${ri + 1}/${g.rules.length}`, rules: [r], group: gi })))
+    : PAGES.map((g, gi) => ({ ...g, group: gi }));
+
+  const [page, setPageRaw] = useState(0);
+  // Keep the page in range when the layout switches between modes.
+  const setPage = (fn: (n: number) => number) => setPageRaw((n) => Math.min(pages.length - 1, Math.max(0, fn(n))));
+  useEffect(() => { setPageRaw((n) => Math.min(n, pages.length - 1)); }, [pages.length]);
+  const last = page >= pages.length - 1;
+  const next = () => (last ? onClose() : setPage((n) => n + 1));
+  const prev = () => setPage((n) => n - 1);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+      else if (e.key === "ArrowRight" || e.key === "Enter") setPage((n) => n + 1);
+      else if (e.key === "ArrowLeft") setPage((n) => n - 1);
+    };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onClose, pages.length]);
+
+  const current = pages[Math.min(page, pages.length - 1)];
+  const rules = current.rules.map((t) => RULES.find((r) => r.title === t)!);
+  const iconScale = compact ? 1 : 1.35;
 
   return (
     <div style={backdrop} onPointerDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
@@ -145,20 +183,19 @@ export default function RulesScreen({ onClose }: RulesScreenProps) {
             onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
           />
           <h2 style={sx.title}>RULES</h2>
+          <span style={sx.pageTitle}>{current.title}</span>
           <div style={{ flex: 1 }} />
-          {/* In the header, not a footer: a footer row cost the height that let
-              the last row of cards run under the button on short screens. */}
-          <button onClick={onClose} style={button("primary")}>BACK</button>
+          <button onClick={onClose} style={button("ghost")}>CLOSE</button>
         </header>
 
-        <div style={sx.grid}>
-          {RULES.map((rule) => (
+        <div key={page} style={{ ...sx.grid, gridTemplateColumns: compact ? "minmax(0, 1fr)" : sx.grid.gridTemplateColumns }}>
+          {rules.map((rule) => (
             <section key={rule.title} style={sx.card}>
               <div style={sx.icons}>
                 {rule.icons.map((icon, i) => ("word" in icon ? (
                   <span key={`word-${i}`} style={sx.word}>{icon.word}</span>
                 ) : "mech" in icon ? (
-                  <MechIcon key={`${icon.mech}-${i}`} mech={icon.mech} h={icon.h} />
+                  <MechIcon key={`${icon.mech}-${i}`} mech={icon.mech} h={icon.h * iconScale} />
                 ) : (
                   <img
                     key={`${icon.src}-${i}`}
@@ -166,7 +203,7 @@ export default function RulesScreen({ onClose }: RulesScreenProps) {
                     alt=""
                     style={{
                       ...PIXELATED,
-                      height: icon.h, width: "auto", display: "block",
+                      height: icon.h * iconScale, width: "auto", display: "block",
                       opacity: icon.dim ? 0.5 : 1,
                       filter: icon.dim ? "grayscale(1)" : undefined,
                     }}
@@ -178,7 +215,29 @@ export default function RulesScreen({ onClose }: RulesScreenProps) {
             </section>
           ))}
         </div>
+
+        <footer style={sx.footer}>
+          <button onClick={prev} style={{ ...button("ghost"), visibility: page === 0 ? "hidden" : "visible" }}>
+            ◂ BACK
+          </button>
+          <div style={sx.dots}>
+            {pages.map((p, n) => (
+              <button
+                key={p.title}
+                onClick={() => setPage(() => n)}
+                aria-label={`Rules page ${n + 1}: ${p.title}`}
+                style={{
+                  ...sx.dot,
+                  width: n === page ? 22 : compact ? 6 : 8,
+                  background: n === page ? C.teal : n < page ? C.dim : C.line,
+                }}
+              />
+            ))}
+          </div>
+          <button onClick={next} style={button("primary")}>{last ? "GOT IT" : "NEXT ▸"}</button>
+        </footer>
       </div>
+      <style>{`@keyframes sm-rules-in { from { opacity: 0; transform: translateX(14px); } to { opacity: 1; transform: none; } }`}</style>
     </div>
   );
 }
@@ -236,18 +295,23 @@ const sx: Record<string, React.CSSProperties> = {
   grid: {
     display: "grid",
     gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-    gap: 10,
+    gap: 12,
     minHeight: 0,
+    animation: "sm-rules-in .22s ease",
   },
+  pageTitle: { fontFamily: DISPLAY, fontSize: 12, fontWeight: 800, letterSpacing: 2, color: C.dim },
+  footer: { display: "flex", alignItems: "center", gap: SP.md, flexShrink: 0 },
+  dots: { flex: 1, display: "flex", justifyContent: "center", alignItems: "center", gap: 6 },
+  dot: { height: 8, borderRadius: 4, border: "none", padding: 0, cursor: "pointer", transition: "width .2s" },
   card: {
     ...frame(),
     background: C.ink,
-    padding: "10px 14px",
-    display: "flex", flexDirection: "column", alignItems: "center",
-    gap: 5, textAlign: "center", minWidth: 0,
+    padding: "22px 18px",
+    display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+    gap: 10, textAlign: "center", minWidth: 0, minHeight: 0,
   },
-  icons: { display: "flex", alignItems: "center", justifyContent: "center", gap: 6, height: 44 },
+  icons: { display: "flex", alignItems: "center", justifyContent: "center", gap: 6, minHeight: 60 },
   word: { fontFamily: DISPLAY, fontSize: 12, fontWeight: 800, letterSpacing: 1, color: C.warn, margin: "0 6px" },
-  cardTitle: { fontFamily: DISPLAY, fontSize: 14, fontWeight: 800, letterSpacing: 2, color: C.teal },
-  text: { margin: 0, fontSize: T.small, color: C.body, lineHeight: 1.45 },
+  cardTitle: { fontFamily: DISPLAY, fontSize: 16, fontWeight: 800, letterSpacing: 2, color: C.teal },
+  text: { margin: 0, fontSize: T.body, color: C.body, lineHeight: 1.5, maxWidth: 300 },
 };
