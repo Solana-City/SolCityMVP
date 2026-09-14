@@ -122,7 +122,7 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
         e.preventDefault();
         skipOrAdvance();
       }
-      if (e.key === "q" || e.key === "Q" || e.key === "Tab") {
+      if (e.key === "Tab") {
         e.preventDefault();
         skipToEnd();
       }
@@ -238,15 +238,6 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
             </div>
             <div style={{ fontSize: "8px", color: "#5a5a72" }}>{npc.role}</div>
           </div>
-          {showSkip && (
-            <button
-              onClick={(e) => { e.stopPropagation(); skipToEnd(); }}
-              style={{ ...skipStyle, padding: "7px 9px", touchAction: "manipulation" }}
-              aria-label="Skip dialog"
-            >
-              {"SKIP >>"}
-            </button>
-          )}
           <button
             onClick={(e) => { e.stopPropagation(); onClose(); }}
             style={{
@@ -296,13 +287,24 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
               {npc.action.label.toUpperCase()}
             </button>
           ) : (
-            <span style={{
-              fontSize: "8px",
-              color:     "#3a3a52",
-              animation: doneTyping ? "tapPulse 1.4s ease-in-out infinite" : "none",
-            }}>
-              {doneTyping ? "tap to continue ▶" : "..."}
-            </span>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <span style={{
+                fontSize: "8px",
+                color:     "#3a3a52",
+                animation: doneTyping ? "tapPulse 1.4s ease-in-out infinite" : "none",
+              }}>
+                {doneTyping ? "tap to continue ▶" : "..."}
+              </span>
+              {showSkip && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); skipToEnd(); }}
+                  style={{ ...skipStyle, padding: "8px 10px", touchAction: "manipulation" }}
+                  aria-label="Skip dialog"
+                >
+                  {"SKIP >>"}
+                </button>
+              )}
+            </div>
           )}
         </div>
 
@@ -381,16 +383,6 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
                 </div>
                 <div style={{ fontSize: "8px", color: "#5a5a72" }}>{npc.role}</div>
               </div>
-              {showSkip && (
-                <button
-                  onClick={(e) => { e.stopPropagation(); skipToEnd(); }}
-                  style={skipStyle}
-                  title="Skip to the end [Q]"
-                  aria-label="Skip dialog"
-                >
-                  {"SKIP >>"} <span style={{ opacity: 0.6 }}>[Q]</span>
-                </button>
-              )}
               <button
                 onClick={(e) => { e.stopPropagation(); onClose(); }}
                 style={{
@@ -439,6 +431,16 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
                   : "[E/Space] Continue · [ESC] Close"}
               </span>
             </div>
+            {showSkip && (
+              <button
+                onClick={(e) => { e.stopPropagation(); skipToEnd(); }}
+                style={skipStyle}
+                title="Skip to the end [Tab]"
+                aria-label="Skip dialog"
+              >
+                {"SKIP >>"} <span style={{ opacity: 0.6 }}>[TAB]</span>
+              </button>
+            )}
             {isLastLine && doneTyping && (
               <button
                 onClick={(e) => { e.stopPropagation(); onAction(npc.action); }}
