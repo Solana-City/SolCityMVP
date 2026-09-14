@@ -217,7 +217,7 @@ export const NPC_REGISTRY: NPCDefinition[] = [
   },
   {
     id: "mech-handler",
-    name: "Rade",
+    name: "Mech Builder",
     role: "Sol Mechs Hangar",
     // SCMap01.1: on the street at the fence of the empty lot east of the
     // canal — the fenced plot with the construction signs is where a hangar
@@ -228,7 +228,7 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     tileY: 60,
     color: 0xff5468,
     dialog: [
-      "Hey, I'm Rade. Welcome to the Sol Mechs hangar!",
+      "Hey, I'm the Mech Builder. Welcome to the Sol Mechs hangar!",
       "Build a squad of three mechs, mix parts across chassis and take them into 3v3 battles.",
       "Warm up against the CPU or battle other players online. The rules are in the menu whenever you need them.",
     ],
