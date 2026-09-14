@@ -32,6 +32,11 @@ import { C, T, SP, R, MONO, W, PANEL_HEIGHT, DISPLAY, frame } from "./theme";
 
 const SLOTS: ModuleSlot[] = ["matrix", "rightArm", "leftArm", "lowerBody"];
 const CARD_SCALE = 2;
+const SQUAD_RULES = [
+  { num: "3", title: "THREE MECHS", text: "The Leads mech starts. The other two wait in reserve." },
+  { num: "1x", title: "NO REPEATS", text: "Each part, matrix included, can be on only one mech." },
+  { num: "⇄", title: "SWAPPING", text: "Switching mechs uses your turn. Damage stays." },
+];
 const PART_SLOT_LABEL: Record<ModuleSlot, string> = {
   matrix: "MTX", rightArm: "R.ARM", leftArm: "L.ARM", lowerBody: "LEGS",
 };
@@ -110,13 +115,19 @@ export default function TeamBuilder({ onDeploy, onClose, deployLabel = "DEPLOY S
           <button onClick={onClose} style={sx.close} aria-label="Close">×</button>
         </header>
 
-        <p style={sx.blurb}>
-          Three mechs, sent out one at a time. Substituting costs your turn, and a mech
-          returns with the damage it left with. Only its stat buffs reset.
-          <br />
-          <strong style={{ color: C.text }}>Each part may appear once per squad</strong>, matrices
-          included.
-        </p>
+        {/* Three rules, one line each. The old paragraph packed substitution
+            costs, buff resets and part uniqueness into one block of prose. */}
+        <div style={sx.rules}>
+          {SQUAD_RULES.map((r) => (
+            <div key={r.title} style={sx.rule}>
+              <span style={sx.ruleNum}>{r.num}</span>
+              <div style={{ minWidth: 0 }}>
+                <div style={sx.ruleTitle}>{r.title}</div>
+                <div style={sx.ruleText}>{r.text}</div>
+              </div>
+            </div>
+          ))}
+        </div>
 
         <div style={sx.grid}>
           {mechs.map((build, i) => (
@@ -295,7 +306,21 @@ const sx: Record<string, React.CSSProperties> = {
   header: { display: "flex", alignItems: "center", gap: 10, flexShrink: 0 },
   title: { margin: 0, fontSize: 16, color: C.teal, letterSpacing: 4, fontWeight: 800, fontFamily: DISPLAY },
   close: { background: "none", border: "none", color: C.dim, fontSize: 22, cursor: "pointer", lineHeight: 1, padding: 0 },
-  blurb: { fontSize: 12, color: C.dim, margin: 0, lineHeight: 1.5, flexShrink: 0 },
+  rules: {
+    display: "grid", gap: 8, flexShrink: 0,
+    gridTemplateColumns: "repeat(auto-fit, minmax(min(200px, 100%), 1fr))",
+  },
+  rule: {
+    display: "flex", alignItems: "center", gap: 10, minWidth: 0,
+    background: C.ink, border: `1px solid ${C.line}`, borderRadius: 6, padding: "7px 10px",
+  },
+  ruleNum: {
+    flexShrink: 0, width: 30, height: 30, borderRadius: 6,
+    display: "flex", alignItems: "center", justifyContent: "center",
+    background: C.raised, color: C.teal, fontWeight: 800, fontSize: 14, fontFamily: DISPLAY,
+  },
+  ruleTitle: { fontSize: 11, fontWeight: 800, letterSpacing: 1.5, color: C.text },
+  ruleText: { fontSize: 12, color: C.dim, lineHeight: 1.35 },
   grid: {
     display: "grid",
     gridTemplateColumns: "repeat(auto-fit, minmax(min(240px, 100%), 1fr))",
