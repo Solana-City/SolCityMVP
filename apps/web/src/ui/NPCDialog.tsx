@@ -32,6 +32,8 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
   const [displayText, setDisplayText]     = useState("");
   const [isTyping, setIsTyping]           = useState(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  /** Set by skipToEnd so the line it lands on appears fully, not typed out. */
+  const instantRef = useRef(false);
   const isTouch = useIsTouch();
 
   // Reset when NPC changes
@@ -45,6 +47,14 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
   useEffect(() => {
     if (!npc) return;
     const text = npc.dialog[lineIndex] ?? "";
+    if (timerRef.current) clearInterval(timerRef.current);
+    if (instantRef.current) {
+      instantRef.current = false;
+      timerRef.current = null;
+      setDisplayText(text);
+      setIsTyping(false);
+      return;
+    }
     setDisplayText("");
     setIsTyping(true);
     let i = 0;
@@ -80,6 +90,22 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
     }
   }, [npc, lineIndex, isTyping, onAction]);
 
+  /** Jump straight to the last line, fully shown, so the action is one click
+   *  away. For players who already know what this NPC does. */
+  const skipToEnd = useCallback(() => {
+    if (!npc) return;
+    const last = npc.dialog.length - 1;
+    if (timerRef.current) clearInterval(timerRef.current);
+    timerRef.current = null;
+    if (lineIndex === last) {
+      setDisplayText(npc.dialog[last] ?? "");
+      setIsTyping(false);
+      return;
+    }
+    instantRef.current = true;
+    setLineIndex(last);
+  }, [npc, lineIndex]);
+
   /** Clicks on the bubble body only skip/advance text. On the last line the
    *  action fires from its own button (or E/ACT), never from a stray click
    *  anywhere on the bubble. */
@@ -96,6 +122,10 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
         e.preventDefault();
         skipOrAdvance();
       }
+      if (e.key === "q" || e.key === "Q" || e.key === "Tab") {
+        e.preventDefault();
+        skipToEnd();
+      }
       if (e.key === "Escape") {
         e.preventDefault();
         onClose();
@@ -103,7 +133,7 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [npc, skipOrAdvance, onClose]);
+  }, [npc, skipOrAdvance, skipToEnd, onClose]);
 
   // Mobile ACT button doubles as the dialog key: while a dialog is open,
   // CityScene ignores touch:interact (interactionBlocked), so the press
@@ -123,6 +153,20 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
   const isLastLine  = lineIndex >= npc.dialog.length - 1;
   const doneTyping  = !isTyping;
   const color       = `#${npc.color.toString(16).padStart(6, "0")}`;
+  // Only worth offering while there is still text between here and the action.
+  const showSkip    = npc.dialog.length > 1 && !isLastLine;
+  const skipStyle: React.CSSProperties = {
+    background: "transparent",
+    border: `1px solid ${color}66`,
+    color,
+    fontFamily: '"Press Start 2P", monospace',
+    fontSize: "7px",
+    padding: "5px 8px",
+    borderRadius: 6,
+    cursor: "pointer",
+    flexShrink: 0,
+    whiteSpace: "nowrap",
+  };
 
   /** Dot row showing progress through dialog lines */
   const Dots = () => (
@@ -194,6 +238,15 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
             </div>
             <div style={{ fontSize: "8px", color: "#5a5a72" }}>{npc.role}</div>
           </div>
+          {showSkip && (
+            <button
+              onClick={(e) => { e.stopPropagation(); skipToEnd(); }}
+              style={{ ...skipStyle, padding: "7px 9px", touchAction: "manipulation" }}
+              aria-label="Skip dialog"
+            >
+              SKIP >>
+            </button>
+          )}
           <button
             onClick={(e) => { e.stopPropagation(); onClose(); }}
             style={{
@@ -328,6 +381,16 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
                 </div>
                 <div style={{ fontSize: "8px", color: "#5a5a72" }}>{npc.role}</div>
               </div>
+              {showSkip && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); skipToEnd(); }}
+                  style={skipStyle}
+                  title="Skip to the end [Q]"
+                  aria-label="Skip dialog"
+                >
+                  SKIP >> <span style={{ opacity: 0.6 }}>[Q]</span>
+                </button>
+              )}
               <button
                 onClick={(e) => { e.stopPropagation(); onClose(); }}
                 style={{
