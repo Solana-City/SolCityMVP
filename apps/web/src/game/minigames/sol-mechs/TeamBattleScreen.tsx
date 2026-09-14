@@ -82,6 +82,20 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, opponent, onFi
   const stageRef = useRef<HTMLDivElement>(null);
   /** A narrow arena (a phone in landscape) gets the icon-only strip. */
   const [narrowStage, setNarrowStage] = useState(false);
+  /**
+   * A phone in landscape (~390px tall). The desktop frame spends most of that
+   * on chrome, leaving a postage-stamp arena whose two HUDs overlapped. Here
+   * the header shrinks to portraits only, the arena takes the full width, and
+   * the action strip uses shorter buttons.
+   */
+  const [phone, setPhone] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(max-height: 520px)");
+    const read = () => setPhone(mq.matches);
+    read();
+    mq.addEventListener("change", read);
+    return () => mq.removeEventListener("change", read);
+  }, []);
   const controlsRef = useRef<HTMLDivElement>(null);
   /**
    * The action card is narrow (a phone): shorter prompts, smaller tiles, no
@@ -441,26 +455,30 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, opponent, onFi
   const won = finished && state.status.kind === "finished" && state.status.winner === "p1";
 
   return (
-    <div style={sx.backdrop}>
+    <div style={{ ...sx.backdrop, ...(phone ? { padding: 4 } : null) }}>
       <style>{`
         @keyframes sm-pulse-kf { 0%, 100% { box-shadow: 0 0 0 0 rgba(95,160,255,.7); } 50% { box-shadow: 0 0 0 6px rgba(95,160,255,0); } }
         .sm-pulse { animation: sm-pulse-kf 1.2s ease-out infinite; }
+        .sm-phone .sm-btnrow { grid-auto-rows: 32px !important; gap: 5px !important; }
+        .sm-phone .sm-btnrow > button { height: 32px !important; }
       `}</style>
-      <div style={sx.frame}>
+      <div className={phone ? "sm-phone" : undefined} style={{ ...sx.frame, ...(phone ? sx.framePhone : null) }}>
         {/* One line: the squads ride in the header rather than a row of their
             own, and the arena gets that height back. */}
         <header style={sx.header}>
-          <h2 style={sx.title}>SQUAD BATTLE</h2>
-          <SquadPortraits side={state.p1} label="YOU" />
+          {!phone && <h2 style={sx.title}>SQUAD BATTLE</h2>}
+          <SquadPortraits side={state.p1} label="YOU" size={phone ? 26 : undefined} />
           <div style={{ flex: 1 }} />
-          <SquadPortraits side={state.p2} label="RIVAL" align="right" />
+          {phone && <span style={sx.roundChipInline}>ROUND {state.round}</span>}
+          <div style={{ flex: 1 }} />
+          <SquadPortraits side={state.p2} label="RIVAL" align="right" size={phone ? 26 : undefined} />
           <button onClick={onClose} style={sx.close} aria-label="Close">×</button>
         </header>
 
         {/* Same arrangement as the 1v1: the arena is the backdrop and the two
             HUDs sit over its top corners. See BattleHud for the measurements. */}
         <div style={sx.stageWrap}>
-        <div ref={stageRef} style={sx.stage}>
+        <div ref={stageRef} style={{ ...sx.stage, ...(phone ? sx.stagePhone : null) }}>
           <canvas
             ref={canvasRef}
             width={CANVAS_W}
@@ -477,21 +495,21 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, opponent, onFi
           ) : canAct && armsDown ? (
             <ArmsDownStrip canSwap={bench.length > 0} compact={narrowStage} />
           ) : null)}
-          <div ref={hudLeftRef} style={sx.hudLeft}>
+          <div ref={hudLeftRef} style={{ ...sx.hudLeft, ...(phone ? sx.hudPhone : null) }}>
             <UnitPanel
               unit={me}
               name="You"
               clock={formatClock(clock.p1)}
               live={thinking.includes("p1")}
               low={clock.p1 <= SQUAD_CLOCK.warnAtMs}
-              compact={narrowStage}
+              compact={narrowStage || phone}
             />
           </div>
-          <span style={sx.roundChip}>ROUND {state.round}</span>
+          {!phone && <span style={sx.roundChip}>ROUND {state.round}</span>}
           {finished && (
             <ResultCard won={won} actions={state.history.length} onLeave={onClose} />
           )}
-          <div ref={hudRightRef} style={sx.hudRight}>
+          <div ref={hudRightRef} style={{ ...sx.hudRight, ...(phone ? sx.hudPhone : null) }}>
             <UnitPanel
               unit={foe}
               name={opponent.name}
@@ -499,20 +517,20 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, opponent, onFi
               live={opponent.remote ? waiting : thinking.includes("p2")}
               low={!opponent.remote && clock.p2 <= SQUAD_CLOCK.warnAtMs}
               align="right"
-              compact={narrowStage}
+              compact={narrowStage || phone}
             />
           </div>
         </div>
         </div>
 
-        <div style={sx.footRow}>
-        <div ref={controlsRef} style={sx.controls}>
+        <div style={{ ...sx.footRow, ...(phone ? sx.footRowPhone : null) }}>
+        <div ref={controlsRef} style={{ ...sx.controls, ...(phone ? sx.controlsPhone : null) }}>
           {finished ? (
             <div style={sx.prompt}>Match over.</div>
           ) : mustSwitch ? (
             <>
               <div style={sx.prompt}>{tight ? "Pick a free replacement" : "Your mech is down. Send out a replacement (free)."}</div>
-              <div style={sx.btnRow}>
+              <div className="sm-btnrow" style={sx.btnRow}>
                 {bench.map((i) => (
                   <button key={i} onClick={() => submitForced(i)} style={sx.btn}>
                     <BenchLabel unit={state.p1.units[i]} />
@@ -532,7 +550,7 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, opponent, onFi
                 <span style={sx.promptText}>{tight ? "Swap uses your turn" : "Substitute: this uses your action for the round."}</span>
                 <button onClick={() => setPicking(false)} style={sx.back}>◂ BACK</button>
               </div>
-              <div style={sx.btnRow}>
+              <div className="sm-btnrow" style={sx.btnRow}>
                 {bench.map((i) => (
                   <button
                     key={i}
@@ -564,7 +582,7 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, opponent, onFi
                 )}
                 <button onClick={() => setPending(null)} style={sx.back}>◂ BACK</button>
               </div>
-              <div style={sx.btnRow}>
+              <div className="sm-btnrow" style={sx.btnRow}>
                 {pendingTargets.map((slot) => (
                   <button
                     key={slot}
@@ -581,8 +599,10 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, opponent, onFi
                     }}
                   >
                     <Sprite src={SLOT_ICON[slot]} h={tight ? 18 : 22} dim={offTarget(slot)} />
-                    <div style={{ ...sx.btnTitle, ...(tight ? sx.tightTitle : null) }}>{SLOT_LABEL[slot]}</div>
-                    {offTarget(slot) ? (
+                    <div style={{ ...sx.btnTitle, ...(tight ? sx.tightTitle : null) }}>
+                      {tight && offTarget(slot) ? (slot === "matrix" ? "SEALED" : "GONE") : SLOT_LABEL[slot]}
+                    </div>
+                    {tight && offTarget(slot) ? null : offTarget(slot) ? (
                       <div style={{ ...sx.btnSub, color: slot === "matrix" ? C.warn : C.bad, fontWeight: 700 }}>
                         {tight
                           ? (slot === "matrix" ? "SEALED" : "GONE")
@@ -598,7 +618,7 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, opponent, onFi
           ) : (
             <>
               <div style={sx.prompt}>Choose an action</div>
-              <div style={sx.btnRow}>
+              <div className="sm-btnrow" style={sx.btnRow}>
                 {moves.map((o) => (
                   <button
                     key={`${o.slot}-${o.moveIndex}`}
@@ -632,7 +652,7 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, opponent, onFi
           )}
         </div>
 
-          <div style={sx.logColumn}>
+          <div style={{ ...sx.logColumn, ...(phone ? sx.logPhone : null) }}>
             <BattleLog lines={log} turns={state.history.length} fill />
           </div>
         </div>
@@ -838,6 +858,9 @@ const PROMPT_H = 18 + 5;
  * under the last row.
  */
 const FOOT_H = PROMPT_H + 2 * BTN_H + 6 + 2 * SP.sm + 2;
+/** Phone strip: same two rows, buttons 32px tall. */
+const PHONE_BTN_H = 32;
+const PHONE_FOOT_H = PROMPT_H + 2 * PHONE_BTN_H + 6 + 2 * SP.sm + 2;
 
 const sx: Record<string, React.CSSProperties> = {
   backdrop: {
@@ -873,6 +896,17 @@ const sx: Record<string, React.CSSProperties> = {
   canvas: {
     position: "absolute", inset: 0, width: "100%", height: "100%",
     imageRendering: "pixelated", display: "block",
+  },
+  framePhone: { padding: 6, gap: 6, height: "calc(100dvh - 8px)", width: "100%", borderRadius: 8 },
+  /** Full width on a phone: the height is the scarce axis there, not the width. */
+  stagePhone: { aspectRatio: "auto", width: "100%" },
+  hudPhone: { width: "min(210px, 27%)" },
+  footRowPhone: { height: PHONE_FOOT_H, gap: 6 },
+  controlsPhone: { flex: "1 1 60%" },
+  logPhone: { flex: "1 1 40%" },
+  roundChipInline: {
+    fontSize: 10, letterSpacing: 2, fontWeight: 700, color: C.text,
+    border: `1px solid ${C.line}`, borderRadius: R.pill, padding: "2px 10px", whiteSpace: "nowrap",
   },
   hudLeft: { position: "absolute", left: "1.2%", top: "2%", width: "min(232px, 23%)" },
   hudRight: { position: "absolute", right: "1.2%", top: "2%", width: "min(232px, 23%)" },

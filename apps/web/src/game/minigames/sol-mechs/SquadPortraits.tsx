@@ -21,8 +21,8 @@ const SLOT_LABEL: Record<ModuleSlot, string> = {
   matrix: "MATRIX", rightArm: "R.ARM", leftArm: "L.ARM", lowerBody: "LEGS",
 };
 
-export function SquadPortraits({ side, label, align }: {
-  side: TeamSide; label: string; align?: "right";
+export function SquadPortraits({ side, label, align, size = SIZE }: {
+  side: TeamSide; label: string; align?: "right"; size?: number;
 }) {
   const [open, setOpen] = useState<number | null>(null);
   const right = align === "right";
@@ -42,8 +42,8 @@ export function SquadPortraits({ side, label, align }: {
             onMouseLeave={() => setOpen((cur) => (cur === i ? null : cur))}
             onClick={() => setOpen((cur) => (cur === i ? null : i))}
           >
-            <Portrait unit={u} active={i === side.activeIndex} />
-            {open === i && <PartsCard unit={u} index={i} active={i === side.activeIndex} right={right} />}
+            <Portrait unit={u} active={i === side.activeIndex} size={size} />
+            {open === i && <PartsCard unit={u} index={i} active={i === side.activeIndex} right={right} top={size + 10} />}
           </div>
         ))}
       </div>
@@ -51,7 +51,7 @@ export function SquadPortraits({ side, label, align }: {
   );
 }
 
-function Portrait({ unit, active }: { unit: MechUnit; active: boolean }) {
+function Portrait({ unit, active, size: SIZE }: { unit: MechUnit; active: boolean; size: number }) {
   const down = isDefeated(unit);
   const hp = unit.matrixMaxHP > 0 ? Math.max(0, unit.matrixHP / unit.matrixMaxHP) : 0;
   return (
@@ -69,7 +69,7 @@ function Portrait({ unit, active }: { unit: MechUnit; active: boolean }) {
         boxShadow: active ? `0 0 0 2px ${C.teal}, 0 0 10px ${C.teal}66` : `0 0 0 1px ${C.line}`,
         display: "flex", alignItems: "flex-end", justifyContent: "center",
       }}>
-        <Bust build={unit.build} />
+        <Bust build={unit.build} size={SIZE} />
       </div>
       {/* Core HP: the number that decides whether this mech can still fight. */}
       <div style={{
@@ -133,13 +133,13 @@ export function Bust({ build, size = SIZE }: { build: MechBuild; size?: number }
   );
 }
 
-function PartsCard({ unit, index, active, right }: {
-  unit: MechUnit; index: number; active: boolean; right: boolean;
+function PartsCard({ unit, index, active, right, top }: {
+  unit: MechUnit; index: number; active: boolean; right: boolean; top: number;
 }) {
   const down = isDefeated(unit);
   return (
     <div style={{
-      position: "absolute", top: SIZE + 10, [right ? "right" : "left"]: 0, zIndex: 20,
+      position: "absolute", top, [right ? "right" : "left"]: 0, zIndex: 20,
       width: 210, padding: "8px 10px", pointerEvents: "none",
       background: "rgba(8,4,16,.97)", border: `1px solid ${C.lineBright}`, borderRadius: 6,
       boxShadow: "0 10px 30px rgba(0,0,0,.65)",

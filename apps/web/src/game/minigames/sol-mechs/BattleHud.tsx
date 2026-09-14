@@ -162,7 +162,7 @@ export function UnitPanel({ unit, name, clock, live, low, align, showPortrait = 
             {clock}
           </span>
         </div>
-        <BarStack unit={unit} right={right} />
+        <BarStack unit={unit} right={right} dense={compact} />
       </div>
     );
   }
@@ -244,20 +244,21 @@ export function UnitPanel({ unit, name, clock, live, low, align, showPortrait = 
  * The plate is gone and every glyph carries SHADOW instead, so the labels stay
  * legible over the pale sky without anything boxing them in.
  */
-function BarStack({ unit, right }: { unit: MechUnit; right: boolean }) {
+function BarStack({ unit, right, dense = false }: { unit: MechUnit; right: boolean; dense?: boolean }) {
   return (
     <div style={{
-      marginTop: 3, display: "flex", flexDirection: "column", gap: 2,
+      marginTop: dense ? 2 : 3, display: "flex", flexDirection: "column", gap: dense ? 1 : 2,
       alignItems: "stretch",
     }}>
       {HUD_SLOTS.map((slot) => (
-        <PartBar key={slot} unit={unit} slot={slot} mirrored={right} />
+        <PartBar key={slot} unit={unit} slot={slot} mirrored={right} dense={dense} />
       ))}
     </div>
   );
 }
 
-function PartBar({ unit, slot, mirrored }: { unit: MechUnit; slot: ModuleSlot; mirrored: boolean }) {
+/** `dense`: small arenas (phones) get thinner rows so the mechs have room. */
+function PartBar({ unit, slot, mirrored, dense = false }: { unit: MechUnit; slot: ModuleSlot; mirrored: boolean; dense?: boolean }) {
   const st = unit.partStatuses[slot];
   const pct = st.maxHP > 0 ? Math.max(0, st.currentHP / st.maxHP) * 100 : 0;
   const dead = st.currentHP <= 0;
@@ -274,9 +275,9 @@ function PartBar({ unit, slot, mirrored }: { unit: MechUnit; slot: ModuleSlot; m
       {/* Fixed widths, so all four bars start and end on the same lines
           however long the label or the number happens to be. */}
       <span style={{
-        width: 34, flexShrink: 0,
+        width: dense ? 28 : 34, flexShrink: 0,
         textAlign: mirrored ? "right" : "left",
-        fontSize: 10, fontWeight: 700, fontFamily: MONO,
+        fontSize: dense ? 8 : 10, fontWeight: 700, fontFamily: MONO,
         color: dead ? C.bad : C.dim,
         textShadow: SHADOW,
       }}>
@@ -286,11 +287,11 @@ function PartBar({ unit, slot, mirrored }: { unit: MechUnit; slot: ModuleSlot; m
       {/* 9-slice of the Unity bar frame, same chrome as the Workshop. */}
       <div style={{
         flex: 1, minWidth: 0,
-        borderStyle: "solid", borderWidth: "2px 4px 5px",
-        borderImage: `url(${UI}/bar.png) 20 60 80 fill / 2px 4px 5px / 0 stretch`,
+        borderStyle: "solid", borderWidth: dense ? "1px 3px 3px" : "2px 4px 5px",
+        borderImage: `url(${UI}/bar.png) 20 60 80 fill / ${dense ? "1px 3px 3px" : "2px 4px 5px"} / 0 stretch`,
       }}>
         <div style={{
-          height: 8, background: "#000", overflow: "hidden",
+          height: dense ? 4 : 8, background: "#000", overflow: "hidden",
           display: "flex", flexDirection: mirrored ? "row-reverse" : "row",
         }}>
           <div style={{
@@ -301,9 +302,9 @@ function PartBar({ unit, slot, mirrored }: { unit: MechUnit; slot: ModuleSlot; m
       </div>
 
       <span style={{
-        width: 26, flexShrink: 0,
+        width: dense ? 22 : 26, flexShrink: 0,
         textAlign: mirrored ? "left" : "right",
-        fontSize: 10, fontFamily: MONO, fontWeight: 700,
+        fontSize: dense ? 8 : 10, fontFamily: MONO, fontWeight: 700,
         // A destroyed limb's 0 in `faint` was invisible against the arena, so
         // the row read as having no number at all rather than as being at zero.
         color: dead ? C.bad : C.text, textShadow: SHADOW,
