@@ -17,13 +17,13 @@ const EARN_INTRO: IntroSpec = {
   color: "#9945FF",
   nodes: [
     { sheet: "main_char.png", label: "YOU" },
-    { sheet: "Pratik.png", label: "EARN" },
-    { sheet: "main_char.png", label: "PAID" },
+    { sheet: "Pratik.png", label: "SPONSOR" },
+    { sheet: "main_char.png", label: "WINNER" },
   ],
   steps: [
-    { title: "FIND", line: "Browse bounties and projects that fit your skills.", edge: 0 },
-    { title: "SUBMIT", line: "Do the work and submit it on Superteam Earn.", edge: 0 },
-    { title: "GET PAID", line: "Winners are paid in USDC.", edge: 1, chip: "USDC" },
+    { title: "FIND", line: "Pick a bounty that fits your skills.", edge: 0 },
+    { title: "COMPETE", line: "Submit your best work. Others submit too.", edge: 0 },
+    { title: "WIN", line: "The sponsor picks the best work. Only winners get paid in USDC.", edge: 1, chip: "USDC" },
   ],
 };
 

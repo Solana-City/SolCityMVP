@@ -186,7 +186,7 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     color: 0x9945ff,
     dialog: [
       "Want to get paid to build on Solana?",
-      "Pick a bounty, submit your work, and earn USDC.",
+      "Pick a bounty and do your best work. If the sponsor picks yours, you win USDC.",
     ],
     action: { type: "bounties", label: "Explore Earn" },
     spriteKey: "Pratik",
