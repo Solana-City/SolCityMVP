@@ -66,13 +66,19 @@ export function snapZoom(zoom: number): number {
   );
 }
 
-/** The valid zoom whose view scale is closest to 1x (the classic look). */
+/**
+ * View scale a first-time player starts at. Player feedback asked for a wider
+ * default view so the buildings and NPCs around you are visible; 0.5x is the
+ * one crisp step below the old 1x. Players who picked a zoom keep theirs.
+ */
+const DEFAULT_VIEW_SCALE = 0.5;
+
+/** The valid zoom whose view scale is closest to DEFAULT_VIEW_SCALE. */
 export function getDefaultZoom(): number {
   const dpr = getRenderDpr();
+  const off = (z: number) => Math.abs(z / (2 * dpr) - DEFAULT_VIEW_SCALE);
   // <= so ties resolve to the larger (more zoomed-in) candidate.
-  return getValidZooms().reduce((best, z) =>
-    Math.abs(z / (2 * dpr) - 1) <= Math.abs(best / (2 * dpr) - 1) ? z : best
-  );
+  return getValidZooms().reduce((best, z) => (off(z) <= off(best) ? z : best));
 }
 
 export function viewScale(zoom: number): number {
