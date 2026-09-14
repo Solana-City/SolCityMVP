@@ -130,8 +130,9 @@ export default function KiteClashGame({ onResult, onClose }: MiniGameComponentPr
 
   useEffect(() => {
     const onEsc = (e: KeyboardEvent) => {
+      // The card steps itself with Space/Enter/arrows; Escape skips it.
       if (howToOpen) {
-        if (e.key === "Escape" || e.key === "Enter" || e.key === " ") {
+        if (e.key === "Escape") {
           e.preventDefault();
           closeHowTo();
         }
@@ -524,98 +525,256 @@ export default function KiteClashGame({ onResult, onClose }: MiniGameComponentPr
   );
 }
 
+const KITE = "/assets/minigames/kite";
+
+interface HowToStep {
+  key: string;
+  text: string;
+  scene: React.ReactNode;
+  warning?: boolean;
+}
+
+/**
+ * How to play, one idea per card: a small scene built from the game's own
+ * art on top, the key and its sentence under it, NEXT to move on.
+ */
 function HowToPlayCard({ isTouch, onStart }: { isTouch: boolean; onStart: () => void }) {
-  const rows: { key: string; text: string }[] = isTouch
-    ? [
-        { key: "JOYSTICK", text: "Steer your kite around the sky." },
-        { key: "HOLD REEL", text: "Reel your line in. Release to let it out: more line = more points, but riskier." },
-        { key: "HOLD CUT", text: "When your line crosses the orange dashed line, a circle appears. Hold the button to cut it." },
-      ]
-    : [
-        { key: "WASD / ARROWS", text: "Steer your kite around the sky." },
-        { key: "HOLD SPACE", text: "Reel your line in. Release to let it out: more line = more points, but riskier." },
-        { key: "SPACE TO CUT", text: "When your line crosses the orange dashed line, a circle appears. Hold Space there to cut it." },
-      ];
+  const steps: HowToStep[] = [
+    {
+      key: isTouch ? "JOYSTICK" : "WASD / ARROWS",
+      text: "Steer your kite around the sky.",
+      scene: <SteerScene isTouch={isTouch} />,
+    },
+    {
+      key: isTouch ? "HOLD REEL" : "HOLD SPACE",
+      text: "Reel your line in. Release to let it out: more line = more points, but riskier.",
+      scene: <ReelScene />,
+    },
+    {
+      key: isTouch ? "HOLD CUT" : "SPACE TO CUT",
+      text: isTouch
+        ? "When your line crosses the orange dashed line, a circle appears. Hold the button to cut it."
+        : "When your line crosses the orange dashed line, a circle appears. Hold Space there to cut it.",
+      scene: <CrossScene ring="cut" />,
+    },
+    {
+      key: "WATCH OUT",
+      text: "While the lines stay crossed, a RED RING fills around the crossing. When it closes the rival tries to cut you. Steer away to reset it. Cutting with lots of line out can snap your own line.",
+      scene: <CrossScene ring="threat" />,
+      warning: true,
+    },
+  ];
+  const [i, setI] = useState(0);
+  const last = i === steps.length - 1;
+  const step = steps[i];
+  const next = useCallback(() => { if (last) onStart(); else setI((n) => n + 1); }, [last, onStart]);
+  const back = useCallback(() => setI((n) => Math.max(0, n - 1)), []);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === " " || e.key === "Enter" || e.key === "ArrowRight") { e.preventDefault(); next(); }
+      else if (e.key === "ArrowLeft") { e.preventDefault(); back(); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [next, back]);
+
+  const accent = step.warning ? "#ff5a5a" : "#FFA94D";
+
   return (
     <div
       style={{
-        position: "absolute",
-        inset: 0,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
+        position: "absolute", inset: 0, zIndex: 5, padding: 16,
+        display: "flex", alignItems: "center", justifyContent: "center",
         background: "rgba(6,10,20,0.78)",
-        padding: 16,
-        zIndex: 5,
       }}
     >
       <div
         style={{
-          width: "100%",
-          maxWidth: 520,
-          maxHeight: "100%",
-          overflowY: "auto",
-          background: "rgba(10,14,30,0.97)",
-          border: "2px solid #FFA94D",
-          borderRadius: 12,
-          padding: "18px 18px 16px",
+          width: "100%", maxWidth: 440, maxHeight: "100%", overflowY: "auto",
+          background: "rgba(10,14,30,0.97)", border: `2px solid ${accent}`, borderRadius: 12,
+          padding: 14,
         }}
       >
-        <div style={{ fontSize: 13, color: "#FFA94D", textAlign: "center", marginBottom: 14, textShadow: OUTLINE }}>
-          HOW TO PLAY
+        <div style={{ display: "flex", alignItems: "center", marginBottom: 10 }}>
+          <span style={{ fontSize: 11, color: "#FFA94D", textShadow: OUTLINE }}>HOW TO PLAY</span>
+          <span style={{ marginLeft: "auto", fontSize: 8, color: "#94a3b8" }}>{i + 1} / {steps.length}</span>
         </div>
-        {rows.map((r) => (
-          <div key={r.key} style={{ display: "flex", gap: 12, alignItems: "flex-start", marginBottom: 12 }}>
-            <span
-              style={{
-                flexShrink: 0,
-                minWidth: 118,
-                fontSize: 8,
-                color: "#0a0a14",
-                background: "#FFD700",
-                borderRadius: 4,
-                padding: "5px 6px",
-                textAlign: "center",
-              }}
-            >
-              {r.key}
-            </span>
-            <span style={{ fontSize: 8, color: "#e2e8f0", lineHeight: 1.8 }}>{r.text}</span>
+
+        <div key={i} className="kc-step" style={{
+          position: "relative", width: "100%", aspectRatio: "2 / 1", overflow: "hidden",
+          borderRadius: 8, border: "1px solid rgba(255,255,255,0.15)",
+          backgroundImage: `url(${KITE}/background.png)`, backgroundSize: "cover",
+          backgroundPosition: "center 30%", imageRendering: "pixelated",
+        }}>
+          {step.scene}
+        </div>
+
+        <div style={{ display: "flex", justifyContent: "center", margin: "12px 0 8px" }}>
+          <span style={{
+            fontSize: 8, color: "#0a0a14", background: step.warning ? "#ff5a5a" : "#FFD700",
+            borderRadius: 4, padding: "5px 8px",
+          }}>
+            {step.key}
+          </span>
+        </div>
+        <p style={{
+          margin: 0, minHeight: "5.4em", fontSize: 8, lineHeight: 1.8, textAlign: "center",
+          color: step.warning ? "#fca5a5" : "#e2e8f0",
+        }}>
+          {step.text}
+        </p>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10 }}>
+          <button onClick={back} disabled={i === 0} style={{ ...navBtn, visibility: i === 0 ? "hidden" : "visible" }}>
+            BACK
+          </button>
+          <div style={{ flex: 1, display: "flex", justifyContent: "center", gap: 6 }}>
+            {steps.map((_, n) => (
+              <span key={n} style={{
+                width: n === i ? 16 : 6, height: 6, borderRadius: 3, transition: "width .2s",
+                background: n === i ? accent : n < i ? "#64748b" : "#334155",
+              }} />
+            ))}
           </div>
-        ))}
-        <div
-          style={{
-            fontSize: 8,
-            color: "#fca5a5",
-            lineHeight: 1.8,
-            background: "rgba(255,59,59,0.1)",
-            border: "1px solid rgba(255,59,59,0.35)",
-            borderRadius: 6,
-            padding: "8px 10px",
-            margin: "4px 0 14px",
-          }}
-        >
-          Watch out: while the lines stay crossed, a RED RING fills around the crossing. When it closes the rival tries
-          to cut you. Steer away to reset it. Cutting with lots of line out can snap your own line.
-        </div>
-        <div style={{ display: "flex", justifyContent: "center" }}>
-          <button
-            onClick={onStart}
-            style={{
-              background: "linear-gradient(135deg, #9945FF, #c084fc)",
-              border: "none",
-              borderRadius: 8,
-              padding: "10px 24px",
-              color: "#0a0a14",
-              fontFamily: '"Press Start 2P", monospace',
-              fontSize: 9,
-              cursor: "pointer",
-            }}
-          >
-            {isTouch ? "GOT IT" : "GOT IT (SPACE)"}
+          <button onClick={next} style={{
+            ...navBtn, border: "none", color: "#0a0a14",
+            background: "linear-gradient(135deg, #9945FF, #c084fc)",
+          }}>
+            {last ? "PLAY" : "NEXT"}
           </button>
         </div>
+        {!last && (
+          <button onClick={onStart} style={{
+            display: "block", margin: "10px auto 0", background: "none", border: "none",
+            color: "#64748b", fontFamily: '"Press Start 2P", monospace', fontSize: 7, cursor: "pointer",
+          }}>
+            SKIP TUTORIAL
+          </button>
+        )}
       </div>
+      <style>{`
+        @keyframes kc-step-in { from { opacity: 0; transform: translateX(10px); } to { opacity: 1; transform: none; } }
+        .kc-step { animation: kc-step-in .22s ease; }
+        @keyframes kc-steer { 0%,100% { left: 34%; } 50% { left: 66%; } }
+        @keyframes kc-reel { 0%,100% { height: 26px; top: 24%; } 50% { height: 50px; top: 34%; } }
+        @keyframes kc-ring { from { stroke-dashoffset: 94; } to { stroke-dashoffset: 0; } }
+        @keyframes kc-pulse { 0%,100% { opacity: .95; } 50% { opacity: .5; } }
+      `}</style>
     </div>
+  );
+}
+
+const navBtn: React.CSSProperties = {
+  fontFamily: '"Press Start 2P", monospace', fontSize: 8, borderRadius: 8, padding: "9px 14px",
+  cursor: "pointer", background: "transparent", border: "1px solid rgba(255,255,255,0.25)", color: "#cbd5e1",
+};
+
+const PIX: React.CSSProperties = { position: "absolute", imageRendering: "pixelated" };
+
+function KeyCap({ children }: { children: React.ReactNode }) {
+  return (
+    <span style={{
+      display: "inline-flex", alignItems: "center", justifyContent: "center",
+      width: 22, height: 20, borderRadius: 4,
+      background: "#f8fafc", color: "#0a0a14", fontSize: 8,
+      boxShadow: "0 3px 0 #64748b",
+    }}>
+      {children}
+    </span>
+  );
+}
+
+function SceneTag({ children, color, left }: { children: React.ReactNode; color: string; left?: boolean }) {
+  return (
+    <span style={{
+      position: "absolute", top: 8, [left ? "left" : "right"]: 8,
+      fontSize: 7, color, textShadow: OUTLINE,
+    }}>
+      {children}
+    </span>
+  );
+}
+
+/** Kite gliding left and right, with the steering keys (or joystick) under it. */
+function SteerScene({ isTouch }: { isTouch: boolean }) {
+  return (
+    <>
+      <img src={`${KITE}/kites/kite_brazil.png`} alt="" style={{
+        ...PIX, top: "12%", height: 54, transform: "translateX(-50%)",
+        animation: "kc-steer 2.6s ease-in-out infinite",
+      }} />
+      <div style={{ position: "absolute", left: 0, right: 0, bottom: 10, display: "flex", justifyContent: "center" }}>
+        {isTouch ? (
+          <span style={{
+            width: 44, height: 44, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center",
+            background: "rgba(153,69,255,0.3)", border: "2px solid rgba(153,69,255,0.85)",
+          }}>
+            <span style={{ width: 18, height: 18, borderRadius: "50%", background: "rgba(153,69,255,0.95)" }} />
+          </span>
+        ) : (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 22px)", gap: 4, justifyItems: "center" }}>
+            <span />
+            <KeyCap>W</KeyCap>
+            <span />
+            <KeyCap>A</KeyCap>
+            <KeyCap>S</KeyCap>
+            <KeyCap>D</KeyCap>
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
+
+/** The spool in hand, the kite drawing near (bigger) and drifting out (smaller). */
+function ReelScene() {
+  return (
+    <>
+      <svg viewBox="0 0 100 50" preserveAspectRatio="none" style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }}>
+        <line x1="50" y1="42" x2="50" y2="16" stroke="rgba(255,255,255,0.85)" strokeWidth="0.4" />
+      </svg>
+      <img src={`${KITE}/kites/kite_brazil.png`} alt="" style={{
+        ...PIX, left: "50%", transform: "translateX(-50%)",
+        animation: "kc-reel 2.4s ease-in-out infinite",
+      }} />
+      <img src={`${KITE}/hands/hands_human.png`} alt="" style={{
+        ...PIX, left: "50%", bottom: -4, transform: "translateX(-50%)", height: 60,
+      }} />
+      <SceneTag color="#fff" left>HOLD = REEL IN</SceneTag>
+      <SceneTag color="#FFD700">RELEASE = POINTS</SceneTag>
+    </>
+  );
+}
+
+/** Your line crossing the rival's dashed orange line, with the cut circle or the red ring. */
+function CrossScene({ ring }: { ring: "cut" | "threat" }) {
+  return (
+    <>
+      <svg viewBox="0 0 200 100" style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }}>
+        <line x1="100" y1="104" x2="72" y2="30" stroke="rgba(255,255,255,0.9)" strokeWidth="1.2" />
+        <line x1="20" y1="104" x2="128" y2="32" stroke="rgba(255,107,53,0.95)" strokeWidth="1.2" strokeDasharray="4 3" />
+        {ring === "cut" ? (
+          <circle cx="84" cy="61.4" r="9" fill="rgba(255,215,0,0.45)" stroke="#FFD700" strokeWidth="1.6"
+            style={{ animation: "kc-pulse 0.9s ease-in-out infinite" }} />
+        ) : (
+          <>
+            <circle cx="84" cy="61.4" r="15" fill="none" stroke="rgba(0,0,0,0.45)" strokeWidth="3" />
+            <circle cx="84" cy="61.4" r="15" fill="none" stroke="#ff3b3b" strokeWidth="3"
+              strokeDasharray="94" transform="rotate(-90 84 61.4)"
+              style={{ animation: "kc-ring 2.2s linear infinite" }} />
+          </>
+        )}
+      </svg>
+      <img src={`${KITE}/kites/kite_brazil.png`} alt="" style={{
+        ...PIX, left: "36%", top: "30%", height: 44, transform: "translate(-50%, -85%)",
+      }} />
+      <img src={`${KITE}/kites/kite_stb.png`} alt="" style={{
+        ...PIX, left: "64%", top: "32%", height: 36, transform: "translate(-50%, -85%)",
+      }} />
+      {ring === "threat"
+        ? <SceneTag color="#ff5a5a">MOVE AWAY!</SceneTag>
+        : <SceneTag color="#FFD700">CUT HERE</SceneTag>}
+    </>
   );
 }
