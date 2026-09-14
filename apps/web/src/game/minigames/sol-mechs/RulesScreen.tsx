@@ -26,7 +26,9 @@ type Icon =
       dim?: boolean;
     }
   /** A stock mech, assembled by the same paper doll the battles draw. */
-  | { mech: MechId; h: number };
+  | { mech: MechId; h: number }
+  /** A short word between icons, e.g. "OR". */
+  | { word: string };
 
 interface Rule {
   title: string;
@@ -56,10 +58,17 @@ const RULES: Rule[] = [
   },
   {
     title: "KNOCKOUT",
+    // Both ways a mech goes down: its Matrix, or all three limbs.
     icons: [
-      { src: `${A}/ui/slot-matrix-off.png`, h: 42 },
-      { src: `${A}/ui/arrow-right.png`, h: 26 },
-      { src: `${A}/vfx/boom/3.png`, h: 44 },
+      { src: `${A}/ui/slotmini-matrix.png`, h: 28 },
+      { src: `${A}/ui/arrow-right.png`, h: 20 },
+      { src: `${A}/vfx/boom/3.png`, h: 36 },
+      { word: "OR" },
+      { src: `${A}/ui/slotmini-rightarm.png`, h: 28 },
+      { src: `${A}/ui/slotmini-leftarm.png`, h: 28 },
+      { src: `${A}/ui/slotmini-legs.png`, h: 28 },
+      { src: `${A}/ui/arrow-right.png`, h: 20 },
+      { src: `${A}/vfx/boom/3.png`, h: 36 },
     ],
     text: "The Matrix is sealed until an arm is destroyed. Destroy the Matrix, or all 3 limbs, to knock the mech out.",
   },
@@ -146,7 +155,9 @@ export default function RulesScreen({ onClose }: RulesScreenProps) {
           {RULES.map((rule) => (
             <section key={rule.title} style={sx.card}>
               <div style={sx.icons}>
-                {rule.icons.map((icon, i) => ("mech" in icon ? (
+                {rule.icons.map((icon, i) => ("word" in icon ? (
+                  <span key={`word-${i}`} style={sx.word}>{icon.word}</span>
+                ) : "mech" in icon ? (
                   <MechIcon key={`${icon.mech}-${i}`} mech={icon.mech} h={icon.h} />
                 ) : (
                   <img
@@ -235,7 +246,8 @@ const sx: Record<string, React.CSSProperties> = {
     display: "flex", flexDirection: "column", alignItems: "center",
     gap: 5, textAlign: "center", minWidth: 0,
   },
-  icons: { display: "flex", alignItems: "center", justifyContent: "center", gap: 8, height: 44 },
+  icons: { display: "flex", alignItems: "center", justifyContent: "center", gap: 6, height: 44 },
+  word: { fontFamily: DISPLAY, fontSize: 12, fontWeight: 800, letterSpacing: 1, color: C.warn, margin: "0 6px" },
   cardTitle: { fontFamily: DISPLAY, fontSize: 14, fontWeight: 800, letterSpacing: 2, color: C.teal },
   text: { margin: 0, fontSize: T.small, color: C.body, lineHeight: 1.45 },
 };
