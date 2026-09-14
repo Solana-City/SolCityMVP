@@ -25,7 +25,7 @@ export interface MinimapPoint {
   category: MinimapCategory;
   x: number;
   y: number;
-  /** Head-and-shoulders crop of the NPC's sprite, square. NPCs only. */
+  /** The NPC standing, cropped tight to its artwork. NPCs only. */
   portrait?: HTMLCanvasElement;
 }
 
@@ -159,8 +159,8 @@ export function publishMinimap(
 }
 
 /**
- * The NPC as it stands facing the camera (frame 0 of its sheet), cropped to
- * the top of its artwork so the face fills a small round marker.
+ * The NPC as it stands facing the camera (frame 0 of its sheet), cropped
+ * tight to its artwork: the whole body, feet on the bottom edge.
  */
 function npcPortrait(scene: Phaser.Scene, key: string): HTMLCanvasElement | null {
   const frame = scene.textures.getFrame(key, 0) ?? scene.textures.getFrame(key);
@@ -186,13 +186,10 @@ function npcPortrait(scene: Phaser.Scene, key: string): HTMLCanvasElement | null
   if (x1 < 0) return null;
   const w = x1 - x0 + 1;
   const h = y1 - y0 + 1;
-  // A square from the top: the head and a bit of the body.
-  const side = Math.max(8, Math.min(w, Math.round(h * 0.62)));
-  const sx = Math.round(x0 + (w - side) / 2);
   const out = document.createElement("canvas");
-  out.width = side;
-  out.height = side;
-  out.getContext("2d")!.drawImage(tmp, sx, y0, side, side, 0, 0, side, side);
+  out.width = w;
+  out.height = h;
+  out.getContext("2d")!.drawImage(tmp, x0, y0, w, h, 0, 0, w, h);
   return out;
 }
 

@@ -2,8 +2,8 @@
 
 /**
  * City minimap: a round, collapsible corner view that follows you, and a full
- * map you can pan, zoom and filter by category. NPCs appear as portrait pins
- * on the spot where they spawn.
+ * map you can pan, zoom and filter by category. NPCs stand, full body, on
+ * the spot where they spawn.
  *
  * The picture comes from MinimapHost, which draws it from the live tilemap;
  * markers are read off the scene every animation frame, so wandering NPCs and
@@ -87,46 +87,38 @@ function drawMarker(ctx: CanvasRenderingContext2D, cat: MinimapCategory, x: numb
 }
 
 /**
- * An NPC as a map pin: its portrait in a ring of its category colour, with a
- * tail pointing at its spawn spot. Falls back to the category shape.
- * Returns the pin head centre, for hit-testing.
+ * An NPC standing on its spawn spot: the full sprite, feet on the point, on a
+ * ground ring in its category colour with a matching glow, so the category
+ * reads without covering the character. `h` is the drawn body height.
+ * Returns the body centre, for hit-testing.
  */
-function drawPin(ctx: CanvasRenderingContext2D, point: MinimapPoint, x: number, y: number, r: number, highlight = false) {
+function drawPin(ctx: CanvasRenderingContext2D, point: MinimapPoint, x: number, y: number, h: number, highlight = false) {
   if (!point.portrait) {
-    drawMarker(ctx, point.category, x, y, Math.max(3, r * 0.5));
+    drawMarker(ctx, point.category, x, y, Math.max(3, h * 0.2));
     return { x, y };
   }
   const color = CATEGORY_META[point.category].color;
-  const cy = y - r - Math.max(3, r * 0.45);
+  const img = point.portrait;
+  const w = (img.width / img.height) * h;
   ctx.save();
-  // Tail
+  // Ground ring
   ctx.beginPath();
-  ctx.moveTo(x - r * 0.45, cy + r * 0.7);
-  ctx.lineTo(x, y);
-  ctx.lineTo(x + r * 0.45, cy + r * 0.7);
-  ctx.closePath();
-  ctx.fillStyle = color;
+  ctx.ellipse(x, y, Math.max(w * 0.62, h * 0.32), h * 0.13, 0, 0, Math.PI * 2);
+  ctx.fillStyle = color + "55";
   ctx.fill();
-  // Head
-  ctx.beginPath();
-  ctx.arc(x, cy, r, 0, Math.PI * 2);
-  ctx.fillStyle = "#101426";
-  ctx.fill();
-  ctx.save();
-  ctx.beginPath();
-  ctx.arc(x, cy, r - 1, 0, Math.PI * 2);
-  ctx.clip();
-  ctx.imageSmoothingEnabled = false;
-  const side = (r - 1) * 2;
-  ctx.drawImage(point.portrait, x - side / 2, cy - side / 2 + r * 0.12, side, side);
-  ctx.restore();
-  ctx.beginPath();
-  ctx.arc(x, cy, r, 0, Math.PI * 2);
-  ctx.lineWidth = highlight ? 3 : Math.max(1.5, r * 0.2);
+  ctx.lineWidth = highlight ? 2.5 : 1.5;
   ctx.strokeStyle = highlight ? "#ffffff" : color;
   ctx.stroke();
+  // Body, with a tight dark outline and a category glow so it pops off the map
+  ctx.imageSmoothingEnabled = false;
+  ctx.shadowColor = highlight ? "#ffffff" : color;
+  ctx.shadowBlur = highlight ? 8 : 5;
+  ctx.drawImage(img, x - w / 2, y - h + h * 0.04, w, h);
+  ctx.shadowColor = "rgba(0,0,0,0.9)";
+  ctx.shadowBlur = 1.5;
+  ctx.drawImage(img, x - w / 2, y - h + h * 0.04, w, h);
   ctx.restore();
-  return { x, y: cy };
+  return { x, y: y - h / 2 };
 }
 
 /** You: a teal disc with a pulsing ring, always drawn last. */
@@ -295,11 +287,11 @@ function CompactMap({ host, mobile, onOpen, onCollapse }: {
         const p = toScreen(v, D, D, l.x, l.y);
         if (inside(p, 4)) drawMarker(ctx, "landmark", p.x, p.y, mobile ? 2.4 : 3);
       }
-      const pinR = mobile ? 6 : 8;
+      const bodyH = mobile ? 16 : 22;
       // South-most last, so nearer pins overlap the ones behind them.
       for (const n of [...snap.npcs].sort((a, b) => a.y - b.y)) {
         const p = toScreen(v, D, D, n.x, n.y);
-        if (inside(p, pinR)) drawPin(ctx, n, p.x, p.y, pinR);
+        if (inside(p, bodyH * 0.6)) drawPin(ctx, n, p.x, p.y, bodyH);
       }
       for (const o of snap.players) {
         const p = toScreen(v, D, D, o.x, o.y);
@@ -507,14 +499,14 @@ function FullMap({ host, onClose }: { host: MinimapHost; onClose: () => void }) 
           drawTag(ctx, l.name, p.x, p.y, CATEGORY_META.landmark.color, v.zoom >= fitZoom() * 1.3);
         }
       }
-      const pinR = Math.max(9, Math.min(18, v.zoom * 40));
+      const bodyH = Math.max(26, Math.min(58, v.zoom * 115));
       const heads = new Map<string, { x: number; y: number }>();
       for (const n of [...snap.npcs].sort((a, b) => a.y - b.y)) {
         if (!on.has(n.category)) continue;
         const p = toScreen(v, w, h, n.x, n.y);
         if (p.x < -40 || p.x > w + 40 || p.y < -40 || p.y > h + 40) continue;
-        heads.set(n.id, drawPin(ctx, n, p.x, p.y, pinR, selectedRef.current === n.id));
-        if (showNames || selectedRef.current === n.id) drawName(ctx, n.name, p.x, p.y + 3);
+        heads.set(n.id, drawPin(ctx, n, p.x, p.y, bodyH, selectedRef.current === n.id));
+        if (showNames || selectedRef.current === n.id) drawName(ctx, n.name, p.x, p.y + 5);
       }
       headsRef.current = heads;
       for (const n of snap.players) {
@@ -558,7 +550,7 @@ function FullMap({ host, onClose }: { host: MinimapHost; onClose: () => void }) 
       if (!enabledRef.current.has(p.category)) continue;
       const head = headsRef.current.get(p.id);
       const s = head ?? toScreen(v, w, h, p.x, p.y);
-      const reach = head ? Math.max(9, Math.min(18, v.zoom * 40)) + 4 : r;
+      const reach = head ? Math.max(26, Math.min(58, v.zoom * 115)) * 0.55 + 4 : r;
       const d = Math.hypot(s.x - sx, s.y - sy);
       if (d <= reach && (!best || d < best.d)) best = { p, d };
     }
@@ -727,7 +719,7 @@ function FullMap({ host, onClose }: { host: MinimapHost; onClose: () => void }) 
                 border: "1px solid transparent",
               }}
             >
-              {p.portrait ? <Portrait point={p} size={26} /> : <Swatch cat={cat} size={12} />}
+              {p.portrait ? <Portrait point={p} size={34} /> : <Swatch cat={cat} size={12} />}
               <span style={{ minWidth: 0 }}>
                 <span style={{ display: "block", fontSize: 12, color: "#e2e8f0", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.name}</span>
                 {p.role && <span style={{ display: "block", fontSize: 10, color: "#8b93a7" }}>{p.role}</span>}
@@ -803,7 +795,7 @@ function FullMap({ host, onClose }: { host: MinimapHost; onClose: () => void }) 
                 boxShadow: "0 8px 24px rgba(0,0,0,0.5)",
               }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                  {card.point.portrait ? <Portrait point={card.point} size={30} /> : <Swatch cat={card.point.category} size={12} />}
+                  {card.point.portrait ? <Portrait point={card.point} size={40} /> : <Swatch cat={card.point.category} size={12} />}
                   <span style={{ fontSize: 13, color: "#f1f5f9", fontWeight: 700 }}>{card.point.name}</span>
                 </div>
                 <div style={{ fontSize: 11, color: "#8b93a7", marginTop: 3 }}>
@@ -845,11 +837,11 @@ function Portrait({ point, size }: { point: MinimapPoint; size: number }) {
   }, [point]);
   return (
     <span style={{
-      width: size, height: size, borderRadius: "50%", overflow: "hidden", flexShrink: 0,
+      width: size, height: size, borderRadius: 8, overflow: "hidden", flexShrink: 0,
       background: "#101426", border: `2px solid ${CATEGORY_META[point.category].color}`,
-      display: "block",
+      display: "flex", alignItems: "flex-end", justifyContent: "center", padding: 2, boxSizing: "border-box",
     }}>
-      <canvas ref={ref} style={{ width: "100%", height: "100%", display: "block", imageRendering: "pixelated" }} />
+      <canvas ref={ref} style={{ maxWidth: "100%", maxHeight: "100%", display: "block", imageRendering: "pixelated" }} />
     </span>
   );
 }
