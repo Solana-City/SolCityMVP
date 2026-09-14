@@ -867,7 +867,7 @@ function PrivatePaymentPanel({ onClose }: { onClose: () => void }) {
         <ClusterToggle cluster={cluster} onChange={setCluster} />
         <PrivateFlow active="deposit" />
         <div style={{ textAlign: "center", padding: "4px 0 12px", color: "#b9b9cc", fontSize: 8 }}>
-          👛 Connect a wallet to start.
+          Connect a wallet to start.
         </div>
         <button onClick={() => openWalletModal(true)} style={btnStyle(FUCHSIA, "#fff")} className="w-full py-2.5">CONNECT WALLET</button>
       </>
@@ -925,7 +925,7 @@ function PrivatePaymentPanel({ onClose }: { onClose: () => void }) {
 
       {/* Private balance */}
       <div style={{ background: "#0d0d22", border: `1px solid ${FUCHSIA}33`, borderRadius: 8, padding: "10px 14px", marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <span style={{ fontSize: 8, color: "#777788" }}>🔒 Private balance</span>
+        <span style={{ fontSize: 8, color: "#777788" }}>Private balance</span>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <span style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 8, color: FUCHSIA }}>
             {balance === null ? "…" : showBalance ? `${balance.toFixed(2)} USDC` : "●●●●"}
@@ -1139,11 +1139,15 @@ function PrivateFlow({ active, onPick, big }: {
     send: { x: 215, y: 16 },
     withdraw: { x: 105, y: 150 },
   };
-  const node = (x: number, label: string, glyph: string, glow: boolean) => (
+  // Each node is a character from the city's own sprite sheets (frame 0,
+  // facing the camera): you, Magic Man for the private account, a citizen.
+  const node = (x: number, label: string, sheet: string, glow: boolean) => (
     <g>
       <rect x={x - 30} y={34} width={60} height={56} rx={10}
         fill={glow ? "#2a0f33" : "#12122a"} stroke={glow ? F : "#2a2a45"} strokeWidth={glow ? 2 : 1} />
-      <text x={x} y={70} textAnchor="middle" fontSize={26}>{glyph}</text>
+      <svg x={x - 26} y={34} width={52} height={56} viewBox="8 2 48 52" overflow="hidden">
+        <image href={`/assets/sprites/${sheet}`} width={256} height={256} style={{ imageRendering: "pixelated" }} />
+      </svg>
       <text x={x} y={104} textAnchor="middle" fontSize={7} fill={glow ? "#f5d0fe" : "#8b8ba7"}
         fontFamily='"Press Start 2P", monospace'>{label}</text>
     </g>
@@ -1159,9 +1163,9 @@ function PrivateFlow({ active, onPick, big }: {
         </marker>
       </defs>
 
-      {node(50, "WALLET", "👛", active === "withdraw")}
-      {node(160, "PRIVATE", "🔒", true)}
-      {node(270, "FRIEND", "👤", active === "send")}
+      {node(50, "YOU", "main_char.png", active === "withdraw")}
+      {node(160, "PRIVATE", "Magic Man.png", true)}
+      {node(270, "FRIEND", "send-npc.png", active === "send")}
 
       {PRIVATE_STEPS.map((st) => {
         const on = st.id === active;
