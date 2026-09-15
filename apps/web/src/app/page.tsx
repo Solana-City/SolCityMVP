@@ -242,14 +242,22 @@ export default function Home() {
     (globalThis as SolCityWalletHost).__solCityWallet = wallet;
   }, []);
 
-  // Nicknames are optional for now: nothing prompts on login, the Profile's
-  // CHANGE NICKNAME sets one. An existing name syncs into the profile.
+  // A wallet without a nickname is asked once, on its first login. The player
+  // can skip; the Profile's CHANGE NICKNAME sets one later. An existing name
+  // syncs into the profile.
   useEffect(() => {
     if (!walletAddress) { if (nicknameOpenRef.current) closeNickname(null); return; }
     let cancelled = false;
     fetchStatus(walletAddress).then((st) => {
       if (cancelled) return;
-      if (st.name) profileManager.setDisplayName(st.name);
+      if (st.name) { profileManager.setDisplayName(st.name); return; }
+      if (!st.enabled || st.locked) return;
+      const askedKey = `solcity:nickname-asked:${walletAddress}`;
+      try {
+        if (localStorage.getItem(askedKey)) return;
+        localStorage.setItem(askedKey, "1");
+      } catch { /* storage blocked: ask this session */ }
+      openNickname(false, null);
     });
     return () => { cancelled = true; };
   }, [walletAddress, openNickname, closeNickname]);

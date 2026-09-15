@@ -3,8 +3,8 @@
 /**
  * Choose or change your nickname.
  *
- * Opened by itself (and not closable) the first time a wallet enters the city
- * without a name, and from the Profile afterwards. The player sees their own
+ * Opened by itself the first time a wallet enters the city without a name
+ * (skippable), and from the Profile afterwards. The player sees their own
  * character with the tag above it as they type, a live availability check,
  * and a plain warning that offensive names get locked.
  */
@@ -144,8 +144,19 @@ export default function NicknameModal({ wallet, current, forced, onDone }: {
         >
           {saving ? "SIGN IN YOUR WALLET..." : "SAVE NICKNAME"}
         </button>
+        {!current && !forced && (
+          <button
+            onClick={() => onDone(null)}
+            style={{
+              width: "100%", marginTop: 8, padding: "9px 0", borderRadius: 8, fontFamily: PIX, fontSize: 7,
+              background: "transparent", border: "1px solid rgba(139,139,167,0.35)", color: "#8b8ba7", cursor: "pointer",
+            }}
+          >
+            SKIP FOR NOW
+          </button>
+        )}
         <div style={{ fontSize: 6, color: "#555577", textAlign: "center", marginTop: 8, lineHeight: 1.6 }}>
-          Your wallet signs a message to prove it's you. No fee.
+          No fee. Change it anytime in Profile.
         </div>
       </div>
     </div>
