@@ -9,6 +9,8 @@ import { launch as launchMiniGame } from "@/game/minigames";
 import { usePinchZoom } from "@/ui/usePinchZoom";
 import { incrementQuest } from "@/game/quests/QuestManager";
 import { guideSeen, markGuideSeen } from "@/ui/CityGuide";
+import { fetchStatus } from "@/game/names/nameService";
+import { profileManager } from "@/game/config/profileManager";
 
 // All Solana/wallet-adapter code must be client-only — these packages
 // access `window`/`navigator` at module-load time and crash the SSR pass.
@@ -34,6 +36,7 @@ const WhereIsNPCCard      = dynamic(() => import("@/ui/WhereIsNPCCard"),      { 
 const QuestPanel          = dynamic(() => import("@/ui/QuestPanel"),          { ssr: false });
 const PlayerCard          = dynamic(() => import("@/ui/PlayerCard"),          { ssr: false });
 const AudioBridge         = dynamic(() => import("@/ui/AudioBridge"),         { ssr: false });
+const NicknameModal       = dynamic(() => import("@/ui/NicknameModal"),       { ssr: false });
 const ExpressionWheel     = dynamic(() => import("@/ui/ExpressionWheel"),     { ssr: false });
 const Minimap             = dynamic(() => import("@/ui/Minimap"),             { ssr: false });
 
@@ -74,6 +77,26 @@ export default function Home() {
 
   usePinchZoom();
 
+  // ── Nicknames ────────────────────────────────────────────────────────────
+  const [nickname, setNickname] = useState<{ forced: boolean; current: string | null } | null>(null);
+  const nicknameOpenRef = useRef(false);
+  const pendingGuideRef = useRef(false);
+  const openNickname = useCallback((forced: boolean, current: string | null) => {
+    nicknameOpenRef.current = true;
+    setNickname({ forced, current });
+    (globalThis as any).__solCityGameEvents?.emit("minimap:open", true); // pause game keys
+  }, []);
+  const closeNickname = useCallback((name: string | null) => {
+    nicknameOpenRef.current = false;
+    setNickname(null);
+    (globalThis as any).__solCityGameEvents?.emit("minimap:open", false);
+    if (name) profileManager.setDisplayName(name);
+    if (pendingGuideRef.current) {
+      pendingGuideRef.current = false;
+      setActiveAction({ type: "tutor", label: "Start the tour" });
+    }
+  }, []);
+
   // First visit: once the player is in the city (past the connect screen)
   // and the scene is up, Sol's city guide opens by itself. Marked seen right
   // away so closing it early never makes it pop again; Sol replays it.
@@ -81,7 +104,11 @@ export default function Home() {
     const onEnter = () => {
       if (guideSeen()) return;
       markGuideSeen();
-      window.setTimeout(() => setActiveAction({ type: "tutor", label: "Start the tour" }), 900);
+      window.setTimeout(() => {
+        // A first-time wallet picks a nickname first; the tour waits for it.
+        if (nicknameOpenRef.current) pendingGuideRef.current = true;
+        else setActiveAction({ type: "tutor", label: "Start the tour" });
+      }, 900);
     };
     window.addEventListener("solcity:entered-city", onEnter);
     return () => window.removeEventListener("solcity:entered-city", onEnter);
@@ -211,6 +238,29 @@ export default function Home() {
     // wallet that arrived early is never stranded.
     (globalThis as SolCityWalletHost).__solCityWallet = wallet;
   }, []);
+
+  // A wallet without a nickname must pick one before playing (only when the
+  // name service is running). Existing names sync into the profile.
+  useEffect(() => {
+    if (!walletAddress) { if (nicknameOpenRef.current) closeNickname(null); return; }
+    let cancelled = false;
+    fetchStatus(walletAddress).then((st) => {
+      if (cancelled) return;
+      if (st.name) profileManager.setDisplayName(st.name);
+      else if (st.enabled && !st.locked) openNickname(true, null);
+    });
+    return () => { cancelled = true; };
+  }, [walletAddress, openNickname, closeNickname]);
+
+  // The Profile's "change nickname" button.
+  useEffect(() => {
+    const onOpen = () => {
+      if (!walletAddress) return;
+      fetchStatus(walletAddress).then((st) => openNickname(false, st.name));
+    };
+    window.addEventListener("solcity:open-nickname", onOpen);
+    return () => window.removeEventListener("solcity:open-nickname", onOpen);
+  }, [walletAddress, openNickname]);
 
   // CityScene only starts listening for "wallet:connected" at the end of its
   // create(). `game` goes non-null the instant `new Phaser.Game()` returns —
@@ -424,6 +474,9 @@ export default function Home() {
           <ExpressionWheel gameRef={game} />
           <ChatPanel gameRef={game} visible={chatOpen} />
           <NPCDialog npc={activeNPC} onClose={handleDialogClose} onAction={handleAction} />
+          {nickname && walletAddress && (
+            <NicknameModal wallet={walletAddress} current={nickname.current} forced={nickname.forced} onDone={closeNickname} />
+          )}
           <ActionPanel action={activeAction} onClose={handleActionClose} />
           <ProfilePanel gameRef={game} isOpen={profileOpen} onClose={() => setProfileOpen(false)} />
           {wardrobeOpen && (

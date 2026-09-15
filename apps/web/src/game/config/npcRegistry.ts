@@ -224,13 +224,10 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     id: "mech-handler",
     name: "Mech Builder",
     role: "Sol Mechs Hangar",
-    // SCMap01.1: on the street at the fence of the empty lot east of the
-    // canal — the fenced plot with the construction signs is where a hangar
-    // building can go up. Checked against the map's colliders: reachable from
-    // the spawn, ~19 tiles from the nearest NPC. (The old-map spot, 131/113,
-    // fell outside the walkable city on this map.)
-    tileX: 118,
-    tileY: 60,
+    // At the door of the Sol Mechs hangar (BuildSolMechs, cols 51-69 /
+    // rows 47-58); findNpcSpawn steps down to the first walkable row.
+    tileX: 59,
+    tileY: 57,
     color: 0xff5468,
     dialog: [
       "Hey, I'm the Mech Builder. Welcome to the Sol Mechs hangar!",

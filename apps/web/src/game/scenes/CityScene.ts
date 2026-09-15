@@ -17,6 +17,7 @@ import { onMiniGameFinished, watchNpcConversations, stopWatchingNpcConversations
 import { showEmoji, EmojiDef } from "../chat/EmojiSystem";
 import { soundManager } from "../audio/SoundManager";
 import { publishMinimap } from "../minimap/MinimapHost";
+import { cachedName, onNames, requestNames, NAME_CHANGED_EVENT } from "../names/nameService";
 
 // Pixel-perfect zoom values and snapping live in config/zoomConfig.ts —
 // shared with ZoomControl and the pinch-zoom hook.
@@ -322,15 +323,40 @@ export class CityScene extends Phaser.Scene {
     this.physics.world.setBounds(0, 0, map.widthInPixels, map.heightInPixels);
     this.cameras.main.setBounds(0, 0, map.widthInPixels, map.heightInPixels);
 
-    // "YOU" label — small and tucked just above the hat, close to the head.
-    const youLabel = this.add.text(0, -36, "YOU", {
-      fontSize: "6px", fontFamily: '"Press Start 2P", monospace',
-      color: "#ffffff", align: "center",
-      resolution: 3,
+    // Own name tag: the nickname once there is one ("YOU" until then), small
+    // and seated just above the outfit (AvatarSprite.attachLabel).
+    const youLabel = this.add.text(0, -34, "YOU", {
+      fontSize: "5px", fontFamily: '"Press Start 2P", monospace',
+      color: "#14F195", align: "center",
+      resolution: 4,
       stroke: "#0a0a1e",
       strokeThickness: 2,
     }).setOrigin(0.5, 1);
     container.add(youLabel);
+    this.avatar.attachLabel(youLabel);
+    const showOwnName = () => {
+      const n = this.walletAddress ? cachedName(this.walletAddress) : null;
+      youLabel.setText(n ?? "YOU");
+    };
+    const onNameChanged = () => showOwnName();
+    window.addEventListener(NAME_CHANGED_EVENT, onNameChanged);
+    // Remote tags update as names resolve or change.
+    const offNames = onNames((names) => {
+      for (const [wallet, name] of Object.entries(names)) {
+        this.nameLabels.get(wallet)?.setText(name);
+        if (wallet === this.walletAddress) showOwnName();
+      }
+    });
+    // Renames elsewhere reach us within a minute.
+    const nameRefresh = this.time.addEvent({
+      delay: 60_000, loop: true,
+      callback: () => requestNames([...this.remotePlayers.keys()], true),
+    });
+    this.events.once("shutdown", () => {
+      window.removeEventListener(NAME_CHANGED_EVENT, onNameChanged);
+      offNames();
+      nameRefresh.remove();
+    });
 
     // Camera — locked to player, no edge clamping so player stays centred
     // even at the map borders.
@@ -502,6 +528,7 @@ export class CityScene extends Phaser.Scene {
       // background (moves before delegation land as sim/base, as before).
       try {
         this.walletAddress = walletAddress;
+        requestNames([walletAddress], true);
         this.profile.setWallet(walletAddress);
         const displayName = this.profile.get().displayName;
         this.network.updateScore(this.profile.get().score);
@@ -701,6 +728,7 @@ export class CityScene extends Phaser.Scene {
       const nearby = this.npcSprites.find((n) => n.isInRange);
       if (nearby) {
         this.interactionBlocked = true;
+        nearby.faceToward(this.avatar.x, this.avatar.y);
         this.game.events.emit("npc:interact", nearby.def);
       }
     });
@@ -712,6 +740,7 @@ export class CityScene extends Phaser.Scene {
       const nearby = this.npcSprites.find((n) => n.isInRange);
       if (nearby) {
         this.interactionBlocked = true;
+        nearby.faceToward(this.avatar.x, this.avatar.y);
         this.game.events.emit("npc:interact", nearby.def);
       }
     };
@@ -1042,17 +1071,21 @@ export class CityScene extends Phaser.Scene {
     this.remotePlayers.set(wallet, avatar);
     this.remoteLoadoutKey.set(wallet, JSON.stringify(player.loadout ?? {}));
 
-    const shortAddr = `${wallet.slice(0, 4)}…${wallet.slice(-4)}`;
-    const displayName = player.displayName ?? shortAddr;
+    // Nickname from the registry; a short wallet only until it resolves (or
+    // for players who haven't picked one).
+    const shortAddr = `${wallet.slice(0, 4)}..${wallet.slice(-4)}`;
+    const displayName = cachedName(wallet) ?? shortAddr;
+    requestNames([wallet]);
 
-    const label = this.add.text(0, -36, displayName, {
-      fontSize: "6px", fontFamily: '"Press Start 2P", monospace',
-      color: "#aaaacc", align: "center",
-      resolution: 3,
+    const label = this.add.text(0, -34, displayName, {
+      fontSize: "5px", fontFamily: '"Press Start 2P", monospace',
+      color: "#e2e2f5", align: "center",
+      resolution: 4,
       stroke: "#0a0a1e",
       strokeThickness: 2,
     }).setOrigin(0.5, 1);
     avatar.getContainer().add(label);
+    avatar.attachLabel(label);
     this.nameLabels.set(wallet, label);
 
     // Clickable hit zone — opens this player's profile card in React.
@@ -1061,7 +1094,7 @@ export class CityScene extends Phaser.Scene {
     const hitZone = this.add.rectangle(0, -24, 48, 72, 0x000000, 0);
     hitZone.setInteractive({ useHandCursor: true });
     hitZone.on("pointerdown", () => {
-      this.game.events.emit("player:cardOpen", { wallet, displayName });
+      this.game.events.emit("player:cardOpen", { wallet, displayName: cachedName(wallet) ?? displayName });
     });
     container.add(hitZone);
 

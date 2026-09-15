@@ -215,7 +215,7 @@ export default function ProfilePanel({ gameRef, isOpen, onClose }: ProfilePanelP
           </div>
 
           <div className="flex-1">
-            {editingName ? (
+            {false ? (
               <div className="flex gap-1">
                 <input
                   value={nameInput}
@@ -240,19 +240,26 @@ export default function ProfilePanel({ gameRef, isOpen, onClose }: ProfilePanelP
                 </button>
               </div>
             ) : (
-              <div
-                className="cursor-pointer"
-                onClick={() => {
-                  setNameInput(profile.displayName);
-                  setEditingName(true);
-                }}
-              >
+              <div>
                 <div className="text-sm font-bold" style={{ color: "#fff" }}>
                   {profile.displayName}
                 </div>
-                <div className="text-xs" style={{ color: "#555566" }}>
-                  tap to edit name
-                </div>
+                {connected ? (
+                  <button
+                    onClick={() => window.dispatchEvent(new Event("solcity:open-nickname"))}
+                    style={{
+                      marginTop: 5, background: "rgba(20,241,149,0.1)", border: "1px solid rgba(20,241,149,0.4)",
+                      color: "#14F195", borderRadius: 6, padding: "4px 8px", cursor: "pointer",
+                      fontFamily: '"Press Start 2P", monospace', fontSize: 7,
+                    }}
+                  >
+                    CHANGE NICKNAME
+                  </button>
+                ) : (
+                  <div className="text-xs" style={{ color: "#555566", marginTop: 3 }}>
+                    connect a wallet to pick a nickname
+                  </div>
+                )}
               </div>
             )}
           </div>

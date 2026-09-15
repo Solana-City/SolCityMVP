@@ -215,6 +215,9 @@ function getHairTextureFor(
  *   avatar.idle();
  *   avatar.setLayer("hat", "cap");
  */
+/** Gap in world px between the top of the outfit and the bottom of a name tag. */
+const LABEL_GAP = 1.5;
+
 export class AvatarSprite {
   private scene: Phaser.Scene;
   private container: Phaser.GameObjects.Container;
@@ -265,6 +268,56 @@ export class AvatarSprite {
 
   getLoadout(): Loadout {
     return { ...this.currentLoadout };
+  }
+
+  /** Name tags that ride just above the head and follow outfit changes. */
+  private labels: Phaser.GameObjects.Text[] = [];
+  private static inkTopCache = new Map<string, number>();
+
+  /**
+   * Keep a text label a small, fixed gap above the top of the outfit (the
+   * tallest of hair, hat and body in the down-facing frame), so a tall hat
+   * never sits under the name and a bare head doesn't leave it floating.
+   */
+  attachLabel(label: Phaser.GameObjects.Text): void {
+    this.labels.push(label);
+    label.setY(this.headTopY() - LABEL_GAP);
+  }
+
+  /** Local y of the top of the outfit's ink, in container space. */
+  headTopY(): number {
+    const FOOT_Y_LOCAL = -2;
+    let topRow = SPRITE_FRAME_HEIGHT;
+    for (const sprite of this.layerSprites.values()) {
+      topRow = Math.min(topRow, this.inkTopRow(sprite.texture.key));
+    }
+    if (topRow >= SPRITE_FRAME_HEIGHT) topRow = 4;
+    // Sheets draw at 0.5 world scale, origin at the frame bottom.
+    return FOOT_Y_LOCAL - (SPRITE_FRAME_HEIGHT - topRow) * 0.5;
+  }
+
+  private inkTopRow(key: string): number {
+    const cached = AvatarSprite.inkTopCache.get(key);
+    if (cached !== undefined) return cached;
+    let top = SPRITE_FRAME_HEIGHT;
+    try {
+      const tex = this.scene.textures.get(key);
+      const frame = tex.get(0);
+      const src = tex.getSourceImage() as CanvasImageSource;
+      const c = document.createElement("canvas");
+      c.width = frame.cutWidth;
+      c.height = frame.cutHeight;
+      const ctx = c.getContext("2d", { willReadFrequently: true })!;
+      ctx.drawImage(src, frame.cutX, frame.cutY, frame.cutWidth, frame.cutHeight, 0, 0, frame.cutWidth, frame.cutHeight);
+      const { data } = ctx.getImageData(0, 0, c.width, c.height);
+      outer: for (let y = 0; y < c.height; y++) {
+        for (let x = 0; x < c.width; x++) {
+          if (data[(y * c.width + x) * 4 + 3] > 16) { top = Math.round(y * (SPRITE_FRAME_HEIGHT / c.height)); break outer; }
+        }
+      }
+    } catch { top = SPRITE_FRAME_HEIGHT; }
+    AvatarSprite.inkTopCache.set(key, top);
+    return top;
   }
 
   /**
@@ -386,6 +439,12 @@ export class AvatarSprite {
     }
 
     this.buildShadow();
+
+    // Outfit changed: re-seat any name tags above the new silhouette.
+    if (this.labels) {
+      const y = this.headTopY() - LABEL_GAP;
+      for (const l of this.labels) if (l.active) l.setY(y);
+    }
 
     // Set initial idle frame
     const row = DIRECTION_ROW[this.currentDirection];

@@ -52,6 +52,24 @@ export class NPCSprite {
   readonly textureKey: string;
 
   /** Where this NPC spawns and wanders around, in world px. */
+  /**
+   * Turn to look at the player when a conversation starts: stop any walk in
+   * progress and face whichever way the player mostly is. Static animated
+   * NPCs (a one-direction loop like Kite Pro) keep their pose.
+   */
+  faceToward(px: number, py: number): void {
+    if (this.def.spriteAnimation) return;
+    const c = this.getContainer();
+    this.scene.tweens.killTweensOf(c);
+    this.setSheet(this.def.spriteKey);
+    const dx = px - c.x;
+    const dy = py - c.y;
+    const dir: Direction = Math.abs(dx) > Math.abs(dy)
+      ? (dx < 0 ? "left" : "right")
+      : (dy < 0 ? "up" : "down");
+    this.avatar.face(dir);
+  }
+
   getSpawn(): { x: number; y: number } {
     return { x: this.originX, y: this.originY };
   }
