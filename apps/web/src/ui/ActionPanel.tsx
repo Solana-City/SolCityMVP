@@ -467,7 +467,7 @@ const EARN_CATEGORIES: EarnCategory[] = [
   { type: "bounty",    label: "Bounties",         sublabel: "Short tasks",            color: "#14F195", viewAllUrl: "https://superteam.fun/earn/all?tab=bounties"    },
   { type: "project",   label: "Projects",          sublabel: "Longer work",            color: "#00D1FF", viewAllUrl: "https://superteam.fun/earn/all?tab=projects"    },
   { type: "grant",     label: "Grants",            sublabel: "Funding to build",       color: "#9945FF", viewAllUrl: "https://superteam.fun/earn/grants"              },
-  { type: "hackathon", label: "Hackathons",        sublabel: "Build and compete",      color: "#FFD700", viewAllUrl: "https://superteam.fun/earn/hackathon/frontier"  },
+  { type: "hackathon", label: "Hackathons",        sublabel: "Build and compete",      color: "#FFD700", viewAllUrl: "https://superteam.fun/earn/all?tab=hackathons"   },
 ];
 
 
@@ -566,7 +566,6 @@ function EarnListingsStage({
     }
   };
 
-  const truncate = (s: string, n: number) => (s.length > n ? s.slice(0, n) + "…" : s);
 
   const isGrants = category.type === "grant";
 
@@ -633,7 +632,7 @@ function EarnListingsStage({
         {!loading && !failed && listings.map((listing, i) => (
           <a
             key={i}
-            href={`https://earn.superteam.fun/listings/${listing.slug}`}
+            href={listing.url}
             target="_blank"
             rel="noopener noreferrer"
             style={{
@@ -652,7 +651,7 @@ function EarnListingsStage({
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ color: "#ccccdd", fontSize: "9px", marginBottom: 3, lineHeight: 1.5 }}>
-                  {truncate(listing.title, 70)}
+                  {listing.title}
                 </div>
                 <div style={{ fontSize: "8px", color: "#555566" }}>{listing.sponsorName}</div>
               </div>
