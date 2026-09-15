@@ -295,7 +295,15 @@ function CompactMap({ host, mobile, onOpen, onCollapse }: {
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       const snap = host.snapshot();
       const me = snap.player ?? { x: host.worldW / 2, y: host.worldH / 2 };
-      const v: View = { cx: me.x, cy: me.y, zoom };
+      // Stop at the city's edges: near a border the window holds still and the
+      // YOU dot moves toward the rim, instead of the map sliding off into blue.
+      const half = D / 2 / zoom;
+      const v: View = {
+        cx: Math.min(host.worldW - half, Math.max(half, me.x)),
+        cy: Math.min(host.worldH - half, Math.max(half, me.y)),
+        zoom,
+      };
+      const youAt = toScreen(v, D, D, me.x, me.y);
       ctx.clearRect(0, 0, D, D);
       ctx.save();
       ctx.beginPath();
@@ -317,7 +325,7 @@ function CompactMap({ host, mobile, onOpen, onCollapse }: {
         const p = toScreen(v, D, D, o.x, o.y);
         if (inside(p, 3)) drawMarker(ctx, "players", p.x, p.y, mobile ? 2.6 : 3.2);
       }
-      drawYou(ctx, R, R, mobile ? 3.5 : 4.5, t);
+      drawYou(ctx, youAt.x, youAt.y, mobile ? 3.5 : 4.5, t);
       // Vignette toward the rim.
       const g = ctx.createRadialGradient(R, R, R * 0.62, R, R, R);
       g.addColorStop(0, "rgba(4,6,14,0)");
@@ -455,23 +463,29 @@ function FullMap({ host, onClose }: { host: MinimapHost; onClose: () => void }) 
   }, []);
 
   const fitZoom = useCallback(() => (w && h ? Math.min(w / host.worldW, h / host.worldH) : 0.2), [w, h, host]);
+  /**
+   * Furthest the map may zoom out: the city covers the whole view on both
+   * axes. Zooming out to "fit" left bands of empty blue on the long side,
+   * and panning could run past the edges into the same void.
+   */
+  const coverZoom = useCallback(() => (w && h ? Math.max(w / host.worldW, h / host.worldH) : 0.2), [w, h, host]);
   const clampView = useCallback((v: View): View => {
-    const zoom = Math.min(MAX_ZOOM, Math.max(fitZoom() * MIN_ZOOM_FACTOR, v.zoom));
+    const zoom = Math.min(MAX_ZOOM, Math.max(coverZoom() * MIN_ZOOM_FACTOR, v.zoom));
     const halfW = w / 2 / zoom;
     const halfH = h / 2 / zoom;
     const cx = halfW * 2 >= host.worldW ? host.worldW / 2 : Math.min(host.worldW - halfW, Math.max(halfW, v.cx));
     const cy = halfH * 2 >= host.worldH ? host.worldH / 2 : Math.min(host.worldH - halfH, Math.max(halfH, v.cy));
     return { cx, cy, zoom };
-  }, [fitZoom, w, h, host]);
+  }, [coverZoom, w, h, host]);
 
   // First layout: centre on the player, zoomed in a little past "whole map".
   useEffect(() => {
     if (!w || !h || viewRef.current) return;
     const me = host.snapshot().player ?? { x: host.worldW / 2, y: host.worldH / 2 };
-    const v = clampView({ cx: me.x, cy: me.y, zoom: fitZoom() * 1.8 });
+    const v = clampView({ cx: me.x, cy: me.y, zoom: Math.max(coverZoom() * 1.3, fitZoom() * 1.8) });
     viewRef.current = v;
     targetRef.current = v;
-  }, [w, h, host, clampView, fitZoom]);
+  }, [w, h, host, clampView, fitZoom, coverZoom]);
 
   const focus = useCallback((p: { x: number; y: number }, zoom?: number) => {
     const cur = targetRef.current ?? viewRef.current;
@@ -622,7 +636,7 @@ function FullMap({ host, onClose }: { host: MinimapHost; onClose: () => void }) 
     if (pointers.current.size === 2 && pinchStart.current) {
       const [a, b] = [...pointers.current.values()];
       const dist = Math.hypot(a.x - b.x, a.y - b.y);
-      const zoom = Math.min(MAX_ZOOM, Math.max(fitZoom(), pinchStart.current.zoom * (dist / pinchStart.current.dist)));
+      const zoom = Math.min(MAX_ZOOM, Math.max(coverZoom(), pinchStart.current.zoom * (dist / pinchStart.current.dist)));
       // Keep the world point that started under the fingers under their
       // current midpoint, so the map zooms where you pinch and follows a
       // two-finger drag, instead of sliding out from under your fingers.
@@ -660,7 +674,7 @@ function FullMap({ host, onClose }: { host: MinimapHost; onClose: () => void }) 
     const t = targetRef.current;
     if (!t) return;
     const pos = local(e);
-    const zoom = Math.min(MAX_ZOOM, Math.max(fitZoom(), t.zoom * Math.exp(-e.deltaY * 0.0015)));
+    const zoom = Math.min(MAX_ZOOM, Math.max(coverZoom(), t.zoom * Math.exp(-e.deltaY * 0.0015)));
     // Keep the world point under the cursor fixed while zooming.
     const wx = t.cx + (pos.x - w / 2) / t.zoom;
     const wy = t.cy + (pos.y - h / 2) / t.zoom;
