@@ -93,23 +93,19 @@ const OPACITY_THRESHOLD = 0.5;
  * Layers Tiled left with its default placeholder name ("Camada de Blocos N"),
  * renamed to something CityScene can key its render-order rules off.
  *
- * The ST Brasil welcome sign stands in front of the lighthouse, but it carries
- * no collision, so CityScene fell through to `depth = layer index` (40) while
- * the lighthouse Y-sorts to `depth = 2064` — the lighthouse simply painted over
- * it. Naming it DecorSign* opts it into the no-collision Y-sort branch, which
- * gives it a depth from its own base row instead.
+ * EMPTY as of 2026-09-12 — the three entries this used to carry (109 → a
+ * DecorPalmBridge that no longer exists, 119 → a sign the artist has since
+ * named DecorSignSTBr directly in Tiled, 122 → a BuildGenericSTBrazil that no
+ * longer appears) are all stale. Tiled reissues "Camada de Blocos N" ids as
+ * layers are added and removed — 109 got reused for an unrelated
+ * SCBuildDungeousMoles layer and was silently mislabeled DecorPalmBridge by
+ * the stale rule (caught 2026-09-12 by checking what tileset the "renamed"
+ * layer actually painted with). Do NOT add an id-keyed rename here again;
+ * ids are not a stable enough identity for this. If a placeholder-named layer
+ * needs a real name, ask the map artist to rename it in Tiled — the warning
+ * pass below (search PLACEHOLDER_WARNING) flags anything left unnamed.
  */
-const LAYER_RENAMES = {
-  "Camada de Blocos 119": "DecorSignSTBrasil",
-  // The planter palms flanking the central bridge. Filed inside the Ground
-  // group, so CityScene saw "Ground/Camada de Blocos 109", matched no rule and
-  // dropped it to `depth = layer index` (16) — the player walked over the
-  // fronds. DecorPalmBridge* opts it into the above-head branch.
-  "Camada de Blocos 109": "DecorPalmBridge",
-  // A building beside BuildSTBrazil. Named Build* so it Y-sorts like its
-  // neighbours and joins the ground-floor sweep below.
-  "Camada de Blocos 122": "BuildGenericSTBrazil",
-};
+const LAYER_RENAMES = {};
 
 /**
  * Layers whose art is solid but whose tiles carry no collision shape.
@@ -413,6 +409,27 @@ for (const layer of tileLayers(map.layers)) {
   layer.name = next;
   renamed++;
   console.log(`  renamed layer -> ${next}`);
+}
+
+// PLACEHOLDER_WARNING: flag anything Tiled left unnamed so it doesn't silently
+// fall through to default render behavior (or get misidentified by a future
+// id-based guess — see the LAYER_RENAMES comment above for how that bit us).
+for (const layer of tileLayers(map.layers)) {
+  if (!/^Camada de Blocos \d+$/.test(layer.name)) continue;
+  const gidsUsed = new Set();
+  for (const raw of layer.data) {
+    if (raw) gidsUsed.add((raw & GID_MASK));
+  }
+  const tilesetNames = new Set(
+    [...gidsUsed].map((gid) => {
+      const ts = [...map.tilesets].sort((a, b) => b.firstgid - a.firstgid).find((t) => gid >= t.firstgid);
+      return ts?.name ?? "?";
+    })
+  );
+  console.warn(
+    `  ! placeholder layer "${layerPath.get(layer)}" (${layer.data.filter(Boolean).length} tiles, ` +
+      `tileset(s): ${[...tilesetNames].join(", ")}) — ask the artist to name this in Tiled`
+  );
 }
 
 // ---------------------------------------------------------------- pass 3 ---

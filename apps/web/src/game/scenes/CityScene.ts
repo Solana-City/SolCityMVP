@@ -135,6 +135,7 @@ export class CityScene extends Phaser.Scene {
       "SCBuildKeepGreen", "SCGameAssets", "ScTileBeach",
       "ScBuildSTBrazilLighthouse", "SCBuildSTBrStands", "SCBuildMagicBlock02",
       "SCBuildSTEarn", "SCBuildSolanaCity",
+      "SCBuildSolMechs", "SCBuildDungeousMoles",
     ]
       .map(n => map.addTilesetImage(n, n))
       .filter((ts): ts is Phaser.Tilemaps.Tileset => ts !== null);
