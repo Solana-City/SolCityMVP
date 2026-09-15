@@ -105,10 +105,10 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     id: "sol-guide",
     name: "Sol",
     role: "City Guide",
-    // Central fountain plaza, on the path just below the steps the player
-    // spawns on (col 78, row 38).
+    // Central fountain plaza, three tiles down the path from the spawn steps
+    // (where Steve Sends used to stand).
     tileX: 78,
-    tileY: 40,
+    tileY: 43,
     color: 0x14f195,
     dialog: [
       "Hi, I'm Sol, your city guide!",
@@ -177,9 +177,10 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     id: "send-npc",
     name: "Steve Sends",
     role: "Send Tokens",
-    // Central fountain plaza, three tiles south of Sol down the same path.
+    // In front of the Solana City building (BuildSolanaCity, cols 73-83 /
+    // rows 47-59); findNpcSpawn steps down to the first walkable row.
     tileX: 78,
-    tileY: 43,
+    tileY: 59,
     color: 0x00d1ff,
     dialog: [
       "Need to send SOL to a friend?",

@@ -1083,11 +1083,23 @@ export class CityScene extends Phaser.Scene {
     const dy = player.y - container.y;
     const dist = Math.hypot(dx, dy);
 
-    if (dist > 300) {
-      // Large gap (initial placement or reconnect) — teleport immediately
+    if (dist > 180) {
+      // A jump no walk covers in one sample: fast travel (or a reconnect).
+      // Onlookers see the same fade the traveller does: out where they
+      // stood, in where they land, instead of a slide across the map.
       this.tweens.killTweensOf(container);
-      container.setPosition(player.x, player.y);
+      this.tweens.add({
+        targets: container,
+        alpha: 0,
+        duration: 220,
+        ease: "Quad.easeIn",
+        onComplete: () => {
+          container.setPosition(player.x, player.y);
+          this.tweens.add({ targets: container, alpha: 1, duration: 300, ease: "Quad.easeOut" });
+        },
+      });
     } else if (dist > 2) {
+      if (container.alpha < 1) container.setAlpha(1);
       // Interpolate over 600ms so motion between the ~500ms position samples
       // stays continuous (never reaches the target and stalls before the next).
       this.tweens.killTweensOf(container);

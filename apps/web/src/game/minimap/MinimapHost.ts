@@ -204,8 +204,9 @@ function npcPortrait(scene: Phaser.Scene, key: string): HTMLCanvasElement | null
   let h = y1 - y0 + 1;
   // Some sheets carry a prop far above the character (Kite Pro's kite), which
   // would shrink the body to a speck once the whole frame is fitted to a pin.
-  // Keep the feet and at most ~1.5x the width upward.
-  const maxH = Math.round(w * 1.5);
+  // Only a real prop gets trimmed: a normal character is about twice as tall
+  // as wide, and trimming at 1.5x was cutting the top of their heads off.
+  const maxH = Math.round(w * 2.6);
   const top = h > maxH ? y1 + 1 - maxH : y0;
   h = y1 + 1 - top;
   const out = document.createElement("canvas");
