@@ -383,54 +383,42 @@ export default function Home() {
               right: "max(env(safe-area-inset-right, 0px), 12px)",
             }}
           >
-            {/* One card: the round minimap with profile and wardrobe on its
-                top corners, then the wallet and ONCHAIN + zoom right under
-                it. Same structure on phone and desktop, just smaller. */}
-            <div style={{
-              width: isTouch ? 156 : 232,
-              padding: isTouch ? "10px 6px 6px" : "12px 10px 8px",
-              display: "flex", flexDirection: "column", gap: isTouch ? 6 : 8,
-              background: "rgba(8,10,22,0.66)",
-              border: "1px solid rgba(153,69,255,0.25)",
-              borderRadius: 16,
-              backdropFilter: "blur(14px)",
-              boxShadow: "0 4px 28px rgba(0,0,0,0.4)",
-            }}>
-              <div style={{ display: "flex", justifyContent: "center" }}>
-                  <Minimap
-                    compact={isTouch ? "mobile" : "desktop"}
-                    corners={{
-                      tl: (
-                        <span style={{ display: "block", borderRadius: "50%", background: "rgba(8,10,22,0.95)", boxShadow: "0 2px 10px rgba(0,0,0,0.5)" }}>
-                          <PfpButton gameRef={game} size={isTouch ? 30 : 34} onClick={() => setProfileOpen(true)} />
-                        </span>
-                      ),
-                      tr: (
-                        <span style={{ display: "block", borderRadius: 8, background: "rgba(8,10,22,0.95)", boxShadow: "0 2px 10px rgba(0,0,0,0.5)" }}>
-                          <WardrobeButton size={isTouch ? 30 : 34} onClick={() => setWardrobeOpen(true)} />
-                        </span>
-                      ),
-                    }}
-                  />
+            {/* Map + player HUD. No box around it: each piece carries its own
+                background, so the HUD's outline is the pill of buttons, the
+                round map and the wallet block, and the city shows between. */}
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: isTouch ? 5 : 8 }}>
+              <div style={{
+                display: "flex", alignItems: "center", gap: isTouch ? 5 : 6,
+                padding: isTouch ? 3 : 4, borderRadius: 999, ...HUD_SKIN,
+              }}>
+                <PfpButton gameRef={game} size={isTouch ? 30 : 34} onClick={() => setProfileOpen(true)} />
+                <WardrobeButton size={isTouch ? 30 : 34} onClick={() => setWardrobeOpen(true)} />
               </div>
-              <div style={{ padding: isTouch ? "0 2px" : "0 4px" }}>
-                <WalletBar layout="panel" onWalletChange={handleWalletChange} />
-              </div>
-              <div style={{ display: "flex", alignItems: "center", gap: isTouch ? 4 : 6 }}>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <TransactionLogPanel
-                    isOpen={logOpen}
-                    onToggle={() => setLogOpen((v) => !v)}
-                    gameRef={game}
-                    compact={isTouch}
-                  />
+              <Minimap compact={isTouch ? "mobile" : "desktop"} />
+              <div style={{
+                width: isTouch ? 150 : 212,
+                padding: isTouch ? "6px 5px 5px" : "8px 8px 6px",
+                display: "flex", flexDirection: "column", gap: isTouch ? 5 : 6,
+                borderRadius: 14, ...HUD_SKIN,
+              }}>
+                <div style={{ padding: "0 2px" }}>
+                  <WalletBar layout="panel" onWalletChange={handleWalletChange} />
                 </div>
-                <div style={{ flexShrink: 0 }}>
-                  <ZoomControl compact={isTouch} />
+                <div style={{ display: "flex", alignItems: "center", gap: isTouch ? 4 : 6 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <TransactionLogPanel
+                      isOpen={logOpen}
+                      onToggle={() => setLogOpen((v) => !v)}
+                      gameRef={game}
+                      compact={isTouch}
+                    />
+                  </div>
+                  <div style={{ flexShrink: 0 }}>
+                    <ZoomControl compact={isTouch} />
+                  </div>
                 </div>
               </div>
             </div>
-
           </div>
 
           <ToastStack />
@@ -538,6 +526,14 @@ function ExpressionToggle() {
     </button>
   );
 }
+
+/** Shared look of the top-right HUD pieces. */
+const HUD_SKIN: React.CSSProperties = {
+  background: "rgba(8,10,22,0.78)",
+  border: "1px solid rgba(153,69,255,0.35)",
+  backdropFilter: "blur(12px)",
+  boxShadow: "0 4px 18px rgba(0,0,0,0.4)",
+};
 
 function WardrobeButton({ onClick, size = 36 }: { onClick: () => void; size?: number }) {
   return (

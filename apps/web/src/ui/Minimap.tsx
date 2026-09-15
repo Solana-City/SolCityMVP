@@ -221,10 +221,7 @@ function useCanvasSize(ref: React.RefObject<HTMLElement>) {
 
 // ── Compact corner map ──────────────────────────────────────────────────────
 
-/** Buttons seated on the map's top corners (profile, wardrobe). */
-export interface MapCorners { tl?: React.ReactNode; tr?: React.ReactNode }
-
-export default function Minimap({ compact, corners }: { compact?: "mobile" | "desktop"; corners?: MapCorners }) {
+export default function Minimap({ compact }: { compact?: "mobile" | "desktop" }) {
   const host = useMinimapHost();
   const [open, setOpen] = useState(false);
 
@@ -266,9 +263,9 @@ export default function Minimap({ compact, corners }: { compact?: "mobile" | "de
   return (
     <>
       {collapsed ? (
-        <CollapsedMap mobile={mobile} corners={corners} onExpand={toggleCollapsed} onOpen={() => setOpenAndNotify(true)} />
+        <CollapsedMap mobile={mobile} onExpand={toggleCollapsed} onOpen={() => setOpenAndNotify(true)} />
       ) : (
-        <CompactMap host={host} mobile={mobile} corners={corners} onOpen={() => setOpenAndNotify(true)} onCollapse={toggleCollapsed} />
+        <CompactMap host={host} mobile={mobile} onOpen={() => setOpenAndNotify(true)} onCollapse={toggleCollapsed} />
       )}
       {/* Portalled: the compact map lives inside the HUD's stacking context,
           which would otherwise keep the modal under the touch controls. */}
@@ -277,8 +274,8 @@ export default function Minimap({ compact, corners }: { compact?: "mobile" | "de
   );
 }
 
-function CompactMap({ host, mobile, corners, onOpen, onCollapse }: {
-  host: MinimapHost; mobile: boolean; corners?: MapCorners; onOpen: () => void; onCollapse: () => void;
+function CompactMap({ host, mobile, onOpen, onCollapse }: {
+  host: MinimapHost; mobile: boolean; onOpen: () => void; onCollapse: () => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const D = mobile ? 108 : 176;
@@ -344,7 +341,6 @@ function CompactMap({ host, mobile, corners, onOpen, onCollapse }: {
 
   const chip = mobile ? 24 : 26;
   const edge = mobile ? -6 : 4;
-  const cornerEdge = mobile ? -10 : -6;
   return (
     <div style={{ position: "relative", width: D, height: D, flexShrink: 0 }}>
       <button
@@ -385,22 +381,17 @@ function CompactMap({ host, mobile, corners, onOpen, onCollapse }: {
       >
         ⤢
       </button>
-      {corners?.tl && <div style={{ position: "absolute", left: cornerEdge, top: cornerEdge }}>{corners.tl}</div>}
-      {corners?.tr && <div style={{ position: "absolute", right: cornerEdge, top: cornerEdge }}>{corners.tr}</div>}
     </div>
   );
 }
 
 /** The minimap folded away: one round button that brings it back. */
-function CollapsedMap({ mobile, corners, onExpand, onOpen }: {
-  mobile: boolean; corners?: MapCorners; onExpand: () => void; onOpen: () => void;
+function CollapsedMap({ mobile, onExpand, onOpen }: {
+  mobile: boolean; onExpand: () => void; onOpen: () => void;
 }) {
   const size = mobile ? 36 : 40;
   return (
     <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-      {corners?.tl}
-      {corners?.tr}
-      <div style={{ flex: 1 }} />
       <button
         onClick={onOpen}
         aria-label="Open full map"
