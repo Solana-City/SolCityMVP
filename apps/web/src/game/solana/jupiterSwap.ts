@@ -1,9 +1,12 @@
 import { VersionedTransaction } from "@solana/web3.js";
 
-// Jupiter V6 Quote API — completely free, no API key required.
-// Docs: https://station.jup.ag/docs/apis/swap-api
-const QUOTE_URL = "https://quote-api.jup.ag/v6/quote";
-const SWAP_URL  = "https://quote-api.jup.ag/v6/swap";
+// Jupiter Swap API V2 (meta-aggregator): /order returns a quote plus an
+// assembled transaction for the taker, the wallet signs it, and /execute
+// lands it on mainnet for us, so no mainnet RPC is needed on our side.
+// Docs: https://developers.jup.ag/docs/swap/order-and-execute
+// Keyless works (0.5 RPS per IP); NEXT_PUBLIC_JUPITER_API_KEY raises the limit.
+const JUP_BASE = "https://api.jup.ag";
+const API_KEY = process.env.NEXT_PUBLIC_JUPITER_API_KEY || "";
 
 // Common token mints on Solana mainnet.
 // Jupiter operates on mainnet — so swaps here use real mainnet tokens.
@@ -17,96 +20,117 @@ export const TOKEN_LIST = [
 
 export type TokenInfo = (typeof TOKEN_LIST)[number];
 
-// Shape returned by /v6/quote
-export interface QuoteResponse {
+// Shape returned by GET /swap/v2/order (fields we use).
+export interface OrderResponse {
   inputMint: string;
-  inAmount: string;
   outputMint: string;
+  inAmount: string;
   outAmount: string;
   otherAmountThreshold: string;
   swapMode: string;
   slippageBps: number;
-  priceImpactPct: string;
-  routePlan: Array<{
-    swapInfo: {
-      ammKey: string;
-      label: string;
-      inputMint: string;
-      outputMint: string;
-      inAmount: string;
-      outAmount: string;
-      feeAmount: string;
-      feeMint: string;
-    };
-    percent: number;
-  }>;
+  priceImpact?: number;       // percent
+  priceImpactPct?: string;    // fraction
+  router?: string;
+  mode?: string;
+  feeBps?: number;
+  inUsdValue?: number;
+  outUsdValue?: number;
+  rentFeeLamports?: number;
+  /** base64 VersionedTransaction; empty when the order can't be filled (see errorCode). */
+  transaction: string | null;
+  requestId: string;
+  lastValidBlockHeight?: string;
+  errorCode?: number;
+  errorMessage?: string;
+  error?: string;
 }
 
-export interface SwapTransaction {
-  swapTransaction: string; // base64 VersionedTransaction
-  lastValidBlockHeight: number;
+// Shape returned by POST /swap/v2/execute.
+export interface ExecuteResponse {
+  status: "Success" | "Failed";
+  signature?: string;
+  code: number;
+  error?: string;
+  totalInputAmount?: string;
+  totalOutputAmount?: string;
+  inputAmountResult?: string;
+  outputAmountResult?: string;
 }
 
-/**
- * Gets a swap quote from Jupiter V6.
- * No API key required. Slippage defaults to 0.5% (50 bps).
- */
-export async function getQuote(
-  inputMint: string,
-  outputMint: string,
-  amount: string,
-  slippageBps = 50
-): Promise<QuoteResponse> {
-  const params = new URLSearchParams({
-    inputMint,
-    outputMint,
-    amount,
-    slippageBps: slippageBps.toString(),
-    onlyDirectRoutes: "false",
-    asLegacyTransaction: "false",
-  });
+/** Orders older than this get re-quoted before signing (requestId expires). */
+export const ORDER_TTL_MS = 25_000;
 
-  const res = await fetch(`${QUOTE_URL}?${params}`, {
-    headers: { Accept: "application/json" },
-  });
+function jupHeaders(extra?: Record<string, string>): Record<string, string> {
+  const h: Record<string, string> = { Accept: "application/json", ...extra };
+  if (API_KEY) h["x-api-key"] = API_KEY;
+  return h;
+}
 
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Jupiter /quote failed (${res.status}): ${text}`);
+/** Player-readable message for a Jupiter error code. */
+function orderErrorMessage(order: OrderResponse): string {
+  switch (order.errorCode) {
+    case 1: return "Not enough balance for this swap.";
+    case 2: return "Not enough SOL to pay network fees.";
+    case 3: return "Amount too small for this route.";
+    default: return order.errorMessage || order.error || "Jupiter could not build this swap.";
   }
+}
 
-  return res.json();
+function executeErrorMessage(res: ExecuteResponse): string {
+  switch (res.code) {
+    case -1:
+    case -2003: return "Quote expired. Get a new quote and try again.";
+    case -2: return "Wallet signature was invalid.";
+    case -2004: return "Swap rejected by the route. Try again.";
+    default: return res.error || `Swap failed (code ${res.code}).`;
+  }
 }
 
 /**
- * Builds the swap transaction from a quote.
- * Returns a base64-encoded VersionedTransaction that the user must sign.
+ * Gets a quote + ready-to-sign transaction for `taker`.
+ * Without a taker Jupiter still quotes but returns no transaction.
+ * Throws when the order has a price but can't be filled (e.g. low balance).
  */
-export async function buildSwapTransaction(
-  quoteResponse: QuoteResponse,
-  userPublicKey: string
-): Promise<SwapTransaction> {
-  const res = await fetch(SWAP_URL, {
+export async function getOrder(params: {
+  inputMint: string;
+  outputMint: string;
+  amount: string;
+  taker?: string;
+  slippageBps?: number;
+}): Promise<OrderResponse> {
+  const qs = new URLSearchParams({
+    inputMint: params.inputMint,
+    outputMint: params.outputMint,
+    amount: params.amount,
+  });
+  if (params.taker) qs.set("taker", params.taker);
+  if (params.slippageBps != null) qs.set("slippageBps", String(params.slippageBps));
+
+  const res = await fetch(`${JUP_BASE}/swap/v2/order?${qs}`, { headers: jupHeaders() });
+  if (res.status === 429) throw new Error("Jupiter is busy. Wait a moment and try again.");
+  const order = (await res.json().catch(() => null)) as OrderResponse | null;
+  if (!res.ok || !order) {
+    throw new Error(order?.error || order?.errorMessage || `Jupiter /order failed (${res.status})`);
+  }
+  if (params.taker && !order.transaction) throw new Error(orderErrorMessage(order));
+  return order;
+}
+
+/** Sends a wallet-signed /order transaction to Jupiter, which lands it. */
+export async function executeOrder(signed: VersionedTransaction, requestId: string): Promise<ExecuteResponse> {
+  const res = await fetch(`${JUP_BASE}/swap/v2/execute`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    headers: jupHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({
-      quoteResponse,
-      userPublicKey,
-      // wrap/unwrap SOL automatically
-      wrapAndUnwrapSol: true,
-      // use shared accounts for lower fees
-      useSharedAccounts: true,
-      // dynamic slippage protects against MEV
-      dynamicComputeUnitLimit: true,
+      signedTransaction: Buffer.from(signed.serialize()).toString("base64"),
+      requestId,
     }),
   });
-
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Jupiter /swap failed (${res.status}): ${text}`);
-  }
-
-  return res.json();
+  const out = (await res.json().catch(() => null)) as ExecuteResponse | null;
+  if (!out) throw new Error(`Jupiter /execute failed (${res.status})`);
+  if (out.status !== "Success") throw new Error(executeErrorMessage(out));
+  return out;
 }
 
 export function deserializeTransaction(base64Tx: string): VersionedTransaction {

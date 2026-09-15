@@ -82,7 +82,7 @@ module.exports = withPWA({
       },
       // Jupiter Aggregator API — never cache
       {
-        urlPattern: /^https:\/\/quote-api\.jup\.ag/,
+        urlPattern: /^https:\/\/(api|lite-api)\.jup\.ag/,
         handler: "NetworkOnly",
       },
       // MagicBlock ephemeral rollup — never cache

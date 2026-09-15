@@ -7,7 +7,6 @@ import type { NPCAction } from "@/game/config/npcRegistry";
 import type { EarnListing, EarnListingType } from "@/game/solana/superteamEarn";
 import { transactionLog } from "@/game/telemetry/transactionLog";
 import { profileManager } from "@/game/config/profileManager";
-import { Connection } from "@solana/web3.js";
 import { ProtocolIntroGate, type IntroSpec } from "@/ui/ProtocolIntro";
 import CityGuide from "@/ui/CityGuide";
 
@@ -168,7 +167,7 @@ export default function ActionPanel({ action, onClose }: ActionPanelProps) {
   );
 }
 
-// ── Swap Panel (Jupiter V6 — no API key required) ─────────────────────
+// ── Swap Panel (Jupiter Swap V2: /order + /execute) ───────────────────
 
 function SwapPanel({ onClose }: { onClose: () => void }) {
   const { connected, publicKey, signTransaction } = useWallet();
@@ -179,6 +178,7 @@ function SwapPanel({ onClose }: { onClose: () => void }) {
   const [loading, setLoading] = useState(false);
   const [status,  setStatus]  = useState<"idle"|"quoting"|"signing"|"submitting"|"done"|"error">("idle");
   const [result,  setResult]  = useState<{ signature?: string; outAmount?: string; error?: string } | null>(null);
+  const quotedAt = useRef(0);
 
   const jupRef = useRef<typeof import("@/game/solana/jupiterSwap") | null>(null);
   useEffect(() => { import("@/game/solana/jupiterSwap").then(m => { jupRef.current = m; }); }, []);
@@ -195,7 +195,10 @@ function SwapPanel({ onClose }: { onClose: () => void }) {
     setResult(null);
     try {
       const smallest = jup.toSmallestUnit(amount, input.decimals);
-      const q = await jup.getQuote(input.mint, output.mint, smallest);
+      const q = await jup.getOrder({
+        inputMint: input.mint, outputMint: output.mint, amount: smallest, taker: publicKey.toBase58(),
+      });
+      quotedAt.current = Date.now();
       setQuote(q);
       setStatus("idle");
     } catch (err: any) {
@@ -218,26 +221,25 @@ function SwapPanel({ onClose }: { onClose: () => void }) {
 
     setStatus("signing");
     try {
-      // Build the transaction server-side (Jupiter signs the RFQ parts)
-      const { swapTransaction } = await jup.buildSwapTransaction(quote, publicKey.toBase58());
-      const tx = jup.deserializeTransaction(swapTransaction);
+      // The order's requestId expires; re-quote a stale one before signing.
+      let order = quote;
+      if (Date.now() - quotedAt.current > jup.ORDER_TTL_MS) {
+        order = await jup.getOrder({
+          inputMint: quote.inputMint, outputMint: quote.outputMint, amount: quote.inAmount, taker: publicKey.toBase58(),
+        });
+      }
 
-      // User signs with their wallet
-      const signed = await signTransaction(tx as any);
+      // Wallet signs only; Jupiter /execute lands it on mainnet.
+      const signed = await signTransaction(jup.deserializeTransaction(order.transaction!) as any);
       setStatus("submitting");
+      const executed = await jup.executeOrder(signed as any, order.requestId);
+      const signature = executed.signature ?? "";
+      const outAmount = executed.totalOutputAmount ?? executed.outputAmountResult ?? order.outAmount;
 
-      // Submit to mainnet via a public RPC (Jupiter swaps are always mainnet)
-      const mainnetConnection = new Connection("https://api.mainnet-beta.solana.com", "confirmed");
-      const signature = await mainnetConnection.sendRawTransaction(signed.serialize(), {
-        skipPreflight: false,
-        maxRetries: 3,
-      });
-      await mainnetConnection.confirmTransaction(signature, "confirmed");
-
-      const outToken = jup.getTokenByMint(quote.outputMint);
+      const outToken = jup.getTokenByMint(order.outputMint);
       const outHuman = outToken
-        ? jup.fromSmallestUnit(quote.outAmount, outToken.decimals)
-        : quote.outAmount;
+        ? jup.fromSmallestUnit(outAmount, outToken.decimals)
+        : outAmount;
 
       setResult({ signature, outAmount: outHuman });
       setStatus("done");
@@ -331,9 +333,9 @@ function SwapPanel({ onClose }: { onClose: () => void }) {
 
       {quote && (
         <div style={{ fontSize: "8px", color: "#555566", display: "flex", justifyContent: "space-between", marginTop: 8 }}>
-          <span>via Jupiter V6</span>
+          <span>via Jupiter</span>
           <span>slippage: {quote.slippageBps ? `${(quote.slippageBps / 100).toFixed(1)}%` : "auto"}</span>
-          <span>impact: {parseFloat(quote.priceImpactPct ?? "0").toFixed(3)}%</span>
+          <span>impact: {Math.abs(quote.priceImpact ?? parseFloat(quote.priceImpactPct ?? "0") * 100).toFixed(2)}%</span>
         </div>
       )}
 
