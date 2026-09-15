@@ -9,6 +9,7 @@ import { transactionLog } from "@/game/telemetry/transactionLog";
 import { profileManager } from "@/game/config/profileManager";
 import { ProtocolIntroGate, type IntroSpec } from "@/ui/ProtocolIntro";
 import CityGuide from "@/ui/CityGuide";
+import StockExchangePanel from "@/ui/StockExchangePanel";
 
 /** Pratik: how Superteam Earn pays, before the bounty list. */
 const EARN_INTRO: IntroSpec = {
@@ -58,6 +59,23 @@ const SWAP_INTRO: IntroSpec = {
     { title: "PICK", line: "Choose the token you have and the one you want.", edge: 0, chip: "SOL" },
     { title: "BEST PRICE", line: "Jupiter checks Solana markets for the best rate.", edge: 1 },
     { title: "SWAP", line: "Sign once. The new token lands in your wallet.", edge: 1, chip: "USDC" },
+  ],
+};
+
+/** Stocks Broker: what a tokenized stock is, before the exchange. */
+const STOCK_INTRO: IntroSpec = {
+  id: "stock-exchange",
+  title: "HOW STOCKS WORK",
+  color: "#FFB547",
+  nodes: [
+    { sheet: "main_char.png", label: "YOU" },
+    { sheet: "Jupiter Joe.png", label: "JUPITER" },
+    { sheet: "main_char.png", label: "SHAREHOLDER" },
+  ],
+  steps: [
+    { title: "PICK", line: "Choose a stock: NVIDIA, Tesla, SpaceX and more.", edge: 0 },
+    { title: "BUY", line: "Pay from $1 in USDC or SOL. Jupiter finds the best price.", edge: 0, chip: "USDC" },
+    { title: "OWN", line: "Each token is backed 1:1 by a real share. Trade it 24/7.", edge: 1, chip: "NVDA" },
   ],
 };
 
@@ -126,6 +144,7 @@ export default function ActionPanel({ action, onClose }: ActionPanelProps) {
           {action.type === "transfer"        && <ProtocolIntroGate spec={TRANSFER_INTRO}><TransferPanel onClose={onClose} /></ProtocolIntroGate>}
           {action.type === "bounties"        && <ProtocolIntroGate spec={EARN_INTRO}><BountiesPanel onClose={onClose} /></ProtocolIntroGate>}
           {action.type === "private-payment" && <PrivatePaymentPanel  onClose={onClose} />}
+          {action.type === "stock-exchange"  && <ProtocolIntroGate spec={STOCK_INTRO}><StockExchangePanel onClose={onClose} /></ProtocolIntroGate>}
         </div>
       </div>
     );
@@ -162,6 +181,7 @@ export default function ActionPanel({ action, onClose }: ActionPanelProps) {
         {action.type === "transfer"        && <ProtocolIntroGate spec={TRANSFER_INTRO}><TransferPanel onClose={onClose} /></ProtocolIntroGate>}
         {action.type === "bounties"        && <ProtocolIntroGate spec={EARN_INTRO}><BountiesPanel onClose={onClose} /></ProtocolIntroGate>}
         {action.type === "private-payment" && <PrivatePaymentPanel  onClose={onClose} />}
+        {action.type === "stock-exchange"  && <ProtocolIntroGate spec={STOCK_INTRO}><StockExchangePanel onClose={onClose} /></ProtocolIntroGate>}
       </div>
     </div>
   );

@@ -1,5 +1,5 @@
 export interface NPCAction {
-  type: "tutor" | "swap" | "transfer" | "bounties" | "link" | "placeholder" | "private-payment" | "minigame";
+  type: "tutor" | "swap" | "transfer" | "bounties" | "link" | "placeholder" | "private-payment" | "minigame" | "stock-exchange";
   label: string;
   url?: string;
   miniGameId?: string;
@@ -260,6 +260,28 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     // ~7 tiles. Keeps it roaming the open sand of the ST Brasil beach without
     // reaching the stands to the north or the water to the south.
     wanderRadius: 168,
+  },
+  {
+    id: "stocks-broker",
+    name: "Stocks Broker",
+    role: "Sunrise Stock Exchange",
+    // At the door of the Sunrise Stock Exchange in the north plaza
+    // (world/StockExchange.ts, building cols 72-85 / rows 6-15); findNpcSpawn
+    // lands on row 17, straight up the fountain axis.
+    tileX: 78,
+    tileY: 16,
+    color: 0xffb547,
+    dialog: [
+      "Welcome to the Sunrise Stock Exchange!",
+      "Buy real stocks as Solana tokens, from $1. Wall Street closes, Solana never does.",
+    ],
+    highlights: [
+      { img: "/assets/ui/ico_achievements.png", label: "REAL STOCKS" },
+      { sheet: "Jupiter Joe.png", label: "VIA JUPITER" },
+      { img: "/assets/ui/ico_tasks.png", label: "OPEN 24/7" },
+    ],
+    action: { type: "stock-exchange", label: "Open the exchange" },
+    // No spriteKey yet: placeholder avatar until the broker's original art lands.
   },
   // ── Expansion district NPCs ──────────────────────────────────────
   {

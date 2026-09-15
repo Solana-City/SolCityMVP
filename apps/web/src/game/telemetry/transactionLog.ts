@@ -19,6 +19,7 @@
 export type TxKind =
   | "move"       // update_position on ephemeral rollup
   | "swap"       // Jupiter swap
+  | "stock"      // tokenized stock buy/sell (Jupiter)
   | "transfer"   // SOL / SPL transfer
   | "bounty"     // record_bounty (legacy — Superteam bounties can't be tracked from the game wallet)
   | "init"       // initialize_player

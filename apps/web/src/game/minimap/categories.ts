@@ -30,7 +30,8 @@ export function npcCategory(action: NPCAction): MinimapCategory {
     case "swap":
     case "transfer":
     case "bounties":
-    case "private-payment": return "defi";
+    case "private-payment":
+    case "stock-exchange": return "defi";
     case "minigame": return "games";
     default: return "community";
   }

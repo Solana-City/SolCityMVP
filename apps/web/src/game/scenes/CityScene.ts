@@ -17,6 +17,7 @@ import { onMiniGameFinished, watchNpcConversations, stopWatchingNpcConversations
 import { showEmoji, EmojiDef } from "../chat/EmojiSystem";
 import { soundManager } from "../audio/SoundManager";
 import { publishMinimap } from "../minimap/MinimapHost";
+import { createStockExchange } from "../world/StockExchange";
 import { cachedName, onNames, requestNames, NAME_CHANGED_EVENT } from "../names/nameService";
 
 // Pixel-perfect zoom values and snapping live in config/zoomConfig.ts —
@@ -298,6 +299,13 @@ export class CityScene extends Phaser.Scene {
         layer.setDepth(i);
       }
     }
+
+    // Sunrise Stock Exchange (north plaza). Runs before NPCs spawn so its
+    // footprint is already solid when their spawn tiles are resolved.
+    const destroyStockExchange = createStockExchange(
+      this, map, allLayers.find(l => l.layer.name.endsWith("ColliderAuto")),
+    );
+    this.events.once("shutdown", destroyStockExchange);
 
     // Spawn on the central fountain's walkway (col 78, row 38) — the two-tile
     // flight of steps climbing from the south path up to the sculpture.
