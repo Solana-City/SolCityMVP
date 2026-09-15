@@ -17,7 +17,8 @@
  * multiplier), so value = raw amount x usdPricePrescaled, not ui x usdPrice.
  */
 
-import { JUP_BASE, jupHeaders, getOrder, type OrderResponse } from "@/game/solana/jupiterSwap";
+import type { VersionedTransaction } from "@solana/web3.js";
+import { JUP_BASE, jupHeaders, getOrder, executeOrder, type OrderResponse } from "@/game/solana/jupiterSwap";
 
 export * from "@/game/solana/stockCatalog";
 import { STOCKS, SOL_MINT, USDC_MINT, type StockInfo } from "@/game/solana/stockCatalog";
@@ -212,8 +213,40 @@ export interface WalletHoldings {
   stocks: Record<string, Holding>;
 }
 
-/** Reads SOL, USDC and every catalog stock (SPL + Token-2022) via Jupiter. */
+// ── Venue: devnet test tokens or real mainnet stocks ───────────────────
+
+export type StockVenue = "mainnet" | "devnet";
+const VENUE_KEY = "solcity:stocks:venue";
+
+/**
+ * Where trades settle. Follows NEXT_PUBLIC_STOCKS_NETWORK, else
+ * NEXT_PUBLIC_NETWORK (mainnet-beta -> mainnet, anything else -> devnet).
+ * A ?stocks=mainnet or ?stocks=devnet URL param overrides it and sticks for
+ * this browser, so the mainnet path can be demoed on the devnet deploy.
+ */
+export function getStockVenue(): StockVenue {
+  if (typeof window !== "undefined") {
+    try {
+      const param = new URLSearchParams(window.location.search).get("stocks");
+      if (param === "mainnet" || param === "devnet") localStorage.setItem(VENUE_KEY, param);
+      const saved = localStorage.getItem(VENUE_KEY);
+      if (saved === "mainnet" || saved === "devnet") return saved;
+    } catch { /* storage blocked */ }
+  }
+  const env = process.env.NEXT_PUBLIC_STOCKS_NETWORK || process.env.NEXT_PUBLIC_NETWORK;
+  return env === "mainnet" || env === "mainnet-beta" ? "mainnet" : "devnet";
+}
+
+const devnet = () => import("@/game/solana/devnetStocks");
+
+/** Reads SOL, USDC and every catalog stock for the active venue. */
 export async function fetchHoldings(owner: string): Promise<WalletHoldings> {
+  if (getStockVenue() === "devnet") return (await devnet()).fetchDevnetHoldings(owner);
+  return fetchMainnetHoldings(owner);
+}
+
+/** Mainnet: SOL, USDC and catalog stocks (SPL + Token-2022) via Jupiter. */
+async function fetchMainnetHoldings(owner: string): Promise<WalletHoldings> {
   const res = await fetch(`${JUP_BASE}/swap/v2/holdings/${owner}`, { headers: jupHeaders() });
   if (!res.ok) throw new Error(`Holdings failed (${res.status})`);
   const data = (await res.json()) as { amount?: string; tokens?: Record<string, Array<{ amount: string; decimals: number }>> };
@@ -234,9 +267,13 @@ export async function fetchHoldings(owner: string): Promise<WalletHoldings> {
   };
 }
 
-/** USD value of a holding. Uses the prescaled price so xStock dividends count. */
+/**
+ * USD value of a holding. Mainnet uses the prescaled price so xStock dividends
+ * count; devnet test tokens were minted at the plain price.
+ */
 export function holdingUsd(holding: Holding, quote: StockQuote | undefined): number {
-  return quote ? holding.amount * quote.usdPricePrescaled : 0;
+  if (!quote) return 0;
+  return holding.amount * (getStockVenue() === "mainnet" ? quote.usdPricePrescaled : quote.usdPrice);
 }
 
 // ── Trades ──────────────────────────────────────────────────────────────
@@ -252,6 +289,10 @@ export async function quoteBuy(params: {
 }): Promise<OrderResponse> {
   const { stock, usd, payWith, taker, solPrice } = params;
   if (!(usd > 0)) throw new Error("Pick an amount first.");
+  if (getStockVenue() === "devnet") {
+    const stockPrice = stockMarket.getState().quotes[stock.mint]?.usdPrice ?? 0;
+    return (await devnet()).devnetBuyOrder({ stock, usd, owner: taker, solPrice, stockPrice });
+  }
   let inputMint: string, amount: bigint;
   if (payWith === "USDC") {
     inputMint = USDC_MINT;
@@ -273,10 +314,34 @@ export async function quoteSell(params: {
   // Integer math: selling 100% must send the exact raw balance, no float dust.
   const amount = fraction === 1 ? holding.raw : (holding.raw * BigInt(Math.round(fraction * 10_000))) / BigInt(10_000);
   if (amount <= BigInt(0)) throw new Error("Nothing to sell.");
+  if (getStockVenue() === "devnet") {
+    const { solPrice, quotes } = stockMarket.getState();
+    return (await devnet()).devnetSellOrder({ stock, raw: amount, owner: taker, solPrice, stockPrice: quotes[stock.mint]?.usdPrice ?? 0 });
+  }
   return getOrder({
     inputMint: stock.mint,
     outputMint: receive === "USDC" ? USDC_MINT : SOL_MINT,
     amount: amount.toString(),
     taker,
   });
+}
+
+/**
+ * Lands a wallet-signed order on the active venue. Returns the signature and
+ * the raw output amount that reached the wallet.
+ */
+export async function submitStockOrder(
+  order: OrderResponse, signed: VersionedTransaction,
+): Promise<{ signature: string; outAmount: string }> {
+  if (getStockVenue() === "devnet") {
+    const signature = await (await devnet()).submitDevnetOrder(order, signed);
+    return { signature, outAmount: order.outAmount };
+  }
+  const res = await executeOrder(signed, order.requestId);
+  return { signature: res.signature ?? "", outAmount: res.totalOutputAmount ?? res.outputAmountResult ?? order.outAmount };
+}
+
+/** Explorer link for a trade on the active venue. */
+export function stockTxUrl(signature: string): string {
+  return `https://solscan.io/tx/${signature}${getStockVenue() === "devnet" ? "?cluster=devnet" : ""}`;
 }

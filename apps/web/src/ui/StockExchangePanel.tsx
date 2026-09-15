@@ -9,9 +9,10 @@ import { useWallet } from "@solana/wallet-adapter-react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import {
   STOCKS, stockMarket, getMarketClock, fetchHoldings, holdingUsd, quoteBuy, quoteSell,
+  getStockVenue, submitStockOrder, stockTxUrl,
   type StockInfo, type StockMarketState, type WalletHoldings, type PayToken,
 } from "@/game/solana/stocks";
-import { ORDER_TTL_MS, deserializeTransaction, executeOrder, fromSmallestUnit, type OrderResponse } from "@/game/solana/jupiterSwap";
+import { ORDER_TTL_MS, deserializeTransaction, fromSmallestUnit, type OrderResponse } from "@/game/solana/jupiterSwap";
 import { transactionLog } from "@/game/telemetry/transactionLog";
 import { profileManager } from "@/game/config/profileManager";
 
@@ -22,6 +23,8 @@ const DOWN = "#FF4D6D";
 const MUTED = "#8A90A6";
 
 const BUY_USD = [1, 5, 10, 25];
+/** Read once per page load; ?stocks=mainnet|devnet switches it (see getStockVenue). */
+const IS_DEVNET = typeof window !== "undefined" && getStockVenue() === "devnet";
 const SELL_PCT = [0.25, 0.5, 1];
 
 // ── Cost basis (local, per wallet) for the P&L on "MY STOCKS" ─────────────
@@ -86,7 +89,12 @@ export default function StockExchangePanel({ onClose }: { onClose: () => void })
     <div style={{ fontFamily: PIXEL }}>
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10, paddingRight: 24 }}>
-        <div style={{ fontSize: 9, color: GOLD }}>STOCK EXCHANGE</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <span style={{ fontSize: 9, color: GOLD }}>STOCK EXCHANGE</span>
+          {IS_DEVNET && (
+            <span style={{ fontSize: 5, padding: "3px 5px", borderRadius: 5, background: "rgba(0,209,255,0.14)", color: "#00D1FF" }}>DEVNET TEST</span>
+          )}
+        </div>
         <span style={{
           fontSize: 6, padding: "4px 6px", borderRadius: 6,
           background: clock.wallStreetOpen ? "rgba(20,241,149,0.12)" : "rgba(255,181,71,0.12)",
@@ -166,7 +174,7 @@ export default function StockExchangePanel({ onClose }: { onClose: () => void })
       </div>
 
       <div style={{ display: "flex", justifyContent: "space-between", marginTop: 12, fontSize: 5, color: "#555a70", lineHeight: 1.6 }}>
-        <span>Mainnet via Jupiter. Not for US persons.</span>
+        <span>{IS_DEVNET ? "Devnet test tokens at live prices." : "Mainnet via Jupiter. Not for US persons."}</span>
         <button onClick={onClose} style={{ background: "none", border: "none", color: MUTED, fontFamily: PIXEL, fontSize: 6, cursor: "pointer" }}>ESC</button>
       </div>
     </div>
@@ -193,7 +201,8 @@ function TradeView(props: {
   const holding = holdings?.stocks[stock.mint];
 
   const [side, setSide] = useState<"buy" | "sell">("buy");
-  const [payWith, setPayWith] = useState<PayToken>("USDC");
+  // Devnet test trades settle in devnet SOL only (there is no devnet USDC venue).
+  const [payWith, setPayWith] = useState<PayToken>(IS_DEVNET ? "SOL" : "USDC");
   const [usdAmount, setUsdAmount] = useState<number | null>(null);
   const [sellPct, setSellPct] = useState<number | null>(null);
   const [order, setOrder] = useState<OrderResponse | null>(null);
@@ -230,7 +239,7 @@ function TradeView(props: {
     const label = side === "buy"
       ? `Buy ${usd(usdAmount ?? 0)} of ${stock.ticker} with ${payWith}`
       : `Sell ${Math.round((sellPct ?? 0) * 100)}% of ${stock.ticker} for ${payWith}`;
-    const entry = transactionLog.record({ kind: "stock", layer: "jupiter", label, status: "pending" });
+    const entry = transactionLog.record({ kind: "stock", layer: IS_DEVNET ? "base" : "jupiter", label, status: "pending" });
     try {
       let o = order;
       if (Date.now() - quotedAt.current > ORDER_TTL_MS) {
@@ -239,8 +248,8 @@ function TradeView(props: {
       setStatus("signing");
       const signed = await signTransaction(deserializeTransaction(o.transaction!));
       setStatus("submitting");
-      const res = await executeOrder(signed as any, o.requestId);
-      const outRaw = res.totalOutputAmount ?? res.outputAmountResult ?? o.outAmount;
+      const res = await submitStockOrder(o, signed as any);
+      const outRaw = res.outAmount;
 
       // Cost basis for P&L
       const basis = loadBasis(wallet);
@@ -283,7 +292,7 @@ function TradeView(props: {
         <div style={{ fontSize: 10, color: UP, marginTop: 14 }}>{side === "buy" ? "YOU OWN IT" : "SOLD"}</div>
         <div style={{ fontSize: 9, color: "#fff", marginTop: 10 }}>{done.text}</div>
         {done.signature && (
-          <a href={`https://solscan.io/tx/${done.signature}`} target="_blank" rel="noopener noreferrer"
+          <a href={stockTxUrl(done.signature)} target="_blank" rel="noopener noreferrer"
             style={{ display: "block", marginTop: 12, fontSize: 6, color: "#00D1FF" }}>
             View on Solscan
           </a>
@@ -360,7 +369,7 @@ function TradeView(props: {
       {/* Pay / receive token */}
       <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 10 }}>
         <span style={{ fontSize: 6, color: MUTED, width: 44 }}>{side === "buy" ? "PAY" : "GET"}</span>
-        {(["USDC", "SOL"] as const).map((t) => (
+        {(IS_DEVNET ? (["SOL"] as const) : (["USDC", "SOL"] as const)).map((t) => (
           <button key={t} onClick={() => setPayWith(t)} style={chip(payWith === t)}>{t}</button>
         ))}
       </div>
