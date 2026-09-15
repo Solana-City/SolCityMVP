@@ -25,8 +25,15 @@ export interface MinimapPoint {
   category: MinimapCategory;
   x: number;
   y: number;
+  /**
+   * Where fast travel should aim, when that isn't the marker itself: a
+   * building's front edge (its centre is roof, which can be unblocked art).
+   */
+  travel?: { x: number; y: number };
   /** The NPC standing, cropped tight to its artwork. NPCs only. */
   portrait?: HTMLCanvasElement;
+  /** Opaque pixels in the portrait: how much "body" it has, for even sizing. */
+  portraitMass?: number;
 }
 
 export interface MinimapSnapshot {
@@ -123,6 +130,7 @@ export function publishMinimap(
       category: "landmark",
       x: ((c.x0 + c.x1 + 1) / 2) * map.tileWidth,
       y: ((c.y0 + c.y1 + 1) / 2) * map.tileHeight,
+      travel: { x: ((c.x0 + c.x1 + 1) / 2) * map.tileWidth, y: (c.y1 + 1.5) * map.tileHeight },
     });
   }
 
@@ -132,7 +140,7 @@ export function publishMinimap(
     return {
       id: n.def.id, name: n.def.name, role: n.def.role,
       category: npcCategory(n.def.action), x: home.x, y: home.y,
-      portrait: npcPortrait(scene, n.textureKey) ?? undefined,
+      ...portraitFields(npcPortrait(scene, n.textureKey)),
     };
   });
 
@@ -156,6 +164,14 @@ export function publishMinimap(
   scene.events.once("shutdown", () => {
     if ((globalThis as Host).__solCityMinimap === host) (globalThis as Host).__solCityMinimap = null;
   });
+}
+
+function portraitFields(c: HTMLCanvasElement | null): Pick<MinimapPoint, "portrait" | "portraitMass"> {
+  if (!c) return {};
+  const { data } = c.getContext("2d")!.getImageData(0, 0, c.width, c.height);
+  let mass = 0;
+  for (let i = 3; i < data.length; i += 4) if (data[i] >= 24) mass++;
+  return { portrait: c, portraitMass: mass };
 }
 
 /**
@@ -185,11 +201,17 @@ function npcPortrait(scene: Phaser.Scene, key: string): HTMLCanvasElement | null
   }
   if (x1 < 0) return null;
   const w = x1 - x0 + 1;
-  const h = y1 - y0 + 1;
+  let h = y1 - y0 + 1;
+  // Some sheets carry a prop far above the character (Kite Pro's kite), which
+  // would shrink the body to a speck once the whole frame is fitted to a pin.
+  // Keep the feet and at most ~1.5x the width upward.
+  const maxH = Math.round(w * 1.5);
+  const top = h > maxH ? y1 + 1 - maxH : y0;
+  h = y1 + 1 - top;
   const out = document.createElement("canvas");
   out.width = w;
   out.height = h;
-  out.getContext("2d")!.drawImage(tmp, x0, y0, w, h, 0, 0, w, h);
+  out.getContext("2d")!.drawImage(tmp, x0, top, w, h, 0, 0, w, h);
   return out;
 }
 

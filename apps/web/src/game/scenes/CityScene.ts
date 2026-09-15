@@ -574,6 +574,31 @@ export class CityScene extends Phaser.Scene {
       if (this.input.keyboard) this.input.keyboard.enabled = !open;
     });
 
+    // Fast travel from the city map: fade out, land on the nearest walkable
+    // tile beside the target (never inside a building or on top of an NPC),
+    // fade back in. Position sync picks the new spot up on the next update.
+    let travelling = false;
+    this.onGameEvent("player:teleport", ({ x, y }: { x: number; y: number }) => {
+      if (travelling || !this.avatar) return;
+      const spot = this.findTravelSpot(map, x, y);
+      if (!spot) return;
+      travelling = true;
+      this.interactionBlocked = true;
+      this.playerBody.setVelocity(0, 0);
+      const cam = this.cameras.main;
+      cam.fadeOut(260, 6, 8, 20);
+      cam.once(Phaser.Cameras.Scene2D.Events.FADE_OUT_COMPLETE, () => {
+        const c = this.avatar.getContainer();
+        this.playerBody.reset(spot.x, spot.y);
+        c.setPosition(spot.x, spot.y);
+        cam.fadeIn(320, 6, 8, 20);
+        cam.once(Phaser.Cameras.Scene2D.Events.FADE_IN_COMPLETE, () => {
+          travelling = false;
+          this.interactionBlocked = false;
+        });
+      });
+    });
+
     // Pedestrians + "Where Is NPC?" hunt game
     this.pedestrians = new PedestrianManager();
     this.pedestrians.spawn(this, this.collisionLayers, map, 78, 38);
@@ -1120,6 +1145,49 @@ export class CityScene extends Phaser.Scene {
    * row that has no collision tile in any building layer. Returns world-pixel
    * centre coordinates for that clear row.
    */
+  /**
+   * Walkable tile nearest a fast-travel target, searched in growing rings.
+   * Targets are NPC spawns (whose tile the NPC stands on) and building
+   * front edges, so anything within a tile of an NPC is avoided and tiles
+   * north of the target are penalised: players land in front of things.
+   */
+  private findTravelSpot(map: Phaser.Tilemaps.Tilemap, wx: number, wy: number): { x: number; y: number } | null {
+    const ts = map.tileWidth;
+    const blocked = (c: number, r: number): boolean => {
+      if (c < 0 || r < 0 || c >= map.width || r >= map.height) return true;
+      return this.collisionLayers.some((layer) => {
+        const t = layer.getTileAt(c, r);
+        return t !== null && t.collides;
+      });
+    };
+    const nearNpc = (x: number, y: number) =>
+      this.npcSprites.some((n) => {
+        const c = n.getContainer();
+        return Math.abs(c.x - x) < ts * 1.2 && Math.abs(c.y - y) < ts * 1.2;
+      });
+    const c0 = Math.floor(wx / ts);
+    const r0 = Math.floor(wy / ts);
+    for (let radius = 0; radius <= 14; radius++) {
+      const ring: Array<[number, number]> = [];
+      for (let dc = -radius; dc <= radius; dc++) {
+        for (let dr = -radius; dr <= radius; dr++) {
+          if (Math.max(Math.abs(dc), Math.abs(dr)) !== radius) continue;
+          ring.push([dc, dr]);
+        }
+      }
+      // Prefer south (in front of things), then closest.
+      ring.sort((a, b) => (Math.hypot(a[0], a[1]) + (a[1] < 0 ? 3 : 0)) - (Math.hypot(b[0], b[1]) + (b[1] < 0 ? 3 : 0)));
+      for (const [dc, dr] of ring) {
+        const c = c0 + dc, r = r0 + dr;
+        if (blocked(c, r)) continue;
+        const x = c * ts + ts / 2, y = r * ts + ts / 2;
+        if (nearNpc(x, y)) continue;
+        return { x, y };
+      }
+    }
+    return null;
+  }
+
   private findNpcSpawn(
     map: Phaser.Tilemaps.Tilemap,
     col: number,

@@ -99,7 +99,14 @@ function drawPin(ctx: CanvasRenderingContext2D, point: MinimapPoint, x: number, 
   }
   const color = CATEGORY_META[point.category].color;
   const img = point.portrait;
-  const w = (img.width / img.height) * h;
+  // Scale by how much body the sprite has (its opaque area), not by its
+  // frame: a squat dog and a slim kid with a kite overhead then read as the
+  // same size. Capped so nothing outgrows the pin box.
+  const byMass = point.portraitMass ? (h * 0.58) / Math.sqrt(point.portraitMass) : Infinity;
+  const fit = Math.min(byMass, (h * 1.7) / img.height, (h * 0.9) / img.width);
+  const dw = img.width * fit;
+  const dh = img.height * fit;
+  const w = dw;
   ctx.save();
   // Ground ring
   ctx.beginPath();
@@ -113,12 +120,12 @@ function drawPin(ctx: CanvasRenderingContext2D, point: MinimapPoint, x: number, 
   ctx.imageSmoothingEnabled = false;
   ctx.shadowColor = highlight ? "#ffffff" : color;
   ctx.shadowBlur = highlight ? 8 : 5;
-  ctx.drawImage(img, x - w / 2, y - h + h * 0.04, w, h);
+  ctx.drawImage(img, x - dw / 2, y - dh + h * 0.04, dw, dh);
   ctx.shadowColor = "rgba(0,0,0,0.9)";
   ctx.shadowBlur = 1.5;
-  ctx.drawImage(img, x - w / 2, y - h + h * 0.04, w, h);
+  ctx.drawImage(img, x - dw / 2, y - dh + h * 0.04, dw, dh);
   ctx.restore();
-  return { x, y: y - h / 2 };
+  return { x, y: y - dh / 2 };
 }
 
 /** You: a teal disc with a pulsing ring, always drawn last. */
@@ -398,6 +405,12 @@ const MIN_ZOOM_FACTOR = 1;   // × fit
 const MAX_ZOOM = 1.6;        // CSS px per world px
 
 function FullMap({ host, onClose }: { host: MinimapHost; onClose: () => void }) {
+  const travel = (p: MinimapPoint) => {
+    onClose();
+    // Let the modal unmount (and keyboard re-enable) before the scene fades.
+    const to = p.travel ?? { x: p.x, y: p.y };
+    window.setTimeout(() => emitGame("player:teleport", to), 60);
+  };
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const { w, h } = useCanvasSize(wrapRef);
@@ -787,9 +800,9 @@ function FullMap({ host, onClose }: { host: MinimapHost; onClose: () => void }) 
 
             {card && (
               <div style={{
-                position: "absolute", pointerEvents: "none",
+                position: "absolute", pointerEvents: card.point.id === selected && card.point.category !== "players" ? "auto" : "none",
                 left: Math.min(Math.max(card.x + 14, 8), Math.max(8, w - 220)),
-                top: Math.min(Math.max(card.y - 20, 8), Math.max(8, h - 80)),
+                top: Math.min(Math.max(card.y - 20, 8), Math.max(8, h - 120)),
                 maxWidth: 210, padding: "8px 10px", borderRadius: 8,
                 background: "rgba(8,10,22,0.95)", border: `1px solid ${CATEGORY_META[card.point.category].color}88`,
                 boxShadow: "0 8px 24px rgba(0,0,0,0.5)",
@@ -801,6 +814,17 @@ function FullMap({ host, onClose }: { host: MinimapHost; onClose: () => void }) 
                 <div style={{ fontSize: 11, color: "#8b93a7", marginTop: 3 }}>
                   {card.point.role ? `${card.point.role} · ` : ""}{CATEGORY_META[card.point.category].label}
                 </div>
+                {card.point.id === selected && card.point.category !== "players" && (
+                  <button
+                    onClick={() => travel(card.point)}
+                    style={{
+                      marginTop: 8, width: "100%", padding: "8px 0", borderRadius: 6, cursor: "pointer",
+                      background: "#14F195", color: "#04140c", border: "none", fontFamily: PIXEL_FONT, fontSize: 7,
+                    }}
+                  >
+                    FAST TRAVEL
+                  </button>
+                )}
               </div>
             )}
 
