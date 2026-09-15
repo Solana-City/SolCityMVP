@@ -330,7 +330,7 @@ function TradeView(props: {
 
       {/* Issuer badge */}
       <div style={{ fontSize: 5, color: MUTED, marginBottom: 12 }}>
-        {stock.issuer === "sunrise" ? "BACKPACK SECURITIES VIA SUNRISE" : "XSTOCKS BY BACKED"} . 1:1 BACKED
+        {stock.issuer === "backpack" ? "BACKPACK SECURITIES VIA SUNRISE" : "XSTOCKS BY BACKED"} . 1:1 BACKED
       </div>
 
       {/* Buy / Sell */}

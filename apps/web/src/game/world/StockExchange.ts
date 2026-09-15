@@ -145,6 +145,21 @@ export function createStockExchange(
   const pageTimer = scene.time.addEvent({ delay: BOARD_PAGE_MS, loop: true, callback: () => { page++; showPage(); } });
   cleanups.push(() => pageTimer.remove());
 
+  // Company logos, served same-origin by /api/stock-logo so the canvas may
+  // draw them. Rows show a colored dot until (or if never) a logo loads.
+  let pendingLogos = 0;
+  for (const s of STOCKS) {
+    if (scene.textures.exists(logoKey(s))) continue;
+    scene.load.image(logoKey(s), `/api/stock-logo/${s.ticker}`);
+    pendingLogos++;
+  }
+  if (pendingLogos) {
+    const onLogos = () => { if (ranked.length) showPage(); };
+    scene.load.once(Phaser.Loader.Events.COMPLETE, onLogos);
+    cleanups.push(() => scene.load.off(Phaser.Loader.Events.COMPLETE, onLogos));
+    scene.load.start();
+  }
+
   let lastRebuild = -1;
   const unsubscribe = stockMarket.subscribe((state) => {
     if (state.updatedAt === lastRebuild) return;
@@ -204,34 +219,51 @@ function buildBoard(
   g.lineStyle(2, 0xffb547, 1).strokeRect(x, y, w, h - T);
 
   const pad = 5, cellW = w - pad * 2, cellH = (h - T - pad * (BOARD_ROWS + 1)) / BOARD_ROWS;
+  const logoSize = Math.min(18, cellH - 4);
   const cells = Array.from({ length: BOARD_ROWS }, (_, i) => {
     const cy = y + pad + i * (cellH + pad);
+    const midY = cy + cellH / 2;
+    const logoX = x + pad + 3 + logoSize / 2;
     const rect = scene.add.rectangle(x + pad, cy, cellW, cellH, 0x2a3048).setOrigin(0).setDepth(depth + 1);
-    const label = scene.add.text(x + pad + cellW / 2, cy + cellH / 2, "", {
+    // White disc behind the logo so dark marks (Apple, Tesla) stay visible.
+    const disc = scene.add.circle(logoX, midY, logoSize / 2 + 1, 0xffffff).setDepth(depth + 2);
+    const logo = scene.add.image(logoX, midY, "__MISSING").setDepth(depth + 3).setVisible(false);
+    const label = scene.add.text(logoX + logoSize / 2 + 5, midY, "", {
       fontFamily: FONT, fontSize: "8px", color: "#FFFFFF",
-    }).setOrigin(0.5).setDepth(depth + 2).setResolution(4);
-    return { rect, label };
+    }).setOrigin(0, 0.5).setDepth(depth + 3).setResolution(4);
+    return { rect, disc, logo, label };
   });
 
   return {
     show(rows: Array<{ stock: StockInfo; change: number }>) {
       cells.forEach((c, i) => {
         const r = rows[i];
-        c.rect.setVisible(!!r); c.label.setVisible(!!r);
-        if (!r) return;
+        for (const o of [c.rect, c.disc, c.label]) o.setVisible(!!r);
+        if (!r) { c.logo.setVisible(false); return; }
         // Stronger move, stronger color; capped at 3% so one outlier doesn't wash the board.
         const k = 0.35 + 0.65 * Math.min(Math.abs(r.change) / 3, 1);
         c.rect.setFillStyle(r.change >= 0 ? lerpColor(0x1f3a33, 0x14f195, k) : lerpColor(0x3d1f2a, 0xff4d6d, k));
         c.label.setColor(r.change >= 0 && k > 0.7 ? "#06140E" : "#FFFFFF");
         c.label.setText(`${r.stock.ticker} ${fmtPct(r.change)}`);
+
+        const key = logoKey(r.stock);
+        if (scene.textures.exists(key)) {
+          c.logo.setTexture(key).setDisplaySize(logoSize, logoSize).setVisible(true);
+          c.disc.setFillStyle(0xffffff);
+        } else {
+          c.logo.setVisible(false);
+          c.disc.setFillStyle(Phaser.Display.Color.HexStringToColor(r.stock.color).color);
+        }
       });
     },
     destroy() {
       g.destroy();
-      for (const c of cells) { c.rect.destroy(); c.label.destroy(); }
+      for (const c of cells) { c.rect.destroy(); c.disc.destroy(); c.logo.destroy(); c.label.destroy(); }
     },
   };
 }
+
+const logoKey = (s: StockInfo) => `stock-logo-${s.ticker}`;
 
 function lerpColor(a: number, b: number, k: number): number {
   const ch = (s: number) => [(s >> 16) & 255, (s >> 8) & 255, s & 255];
