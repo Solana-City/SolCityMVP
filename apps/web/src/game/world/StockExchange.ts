@@ -11,12 +11,20 @@
  * read the shared stockMarket feed (one Price API poll for the whole game).
  */
 import * as Phaser from "phaser";
-import { STOCKS, stockMarket, getMarketClock, type StockMarketState } from "../solana/stocks";
+import { STOCKS, stockMarket, getMarketClock, type StockInfo, type StockMarketState } from "../solana/stocks";
 
-/** Empty north plaza, straight up the fountain axis (col 78). */
-const BUILDING = { col: 72, row: 6, w: 14, h: 10 };
-const BOARD_LEFT = { col: 65, row: 11, w: 6, h: 5 };
-const BOARD_RIGHT = { col: 87, row: 11, w: 6, h: 5 };
+/**
+ * Empty north plaza, east of the MonkeDAO tower (cols 55-68, whose y-sorted
+ * art covered a board placed any further west) and north of Jupiter (cols
+ * 91-101 from row 17 down). Keep in sync with the Stocks Broker tile in
+ * npcRegistry.ts (door column = BUILDING.col + 6).
+ */
+const BUILDING = { col: 78, row: 6, w: 14, h: 10 };
+const BOARD_LEFT = { col: 71, row: 11, w: 6, h: 5 };
+const BOARD_RIGHT = { col: 93, row: 11, w: 6, h: 5 };
+/** Rows per board, kept low so each row stays legible when zoomed out. */
+const BOARD_ROWS = 3;
+const BOARD_PAGE_MS = 7000;
 
 const FONT = '"Press Start 2P", monospace';
 const UP = "#14F195";
@@ -120,19 +128,30 @@ export function createStockExchange(
   scene.events.on("update", onUpdate);
   cleanups.push(() => scene.events.off("update", onUpdate));
 
-  // ── Heat-map quote boards ─────────────────────────────────────────────
-  const half = Math.ceil(STOCKS.length / 2);
-  const boards = [
-    buildBoard(scene, BOARD_LEFT, T, STOCKS.slice(0, half)),
-    buildBoard(scene, BOARD_RIGHT, T, STOCKS.slice(half)),
-  ];
+  // ── Heat-map quote boards: few big rows, gainers first, rotating ──────
+  const boards = [buildBoard(scene, BOARD_LEFT, T), buildBoard(scene, BOARD_RIGHT, T)];
+  const perPage = BOARD_ROWS * boards.length;
+  let ranked: Array<{ stock: StockInfo; change: number }> = [];
+  let page = 0;
+  const showPage = () => {
+    const gainers = ranked.filter((r) => r.change > 0);
+    // Rotate through the gainers; top up with the best of the rest if short.
+    const pool = gainers.length >= perPage ? gainers : ranked.slice(0, perPage);
+    const pages = Math.max(1, Math.ceil(pool.length / perPage));
+    page %= pages;
+    const rows = pool.slice(page * perPage, page * perPage + perPage);
+    boards.forEach((b, i) => b.show(rows.slice(i * BOARD_ROWS, (i + 1) * BOARD_ROWS)));
+  };
+  const pageTimer = scene.time.addEvent({ delay: BOARD_PAGE_MS, loop: true, callback: () => { page++; showPage(); } });
+  cleanups.push(() => pageTimer.remove());
 
   let lastRebuild = -1;
   const unsubscribe = stockMarket.subscribe((state) => {
     if (state.updatedAt === lastRebuild) return;
     lastRebuild = state.updatedAt;
     rebuildTicker(state);
-    for (const b of boards) b.update(state);
+    ranked = rankForBoards(state);
+    showPage();
   });
   cleanups.push(unsubscribe);
 
@@ -157,11 +176,23 @@ function blockFootprint(layer: Phaser.Tilemaps.TilemapLayer | undefined, col: nu
   }
 }
 
+/**
+ * Which stocks the boards show, best first: gainers by size of the move, then
+ * the rest. Only gainers rotate through the boards (a page every
+ * BOARD_PAGE_MS); losers only fill in when there aren't enough gainers.
+ */
+function rankForBoards(state: StockMarketState): Array<{ stock: StockInfo; change: number }> {
+  return STOCKS
+    .filter((s) => state.quotes[s.mint])
+    .map((s) => ({ stock: s, change: state.quotes[s.mint].change24h }))
+    .sort((a, b) => b.change - a.change);
+}
+
+/** A board with a few large single-column rows, readable when zoomed out. */
 function buildBoard(
   scene: Phaser.Scene,
   area: { col: number; row: number; w: number; h: number },
   T: number,
-  stocks: typeof STOCKS,
 ) {
   const x = area.col * T, y = area.row * T, w = area.w * T, h = area.h * T;
   const depth = y + h;
@@ -172,29 +203,28 @@ function buildBoard(
   g.fillStyle(0x0b0f24, 1).fillRect(x, y, w, h - T);
   g.lineStyle(2, 0xffb547, 1).strokeRect(x, y, w, h - T);
 
-  const cols = 2, rows = Math.ceil(stocks.length / cols);
-  const pad = 4, cellW = (w - pad * 3) / cols, cellH = (h - T - pad * (rows + 1)) / rows;
-  const cells = stocks.map((s, i) => {
-    const cx = x + pad + (i % cols) * (cellW + pad);
-    const cy = y + pad + Math.floor(i / cols) * (cellH + pad);
-    const rect = scene.add.rectangle(cx, cy, cellW, cellH, 0x2a3048).setOrigin(0).setDepth(depth + 1);
-    const label = scene.add.text(cx + cellW / 2, cy + cellH / 2, s.ticker, {
-      fontFamily: FONT, fontSize: "5px", color: "#FFFFFF",
+  const pad = 5, cellW = w - pad * 2, cellH = (h - T - pad * (BOARD_ROWS + 1)) / BOARD_ROWS;
+  const cells = Array.from({ length: BOARD_ROWS }, (_, i) => {
+    const cy = y + pad + i * (cellH + pad);
+    const rect = scene.add.rectangle(x + pad, cy, cellW, cellH, 0x2a3048).setOrigin(0).setDepth(depth + 1);
+    const label = scene.add.text(x + pad + cellW / 2, cy + cellH / 2, "", {
+      fontFamily: FONT, fontSize: "8px", color: "#FFFFFF",
     }).setOrigin(0.5).setDepth(depth + 2).setResolution(4);
-    return { s, rect, label };
+    return { rect, label };
   });
 
   return {
-    update(state: StockMarketState) {
-      for (const c of cells) {
-        const q = state.quotes[c.s.mint];
-        if (!q) continue;
+    show(rows: Array<{ stock: StockInfo; change: number }>) {
+      cells.forEach((c, i) => {
+        const r = rows[i];
+        c.rect.setVisible(!!r); c.label.setVisible(!!r);
+        if (!r) return;
         // Stronger move, stronger color; capped at 3% so one outlier doesn't wash the board.
-        const k = Math.min(Math.abs(q.change24h) / 3, 1);
-        const color = q.change24h >= 0 ? lerpColor(0x1f3a33, 0x14f195, k) : lerpColor(0x3d1f2a, 0xff4d6d, k);
-        c.rect.setFillStyle(color);
-        c.label.setText(`${c.s.ticker} ${fmtPct(q.change24h)}`);
-      }
+        const k = 0.35 + 0.65 * Math.min(Math.abs(r.change) / 3, 1);
+        c.rect.setFillStyle(r.change >= 0 ? lerpColor(0x1f3a33, 0x14f195, k) : lerpColor(0x3d1f2a, 0xff4d6d, k));
+        c.label.setColor(r.change >= 0 && k > 0.7 ? "#06140E" : "#FFFFFF");
+        c.label.setText(`${r.stock.ticker} ${fmtPct(r.change)}`);
+      });
     },
     destroy() {
       g.destroy();
