@@ -343,6 +343,7 @@ export class CityScene extends Phaser.Scene {
     // Remote tags update as names resolve or change.
     const offNames = onNames((names) => {
       for (const [wallet, name] of Object.entries(names)) {
+        if (wallet === this.walletAddress) showOwnName();
         this.nameLabels.get(wallet)?.setText(name);
         if (wallet === this.walletAddress) showOwnName();
       }
@@ -529,6 +530,7 @@ export class CityScene extends Phaser.Scene {
       try {
         this.walletAddress = walletAddress;
         requestNames([walletAddress], true);
+        showOwnName();
         this.profile.setWallet(walletAddress);
         const displayName = this.profile.get().displayName;
         this.network.updateScore(this.profile.get().score);

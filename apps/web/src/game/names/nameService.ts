@@ -61,7 +61,10 @@ export async function fetchStatus(wallet: string): Promise<NameStatus> {
   try {
     const res = await fetch(`/api/names?status=1&wallet=${encodeURIComponent(wallet)}`);
     const body = await res.json();
-    if (body.name) cache.set(wallet, body.name);
+    if (body.name && cache.get(wallet) !== body.name) {
+      cache.set(wallet, body.name);
+      emit({ [wallet]: body.name });
+    }
     return { enabled: !!body.enabled, name: body.name ?? null, locked: body.locked ?? null };
   } catch {
     return { enabled: false, name: null, locked: null };
