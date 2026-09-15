@@ -8,6 +8,8 @@ export interface EarnListing {
   sponsorName: string;
   slug: string;
   type: EarnListingType;
+  /** The listing's working page on superteam.fun (built by the API route). */
+  url: string;
 }
 
 export async function fetchEarnListings(
