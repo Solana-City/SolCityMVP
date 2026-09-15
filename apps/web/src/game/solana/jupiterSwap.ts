@@ -5,7 +5,7 @@ import { VersionedTransaction } from "@solana/web3.js";
 // lands it on mainnet for us, so no mainnet RPC is needed on our side.
 // Docs: https://developers.jup.ag/docs/swap/order-and-execute
 // Keyless works (0.5 RPS per IP); NEXT_PUBLIC_JUPITER_API_KEY raises the limit.
-const JUP_BASE = "https://api.jup.ag";
+export const JUP_BASE = "https://api.jup.ag";
 const API_KEY = process.env.NEXT_PUBLIC_JUPITER_API_KEY || "";
 
 // Common token mints on Solana mainnet.
@@ -61,7 +61,7 @@ export interface ExecuteResponse {
 /** Orders older than this get re-quoted before signing (requestId expires). */
 export const ORDER_TTL_MS = 25_000;
 
-function jupHeaders(extra?: Record<string, string>): Record<string, string> {
+export function jupHeaders(extra?: Record<string, string>): Record<string, string> {
   const h: Record<string, string> = { Accept: "application/json", ...extra };
   if (API_KEY) h["x-api-key"] = API_KEY;
   return h;
