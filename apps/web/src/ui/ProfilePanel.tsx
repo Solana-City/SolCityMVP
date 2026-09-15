@@ -327,38 +327,6 @@ export default function ProfilePanel({ gameRef, isOpen, onClose }: ProfilePanelP
           <StatCard label="Bounties" value={profile.bountyCount} color="#9945FF" />
         </div>
 
-        {/* Outfits */}
-        <div className="mb-2">
-          <div className="text-xs mb-2" style={{ color: "#555566" }}>
-            Outfits ({profile.unlockedOutfits.length})
-          </div>
-          <div className="flex flex-wrap gap-1.5">
-            {profile.unlockedOutfits.map((id) => (
-              <button
-                key={id}
-                data-sfx="outfit"
-                onClick={() => selectOutfit(id)}
-                className="px-2 py-1 rounded text-xs cursor-pointer"
-                style={{
-                  background:
-                    profile.outfitId === id
-                      ? "rgba(20,241,149,0.15)"
-                      : "#12122a",
-                  color:
-                    profile.outfitId === id ? "#14F195" : "#888899",
-                  border:
-                    profile.outfitId === id
-                      ? "1px solid rgba(20,241,149,0.3)"
-                      : "1px solid rgba(255,255,255,0.05)",
-                  fontFamily: "monospace",
-                }}
-              >
-                {id}
-              </button>
-            ))}
-          </div>
-        </div>
-
         {/* On-chain activity */}
         <div className="mb-4 mt-4">
           <div className="text-xs mb-2" style={{ color: "#555566" }}>

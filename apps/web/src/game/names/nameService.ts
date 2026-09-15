@@ -74,6 +74,7 @@ export async function fetchStatus(wallet: string): Promise<NameStatus> {
 export async function checkName(name: string, wallet: string): Promise<{ available: boolean; message: string | null }> {
   const res = await fetch(`/api/names?check=${encodeURIComponent(name)}&wallet=${encodeURIComponent(wallet)}`);
   const body = await res.json();
+  if (body.enabled === false) return { available: false, message: "Nicknames are offline right now. Try again later." };
   return { available: !!body.available, message: body.message ?? null };
 }
 
