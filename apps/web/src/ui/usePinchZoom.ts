@@ -22,7 +22,11 @@ export function usePinchZoom() {
       return Math.hypot(b.x - a.x, b.y - a.y);
     }
 
+    // The full city map has its own pinch; don't zoom the city behind it.
+    const mapOpen = () => !!document.querySelector("[data-city-map-open]");
+
     function onDown(e: PointerEvent) {
+      if (mapOpen()) return;
       pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
       if (pts.size === 2) {
         startDist = dist();

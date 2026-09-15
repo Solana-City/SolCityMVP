@@ -184,7 +184,20 @@ function drawBase(ctx: CanvasRenderingContext2D, host: MinimapHost, v: View, w: 
   const sw = (w / v.zoom) * MINIMAP_SCALE;
   const sh = (h / v.zoom) * MINIMAP_SCALE;
   ctx.imageSmoothingEnabled = v.zoom * (1 / MINIMAP_SCALE) < 1.5;
-  ctx.drawImage(host.image, sx, sy, sw, sh, 0, 0, w, h);
+  // Clip the source rect to the image and move the destination with it.
+  // A rect that runs past the image (the view wider than the map, or near an
+  // edge) is handled differently by mobile browsers: some stretch the part
+  // that exists over the whole destination, which slid the picture away from
+  // the markers drawn on top.
+  const iw = host.image.width, ih = host.image.height;
+  const cx0 = Math.max(0, sx), cy0 = Math.max(0, sy);
+  const cx1 = Math.min(iw, sx + sw), cy1 = Math.min(ih, sy + sh);
+  if (cx1 <= cx0 || cy1 <= cy0) return;
+  const kx = w / sw, ky = h / sh;
+  ctx.drawImage(
+    host.image, cx0, cy0, cx1 - cx0, cy1 - cy0,
+    (cx0 - sx) * kx, (cy0 - sy) * ky, (cx1 - cx0) * kx, (cy1 - cy0) * ky,
+  );
 }
 
 function toScreen(v: View, w: number, h: number, x: number, y: number) {
@@ -552,7 +565,8 @@ function FullMap({ host, onClose }: { host: MinimapHost; onClose: () => void }) 
   // Pan (drag), pinch and wheel zoom.
   const pointers = useRef(new Map<number, { x: number; y: number }>());
   const dragMoved = useRef(false);
-  const pinchStart = useRef<{ dist: number; zoom: number } | null>(null);
+  /** Pinch start: finger spread, zoom, and the world point under the fingers' midpoint. */
+  const pinchStart = useRef<{ dist: number; zoom: number; wx: number; wy: number } | null>(null);
 
   const hitTest = useCallback((sx: number, sy: number): MinimapPoint | null => {
     const v = viewRef.current;
@@ -581,7 +595,14 @@ function FullMap({ host, onClose }: { host: MinimapHost; onClose: () => void }) 
     dragMoved.current = false;
     if (pointers.current.size === 2) {
       const [a, b] = [...pointers.current.values()];
-      pinchStart.current = { dist: Math.hypot(a.x - b.x, a.y - b.y), zoom: targetRef.current?.zoom ?? 1 };
+      const t0 = targetRef.current;
+      const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+      pinchStart.current = {
+        dist: Math.hypot(a.x - b.x, a.y - b.y),
+        zoom: t0?.zoom ?? 1,
+        wx: t0 ? t0.cx + (mx - w / 2) / t0.zoom : 0,
+        wy: t0 ? t0.cy + (my - h / 2) / t0.zoom : 0,
+      };
     }
   };
   const onPointerMove = (e: React.PointerEvent) => {
@@ -601,8 +622,16 @@ function FullMap({ host, onClose }: { host: MinimapHost; onClose: () => void }) 
     if (pointers.current.size === 2 && pinchStart.current) {
       const [a, b] = [...pointers.current.values()];
       const dist = Math.hypot(a.x - b.x, a.y - b.y);
-      const zoom = pinchStart.current.zoom * (dist / pinchStart.current.dist);
-      const next = clampView({ ...t, zoom });
+      const zoom = Math.min(MAX_ZOOM, Math.max(fitZoom(), pinchStart.current.zoom * (dist / pinchStart.current.dist)));
+      // Keep the world point that started under the fingers under their
+      // current midpoint, so the map zooms where you pinch and follows a
+      // two-finger drag, instead of sliding out from under your fingers.
+      const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+      const next = clampView({
+        cx: pinchStart.current.wx - (mx - w / 2) / zoom,
+        cy: pinchStart.current.wy - (my - h / 2) / zoom,
+        zoom,
+      });
       targetRef.current = next;
       viewRef.current = next;
       dragMoved.current = true;
@@ -750,6 +779,7 @@ function FullMap({ host, onClose }: { host: MinimapHost; onClose: () => void }) 
 
   return (
     <div
+      data-city-map-open=""
       onPointerDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
       style={{
         position: "fixed", inset: 0, zIndex: 60, background: "rgba(2,4,12,0.7)",
