@@ -21,7 +21,7 @@ function useIsTouch() {
 
 interface WalletBarProps {
   onWalletChange?: (wallet: string | null) => void;
-  /** "panel" = embedded in the unified HUD card (desktop only, vertical) */
+  /** "panel" = embedded in the map + player HUD card (phone and desktop) */
   layout?: "default" | "panel";
 }
 

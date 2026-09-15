@@ -375,89 +375,53 @@ export default function Home() {
               right: "max(env(safe-area-inset-right, 0px), 12px)",
             }}
           >
-            {isTouch ? (
-              /* ── Mobile: one compact block. The controls stack in a column
-                  as tall as the round minimap beside them, instead of the
-                  map, the wallet strip and zoom each taking a row. ── */
-              <div className="flex items-start gap-2">
-                <div className="flex flex-col items-end gap-1.5">
-                  <div className="flex items-center gap-1.5">
-                    <PfpButton gameRef={game} size={32} onClick={() => setProfileOpen(true)} />
-                    <WardrobeButton size={32} onClick={() => setWardrobeOpen(true)} />
-                    <WalletBar onWalletChange={handleWalletChange} />
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <div style={{ width: 116 }}>
-                      <TransactionLogPanel
-                        isOpen={logOpen}
-                        onToggle={() => setLogOpen((v) => !v)}
-                        gameRef={game}
-                      />
-                    </div>
-                    <ZoomControl />
-                  </div>
-                </div>
-                <Minimap compact="mobile" />
-              </div>
-            ) : (
-              /* ── Desktop: round minimap over the unified card panel ── */
-              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
-              <Minimap compact="desktop" />
-              <div style={{
-                background: "rgba(8,10,22,0.58)",
-                border: "1px solid rgba(153,69,255,0.2)",
-                borderRadius: 14,
-                overflow: "hidden",
-                width: 250,
-                backdropFilter: "blur(16px)",
-                boxShadow: "0 4px 28px rgba(0,0,0,0.4)",
-              }}>
-                {/* Header: icon + PFP + wardrobe */}
-                <div style={{
-                  display: "flex", alignItems: "center", gap: 8,
-                  padding: "11px 13px",
-                  borderBottom: "1px solid rgba(153,69,255,0.1)",
-                }}>
-                  <img
-                    src="/assets/branding/icon.png"
-                    alt=""
-                    style={{ width: 26, height: 26, imageRendering: "pixelated", opacity: 0.9 }}
-                    onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+            {/* One card: the round minimap with profile and wardrobe on its
+                top corners, then the wallet and ONCHAIN + zoom right under
+                it. Same structure on phone and desktop, just smaller. */}
+            <div style={{
+              width: isTouch ? 156 : 232,
+              padding: isTouch ? "10px 6px 6px" : "12px 10px 8px",
+              display: "flex", flexDirection: "column", gap: isTouch ? 6 : 8,
+              background: "rgba(8,10,22,0.66)",
+              border: "1px solid rgba(153,69,255,0.25)",
+              borderRadius: 16,
+              backdropFilter: "blur(14px)",
+              boxShadow: "0 4px 28px rgba(0,0,0,0.4)",
+            }}>
+              <div style={{ display: "flex", justifyContent: "center" }}>
+                  <Minimap
+                    compact={isTouch ? "mobile" : "desktop"}
+                    corners={{
+                      tl: (
+                        <span style={{ display: "block", borderRadius: "50%", background: "rgba(8,10,22,0.95)", boxShadow: "0 2px 10px rgba(0,0,0,0.5)" }}>
+                          <PfpButton gameRef={game} size={isTouch ? 30 : 34} onClick={() => setProfileOpen(true)} />
+                        </span>
+                      ),
+                      tr: (
+                        <span style={{ display: "block", borderRadius: 8, background: "rgba(8,10,22,0.95)", boxShadow: "0 2px 10px rgba(0,0,0,0.5)" }}>
+                          <WardrobeButton size={isTouch ? 30 : 34} onClick={() => setWardrobeOpen(true)} />
+                        </span>
+                      ),
+                    }}
                   />
-                  <div style={{ flex: 1 }} />
-                  <WardrobeButton onClick={() => setWardrobeOpen(true)} />
-                  <PfpButton gameRef={game} onClick={() => setProfileOpen(true)} />
+              </div>
+              <div style={{ padding: isTouch ? "0 2px" : "0 4px" }}>
+                <WalletBar layout="panel" onWalletChange={handleWalletChange} />
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: isTouch ? 4 : 6 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <TransactionLogPanel
+                    isOpen={logOpen}
+                    onToggle={() => setLogOpen((v) => !v)}
+                    gameRef={game}
+                    compact={isTouch}
+                  />
                 </div>
-
-                {/* Wallet inline */}
-                <div style={{ padding: "10px 13px" }}>
-                  <WalletBar layout="panel" onWalletChange={handleWalletChange} />
-                </div>
-
-                {/* Footer: tx log + zoom, side by side. The ONCHAIN badge is
-                    allowed to shrink/ellipsis (minWidth:0) so ZoomControl
-                    (flexShrink:0) always keeps its full size and never gets
-                    pushed past the card's edge. */}
-                <div style={{
-                  display: "flex", alignItems: "center",
-                  borderTop: "1px solid rgba(153,69,255,0.1)",
-                  padding: "6px 10px",
-                  gap: 6,
-                }}>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <TransactionLogPanel
-                      isOpen={logOpen}
-                      onToggle={() => setLogOpen((v) => !v)}
-                      gameRef={game}
-                    />
-                  </div>
-                  <div style={{ flexShrink: 0 }}>
-                    <ZoomControl />
-                  </div>
+                <div style={{ flexShrink: 0 }}>
+                  <ZoomControl compact={isTouch} />
                 </div>
               </div>
-              </div>
-            )}
+            </div>
 
           </div>
 

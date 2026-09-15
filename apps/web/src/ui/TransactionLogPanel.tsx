@@ -15,6 +15,8 @@ interface Props {
   isOpen: boolean;
   onToggle: () => void;
   gameRef?: Phaser.Game | null;
+  /** Smaller trigger for the phone HUD card. */
+  compact?: boolean;
 }
 
 /**
@@ -30,7 +32,7 @@ interface Props {
  *   - Filter chips are layered: kind AND status. This lets the player
  *     isolate "failed swaps" or "all moves in the last minute" quickly.
  */
-export default function TransactionLogPanel({ isOpen, onToggle, gameRef }: Props) {
+export default function TransactionLogPanel({ isOpen, onToggle, gameRef, compact = false }: Props) {
   const [entries, setEntries] = useState<ReadonlyArray<TxEntry>>([]);
   const [kindFilter, setKindFilter] = useState<TxKind | "all">("all");
   const [statusFilter, setStatusFilter] = useState<TxStatus | "all">("all");
@@ -176,6 +178,7 @@ export default function TransactionLogPanel({ isOpen, onToggle, gameRef }: Props
           entryCount={entries.length}
           pendingCount={pendingCount}
           failedCount={failedCount}
+          compact={compact}
         />
       </div>
       {typeof document !== "undefined" && floatingPanel
@@ -193,12 +196,14 @@ function ToggleButton({
   entryCount,
   pendingCount,
   failedCount,
+  compact,
 }: {
   isOpen: boolean;
   onClick: () => void;
   entryCount: number;
   pendingCount: number;
   failedCount: number;
+  compact: boolean;
 }) {
   // Border color leans on activity: failing stands out loudest.
   const borderColor =
@@ -208,9 +213,11 @@ function ToggleButton({
     <button
       onClick={onClick}
       title="On-chain activity [T]"
-      className="rounded-lg cursor-pointer transition-colors flex items-center gap-2 px-2"
+      className="rounded-lg cursor-pointer transition-colors flex items-center justify-center"
       style={{
-        height: 32,
+        height: compact ? 26 : 30,
+        gap: 4,
+        padding: "0 5px",
         width: "100%",
         minWidth: 0,
         overflow: "hidden",
@@ -218,12 +225,11 @@ function ToggleButton({
         border: `1.5px solid ${borderColor}`,
         color: "#ccccdd",
         fontFamily: '"Press Start 2P", monospace',
-        fontSize: "7px",
+        fontSize: compact ? "6px" : "7px",
       }}
     >
       <PulseDot color={borderColor} active={pendingCount > 0} />
       <span style={{ whiteSpace: "nowrap" }}>ONCHAIN</span>
-      <span style={{ color: "#666677", flexShrink: 0 }}>·</span>
       <span style={{ color: borderColor, flexShrink: 0 }}>{entryCount}</span>
     </button>
   );

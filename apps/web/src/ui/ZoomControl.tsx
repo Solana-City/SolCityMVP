@@ -9,7 +9,8 @@ function emitGame(event: string, data?: unknown) {
   (globalThis as any).__solCityGameEvents?.emit(event, data);
 }
 
-export default function ZoomControl() {
+/** `compact`: just the two buttons, no scale label or frame (for the phone HUD card). */
+export default function ZoomControl({ compact = false }: { compact?: boolean }) {
   const [zoom, setZoom] = useState<number | null>(null);
   const [isTouch, setIsTouch] = useState(false);
 
@@ -28,13 +29,22 @@ export default function ZoomControl() {
   const idx = zooms.indexOf(zoom);
   const canDec = idx > 0;
   const canInc = idx >= 0 && idx < zooms.length - 1;
-  const btnSize = isTouch ? 26 : 22;
+  const btnSize = compact ? 24 : isTouch ? 26 : 22;
 
   function change(next: number) {
     setZoom(next);
     saveZoom(next);
     emitGame("camera:zoom", next);
     window.dispatchEvent(new CustomEvent("solcity:zoom", { detail: next }));
+  }
+
+  if (compact) {
+    return (
+      <div className="flex items-center" style={{ gap: 3 }}>
+        <ZBtn size={btnSize} disabled={!canDec} onClick={() => change(zooms[idx - 1])}>−</ZBtn>
+        <ZBtn size={btnSize} disabled={!canInc} onClick={() => change(zooms[idx + 1])}>+</ZBtn>
+      </div>
+    );
   }
 
   return (
