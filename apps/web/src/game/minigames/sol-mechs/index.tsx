@@ -354,6 +354,7 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
       success: won,
       metadata: {
         game: "sol-mechs",
+        keepOpen: true,
         playerMech,
         opponentMech: battle.p2.matrix.id,
         turns: battle.history.length,
@@ -458,6 +459,9 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
             metadata: {
               game: "sol-mechs",
               mode: "3v3",
+              // Keep Sol Mechs open: the result card is shown over the arena
+              // and LEAVE takes the player back to the Sol Mechs menu.
+              keepOpen: true,
               turns: s.history.length,
               // The action list is what an on-chain verifier replays, so it
               // travels with the outcome exactly as in the 1v1 path.

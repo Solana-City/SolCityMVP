@@ -215,6 +215,9 @@ export default function Home() {
     // The id rides along so the scene can tell WHICH game was won — the
     // Superteam Brasil cap is a Kite Clash reward, not a reward for any win.
     game?.events.emit("minigame:result", { id: activeMiniGame?.id, success: result.success });
+    // Games with their own result screen (Sol Mechs) report the outcome as
+    // soon as a match ends and stay open; the player leaves when ready.
+    if (result.metadata?.keepOpen) return;
     handleMiniGameClose();
   }, [game, activeMiniGame, handleMiniGameClose]);
 
@@ -239,15 +242,14 @@ export default function Home() {
     (globalThis as SolCityWalletHost).__solCityWallet = wallet;
   }, []);
 
-  // A wallet without a nickname must pick one before playing (only when the
-  // name service is running). Existing names sync into the profile.
+  // Nicknames are optional for now: nothing prompts on login, the Profile's
+  // CHANGE NICKNAME sets one. An existing name syncs into the profile.
   useEffect(() => {
     if (!walletAddress) { if (nicknameOpenRef.current) closeNickname(null); return; }
     let cancelled = false;
     fetchStatus(walletAddress).then((st) => {
       if (cancelled) return;
       if (st.name) profileManager.setDisplayName(st.name);
-      else if (st.enabled && !st.locked) openNickname(true, null);
     });
     return () => { cancelled = true; };
   }, [walletAddress, openNickname, closeNickname]);
