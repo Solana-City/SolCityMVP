@@ -216,8 +216,12 @@ export function ChromaPreview({ file, size, facingUp, crop }: { file: string; si
  * Category icon: the category's own first item, drawn from its sprite sheet,
  * so the tabs show a real hat, shirt or backpack instead of an emoji.
  */
+/** Item that stands for its category on the tab (else the first one). */
+const CATEGORY_ICON_ITEM: Partial<Record<LayerCategory, string>> = { hair: "Anime" };
+
 function CategoryIcon({ cat, size }: { cat: LayerCategory; size: number }) {
-  const first = getEnabledVariants(cat)[0];
+  const all = getEnabledVariants(cat);
+  const first = all.find(v => v.id === CATEGORY_ICON_ITEM[cat]) ?? all[0];
   if (!first) return null;
   return <ChromaPreview file={first.file} size={size} facingUp={cat === "back"} crop />;
 }
@@ -316,6 +320,7 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
   const handleReset = useCallback(() => setLoadout({ ...DEFAULT_LOADOUT }), []);
 
   const variants = getEnabledVariants(activeCategory);
+  const TILE = isMobile ? 40 : 52;
   const currentVariantId = loadout[activeCategory];
 
   // Reverse so topmost layer (hat) appears first in the tab list
@@ -346,7 +351,7 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
         {/* ── Header ── */}
         <div style={{
           display: "flex", alignItems: "center", justifyContent: "space-between",
-          padding: "14px 20px",
+          padding: isMobile ? "6px 12px" : "12px 20px",
           borderBottom: "1px solid rgba(153,69,255,0.12)",
           background: "rgba(153,69,255,0.06)",
         }}>
@@ -409,39 +414,28 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
           </div>
         </div>
 
-        <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", flex: 1, overflow: "hidden" }}>
+        {/* Always side by side: phones play in landscape, where stacking the
+            preview over the grid left the grid a thin strip that had to scroll. */}
+        <div style={{ display: "flex", flexDirection: "row", flex: 1, minHeight: 0, overflow: "hidden" }}>
 
-          {/* ── LEFT (desktop) / TOP (mobile): preview + category tabs ── */}
+          {/* ── LEFT: preview + category tabs ── */}
           <div style={{
-            width: isMobile ? "100%" : 168,
+            width: isMobile ? 150 : 168,
             flexShrink: 0,
-            borderRight: isMobile ? "none" : "1px solid rgba(153,69,255,0.1)",
-            borderBottom: isMobile ? "1px solid rgba(153,69,255,0.1)" : "none",
+            borderRight: "1px solid rgba(153,69,255,0.1)",
             display: "flex",
-            flexDirection: isMobile ? "row" : "column",
-            alignItems: isMobile ? "center" : "stretch",
+            flexDirection: "column",
+            alignItems: "stretch",
             background: "rgba(0,0,0,0.2)",
           }}>
-            {/* Avatar preview */}
-            <div style={{
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              padding: isMobile ? "8px 10px" : "16px 12px 10px",
-              gap: isMobile ? 2 : 6,
-              flexShrink: 0,
-            }}>
+            <div style={{ display: "flex", justifyContent: "center", padding: isMobile ? "8px 8px 4px" : "14px 12px 8px", flexShrink: 0 }}>
               <div style={{
                 background: "rgba(153,69,255,0.06)",
                 border: "1px solid rgba(153,69,255,0.14)",
                 borderRadius: 10,
-                padding: isMobile ? 6 : 8,
-                // Fixed square box so the responsive canvas has a bounded target
-                // — fits inside the 168px desktop column (no overflow onto the
-                // grid) and shows the full character at a comfortable size on
-                // mobile. scale stays high (crisp backing store, CSS downsizes).
-                width: isMobile ? 108 : 140,
-                height: isMobile ? 108 : 140,
+                padding: isMobile ? 4 : 8,
+                width: isMobile ? 84 : 132,
+                height: isMobile ? 84 : 132,
                 flexShrink: 0,
                 display: "flex",
                 alignItems: "center",
@@ -449,72 +443,62 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
               }}>
                 <AvatarPreview loadout={loadout} facingUp={activeCategory === "back"} scale={3} />
               </div>
-              {!isMobile && <span style={{ fontSize: 7, color: "#444466", letterSpacing: 1 }}>PREVIEW</span>}
             </div>
 
-            {/* Divider (desktop only — horizontal on mobile isn't needed) */}
-            {!isMobile && <div style={{ height: 1, background: "rgba(153,69,255,0.1)", margin: "0 12px" }} />}
-
-            {/* Category tabs — vertical list on desktop, horizontal scroll strip on mobile */}
+            {/* Tabs: labelled list on desktop, a 4x2 icon grid on a phone. */}
             <div style={{
-              flex: 1,
-              minWidth: 0,
-              overflowY: isMobile ? "hidden" : "auto",
-              overflowX: isMobile ? "auto" : "hidden",
-              display: "flex",
-              flexDirection: isMobile ? "row" : "column",
-              gap: isMobile ? 6 : 0,
-              padding: "8px 8px",
-              WebkitOverflowScrolling: "touch",
+              display: isMobile ? "grid" : "flex",
+              gridTemplateColumns: isMobile ? "repeat(4, 1fr)" : undefined,
+              flexDirection: "column",
+              gap: isMobile ? 4 : 0,
+              padding: isMobile ? "4px 6px 6px" : "6px 8px",
             }}>
               {tabOrder.map(cat => {
                 const isActive = activeCategory === cat;
                 const hasItem = !!loadout[cat];
                 const isOptional = OPTIONAL.includes(cat);
+                const dot = hasItem ? "#14F195" : isOptional ? "#333344" : "#ff4444";
                 return (
                   <button
                     key={cat}
                     onClick={() => setActiveCategory(cat)}
+                    title={CATEGORY_LABELS[cat]}
                     style={{
                       display: "flex",
-                      flexDirection: isMobile ? "column" : "row",
                       alignItems: "center",
-                      gap: isMobile ? 3 : 8,
-                      width: isMobile ? "auto" : "100%",
-                      flexShrink: 0,
-                      padding: isMobile ? "6px 8px" : "9px 10px",
+                      justifyContent: isMobile ? "center" : "flex-start",
+                      gap: 8,
+                      width: "100%",
+                      height: isMobile ? 30 : undefined,
+                      padding: isMobile ? 0 : "7px 10px",
                       marginBottom: isMobile ? 0 : 2,
                       background: isActive ? "rgba(153,69,255,0.18)" : "transparent",
                       border: isActive ? "1px solid rgba(153,69,255,0.4)" : "1px solid transparent",
                       borderRadius: 8,
                       cursor: "pointer",
                       color: isActive ? "#e0d0ff" : "#666688",
-                      textAlign: isMobile ? "center" : "left",
+                      textAlign: "left",
+                      position: "relative",
                       transition: "background 0.12s, color 0.12s",
                     }}
                     onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = "rgba(153,69,255,0.08)"; }}
                     onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = "transparent"; }}
                   >
-                    <span style={{ flexShrink: 0, position: "relative", lineHeight: 0 }}>
-                      <CategoryIcon cat={cat} size={isMobile ? 26 : 22} />
-                      {isMobile && (
-                        <span style={{
-                          position: "absolute", top: -2, right: -4,
-                          width: 5, height: 5, borderRadius: "50%",
-                          background: hasItem ? "#14F195" : isOptional ? "#333344" : "#ff4444",
-                          opacity: hasItem ? 1 : 0.6,
-                        }} />
-                      )}
+                    <span style={{ flexShrink: 0, lineHeight: 0 }}>
+                      <CategoryIcon cat={cat} size={22} />
                     </span>
-                    <span style={{ fontSize: isMobile ? 6 : 8, flex: isMobile ? undefined : 1, fontFamily: '"Press Start 2P", monospace', whiteSpace: "nowrap" }}>
-                      {CATEGORY_LABELS[cat]}
-                    </span>
-                    {!isMobile && (
+                    {isMobile ? (
                       <span style={{
-                        width: 6, height: 6, borderRadius: "50%", flexShrink: 0,
-                        background: hasItem ? "#14F195" : isOptional ? "#333344" : "#ff4444",
-                        opacity: hasItem ? 1 : 0.5,
+                        position: "absolute", top: 3, right: 3,
+                        width: 4, height: 4, borderRadius: "50%", background: dot, opacity: hasItem ? 1 : 0.6,
                       }} />
+                    ) : (
+                      <>
+                        <span style={{ fontSize: 8, flex: 1, fontFamily: '"Press Start 2P", monospace', whiteSpace: "nowrap" }}>
+                          {CATEGORY_LABELS[cat]}
+                        </span>
+                        <span style={{ width: 6, height: 6, borderRadius: "50%", flexShrink: 0, background: dot, opacity: hasItem ? 1 : 0.5 }} />
+                      </>
                     )}
                   </button>
                 );
@@ -527,7 +511,7 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
             {/* Section header */}
             <div style={{
               display: "flex", alignItems: "center", gap: 8,
-              padding: "12px 16px 10px",
+              padding: isMobile ? "7px 12px" : "10px 16px 8px",
               borderBottom: "1px solid rgba(153,69,255,0.08)",
             }}>
               <CategoryIcon cat={activeCategory} size={22} />
@@ -546,21 +530,24 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
             </div>
 
             {/* Grid */}
-            <div style={{ flex: 1, overflowY: "auto", padding: "14px 16px" }}>
+            {/* Small tiles so a whole category fits without scrolling (scroll
+                stays only as a fallback on very short screens). */}
+            <div style={{ flex: 1, overflowY: "auto", padding: isMobile ? "8px 10px" : "12px 14px" }}>
               <div style={{
                 display: "grid",
-                gridTemplateColumns: `repeat(auto-fill, minmax(${isMobile ? 84 : 100}px, 1fr))`,
-                gap: isMobile ? 8 : 10,
+                gridTemplateColumns: `repeat(auto-fill, minmax(${isMobile ? 62 : 84}px, 1fr))`,
+                gap: isMobile ? 5 : 8,
               }}>
                 {/* None option for optional categories */}
                 {OPTIONAL.includes(activeCategory) && (
                   <VariantCard
                     isSelected={!currentVariantId}
                     isFlashing={flash === `${activeCategory}:undefined`}
+                    compact={isMobile}
                     onClick={() => selectVariant(activeCategory, undefined)}
                   >
                     <div style={{
-                      width: 64, height: 64,
+                      width: TILE, height: TILE,
                       display: "flex", alignItems: "center", justifyContent: "center",
                       color: "#333344", fontSize: 17,
                       border: "1px dashed #2a2a4a", borderRadius: 6,
@@ -581,10 +568,11 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
                       isFlashing={isFlashing}
                       locked={locked}
                       hintFlashing={hintFlashing}
+                      compact={isMobile}
                       onClick={() => selectVariant(activeCategory, v.id)}
                     >
                       <div style={{ position: "relative", lineHeight: 0 }}>
-                        <ChromaPreview file={v.file} size={64} facingUp={activeCategory === "back"} />
+                        <ChromaPreview file={v.file} size={TILE} facingUp={activeCategory === "back"} />
                         {locked && (
                           <span style={{
                             position: "absolute", inset: 0,
@@ -600,7 +588,7 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
                       }}>{v.name}</span>
                       {locked && (
                         <span style={{
-                          fontSize: 6,
+                          fontSize: 5,
                           color: hintFlashing ? "#FFD700" : "#7a7aa0",
                           letterSpacing: 0.5,
                           textAlign: "center",
@@ -617,7 +605,7 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
 
         {/* ── Footer ── */}
         <div style={{
-          display: "flex", gap: 10, padding: "12px 18px",
+          display: "flex", gap: 10, padding: isMobile ? "6px 12px" : "10px 18px",
           borderTop: "1px solid rgba(153,69,255,0.12)",
           background: "rgba(0,0,0,0.2)",
           alignItems: "center",
@@ -666,8 +654,9 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
 }
 
 function VariantCard({
-  isSelected, isFlashing, locked = false, hintFlashing = false, onClick, children,
+  isSelected, isFlashing, locked = false, hintFlashing = false, compact = false, onClick, children,
 }: {
+  compact?: boolean;
   isSelected: boolean;
   isFlashing: boolean;
   locked?: boolean;
@@ -694,13 +683,13 @@ function VariantCard({
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
-        gap: 6,
-        padding: "10px 8px",
+        gap: compact ? 3 : 5,
+        padding: compact ? "5px 3px" : "8px 5px",
         background: baseBg,
         border: baseBorder,
         borderRadius: 10,
         cursor: "pointer",
-        fontSize: 8,
+        fontSize: compact ? 5 : 6,
         fontFamily: '"Press Start 2P", monospace',
         opacity: locked ? 0.78 : 1,
         transition: "background 0.15s, border-color 0.15s, transform 0.1s",

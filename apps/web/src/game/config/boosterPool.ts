@@ -1,4 +1,4 @@
-import { LayerCategory, getBoosterPool } from "./paperDoll";
+import { LayerCategory, getBoosterPool, isFreeItem } from "./paperDoll";
 import { getUnlockedSet, unlockKeyOf } from "./wardrobeUnlocks";
 
 /**
@@ -67,7 +67,8 @@ export function rollBooster(wallet: string | null, count = PACK_SIZE): BoosterDr
   const owned = getUnlockedSet(wallet);
   const isOwned = (c: LayerCategory, id: string) => owned.has(unlockKeyOf(c, id));
 
-  const pool = getBoosterPool();
+  // Items that became free since the pool was fixed never drop.
+  const pool = getBoosterPool().filter(p => !isFreeItem(p.category, p.variant.id));
   const unowned = pool.filter(p => !isOwned(p.category, p.variant.id));
   const dupes = pool.filter(p => isOwned(p.category, p.variant.id));
 

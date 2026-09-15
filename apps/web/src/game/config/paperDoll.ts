@@ -243,22 +243,42 @@ export function getEnabledVariants(category: LayerCategory): LayerVariant[] {
 
 // ── Unlock economy (gacha) ──────────────────────────────────────────────────
 //
-// Only a small starter set is free; everything else is locked and earned via a
-// quest, an NPC, or a random booster pack. Identity layers (skin, eyesFace)
-// stay fully free — they aren't cosmetics to collect.
+// Every base and hairstyle is free, plus the Black Hat. Packs are for future
+// additions; quests and NPCs still grant their own items.
+
+/** TESTING: every hat is unlocked. Set false to lock hats again (Black Hat stays free). */
+export const TEST_UNLOCK_ALL_HATS = true;
+
 const FREE_ITEMS: Partial<Record<LayerCategory, "*" | string[]>> = {
+  skin: "*",
+  eyesFace: "*",
+  hair: "*",
+  hat: TEST_UNLOCK_ALL_HATS ? "*" : ["hat_black"],
+  tshirt: ["Blue_tshirt", "White_tshirt"],
+  pants: ["Blue_pants", "Grey_pants"],
+};
+
+/**
+ * The free set when the booster pool was fixed (POOL_VERSION 1). The pool is
+ * index-stable on-chain, so it keeps being built from this list even though
+ * more items are free now; the draw just skips the ones that are free.
+ */
+const POOL_V1_FREE: Partial<Record<LayerCategory, "*" | string[]>> = {
   skin: "*",
   eyesFace: "*",
   hair: ["Black_hair", "Brown_hair"],
   tshirt: ["Blue_tshirt", "White_tshirt"],
   pants: ["Blue_pants", "Grey_pants"],
-  // hat, accessory, back: nothing free — all via quest / NPC / booster.
 };
 
-/** True if this item needs no unlock (starter set / identity layer). */
-export function isFreeItem(category: LayerCategory, id: string): boolean {
-  const free = FREE_ITEMS[category];
+function inSet(set: Partial<Record<LayerCategory, "*" | string[]>>, category: LayerCategory, id: string): boolean {
+  const free = set[category];
   return free === "*" || (Array.isArray(free) && free.includes(id));
+}
+
+/** True if this item needs no unlock. */
+export function isFreeItem(category: LayerCategory, id: string): boolean {
+  return inSet(FREE_ITEMS, category, id);
 }
 
 /** Hint shown on a locked wardrobe item — its explicit `unlockHint`, else the
@@ -271,7 +291,7 @@ export function unlockHintFor(variant: LayerVariant): string {
  *  quest/NPC. Shared by the client preview and (later) the on-chain VRF draw. */
 export function getBoosterPool(): { category: LayerCategory; variant: LayerVariant }[] {
   return getAllLayerVariants().filter(
-    ({ category, variant }) => !isFreeItem(category, variant.id) && !variant.unlockVia,
+    ({ category, variant }) => !inSet(POOL_V1_FREE, category, variant.id) && !variant.unlockVia,
   );
 }
 
