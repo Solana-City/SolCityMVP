@@ -125,7 +125,7 @@ export default function PlayerCard({ gameRef, wallet, displayName, myWallet, onC
               border: "none", cursor: "pointer",
             }}
           >
-            CHALLENGE TO A DUEL
+            MECH BATTLE
           </button>
         )}
 
