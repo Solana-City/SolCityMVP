@@ -12,6 +12,7 @@ import { incrementQuest } from "@/game/quests/QuestManager";
 import { guideSeen, markGuideSeen } from "@/ui/CityGuide";
 import { fetchStatus } from "@/game/names/nameService";
 import { profileManager } from "@/game/config/profileManager";
+import { useFlags } from "@/ui/useFlags";
 
 // All Solana/wallet-adapter code must be client-only — these packages
 // access `window`/`navigator` at module-load time and crash the SSR pass.
@@ -81,6 +82,10 @@ export default function Home() {
   );
 
   usePinchZoom();
+
+  // Content toggles from the developer panel: chat and nickname claiming can
+  // be switched off without a deploy.
+  const flags = useFlags();
 
   // ── Nicknames ────────────────────────────────────────────────────────────
   const [nickname, setNickname] = useState<{ forced: boolean; current: string | null } | null>(null);
@@ -256,7 +261,7 @@ export default function Home() {
     fetchStatus(walletAddress).then((st) => {
       if (cancelled) return;
       if (st.name) { profileManager.setDisplayName(st.name); return; }
-      if (!st.enabled || st.locked) return;
+      if (!st.enabled || st.locked || !flags.nicknames) return;
       const askedKey = `solcity:nickname-asked:${walletAddress}`;
       try {
         if (localStorage.getItem(askedKey)) return;
@@ -265,7 +270,7 @@ export default function Home() {
       openNickname(false, null);
     });
     return () => { cancelled = true; };
-  }, [walletAddress, openNickname, closeNickname]);
+  }, [walletAddress, openNickname, closeNickname, flags.nicknames]);
 
   // A duel invite (sent from a player card, or accepted from the invite card)
   // opens Sol Mechs straight into that duel.
@@ -285,11 +290,12 @@ export default function Home() {
   useEffect(() => {
     const onOpen = () => {
       if (!walletAddress) return;
+      if (!flags.nicknames) return;
       fetchStatus(walletAddress).then((st) => openNickname(false, st.name));
     };
     window.addEventListener("solcity:open-nickname", onOpen);
     return () => window.removeEventListener("solcity:open-nickname", onOpen);
-  }, [walletAddress, openNickname]);
+  }, [walletAddress, openNickname, flags.nicknames]);
 
   // CityScene only starts listening for "wallet:connected" at the end of its
   // create(). `game` goes non-null the instant `new Phaser.Game()` returns —
@@ -466,7 +472,7 @@ export default function Home() {
           )}
           <MobileControls />
           <ExpressionWheel gameRef={game} />
-          <ChatPanel gameRef={game} visible={chatOpen} />
+          {flags.chat && <ChatPanel gameRef={game} visible={chatOpen} />}
           <NPCDialog npc={activeNPC} onClose={handleDialogClose} onAction={handleAction} />
           {nickname && walletAddress && (
             <NicknameModal wallet={walletAddress} current={nickname.current} forced={nickname.forced} onDone={closeNickname} />

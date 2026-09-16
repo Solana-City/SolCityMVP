@@ -16,75 +16,9 @@
  *   names:blockedWords          -> set of extra banned words (admin managed)
  */
 
-const URL_ = process.env.KV_REST_API_URL ?? process.env.UPSTASH_REDIS_REST_URL ?? "";
-const TOKEN = process.env.KV_REST_API_TOKEN ?? process.env.UPSTASH_REDIS_REST_TOKEN ?? "";
+import { del, get, mget, sadd, scard, set, setnx, smembers, srem, storeMode } from "@/lib/kv";
 
-type Cmd = (string | number)[];
-
-const memory = ((globalThis as { __solCityNames?: Map<string, unknown> }).__solCityNames ??= new Map());
-
-export function storeMode(): "redis" | "memory" | "off" {
-  if (URL_ && TOKEN) return "redis";
-  return process.env.NODE_ENV === "production" ? "off" : "memory";
-}
-
-async function redis<T = unknown>(cmd: Cmd): Promise<T> {
-  const res = await fetch(URL_, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${TOKEN}`, "Content-Type": "application/json" },
-    body: JSON.stringify(cmd),
-    cache: "no-store",
-  });
-  const body = await res.json();
-  if (!res.ok || body.error) throw new Error(`redis: ${body.error ?? res.status}`);
-  return body.result as T;
-}
-
-async function get(key: string): Promise<string | null> {
-  if (storeMode() === "redis") return redis<string | null>(["GET", key]);
-  return (memory.get(key) as string | undefined) ?? null;
-}
-
-async function mget(keys: string[]): Promise<(string | null)[]> {
-  if (keys.length === 0) return [];
-  if (storeMode() === "redis") return redis<(string | null)[]>(["MGET", ...keys]);
-  return keys.map((k) => (memory.get(k) as string | undefined) ?? null);
-}
-
-async function set(key: string, value: string): Promise<void> {
-  if (storeMode() === "redis") { await redis(["SET", key, value]); return; }
-  memory.set(key, value);
-}
-
-/** SET NX: true when this call created the key. */
-async function setnx(key: string, value: string): Promise<boolean> {
-  if (storeMode() === "redis") return (await redis<string | null>(["SET", key, value, "NX"])) === "OK";
-  if (memory.has(key)) return false;
-  memory.set(key, value);
-  return true;
-}
-
-async function del(key: string): Promise<void> {
-  if (storeMode() === "redis") { await redis(["DEL", key]); return; }
-  memory.delete(key);
-}
-
-async function smembers(key: string): Promise<string[]> {
-  if (storeMode() === "redis") return redis<string[]>(["SMEMBERS", key]);
-  return [...((memory.get(key) as Set<string> | undefined) ?? [])];
-}
-
-async function sadd(key: string, v: string): Promise<void> {
-  if (storeMode() === "redis") { await redis(["SADD", key, v]); return; }
-  const s = (memory.get(key) as Set<string> | undefined) ?? new Set<string>();
-  s.add(v);
-  memory.set(key, s);
-}
-
-async function srem(key: string, v: string): Promise<void> {
-  if (storeMode() === "redis") { await redis(["SREM", key, v]); return; }
-  (memory.get(key) as Set<string> | undefined)?.delete(v);
-}
+export { storeMode };
 
 // ── Rules ────────────────────────────────────────────────────────────────────
 
@@ -159,7 +93,11 @@ export async function claim(wallet: string, name: string): Promise<NameProblem |
     if (owner !== wallet) return "taken";
   }
   await set(`names:byWallet:${wallet}`, name);
-  if (previous && previous.toLowerCase() !== lower) await del(`names:byName:${previous.toLowerCase()}`);
+  await sadd("names:all", name);
+  if (previous && previous.toLowerCase() !== lower) {
+    await del(`names:byName:${previous.toLowerCase()}`);
+    await srem("names:all", previous);
+  }
   return null;
 }
 
@@ -170,17 +108,30 @@ export async function lock(target: { name?: string; wallet?: string }, reason: s
   if (!wallet && name) wallet = await get(`names:byName:${name.toLowerCase()}`);
   if (!name && wallet) name = await get(`names:byWallet:${wallet}`);
   const entry = JSON.stringify({ reason, at: Date.now() });
-  if (name) await set(`names:locked:${name.toLowerCase()}`, entry);
+  if (name) {
+    await set(`names:locked:${name.toLowerCase()}`, entry);
+    await srem("names:all", name);
+  }
   if (wallet) {
     await set(`names:lockedWallet:${wallet}`, entry);
     await del(`names:byWallet:${wallet}`);
   }
+  if (name) await del(`names:byName:${name.toLowerCase()}`);
   return { name, wallet };
 }
 
 export async function unlock(target: { name?: string; wallet?: string }): Promise<void> {
   if (target.name) await del(`names:locked:${target.name.toLowerCase()}`);
   if (target.wallet) await del(`names:lockedWallet:${target.wallet}`);
+}
+
+/** Every claimed name, for the developer panel. */
+export async function allNames(): Promise<string[]> {
+  return (await smembers("names:all")).sort((a, b) => a.localeCompare(b));
+}
+
+export async function nameCount(): Promise<number> {
+  return scard("names:all");
 }
 
 export async function blockWord(word: string, on: boolean): Promise<string[]> {

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { OnChainMultiplayer, OnChainPlayer } from "@/game/multiplayer/OnChainMultiplayer";
+import { useFlags } from "@/ui/useFlags";
 
 /** The city opens Sol Mechs on this, with the player to duel. */
 export const DUEL_INVITE_EVENT = "solcity:solmechs-duel";
@@ -24,6 +25,7 @@ interface Props {
 export default function PlayerCard({ gameRef, wallet, displayName, myWallet, onClose }: Props) {
   const [player, setPlayer] = useState<OnChainPlayer | undefined>(undefined);
   const [copied, setCopied] = useState(false);
+  const flags = useFlags();
 
   const copyWallet = () => {
     if (!wallet) return;
@@ -110,7 +112,7 @@ export default function PlayerCard({ gameRef, wallet, displayName, myWallet, onC
           <Stat label="Score" value={player?.score ?? 0} color="#14F195" />
         </div>
 
-        {!isSelf && (
+        {!isSelf && flags.duels && (
           <button
             onClick={() => {
               window.dispatchEvent(new CustomEvent(DUEL_INVITE_EVENT, {
@@ -132,7 +134,9 @@ export default function PlayerCard({ gameRef, wallet, displayName, myWallet, onC
         <div style={{ fontSize: 7, color: "#3a3a5a", lineHeight: 1.5, marginTop: 10 }}>
           {isSelf
             ? "Presence score is shared live. Achievements and mini-game scores are still local for now."
-            : "A friendly Sol Mechs duel, 3v3. Nothing is at stake and no rating moves."}
+            : flags.duels
+              ? "A friendly Sol Mechs duel, 3v3. Nothing is at stake and no rating moves."
+              : "Duels are off right now."}
         </div>
       </div>
     </div>

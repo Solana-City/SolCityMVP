@@ -19,6 +19,7 @@ import { useEffect } from "react";
 import { C, T, SP, R, MONO, PIXELATED, backdrop, panel, eyebrow, labelPlate, actionButton, W } from "./theme";
 
 import { SpriteButton } from "./SpriteButton";
+import { useFlags } from "@/ui/useFlags";
 
 const UI = "/assets/minigames/sol-mechs/ui";
 
@@ -32,6 +33,10 @@ export interface MainMenuProps {
 }
 
 export default function MainMenu({ onChoose, onClose, wins, losses }: MainMenuProps) {
+  // Both rows are switched from the developer panel: PvP so a broken rollup
+  // can be taken down without a deploy, RANKED because its screens are built
+  // but the deployed program cannot open a season yet.
+  const flags = useFlags();
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
     window.addEventListener("keydown", onKey);
@@ -75,16 +80,20 @@ export default function MainMenu({ onChoose, onClose, wins, losses }: MainMenuPr
             desc="Your squad against the computer."
             onClick={() => onChoose("squad")}
           />
-          <MenuRow
-            label="PvP"
-            desc="Battle other players online. Just for fun."
-            onClick={() => onChoose("pvp")}
-          />
-          <MenuRow
-            label="RANKED"
-            desc="Season ladder. Rating, energy and a leaderboard."
-            onClick={() => onChoose("ranked")}
-          />
+          {flags.pvp && (
+            <MenuRow
+              label="PvP"
+              desc="Battle other players online. Just for fun."
+              onClick={() => onChoose("pvp")}
+            />
+          )}
+          {flags.ranked && (
+            <MenuRow
+              label="RANKED"
+              desc="Season ladder. Rating, energy and a leaderboard."
+              onClick={() => onChoose("ranked")}
+            />
+          )}
           <MenuRow
             label="RULES"
             desc="How battles work."
