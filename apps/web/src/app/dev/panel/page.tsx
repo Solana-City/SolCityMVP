@@ -12,6 +12,7 @@
  * checks, so a leaked build cannot carry it. Closing the tab forgets it.
  */
 import { useCallback, useEffect, useState } from "react";
+import Analytics from "./Analytics";
 
 const KEY_STORAGE = "solcity:admin-key";
 
@@ -46,6 +47,7 @@ export default function DeveloperPanel() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [log, setLog] = useState<string[]>([]);
+  const [tab, setTab] = useState<"live" | "analytics">("live");
 
   useEffect(() => {
     try {
@@ -76,10 +78,10 @@ export default function DeveloperPanel() {
 
   // Live-ish: the online roster is the reason to keep this tab open.
   useEffect(() => {
-    if (!data) return;
+    if (!data || tab !== "live") return;
     const t = setInterval(() => void load(key), 20_000);
     return () => clearInterval(t);
-  }, [data, key, load]);
+  }, [data, key, load, tab]);
 
   const admin = async (action: string, payload: Record<string, unknown>) => {
     setBusy(true);
@@ -149,6 +151,14 @@ export default function DeveloperPanel() {
         <span style={{ ...sx.pill, background: storeBad ? "#5a1b24" : "#14331f", color: storeBad ? "#ff9aa6" : "#5fe3a1" }}>
           store: {data.store}
         </span>
+        <div style={sx.tabs}>
+          <button style={{ ...sx.tab, ...(tab === "live" ? sx.tabOn : null) }} onClick={() => setTab("live")}>
+            LIVE
+          </button>
+          <button style={{ ...sx.tab, ...(tab === "analytics" ? sx.tabOn : null) }} onClick={() => setTab("analytics")}>
+            ANALYTICS
+          </button>
+        </div>
         <button style={sx.ghost} disabled={busy} onClick={() => void load(key)}>REFRESH</button>
         <button
           style={sx.ghost}
@@ -165,6 +175,8 @@ export default function DeveloperPanel() {
         </p>
       )}
 
+      {tab === "analytics" ? <Analytics adminKey={key} /> : (
+      <>
       <section style={sx.grid}>
         <Stat label="Online now" value={data.city.online} />
         <Stat label="Nicknames" value={data.names.count} />
@@ -316,6 +328,8 @@ export default function DeveloperPanel() {
           <pre style={sx.log}>{log.join("\n")}</pre>
         </Panel>
       )}
+      </>
+      )}
     </main>
   );
 }
@@ -421,5 +435,8 @@ const sx: Record<string, React.CSSProperties> = {
   dl: { display: "grid", gridTemplateColumns: "200px 1fr", gap: "6px 12px", margin: 0, fontSize: 14 },
   dt: { color: "#7d86a8" },
   dd: { margin: 0, wordBreak: "break-all" },
+  tabs: { display: "flex", gap: 4, marginLeft: "auto" },
+  tab: { padding: "7px 14px", borderRadius: 8, border: "1px solid #2b3358", background: "transparent", color: "#7d86a8", cursor: "pointer", fontSize: 12, letterSpacing: 1 },
+  tabOn: { background: "#1a2140", color: "#fff", borderColor: "#3a4676" },
   log: { margin: 0, fontSize: 12, color: "#9fb0ff", whiteSpace: "pre-wrap", fontFamily: "monospace" },
 };
