@@ -208,6 +208,47 @@ export class ChainTransport implements PvpTransport {
     return this.handOff(me, team);
   }
 
+  /**
+   * Ranked: the base layer already paired these two in a `MatchRoom`, so there
+   * is no searching here. Both clients race to send `pair_ranked`; the second
+   * one is a no-op in the program, and either way the match is live once the
+   * duelist points at the opponent.
+   */
+  async findRanked(
+    team: TeamBuild,
+    opponent: string,
+    roomId: bigint,
+    onStatus: (phase: SearchPhase, detail?: string) => void,
+    signal: AbortSignal,
+  ): Promise<MatchInfo> {
+    onStatus("preparing");
+    let me = await this.ensureReady(onStatus, signal);
+    const other = new PublicKey(opponent);
+
+    if (me.status === P.STATUS.matched && !me.opponent.equals(other)) {
+      await this.sendEr([P.leaveMatchIx(this.program, this.wallet, this.sessionPub)]);
+    }
+
+    onStatus("searching", "Opening the arena...");
+    const teamBytes = encodeTeam(team);
+    // The team travels on the duelist account, which `pair_ranked` does not
+    // set: search_match is what writes it, so send it first and ignore the
+    // rejection that follows when the lobby slot is taken.
+    await this.sendEr([P.searchMatchIx(this.program, this.wallet, this.sessionPub, teamBytes)])
+      .catch(() => undefined);
+    await this.sendEr([P.pairRankedIx(this.program, this.wallet, this.sessionPub, other, roomId)])
+      .catch(() => undefined);
+
+    me = await this.pollUntil(
+      () => this.readEr(this.mePda, P.decodeDuelist),
+      (d) => d.status === P.STATUS.matched && d.opponent.equals(other),
+      30_000,
+      "The ranked match did not start on the rollup.",
+      signal,
+    );
+    return this.handOff(me, team);
+  }
+
   /** Reads the opponent's side of a started match and opens the session. */
   private async handOff(me: P.DuelistAccount, team: TeamBuild, signal?: AbortSignal): Promise<MatchInfo> {
     const matchId = me.matchId;

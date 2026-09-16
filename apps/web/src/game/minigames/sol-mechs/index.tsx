@@ -30,6 +30,12 @@ import { MATRICES, PRESET_BUILDS } from "@/game/solmechs/data/catalog";
 import { recordResult, loadHangar, getBuild } from "@/game/solmechs/hangar";
 import { useWallet } from "@solana/wallet-adapter-react";
 import PvpLobby from "./PvpLobby";
+import RankedHome from "./RankedHome";
+import RankedQueue from "./RankedQueue";
+import Leaderboard from "./Leaderboard";
+import { RankedClient, type PairedRoom } from "@/game/solmechs/ranked/rankedClient";
+import { isPvpChainConfigured } from "@/game/solmechs/pvp/chain/config";
+import { ChainTransport } from "@/game/solmechs/pvp/chain/ChainTransport";
 import RulesScreen from "./RulesScreen";
 import { openPvpTransport, PvpSession, type PvpTransport } from "@/game/solmechs/pvp";
 import type { SolMechsContext } from "../types";
@@ -56,9 +62,14 @@ import { LIMB_SLOTS, type MechId, type ModuleSlot, type MechBuild, type MoveDefi
 
 type Phase =
   | "menu" | "hangar" | "squad" | "team-battle" | "battle" | "result"
-  | "pvp-squad" | "pvp-lobby" | "pvp-battle" | "rules";
+  | "pvp-squad" | "pvp-lobby" | "pvp-battle" | "rules"
+  | "ranked-home" | "ranked-board" | "ranked-squad" | "ranked-queue"
+  | "ranked-battle" | "ranked-result";
 
-const PVP_PHASES: Phase[] = ["pvp-squad", "pvp-lobby", "pvp-battle"];
+const PVP_PHASES: Phase[] = [
+  "pvp-squad", "pvp-lobby", "pvp-battle",
+  "ranked-squad", "ranked-queue", "ranked-battle", "ranked-result",
+];
 
 /** Paper-doll scale for the roster cards. */
 const CARD_SCALE = 2;
@@ -156,6 +167,17 @@ const sxBattle: Record<string, React.CSSProperties> = {
   resultCard: { ...CARD, flex: 1, minWidth: 0, padding: `${SP.xl}px ${SP.lg}px` },
 };
 
+/** One frame while the rollup transport is being created for a ranked room. */
+function RankedHandoff() {
+  return (
+    <div style={backdrop}>
+      <div style={{ ...panel(W.narrow), padding: SP.xl, textAlign: "center", color: C.body }}>
+        Opening the arena...
+      </div>
+    </div>
+  );
+}
+
 function SlotIcon({ slot, size = 20 }: { slot: ModuleSlot; size?: number }) {
   return (
     <img
@@ -193,6 +215,11 @@ export default function SolMechsBattle({ context, onResult, onClose }: MiniGameC
   const [enemyTeam, setEnemyTeam] = useState<TeamBuild | null>(null);
   const [pvpTransport, setPvpTransport] = useState<PvpTransport | null>(null);
   const [pvpNotice, setPvpNotice] = useState<string | null>(null);
+  /** The ranked room the base layer paired us into, and how it ended. */
+  const [rankedRoom, setRankedRoom] = useState<PairedRoom | null>(null);
+  const [rankedOutcome, setRankedOutcome] = useState<
+    { won: boolean; before: number; after: number | null; error?: string } | null
+  >(null);
   const { publicKey, signTransaction } = useWallet();
 
   // A PvP transport lives only while the player is on a PvP screen.
@@ -206,6 +233,46 @@ export default function SolMechsBattle({ context, onResult, onClose }: MiniGameC
   useEffect(() => () => pvpTransportRef.current?.dispose(), []);
   /** Which chassis this wallet may field. Resolved from chain. */
   const ownership = useOwnership();
+
+  /**
+   * The ranked season lives on the base layer (rating, energy, queue, rooms),
+   * so it needs the wallet itself rather than the session key. Null until the
+   * program is configured and a wallet is connected.
+   */
+  const ranked = useMemo(() => {
+    if (!isPvpChainConfigured() || !publicKey || !signTransaction) return null;
+    try {
+      return new RankedClient(publicKey, signTransaction);
+    } catch {
+      return null;
+    }
+  }, [publicKey, signTransaction]);
+
+  const rankedUnavailable = !isPvpChainConfigured()
+    ? "Ranked opens when the Sol Mechs program is live on devnet."
+    : !publicKey
+      ? "Connect your wallet to play ranked."
+      : null;
+
+  /** Reports the result, then reads the rating back once both sides agree. */
+  const settleRanked = useCallback(async (won: boolean, room: PairedRoom, before: number) => {
+    setRankedOutcome({ won, before, after: null });
+    if (!ranked) return;
+    try {
+      await ranked.reportResult(room.roomId, room.opponent, won);
+      // The ladder only moves once the opponent reports the same thing.
+      for (let i = 0; i < 10; i++) {
+        const entry = await ranked.readEntry();
+        if (entry && entry.rating !== before) {
+          setRankedOutcome({ won, before, after: entry.rating });
+          return;
+        }
+        await new Promise((r) => setTimeout(r, 3_000));
+      }
+    } catch (err) {
+      setRankedOutcome({ won, before, after: null, error: (err as Error).message });
+    }
+  }, [ranked]);
 
   /**
    * Both clocks run while the round is being chosen and stop while it
@@ -426,6 +493,7 @@ export default function SolMechsBattle({ context, onResult, onClose }: MiniGameC
           if (choice === "pve") setPhase("hangar");
           else if (choice === "squad") setPhase("squad");
           else if (choice === "rules") setPhase("rules");
+          else if (choice === "ranked") setPhase("ranked-home");
           else {
             setPvpNotice(null);
             setPhase("pvp-squad");
@@ -519,6 +587,142 @@ export default function SolMechsBattle({ context, onResult, onClose }: MiniGameC
           setPhase("pvp-battle");
         }}
       />
+    );
+  }
+
+  // ==================== RANKED ====================
+  if (phase === "ranked-home") {
+    return (
+      <RankedHome
+        client={ranked}
+        unavailable={rankedUnavailable}
+        onQueue={() => setPhase("ranked-squad")}
+        onLeaderboard={() => setPhase("ranked-board")}
+        onClose={() => setPhase("menu")}
+      />
+    );
+  }
+
+  if (phase === "ranked-board" && ranked) {
+    return <Leaderboard client={ranked} me={publicKey ?? null} onClose={() => setPhase("ranked-home")} />;
+  }
+
+  if (phase === "ranked-squad") {
+    return (
+      <TeamBuilder
+        deployLabel="ENTER THE QUEUE"
+        notice={pvpNotice ?? "Ranked: 1 energy per match."}
+        onClose={() => setPhase("ranked-home")}
+        onDeploy={(team) => {
+          setPlayerTeam(team);
+          setPvpNotice(null);
+          setPhase("ranked-queue");
+        }}
+      />
+    );
+  }
+
+  if (phase === "ranked-queue" && ranked && playerTeam) {
+    return (
+      <RankedQueue
+        client={ranked}
+        rating={rankedOutcome?.after ?? 1000}
+        onCancel={() => setPhase("ranked-home")}
+        onPaired={(room) => {
+          setRankedRoom(room);
+          setPhase("ranked-battle");
+        }}
+      />
+    );
+  }
+
+  if (phase === "ranked-battle" && ranked && rankedRoom && playerTeam && publicKey && signTransaction) {
+    // The battle itself is the ordinary PvP screen; only how the pairing was
+    // made and what happens to the result differ.
+    if (!pvpTransport) {
+      const transport = new ChainTransport(publicKey, signTransaction);
+      setPvpTransport(transport);
+      return <RankedHandoff />;
+    }
+    if (!enemyTeam || !squadOpponent) {
+      return (
+        <PvpLobby
+          team={playerTeam}
+          transport={pvpTransport}
+          ranked={rankedRoom}
+          onCancel={() => setPhase("ranked-home")}
+          onMatched={(match) => {
+            setEnemyTeam(match.opponent.team);
+            setSquadOpponent(new RemoteSquadOpponent(new PvpSession(pvpTransport, match)));
+          }}
+        />
+      );
+    }
+    return (
+      <TeamBattleScreen
+        playerTeam={playerTeam}
+        enemyTeam={enemyTeam}
+        opponent={squadOpponent}
+        onClose={() => setPhase("ranked-result")}
+        onFinished={(playerWon) => {
+          recordResult(playerWon);
+          void pvpTransport.leave();
+          void ranked.readEntry().then((entry) => {
+            void settleRanked(playerWon, rankedRoom, entry?.rating ?? 1000);
+          });
+          void onResult({
+            success: playerWon,
+            metadata: { game: "sol-mechs", mode: "ranked", keepOpen: true, room: rankedRoom.roomId.toString() },
+          });
+        }}
+      />
+    );
+  }
+
+  if (phase === "ranked-result" && rankedOutcome) {
+    const { won, before, after, error } = rankedOutcome;
+    const delta = after === null ? null : after - before;
+    return (
+      <div style={backdrop}>
+        <div style={{ ...panel(W.narrow), padding: SP.xl, textAlign: "center" }}>
+          <img
+            src={`/assets/minigames/sol-mechs/ui/${won ? "win-trophy" : "lose-rip"}.png`}
+            alt=""
+            style={{ imageRendering: "pixelated", height: 64, width: "auto" }}
+            onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+          />
+          <div style={{ fontSize: T.title, color: won ? C.good : C.bad, letterSpacing: 2, marginTop: SP.sm }}>
+            {won ? "VICTORY" : "DEFEAT"}
+          </div>
+          <div style={{ fontSize: T.display, color: C.text, marginTop: SP.md }}>
+            {before}
+            {delta !== null && (
+              <span style={{ color: delta >= 0 ? C.good : C.bad, fontSize: T.lead, marginLeft: SP.sm }}>
+                {delta >= 0 ? "+" : ""}{delta}
+              </span>
+            )}
+          </div>
+          <div style={{ fontSize: T.small, color: error ? C.bad : C.dim, marginTop: SP.sm, lineHeight: 1.6 }}>
+            {error ?? (delta === null
+              ? "Waiting for your opponent to confirm the result."
+              : "Rating updated on-chain.")}
+          </div>
+          <div style={{ display: "flex", gap: SP.sm, justifyContent: "center", marginTop: SP.lg }}>
+            <button
+              style={button("primary")}
+              onClick={() => {
+                setEnemyTeam(null);
+                setSquadOpponent(null);
+                setRankedRoom(null);
+                setRankedOutcome(null);
+                setPhase("ranked-home");
+              }}
+            >
+              BACK TO RANKED
+            </button>
+          </div>
+        </div>
+      </div>
     );
   }
 
