@@ -18,6 +18,7 @@ import { showEmoji, EmojiDef } from "../chat/EmojiSystem";
 import { soundManager } from "../audio/SoundManager";
 import { publishMinimap } from "../minimap/MinimapHost";
 import { cachedName, onNames, requestNames, NAME_CHANGED_EVENT } from "../names/nameService";
+import { track } from "../telemetry/track";
 
 // Pixel-perfect zoom values and snapping live in config/zoomConfig.ts —
 // shared with ZoomControl and the pinch-zoom hook.
@@ -1016,10 +1017,14 @@ export class CityScene extends Phaser.Scene {
       // finder city-wide scores. Award the "found" banner (and its on-chain
       // points) only if OUR claim landed first; the round then advances for all.
       this.network?.claimFind(getRoundIndex()).then((won) => {
-        if (won) this.game.events.emit("whereIsNPC:found", { wallet, loadout: target.loadout });
+        if (won) {
+          this.game.events.emit("whereIsNPC:found", { wallet, loadout: target.loadout });
+          track("hunt", "found", { value: 1, label: "found the citizen" });
+        }
       });
     } else {
       this.game.events.emit("whereIsNPC:found", { wallet, loadout: target.loadout });
+      track("hunt", "found", { value: 1, label: "found the citizen" });
     }
 
     const FOUND_LINES = [

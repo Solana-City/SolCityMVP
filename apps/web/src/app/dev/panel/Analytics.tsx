@@ -13,6 +13,30 @@ import { useCallback, useEffect, useState } from "react";
 
 interface Series { day: string; count: number }
 
+interface KindSummary {
+  id: string;
+  count: number;
+  users: number;
+  last7: number;
+  top: { wallet: string; count: number }[];
+  best: { wallet: string; score: number }[];
+}
+
+interface FeedItem {
+  kind: string; id: string; wallet: string; value: number;
+  success: boolean | null; label: string; at: number;
+}
+
+interface Events {
+  enabled: boolean;
+  protocols: KindSummary[];
+  opens: KindSummary[];
+  minigames: KindSummary[];
+  hunt: KindSummary | null;
+  duels: KindSummary[];
+  feed: FeedItem[];
+}
+
 interface Data {
   ok: boolean;
   generatedAt: number;
@@ -27,6 +51,7 @@ interface Data {
   top: { wallet: string; name: string; score: number; actions: number }[];
   mechs: { duelists: number; ladderEntries: number; rankedMatches: number; rooms: number };
   nicknames: number;
+  events: Events | null;
   errors: string[];
 }
 
@@ -34,6 +59,8 @@ export default function Analytics({ adminKey }: { adminKey: string }) {
   const [data, setData] = useState<Data | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  /** Wallet -> nickname, so the tables read as people rather than addresses. */
+  const [names, setNames] = useState<Record<string, string>>({});
 
   const load = useCallback(async (force = false) => {
     setBusy(true);
@@ -52,6 +79,29 @@ export default function Analytics({ adminKey }: { adminKey: string }) {
   }, [adminKey]);
 
   useEffect(() => { void load(); }, [load]);
+
+  // Resolve every wallet the tables mention in one request.
+  useEffect(() => {
+    if (!data) return;
+    const wallets = new Set<string>();
+    for (const row of data.top) wallets.add(row.wallet);
+    const ev = data.events;
+    if (ev) {
+      const groups = [...ev.protocols, ...ev.opens, ...ev.minigames, ...ev.duels, ...(ev.hunt ? [ev.hunt] : [])];
+      for (const g of groups) {
+        for (const t of g.top) wallets.add(t.wallet);
+        for (const b of g.best) wallets.add(b.wallet);
+      }
+      for (const f of ev.feed) wallets.add(f.wallet);
+    }
+    if (wallets.size === 0) return;
+    fetch(`/api/names?wallets=${encodeURIComponent([...wallets].slice(0, 100).join(","))}`)
+      .then((r) => r.json())
+      .then((body) => setNames(body.names ?? {}))
+      .catch(() => undefined);
+  }, [data]);
+
+  const who = (wallet: string) => names[wallet] ?? `${wallet.slice(0, 4)}...${wallet.slice(-4)}`;
 
   if (error) return <p style={sx.error}>{error}</p>;
   if (!data) return <p style={sx.dim}>Reading the chain...</p>;
@@ -121,6 +171,149 @@ export default function Analytics({ adminKey }: { adminKey: string }) {
         </section>
       </Panel>
 
+      {data.events && !data.events.enabled && (
+        <p style={sx.warn}>
+          Gameplay events need the key-value store. Everything below fills in
+          once players act with it configured.
+        </p>
+      )}
+
+      {data.events?.enabled && (
+        <>
+          <Panel title="Protocols: opened vs used">
+            <p style={sx.dim}>
+              Opened counts a player walking up to an NPC and starting the flow.
+              Used counts a confirmed transaction. The gap between them is where
+              people give up.
+            </p>
+            <table style={sx.table}>
+              <thead>
+                <tr>
+                  <th style={sx.th}>Protocol</th>
+                  <th style={sx.thNum}>Opened</th>
+                  <th style={sx.thNum}>Players</th>
+                  <th style={sx.thNum}>Used</th>
+                  <th style={sx.thNum}>Players</th>
+                  <th style={sx.thNum}>7d</th>
+                  <th style={sx.th}>Heaviest users</th>
+                </tr>
+              </thead>
+              <tbody>
+                {mergeProtocols(data.events).map((row) => (
+                  <tr key={row.id}>
+                    <td style={sx.td}>{row.id}</td>
+                    <td style={sx.tdNum}>{row.opened}</td>
+                    <td style={sx.tdNum}>{row.openedUsers}</td>
+                    <td style={{ ...sx.tdNum, color: row.used ? "#14F195" : undefined }}>{row.used}</td>
+                    <td style={sx.tdNum}>{row.usedUsers}</td>
+                    <td style={sx.tdNum}>{row.last7}</td>
+                    <td style={sx.td}>
+                      {row.top.length === 0 ? <span style={sx.dim}>-</span> : row.top.map((t) => (
+                        <span key={t.wallet} style={sx.chip}>{who(t.wallet)} · {t.count}</span>
+                      ))}
+                    </td>
+                  </tr>
+                ))}
+                {mergeProtocols(data.events).length === 0 && (
+                  <tr><td style={sx.td} colSpan={7}><span style={sx.dim}>No protocol activity recorded yet.</span></td></tr>
+                )}
+              </tbody>
+            </table>
+          </Panel>
+
+          <Panel title="Mini-games">
+            {data.events.minigames.length === 0 ? (
+              <p style={sx.dim}>No rounds recorded yet.</p>
+            ) : (
+              <table style={sx.table}>
+                <thead>
+                  <tr>
+                    <th style={sx.th}>Game</th>
+                    <th style={sx.thNum}>Rounds</th>
+                    <th style={sx.thNum}>Players</th>
+                    <th style={sx.thNum}>7d</th>
+                    <th style={sx.th}>Best scores</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.events.minigames.map((g) => (
+                    <tr key={g.id}>
+                      <td style={sx.td}>{g.id}</td>
+                      <td style={sx.tdNum}>{g.count}</td>
+                      <td style={sx.tdNum}>{g.users}</td>
+                      <td style={sx.tdNum}>{g.last7}</td>
+                      <td style={sx.td}>
+                        {g.best.length === 0 ? <span style={sx.dim}>-</span> : g.best.map((b, i) => (
+                          <span key={b.wallet} style={sx.chip}>{i + 1}. {who(b.wallet)} · {b.score}</span>
+                        ))}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </Panel>
+
+          <Panel title="Find Someone">
+            {!data.events.hunt ? (
+              <p style={sx.dim}>Nobody has found the hidden citizen yet.</p>
+            ) : (
+              <>
+                <section style={sx.grid}>
+                  <Stat label="Citizens found" value={data.events.hunt.count} />
+                  <Stat label="Finders" value={data.events.hunt.users} />
+                  <Stat label="Last 7 days" value={data.events.hunt.last7} />
+                </section>
+                <table style={sx.table}>
+                  <thead>
+                    <tr>
+                      <th style={sx.th}>#</th>
+                      <th style={sx.th}>Finder</th>
+                      <th style={sx.thNum}>Finds</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.events.hunt.top.map((t, i) => (
+                      <tr key={t.wallet}>
+                        <td style={sx.td}>{i + 1}</td>
+                        <td style={sx.td}>{who(t.wallet)}</td>
+                        <td style={sx.tdNum}>{t.count}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </>
+            )}
+          </Panel>
+
+          {data.events.duels.length > 0 && (
+            <Panel title="Mech battles">
+              <section style={sx.grid}>
+                {data.events.duels.map((d) => (
+                  <Stat key={d.id} label={d.id === "invite" ? "Invites sent" : "Invites accepted"} value={d.count} hint={`${d.users} players`} />
+                ))}
+              </section>
+            </Panel>
+          )}
+
+          <Panel title="Recent activity">
+            {data.events.feed.length === 0 ? (
+              <p style={sx.dim}>Nothing recorded yet.</p>
+            ) : (
+              <div style={sx.feed}>
+                {data.events.feed.slice(0, 40).map((f, i) => (
+                  <div key={`${f.at}-${i}`} style={sx.feedRow}>
+                    <span style={sx.feedTime}>{new Date(f.at).toLocaleTimeString()}</span>
+                    <span style={sx.feedKind}>{f.kind}</span>
+                    <span style={{ flex: 1 }}>{who(f.wallet)} · {f.id}{f.label ? ` · ${f.label}` : ""}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Panel>
+        </>
+      )}
+
       <Panel title="Top players">
         {data.top.length === 0 ? (
           <p style={sx.dim}>No scores yet.</p>
@@ -153,13 +346,36 @@ export default function Analytics({ adminKey }: { adminKey: string }) {
       </Panel>
 
       <p style={sx.dim}>
-        Not measurable from the chain: page visits, mini-game rounds, tutorial
-        completion and quest progress. Those live in the player&apos;s browser. If
-        any of them matter, they need a small event endpoint before they can be
-        counted.
+        Still not measured: page visits by people who never connect a wallet,
+        tutorial completion and quest progress. Everything else on this page is
+        either on-chain or reported by the game as it happens.
       </p>
     </>
   );
+}
+
+/**
+ * One row per protocol, joining "opened the flow" with "confirmed a
+ * transaction". They are separate event kinds because they are separate
+ * moments, but a partner only wants to see one line per protocol.
+ */
+function mergeProtocols(ev: Events) {
+  const rows = new Map<string, {
+    id: string; opened: number; openedUsers: number; used: number; usedUsers: number;
+    last7: number; top: { wallet: string; count: number }[];
+  }>();
+  for (const o of ev.opens) {
+    rows.set(o.id, { id: o.id, opened: o.count, openedUsers: o.users, used: 0, usedUsers: 0, last7: o.last7, top: o.top });
+  }
+  for (const u of ev.protocols) {
+    const row = rows.get(u.id) ?? { id: u.id, opened: 0, openedUsers: 0, used: 0, usedUsers: 0, last7: 0, top: [] };
+    row.used = u.count;
+    row.usedUsers = u.users;
+    row.last7 = Math.max(row.last7, u.last7);
+    if (u.top.length) row.top = u.top;
+    rows.set(u.id, row);
+  }
+  return [...rows.values()].sort((a, b) => (b.used + b.opened) - (a.used + a.opened));
 }
 
 /** A day-by-day bar chart. Plain divs: 30 bars need no chart library. */
@@ -217,5 +433,10 @@ const sx: Record<string, React.CSSProperties> = {
   thNum: { textAlign: "right", padding: "6px 8px", color: "#7d86a8", fontWeight: 500, fontSize: 12, borderBottom: "1px solid #232a44" },
   td: { padding: "7px 8px", borderBottom: "1px solid #161c30" },
   tdNum: { padding: "7px 8px", borderBottom: "1px solid #161c30", textAlign: "right", fontVariantNumeric: "tabular-nums" },
+  chip: { display: "inline-block", fontSize: 11, padding: "2px 7px", margin: "2px 4px 2px 0", borderRadius: 6, background: "#141a2e", border: "1px solid #232a44" },
+  feed: { display: "flex", flexDirection: "column", gap: 2, fontSize: 12 },
+  feedRow: { display: "flex", gap: 10, padding: "4px 0", borderBottom: "1px solid #161c30", alignItems: "center" },
+  feedTime: { color: "#5b6485", fontFamily: "monospace", flexShrink: 0 },
+  feedKind: { color: "#9fb0ff", width: 92, flexShrink: 0 },
   ghost: { padding: "8px 12px", borderRadius: 8, border: "1px solid #2b3358", background: "transparent", color: "#aab3d4", cursor: "pointer", fontSize: 13 },
 };

@@ -110,3 +110,60 @@ export async function hdel(key: string, field: string): Promise<void> {
   const h = memory.get(key) as Record<string, string> | undefined;
   if (h) delete h[field];
 }
+
+// ── Counters, sorted sets and lists (the analytics events use these) ────────
+
+export async function incr(key: string, by = 1): Promise<number> {
+  if (storeMode() === "redis") return redis<number>(["INCRBY", key, by]);
+  const n = Number((memory.get(key) as string | undefined) ?? 0) + by;
+  memory.set(key, String(n));
+  return n;
+}
+
+/** Adds to a member's score in a sorted set, creating it when missing. */
+export async function zincrby(key: string, member: string, by = 1): Promise<void> {
+  if (storeMode() === "redis") { await redis(["ZINCRBY", key, by, member]); return; }
+  const z = (memory.get(key) as Map<string, number> | undefined) ?? new Map<string, number>();
+  z.set(member, (z.get(member) ?? 0) + by);
+  memory.set(key, z);
+}
+
+/** Keeps the highest score seen for a member. */
+export async function zmax(key: string, member: string, score: number): Promise<void> {
+  if (storeMode() === "redis") { await redis(["ZADD", key, "GT", score, member]); return; }
+  const z = (memory.get(key) as Map<string, number> | undefined) ?? new Map<string, number>();
+  if (score > (z.get(member) ?? -Infinity)) z.set(member, score);
+  memory.set(key, z);
+}
+
+/** Highest scores first. */
+export async function ztop(key: string, limit = 10): Promise<{ member: string; score: number }[]> {
+  if (storeMode() === "redis") {
+    const flat = await redis<string[]>(["ZRANGE", key, 0, limit - 1, "REV", "WITHSCORES"]);
+    const out: { member: string; score: number }[] = [];
+    for (let i = 0; i + 1 < flat.length; i += 2) out.push({ member: flat[i], score: Number(flat[i + 1]) });
+    return out;
+  }
+  const z = (memory.get(key) as Map<string, number> | undefined) ?? new Map<string, number>();
+  return [...z.entries()]
+    .map(([member, score]) => ({ member, score }))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit);
+}
+
+/** Pushes onto the head of a capped list (a recent-activity feed). */
+export async function lpushCapped(key: string, value: string, cap: number): Promise<void> {
+  if (storeMode() === "redis") {
+    await redis(["LPUSH", key, value]);
+    await redis(["LTRIM", key, 0, cap - 1]);
+    return;
+  }
+  const l = (memory.get(key) as string[] | undefined) ?? [];
+  l.unshift(value);
+  memory.set(key, l.slice(0, cap));
+}
+
+export async function lrange(key: string, limit: number): Promise<string[]> {
+  if (storeMode() === "redis") return redis<string[]>(["LRANGE", key, 0, limit - 1]);
+  return ((memory.get(key) as string[] | undefined) ?? []).slice(0, limit);
+}

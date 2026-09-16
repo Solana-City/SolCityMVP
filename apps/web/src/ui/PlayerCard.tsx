@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { OnChainMultiplayer, OnChainPlayer } from "@/game/multiplayer/OnChainMultiplayer";
 import { useFlags } from "@/ui/useFlags";
+import { track } from "@/game/telemetry/track";
 
 /** The city opens Sol Mechs on this, with the player to duel. */
 export const DUEL_INVITE_EVENT = "solcity:solmechs-duel";
@@ -115,6 +116,7 @@ export default function PlayerCard({ gameRef, wallet, displayName, myWallet, onC
         {!isSelf && flags.duels && (
           <button
             onClick={() => {
+              track("duel", "invite", { value: 1, label: "challenged a player" });
               window.dispatchEvent(new CustomEvent(DUEL_INVITE_EVENT, {
                 detail: { kind: "challenge", opponent: wallet, name: displayName || player?.displayName },
               }));

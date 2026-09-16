@@ -13,6 +13,7 @@ import { guideSeen, markGuideSeen } from "@/ui/CityGuide";
 import { fetchStatus } from "@/game/names/nameService";
 import { profileManager } from "@/game/config/profileManager";
 import { useFlags } from "@/ui/useFlags";
+import { setTrackedWallet, track } from "@/game/telemetry/track";
 
 // All Solana/wallet-adapter code must be client-only — these packages
 // access `window`/`navigator` at module-load time and crash the SSR pass.
@@ -180,6 +181,12 @@ export default function Home() {
 
   const handleAction = useCallback((action: NPCAction, npc?: NPCDefinition) => {
     setActiveNPC(null);
+    // Which protocol a player OPENS, against which one they finish (tracked
+    // from the confirmed transaction below): the pair is the funnel each
+    // partner project asks about.
+    if (action.type !== "placeholder") {
+      track("protocol-open", npc?.id ?? action.type, { label: npc?.name ?? action.type });
+    }
     // Daily quest hooks — triggered when player initiates the action
     if (walletAddress) {
       if (action.type === "swap")     incrementQuest(walletAddress, "swap_jupiter");
@@ -225,6 +232,17 @@ export default function Home() {
     // The id rides along so the scene can tell WHICH game was won — the
     // Superteam Brasil cap is a Kite Clash reward, not a reward for any win.
     game?.events.emit("minigame:result", { id: activeMiniGame?.id, success: result.success });
+    if (activeMiniGame?.id) {
+      const meta = result.metadata ?? {};
+      const score = typeof meta.score === "number"
+        ? meta.score
+        : typeof meta.completedOrders === "number" ? meta.completedOrders : 0;
+      track("minigame", activeMiniGame.id, {
+        value: score,
+        success: result.success,
+        label: `${result.success ? "won" : "lost"}${score ? ` · ${score}` : ""}`,
+      });
+    }
     // Games with their own result screen (Sol Mechs) report the outcome as
     // soon as a match ends and stay open; the player leaves when ready.
     if (result.metadata?.keepOpen) return;
@@ -244,6 +262,7 @@ export default function Home() {
   }, []);
 
   const handleWalletChange = useCallback((wallet: string | null) => {
+    setTrackedWallet(wallet);
     setWalletAddress(wallet);
     // Mirror it somewhere CityScene can read on its own. If the wallet connects
     // while BootScene is still preloading there is no scene to push to yet, and

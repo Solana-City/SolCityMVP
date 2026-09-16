@@ -16,6 +16,8 @@
  *      transitions to "confirmed" (with signature) or "failed" (with error).
  */
 
+import { track } from "./track";
+
 export type TxKind =
   | "move"       // update_position on ephemeral rollup
   | "swap"       // Jupiter swap
@@ -160,12 +162,23 @@ class TransactionLogService {
     this.notify();
   }
 
+  /** Kinds worth reporting to the analytics: a protocol was actually used. */
+  private static readonly TRACKED: ReadonlySet<TxKind> = new Set<TxKind>([
+    "swap", "stock", "transfer", "bounty",
+  ]);
+
   markConfirmed(id: string, signature: string): void {
     const entry = this.entries.find((e) => e.id === id);
     if (!entry) return;
     entry.status = "confirmed";
     entry.signature = signature;
     entry.updatedAt = Date.now();
+    // A confirmed money transaction is the moment a protocol was really used,
+    // which is what the partner projects are counted on. Failed and pending
+    // ones are deliberately not reported.
+    if (TransactionLogService.TRACKED.has(entry.kind)) {
+      track("protocol", entry.kind, { value: 1, label: entry.label });
+    }
     this.notify();
   }
 

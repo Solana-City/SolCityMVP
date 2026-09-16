@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { analytics } from "@/lib/admin/analytics";
 import { nameCount } from "@/lib/names/nameStore";
+import { eventReport } from "@/lib/analytics/events";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -17,9 +18,10 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ ok: false }, { status: 401 });
   }
   const force = req.nextUrl.searchParams.get("force") === "1";
-  const [data, names] = await Promise.all([
+  const [data, names, events] = await Promise.all([
     analytics(force),
     nameCount().catch(() => 0),
+    eventReport().catch(() => null),
   ]);
-  return NextResponse.json({ ok: true, ...data, nicknames: names });
+  return NextResponse.json({ ok: true, ...data, nicknames: names, events });
 }

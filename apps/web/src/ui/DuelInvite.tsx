@@ -16,6 +16,7 @@ import { DUEL_INVITE_EVENT } from "@/ui/PlayerCard";
 import { cachedName, onNames, requestNames } from "@/game/names/nameService";
 import { Bust } from "@/game/minigames/sol-mechs/SquadPortraits";
 import { PRESET_BUILDS } from "@/game/solmechs/data/catalog";
+import { track } from "@/game/telemetry/track";
 
 const PIX = '"Press Start 2P", monospace';
 
@@ -53,6 +54,7 @@ export default function DuelInvite({ wallet }: { wallet: string | null }) {
   const who = name ?? shortWallet(invite.challenger);
 
   const accept = () => {
+    track("duel", "accept", { value: 1, label: "accepted a duel" });
     window.dispatchEvent(new CustomEvent(DUEL_INVITE_EVENT, {
       detail: { kind: "accept", opponent: invite.challenger, name: who },
     }));
