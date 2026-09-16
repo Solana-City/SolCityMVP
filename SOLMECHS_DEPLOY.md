@@ -87,7 +87,7 @@ Casual PvP:
 - [ ] A second match needs no new approval.
 
 Friendly duel (from the city):
-- [ ] Click another player in the city → CHALLENGE TO A DUEL.
+- [ ] Click another player in the city → MECH BATTLE.
 - [ ] The other player gets the invite, accepts, and both land in a 3v3.
 - [ ] Declining, and letting it expire (2 minutes), both end cleanly.
 

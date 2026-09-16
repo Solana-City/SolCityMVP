@@ -54,7 +54,7 @@ screens work without it; each line says what it would replace.
    game's own art.
 
 10. **Challenge button icon**, `ui/duel-16.png`, 16x16, to sit inside the
-    CHALLENGE TO A DUEL button on the player card.
+    MECH BATTLE button on the player card.
 
 ## Nice to have
 
