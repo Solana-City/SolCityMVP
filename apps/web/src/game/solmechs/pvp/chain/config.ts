@@ -28,6 +28,20 @@ export const ER_ENDPOINT = "https://devnet.magicblock.app";
 
 export const DUELIST_SEED = "mech_duelist";
 export const LOBBY_SEED = "mech_lobby";
+export const SEASON_SEED = "mech_season";
+export const ENTRY_SEED = "mech_entry";
+export const QUEUE_SEED = "mech_queue";
+export const ROOM_SEED = "mech_room";
+export const POOL_SEED = "mech_pool";
+
+/** Which season the ranked screens read. Bumped when a season opens. */
+export const SEASON_ID = Number(process.env.NEXT_PUBLIC_SOLMECHS_SEASON ?? "1") || 1;
+
+/** How a match was started, mirroring MODE_* in the program. */
+export const MODE = { casual: 0, ranked: 1, friendly: 2 } as const;
+
+/** A friendly challenge nobody answered expires (CHALLENGE_TTL_SECS). */
+export const CHALLENGE_TTL_SECS = 120;
 
 /** Must equal LOBBY_TTL_SECS in programs/sol-mechs/src/lib.rs. */
 export const LOBBY_TTL_SECS = 30;
