@@ -69,6 +69,17 @@ export default function PhaserGame({ onGameReady }: PhaserGameProps) {
         mouse: true,
         touch: true,
         gamepad: false,
+        // Phaser otherwise listens for mousedown/touchstart on WINDOW and
+        // deliberately processes events whose target is NOT the canvas, so a
+        // click on any React panel above the game also hit whatever was behind
+        // it: picking an outfit in the wardrobe opened the profile card of a
+        // player standing under the board. With this off, Phaser only hears
+        // clicks that land on the canvas itself.
+        //
+        // Nothing here depended on the window listeners: the joystick and the
+        // pinch-zoom are React DOM handlers, and the scene's only pointer use
+        // is the avatar hit zones (pointerdown on the canvas).
+        windowEvents: false,
       },
       scene: [BootScene, CityScene],
       scale: {
