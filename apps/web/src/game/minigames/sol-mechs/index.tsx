@@ -32,6 +32,12 @@ import { useWallet } from "@solana/wallet-adapter-react";
 import PvpLobby from "./PvpLobby";
 import RulesScreen from "./RulesScreen";
 import { openPvpTransport, PvpSession, type PvpTransport } from "@/game/solmechs/pvp";
+import type { SolMechsContext } from "../types";
+
+/** "7NXk...uqbA" — a wallet the player can still recognise. */
+function shortWallet(wallet: string): string {
+  return wallet.length > 10 ? `${wallet.slice(0, 4)}...${wallet.slice(-4)}` : wallet;
+}
 import { LocalSquadAI, RemoteSquadOpponent, type SquadOpponent } from "@/game/solmechs/opponent/SquadOpponent";
 import MainMenu from "./MainMenu";
 import { BattleLog } from "./BattleLog";
@@ -161,7 +167,10 @@ function SlotIcon({ slot, size = 20 }: { slot: ModuleSlot; size?: number }) {
   );
 }
 
-export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentProps<MiniGameBaseContext>) {
+export default function SolMechsBattle({ context, onResult, onClose }: MiniGameComponentProps<SolMechsContext>) {
+  // A duel invite from the city skips the menu: pick a squad, then the lobby
+  // invites (or answers) that one player instead of searching.
+  const duel = context?.duel;
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rendererRef = useRef<BattleRenderer | null>(null);
   const aiRef = useRef(new LocalAIOpponent("veteran"));
@@ -169,7 +178,7 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
   // cycle, so it lives in a ref as well as in state.
   const stateRef = useRef<BattleState | null>(null);
 
-  const [phase, setPhase] = useState<Phase>("menu");
+  const [phase, setPhase] = useState<Phase>(duel ? "pvp-squad" : "menu");
   const [playerMech, setPlayerMech] = useState<MechId>("titan");
   const [battle, setBattle] = useState<BattleState | null>(null);
   const [log, setLog] = useState<string[]>([]);
@@ -477,9 +486,9 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
   if (phase === "pvp-squad") {
     return (
       <TeamBuilder
-        deployLabel="FIND MATCH"
-        notice={pvpNotice}
-        onClose={() => setPhase("menu")}
+        deployLabel={duel ? (duel.kind === "accept" ? "ACCEPT DUEL" : "SEND CHALLENGE") : "FIND MATCH"}
+        notice={pvpNotice ?? (duel ? `Duel with ${duel.name ?? shortWallet(duel.opponent)}` : null)}
+        onClose={() => (duel ? onClose() : setPhase("menu"))}
         onDeploy={(team) => {
           const opened = pvpTransport
             ? { ok: true as const, transport: pvpTransport }
@@ -502,6 +511,7 @@ export default function SolMechsBattle({ onResult, onClose }: MiniGameComponentP
       <PvpLobby
         team={playerTeam}
         transport={pvpTransport}
+        duel={duel}
         onCancel={() => setPhase("pvp-squad")}
         onMatched={(match) => {
           setEnemyTeam(match.opponent.team);

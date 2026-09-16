@@ -11,6 +11,7 @@
  * both. Only the lower id offers, and a tab with a handshake outstanding
  * ignores every other one until it settles or times out.
  */
+import type { DuelIntent } from "./types";
 import type { TeamBuild } from "../data/team";
 import { decodeTeam, encodeTeam, matchSeed } from "./protocol";
 import {
@@ -91,6 +92,20 @@ export class LocalTransport implements PvpTransport {
     this.channel = new BroadcastChannel(CHANNEL);
     this.channel.onmessage = (e: MessageEvent) => this.onMessage(e.data as Msg);
     if (typeof window !== "undefined") window.addEventListener("pagehide", this.onPageHide);
+  }
+
+  /**
+   * The two-tab transport has no identities, so a duel is just the ordinary
+   * pairing: the other tab is the only player there is.
+   */
+  findDuel(
+    team: TeamBuild,
+    duel: DuelIntent,
+    onStatus: (phase: SearchPhase, detail?: string) => void,
+    signal: AbortSignal,
+  ): Promise<MatchInfo> {
+    onStatus("searching", `Duel with ${duel.name ?? "the other tab"}: open a second tab to answer.`);
+    return this.findMatch(team, onStatus, signal);
   }
 
   findMatch(

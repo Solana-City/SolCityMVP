@@ -14,7 +14,15 @@ export interface FoodCartContext extends MiniGameBaseContext {
   expiresAt: number;
 }
 
-export type MiniGameContext = MiniGameBaseContext | FoodCartContext;
+/**
+ * Sol Mechs opens on its menu normally, and straight into a friendly duel when
+ * the player was invited from the city (or is inviting someone).
+ */
+export interface SolMechsContext extends MiniGameBaseContext {
+  duel?: { kind: "challenge" | "accept"; opponent: string; name?: string };
+}
+
+export type MiniGameContext = MiniGameBaseContext | FoodCartContext | SolMechsContext;
 
 export interface MiniGameResult {
   success: boolean;

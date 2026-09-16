@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import type { NPCDefinition, NPCAction } from "@/game/config/npcRegistry";
 import type { GameWithSceneReady, SolCityWalletHost } from "@/game/scenes/CityScene";
 import type { MiniGameContext, MiniGameResult } from "@/game/minigames/types";
+import { PublicKey } from "@solana/web3.js";
 import { launch as launchMiniGame } from "@/game/minigames";
 import { usePinchZoom } from "@/ui/usePinchZoom";
 import { incrementQuest } from "@/game/quests/QuestManager";
@@ -37,6 +38,10 @@ const QuestPanel          = dynamic(() => import("@/ui/QuestPanel"),          { 
 const PlayerCard          = dynamic(() => import("@/ui/PlayerCard"),          { ssr: false });
 const AudioBridge         = dynamic(() => import("@/ui/AudioBridge"),         { ssr: false });
 const NicknameModal       = dynamic(() => import("@/ui/NicknameModal"),       { ssr: false });
+const DuelInvite          = dynamic(() => import("@/ui/DuelInvite"),          { ssr: false });
+
+/** Sol Mechs duel invites: sent from a player card, answered from the city. */
+const DUEL_INVITE_EVENT = "solcity:solmechs-duel";
 const ExpressionWheel     = dynamic(() => import("@/ui/ExpressionWheel"),     { ssr: false });
 const Minimap             = dynamic(() => import("@/ui/Minimap"),             { ssr: false });
 
@@ -262,6 +267,20 @@ export default function Home() {
     return () => { cancelled = true; };
   }, [walletAddress, openNickname, closeNickname]);
 
+  // A duel invite (sent from a player card, or accepted from the invite card)
+  // opens Sol Mechs straight into that duel.
+  useEffect(() => {
+    const onDuel = (e: Event) => {
+      const duel = (e as CustomEvent).detail as { kind: "challenge" | "accept"; opponent: string; name?: string };
+      if (!duel?.opponent || !walletAddress) return;
+      let wallet: PublicKey | null = null;
+      try { wallet = new PublicKey(walletAddress); } catch { return; }
+      setActiveMiniGame({ id: "sol-mechs", context: { wallet, duel } });
+    };
+    window.addEventListener(DUEL_INVITE_EVENT, onDuel);
+    return () => window.removeEventListener(DUEL_INVITE_EVENT, onDuel);
+  }, [walletAddress]);
+
   // The Profile's "change nickname" button.
   useEffect(() => {
     const onOpen = () => {
@@ -433,6 +452,7 @@ export default function Home() {
 
           </div>
 
+          <DuelInvite wallet={walletAddress} />
           <ToastStack />
           <AudioBridge game={game} />
           {playerCardTarget && (

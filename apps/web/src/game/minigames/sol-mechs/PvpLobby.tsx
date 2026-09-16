@@ -10,7 +10,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { TeamBuild } from "@/game/solmechs/data/team";
 import { getMatrix } from "@/game/solmechs/data/catalog";
-import type { MatchInfo, PvpTransport, SearchPhase } from "@/game/solmechs/pvp";
+import type { DuelIntent, MatchInfo, PvpTransport, SearchPhase } from "@/game/solmechs/pvp";
 import { C, T, SP, R, MONO, PIXELATED, DISPLAY, W, backdrop, panel, eyebrow, button } from "./theme";
 
 const UI = "/assets/minigames/sol-mechs/ui";
@@ -25,6 +25,8 @@ type LobbyStatus =
 export interface PvpLobbyProps {
   team: TeamBuild;
   transport: PvpTransport;
+  /** Set for a friendly duel with one named player instead of the open lobby. */
+  duel?: DuelIntent;
   onMatched: (match: MatchInfo) => void;
   onCancel: () => void;
 }
@@ -37,7 +39,7 @@ function formatElapsed(seconds: number): string {
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 }
 
-export default function PvpLobby({ team, transport, onMatched, onCancel }: PvpLobbyProps) {
+export default function PvpLobby({ team, transport, duel, onMatched, onCancel }: PvpLobbyProps) {
   const [status, setStatus] = useState<LobbyStatus>({ phase: "preparing" });
   const [elapsed, setElapsed] = useState(0);
   const [attempt, setAttempt] = useState(0);
@@ -53,8 +55,10 @@ export default function PvpLobby({ team, transport, onMatched, onCancel }: PvpLo
     setStatus({ phase: "preparing" });
     const tick = window.setInterval(() => setElapsed(Math.floor((Date.now() - startedAt) / 1000)), 500);
 
-    transport
-      .findMatch(team, (phase, detail) => { if (!ac.signal.aborted) setStatus({ phase, detail }); }, ac.signal)
+    const report = (phase: SearchPhase, detail?: string) => {
+      if (!ac.signal.aborted) setStatus({ phase, detail });
+    };
+    (duel ? transport.findDuel(team, duel, report, ac.signal) : transport.findMatch(team, report, ac.signal))
       .then((match) => {
         if (ac.signal.aborted) return;
         found = true;
@@ -72,7 +76,7 @@ export default function PvpLobby({ team, transport, onMatched, onCancel }: PvpLo
       window.clearTimeout(handoff);
       if (!found) ac.abort();
     };
-  }, [transport, team, attempt]);
+  }, [transport, team, duel, attempt]);
 
   const cancel = () => {
     // Found but not yet handed off: the opponent is already committed to this

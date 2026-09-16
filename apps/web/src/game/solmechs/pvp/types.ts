@@ -45,6 +45,18 @@ export interface OpponentReveal {
 
 export type SearchPhase = "preparing" | "searching";
 
+/**
+ * A friendly duel between two players who already know each other: one sends
+ * the invite from the city, the other accepts it. No rating, no queue.
+ */
+export interface DuelIntent {
+  kind: "challenge" | "accept";
+  /** The other player's wallet. */
+  opponent: string;
+  /** Their display name, when the city knows one. */
+  name?: string;
+}
+
 export interface PvpTransport {
   readonly kind: "local" | "chain";
   /** Shown in the lobby, so a tester knows which network they are on. */
@@ -53,6 +65,17 @@ export interface PvpTransport {
   /** Resolves once paired. Rejects with an AbortError when `signal` aborts. */
   findMatch(
     team: TeamBuild,
+    onStatus: (phase: SearchPhase, detail?: string) => void,
+    signal: AbortSignal,
+  ): Promise<MatchInfo>;
+
+  /**
+   * Invites one named player, or accepts their invite. Resolves the same way
+   * as `findMatch` once both sides are in.
+   */
+  findDuel(
+    team: TeamBuild,
+    duel: DuelIntent,
     onStatus: (phase: SearchPhase, detail?: string) => void,
     signal: AbortSignal,
   ): Promise<MatchInfo>;

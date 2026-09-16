@@ -17,7 +17,7 @@
  */
 import {
   ComputeBudgetProgram, Connection,
-  type PublicKey, Transaction, type TransactionInstruction,
+  PublicKey, Transaction, type TransactionInstruction,
 } from "@solana/web3.js";
 import { SessionKeyManager } from "@/game/solana/sessionKeys";
 import { BASE_RPC_PRIMARY, resilientBaseFetch } from "@/game/solana/baseRpc";
@@ -26,9 +26,9 @@ import type { TeamBuild } from "../../data/team";
 import { decodeTeam, encodeTeam, matchSeed, sameBytes } from "../protocol";
 import {
   OpponentGoneError, abortError, isAbortError, shortId, sleep,
-  type MatchInfo, type OpponentReveal, type PvpTransport, type SearchPhase,
+  type DuelIntent, type MatchInfo, type OpponentReveal, type PvpTransport, type SearchPhase,
 } from "../types";
-import { ER_ENDPOINT, SOLMECHS_PROGRAM_ID } from "./config";
+import { CHALLENGE_TTL_SECS, ER_ENDPOINT, SOLMECHS_PROGRAM_ID } from "./config";
 import * as P from "./mechProgram";
 
 export type SignTransaction = (tx: Transaction) => Promise<Transaction>;
@@ -143,6 +143,73 @@ export class ChainTransport implements PvpTransport {
       throw err;
     }
 
+    return this.handOff(me, team);
+  }
+
+  /**
+   * A friendly duel: invite one player, or accept their invite. The invite is
+   * a one-slot mailbox on the other player's duelist and expires by itself, so
+   * it is re-sent while this screen waits.
+   */
+  async findDuel(
+    team: TeamBuild,
+    duel: DuelIntent,
+    onStatus: (phase: SearchPhase, detail?: string) => void,
+    signal: AbortSignal,
+  ): Promise<MatchInfo> {
+    onStatus("preparing");
+    let me = await this.ensureReady(onStatus, signal);
+    const teamBytes = encodeTeam(team);
+    const other = new PublicKey(duel.opponent);
+    const who = duel.name ?? shortId(duel.opponent);
+
+    if (me.status === P.STATUS.matched) {
+      await this.sendEr([P.leaveMatchIx(this.program, this.wallet, this.sessionPub)]);
+    }
+
+    if (duel.kind === "accept") {
+      onStatus("searching", `Joining ${who}...`);
+      await this.sendEr([
+        P.acceptChallengeIx(this.program, this.wallet, this.sessionPub, other, teamBytes),
+      ]);
+      me = await this.pollUntil(
+        () => this.readEr(this.mePda, P.decodeDuelist),
+        (d) => d.status === P.STATUS.matched && d.opponent.equals(other),
+        20_000,
+        "The duel did not start. They may have left.",
+        signal,
+      );
+      return this.handOff(me, team);
+    }
+
+    // Challenger: send the invite, keep it fresh, and wait for the accept.
+    let sentAt = 0;
+    onStatus("searching", `Waiting for ${who} to accept...`);
+    try {
+      for (;;) {
+        if (signal.aborted) throw abortError();
+        if (Date.now() - sentAt > (CHALLENGE_TTL_SECS / 2) * 1000) {
+          await this.sendEr([
+            P.challengeIx(this.program, this.wallet, this.sessionPub, other, teamBytes),
+          ]);
+          sentAt = Date.now();
+        }
+        const fresh = await this.readEr(this.mePda, P.decodeDuelist).catch(() => null);
+        if (fresh) me = fresh;
+        if (me.status === P.STATUS.matched && me.opponent.equals(other)) break;
+        await sleep(POLL_MS * 2, signal);
+      }
+    } catch (err) {
+      if (isAbortError(err)) {
+        await this.sendEr([P.leaveMatchIx(this.program, this.wallet, this.sessionPub)]).catch(() => undefined);
+      }
+      throw err;
+    }
+    return this.handOff(me, team);
+  }
+
+  /** Reads the opponent's side of a started match and opens the session. */
+  private async handOff(me: P.DuelistAccount, team: TeamBuild, signal?: AbortSignal): Promise<MatchInfo> {
     const matchId = me.matchId;
     const opponentPda = P.duelistPda(this.program, me.opponent);
     const opp = await this.pollUntil(

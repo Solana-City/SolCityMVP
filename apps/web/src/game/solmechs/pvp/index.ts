@@ -11,6 +11,8 @@ import { ChainTransport, type SignTransaction } from "./chain/ChainTransport";
 import { LocalTransport } from "./localTransport";
 import type { PvpTransport } from "./types";
 
+export type { DuelIntent } from "./types";
+
 export type PvpAvailability =
   | { ok: true; transport: PvpTransport }
   | { ok: false; reason: string };
