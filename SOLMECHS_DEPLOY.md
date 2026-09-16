@@ -8,22 +8,52 @@ It has never been compiled on this machine (no C++ linker / WSL here), so the
 first build in Playground is also the first compile. If it reports an error,
 paste it back and it gets fixed.
 
+## 0. The two keypairs
+
+Both live with the game wallet, in
+`OneDrive/Documentos/Documentos pessoais/Burners/SolanaCity/`:
+
+| File | What it is | Address |
+| --- | --- | --- |
+| `id.json` | the game wallet: pays for the deploy and becomes the upgrade authority, same as `sol-city` | `9592QS34mPUwqA7sPAkug1kcuFddjn59QPQMzzCgKhEp` |
+| `sol-mechs-program.json` | the program keypair: fixes the program id, now and for every upgrade | `6sv4G2HuFdrcAFBRA2X4jTSRmZj2MJS5t66zRUqy5vxJ` |
+
+`declare_id!` in `lib.rs` is already that program id, so nothing has to be
+edited after the deploy. Both files are secrets: never commit them.
+
 ## 1. Build and deploy (Solana Playground, ~15 min)
 
-1. Open <https://beta.solpg.io> and create a new **Anchor** project named
-   `sol-mechs`.
-2. Replace `src/lib.rs` with `programs/sol-mechs/src/lib.rs` from this repo.
-3. `Cargo.toml` needs only `anchor-lang = "0.30.1"` (same as `sol-city`).
-4. **Build.** Playground rewrites `declare_id!` with its own program id.
-5. **Deploy to devnet.** The Playground wallet needs devnet SOL for the program
-   account: budget 3 to 5 SOL (the program grew with the ladder).
-6. Copy the program id here:
-   - put it into `declare_id!` in `programs/sol-mechs/src/lib.rs` and commit;
-   - set `NEXT_PUBLIC_SOLMECHS_PROGRAM=<program id>` in Vercel (and in
-     `apps/web/.env.local` for local runs), then redeploy the site.
+1. Open <https://beta.solpg.io> and **connect first**: click the wallet in the
+   bottom-left status bar and let it create the throwaway Playground wallet.
+   The import options only appear once a wallet is connected — that is the
+   chicken-and-egg that cost an afternoon last time.
+2. In the wallet panel, **import `id.json`** and switch to it, so the deploy is
+   paid and owned by the game wallet. Check the balance (devnet, needs ~4 SOL;
+   `solana airdrop 5` in the Playground terminal tops it up).
+3. Create a new **Anchor** project named `sol-mechs`.
+4. In **Build & Deploy → Program Credentials**, import
+   `sol-mechs-program.json`. The panel must then show program id
+   `6sv4G2HuFdrcAFBRA2X4jTSRmZj2MJS5t66zRUqy5vxJ`, matching `declare_id!`.
+5. Replace `src/lib.rs` with `programs/sol-mechs/src/lib.rs` from this repo.
+6. `Cargo.toml` needs only `anchor-lang = "0.30.1"` (same as `sol-city`).
+7. **Build**, then **Deploy** to devnet.
+8. Set `NEXT_PUBLIC_SOLMECHS_PROGRAM=6sv4G2HuFdrcAFBRA2X4jTSRmZj2MJS5t66zRUqy5vxJ`
+   in Vercel (and in `apps/web/.env.local` for local runs), then redeploy the
+   site.
 
 Without that env var the client keeps using the two-tab local transport, so
 nothing breaks while the deploy is in flight.
+
+**Upgrading later** is the same flow: connect, import both keypairs, paste the
+new `lib.rs`, Build, Deploy. Same program id, same authority, no client change.
+
+Check what landed:
+
+```
+solana program show 6sv4G2HuFdrcAFBRA2X4jTSRmZj2MJS5t66zRUqy5vxJ --url devnet
+```
+
+The upgrade authority should read `9592QS34mPUwqA7sPAkug1kcuFddjn59QPQMzzCgKhEp`.
 
 ## 2. Open season 1
 

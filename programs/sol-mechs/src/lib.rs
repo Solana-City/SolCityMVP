@@ -53,8 +53,9 @@ use anchor_lang::solana_program::{
     sysvar::Sysvar as SolanaSysvar,
 };
 
-// Replaced by Solana Playground on first build.
-declare_id!("11111111111111111111111111111111");
+// The program keypair lives with the game wallet (Burners/SolanaCity/
+// sol-mechs-program.json); import it in Playground so this id stays fixed.
+declare_id!("6sv4G2HuFdrcAFBRA2X4jTSRmZj2MJS5t66zRUqy5vxJ");
 
 pub const DUELIST_SEED: &[u8] = b"mech_duelist";
 pub const LOBBY_SEED: &[u8] = b"mech_lobby";
