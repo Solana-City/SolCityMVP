@@ -1,3 +1,5 @@
+import { track } from "@/game/telemetry/track";
+
 export interface QuestDefinition {
   id: string;
   title: string;
@@ -77,6 +79,7 @@ function saveProgress(wallet: string, data: Record<string, QuestProgress>): void
 
 /** Increment a quest counter. Returns updated QuestProgress. */
 export function incrementQuest(wallet: string, questId: string): QuestProgress {
+  track("quest", questId, { label: "progress", wallet });
   const all = getQuestProgress(wallet);
   const def = DAILY_QUESTS.find(q => q.id === questId);
   if (!def) return { questId, current: 0, completed: false };
@@ -107,6 +110,7 @@ function saveLeaderboard(data: Record<string, { display: string; points: number 
 }
 
 export function claimQuest(wallet: string, questId: string): number {
+  track("quest", questId, { success: true, label: "claimed", wallet });
   const all = getQuestProgress(wallet);
   const def = DAILY_QUESTS.find(q => q.id === questId);
   if (!def || !all[questId]?.completed || all[questId]?.claimedAt) return 0;

@@ -18,6 +18,8 @@ interface KindSummary {
   count: number;
   users: number;
   last7: number;
+  ok: number;
+  steps: number[];
   top: { wallet: string; count: number }[];
   best: { wallet: string; score: number }[];
 }
@@ -32,6 +34,8 @@ interface Events {
   protocols: KindSummary[];
   opens: KindSummary[];
   minigames: KindSummary[];
+  tutorials: KindSummary[];
+  quests: KindSummary[];
   hunt: KindSummary | null;
   duels: KindSummary[];
   feed: FeedItem[];
@@ -254,6 +258,57 @@ export default function Analytics({ adminKey }: { adminKey: string }) {
             )}
           </Panel>
 
+          <Panel title="Tutorials">
+            <p style={sx.dim}>
+              Each bar is how many players reached that card. A cliff between
+              two bars is the card people quit on.
+            </p>
+            {data.events.tutorials.length === 0 ? (
+              <p style={sx.dim}>No tutorial has been opened yet.</p>
+            ) : data.events.tutorials.map((t) => (
+              <div key={t.id} style={sx.tutorial}>
+                <div style={sx.tutorialHead}>
+                  <strong>{t.id}</strong>
+                  <span style={sx.dim}>{t.users} players</span>
+                  <span style={{ marginLeft: "auto", color: t.ok ? "#14F195" : "#7d86a8" }}>
+                    {t.ok} finished
+                    {t.steps[0] ? ` · ${Math.round((t.ok / t.steps[0]) * 100)}%` : ""}
+                  </span>
+                </div>
+                {t.steps.length > 1 && <Funnel steps={t.steps} />}
+              </div>
+            ))}
+          </Panel>
+
+          <Panel title="Daily quests">
+            {data.events.quests.length === 0 ? (
+              <p style={sx.dim}>No quest progress recorded yet.</p>
+            ) : (
+              <table style={sx.table}>
+                <thead>
+                  <tr>
+                    <th style={sx.th}>Quest</th>
+                    <th style={sx.thNum}>Progress events</th>
+                    <th style={sx.thNum}>Players</th>
+                    <th style={sx.thNum}>Claimed</th>
+                    <th style={sx.thNum}>7d</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.events.quests.map((q) => (
+                    <tr key={q.id}>
+                      <td style={sx.td}>{q.id}</td>
+                      <td style={sx.tdNum}>{q.count}</td>
+                      <td style={sx.tdNum}>{q.users}</td>
+                      <td style={{ ...sx.tdNum, color: q.ok ? "#14F195" : undefined }}>{q.ok}</td>
+                      <td style={sx.tdNum}>{q.last7}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </Panel>
+
           <Panel title="Find Someone">
             {!data.events.hunt ? (
               <p style={sx.dim}>Nobody has found the hidden citizen yet.</p>
@@ -346,9 +401,9 @@ export default function Analytics({ adminKey }: { adminKey: string }) {
       </Panel>
 
       <p style={sx.dim}>
-        Still not measured: page visits by people who never connect a wallet,
-        tutorial completion and quest progress. Everything else on this page is
-        either on-chain or reported by the game as it happens.
+        Still not measured: people who never connect a wallet, since every
+        event is keyed by one. Everything else on this page is either on-chain
+        or reported by the game as it happens.
       </p>
     </>
   );
@@ -376,6 +431,21 @@ function mergeProtocols(ev: Events) {
     rows.set(u.id, row);
   }
   return [...rows.values()].sort((a, b) => (b.used + b.opened) - (a.used + a.opened));
+}
+
+/** Tutorial drop-off: how many players reached each card. */
+function Funnel({ steps }: { steps: number[] }) {
+  const max = Math.max(1, ...steps);
+  return (
+    <div style={sx.funnel}>
+      {steps.map((count, i) => (
+        <div key={i} style={sx.funnelCol} title={`Card ${i + 1}: ${count}`}>
+          <div style={{ ...sx.funnelBar, height: `${(count / max) * 100}%` }} />
+          <span style={sx.funnelLabel}>{count}</span>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 /** A day-by-day bar chart. Plain divs: 30 bars need no chart library. */
@@ -433,6 +503,12 @@ const sx: Record<string, React.CSSProperties> = {
   thNum: { textAlign: "right", padding: "6px 8px", color: "#7d86a8", fontWeight: 500, fontSize: 12, borderBottom: "1px solid #232a44" },
   td: { padding: "7px 8px", borderBottom: "1px solid #161c30" },
   tdNum: { padding: "7px 8px", borderBottom: "1px solid #161c30", textAlign: "right", fontVariantNumeric: "tabular-nums" },
+  tutorial: { padding: "10px 0", borderBottom: "1px solid #161c30" },
+  tutorialHead: { display: "flex", gap: 10, alignItems: "baseline", fontSize: 13, marginBottom: 6 },
+  funnel: { display: "flex", alignItems: "flex-end", gap: 4, height: 56 },
+  funnelCol: { flex: 1, height: "100%", display: "flex", flexDirection: "column", justifyContent: "flex-end", alignItems: "center", gap: 2 },
+  funnelBar: { width: "100%", background: "#9945FF", borderRadius: "3px 3px 0 0", minHeight: 2 },
+  funnelLabel: { fontSize: 10, color: "#7d86a8" },
   chip: { display: "inline-block", fontSize: 11, padding: "2px 7px", margin: "2px 4px 2px 0", borderRadius: 6, background: "#141a2e", border: "1px solid #232a44" },
   feed: { display: "flex", flexDirection: "column", gap: 2, fontSize: 12 },
   feedRow: { display: "flex", gap: 10, padding: "4px 0", borderBottom: "1px solid #161c30", alignItems: "center" },

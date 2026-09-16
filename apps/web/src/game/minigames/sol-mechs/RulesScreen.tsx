@@ -8,6 +8,7 @@
  * at a time: the basics, how a round plays, then tactics.
  */
 import { useEffect, useRef, useState } from "react";
+import { track } from "@/game/telemetry/track";
 import {
   drawMech, DOLL_WIDTH, DOLL_HEIGHT, preloadBuild, mechBounds, type MechBounds,
 } from "@/game/solmechs/render/paperDoll";
@@ -135,6 +136,7 @@ export interface RulesScreenProps {
 }
 
 export default function RulesScreen({ onClose }: RulesScreenProps) {
+  useEffect(() => { track("tutorial", "sol-mechs-rules", { value: 1, label: "opened" }); }, []);
   // Short or narrow screens (a phone in landscape) get one card per page:
   // three side by side there leaves each card a sliver.
   const [compact, setCompact] = useState(false);

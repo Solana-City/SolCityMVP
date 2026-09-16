@@ -10,6 +10,7 @@
  * <ProtocolIntroGate>, so removing one tutorial is removing one wrapper.
  */
 import { useEffect, useState } from "react";
+import { track } from "@/game/telemetry/track";
 
 const PIXEL = '"Press Start 2P", monospace';
 
@@ -158,9 +159,14 @@ export function ProtocolIntroGate({ spec, children }: { spec: IntroSpec; childre
     try { setOpen(localStorage.getItem(storageKey(spec.id)) !== "1"); } catch { /* storage blocked */ }
   }, [spec.id]);
   const done = () => {
+    track("tutorial", spec.id, { success: true, label: "finished" });
     try { localStorage.setItem(storageKey(spec.id), "1"); } catch { /* storage blocked */ }
     setOpen(false);
   };
+
+  useEffect(() => {
+    if (open) track("tutorial", spec.id, { value: 1, label: "opened" });
+  }, [open, spec.id]);
   if (open) return <IntroCards spec={spec} onDone={done} />;
   return (
     <>

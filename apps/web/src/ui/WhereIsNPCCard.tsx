@@ -13,6 +13,7 @@ import {
 } from "@/game/config/paperDoll";
 import { incrementQuest } from "@/game/quests/QuestManager";
 import { useNicknames, shortWallet } from "@/ui/useNicknames";
+import { track } from "@/game/telemetry/track";
 import { cachedName, requestNames } from "@/game/names/nameService";
 
 // ── Chroma key ────────────────────────────────────────────────────────────────
@@ -444,6 +445,7 @@ function HuntKey({ label }: { label: string }) {
 }
 
 function HuntHowTo({ loadout, isTouch, onClose }: { loadout: Loadout | null; isTouch: boolean; onClose: () => void }) {
+  useEffect(() => { track("tutorial", "find-someone", { value: 1, label: "opened" }); }, []);
   const [i, setI] = useState(0);
   const target = loadout
     ? <MiniAvatar loadout={loadout} size={96} />

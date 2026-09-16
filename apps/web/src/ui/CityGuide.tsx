@@ -15,6 +15,7 @@ import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import { getMinimapHost } from "@/game/minimap/MinimapHost";
 import { Bust } from "@/game/minigames/sol-mechs/SquadPortraits";
 import { PRESET_BUILDS } from "@/game/solmechs/data/catalog";
+import { track } from "@/game/telemetry/track";
 
 const PIXEL = '"Press Start 2P", monospace';
 const GREEN = "#14F195";
@@ -248,7 +249,16 @@ export default function CityGuide({ onDone }: { onDone: () => void }) {
   const step = steps[i];
   const last = i === steps.length - 1;
 
-  const finish = () => { markGuideSeen(); onDone(); };
+  const finish = () => {
+    track("tutorial", "city-guide", { value: steps.length, success: true, label: "finished" });
+    markGuideSeen();
+    onDone();
+  };
+
+  // One event per card reached: the panel turns these into a drop-off funnel.
+  useEffect(() => {
+    track("tutorial", "city-guide", { value: i + 1, label: `step ${i + 1}/${steps.length}` });
+  }, [i, steps.length]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

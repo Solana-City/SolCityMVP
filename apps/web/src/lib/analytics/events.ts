@@ -13,6 +13,8 @@
  *   ev:<kind>:<id>:d:<YYYY-MM-DD> per-day count, last 30 days are read back
  *   ev:<kind>:<id>:by             sorted set wallet -> times (top users)
  *   ev:<kind>:<id>:best           sorted set wallet -> best score (mini-games)
+ *   ev:<kind>:<id>:ok             completions (a finished tutorial, a claimed quest)
+ *   ev:<kind>:<id>:s:<n>          how many reached step n, which is the funnel
  *   ev:ids:<kind>                 set of ids seen, so the panel needs no list
  *   ev:feed                       last 100 events, newest first
  *
@@ -22,7 +24,7 @@
 import { incr, lpushCapped, lrange, sadd, scard, smembers, storeMode, zincrby, zmax, ztop } from "@/lib/kv";
 
 /** What can be reported. Anything else is rejected. */
-export const EVENT_KINDS = ["protocol", "protocol-open", "minigame", "hunt", "duel"] as const;
+export const EVENT_KINDS = ["protocol", "protocol-open", "minigame", "hunt", "duel", "tutorial", "quest"] as const;
 export type EventKind = (typeof EVENT_KINDS)[number];
 
 export interface GameEvent {
@@ -62,6 +64,12 @@ export async function recordEvent(ev: GameEvent): Promise<boolean> {
     zincrby(`${base}:by`, ev.wallet),
     sadd(`ev:ids:${ev.kind}`, ev.id),
     score > 0 ? zmax(`${base}:best`, ev.wallet, score) : Promise.resolve(),
+    // A tutorial reports the step it reached, so the drop-off is visible per
+    // card rather than only as "started" versus "finished".
+    ev.kind === "tutorial" && score > 0 && score <= 20
+      ? incr(`${base}:s:${score}`)
+      : Promise.resolve(),
+    ev.success === true ? incr(`${base}:ok`) : Promise.resolve(),
     lpushCapped("ev:feed", JSON.stringify({
       k: ev.kind, i: ev.id, w: ev.wallet, v: score,
       s: ev.success === undefined ? null : ev.success,
@@ -77,6 +85,10 @@ export interface KindSummary {
   count: number;
   users: number;
   last7: number;
+  /** Completions: a finished tutorial, a claimed quest, a won round. */
+  ok: number;
+  /** Players who reached each step, index 0 = step 1. Tutorials only. */
+  steps: number[];
   top: { wallet: string; count: number }[];
   best: { wallet: string; score: number }[];
 }
@@ -84,17 +96,27 @@ export interface KindSummary {
 async function summarise(kind: EventKind, id: string): Promise<KindSummary> {
   const base = `ev:${kind}:${id}`;
   const days = Array.from({ length: 7 }, (_, i) => dayKey(Date.now() - i * 86_400_000));
-  const [count, users, top, best, ...daily] = await Promise.all([
+  const stepSlots = kind === "tutorial" ? Array.from({ length: 12 }, (_, i) => i + 1) : [];
+  const [count, users, ok, top, best, ...rest] = await Promise.all([
     incr(`${base}:count`, 0),
     scard(`${base}:users`),
+    incr(`${base}:ok`, 0),
     ztop(`${base}:by`, 5),
     ztop(`${base}:best`, 5),
     ...days.map((d) => incr(`${base}:d:${d}`, 0)),
+    ...stepSlots.map((n) => incr(`${base}:s:${n}`, 0)),
   ]);
+  const daily = rest.slice(0, days.length);
+  const steps = rest.slice(days.length);
+  // Trailing zero steps are steps the tutorial does not have.
+  while (steps.length > 0 && steps[steps.length - 1] === 0) steps.pop();
+
   return {
     id,
     count,
     users,
+    ok,
+    steps,
     last7: daily.reduce((n, d) => n + d, 0),
     top: top.map((t) => ({ wallet: t.member, count: t.score })),
     best: best.map((t) => ({ wallet: t.member, score: t.score })),
@@ -115,6 +137,8 @@ export interface EventReport {
   protocols: KindSummary[];
   opens: KindSummary[];
   minigames: KindSummary[];
+  tutorials: KindSummary[];
+  quests: KindSummary[];
   hunt: KindSummary | null;
   duels: KindSummary[];
   feed: FeedItem[];
@@ -124,7 +148,10 @@ export interface EventReport {
 /** Everything the panel shows about gameplay events. */
 export async function eventReport(): Promise<EventReport> {
   if (storeMode() === "off") {
-    return { protocols: [], opens: [], minigames: [], hunt: null, duels: [], feed: [], enabled: false };
+    return {
+      protocols: [], opens: [], minigames: [], tutorials: [], quests: [],
+      hunt: null, duels: [], feed: [], enabled: false,
+    };
   }
   const forKind = async (kind: EventKind) => {
     const ids = await smembers(`ev:ids:${kind}`);
@@ -132,10 +159,12 @@ export async function eventReport(): Promise<EventReport> {
     return rows.sort((a, b) => b.count - a.count);
   };
 
-  const [protocols, opens, minigames, hunt, duels, rawFeed] = await Promise.all([
+  const [protocols, opens, minigames, tutorials, quests, hunt, duels, rawFeed] = await Promise.all([
     forKind("protocol"),
     forKind("protocol-open"),
     forKind("minigame"),
+    forKind("tutorial"),
+    forKind("quest"),
     forKind("hunt").then((r) => r[0] ?? null),
     forKind("duel"),
     lrange("ev:feed", FEED_CAP),
@@ -150,5 +179,5 @@ export async function eventReport(): Promise<EventReport> {
     }
   });
 
-  return { protocols, opens, minigames, hunt, duels, feed, enabled: true };
+  return { protocols, opens, minigames, tutorials, quests, hunt, duels, feed, enabled: true };
 }

@@ -9,7 +9,8 @@
  * event kind from a fixed list, an id (protocol, NPC or mini-game) and a
  * number. No balances, no addresses, no transaction contents.
  */
-export type TrackKind = "protocol" | "protocol-open" | "minigame" | "hunt" | "duel";
+export type TrackKind =
+  | "protocol" | "protocol-open" | "minigame" | "hunt" | "duel" | "tutorial" | "quest";
 
 let currentWallet: string | null = null;
 

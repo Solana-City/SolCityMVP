@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
+import { track } from "@/game/telemetry/track";
 import { KiteClashEngine, type EngineSnapshot } from "./KiteClashEngine";
 import type { MiniGameComponentProps } from "../types";
 import type { MiniGameBaseContext } from "../types";
@@ -55,10 +56,15 @@ export default function KiteClashGame({ onResult, onClose }: MiniGameComponentPr
   useEffect(() => { setHowToDone(readHowToPlayDone()); }, []);
 
   const openHowTo = useCallback(() => {
+    track("tutorial", "kite-clash", { value: 1, label: "opened" });
     setHowToOpen(true);
     engineRef.current?.setBriefing(true);
   }, []);
   const closeHowTo = useCallback((completed = false) => {
+    track("tutorial", "kite-clash", {
+      success: completed,
+      label: completed ? "finished" : "closed early",
+    });
     markHowToPlaySeen();
     if (completed) {
       markHowToPlayDone();
