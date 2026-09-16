@@ -447,7 +447,9 @@ export class CityScene extends Phaser.Scene {
     // copy and each network message got appended to the chat once per connect.
     this.onGameEvent("chat:network", ({ wallet, name, text }: { wallet?: string; name: string; text: string }) => {
       const color = getChannelColor("global");
-      this.chat.addMessage("global", name, name, text, color);
+      if (wallet) requestNames([wallet]);
+      const shown = (wallet ? cachedName(wallet) : null) ?? name;
+      this.chat.addMessage("global", shown, shown, text, color);
       // Float the message over the sender's avatar, if they're in view.
       const avatar = wallet ? this.remotePlayers.get(wallet) : undefined;
       if (avatar) this.showBubble(avatar.getContainer(), text, color);

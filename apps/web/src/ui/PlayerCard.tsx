@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { OnChainMultiplayer, OnChainPlayer } from "@/game/multiplayer/OnChainMultiplayer";
 import { useFlags } from "@/ui/useFlags";
 import { track } from "@/game/telemetry/track";
+import { useNickname } from "@/ui/useNicknames";
 
 /** The city opens Sol Mechs on this, with the player to duel. */
 export const DUEL_INVITE_EVENT = "solcity:solmechs-duel";
@@ -27,6 +28,7 @@ export default function PlayerCard({ gameRef, wallet, displayName, myWallet, onC
   const [player, setPlayer] = useState<OnChainPlayer | undefined>(undefined);
   const [copied, setCopied] = useState(false);
   const flags = useFlags();
+  const nickname = useNickname(wallet);
 
   const copyWallet = () => {
     if (!wallet) return;
@@ -50,7 +52,7 @@ export default function PlayerCard({ gameRef, wallet, displayName, myWallet, onC
 
   if (!wallet) return null;
   const short = `${wallet.slice(0, 4)}…${wallet.slice(-4)}`;
-  const name = displayName || player?.displayName || short;
+  const name = nickname || displayName || player?.displayName || short;
   const isSelf = wallet === myWallet;
 
   return (

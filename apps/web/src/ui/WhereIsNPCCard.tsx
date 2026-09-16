@@ -12,6 +12,8 @@ import {
   SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT, type Loadout,
 } from "@/game/config/paperDoll";
 import { incrementQuest } from "@/game/quests/QuestManager";
+import { useNicknames, shortWallet } from "@/ui/useNicknames";
+import { cachedName, requestNames } from "@/game/names/nameService";
 
 // ── Chroma key ────────────────────────────────────────────────────────────────
 const CHROMA_R = 215, CHROMA_G = 123, CHROMA_B = 186, CHROMA_TOL = 30;
@@ -151,6 +153,7 @@ function MiniAvatar({ loadout, size = 64 }: { loadout: Loadout; size?: number })
 // ── Leaderboard modal ─────────────────────────────────────────────────────────
 function LeaderboardModal({ onClose }: { onClose: () => void }) {
   const entries = getLeaderboard(10);
+  const { display } = useNicknames(entries.map((e) => e.wallet));
   return (
     <div style={{
       position: "fixed", inset: 0, zIndex: 200,
@@ -198,7 +201,7 @@ function LeaderboardModal({ onClose }: { onClose: () => void }) {
                 color: i === 0 ? "#FFD700" : i === 1 ? "#c0c0cc" : i === 2 ? "#cd7f32" : "#333355",
                 minWidth: 24,
               }}><RankBadge rank={i + 1} size={18} /></span>
-              <span style={{ flex: 1, fontSize: 9, color: "#9090cc" }}>{e.display}</span>
+              <span style={{ flex: 1, fontSize: 9, color: "#9090cc" }}>{display(e.wallet, e.display)}</span>
               <span style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 7, color: "#14F195" }}>
                 {e.count} ★
               </span>
@@ -251,8 +254,11 @@ export default function WhereIsNPCCard({ gameRef, wallet }: Props) {
       recordRoundWinner(getRoundIndex(), w);
       const isMe = w === effectiveWallet;
       if (isMe) incrementQuest(w, "hunt_3_npcs");
-      const short = w.length > 10 ? `${w.slice(0, 4)}…${w.slice(-4)}` : (w === "guest" ? "A visitor" : w);
-      setFoundMsg(isMe ? `You found them! ★ ${newScore}` : `${short} found them!`);
+      // The finder's nickname when the city knows it; the short wallet is the
+      // fallback while the name service answers, and for guests.
+      requestNames([w]);
+      const known = cachedName(w);
+      setFoundMsg(isMe ? `You found them! ★ ${newScore}` : `${known ?? shortWallet(w)} found them!`);
       if (isMe) setMyScore(newScore);
       setTargetLoadout(null);
       // The game layer reset the per-citizen timer before firing this event,

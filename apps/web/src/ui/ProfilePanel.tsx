@@ -4,6 +4,7 @@ import { AchievementIcon, LockIcon, SpeakerIcon, RankBadge } from "@/ui/PixelIco
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
+import { useNicknames } from "@/ui/useNicknames";
 import type { PlayerProfile } from "@/game/config/profileManager";
 import type { ProfileManager } from "@/game/config/profileManager";
 import type { OnChainPlayer } from "@/game/multiplayer/OnChainMultiplayer";
@@ -31,6 +32,9 @@ export default function ProfilePanel({ gameRef, isOpen, onClose }: ProfilePanelP
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { connected } = useWallet();
   const { setVisible: openWalletModal } = useWalletModal();
+  // Leaderboards show the nickname a player chose, not their address.
+  const onlineNames = useNicknames(onlinePlayers.map((p) => p.wallet));
+  const allTimeNames = useNicknames(allTimeEntries.slice(0, 50).map((e) => e.wallet));
 
   useEffect(() => {
     if (!gameRef) return;
@@ -435,7 +439,7 @@ export default function ProfilePanel({ gameRef, isOpen, onClose }: ProfilePanelP
                   .sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
                   .map((p, i) => {
                     const isSelf = p.wallet === profile.wallet;
-                    const name = p.displayName ?? p.wallet.slice(0, 8);
+                    const name = onlineNames.display(p.wallet, p.displayName);
                     return (
                       <LeaderboardRow
                         key={p.wallet}
@@ -469,7 +473,7 @@ export default function ProfilePanel({ gameRef, isOpen, onClose }: ProfilePanelP
               <div className="flex flex-col gap-1">
                 {allTimeEntries.slice(0, 50).map((entry, i) => {
                   const isSelf = entry.wallet === profile.wallet;
-                  const name = entry.displayName || entry.wallet.slice(0, 8);
+                  const name = allTimeNames.display(entry.wallet, entry.displayName);
                   return (
                     <LeaderboardRow
                       key={entry.wallet}
