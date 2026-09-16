@@ -113,7 +113,10 @@ export default function WalletBar({ onWalletChange, layout = "default" }: Wallet
                 </span>
               )}
             </>
-          ) : (
+          ) : isTouch ? null : (
+            /* The phone card is too narrow for the word beside CONNECT: the
+               button overlapped it and the text read "OFFLIN". The grey dot
+               on the left already says the wallet is not connected. */
             <span style={{ fontSize: 7, color: "#555", letterSpacing: 1,
               fontFamily: '"Press Start 2P", monospace' }}>OFFLINE</span>
           )}
