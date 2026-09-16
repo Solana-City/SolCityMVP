@@ -9,7 +9,7 @@
  */
 import { useEffect, useState } from "react";
 import type { PublicKey } from "@solana/web3.js";
-import { RankedClient, tierOf } from "@/game/solmechs/ranked/rankedClient";
+import { RankedClient } from "@/game/solmechs/ranked/rankedClient";
 import type { LadderEntryAccount } from "@/game/solmechs/pvp/chain/mechProgram";
 import { ELIGIBILITY } from "@/game/solmechs/season/config";
 import { cachedName, onNames, requestNames } from "@/game/names/nameService";
@@ -91,7 +91,6 @@ export default function Leaderboard({ client, me, onClose }: LeaderboardProps) {
                     {cachedName(wallet) ?? `${wallet.slice(0, 4)}...${wallet.slice(-4)}`}
                     {isMe && <span style={sx.you}>YOU</span>}
                   </span>
-                  <span style={sx.tier}>{tierOf(row.rating).name}</span>
                   <span style={sx.wl}>
                     <span style={{ color: C.good }}>{row.wins}</span>
                     <span style={{ color: C.faint }}>/</span>
@@ -124,7 +123,7 @@ const sx: Record<string, React.CSSProperties> = {
   table: { display: "flex", flexDirection: "column", gap: 2 },
   row: {
     display: "grid",
-    gridTemplateColumns: "34px 1fr auto 60px 56px",
+    gridTemplateColumns: "34px 1fr 60px 56px",
     alignItems: "center", gap: SP.sm,
     padding: "7px 10px", borderRadius: R.sm,
     background: C.ink, border: `1px solid ${C.line}`,
@@ -140,7 +139,6 @@ const sx: Record<string, React.CSSProperties> = {
     fontFamily: MONO, fontSize: 10, color: C.ink, background: C.teal,
     borderRadius: R.sm, padding: "1px 4px", letterSpacing: 1,
   },
-  tier: { fontFamily: MONO, fontSize: T.eyebrow, color: C.purple, letterSpacing: 1 },
   wl: { fontFamily: MONO, display: "flex", gap: 3, justifyContent: "flex-end" },
   rating: { fontFamily: DISPLAY, fontSize: T.lead, textAlign: "right" },
   empty: { fontSize: T.body, color: C.dim, padding: `${SP.lg}px 0`, textAlign: "center" },

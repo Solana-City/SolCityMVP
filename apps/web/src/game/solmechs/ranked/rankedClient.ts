@@ -278,26 +278,6 @@ function bestCandidate(
   return best;
 }
 
-/** Rating tiers, for the badge and the leaderboard. */
-export const TIERS = [
-  { name: "Scrap", min: 0 },
-  { name: "Iron", min: 900 },
-  { name: "Steel", min: 1100 },
-  { name: "Plasma", min: 1300 },
-  { name: "Solar", min: 1500 },
-  { name: "Singularity", min: 1700 },
-] as const;
-
-export function tierOf(rating: number): { name: string; min: number; next: number | null } {
-  let index = 0;
-  for (let i = 0; i < TIERS.length; i++) if (rating >= TIERS[i].min) index = i;
-  return {
-    name: TIERS[index].name,
-    min: TIERS[index].min,
-    next: index + 1 < TIERS.length ? TIERS[index + 1].min : null,
-  };
-}
-
 /**
  * What a win and a loss would be worth against this opponent.
  *

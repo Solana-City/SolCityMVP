@@ -23,13 +23,6 @@ screens work without it; each line says what it would replace.
 
 ## Missing — ranked
 
-1. **Rank tier badges** (the biggest gap; tiers are plain text today)
-   `ranked/tier-<name>.png`, 64x64, plus a 24x24 version for the leaderboard
-   rows. Six tiers, in rating order:
-   `scrap` (0), `iron` (900), `steel` (1100), `plasma` (1300), `solar` (1500),
-   `singularity` (1700). They should read as a progression at a glance:
-   material and glow rising with the tier.
-
 2. **Energy pip**, `ranked/energy-on.png` and `ranked/energy-off.png`, 18x10.
    Replaces the CSS bars. One pip = one match the player can still start.
 
@@ -67,8 +60,6 @@ screens work without it; each line says what it would replace.
 
 11. **Empty ladder illustration**, about 200x120, for "nobody has played a
     ranked match yet".
-12. **Tier-up celebration**, a 6 to 8 frame 96x96 strip, for the moment a
-    player crosses into a new tier.
 
 Send them at whatever size is convenient above 1x and they get scaled down;
 what matters is that the pixel grid is clean at the listed size.

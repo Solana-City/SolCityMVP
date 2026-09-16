@@ -4,13 +4,13 @@
  * Sol Mechs — ranked hub.
  *
  * One screen answering the three questions a ladder player has: where do I
- * stand, can I play right now, and what does a match cost me. Rating and tier
- * sit under the mode plate; energy is a row of pips, because a number alone
- * never reads as "how many games do I have left".
+ * stand, can I play right now, and what does a match cost me. Rating is the
+ * only standing there is (no tiers); energy is a row of pips, because a
+ * number alone never reads as "how many games do I have left".
  */
 import { useCallback, useEffect, useState } from "react";
 import {
-  RankedClient, effectiveEnergy, tierOf, type RankedSnapshot,
+  RankedClient, effectiveEnergy, type RankedSnapshot,
 } from "@/game/solmechs/ranked/rankedClient";
 import { C, T, SP, R, MONO, DISPLAY, PIXELATED, backdrop, panel, eyebrow, button, W } from "./theme";
 import { SpriteButton } from "./SpriteButton";
@@ -65,7 +65,6 @@ export default function RankedHome({ client, unavailable, onQueue, onLeaderboard
 
   const entry = snap?.entry ?? null;
   const rating = entry?.rating ?? 1000;
-  const tier = tierOf(rating);
   const energy = entry ? effectiveEnergy(entry) : 0;
   const played = (entry?.wins ?? 0) + (entry?.losses ?? 0);
   const seasonOpen = !!snap?.season && (snap.endsIn ?? 0) > 0;
@@ -84,10 +83,7 @@ export default function RankedHome({ client, unavailable, onQueue, onLeaderboard
           />
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={eyebrow}>Season {snap?.season?.id ?? "-"}</div>
-            <div style={sx.rating}>
-              {rating}
-              <span style={sx.tier}>{tier.name}</span>
-            </div>
+            <div style={sx.rating}>{rating}</div>
             <div style={sx.record}>
               <span style={{ color: C.good }}>{entry?.wins ?? 0}W</span>
               <span style={{ color: C.faint }}>·</span>
@@ -190,7 +186,6 @@ const sx: Record<string, React.CSSProperties> = {
     fontFamily: DISPLAY, fontSize: T.display, color: C.text,
     display: "flex", alignItems: "baseline", gap: SP.sm, lineHeight: 1.1,
   },
-  tier: { fontFamily: MONO, fontSize: T.small, color: C.teal, letterSpacing: 2 },
   record: { display: "flex", gap: SP.sm, fontFamily: MONO, fontSize: T.small, marginTop: 2 },
   clock: { textAlign: "right", flexShrink: 0 },
   clockValue: { fontFamily: DISPLAY, fontSize: T.lead, color: C.warn },
