@@ -17,7 +17,6 @@ import { onMiniGameFinished, watchNpcConversations, stopWatchingNpcConversations
 import { showEmoji, EmojiDef } from "../chat/EmojiSystem";
 import { soundManager } from "../audio/SoundManager";
 import { publishMinimap } from "../minimap/MinimapHost";
-import { createStockExchange } from "../world/StockExchange";
 import { cachedName, onNames, requestNames, NAME_CHANGED_EVENT } from "../names/nameService";
 
 // Pixel-perfect zoom values and snapping live in config/zoomConfig.ts —
@@ -138,7 +137,7 @@ export class CityScene extends Phaser.Scene {
       "SCBuildKeepGreen", "SCGameAssets", "ScTileBeach",
       "ScBuildSTBrazilLighthouse", "SCBuildSTBrStands", "SCBuildMagicBlock02",
       "SCBuildSTEarn", "SCBuildSolanaCity",
-      "SCBuildSolMechs", "SCBuildDungeousMoles",
+      "SCBuildSolMechs", "SCBuildDungeousMoles", "SCBuildStoklana",
     ]
       .map(n => map.addTilesetImage(n, n))
       .filter((ts): ts is Phaser.Tilemaps.Tileset => ts !== null);
@@ -300,12 +299,11 @@ export class CityScene extends Phaser.Scene {
       }
     }
 
-    // Sunrise Stock Exchange (north plaza). Runs before NPCs spawn so its
-    // footprint is already solid when their spawn tiles are resolved.
-    const destroyStockExchange = createStockExchange(
-      this, map, allLayers.find(l => l.layer.name.endsWith("ColliderAuto")),
-    );
-    this.events.once("shutdown", destroyStockExchange);
+    // Sunrise Stock Exchange building is now real Tiled art (BuildStocklana,
+    // map artist, 2026-09-16) — the Phaser-graphics placeholder from
+    // world/StockExchange.ts is retired to avoid drawing a second building
+    // and double-blocking its footprint. The Stocks Broker NPC below still
+    // needs its spawn tile checked against the new art's actual door.
 
     // Spawn on the central fountain's walkway (col 78, row 38) — the two-tile
     // flight of steps climbing from the south path up to the sculpture.

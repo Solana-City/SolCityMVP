@@ -34,6 +34,7 @@ const TILESET_KEYS = [
   "SCBuildSolanaCity",
   "SCBuildSolMechs",
   "SCBuildDungeousMoles",
+  "SCBuildStoklana",
 ];
 
 // The new map is small enough (135×115) to serve both platforms — no separate
