@@ -551,9 +551,16 @@ pub mod sol_mechs {
         s.require_pass = require_pass;
         s.entrants = 0;
         s.next_room_id = 1;
+        Ok(())
+    }
 
-        let q = &mut ctx.accounts.queue;
-        q.season = id;
+    /// Creates the ranked queue. Separate from `init_season` because the queue
+    /// is a zero-copy account: creating it beside another `init` in the same
+    /// instruction made the runtime fail the whole thing with "Overlapping
+    /// copy" once its 3KB of data was written back.
+    pub fn init_queue(ctx: Context<InitQueue>) -> Result<()> {
+        let mut q = ctx.accounts.queue.load_init()?;
+        q.season = ctx.accounts.season.id;
         q.len = 0;
         Ok(())
     }
@@ -635,12 +642,13 @@ pub mod sol_mechs {
         require!(e.energy >= ENERGY_COST_PER_MATCH, MechError::NoEnergy);
         e.energy -= ENERGY_COST_PER_MATCH;
 
-        let q = &mut ctx.accounts.queue;
+        let mut q = ctx.accounts.queue.load_mut()?;
         require!((q.len as usize) < QUEUE_CAP, MechError::QueueFull);
         let slot = q.len as usize;
         q.tickets[slot] = Ticket {
             authority: e.authority,
             rating: e.rating,
+            _pad: [0; 4],
             enqueued_at: now,
         };
         q.len += 1;
@@ -652,8 +660,8 @@ pub mod sol_mechs {
     pub fn cancel_queue(ctx: Context<CancelQueue>) -> Result<()> {
         let e = &mut ctx.accounts.entry;
         require!(e.queued, MechError::NotQueued);
-        let q = &mut ctx.accounts.queue;
-        remove_ticket(q, &e.authority);
+        let mut q = ctx.accounts.queue.load_mut()?;
+        remove_ticket(&mut q, &e.authority);
         e.queued = false;
         e.energy = (e.energy + ENERGY_COST_PER_MATCH).min(ENERGY_MAX_BANKED);
         Ok(())
@@ -681,8 +689,9 @@ pub mod sol_mechs {
             require!(e.season == season_id, MechError::WrongSeason);
             require!(e.queued, MechError::NotQueued);
             require!(e.room_id == 0, MechError::InRankedMatch);
-            let mine = find_ticket(&ctx.accounts.queue, &me_key).ok_or(error!(MechError::NotQueued))?;
-            (e.rating, e.recent, e.recent_len, ctx.accounts.queue.tickets[mine].enqueued_at)
+            let q = ctx.accounts.queue.load()?;
+            let mine = find_ticket(&q, &me_key).ok_or(error!(MechError::NotQueued))?;
+            (e.rating, e.recent, e.recent_len, q.tickets[mine].enqueued_at)
         };
 
         // Best candidate by cost, seen from the caller's history. Meetings are
@@ -690,8 +699,9 @@ pub mod sol_mechs {
         // every queued player's account, which would never fit in one
         // transaction.
         let mut best_cost = i64::MAX;
-        for i in 0..(ctx.accounts.queue.len as usize) {
-            let t = ctx.accounts.queue.tickets[i];
+        let queue_len = { ctx.accounts.queue.load()?.len as usize };
+        for i in 0..queue_len {
+            let t = { ctx.accounts.queue.load()?.tickets[i] };
             if t.authority == me_key {
                 continue;
             }
@@ -708,8 +718,9 @@ pub mod sol_mechs {
         // cannot steer the choice, and insisting on one exact key would make
         // ties unpairable.
         let chosen_wait_from = {
-            let idx = find_ticket(&ctx.accounts.queue, &opponent).ok_or(error!(MechError::NotBestPairing))?;
-            let t = ctx.accounts.queue.tickets[idx];
+            let q = ctx.accounts.queue.load()?;
+            let idx = find_ticket(&q, &opponent).ok_or(error!(MechError::NotBestPairing))?;
+            let t = q.tickets[idx];
             let meetings = count_recent(&my_recent, my_recent_len, &t.authority);
             let cost = (my_rating as i64 - t.rating as i64).abs()
                 + REMATCH_PENALTY * meetings as i64;
@@ -723,9 +734,9 @@ pub mod sol_mechs {
         }
 
         {
-            let q = &mut ctx.accounts.queue;
-            remove_ticket(q, &me_key);
-            remove_ticket(q, &opponent);
+            let mut q = ctx.accounts.queue.load_mut()?;
+            remove_ticket(&mut q, &me_key);
+            remove_ticket(&mut q, &opponent);
         }
 
         let season = &mut ctx.accounts.season;
@@ -1460,18 +1471,27 @@ pub struct InitSeason<'info> {
         bump,
     )]
     pub season: Account<'info, Season>,
-    #[account(
-        init,
-        payer = admin,
-        space = 8 + MatchQueue::INIT_SPACE,
-        seeds = [QUEUE_SEED, &id.to_le_bytes()],
-        bump,
-    )]
-    pub queue: Account<'info, MatchQueue>,
     #[account(mut)]
     pub admin: Signer<'info>,
     /// CHECK: where sale proceeds land; stored and checked on every purchase
     pub treasury: UncheckedAccount<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct InitQueue<'info> {
+    #[account(seeds = [SEASON_SEED, &season.id.to_le_bytes()], bump)]
+    pub season: Account<'info, Season>,
+    #[account(
+        init,
+        payer = payer,
+        space = 8 + std::mem::size_of::<MatchQueue>(),
+        seeds = [QUEUE_SEED, &season.id.to_le_bytes()],
+        bump,
+    )]
+    pub queue: AccountLoader<'info, MatchQueue>,
+    #[account(mut)]
+    pub payer: Signer<'info>,
     pub system_program: Program<'info, System>,
 }
 
@@ -1523,7 +1543,7 @@ pub struct JoinQueue<'info> {
     #[account(seeds = [SEASON_SEED, &season.id.to_le_bytes()], bump)]
     pub season: Account<'info, Season>,
     #[account(mut, seeds = [QUEUE_SEED, &season.id.to_le_bytes()], bump)]
-    pub queue: Account<'info, MatchQueue>,
+    pub queue: AccountLoader<'info, MatchQueue>,
     #[account(
         mut,
         seeds = [ENTRY_SEED, &season.id.to_le_bytes(), authority.key().as_ref()],
@@ -1539,7 +1559,7 @@ pub struct JoinQueue<'info> {
 #[derive(Accounts)]
 pub struct CancelQueue<'info> {
     #[account(mut, seeds = [QUEUE_SEED, &entry.season.to_le_bytes()], bump)]
-    pub queue: Account<'info, MatchQueue>,
+    pub queue: AccountLoader<'info, MatchQueue>,
     #[account(
         mut,
         seeds = [ENTRY_SEED, &entry.season.to_le_bytes(), authority.key().as_ref()],
@@ -1555,7 +1575,7 @@ pub struct PairFromQueue<'info> {
     #[account(mut, seeds = [SEASON_SEED, &season.id.to_le_bytes()], bump)]
     pub season: Account<'info, Season>,
     #[account(mut, seeds = [QUEUE_SEED, &season.id.to_le_bytes()], bump)]
-    pub queue: Account<'info, MatchQueue>,
+    pub queue: AccountLoader<'info, MatchQueue>,
     #[account(
         mut,
         seeds = [ENTRY_SEED, &season.id.to_le_bytes(), authority.key().as_ref()],
@@ -1739,20 +1759,27 @@ pub struct LadderEntry {
     pub last_match_at: i64,
 }
 
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Default, InitSpace)]
+/// A queued player. `_pad` keeps the 8-byte alignment zero-copy requires.
+#[zero_copy]
+#[derive(Default)]
 pub struct Ticket {
-    pub authority: Pubkey,
-    pub rating: i32,
-    pub enqueued_at: i64,
+    pub authority: Pubkey,  // 0
+    pub rating: i32,        // 32
+    pub _pad: [u8; 4],      // 36
+    pub enqueued_at: i64,   // 40, ends at 48
 }
 
 /// The ranked queue. One per season, base layer.
-#[account]
-#[derive(InitSpace)]
+///
+/// Zero-copy: 64 tickets is 3KB, and serialising that through Anchor's normal
+/// account writer made the runtime reject the whole instruction with
+/// "Overlapping copy". Zero-copy writes in place, and costs less compute too.
+#[account(zero_copy)]
 pub struct MatchQueue {
-    pub season: u16,
-    pub len: u8,
-    pub tickets: [Ticket; QUEUE_CAP],
+    pub season: u16,       // 0
+    pub len: u8,           // 2
+    pub _pad: [u8; 5],     // 3
+    pub tickets: [Ticket; QUEUE_CAP], // 8
 }
 
 /// One ranked pairing, opened by `pair_from_queue` and closed by a result.
