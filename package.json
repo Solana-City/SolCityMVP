@@ -9,7 +9,10 @@
     "dev": "npm run dev -w apps/web",
     "dev:server": "npm run dev -w apps/server",
     "map:embed": "node apps/web/scripts/embed-tiled-map.mjs",
-    "map:collision": "node apps/web/scripts/patch-map-collision.mjs"
+    "map:collision": "node apps/web/scripts/patch-map-collision.mjs",
+    "test": "npm run test -w apps/web",
+    "lint": "npm run lint -w apps/web",
+    "typecheck": "npm run typecheck -w apps/web"
   },
   "dependencies": {
     "react": "18.3.1",
