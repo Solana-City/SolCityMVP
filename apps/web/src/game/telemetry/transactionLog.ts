@@ -49,6 +49,13 @@ export interface TxEntry {
   error?: string;          // set on failure
   createdAt: number;       // ms epoch
   updatedAt: number;
+  /**
+   * Milliseconds from sending to the network accepting it — the number a
+   * player feels. Deliberately NOT "created to confirmed": a move is verified
+   * by a sampled status poll seconds later, and reporting that as the
+   * transaction's speed would slander the rollup.
+   */
+  latencyMs?: number;
   // Move-batch specific: coalesces N consecutive move txs into one entry.
   batchCount?: number;
   batchSpanMs?: number;
@@ -154,12 +161,40 @@ class TransactionLogService {
    * sendRawTransaction with skipPreflight, where we hold a real signature
    * but don't yet know whether the instruction executed.
    */
-  attachSignature(id: string, signature: string): void {
+  attachSignature(id: string, signature: string, latencyMs?: number): void {
     const entry = this.entries.find((e) => e.id === id);
     if (!entry) return;
     entry.signature = signature;
+    if (latencyMs !== undefined) this.noteLatency(entry, latencyMs);
     entry.updatedAt = Date.now();
     this.notify();
+  }
+
+  /**
+   * Records how long a send took, on the entry and in the analytics.
+   *
+   * A batched move entry keeps the batch's AVERAGE: one bad hop in twenty
+   * should not make a smooth run look slow, and the average is what the
+   * player experienced.
+   */
+  private noteLatency(entry: TxEntry, ms: number): void {
+    const rounded = Math.max(0, Math.round(ms));
+    if (entry.kind === "move" && entry.batchCount && entry.batchCount > 1 && entry.latencyMs !== undefined) {
+      const n = entry.batchCount;
+      entry.latencyMs = Math.round((entry.latencyMs * (n - 1) + rounded) / n);
+    } else {
+      entry.latencyMs = rounded;
+    }
+    track("latency", `${entry.layer}-${entry.kind}`, { value: rounded, label: entry.label });
+  }
+
+  /** Times a send and records the result. Returns whatever `send` returned. */
+  async timed<T>(entry: TxEntry, send: () => Promise<T>): Promise<T> {
+    const startedAt = Date.now();
+    const result = await send();
+    this.noteLatency(entry, Date.now() - startedAt);
+    this.notify();
+    return result;
   }
 
   /** Kinds worth reporting to the analytics: a protocol was actually used. */
@@ -167,11 +202,12 @@ class TransactionLogService {
     "swap", "stock", "transfer", "bounty",
   ]);
 
-  markConfirmed(id: string, signature: string): void {
+  markConfirmed(id: string, signature: string, latencyMs?: number): void {
     const entry = this.entries.find((e) => e.id === id);
     if (!entry) return;
     entry.status = "confirmed";
     entry.signature = signature;
+    if (latencyMs !== undefined) this.noteLatency(entry, latencyMs);
     entry.updatedAt = Date.now();
     // A confirmed money transaction is the moment a protocol was really used,
     // which is what the partner projects are counted on. Failed and pending

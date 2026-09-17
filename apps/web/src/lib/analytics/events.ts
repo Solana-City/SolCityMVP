@@ -15,6 +15,8 @@
  *   ev:<kind>:<id>:best           sorted set wallet -> best score (mini-games)
  *   ev:<kind>:<id>:ok             completions (a finished tutorial, a claimed quest)
  *   ev:<kind>:<id>:s:<n>          how many reached step n, which is the funnel
+ *   ev:latency:<id>:sum           total milliseconds, for the average
+ *   ev:latency:<id>:slow          sends that took over a second
  *   ev:ids:<kind>                 set of ids seen, so the panel needs no list
  *   ev:feed                       last 100 events, newest first
  *
@@ -24,7 +26,9 @@
 import { incr, lpushCapped, lrange, sadd, scard, smembers, storeMode, zincrby, zmax, ztop } from "@/lib/kv";
 
 /** What can be reported. Anything else is rejected. */
-export const EVENT_KINDS = ["protocol", "protocol-open", "minigame", "hunt", "duel", "tutorial", "quest"] as const;
+export const EVENT_KINDS = [
+  "protocol", "protocol-open", "minigame", "hunt", "duel", "tutorial", "quest", "latency",
+] as const;
 export type EventKind = (typeof EVENT_KINDS)[number];
 
 export interface GameEvent {
@@ -70,6 +74,10 @@ export async function recordEvent(ev: GameEvent): Promise<boolean> {
       ? incr(`${base}:s:${score}`)
       : Promise.resolve(),
     ev.success === true ? incr(`${base}:ok`) : Promise.resolve(),
+    // Latency is reported per send; the average is what a player feels, and
+    // the slow count is what tells us whether an average is hiding a tail.
+    ev.kind === "latency" ? incr(`${base}:sum`, score) : Promise.resolve(),
+    ev.kind === "latency" && score > 1_000 ? incr(`${base}:slow`) : Promise.resolve(),
     lpushCapped("ev:feed", JSON.stringify({
       k: ev.kind, i: ev.id, w: ev.wallet, v: score,
       s: ev.success === undefined ? null : ev.success,
@@ -89,6 +97,9 @@ export interface KindSummary {
   ok: number;
   /** Players who reached each step, index 0 = step 1. Tutorials only. */
   steps: number[];
+  /** Average milliseconds and how many were over a second. Latency only. */
+  averageMs?: number;
+  slow?: number;
   top: { wallet: string; count: number }[];
   best: { wallet: string; score: number }[];
 }
@@ -97,10 +108,12 @@ async function summarise(kind: EventKind, id: string): Promise<KindSummary> {
   const base = `ev:${kind}:${id}`;
   const days = Array.from({ length: 7 }, (_, i) => dayKey(Date.now() - i * 86_400_000));
   const stepSlots = kind === "tutorial" ? Array.from({ length: 12 }, (_, i) => i + 1) : [];
-  const [count, users, ok, top, best, ...rest] = await Promise.all([
+  const [count, users, ok, sum, slow, top, best, ...rest] = await Promise.all([
     incr(`${base}:count`, 0),
     scard(`${base}:users`),
     incr(`${base}:ok`, 0),
+    kind === "latency" ? incr(`${base}:sum`, 0) : Promise.resolve(0),
+    kind === "latency" ? incr(`${base}:slow`, 0) : Promise.resolve(0),
     ztop(`${base}:by`, 5),
     ztop(`${base}:best`, 5),
     ...days.map((d) => incr(`${base}:d:${d}`, 0)),
@@ -117,6 +130,8 @@ async function summarise(kind: EventKind, id: string): Promise<KindSummary> {
     users,
     ok,
     steps,
+    averageMs: kind === "latency" && count > 0 ? Math.round(sum / count) : undefined,
+    slow: kind === "latency" ? slow : undefined,
     last7: daily.reduce((n, d) => n + d, 0),
     top: top.map((t) => ({ wallet: t.member, count: t.score })),
     best: best.map((t) => ({ wallet: t.member, score: t.score })),
@@ -139,6 +154,7 @@ export interface EventReport {
   minigames: KindSummary[];
   tutorials: KindSummary[];
   quests: KindSummary[];
+  latency: KindSummary[];
   hunt: KindSummary | null;
   duels: KindSummary[];
   feed: FeedItem[];
@@ -149,7 +165,7 @@ export interface EventReport {
 export async function eventReport(): Promise<EventReport> {
   if (storeMode() === "off") {
     return {
-      protocols: [], opens: [], minigames: [], tutorials: [], quests: [],
+      protocols: [], opens: [], minigames: [], tutorials: [], quests: [], latency: [],
       hunt: null, duels: [], feed: [], enabled: false,
     };
   }
@@ -159,12 +175,13 @@ export async function eventReport(): Promise<EventReport> {
     return rows.sort((a, b) => b.count - a.count);
   };
 
-  const [protocols, opens, minigames, tutorials, quests, hunt, duels, rawFeed] = await Promise.all([
+  const [protocols, opens, minigames, tutorials, quests, latency, hunt, duels, rawFeed] = await Promise.all([
     forKind("protocol"),
     forKind("protocol-open"),
     forKind("minigame"),
     forKind("tutorial"),
     forKind("quest"),
+    forKind("latency"),
     forKind("hunt").then((r) => r[0] ?? null),
     forKind("duel"),
     lrange("ev:feed", FEED_CAP),
@@ -179,5 +196,5 @@ export async function eventReport(): Promise<EventReport> {
     }
   });
 
-  return { protocols, opens, minigames, tutorials, quests, hunt, duels, feed, enabled: true };
+  return { protocols, opens, minigames, tutorials, quests, latency, hunt, duels, feed, enabled: true };
 }

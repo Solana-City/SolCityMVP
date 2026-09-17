@@ -20,6 +20,7 @@ import {
   PublicKey, Transaction, type TransactionInstruction,
 } from "@solana/web3.js";
 import { SessionKeyManager } from "@/game/solana/sessionKeys";
+import { track } from "@/game/telemetry/track";
 import { BASE_RPC_PRIMARY, resilientBaseFetch } from "@/game/solana/baseRpc";
 import { DELEGATION_PROGRAM_ID } from "@/game/solana/program";
 import type { TeamBuild } from "../../data/team";
@@ -34,6 +35,16 @@ import * as P from "./mechProgram";
 export type SignTransaction = (tx: Transaction) => Promise<Transaction>;
 
 const POLL_MS = 450;
+/**
+ * How long a rollup blockhash is reused before refetching.
+ *
+ * Every send used to fetch one first, which put a full round trip in front of
+ * every commit and every reveal — two per round. The rollup's validity window
+ * is tight, so this is deliberately short: enough to serve a burst of actions,
+ * not enough to go stale. A send that fails clears it and retries with a fresh
+ * one, the same pattern the city uses for movement.
+ */
+const BLOCKHASH_TTL_MS = 2_000;
 const GONE_POLL_MS = 1_500;
 /** Re-take the lobby slot this often while waiting; well inside LOBBY_TTL_SECS. */
 const HEARTBEAT_MS = 10_000;
@@ -66,6 +77,7 @@ export class ChainTransport implements PvpTransport {
   private readonly goneListeners = new Set<() => void>();
   private goneTimer: ReturnType<typeof setInterval> | null = null;
   private goneFired = false;
+  private cachedBlockhash: { hash: string; at: number } | null = null;
 
   constructor(
     private readonly wallet: PublicKey,
@@ -80,6 +92,31 @@ export class ChainTransport implements PvpTransport {
     });
     this.er = new Connection(ER_ENDPOINT, "confirmed");
     this.mePda = P.duelistPda(this.program, wallet);
+    this.warmUp();
+  }
+
+  /**
+   * Opens the rollup connection before the player needs it.
+   *
+   * The first request to a host pays DNS, TLS and connection setup, and that
+   * bill used to land on the first commit of the first round — the moment the
+   * game feels slowest. Doing it when the transport is created moves the cost
+   * into the menu, where nobody is waiting. Failures are ignored: this is a
+   * warm-up, not a dependency.
+   */
+  private warmUp(): void {
+    void this.er.getLatestBlockhash()
+      .then(({ blockhash }) => { this.cachedBlockhash = { hash: blockhash, at: Date.now() }; })
+      .catch(() => undefined);
+  }
+
+  /** A recent rollup blockhash, refetched only when the cached one ages out. */
+  private async erBlockhash(): Promise<string> {
+    const cached = this.cachedBlockhash;
+    if (cached && Date.now() - cached.at < BLOCKHASH_TTL_MS) return cached.hash;
+    const { blockhash } = await this.er.getLatestBlockhash();
+    this.cachedBlockhash = { hash: blockhash, at: Date.now() };
+    return blockhash;
   }
 
   // ── PvpTransport ────────────────────────────────────────────────────────
@@ -488,16 +525,29 @@ export class ChainTransport implements PvpTransport {
     const attempts = by === "session" ? 3 : 1;
     let lastErr: unknown = null;
     for (let i = 0; i < attempts; i++) {
+      const startedAt = Date.now();
       try {
-        const { blockhash } = await this.er.getLatestBlockhash();
+        // A retry always takes a fresh hash: a stale cached one is the likely
+        // reason the previous attempt failed.
+        if (i > 0) this.cachedBlockhash = null;
+        const blockhash = await this.erBlockhash();
         const feePayer = by === "session" ? this.sessionPub : this.wallet;
         let tx = new Transaction({ feePayer, recentBlockhash: blockhash }).add(...ixs);
         if (by === "session") tx.sign(this.sessionKeys.getSessionKey());
         else tx = await this.signTransaction(tx);
-        const sig = await this.er.sendRawTransaction(tx.serialize(), { skipPreflight: false });
+        // Session sends skip preflight: simulating first doubles the round
+        // trips on the one path that happens twice a round, and `confirm`
+        // below reads the real execution status anyway. A wallet send keeps
+        // preflight, because there the player is waiting on a popup and a
+        // clear rejection is worth the extra trip.
+        const sig = await this.er.sendRawTransaction(tx.serialize(), {
+          skipPreflight: by === "session",
+        });
+        track("latency", "ephemeral-mechs", { value: Date.now() - startedAt, label: "rollup send" });
         await this.confirm(this.er, sig);
         return sig;
       } catch (err) {
+        this.cachedBlockhash = null;
         if (isProgramRejection(err)) throw err;
         lastErr = err;
       }

@@ -10,7 +10,8 @@
  * number. No balances, no addresses, no transaction contents.
  */
 export type TrackKind =
-  | "protocol" | "protocol-open" | "minigame" | "hunt" | "duel" | "tutorial" | "quest";
+  | "protocol" | "protocol-open" | "minigame" | "hunt" | "duel" | "tutorial" | "quest"
+  | "latency";
 
 let currentWallet: string | null = null;
 

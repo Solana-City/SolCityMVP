@@ -154,6 +154,7 @@ export default function TransactionLogPanel({ isOpen, onToggle, gameRef, compact
         total={entries.length}
         pending={pendingCount}
         failed={failedCount}
+        averageMs={averageLatency(entries)}
         onClear={() => transactionLog.clear()}
         onClose={onToggle}
         onResetSession={gameRef ? handleResetSession : undefined}
@@ -251,10 +252,29 @@ function PulseDot({ color, active }: { color: string; active: boolean }) {
   );
 }
 
+/** Under a rollup's promise, over a second is a base-layer feeling. */
+function speedColor(ms: number): string {
+  if (ms < 400) return "#14F195";
+  if (ms < 1_000) return "#FFD700";
+  return "#F72585";
+}
+
+function formatLatency(ms: number): string {
+  return ms < 1_000 ? `${ms}ms` : `${(ms / 1_000).toFixed(1)}s`;
+}
+
+/** Average accepted-in time across everything measured this session. */
+function averageLatency(entries: ReadonlyArray<TxEntry>): number | null {
+  const timed = entries.filter((e) => e.latencyMs !== undefined);
+  if (timed.length === 0) return null;
+  return Math.round(timed.reduce((sum, e) => sum + (e.latencyMs ?? 0), 0) / timed.length);
+}
+
 function Header({
   total,
   pending,
   failed,
+  averageMs,
   onClear,
   onClose,
   onResetSession,
@@ -263,6 +283,7 @@ function Header({
   total: number;
   pending: number;
   failed: number;
+  averageMs: number | null;
   onClear: () => void;
   onClose: () => void;
   onResetSession?: () => void;
@@ -287,6 +308,11 @@ function Header({
         <span>{total} total</span>
         {pending > 0 && <span style={{ color: "#FFD700" }}>· {pending} pending</span>}
         {failed > 0 && <span style={{ color: "#F72585" }}>· {failed} failed</span>}
+        {averageMs !== null && (
+          <span style={{ color: speedColor(averageMs) }} title="Average time for the network to accept a transaction this session">
+            · {formatLatency(averageMs)} avg
+          </span>
+        )}
       </div>
       <div className="ml-auto flex items-center gap-3">
         {onResetSession && (
@@ -490,6 +516,25 @@ function EntryRow({ entry }: { entry: TxEntry }) {
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2" style={{ fontSize: 8 }}>
           <span style={{ color: "#ccccdd" }}>{entry.label}</span>
+          {entry.latencyMs !== undefined && (
+            <span
+              title={
+                entry.batchCount && entry.batchCount > 1
+                  ? "Average time for the network to accept these moves"
+                  : "Time for the network to accept this transaction"
+              }
+              style={{
+                fontSize: "7px",
+                color: speedColor(entry.latencyMs),
+                background: `${speedColor(entry.latencyMs)}1f`,
+                padding: "1px 4px",
+                borderRadius: 3,
+                marginLeft: "auto",
+              }}
+            >
+              {formatLatency(entry.latencyMs)}
+            </span>
+          )}
           {entry.batchCount && entry.batchCount > 1 && (
             <span
               style={{

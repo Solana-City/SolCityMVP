@@ -500,9 +500,13 @@ export class OnChainMultiplayer {
         status: "pending",
         layer: this.useEphemeral ? "ephemeral" : "base",
       });
+      const sentAt = Date.now();
       this.sendPositionTransaction(x, y, dirNum)
         .then(sig => {
           if (sig) {
+            // How long the network took to accept it — the number the player
+            // sees in the on-chain log.
+            transactionLog.attachSignature(entry.id, sig, Date.now() - sentAt);
             this.trackMoveConfirmation(entry.id, sig);
           } else {
             // A single un-submitted position move is transient and self-heals —
