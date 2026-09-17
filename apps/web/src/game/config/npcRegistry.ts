@@ -216,8 +216,9 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     dialog: [
       "Want to send USDC without the whole city watching?",
       "Deposit into your private account, then send from it. Only you and your friend see it.",
+      "Building something? MagicBlock runs this city. I can show you how the rollups work.",
     ],
-    action: { type: "private-payment", label: "Send privately" },
+    action: { type: "private-payment", label: "Open MagicBlock" },
     spriteKey: "Magic Man",
   },
   {

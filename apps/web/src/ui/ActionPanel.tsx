@@ -9,6 +9,7 @@ import { transactionLog } from "@/game/telemetry/transactionLog";
 import { profileManager } from "@/game/config/profileManager";
 import { ProtocolIntroGate, type IntroSpec } from "@/ui/ProtocolIntro";
 import CityGuide from "@/ui/CityGuide";
+import MagicBlockHub from "@/ui/MagicBlockHub";
 import StockExchangePanel from "@/ui/StockExchangePanel";
 
 /** Pratik: how Superteam Earn pays, before the bounty list. */
@@ -143,7 +144,9 @@ export default function ActionPanel({ action, onClose }: ActionPanelProps) {
           {action.type === "swap"            && <ProtocolIntroGate spec={SWAP_INTRO}><SwapPanel onClose={onClose} /></ProtocolIntroGate>}
           {action.type === "transfer"        && <ProtocolIntroGate spec={TRANSFER_INTRO}><TransferPanel onClose={onClose} /></ProtocolIntroGate>}
           {action.type === "bounties"        && <ProtocolIntroGate spec={EARN_INTRO}><BountiesPanel onClose={onClose} /></ProtocolIntroGate>}
-          {action.type === "private-payment" && <PrivatePaymentPanel  onClose={onClose} />}
+          {action.type === "private-payment" && (
+            <MagicBlockHub><PrivatePaymentPanel onClose={onClose} /></MagicBlockHub>
+          )}
           {action.type === "stock-exchange"  && <ProtocolIntroGate spec={STOCK_INTRO}><StockExchangePanel onClose={onClose} /></ProtocolIntroGate>}
         </div>
       </div>
@@ -180,7 +183,9 @@ export default function ActionPanel({ action, onClose }: ActionPanelProps) {
         {action.type === "swap"            && <ProtocolIntroGate spec={SWAP_INTRO}><SwapPanel onClose={onClose} /></ProtocolIntroGate>}
         {action.type === "transfer"        && <ProtocolIntroGate spec={TRANSFER_INTRO}><TransferPanel onClose={onClose} /></ProtocolIntroGate>}
         {action.type === "bounties"        && <ProtocolIntroGate spec={EARN_INTRO}><BountiesPanel onClose={onClose} /></ProtocolIntroGate>}
-        {action.type === "private-payment" && <PrivatePaymentPanel  onClose={onClose} />}
+        {action.type === "private-payment" && (
+            <MagicBlockHub><PrivatePaymentPanel onClose={onClose} /></MagicBlockHub>
+          )}
         {action.type === "stock-exchange"  && <ProtocolIntroGate spec={STOCK_INTRO}><StockExchangePanel onClose={onClose} /></ProtocolIntroGate>}
       </div>
     </div>
