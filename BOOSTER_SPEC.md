@@ -8,12 +8,12 @@ preview** (`BoosterOverlay`, `boosterPool.ts`) that uses the exact same pool and
 
 Status: **program WRITTEN (commit 7f9e223), needs a Solana Playground deploy;
 client wiring lands after.** Decisions locked: **VRF via MagicBlock ephemeral
-VRF**, **0.01 SOL** per pack to the **game-wallet treasury**, base devnet
+VRF**, **0.025 SOL** per pack to the **game-wallet treasury**, base devnet
 (wallet-signed — no ER-session dependency). Nothing ships client-side until the
 program is live (same rule as `REDEPLOY_CHECKLIST.md`).
 
 ### What's on-chain now (`programs/sol-city/src/lib.rs`)
-- `open_booster(pool_count, client_seed)` — pays 0.01 SOL → treasury, requests
+- `open_booster(pool_count, client_seed)` — pays 0.025 SOL → treasury, requests
   VRF (`ephemeral-vrf-sdk` `create_request_randomness_ix`, `DEFAULT_QUEUE`),
   callback `callback_open_booster`. Stores `pending` + `pending_pool_count` on
   `UnlockState`.

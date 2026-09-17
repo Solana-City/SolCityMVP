@@ -64,8 +64,8 @@ pub const UNLOCKS_SEED: &[u8] = b"unlocks";
 pub const UNLOCK_BITS: usize = 32;
 /// Pieces granted per pack.
 pub const BOOSTER_PACK_SIZE: usize = 5;
-/// Price to open a pack (0.01 SOL on devnet).
-pub const BOOSTER_PRICE_LAMPORTS: u64 = 10_000_000;
+/// Price to open an outfit box (0.025 SOL, about $2.50 at $100/SOL).
+pub const BOOSTER_PRICE_LAMPORTS: u64 = 25_000_000;
 /// Treasury that receives pack payments (the game wallet).
 pub const TREASURY: Pubkey = pubkey!("9592QS34mPUwqA7sPAkug1kcuFddjn59QPQMzzCgKhEp");
 

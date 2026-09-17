@@ -111,7 +111,7 @@ pub const ENERGY_DAILY_FREE: u8 = 5;
 pub const ENERGY_MAX_BANKED: u8 = 10;
 pub const ENERGY_COST_PER_MATCH: u8 = 1;
 pub const ENERGY_PACK_SIZE: u8 = 5;
-pub const ENERGY_PACK_PRICE_LAMPORTS: u64 = 10_000_000; // 0.01 SOL
+pub const ENERGY_PACK_PRICE_LAMPORTS: u64 = 50_000_000; // 0.05 SOL, about $5
 pub const ENERGY_PACKS_PER_DAY: u8 = 1;
 /// Share of an energy purchase that goes to the prize pool, in percent.
 pub const POOL_SHARE_OF_ENERGY_PCT: u64 = 30;

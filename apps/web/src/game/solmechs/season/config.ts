@@ -39,7 +39,8 @@ export const ENERGY = {
   COST_PER_MATCH: 1,
   /** What one purchasable pack grants. */
   PACK_SIZE: 5,
-  PACK_PRICE_LAMPORTS: LAMPORTS_PER_SOL / 100, // 0.01 SOL
+  /** 0.05 SOL, aimed at roughly $5. Must equal ENERGY_PACK_PRICE_LAMPORTS in the program. */
+  PACK_PRICE_LAMPORTS: LAMPORTS_PER_SOL / 20,
   /** Packs buyable per day, per wallet. Bounds paid matches per day. */
   PACKS_PER_DAY: 1,
 } as const;

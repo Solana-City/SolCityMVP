@@ -12,11 +12,14 @@ import { useCallback, useEffect, useState } from "react";
 import {
   RankedClient, effectiveEnergy, type RankedSnapshot,
 } from "@/game/solmechs/ranked/rankedClient";
+import { ENERGY, LAMPORTS_PER_SOL } from "@/game/solmechs/season/config";
 import { C, T, SP, R, MONO, DISPLAY, PIXELATED, backdrop, panel, eyebrow, button, W } from "./theme";
 import { SpriteButton } from "./SpriteButton";
 
 const UI = "/assets/minigames/sol-mechs/ui";
 const MAX_ENERGY = 10;
+/** Shown on the buy button; the program charges the same number. */
+const PACK_PRICE_SOL = ENERGY.PACK_PRICE_LAMPORTS / LAMPORTS_PER_SOL;
 
 export interface RankedHomeProps {
   client: RankedClient | null;
@@ -150,9 +153,13 @@ export default function RankedHome({ client, unavailable, onQueue, onLeaderboard
               style={button("ghost")}
               disabled={!!busy || (entry.packsToday ?? 0) >= 1}
               onClick={() => run("energy", () => client.buyEnergy())}
-              title={entry.packsToday >= 1 ? "One pack per day" : "0.01 SOL"}
+              title={entry.packsToday >= 1 ? "One pack per day" : `${PACK_PRICE_SOL} SOL`}
             >
-              {busy === "energy" ? "SIGNING..." : entry.packsToday >= 1 ? "PACK USED TODAY" : "+5 ENERGY · 0.01 SOL"}
+              {busy === "energy"
+                ? "SIGNING..."
+                : entry.packsToday >= 1
+                  ? "PACK USED TODAY"
+                  : `+${ENERGY.PACK_SIZE} ENERGY · ${PACK_PRICE_SOL} SOL`}
             </button>
           )}
           <button style={button("ghost")} onClick={onClose}>BACK</button>
