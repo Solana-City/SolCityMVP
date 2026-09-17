@@ -1,4 +1,5 @@
 import { track } from "@/game/telemetry/track";
+import { invalidateBoard } from "@/game/leaderboards/boards";
 
 export interface QuestDefinition {
   id: string;
@@ -62,6 +63,75 @@ function progressKey(wallet: string): string {
 
 const LEADERBOARD_KEY = "solcity:questPoints";
 
+// ── Server sync ───────────────────────────────────────────────────────────
+//
+// Progress is kept BOTH places on purpose. localStorage answers instantly and
+// keeps guests working with no wallet and no network; the server copy is what
+// follows a player to another device and feeds the city-wide points board.
+// Writes go to both, and the server's answer wins when they disagree, since it
+// is the one that saw the other device.
+
+type Listener = () => void;
+const listeners = new Set<Listener>();
+
+/** Re-renders the quest UI after the server answers. */
+export function onQuestsChanged(cb: Listener): () => void {
+  listeners.add(cb);
+  return () => { listeners.delete(cb); };
+}
+
+function notify(): void {
+  for (const cb of [...listeners]) cb();
+}
+
+function mergeFromServer(wallet: string, rows: Record<string, QuestProgress> | undefined): void {
+  if (!rows || typeof window === "undefined") return;
+  const local = getQuestProgress(wallet);
+  let changed = false;
+  for (const [questId, row] of Object.entries(rows)) {
+    const mine = local[questId];
+    // Further along, or claimed there and not here: take the server's word.
+    if (!mine || row.current > mine.current || (row.claimedAt && !mine.claimedAt)) {
+      local[questId] = row;
+      changed = true;
+    }
+  }
+  if (changed) {
+    saveProgress(wallet, local);
+    notify();
+  }
+}
+
+/** Pulls today's progress for this wallet. Called when a wallet connects. */
+export async function hydrateQuests(wallet: string): Promise<void> {
+  if (!wallet || wallet === "guest") return;
+  try {
+    const res = await fetch(`/api/quests?wallet=${encodeURIComponent(wallet)}`);
+    const body = await res.json();
+    mergeFromServer(wallet, body.quests);
+  } catch {
+    /* offline: the local copy is still correct for this device */
+  }
+}
+
+function pushQuest(
+  wallet: string,
+  questId: string,
+  action: "increment" | "claim",
+  extra: Record<string, number>,
+): void {
+  if (!wallet || wallet === "guest" || typeof fetch === "undefined") return;
+  void fetch("/api/quests", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ wallet, questId, action, ...extra }),
+    keepalive: true,
+  })
+    .then((r) => r.json())
+    .then((body) => mergeFromServer(wallet, body.quests))
+    .catch(() => undefined);
+}
+
 // ── Quest progress ────────────────────────────────────────────────────────────
 
 export function getQuestProgress(wallet: string): Record<string, QuestProgress> {
@@ -92,6 +162,7 @@ export function incrementQuest(wallet: string, questId: string): QuestProgress {
   const next: QuestProgress = { questId, current, completed };
   all[questId] = next;
   saveProgress(wallet, all);
+  pushQuest(wallet, questId, "increment", { target: def.target });
   return next;
 }
 
@@ -126,6 +197,9 @@ export function claimQuest(wallet: string, questId: string): number {
   const prev = lb[wallet] ?? { display, points: 0 };
   lb[wallet] = { display, points: prev.points + def.points };
   saveLeaderboard(lb);
+
+  pushQuest(wallet, questId, "claim", { points: def.points });
+  invalidateBoard("quests");
 
   return def.points;
 }

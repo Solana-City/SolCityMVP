@@ -2,6 +2,9 @@
 
 import { PixelImg, ICON, CheckBox, RankBadge } from "@/ui/PixelIcons";
 import { useState, useEffect, useCallback } from "react";
+import { fetchBoard, type BoardRow } from "@/game/leaderboards/boards";
+import { onQuestsChanged } from "@/game/quests/QuestManager";
+import { shortWallet } from "@/ui/useNicknames";
 import {
   DAILY_QUESTS, getQuestProgress, claimQuest,
   getQuestLeaderboard, getMyQuestPoints, getDailyPointsEarned,
@@ -10,7 +13,19 @@ import {
 
 // ── Leaderboard modal ─────────────────────────────────────────────────────────
 function QuestLeaderboardModal({ onClose }: { onClose: () => void }) {
-  const entries: QuestLeaderEntry[] = getQuestLeaderboard(10);
+  // City-wide points, with this browser's own history until it loads.
+  const [rows, setRows] = useState<BoardRow[] | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetchBoard("quests", { limit: 10 })
+      .then((r) => { if (!cancelled) setRows(r.rows); })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, []);
+
+  const entries: QuestLeaderEntry[] = rows?.length
+    ? rows.map((r) => ({ wallet: r.wallet, display: r.name ?? shortWallet(r.wallet), points: r.value }))
+    : getQuestLeaderboard(10);
   return (
     <div style={{
       position: "fixed", inset: 0, zIndex: 200,
@@ -94,8 +109,20 @@ export default function QuestPanel({ wallet }: Props) {
   useEffect(() => {
     refresh();
     const id = setInterval(refresh, 4000);
-    return () => clearInterval(id);
+    // The server answering on another device's progress also refreshes here.
+    const off = onQuestsChanged(refresh);
+    return () => { clearInterval(id); off(); };
   }, [refresh]);
+
+  // Points banked on any device, not just this browser.
+  useEffect(() => {
+    if (!wallet) return;
+    let cancelled = false;
+    fetchBoard("quests", { wallet, limit: 50 })
+      .then((r) => { if (!cancelled && r.mine && r.mine.value > 0) setTotalPoints(r.mine.value); })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [wallet, claimFlash]);
 
   const handleClaim = (questId: string) => {
     if (!wallet) return;

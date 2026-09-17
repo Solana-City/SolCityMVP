@@ -8,7 +8,7 @@ import type { MiniGameContext, MiniGameResult } from "@/game/minigames/types";
 import { PublicKey } from "@solana/web3.js";
 import { launch as launchMiniGame } from "@/game/minigames";
 import { usePinchZoom } from "@/ui/usePinchZoom";
-import { incrementQuest } from "@/game/quests/QuestManager";
+import { hydrateQuests, incrementQuest } from "@/game/quests/QuestManager";
 import { guideSeen, markGuideSeen } from "@/ui/CityGuide";
 import { fetchStatus } from "@/game/names/nameService";
 import { profileManager } from "@/game/config/profileManager";
@@ -263,6 +263,8 @@ export default function Home() {
 
   const handleWalletChange = useCallback((wallet: string | null) => {
     setTrackedWallet(wallet);
+    // Quest progress follows the player across devices.
+    if (wallet) void hydrateQuests(wallet);
     setWalletAddress(wallet);
     // Mirror it somewhere CityScene can read on its own. If the wallet connects
     // while BootScene is still preloading there is no scene to push to yet, and

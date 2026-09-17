@@ -13,6 +13,7 @@ import {
 } from "@/game/config/paperDoll";
 import { incrementQuest } from "@/game/quests/QuestManager";
 import { useNicknames, shortWallet } from "@/ui/useNicknames";
+import { fetchBoard, invalidateBoard, type BoardRow } from "@/game/leaderboards/boards";
 import { track } from "@/game/telemetry/track";
 import { cachedName, requestNames } from "@/game/names/nameService";
 
@@ -153,7 +154,20 @@ function MiniAvatar({ loadout, size = 64 }: { loadout: Loadout; size?: number })
 
 // ── Leaderboard modal ─────────────────────────────────────────────────────────
 function LeaderboardModal({ onClose }: { onClose: () => void }) {
-  const entries = getLeaderboard(10);
+  // City-wide board, with this browser's own history as the fallback while it
+  // loads (and if the store is unreachable).
+  const [rows, setRows] = useState<BoardRow[] | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetchBoard("hunt", { limit: 10 })
+      .then((r) => { if (!cancelled) setRows(r.rows); })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, []);
+
+  const entries = rows?.length
+    ? rows.map((r) => ({ wallet: r.wallet, display: r.name ?? shortWallet(r.wallet), count: r.value }))
+    : getLeaderboard(10);
   const { display } = useNicknames(entries.map((e) => e.wallet));
   return (
     <div style={{
@@ -252,6 +266,7 @@ export default function WhereIsNPCCard({ gameRef, wallet }: Props) {
     if (!gameRef) return;
     const onFound = ({ wallet: w, loadout }: { wallet: string; loadout: Loadout }) => {
       const newScore = recordFind(w);
+      invalidateBoard("hunt");
       recordRoundWinner(getRoundIndex(), w);
       const isMe = w === effectiveWallet;
       if (isMe) incrementQuest(w, "hunt_3_npcs");
@@ -283,7 +298,17 @@ export default function WhereIsNPCCard({ gameRef, wallet }: Props) {
     };
   }, [gameRef, effectiveWallet, round]);
 
-  useEffect(() => { setMyScore(getMyScore(effectiveWallet)); }, [effectiveWallet]);
+  // The player's own total follows them across devices; the local count is
+  // what shows until the board answers, and for guests.
+  useEffect(() => {
+    setMyScore(getMyScore(effectiveWallet));
+    if (!wallet) return;
+    let cancelled = false;
+    fetchBoard("hunt", { wallet, limit: 50 })
+      .then((r) => { if (!cancelled && r.mine && r.mine.value > 0) setMyScore(r.mine.value); })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [effectiveWallet, wallet, foundMsg]);
 
   const mm = Math.floor(msLeft / 60000);
   const ss = String(Math.floor((msLeft % 60000) / 1000)).padStart(2, "0");
