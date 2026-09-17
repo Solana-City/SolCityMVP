@@ -19,6 +19,7 @@ import { soundManager } from "../audio/SoundManager";
 import { publishMinimap } from "../minimap/MinimapHost";
 import { cachedName, onNames, requestNames, NAME_CHANGED_EVENT } from "../names/nameService";
 import { track } from "../telemetry/track";
+import { startHeatmap } from "../telemetry/heatmap";
 
 // Pixel-perfect zoom values and snapping live in config/zoomConfig.ts —
 // shared with ZoomControl and the pinch-zoom hook.
@@ -424,6 +425,7 @@ export class CityScene extends Phaser.Scene {
     // Listen for chat input from React UI
     this.onGameEvent("chat:send", (text: string) => {
       const channel = this.chat.getActiveChannel();
+      track("chat", channel.startsWith("dm:") ? "dm" : channel, { label: "message sent" });
       const color = getChannelColor(channel);
 
       this.chat.addMessage(
@@ -470,6 +472,7 @@ export class CityScene extends Phaser.Scene {
 
     // Emoji trigger from React UI button
     this.onGameEvent("emoji:trigger", (emoji: EmojiDef) => {
+      track("expression", `emoji-${emoji.id}`, { label: emoji.symbol });
       showEmoji(this, this.avatar.getContainer(), emoji);
       this.chat.addMessage("local", "local", this.profile.get().displayName, emoji.symbol, emoji.color);
     });
@@ -477,6 +480,7 @@ export class CityScene extends Phaser.Scene {
     // Facial expression trigger from the React expressions picker. Swaps the
     // player's own face for a few seconds, then auto-reverts. Local only.
     this.onGameEvent("expression:trigger", (expr: { textureKey: string }) => {
+      track("expression", expr.textureKey.replace(/^pd-expr-/, "").toLowerCase());
       this.avatar.setExpression(expr.textureKey);
       soundManager.play("emote");
       this.network.sendExpression(expr.textureKey); // let others see the reaction
@@ -504,6 +508,12 @@ export class CityScene extends Phaser.Scene {
     // On-chain multiplayer via MagicBlock Ephemeral Rollups
     this.network = new OnChainMultiplayer();
     this.registry.set("network", this.network);
+
+    // Where people walk, sampled every few seconds rather than taken from the
+    // position sync, which fires ten times a second and would be all noise.
+    const stopHeatmap = startHeatmap(() =>
+      this.avatar ? { x: this.avatar.x, y: this.avatar.y } : null);
+    this.events.once("shutdown", stopHeatmap);
 
     // Register callbacks immediately so they are active during discovery.
     // CRITICAL: setupNetworkCallbacks must be called BEFORE network.connect()
@@ -740,6 +750,7 @@ export class CityScene extends Phaser.Scene {
       if (nearby) {
         this.interactionBlocked = true;
         nearby.faceToward(this.avatar.x, this.avatar.y);
+        track("npc", nearby.def.id, { label: nearby.def.name });
         this.game.events.emit("npc:interact", nearby.def);
       }
     });
@@ -752,6 +763,7 @@ export class CityScene extends Phaser.Scene {
       if (nearby) {
         this.interactionBlocked = true;
         nearby.faceToward(this.avatar.x, this.avatar.y);
+        track("npc", nearby.def.id, { label: nearby.def.name });
         this.game.events.emit("npc:interact", nearby.def);
       }
     };

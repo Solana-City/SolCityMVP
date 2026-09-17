@@ -14,6 +14,7 @@ import { fetchStatus } from "@/game/names/nameService";
 import { profileManager } from "@/game/config/profileManager";
 import { useFlags } from "@/ui/useFlags";
 import { setTrackedWallet, track } from "@/game/telemetry/track";
+import { startSession } from "@/game/telemetry/session";
 
 // All Solana/wallet-adapter code must be client-only — these packages
 // access `window`/`navigator` at module-load time and crash the SSR pass.
@@ -67,6 +68,7 @@ export default function Home() {
   const [activeNPC, setActiveNPC] = useState<NPCDefinition | null>(null);
   const [activeAction, setActiveAction] = useState<NPCAction | null>(null);
   const [activeMiniGame, setActiveMiniGame] = useState<{ id: string; context: MiniGameContext } | null>(null);
+  const miniGameOpenedAt = useRef(0);
   const [playerCardTarget, setPlayerCardTarget] = useState<{ wallet: string; displayName?: string } | null>(null);
   const [profileOpen, setProfileOpen] = useState(false);
   const [wardrobeOpen, setWardrobeOpen] = useState(false);
@@ -162,7 +164,10 @@ export default function Home() {
 
   useEffect(() => {
     if (!game) return;
-    const handler = (data: { id: string; context: MiniGameContext }) => setActiveMiniGame(data);
+    const handler = (data: { id: string; context: MiniGameContext }) => {
+      miniGameOpenedAt.current = Date.now();
+      setActiveMiniGame(data);
+    };
     game.events.on("minigame:launch", handler);
     return () => { game.events.off("minigame:launch", handler); };
   }, [game]);
@@ -223,9 +228,16 @@ export default function Home() {
   }, [game]);
 
   const handleMiniGameClose = useCallback(() => {
+    // How long the game held them, which is the question a "plays" count
+    // cannot answer on its own.
+    if (activeMiniGame?.id && miniGameOpenedAt.current) {
+      const seconds = Math.round((Date.now() - miniGameOpenedAt.current) / 1000);
+      miniGameOpenedAt.current = 0;
+      if (seconds > 2) track("minigame", `${activeMiniGame.id}-time`, { value: seconds, label: `${seconds}s played` });
+    }
     setActiveMiniGame(null);
     game?.events.emit("minigame:close");
-  }, [game]);
+  }, [game, activeMiniGame?.id]);
 
   // Records result to the ephemeral rollup (session key, no popup), then closes.
   const handleMiniGameResult = useCallback(async (result: MiniGameResult) => {
@@ -366,7 +378,7 @@ export default function Home() {
         <WalletSignBridge />
         <ConnectScreen />
         <main className="w-screen app-viewport relative">
-          <PhaserGame onGameReady={setGame} />
+          <PhaserGame onGameReady={(g) => { setGame(g); startSession(); }} />
 
           {/* Left-side panel stack — hunt card + daily quests */}
           {!isTouch ? (

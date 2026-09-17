@@ -22,8 +22,9 @@ import { BASE_RPC_PRIMARY, resilientBaseFetch } from "@/game/solana/baseRpc";
 import { SEASON_ID, SOLMECHS_PROGRAM_ID, isPvpChainConfigured } from "../pvp/chain/config";
 import * as P from "../pvp/chain/mechProgram";
 import { sleep } from "../pvp/types";
-import { MATCHMAKING, RATING } from "../season/config";
+import { ENERGY, MATCHMAKING, RATING } from "../season/config";
 import { tolerance } from "../season/matchmaking";
+import { track } from "@/game/telemetry/track";
 
 export type SignTransaction = (tx: Transaction) => Promise<Transaction>;
 
@@ -146,6 +147,12 @@ export class RankedClient {
     const season = await this.readSeason();
     if (!season) throw new RankedUnavailable("No ranked season is open yet.");
     await this.send([P.buyEnergyPackIx(this.program, this.season, this.wallet, season.treasury)]);
+    // Lifetime value is built from these: the panel sums them per wallet.
+    track("purchase", "energy-pack", {
+      value: ENERGY.PACK_PRICE_LAMPORTS,
+      wallet: this.wallet.toBase58(),
+      label: "energy pack",
+    });
   }
 
   async reportResult(roomId: bigint, opponent: PublicKey, won: boolean): Promise<void> {

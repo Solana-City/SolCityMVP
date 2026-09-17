@@ -15,8 +15,10 @@
  *   ev:<kind>:<id>:best           sorted set wallet -> best score (mini-games)
  *   ev:<kind>:<id>:ok             completions (a finished tutorial, a claimed quest)
  *   ev:<kind>:<id>:s:<n>          how many reached step n, which is the funnel
- *   ev:latency:<id>:sum           total milliseconds, for the average
+ *   ev:<kind>:<id>:sum            total of the reported values, for averages
+ *                                 (latency ms, session seconds, lamports spent)
  *   ev:latency:<id>:slow          sends that took over a second
+ *   lb:spend                      lamports per wallet, so LTV needs no scan
  *   ev:ids:<kind>                 set of ids seen, so the panel needs no list
  *   ev:feed                       last 100 events, newest first
  *
@@ -28,6 +30,8 @@ import { incr, lpushCapped, lrange, sadd, scard, smembers, storeMode, zincrby, z
 /** What can be reported. Anything else is rejected. */
 export const EVENT_KINDS = [
   "protocol", "protocol-open", "minigame", "hunt", "duel", "tutorial", "quest", "latency",
+  // Product questions: who plays, for how long, on what, and what they touch.
+  "session", "npc", "chat", "expression", "purchase",
 ] as const;
 export type EventKind = (typeof EVENT_KINDS)[number];
 
@@ -74,9 +78,13 @@ export async function recordEvent(ev: GameEvent): Promise<boolean> {
       ? incr(`${base}:s:${score}`)
       : Promise.resolve(),
     ev.success === true ? incr(`${base}:ok`) : Promise.resolve(),
-    // Latency is reported per send; the average is what a player feels, and
-    // the slow count is what tells us whether an average is hiding a tail.
-    ev.kind === "latency" ? incr(`${base}:sum`, score) : Promise.resolve(),
+    // A running total makes the average free at read time. It matters for
+    // latency (ms), sessions (seconds) and purchases (lamports); for the
+    // count-only kinds it is a harmless extra counter.
+    score > 0 ? incr(`${base}:sum`, score) : Promise.resolve(),
+    // Lifetime value per wallet, kept as a board so the top spenders and the
+    // total are one read rather than a scan of every player.
+    ev.kind === "purchase" && score > 0 ? zincrby("lb:spend", ev.wallet, score) : Promise.resolve(),
     ev.kind === "latency" && score > 1_000 ? incr(`${base}:slow`) : Promise.resolve(),
     lpushCapped("ev:feed", JSON.stringify({
       k: ev.kind, i: ev.id, w: ev.wallet, v: score,
@@ -97,8 +105,11 @@ export interface KindSummary {
   ok: number;
   /** Players who reached each step, index 0 = step 1. Tutorials only. */
   steps: number[];
-  /** Average milliseconds and how many were over a second. Latency only. */
-  averageMs?: number;
+  /** Mean of the reported values: ms for latency, seconds for a session. */
+  average?: number;
+  /** Total of the reported values. Lamports, for a purchase. */
+  total?: number;
+  /** Sends that took over a second. Latency only. */
   slow?: number;
   top: { wallet: string; count: number }[];
   best: { wallet: string; score: number }[];
@@ -112,7 +123,7 @@ async function summarise(kind: EventKind, id: string): Promise<KindSummary> {
     incr(`${base}:count`, 0),
     scard(`${base}:users`),
     incr(`${base}:ok`, 0),
-    kind === "latency" ? incr(`${base}:sum`, 0) : Promise.resolve(0),
+    incr(`${base}:sum`, 0),
     kind === "latency" ? incr(`${base}:slow`, 0) : Promise.resolve(0),
     ztop(`${base}:by`, 5),
     ztop(`${base}:best`, 5),
@@ -130,7 +141,8 @@ async function summarise(kind: EventKind, id: string): Promise<KindSummary> {
     users,
     ok,
     steps,
-    averageMs: kind === "latency" && count > 0 ? Math.round(sum / count) : undefined,
+    average: count > 0 && sum > 0 ? Math.round(sum / count) : undefined,
+    total: sum > 0 ? sum : undefined,
     slow: kind === "latency" ? slow : undefined,
     last7: daily.reduce((n, d) => n + d, 0),
     top: top.map((t) => ({ wallet: t.member, count: t.score })),
@@ -155,6 +167,13 @@ export interface EventReport {
   tutorials: KindSummary[];
   quests: KindSummary[];
   latency: KindSummary[];
+  sessions: KindSummary[];
+  npcs: KindSummary[];
+  chat: KindSummary[];
+  expressions: KindSummary[];
+  purchases: KindSummary[];
+  /** Lamports per wallet, highest first. */
+  spenders: { wallet: string; lamports: number }[];
   hunt: KindSummary | null;
   duels: KindSummary[];
   feed: FeedItem[];
@@ -166,6 +185,7 @@ export async function eventReport(): Promise<EventReport> {
   if (storeMode() === "off") {
     return {
       protocols: [], opens: [], minigames: [], tutorials: [], quests: [], latency: [],
+      sessions: [], npcs: [], chat: [], expressions: [], purchases: [], spenders: [],
       hunt: null, duels: [], feed: [], enabled: false,
     };
   }
@@ -175,13 +195,23 @@ export async function eventReport(): Promise<EventReport> {
     return rows.sort((a, b) => b.count - a.count);
   };
 
-  const [protocols, opens, minigames, tutorials, quests, latency, hunt, duels, rawFeed] = await Promise.all([
+  const [
+    protocols, opens, minigames, tutorials, quests, latency,
+    sessions, npcs, chat, expressions, purchases, spenderRows,
+    hunt, duels, rawFeed,
+  ] = await Promise.all([
     forKind("protocol"),
     forKind("protocol-open"),
     forKind("minigame"),
     forKind("tutorial"),
     forKind("quest"),
     forKind("latency"),
+    forKind("session"),
+    forKind("npc"),
+    forKind("chat"),
+    forKind("expression"),
+    forKind("purchase"),
+    ztop("lb:spend", 10),
     forKind("hunt").then((r) => r[0] ?? null),
     forKind("duel"),
     lrange("ev:feed", FEED_CAP),
@@ -196,5 +226,10 @@ export async function eventReport(): Promise<EventReport> {
     }
   });
 
-  return { protocols, opens, minigames, tutorials, quests, latency, hunt, duels, feed, enabled: true };
+  return {
+    protocols, opens, minigames, tutorials, quests, latency,
+    sessions, npcs, chat, expressions, purchases,
+    spenders: spenderRows.map((r) => ({ wallet: r.member, lamports: r.score })),
+    hunt, duels, feed, enabled: true,
+  };
 }

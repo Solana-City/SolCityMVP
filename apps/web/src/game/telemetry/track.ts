@@ -11,7 +11,7 @@
  */
 export type TrackKind =
   | "protocol" | "protocol-open" | "minigame" | "hunt" | "duel" | "tutorial" | "quest"
-  | "latency";
+  | "latency" | "session" | "npc" | "chat" | "expression" | "purchase";
 
 let currentWallet: string | null = null;
 

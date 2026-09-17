@@ -20,6 +20,9 @@ interface KindSummary {
   last7: number;
   ok: number;
   steps: number[];
+  average?: number;
+  total?: number;
+  slow?: number;
   top: { wallet: string; count: number }[];
   best: { wallet: string; score: number }[];
 }
@@ -31,6 +34,12 @@ interface FeedItem {
 
 interface Events {
   enabled: boolean;
+  sessions: KindSummary[];
+  npcs: KindSummary[];
+  chat: KindSummary[];
+  expressions: KindSummary[];
+  purchases: KindSummary[];
+  spenders: { wallet: string; lamports: number }[];
   protocols: KindSummary[];
   opens: KindSummary[];
   minigames: KindSummary[];
@@ -56,6 +65,7 @@ interface Data {
   mechs: { duelists: number; ladderEntries: number; rankedMatches: number; rooms: number };
   nicknames: number;
   events: Events | null;
+  heat: Record<string, number>;
   errors: string[];
 }
 
@@ -184,6 +194,132 @@ export default function Analytics({ adminKey }: { adminKey: string }) {
 
       {data.events?.enabled && (
         <>
+          <Panel title="Sessions and devices">
+            <p style={sx.dim}>
+              A session starts when the city loads and ends when the tab is
+              closed or hidden for a minute. The chain cannot tell one long
+              evening from six short visits; this can.
+            </p>
+            <section style={sx.grid}>
+              <Stat label="Sessions" value={totalOf(data.events.sessions, "start-")} hint="Entered the city" />
+              <Stat
+                label="Average session"
+                value={formatDuration(averageOf(data.events.sessions))}
+                hint="Time in the city per visit"
+              />
+              <Stat label="Longest measured" value={formatDuration(longestSession(data.events.sessions))} />
+            </section>
+            <table style={sx.table}>
+              <thead>
+                <tr>
+                  <th style={sx.th}>Device</th>
+                  <th style={sx.thNum}>Sessions</th>
+                  <th style={sx.thNum}>Players</th>
+                  <th style={sx.thNum}>Average</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.events.sessions.filter((r) => !r.id.startsWith("start-")).map((row) => (
+                  <tr key={row.id}>
+                    <td style={sx.td}>{row.id}</td>
+                    <td style={sx.tdNum}>{row.count}</td>
+                    <td style={sx.tdNum}>{row.users}</td>
+                    <td style={sx.tdNum}>{formatDuration(row.average ?? 0)}</td>
+                  </tr>
+                ))}
+                {data.events.sessions.length === 0 && (
+                  <tr><td style={sx.td} colSpan={4}><span style={sx.dim}>No sessions recorded yet.</span></td></tr>
+                )}
+              </tbody>
+            </table>
+          </Panel>
+
+          <Panel title="Money">
+            <section style={sx.grid}>
+              <Stat label="Revenue" value={`${solOf(totalLamports(data.events.purchases))} SOL`} hint="Everything players have paid" />
+              <Stat label="Purchases" value={countOf(data.events.purchases)} />
+              <Stat label="Paying players" value={usersOf(data.events.purchases)} />
+              <Stat
+                label="Per paying player"
+                value={`${solOf(perPayer(data.events.purchases))} SOL`}
+                hint="Lifetime value so far"
+              />
+            </section>
+            {data.events.spenders.length > 0 && (
+              <table style={sx.table}>
+                <thead>
+                  <tr>
+                    <th style={sx.th}>Top spenders</th>
+                    <th style={sx.thNum}>SOL</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.events.spenders.map((sp) => (
+                    <tr key={sp.wallet}>
+                      <td style={sx.td}>{who(sp.wallet)}</td>
+                      <td style={sx.tdNum}>{solOf(sp.lamports)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </Panel>
+
+          <Panel title="Who they talk to">
+            <p style={sx.dim}>
+              Every conversation, not only the ones that open a protocol. An NPC
+              nobody visits is either badly placed or badly signposted.
+            </p>
+            {data.events.npcs.length === 0 ? (
+              <p style={sx.dim}>No NPC conversations recorded yet.</p>
+            ) : (
+              <table style={sx.table}>
+                <thead>
+                  <tr>
+                    <th style={sx.th}>NPC</th>
+                    <th style={sx.thNum}>Visits</th>
+                    <th style={sx.thNum}>Players</th>
+                    <th style={sx.thNum}>7d</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.events.npcs.map((n) => (
+                    <tr key={n.id}>
+                      <td style={sx.td}>{n.id}</td>
+                      <td style={sx.tdNum}>{n.count}</td>
+                      <td style={sx.tdNum}>{n.users}</td>
+                      <td style={sx.tdNum}>{n.last7}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </Panel>
+
+          <Panel title="Chat and expressions">
+            <section style={sx.grid}>
+              <Stat label="Messages" value={countOf(data.events.chat)} />
+              <Stat label="Players chatting" value={usersOf(data.events.chat)} />
+              <Stat label="Expressions used" value={countOf(data.events.expressions)} />
+              <Stat label="Players emoting" value={usersOf(data.events.expressions)} />
+            </section>
+            {data.events.expressions.length > 0 && (
+              <div style={sx.chips}>
+                {data.events.expressions.slice(0, 12).map((e) => (
+                  <span key={e.id} style={sx.chip}>{e.id} · {e.count}</span>
+                ))}
+              </div>
+            )}
+          </Panel>
+
+          <Panel title="Where they walk">
+            <p style={sx.dim}>
+              Sampled every few seconds, not taken from the position sync. Bright
+              cells are busy corners; dark ones are city nobody uses.
+            </p>
+            <Heatmap cells={data.heat} />
+          </Panel>
+
           <Panel title="Protocols: opened vs used">
             <p style={sx.dim}>
               Opened counts a player walking up to an NPC and starting the flow.
@@ -445,6 +581,106 @@ function Funnel({ steps }: { steps: number[] }) {
         </div>
       ))}
     </div>
+  );
+}
+
+const LAMPORTS = 1_000_000_000;
+
+function countOf(rows: KindSummary[]): number {
+  return rows.reduce((n, r) => n + r.count, 0);
+}
+
+/** Distinct players across rows is approximated by the busiest row. */
+function usersOf(rows: KindSummary[]): number {
+  return rows.reduce((n, r) => Math.max(n, r.users), 0);
+}
+
+function totalOf(rows: KindSummary[], idPrefix: string): number {
+  return rows.filter((r) => r.id.startsWith(idPrefix)).reduce((n, r) => n + r.count, 0);
+}
+
+/** Mean session length, weighted by how many sessions each device saw. */
+function averageOf(rows: KindSummary[]): number {
+  const timed = rows.filter((r) => !r.id.startsWith("start-") && r.total);
+  const seconds = timed.reduce((n, r) => n + (r.total ?? 0), 0);
+  const sessions = timed.reduce((n, r) => n + r.count, 0);
+  return sessions > 0 ? Math.round(seconds / sessions) : 0;
+}
+
+function longestSession(rows: KindSummary[]): number {
+  return rows.reduce((n, r) => Math.max(n, r.best[0]?.score ?? 0), 0);
+}
+
+function totalLamports(rows: KindSummary[]): number {
+  return rows.reduce((n, r) => n + (r.total ?? 0), 0);
+}
+
+function perPayer(rows: KindSummary[]): number {
+  const payers = usersOf(rows);
+  return payers > 0 ? Math.round(totalLamports(rows) / payers) : 0;
+}
+
+function solOf(lamports: number): string {
+  return (lamports / LAMPORTS).toFixed(3);
+}
+
+function formatDuration(seconds: number): string {
+  if (seconds <= 0) return "-";
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ${seconds % 60}s`;
+  return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
+}
+
+/**
+ * The city as a grid of cells, brightness by how much time players spend
+ * there. Rendered from the counts alone: no map image is needed to see that
+ * one quarter of the city is dark.
+ */
+function Heatmap({ cells }: { cells: Record<string, number> }) {
+  const entries = Object.entries(cells);
+  if (entries.length === 0) return <p style={sx.dim}>No movement recorded yet.</p>;
+
+  let maxX = 0;
+  let maxY = 0;
+  let max = 1;
+  for (const [cell, count] of entries) {
+    const [x, y] = cell.split(",").map(Number);
+    maxX = Math.max(maxX, x);
+    maxY = Math.max(maxY, y);
+    max = Math.max(max, count);
+  }
+
+  const grid: React.ReactNode[] = [];
+  for (let y = 0; y <= maxY; y++) {
+    for (let x = 0; x <= maxX; x++) {
+      const count = cells[`${x},${y}`] ?? 0;
+      const weight = count / max;
+      grid.push(
+        <div
+          key={`${x},${y}`}
+          title={`${x},${y}: ${count}`}
+          style={{
+            aspectRatio: "1",
+            borderRadius: 2,
+            background: count === 0
+              ? "#0a0d18"
+              : `rgba(20, 241, 149, ${0.15 + weight * 0.85})`,
+          }}
+        />,
+      );
+    }
+  }
+
+  return (
+    <>
+      <div style={{ display: "grid", gridTemplateColumns: `repeat(${maxX + 1}, 1fr)`, gap: 2, maxWidth: 560 }}>
+        {grid}
+      </div>
+      <p style={{ ...sx.dim, marginTop: 8 }}>
+        Busiest cell: {max} samples. Each cell is 8x8 map tiles.
+      </p>
+    </>
   );
 }
 
