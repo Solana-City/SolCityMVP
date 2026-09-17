@@ -367,24 +367,118 @@ single most persuasive mobile-only feature, so cut that last.
 
 ---
 
-## 8. Decisions needed before W1 starts
+## 8. Decisions
 
-1. **Hackathon launch date and submission deadline.** Determines whether the full
-   scope or the minimum cut is the target, and the window the mobile commits must
-   land in.
-2. **Devnet or mainnet for the submission build.** `SEEKER_LAUNCH.md` step 1
-   switches to mainnet. Devnet is fine for judging and cheaper to iterate;
-   mainnet is needed for the dApp Store within 30 days of winning. A devnet demo
-   build plus a mainnet publish build is the likely answer.
-3. **Eligible countries list.** Confirm before investing, since it decides whether
-   USDC prizes are in play at all.
-4. **Landscape lock or portrait support**, decided on a real device in W3.
-5. **Test hardware.** Is a Seeker available, or is this an emulator plus a generic
-   Android phone? The Seed Vault work needs the real device.
+| Decision | Status |
+|---|---|
+| Submission deadline | **2026-10-07.** 20 calendar days from 2026-09-17. |
+| Test hardware | **Seeker on hand.** Seed Vault work can be done on the real device from day one. |
+| Devnet or mainnet for the submission build | **Open.** Recommendation: devnet for the judged build (cheaper iteration, it is where the program already lives), with the mainnet switch in `SEEKER_LAUNCH.md` step 1 rehearsed but not shipped until the 30-day publish window. |
+| Eligible countries list | **Open.** Confirm before investing, it decides whether USDC prizes are in play at all. |
+| Landscape lock or portrait support | **Open.** Decided on the Seeker during W3. |
+
+### Calendar reality
+
+The full scope is 20 to 26 developer-days against 20 calendar days. It fits only
+at close to full-time including weekends, with no slack. The plan below therefore
+treats **W6 as cut** and **W5 as the swing item**, and sets a hard APK freeze on
+**2026-10-05**, leaving two days for the video and the deck. Those two days are
+not padding. Recording a clean two-device demo and building a deck reliably takes
+longer than anyone budgets.
+
+| Window | Work |
+|---|---|
+| Sep 18-19 | Phase 0: toolchain, keystore, two zero-code experiments |
+| Sep 20-21 | W0 native spike, start W1 |
+| Sep 22-24 | W1 native shell |
+| Sep 25-29 | W2 MWA + Seed Vault + Keystore |
+| Sep 30 - Oct 2 | W3 touch pass, W4 haptics |
+| Oct 2-4 | W5 push notifications (swing item) |
+| Oct 4-5 | W7 cross-play hardening, rehearse the two-device demo |
+| **Oct 5** | **APK freeze. No more code.** |
+| Oct 5-7 | W8 video, deck, submission |
 
 ---
 
-## 9. Relationship to existing docs
+## 9. Phase 0: the first 48 hours
+
+Nothing here is the build. It is the work that makes the build predictable, and
+two of the items answer the largest open risk without writing any Android code.
+
+### 0.1 Toolchain and device (half a day, mostly waiting on downloads)
+
+- JDK 17, Android Studio with the SDK, platform tools.
+- Developer mode and USB debugging on the Seeker, then confirm `adb devices`
+  actually lists it. This is the step that eats an afternoon when it goes wrong.
+- Seed Vault on the Seeker holding a **throwaway devnet seed phrase**, funded
+  with devnet SOL.
+- That same seed phrase imported into desktop Phantom. Both sides must be the
+  same wallet or experiment 0.3 proves nothing.
+
+### 0.2 Signing keystore, on day one
+
+Generate the release keystore and put it, with both passwords, into a password
+manager before any other work. Everything downstream depends on its SHA-256
+fingerprint: `assetlinks.json`, App Links, the dApp Store release NFT. Losing it
+means the listing can never be updated, and there is no recovery.
+
+### 0.3 Experiment: session key parity, with zero Android code
+
+The browser MWA path already ships in `MwaRegistration.tsx`. On the Seeker, open
+solanacity.io in the browser, connect through Seed Vault, and read the console
+line the client already prints:
+
+```
+[SessionKey] derived deterministic key <8 chars>… for <8 chars>…
+```
+
+Then do the same on desktop Phantom with the same wallet. If the 8 characters
+match, the wallet signs the same bytes on both paths and cross-play identity is
+free. Browser MWA and native MWA both hand the payload to the same wallet app for
+`sign_messages`, so a match here is strong evidence that the native client in W2
+will match too.
+
+If they differ, the fallback from W0 applies (per-platform session key, one extra
+`authorize_session` popup on first mobile login), and knowing that on day one is
+worth far more than discovering it in week three.
+
+**The message is load-bearing and contains a trap.** The exact payload is:
+
+```
+Solana City<U+2014>session key
+Wallet: <base58>
+Signing derives your in-game session key. Only sign on solanacity.io.
+```
+
+The separator on line 1 is an **em dash, U+2014, three UTF-8 bytes `E2 80 94`**,
+with a space on each side. Verified against `sessionKeys.ts:77`. When this string
+is reproduced in Kotlin it must be `—`, never a hyphen, and no editor or
+linter may be allowed to normalise it. One byte different is a different
+signature, a different session key, and a player split in two. There is no
+trailing newline.
+
+### 0.4 Experiment: parity audit on the Seeker, also zero code
+
+Play the live site on the Seeker for half an hour and write down every place the
+game fights the device: panels that need two hands, controls that miss, text
+under the notch or the gesture bar, anything unreachable one-thumbed, and the
+frame rate when the city is busy. That list becomes the W3 backlog, written from
+the real device rather than guessed at.
+
+### 0.5 Commit hygiene for the eligibility story
+
+The submission has to show significant new mobile development inside the
+hackathon window. Keep working on `main` as usual, but prefix every mobile commit
+consistently (`feat(android):`, `fix(android):`, `perf(android):`) so the
+changelog for the README extracts in one command:
+
+```bash
+git log --grep="(android)" --since=2026-09-17 --oneline
+```
+
+---
+
+## 10. Relationship to existing docs
 
 - `SEEKER_LAUNCH.md` — keep for the dApp Store publishing procedure (steps 4 to
   8). **Steps 1 to 3, the Bubblewrap TWA build, are superseded by W1.**
