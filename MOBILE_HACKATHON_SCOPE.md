@@ -112,11 +112,11 @@ What actually has to be true:
 | Same program IDs and cluster on both clients | Config only | W1 |
 | Same ER + base RPC endpoints | Config only | W1 |
 | Same API origin for KV state (names, quests, leaderboard) | Android calls `https://www.solanacity.io/api/*` | W1 |
-| **Same session key for the same wallet on both platforms** | **At risk** | **W0** |
+| **Same session key for the same wallet on both platforms** | **Resolved**, MWA signs raw bytes (section 4) | Confirm in 0.3 |
 | Feature parity so a mobile player is not a second-class citizen | Gaps exist | W3 |
 | Protocol skew between a frozen APK and a continuously deployed web build | No guard today | W7 |
 
-### The landmine: session key derivation
+### Session key derivation: resolved, MWA signs the same bytes
 
 `sessionKeys.ts:78-84` derives the in-game keypair as:
 
@@ -128,20 +128,55 @@ Because ed25519 signatures are deterministic, the same wallet yields the same
 session key on every device. That is what makes a player continuous across
 browsers today, and it is what makes cross-play work with no migration at all.
 
-Two ways Android silently breaks it:
+The open question was whether MWA and Seed Vault sign the same bytes a browser
+wallet signs. **They do.** Evidence, strongest first:
 
-1. **Someone edits the message string.** It contains `Only sign on
-   solanacity.io.` and there will be a temptation to say "in the app" instead.
-   Different bytes, different key, and the ER never authorized that key. The
-   message is load-bearing. It stays byte-identical.
-2. **MWA wraps the payload.** Some wallets sign raw bytes; some apply the
-   off-chain message signing envelope first. If Seed Vault via MWA does not
-   return a signature over the exact bytes Phantom web signs, the same wallet
-   gets two different session keys, and the mobile player shows up as a stranger
-   standing next to their own web character.
+1. **The MWA 2.0 spec is explicit that the raw payload is signed.** On
+   `sign_messages`: *"the wallet endpoint should sign the messages with the
+   private key for the authorized account address"*, and on the response, *"The
+   signatures should be appended to the message, in the same order as
+   `addresses`."* There is no envelope and no prefix anywhere in the protocol.
+2. **The response format differs from the browser, and the adapter already
+   normalises it.** `signed_payloads` is `message || signature`, not a bare
+   signature. `@solana-mobile/wallet-standard-mobile` handles the extraction in
+   `lib/cjs/index.browser.js:1348`:
 
-Item 2 is unverified and cannot be assumed either way. W0 exists to settle it
-before anything is built on top of it.
+   ```js
+   return (await wallet.signMessages({ addresses, payloads: messages }))
+     .signed_payloads.map(toUint8Array).map((signedMessage) => ({
+       signedMessage,
+       signature: signedMessage.slice(-SIGNATURE_LENGTH_IN_BYTES)
+     }));
+   ```
+
+   The payload sent up is the raw message, base64 only for transport. The
+   `signature` handed back is the plain 64 bytes, exactly the shape Phantom web
+   returns. This slice is also robust if a wallet returns a bare 64-byte
+   signature instead of the concatenation.
+3. **The Kotlin client does the same for the native path.**
+   `signMessagesDetached(...)` returns `.messages[i].signatures[i]` directly, so
+   W2 never has to do the slicing by hand.
+4. **Our bridge is a pass-through.** `WalletSignBridge.tsx:72` calls the
+   wallet-adapter `signMessage(message)` and emits the result unmodified. Both
+   Phantom web and MWA implement the same wallet-standard `solana:signMessage`
+   feature, so identical bytes reach the SHA-256 in `sessionKeys.ts`.
+
+The off-chain message envelope that prompted the original concern is a
+*separate, proposed* feature (`signOffchainMessage`, anza-xyz/wallet-standard
+issue 81), not something `solana:signMessage` applies. Conflating the two was
+the error.
+
+**What remains is discipline, not risk.** The message string is load-bearing and
+stays byte-identical. It contains `Only sign on solanacity.io.` and there will be
+a temptation to reword that for an app. Do not. The separator is an em dash,
+U+2014, three UTF-8 bytes `E2 80 94`, verified against `sessionKeys.ts:77`; in
+Kotlin it is `—`, never a hyphen, and no linter may normalise it. One byte
+different is a different signature, a different session key, and a player split
+in two.
+
+Step 0.3 still confirms this on the real device before W2 is built on it, but it
+is now a ten-minute check expected to pass, not a spike that could change the
+architecture.
 
 ---
 
@@ -150,22 +185,23 @@ before anything is built on top of it.
 Effort is in developer-days. W0 blocks the wallet work; the rest can move in
 parallel.
 
-### W0 — Session key parity spike (blocking, do first)
+### W0 — Session key parity check
 
-**1 day**
+**Was 1 day, now folded into Phase 0 step 0.3 as a ten-minute check.**
 
-- Minimal Android harness: connect via native MWA, sign the exact
-  `sessionKeys.ts` message, return the signature bytes.
-- Compare the derived session pubkey against the one Phantom web derives for the
-  same wallet.
-- Outcomes:
-  - **Match** → cross-play identity is free, proceed as planned.
-  - **Mismatch** → fall back to a per-platform session key. The player PDA is
-    still keyed by the wallet, so the *character* stays the same; what changes is
-    that the mobile session key needs its own `authorize_session`. Costs one
-    extra popup on first mobile login and a branch in `sessionManager.ts`.
+Resolved on the documentation and the shipped adapter code: MWA signs the raw
+payload, and both the JS and Kotlin clients hand back a plain 64-byte signature.
+See section 4. The day this frees goes to W3, which is the workstream that
+actually needs it.
 
-**Acceptance:** a written answer, with both pubkeys, committed into this file.
+The check still happens on the Seeker before W2 is built on top of it, because it
+costs almost nothing and the cost of being wrong is high. If it were ever to
+fail, the fallback is a per-platform session key: the player PDA is keyed by the
+wallet, so the *character* is unchanged, and the cost is one extra
+`authorize_session` popup on first mobile login plus a branch in
+`sessionManager.ts`.
+
+**Acceptance:** both derived pubkeys recorded in this file.
 
 ---
 
@@ -335,7 +371,7 @@ player see each other move, chat, and compete in the same hunt round.
 
 | Workstream | Days | In minimum cut |
 |---|---|---|
-| W0 Session key spike | 1 | yes |
+| W0 Session key check | folded into Phase 0 | yes |
 | W1 Native shell | 2-3 | yes |
 | W2 MWA + Seed Vault + Keystore | 3-4 | yes |
 | W3 Touch-first pass | 4-5 | partial (2) |
@@ -344,7 +380,7 @@ player see each other move, chat, and compete in the same hunt round.
 | W6 Battery and network | 2 | no |
 | W7 Cross-play hardening | 2-3 | partial (1) |
 | W8 Submission package | 2-3 | yes |
-| **Total** | **20-26** | **~11-13** |
+| **Total** | **19-25** | **~10-12** |
 
 **Minimum cut** (W0, W1, W2, W4, a trimmed W3 and W7, W8) still produces a
 defensible entry: native shell, native wallet with hardware-backed key storage,
@@ -357,7 +393,7 @@ single most persuasive mobile-only feature, so cut that last.
 
 | Risk | Impact | Mitigation |
 |---|---|---|
-| MWA signature bytes differ from web | Cross-play identity splits | W0, before anything else |
+| MWA signature bytes differ from web | Cross-play identity splits | Resolved against the MWA spec and the shipped adapter, see section 4. Confirmed on device in 0.3. |
 | Judges still read Capacitor as a wrapper | Low score | Volume of native Kotlin we write, plus mobile-only features with no web equivalent (push, haptics, Keystore) |
 | Phaser performance on mid-range Android | Bad demo | Perf budget in W3, tested on a real low-end device early |
 | Devnet versus mainnet | dApp Store expects a real app | Decide early, see section 8 |
@@ -389,7 +425,7 @@ longer than anyone budgets.
 | Window | Work |
 |---|---|
 | Sep 18-19 | Phase 0: toolchain, keystore, two zero-code experiments |
-| Sep 20-21 | W0 native spike, start W1 |
+| Sep 20-21 | Start W1 (W0 folded into Phase 0) |
 | Sep 22-24 | W1 native shell |
 | Sep 25-29 | W2 MWA + Seed Vault + Keystore |
 | Sep 30 - Oct 2 | W3 touch pass, W4 haptics |
@@ -422,7 +458,7 @@ manager before any other work. Everything downstream depends on its SHA-256
 fingerprint: `assetlinks.json`, App Links, the dApp Store release NFT. Losing it
 means the listing can never be updated, and there is no recovery.
 
-### 0.3 Experiment: session key parity, with zero Android code
+### 0.3 Confirm session key parity, with zero Android code
 
 The browser MWA path already ships in `MwaRegistration.tsx`. On the Seeker, open
 solanacity.io in the browser, connect through Seed Vault, and read the console
@@ -432,15 +468,15 @@ line the client already prints:
 [SessionKey] derived deterministic key <8 chars>… for <8 chars>…
 ```
 
-Then do the same on desktop Phantom with the same wallet. If the 8 characters
-match, the wallet signs the same bytes on both paths and cross-play identity is
-free. Browser MWA and native MWA both hand the payload to the same wallet app for
-`sign_messages`, so a match here is strong evidence that the native client in W2
-will match too.
+Then do the same on desktop Phantom with the same wallet. The 8 characters
+should match: per section 4 this is settled on the spec and on the shipped
+adapter code, so this is a confirmation, not an experiment. Browser MWA and
+native MWA both hand the raw payload to the same wallet app for `sign_messages`,
+so a match here also covers the native client in W2.
 
-If they differ, the fallback from W0 applies (per-platform session key, one extra
-`authorize_session` popup on first mobile login), and knowing that on day one is
-worth far more than discovering it in week three.
+Ten minutes, and it retires the one unknown that could have reshaped the
+architecture. If it somehow differs, the fallback is the per-platform session key
+described in W0.
 
 **The message is load-bearing and contains a trap.** The exact payload is:
 
@@ -451,11 +487,18 @@ Signing derives your in-game session key. Only sign on solanacity.io.
 ```
 
 The separator on line 1 is an **em dash, U+2014, three UTF-8 bytes `E2 80 94`**,
-with a space on each side. Verified against `sessionKeys.ts:77`. When this string
-is reproduced in Kotlin it must be `—`, never a hyphen, and no editor or
-linter may be allowed to normalise it. One byte different is a different
-signature, a different session key, and a player split in two. There is no
+with a space on each side. Verified against `sessionKeys.ts:77`. There is no
 trailing newline.
+
+When this string is reproduced in Kotlin, write the separator as a unicode escape
+(backslash, `u`, `2014`) rather than pasting the character, and let no editor,
+formatter or linter normalise it. One byte different is a different signature, a
+different session key, and a player split in two.
+
+This is not hypothetical: while writing this very document the escape sequence was
+silently normalised into a literal em dash on disk. Build the message in Kotlin
+from an explicit byte array and assert its length and SHA-256 in a unit test, so a
+future normalisation fails a test instead of splitting players.
 
 ### 0.4 Experiment: parity audit on the Seeker, also zero code
 
