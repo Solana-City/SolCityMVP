@@ -57,25 +57,25 @@ describe("commitHash", () => {
   const salt = new Uint8Array(32).fill(7);
 
   it("is stable for the same inputs", () => {
-    expect(sameBytes(commitHash(1n, 0, action, salt), commitHash(1n, 0, action, salt))).toBe(true);
+    expect(sameBytes(commitHash(BigInt(1), 0, action, salt), commitHash(BigInt(1), 0, action, salt))).toBe(true);
   });
 
   it("changes with the match, the step, the action and the salt", () => {
-    const base = commitHash(1n, 0, action, salt);
-    expect(sameBytes(base, commitHash(2n, 0, action, salt))).toBe(false);
-    expect(sameBytes(base, commitHash(1n, 1, action, salt))).toBe(false);
-    expect(sameBytes(base, commitHash(1n, 0, new Uint8Array(ACTION_BYTES).fill(4), salt))).toBe(false);
-    expect(sameBytes(base, commitHash(1n, 0, action, new Uint8Array(32).fill(8)))).toBe(false);
+    const base = commitHash(BigInt(1), 0, action, salt);
+    expect(sameBytes(base, commitHash(BigInt(2), 0, action, salt))).toBe(false);
+    expect(sameBytes(base, commitHash(BigInt(1), 1, action, salt))).toBe(false);
+    expect(sameBytes(base, commitHash(BigInt(1), 0, new Uint8Array(ACTION_BYTES).fill(4), salt))).toBe(false);
+    expect(sameBytes(base, commitHash(BigInt(1), 0, action, new Uint8Array(32).fill(8)))).toBe(false);
   });
 
   it("is the 32 bytes the program compares against", () => {
-    expect(commitHash(1n, 0, action, salt)).toHaveLength(32);
+    expect(commitHash(BigInt(1), 0, action, salt)).toHaveLength(32);
   });
 });
 
 describe("matchSeed", () => {
   it("gives both clients the same tie-breaker for a match", () => {
-    expect(matchSeed(42n)).toBe(matchSeed(42n));
-    expect(matchSeed(42n)).not.toBe(matchSeed(43n));
+    expect(matchSeed(BigInt(42))).toBe(matchSeed(BigInt(42)));
+    expect(matchSeed(BigInt(42))).not.toBe(matchSeed(BigInt(43)));
   });
 });

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   BALANCE, allLimbsDestroyed, availableMoves, calculateDamage, canAttackMatrix,
   createBattle, createUnit, isPartBroken, legalTargets, replay, resolveRound, tieBreak,
-  type BattleState, type RoundActions,
+  type BattleAction, type BattleState, type PlayerSide, type RoundActions,
 } from "./BattleEngine";
 import { PRESET_BUILDS } from "../data/catalog";
 import type { ModuleSlot } from "../data/types";
@@ -20,11 +20,11 @@ function freshBattle(seed = 1234): BattleState {
 }
 
 /** The first legal attack available to a side. */
-function anyAttack(state: BattleState, side: "p1" | "p2"): RoundActions[keyof RoundActions] {
+function anyAttack(state: BattleState, side: PlayerSide): BattleAction {
   const unit = state[side];
   const move = availableMoves(unit)[0];
   const target = legalTargets(state[side === "p1" ? "p2" : "p1"])[0];
-  return { sourceSlot: move.slot, moveIndex: move.moveIndex, targetSlot: target };
+  return { side, sourceSlot: move.slot, moveIndex: move.moveIndex, targetSlot: target };
 }
 
 describe("createUnit", () => {
