@@ -78,6 +78,10 @@ export class ChainTransport implements PvpTransport {
   private goneTimer: ReturnType<typeof setInterval> | null = null;
   private goneFired = false;
   private cachedBlockhash: { hash: string; at: number } | null = null;
+  /** Live account subscription on the opponent's duelist, when the node has one. */
+  private oppSub: { id: number; pda: string } | null = null;
+  /** Freshest opponent state the subscription has delivered. */
+  private oppLatest: P.DuelistAccount | null = null;
 
   constructor(
     private readonly wallet: PublicKey,
@@ -300,6 +304,8 @@ export class ChainTransport implements PvpTransport {
 
     this.match = { id: matchId, opponent: me.opponent, opponentPda };
     this.goneFired = false;
+    this.oppLatest = opp;
+    this.watchOpponentAccount(opponentPda);
     this.startGoneWatch();
 
     return {
@@ -356,12 +362,14 @@ export class ChainTransport implements PvpTransport {
 
   async leave(): Promise<void> {
     this.stopGoneWatch();
+    this.stopOpponentWatch();
     this.match = null;
     await this.sendEr([P.leaveMatchIx(this.program, this.wallet, this.sessionPub)]).catch(() => undefined);
   }
 
   dispose(): void {
     this.stopGoneWatch();
+    this.stopOpponentWatch();
     this.goneListeners.clear();
     this.match = null;
   }
@@ -447,6 +455,38 @@ export class ChainTransport implements PvpTransport {
     return opp.status !== P.STATUS.matched || opp.matchId !== m.id || !opp.opponent.equals(this.wallet);
   }
 
+  /**
+   * Subscribes to the opponent's duelist account.
+   *
+   * Their move then arrives as soon as the rollup writes it, instead of on the
+   * next poll — up to 450ms later, twice a round. The poll below stays as the
+   * fallback, because a websocket can be unavailable or drop silently, and a
+   * PvP match that quietly stops advancing is far worse than a slower one.
+   */
+  private watchOpponentAccount(pda: PublicKey): void {
+    this.stopOpponentWatch();
+    try {
+      const id = this.er.onAccountChange(
+        pda,
+        (info) => {
+          const decoded = P.decodeDuelist(new Uint8Array(info.data));
+          if (decoded) this.oppLatest = decoded;
+        },
+        "processed",
+      );
+      this.oppSub = { id, pda: pda.toBase58() };
+    } catch {
+      /* no websocket: the poll carries the match on its own */
+    }
+  }
+
+  private stopOpponentWatch(): void {
+    if (!this.oppSub) return;
+    void this.er.removeAccountChangeListener(this.oppSub.id).catch(() => undefined);
+    this.oppSub = null;
+    this.oppLatest = null;
+  }
+
   private async watchOpponent<T>(
     signal: AbortSignal,
     pick: (opp: P.DuelistAccount) => T | undefined,
@@ -454,7 +494,9 @@ export class ChainTransport implements PvpTransport {
     for (;;) {
       const m = this.match;
       if (!m) throw new OpponentGoneError();
-      const opp = await this.readEr(m.opponentPda, P.decodeDuelist).catch(() => null);
+      // Pushed state first: when the subscription is alive this is already
+      // the opponent's newest account and costs no request at all.
+      const opp = this.takePushed() ?? await this.readEr(m.opponentPda, P.decodeDuelist).catch(() => null);
       if (opp) {
         if (this.isGone(opp, m)) {
           this.fireGone();
@@ -463,8 +505,17 @@ export class ChainTransport implements PvpTransport {
         const value = pick(opp);
         if (value !== undefined) return value;
       }
-      await sleep(POLL_MS, signal);
+      // A live subscription means the next change wakes us; the sleep is then
+      // only the interval at which the fallback read runs.
+      await sleep(this.oppSub ? POLL_MS * 2 : POLL_MS, signal);
     }
+  }
+
+  /** The newest pushed opponent state, consumed once. */
+  private takePushed(): P.DuelistAccount | null {
+    const pushed = this.oppLatest;
+    this.oppLatest = null;
+    return pushed;
   }
 
   private startGoneWatch(): void {
@@ -487,6 +538,7 @@ export class ChainTransport implements PvpTransport {
     if (this.goneFired) return;
     this.goneFired = true;
     this.stopGoneWatch();
+    this.stopOpponentWatch();
     this.match = null;
     for (const cb of [...this.goneListeners]) cb();
   }
