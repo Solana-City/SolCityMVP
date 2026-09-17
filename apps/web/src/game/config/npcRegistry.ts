@@ -207,16 +207,16 @@ export const NPC_REGISTRY: NPCDefinition[] = [
   {
     id: "magic-man",
     name: "Magic Man",
-    role: "Privacy Operator",
+    role: "MagicBlock Engineer",
     // In front of the MagicBlock building (BuildMagicBlock, base cols 88-95 /
     // rows 52-55).
     tileX: 91,
     tileY: 55,
     color: 0xc026d3,
     dialog: [
-      "Want to send USDC without the whole city watching?",
-      "Deposit into your private account, then send from it. Only you and your friend see it.",
-      "Building something? MagicBlock runs this city. I can show you how the rollups work.",
+      "I keep the engine running. MagicBlock is what this whole city is built on.",
+      "Every step you take is a transaction on a rollup, landing in milliseconds.",
+      "I can move your USDC where nobody can read it, or show you how any of it works.",
     ],
     action: { type: "private-payment", label: "Open MagicBlock" },
     spriteKey: "Magic Man",
