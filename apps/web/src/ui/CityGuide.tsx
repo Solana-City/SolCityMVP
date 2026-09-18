@@ -37,7 +37,7 @@ function useIsTouch(): boolean {
 }
 
 /** Frame 0 (standing, facing the camera) of a 256x256 character sheet. */
-function Citizen({ sheet, size = 64, style }: { sheet: string; size?: number; style?: React.CSSProperties }) {
+export function Citizen({ sheet, size = 64, style }: { sheet: string; size?: number; style?: React.CSSProperties }) {
   return (
     <div
       aria-hidden
@@ -51,7 +51,7 @@ function Citizen({ sheet, size = 64, style }: { sheet: string; size?: number; st
   );
 }
 
-function Img({ src, h, style }: { src: string; h: number; style?: React.CSSProperties }) {
+export function Img({ src, h, style }: { src: string; h: number; style?: React.CSSProperties }) {
   return (
     <img
       src={src} alt="" draggable={false}
@@ -60,7 +60,7 @@ function Img({ src, h, style }: { src: string; h: number; style?: React.CSSPrope
   );
 }
 
-function Key({ children }: { children: React.ReactNode }) {
+export function Key({ children }: { children: React.ReactNode }) {
   return (
     <span style={{
       display: "inline-flex", alignItems: "center", justifyContent: "center",

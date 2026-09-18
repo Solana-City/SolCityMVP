@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import type { ChatManager, ChatMessage, ChatChannel, DMChannel } from "@/game/chat/ChatManager";
 import { getChannelColor, getChannelLabel } from "@/game/chat/ChatManager";
 import { EMOJI_REGISTRY } from "@/game/chat/EmojiSystem";
+import ChatGuide from "./ChatGuide";
 
 interface ChatPanelProps {
   gameRef: Phaser.Game | null;
@@ -18,6 +19,7 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
   const [isTouch, setIsTouch] = useState(false);
   const [isExpanded, setIsExpanded] = useState(true);
   const [showEmojis, setShowEmojis] = useState(false);
+  const [showGuide, setShowGuide] = useState(false);
 
   useEffect(() => {
     const mq = window.matchMedia("(pointer: coarse)");
@@ -29,6 +31,7 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
   }, []);
   const [chatManager, setChatManager] = useState<ChatManager | null>(null);
   const logRef = useRef<HTMLDivElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -99,6 +102,19 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
     return () => window.removeEventListener("keydown", handler);
   }, []);
 
+  // A click or tap anywhere outside the chat hands control back to the city.
+  // Phaser cancels the pointerdown on its canvas, so the browser never blurs
+  // the input by itself: players tried to walk and typed "wasd" into chat.
+  useEffect(() => {
+    const onDown = (e: PointerEvent) => {
+      if (rootRef.current?.contains(e.target as Node)) return;
+      if (document.activeElement === inputRef.current) inputRef.current?.blur();
+      setShowGuide(false);
+    };
+    document.addEventListener("pointerdown", onDown, true);
+    return () => document.removeEventListener("pointerdown", onDown, true);
+  }, []);
+
   // On mobile the parent controls visibility; on desktop always show
   if (isTouch && !visible) return null;
 
@@ -108,6 +124,7 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
 
   return (
     <div
+      ref={rootRef}
       className="fixed z-20"
       style={{
         left: "max(env(safe-area-inset-left, 0px), 16px)",
@@ -118,11 +135,7 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
         fontFamily: '"Press Start 2P", monospace',
       }}
     >
-      {!isTouch && (
-        <div className="mb-1 px-1" style={{ color: "#7a7a9a", fontSize: 7 }}>
-          Enter: chat • Esc: close input • 1-6: emotes
-        </div>
-      )}
+      {showGuide && <ChatGuide touch={isTouch} onClose={() => setShowGuide(false)} />}
       {/* Channel tabs */}
       <div className="flex gap-0.5 mb-0.5 overflow-x-auto">
         {fixedTabs.map((ch) => (
@@ -148,8 +161,24 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
           );
         })}
         <button
+          onClick={() => setShowGuide((v) => !v)}
+          aria-label="How the chat works"
+          title="How the chat works"
+          className="ml-auto self-center"
+          style={{
+            width: 18, height: 18, borderRadius: "50%", flexShrink: 0,
+            background: showGuide ? "rgba(20,241,149,0.18)" : "rgba(10,10,30,0.7)",
+            color: showGuide ? "#14F195" : "#9a9ab5",
+            border: `1px solid ${showGuide ? "rgba(20,241,149,0.5)" : "rgba(153,69,255,0.35)"}`,
+            fontFamily: "Georgia, serif", fontStyle: "italic", fontWeight: "bold", fontSize: 11,
+            lineHeight: "16px", padding: 0, cursor: "pointer",
+          }}
+        >
+          i
+        </button>
+        <button
           onClick={() => setIsExpanded(!isExpanded)}
-          className="ml-auto px-2 py-1 text-xs"
+          className="px-2 py-1 text-xs"
           style={{ background: "transparent", color: "#555566", border: "none", cursor: "pointer" }}
         >
           {isExpanded ? "\u25BC" : "\u25B2"}
@@ -279,10 +308,12 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
             fontSize: 8,
           }}
         />
-        {/* Touch keyboards don't always surface a reliable Enter — give
-            mobile an explicit send button. */}
-        {isTouch && (
+        {/* Send button on every device: touch keyboards don't always surface
+            a reliable Enter, and on desktop it shows there is a way to send. */}
+        {(
           <button
+            // Keep focus in the input so a desktop player can keep typing.
+            onPointerDown={(e) => { if (!isTouch) e.preventDefault(); }}
             onClick={handleSend}
             disabled={!input.trim()}
             className="px-3 rounded cursor-pointer"
