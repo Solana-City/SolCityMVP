@@ -8,6 +8,11 @@ import { OnChainMultiplayer, OnChainPlayer } from "../multiplayer/OnChainMultipl
 import { ChatManager, getChannelColor, SELF_COLOR } from "../chat/ChatManager";
 import { containsLink, maskLinks } from "../chat/linkFilter";
 import { ChatBubble } from "../chat/ChatBubble";
+import { TradeBubble } from "../chat/TradeBubble";
+import { decodeTrade, encodeTrade, tradeLogLine, type TradeSide } from "../chat/tradeBroadcast";
+
+/** Chat-log color for stock trade lines. */
+const TRADE_COLOR = "#FFB547";
 import { NPCSprite } from "../entities/NPCSprite";
 import { NPC_REGISTRY } from "../config/npcRegistry";
 import { PedestrianManager } from "../entities/PedestrianManager";
@@ -456,15 +461,33 @@ export class CityScene extends Phaser.Scene {
     // live: game.events outlives a session, so every reconnect added another
     // copy and each network message got appended to the chat once per connect.
     this.onGameEvent("chat:network", ({ wallet, name, text: raw }: { wallet?: string; name: string; text: string }) => {
+      if (wallet) requestNames([wallet]);
+      const shown = (wallet ? cachedName(wallet) : null) ?? name;
+      // Stock trades ride the chat pipe as a tag: render them as a trade tag
+      // over the trader instead of a chat line.
+      const trade = decodeTrade(raw);
+      if (trade) {
+        this.chat.addMessage("city", shown, shown, tradeLogLine(trade), TRADE_COLOR);
+        const trader = wallet ? this.remotePlayers.get(wallet) : undefined;
+        if (trader) new TradeBubble(this, trader.getContainer(), trade);
+        return;
+      }
       // A modified client can still write a link on-chain: mask it on arrival.
       const text = maskLinks(raw);
       const color = getChannelColor("city");
-      if (wallet) requestNames([wallet]);
-      const shown = (wallet ? cachedName(wallet) : null) ?? name;
       this.chat.addMessage("city", shown, shown, text, color);
       // Float the message over the sender's avatar, if they're in view.
       const avatar = wallet ? this.remotePlayers.get(wallet) : undefined;
       if (avatar) this.showBubble(avatar.getContainer(), text, color);
+    });
+
+    // Our own stock trade (Stocks Broker panel). Always shown over our head;
+    // announced to the city unless the player opted out in the panel.
+    this.onGameEvent("game:stock-trade", (e: { side: TradeSide; ticker?: string; basketId?: string; share?: boolean }) => {
+      const trade = { side: e.side, ticker: e.ticker, basketId: e.basketId };
+      new TradeBubble(this, this.avatar.getContainer(), trade);
+      this.chat.addMessage("city", "local", this.profile.get().displayName, tradeLogLine(trade), TRADE_COLOR);
+      if (e.share && this.network?.connected) this.network.sendChat(encodeTrade(trade));
     });
 
     this.onGameEvent("chat:focus", (focused: boolean) => {

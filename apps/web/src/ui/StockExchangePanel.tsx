@@ -9,9 +9,10 @@ import { useWallet } from "@solana/wallet-adapter-react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import {
   STOCKS, stockMarket, getMarketClock, fetchHoldings, holdingUsd, quoteBuy, quoteSell,
-  getStockVenue, submitStockOrder, stockTxUrl,
-  type StockInfo, type StockMarketState, type WalletHoldings, type PayToken,
+  getStockVenue, submitStockOrder, stockTxUrl, BASKETS, basketStocks,
+  type StockInfo, type StockBasket, type StockMarketState, type WalletHoldings, type PayToken,
 } from "@/game/solana/stocks";
+import { getShareTrades, setShareTrades } from "@/game/chat/tradeBroadcast";
 import { ORDER_TTL_MS, deserializeTransaction, fromSmallestUnit, type OrderResponse } from "@/game/solana/jupiterSwap";
 import { transactionLog } from "@/game/telemetry/transactionLog";
 import { profileManager } from "@/game/config/profileManager";
@@ -36,6 +37,16 @@ function loadBasis(w: string): Basis {
 function saveBasis(w: string, b: Basis) {
   try { localStorage.setItem(basisKey(w), JSON.stringify(b)); } catch { /* private mode */ }
 }
+/** Adds a buy to the local cost basis. `outRaw` is the stock amount received. */
+function addBuyBasis(w: string, stock: StockInfo, usdIn: number, outRaw: string) {
+  const basis = loadBasis(w);
+  const cur = basis[stock.mint] ?? { usd: 0, amount: 0 };
+  basis[stock.mint] = { usd: cur.usd + usdIn, amount: cur.amount + Number(fromSmallestUnit(outRaw, stock.decimals)) };
+  saveBasis(w, basis);
+}
+
+const BASKET_USD = [5, 10, 25, 50];
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 function emitGameEvent(event: string, payload?: unknown): void {
   ((globalThis as any).__solCityGameEvents)?.emit(event, payload);
@@ -46,14 +57,15 @@ const pct = (n: number) => `${n > 0 ? "+" : ""}${n.toFixed(2)}%`;
 const moveColor = (n: number) => (n > 0 ? UP : n < 0 ? DOWN : MUTED);
 
 export default function StockExchangePanel({ onClose }: { onClose: () => void }) {
-  const { connected, publicKey, signTransaction } = useWallet();
+  const { connected, publicKey, signTransaction, signAllTransactions } = useWallet();
   const { setVisible: openWalletModal } = useWalletModal();
   const wallet = publicKey?.toBase58() ?? "";
 
   const [market, setMarket] = useState<StockMarketState>(stockMarket.getState());
   const [holdings, setHoldings] = useState<WalletHoldings | null>(null);
-  const [tab, setTab] = useState<"market" | "mine">("market");
+  const [tab, setTab] = useState<"market" | "baskets" | "mine">("market");
   const [selected, setSelected] = useState<StockInfo | null>(null);
+  const [selectedBasket, setSelectedBasket] = useState<StockBasket | null>(null);
   const clock = useMemo(() => getMarketClock(), [market.updatedAt]);
 
   useEffect(() => stockMarket.subscribe(setMarket), []);
@@ -81,8 +93,20 @@ export default function StockExchangePanel({ onClose }: { onClose: () => void })
     );
   }
 
+  if (selectedBasket) {
+    return (
+      <BasketView
+        basket={selectedBasket} market={market} wallet={wallet} connected={connected}
+        signTransaction={signTransaction as any} signAllTransactions={signAllTransactions as any}
+        onConnect={() => openWalletModal(true)}
+        onBack={() => setSelectedBasket(null)}
+        onTraded={() => { refreshHoldings(); setTimeout(refreshHoldings, 6000); stockMarket.refresh(); }}
+      />
+    );
+  }
+
   const owned = holdings ? STOCKS.filter((s) => holdings.stocks[s.mint]) : [];
-  const list = tab === "market" ? STOCKS : owned;
+  const list = tab === "market" ? STOCKS : tab === "mine" ? owned : [];
   const basis = wallet ? loadBasis(wallet) : {};
 
   return (
@@ -109,17 +133,43 @@ export default function StockExchangePanel({ onClose }: { onClose: () => void })
 
       {/* Tabs */}
       <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
-        {(["market", "mine"] as const).map((t) => (
+        {(["market", "baskets", "mine"] as const).map((t) => (
           <button key={t} onClick={() => setTab(t)} style={{
-            flex: 1, padding: "8px 0", borderRadius: 8, cursor: "pointer", fontFamily: PIXEL, fontSize: 7,
+            flex: 1, padding: "8px 0", borderRadius: 8, cursor: "pointer", fontFamily: PIXEL, fontSize: 6,
             border: `1px solid ${tab === t ? GOLD : "#2a2f45"}`,
             background: tab === t ? "rgba(255,181,71,0.12)" : "transparent",
             color: tab === t ? GOLD : MUTED,
           }}>
-            {t === "market" ? "MARKET" : `MY STOCKS${owned.length ? ` (${owned.length})` : ""}`}
+            {t === "market" ? "MARKET" : t === "baskets" ? "BASKETS" : `MINE${owned.length ? ` (${owned.length})` : ""}`}
           </button>
         ))}
       </div>
+
+      {tab === "baskets" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {BASKETS.map((b) => {
+            const stocks = basketStocks(b);
+            const moves = stocks.map((s) => market.quotes[s.mint]?.change24h).filter((v): v is number => v != null);
+            const avg = moves.length ? moves.reduce((a, v) => a + v, 0) / moves.length : null;
+            return (
+              <button key={b.id} onClick={() => setSelectedBasket(b)} style={{
+                display: "flex", alignItems: "center", gap: 10, padding: 10, borderRadius: 10, cursor: "pointer",
+                textAlign: "left", background: "#12162b", border: `1px solid ${b.color}44`, minWidth: 0,
+              }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontFamily: PIXEL, fontSize: 8, color: "#fff" }}>{b.name.toUpperCase()}</div>
+                  <div style={{ fontFamily: PIXEL, fontSize: 5, color: MUTED, marginTop: 4, lineHeight: 1.5 }}>{b.tagline}</div>
+                  <div style={{ marginTop: 8 }}><LogoStack stocks={stocks} size={18} /></div>
+                </div>
+                <div style={{ textAlign: "right", flexShrink: 0 }}>
+                  <div style={{ fontFamily: PIXEL, fontSize: 7, color: avg == null ? MUTED : moveColor(avg) }}>{avg == null ? "..." : pct(avg)}</div>
+                  <div style={{ fontFamily: PIXEL, fontSize: 5, color: MUTED, marginTop: 4 }}>{stocks.length} STOCKS</div>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {tab === "mine" && (
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", padding: "10px 12px", borderRadius: 10, background: "#12162b", marginBottom: 10 }}>
@@ -252,17 +302,16 @@ function TradeView(props: {
       const outRaw = res.outAmount;
 
       // Cost basis for P&L
-      const basis = loadBasis(wallet);
-      const cur = basis[stock.mint] ?? { usd: 0, amount: 0 };
       if (side === "buy") {
-        const got = Number(fromSmallestUnit(outRaw, stock.decimals));
-        basis[stock.mint] = { usd: cur.usd + (o.inUsdValue ?? usdAmount ?? 0), amount: cur.amount + got };
+        addBuyBasis(wallet, stock, o.inUsdValue ?? usdAmount ?? 0, outRaw);
       } else {
+        const basis = loadBasis(wallet);
+        const cur = basis[stock.mint] ?? { usd: 0, amount: 0 };
         const keep = 1 - (sellPct ?? 0);
         basis[stock.mint] = { usd: cur.usd * keep, amount: cur.amount * keep };
         if (keep <= 0) delete basis[stock.mint];
+        saveBasis(wallet, basis);
       }
-      saveBasis(wallet, basis);
 
       const text = side === "buy"
         ? `+${trimAmount(fromSmallestUnit(outRaw, stock.decimals))} ${stock.ticker}`
@@ -276,7 +325,9 @@ function TradeView(props: {
         amount: side === "buy" ? String(usdAmount) : `${Math.round((sellPct ?? 0) * 100)}%`,
       });
       emitGameEvent("game:swap");
-      emitGameEvent("game:stock-trade", { side, ticker: stock.ticker, sector: stock.sector, wallStreetOpen: getMarketClock().wallStreetOpen });
+      emitGameEvent("game:stock-trade", {
+        side, ticker: stock.ticker, sector: stock.sector, wallStreetOpen: getMarketClock().wallStreetOpen, share: getShareTrades(),
+      });
       onTraded();
     } catch (e: any) {
       const msg = /reject|cancel|denied/i.test(e?.message ?? "") ? "Signature cancelled." : (e?.message ?? "Trade failed.");
@@ -394,6 +445,8 @@ function TradeView(props: {
         {status === "submitting" && <span style={{ color: GOLD }}>Sending to Solana...</span>}
       </div>
 
+      <ShareToggle />
+
       {!connected ? (
         <button onClick={onConnect} style={primaryBtn(GOLD)}>CONNECT WALLET</button>
       ) : (
@@ -403,6 +456,277 @@ function TradeView(props: {
         </button>
       )}
     </div>
+  );
+}
+
+// ── Basket view ──────────────────────────────────────────────────────────
+
+type LegStatus = "waiting" | "quoting" | "ready" | "sent" | "failed";
+interface Leg { stock: StockInfo; status: LegStatus; order?: OrderResponse; signature?: string; out?: string; error?: string }
+
+function BasketView(props: {
+  basket: StockBasket;
+  market: StockMarketState;
+  wallet: string;
+  connected: boolean;
+  signTransaction?: <T>(tx: T) => Promise<T>;
+  signAllTransactions?: <T>(txs: T[]) => Promise<T[]>;
+  onConnect: () => void;
+  onBack: () => void;
+  onTraded: () => void;
+}) {
+  const { basket, market, wallet, connected, signTransaction, signAllTransactions, onConnect, onBack, onTraded } = props;
+  const stocks = useMemo(() => basketStocks(basket), [basket]);
+  const [total, setTotal] = useState<number | null>(null);
+  const [payWith, setPayWith] = useState<PayToken>(IS_DEVNET ? "SOL" : "USDC");
+  const [open, setOpen] = useState<string | null>(null);
+  const [legs, setLegs] = useState<Leg[] | null>(null);
+  const [phase, setPhase] = useState<"idle" | "quoting" | "signing" | "sending" | "done" | "error">("idle");
+  const [error, setError] = useState("");
+
+  const perLeg = total ? total / stocks.length : 0;
+  const busy = phase === "quoting" || phase === "signing" || phase === "sending";
+
+  const moves = stocks.map((s) => market.quotes[s.mint]?.change24h).filter((v): v is number => v != null);
+  const avg = moves.length ? moves.reduce((a, v) => a + v, 0) / moves.length : null;
+
+  const buy = useCallback(async () => {
+    if (!total || !wallet || !(signAllTransactions || signTransaction)) return;
+    setError("");
+    const next: Leg[] = stocks.map((s) => ({ stock: s, status: "waiting" }));
+    const update = (i: number, patch: Partial<Leg>) => {
+      next[i] = { ...next[i], ...patch };
+      setLegs([...next]);
+    };
+    setLegs([...next]);
+
+    // 1. Quote every leg. Sequential with a retry, so a keyless Jupiter rate
+    //    limit (0.5 RPS) slows the basket down instead of failing it.
+    setPhase("quoting");
+    for (let i = 0; i < stocks.length; i++) {
+      update(i, { status: "quoting" });
+      for (let attempt = 0; ; attempt++) {
+        try {
+          const order = await quoteBuy({ stock: stocks[i], usd: perLeg, payWith, taker: wallet, solPrice: market.solPrice });
+          update(i, { status: "ready", order });
+          break;
+        } catch (e: any) {
+          if (attempt < 2 && /busy|429/i.test(e?.message ?? "")) { await sleep(2100); continue; }
+          update(i, { status: "failed", error: e?.message ?? "Quote failed" });
+          break;
+        }
+      }
+    }
+    const ready = next.map((l, i) => ({ l, i })).filter(({ l }) => l.status === "ready" && l.order?.transaction);
+    if (!ready.length) { setError(next[0]?.error ?? "Could not price this basket."); setPhase("error"); return; }
+
+    // 2. One wallet prompt for every leg (falls back to one per leg).
+    setPhase("signing");
+    let signed: unknown[];
+    try {
+      const txs = ready.map(({ l }) => deserializeTransaction(l.order!.transaction!));
+      signed = signAllTransactions ? await signAllTransactions(txs) : await Promise.all(txs.map((t) => signTransaction!(t)));
+    } catch (e: any) {
+      const msg = /reject|cancel|denied/i.test(e?.message ?? "") ? "Signature cancelled." : (e?.message ?? "Signing failed.");
+      setError(msg); setPhase("error"); return;
+    }
+
+    // 3. Land each leg; one failure doesn't stop the others.
+    setPhase("sending");
+    let okCount = 0;
+    for (let k = 0; k < ready.length; k++) {
+      const { l, i } = ready[k];
+      const entry = transactionLog.record({
+        kind: "stock", layer: IS_DEVNET ? "base" : "jupiter",
+        label: `Basket ${basket.name}: buy ${usd(perLeg)} of ${l.stock.ticker} with ${payWith}`, status: "pending",
+      });
+      try {
+        const res = await submitStockOrder(l.order!, signed[k] as any);
+        addBuyBasis(wallet, l.stock, l.order!.inUsdValue ?? perLeg, res.outAmount);
+        update(i, { status: "sent", signature: res.signature, out: res.outAmount });
+        transactionLog.markConfirmed(entry.id, res.signature);
+        okCount++;
+      } catch (e: any) {
+        update(i, { status: "failed", error: e?.message ?? "Failed" });
+        transactionLog.markFailed(entry.id, e?.message ?? "failed");
+      }
+    }
+
+    if (okCount) {
+      profileManager.recordSwap({ inputToken: payWith, outputToken: `basket:${basket.id}`, amount: String(total) });
+      emitGameEvent("game:swap");
+      emitGameEvent("game:stock-trade", { side: "buy", basketId: basket.id, share: getShareTrades() });
+      onTraded();
+      setPhase("done");
+    } else {
+      setError(next.find((l) => l.error)?.error ?? "Basket failed.");
+      setPhase("error");
+    }
+  }, [total, wallet, signAllTransactions, signTransaction, stocks, perLeg, payWith, market.solPrice, basket, onTraded]);
+
+  if (phase === "done" && legs) {
+    const ok = legs.filter((l) => l.status === "sent");
+    return (
+      <div style={{ fontFamily: PIXEL, textAlign: "center", padding: "12px 0" }}>
+        <div style={{ display: "flex", justifyContent: "center" }}><LogoStack stocks={ok.map((l) => l.stock)} size={34} /></div>
+        <div style={{ fontSize: 10, color: UP, marginTop: 14 }}>{ok.length === legs.length ? "BASKET BOUGHT" : `${ok.length} OF ${legs.length} BOUGHT`}</div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 14 }}>
+          {legs.map((l) => (
+            <div key={l.stock.mint} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 6, padding: "6px 8px", borderRadius: 6, background: "#12162b" }}>
+              <span style={{ color: "#fff" }}>{l.stock.ticker}</span>
+              {l.status === "sent" ? (
+                <a href={stockTxUrl(l.signature ?? "")} target="_blank" rel="noopener noreferrer" style={{ color: UP }}>
+                  +{trimAmount(fromSmallestUnit(l.out ?? "0", l.stock.decimals))}
+                </a>
+              ) : (
+                <span style={{ color: DOWN }}>FAILED</span>
+              )}
+            </div>
+          ))}
+        </div>
+        <button onClick={onBack} style={{ ...primaryBtn(GOLD), marginTop: 16 }}>BACK TO BASKETS</button>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ fontFamily: PIXEL }}>
+      <button onClick={onBack} disabled={busy} style={{ background: "none", border: "none", color: MUTED, fontFamily: PIXEL, fontSize: 7, cursor: "pointer", padding: 0, marginBottom: 12 }}>
+        {"< BASKETS"}
+      </button>
+
+      {/* Basket header */}
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 10, marginBottom: 12 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 10, color: GOLD }}>{basket.name.toUpperCase()}</div>
+          <div style={{ fontSize: 6, color: MUTED, marginTop: 5, lineHeight: 1.5 }}>{basket.tagline}</div>
+        </div>
+        <div style={{ textAlign: "right", flexShrink: 0 }}>
+          <div style={{ fontSize: 8, color: avg == null ? MUTED : moveColor(avg) }}>{avg == null ? "..." : pct(avg)}</div>
+          <div style={{ fontSize: 5, color: MUTED, marginTop: 4 }}>24H AVG</div>
+        </div>
+      </div>
+      <div style={{ marginBottom: 12 }}><LogoStack stocks={stocks} size={30} /></div>
+
+      {/* Stocks, each expandable */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 12 }}>
+        {stocks.map((s) => {
+          const q = market.quotes[s.mint];
+          const isOpen = open === s.mint;
+          const leg = legs?.find((l) => l.stock.mint === s.mint);
+          return (
+            <div key={s.mint} style={{ borderRadius: 8, background: "#12162b", border: `1px solid ${isOpen ? s.color + "66" : "transparent"}` }}>
+              <button onClick={() => setOpen(isOpen ? null : s.mint)} style={{
+                display: "flex", alignItems: "center", gap: 8, width: "100%", padding: 8, background: "none", border: "none", cursor: "pointer", textAlign: "left",
+              }}>
+                <StockLogo stock={s} size={22} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontFamily: PIXEL, fontSize: 7, color: "#fff" }}>{s.ticker}</div>
+                  <div style={{ fontFamily: PIXEL, fontSize: 5, color: MUTED, marginTop: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.name}</div>
+                </div>
+                <div style={{ textAlign: "right", flexShrink: 0, fontFamily: PIXEL }}>
+                  <div style={{ fontSize: 6, color: "#fff" }}>{q ? usd(q.usdPrice) : "..."}</div>
+                  <div style={{ fontSize: 5, color: q ? moveColor(q.change24h) : MUTED, marginTop: 3 }}>{q ? pct(q.change24h) : ""}</div>
+                </div>
+                {leg ? (
+                  <span style={{ width: 8, height: 8, borderRadius: "50%", flexShrink: 0, margin: "0 1px", background: legColor(leg.status) }} />
+                ) : (
+                  <span style={{ fontFamily: PIXEL, fontSize: 8, color: GOLD, width: 10, textAlign: "center", flexShrink: 0 }}>{isOpen ? "-" : "+"}</span>
+                )}
+              </button>
+              {isOpen && (
+                <div style={{ padding: "0 8px 8px", fontFamily: PIXEL, fontSize: 6, lineHeight: 1.7 }}>
+                  <div style={{ color: "#c9cde0" }}>{s.about}</div>
+                  {q?.wallStreetPrice != null && q.premiumPct != null && (
+                    <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6, color: MUTED }}>
+                      <span>WALL ST {usd(q.wallStreetPrice)}</span>
+                      <span style={{ color: Math.abs(q.premiumPct) < 0.5 ? UP : GOLD }}>SOLANA {pct(q.premiumPct)}</span>
+                    </div>
+                  )}
+                  <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4, color: MUTED }}>
+                    <span>{s.issuer === "backpack" ? "BACKPACK SECURITIES" : "XSTOCKS BY BACKED"}</span>
+                    {perLeg > 0 && <span style={{ color: "#fff" }}>YOU BUY {usd(perLeg)}</span>}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Pay token */}
+      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 10 }}>
+        <span style={{ fontSize: 6, color: MUTED, width: 44 }}>PAY</span>
+        {(IS_DEVNET ? (["SOL"] as const) : (["USDC", "SOL"] as const)).map((t) => (
+          <button key={t} onClick={() => setPayWith(t)} disabled={busy} style={chip(payWith === t)}>{t}</button>
+        ))}
+      </div>
+
+      {/* Total */}
+      <div style={{ display: "grid", gridTemplateColumns: `repeat(${BASKET_USD.length}, 1fr)`, gap: 6, marginBottom: 6 }}>
+        {BASKET_USD.map((v) => (
+          <button key={v} onClick={() => setTotal(v)} disabled={busy} style={{ ...chip(total === v), padding: "12px 0", fontSize: 8 }}>${v}</button>
+        ))}
+      </div>
+      <div style={{ minHeight: 24, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 6, textAlign: "center", lineHeight: 1.6, marginBottom: 6 }}>
+        {phase === "idle" && total && <span style={{ color: MUTED }}>{usd(perLeg)} in each of {stocks.length} stocks</span>}
+        {phase === "quoting" && <span style={{ color: MUTED }}>Finding best prices...</span>}
+        {phase === "signing" && <span style={{ color: GOLD }}>Sign once in your wallet...</span>}
+        {phase === "sending" && <span style={{ color: GOLD }}>Sending to Solana...</span>}
+        {phase === "error" && <span style={{ color: DOWN }}>{error}</span>}
+      </div>
+
+      <ShareToggle />
+
+      {!connected ? (
+        <button onClick={onConnect} style={primaryBtn(GOLD)}>CONNECT WALLET</button>
+      ) : (
+        <button onClick={buy} disabled={!total || busy}
+          style={{ ...primaryBtn(UP), opacity: !total || busy ? 0.4 : 1, cursor: !total || busy ? "not-allowed" : "pointer" }}>
+          {total ? `BUY BASKET FOR ${usd(total)}` : "PICK AN AMOUNT"}
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** Status dot per basket leg: green landed, red failed, gold in progress. */
+function legColor(s: LegStatus): string {
+  return s === "sent" ? UP : s === "failed" ? DOWN : s === "waiting" ? "#3a3f55" : GOLD;
+}
+
+/** Overlapping round logos, e.g. every stock in a basket. */
+function LogoStack({ stocks, size }: { stocks: StockInfo[]; size: number }) {
+  const overlap = Math.round(size * 0.3);
+  return (
+    <div style={{ display: "flex", alignItems: "center" }}>
+      {stocks.map((s, i) => (
+        <div key={s.mint} style={{ marginLeft: i ? -overlap : 0, borderRadius: "50%", boxShadow: "0 0 0 2px #0b0f24", zIndex: stocks.length - i, position: "relative", lineHeight: 0 }}>
+          <StockLogo stock={s} size={size} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** "Show my trades in the city", remembered per browser. */
+function ShareToggle() {
+  const [share, setShare] = useState(true);
+  useEffect(() => { setShare(getShareTrades()); }, []);
+  const toggle = () => { const v = !share; setShare(v); setShareTrades(v); };
+  return (
+    <button onClick={toggle} style={{
+      display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "4px 0", marginBottom: 10,
+      background: "none", border: "none", cursor: "pointer", fontFamily: PIXEL, fontSize: 6, color: share ? "#c9cde0" : MUTED, textAlign: "left",
+    }}>
+      <span style={{
+        width: 12, height: 12, borderRadius: 3, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
+        border: `1px solid ${share ? UP : "#3a3f55"}`, background: share ? "rgba(20,241,149,0.15)" : "transparent",
+      }}>
+        {share && <span style={{ width: 6, height: 6, borderRadius: 1, background: UP }} />}
+      </span>
+      SHOW MY TRADES IN THE CITY
+    </button>
   );
 }
 
