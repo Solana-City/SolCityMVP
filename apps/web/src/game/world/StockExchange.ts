@@ -1,110 +1,67 @@
 /**
- * Sunrise Stock Exchange: the north district of the city.
+ * Live screens on the Stocklana building (Tiled layer BuildStocklana).
  *
- * PLACEHOLDER ART. The building and the two quote boards are drawn with
- * Phaser graphics until the original sprites land. Their footprint is written
- * into the hidden ColliderAuto layer as solid tiles, so everything that asks
- * "is this tile walkable?" (player collision, NPC spawn, NPC wander, fast
- * travel) treats them like any Tiled building, with no special cases.
+ * The art ships with blank dark screens; this draws market data into them:
+ *   - the wide band under the STOCKLANA sign: a scrolling LED ticker
+ *   - the two tall side screens: big rows of logo + ticker + 24h move,
+ *     gainers first, rotating
+ * Positions are measured in the art's own pixels and anchored to wherever the
+ * layer's tiles sit, so moving the building in Tiled moves the screens too.
+ * They also copy the building layer's fade when the player walks behind it.
  *
- * Live data: the LED ticker, the two heat-map boards and the NYSE sign all
- * read the shared stockMarket feed (one Price API poll for the whole game).
+ * Data comes from the shared stockMarket feed (one Price API poll for the
+ * whole game).
  */
 import * as Phaser from "phaser";
 import { STOCKS, stockMarket, getMarketClock, type StockInfo, type StockMarketState } from "../solana/stocks";
 
-/**
- * Empty north plaza, east of the MonkeDAO tower (cols 55-68, whose y-sorted
- * art covered a board placed any further west) and north of Jupiter (cols
- * 91-101 from row 17 down). Keep in sync with the Stocks Broker tile in
- * npcRegistry.ts (door column = BUILDING.col + 6).
- */
-const BUILDING = { col: 78, row: 6, w: 14, h: 10 };
-const BOARD_LEFT = { col: 71, row: 11, w: 6, h: 5 };
-const BOARD_RIGHT = { col: 93, row: 11, w: 6, h: 5 };
-/** Rows per board, kept low so each row stays legible when zoomed out. */
-const BOARD_ROWS = 3;
-const BOARD_PAGE_MS = 7000;
+/** Screen rectangles in BuildStocklana art pixels (from its top-left tile). */
+const BAND = { x: 33, y: 67, w: 270, h: 17 };
+const SCREEN_LEFT = { x: 37, y: 102, w: 49, h: 75 };
+const SCREEN_RIGHT = { x: 250, y: 102, w: 49, h: 75 };
+/** Stocks per side screen, kept low so each stays legible when zoomed out. */
+const ROWS_PER_SCREEN = 2;
+const PAGE_MS = 6000;
 
 const FONT = '"Press Start 2P", monospace';
 const UP = "#14F195";
 const DOWN = "#FF4D6D";
 const FLAT = "#9AA4B2";
 
+type Rect = { x: number; y: number; w: number; h: number };
+type Row = { stock: StockInfo; change: number };
+
 export function createStockExchange(
   scene: Phaser.Scene,
-  map: Phaser.Tilemaps.Tilemap,
-  colliderLayer: Phaser.Tilemaps.TilemapLayer | undefined,
+  building: Phaser.Tilemaps.TilemapLayer | undefined,
 ): () => void {
-  const T = map.tileWidth;
-  const px = (tiles: number) => tiles * T;
+  if (!building) return () => {};
+  const origin = layerOrigin(building);
+  if (!origin) return () => {};
+  const world = (r: Rect): Rect => ({ x: origin.x + r.x, y: origin.y + r.y, w: r.w, h: r.h });
+  // Just above the building layer: same y-sort, so the player still walks in
+  // front of it from the south and behind it from the north.
+  const depth = building.depth + 1;
   const cleanups: Array<() => void> = [];
+  const objects: Phaser.GameObjects.GameObject[] = [];
 
-  blockFootprint(colliderLayer, BUILDING.col, BUILDING.row, BUILDING.w, BUILDING.h);
-  // Boards stand on two posts; only the posts block, you can walk under the face.
-  for (const b of [BOARD_LEFT, BOARD_RIGHT]) {
-    blockFootprint(colliderLayer, b.col + 1, b.row + b.h - 1, 1, 1);
-    blockFootprint(colliderLayer, b.col + b.w - 2, b.row + b.h - 1, 1, 1);
-  }
-
-  // ── Building ──────────────────────────────────────────────────────────
-  const bx = px(BUILDING.col), by = px(BUILDING.row), bw = px(BUILDING.w), bh = px(BUILDING.h);
-  const baseDepth = by + bh; // y-sort like a Tiled building: its ground line
-  const g = scene.add.graphics().setDepth(baseDepth);
-
-  // Shadow + body
-  g.fillStyle(0x000000, 0.25).fillRect(bx + 6, by + 10, bw, bh);
-  g.fillStyle(0x1b2140, 1).fillRect(bx, by + px(1.5), bw, bh - px(1.5));
-  // Pediment roof with sunrise gold trim
-  g.fillStyle(0x262d55, 1).fillTriangle(bx - 6, by + px(1.6), bx + bw / 2, by - px(0.6), bx + bw + 6, by + px(1.6));
-  g.fillStyle(0xffb547, 1).fillRect(bx - 6, by + px(1.5), bw + 12, 4);
-  // Rising sun in the pediment
-  g.fillStyle(0xffb547, 1).fillCircle(bx + bw / 2, by + px(1.45), 14);
-  g.fillStyle(0x262d55, 1).fillRect(bx + bw / 2 - 16, by + px(1.45), 32, 16);
-  // Sign band + LED band
-  g.fillStyle(0x0b0f24, 1).fillRect(bx + 8, by + px(1.9), bw - 16, px(1));
-  g.fillStyle(0x000000, 1).fillRect(bx + 8, by + px(3.1), bw - 16, px(1));
-  g.lineStyle(2, 0xffb547, 1).strokeRect(bx + 8, by + px(3.1), bw - 16, px(1));
-  // Columns
-  g.fillStyle(0xd9dce8, 1);
-  for (let i = 0; i < 6; i++) {
-    const cx = bx + px(1) + i * ((bw - px(2)) / 5) - 5;
-    g.fillRect(cx, by + px(4.4), 10, px(5.1));
-    g.fillStyle(0xb8bccb, 1).fillRect(cx - 3, by + px(4.3), 16, 4).fillRect(cx - 3, by + px(9.4), 16, 4);
-    g.fillStyle(0xd9dce8, 1);
-  }
-  // Door + steps
-  g.fillStyle(0x0b0f24, 1).fillRect(bx + bw / 2 - px(1), by + px(7), px(2), px(2.5));
-  g.fillStyle(0xffb547, 0.9).fillRect(bx + bw / 2 - px(1), by + px(7), px(2), 3);
-  g.fillStyle(0x8c93a8, 1).fillRect(bx + px(3), by + bh - 8, bw - px(6), 8);
-
-  const sign = scene.add.text(bx + bw / 2, by + px(2.4), "SUNRISE STOCK EXCHANGE", {
-    fontFamily: FONT, fontSize: "8px", color: "#FFD27A",
-  }).setOrigin(0.5).setDepth(baseDepth + 1).setResolution(4);
-
-  // NYSE status plate over the door
-  const nyse = scene.add.text(bx + bw / 2, by + px(6.4), "", {
-    fontFamily: FONT, fontSize: "5px", color: UP, backgroundColor: "#0b0f24", padding: { x: 3, y: 2 },
-  }).setOrigin(0.5).setDepth(baseDepth + 1).setResolution(4);
-  const updateClock = () => {
-    const c = getMarketClock();
-    nyse.setText(c.wallStreetOpen ? "NYSE OPEN" : "AFTER HOURS. SOLANA IS OPEN");
-    nyse.setColor(c.wallStreetOpen ? UP : "#FFD27A");
-  };
-  updateClock();
-  const clockTimer = scene.time.addEvent({ delay: 30_000, loop: true, callback: updateClock });
-  cleanups.push(() => clockTimer.remove());
-
-  // ── LED ticker (scrolls right to left, masked to the band) ────────────
-  const bandX = bx + 10, bandW = bw - 20, bandY = by + px(3.6);
-  const ticker = scene.add.container(bandX + bandW, bandY).setDepth(baseDepth + 2);
-  const maskShape = scene.make.graphics({}, false).fillRect(bandX, by + px(3.1), bandW, px(1));
+  // ── LED ticker in the band ────────────────────────────────────────────
+  const band = world(BAND);
+  const ticker = scene.add.container(band.x + band.w, band.y + band.h / 2).setDepth(depth + 1);
+  const maskShape = scene.make.graphics({}, false).fillRect(band.x, band.y, band.w, band.h);
   ticker.setMask(maskShape.createGeometryMask());
+  objects.push(ticker, maskShape);
   let tickerWidth = 0;
 
   const rebuildTicker = (state: StockMarketState) => {
     ticker.removeAll(true);
     let x = 0;
+    const clock = getMarketClock();
+    const lead = scene.add.text(x, 0, clock.wallStreetOpen ? "NYSE OPEN" : "WALL ST CLOSED. SOLANA IS OPEN", {
+      fontFamily: FONT, fontSize: "7px", color: "#FFD27A",
+    }).setOrigin(0, 0.5).setResolution(4);
+    x += lead.width + 24;
+    ticker.add(lead);
     for (const s of STOCKS) {
       const q = state.quotes[s.mint];
       const label = scene.add.text(x, 0, s.ticker, { fontFamily: FONT, fontSize: "7px", color: "#FFFFFF" })
@@ -120,18 +77,10 @@ export function createStockExchange(
     tickerWidth = x;
   };
 
-  const onUpdate = (_t: number, dt: number) => {
-    if (!tickerWidth) return;
-    ticker.x -= (dt / 1000) * 28;
-    if (ticker.x < bandX - tickerWidth) ticker.x = bandX + bandW;
-  };
-  scene.events.on("update", onUpdate);
-  cleanups.push(() => scene.events.off("update", onUpdate));
-
-  // ── Heat-map quote boards: few big rows, gainers first, rotating ──────
-  const boards = [buildBoard(scene, BOARD_LEFT, T), buildBoard(scene, BOARD_RIGHT, T)];
-  const perPage = BOARD_ROWS * boards.length;
-  let ranked: Array<{ stock: StockInfo; change: number }> = [];
+  // ── Side screens ──────────────────────────────────────────────────────
+  const screens = [buildScreen(scene, world(SCREEN_LEFT), depth), buildScreen(scene, world(SCREEN_RIGHT), depth)];
+  const perPage = ROWS_PER_SCREEN * screens.length;
+  let ranked: Row[] = [];
   let page = 0;
   const showPage = () => {
     const gainers = ranked.filter((r) => r.change > 0);
@@ -140,9 +89,9 @@ export function createStockExchange(
     const pages = Math.max(1, Math.ceil(pool.length / perPage));
     page %= pages;
     const rows = pool.slice(page * perPage, page * perPage + perPage);
-    boards.forEach((b, i) => b.show(rows.slice(i * BOARD_ROWS, (i + 1) * BOARD_ROWS)));
+    screens.forEach((s, i) => s.show(rows.slice(i * ROWS_PER_SCREEN, (i + 1) * ROWS_PER_SCREEN)));
   };
-  const pageTimer = scene.time.addEvent({ delay: BOARD_PAGE_MS, loop: true, callback: () => { page++; showPage(); } });
+  const pageTimer = scene.time.addEvent({ delay: PAGE_MS, loop: true, callback: () => { page++; showPage(); } });
   cleanups.push(() => pageTimer.remove());
 
   // Company logos, served same-origin by /api/stock-logo so the canvas may
@@ -160,106 +109,95 @@ export function createStockExchange(
     scene.load.start();
   }
 
-  let lastRebuild = -1;
-  const unsubscribe = stockMarket.subscribe((state) => {
-    if (state.updatedAt === lastRebuild) return;
-    lastRebuild = state.updatedAt;
+  // ── Per frame: scroll the ticker, follow the building's fade ──────────
+  const onUpdate = (_t: number, dt: number) => {
+    const alpha = building.alpha;
+    ticker.setAlpha(alpha);
+    for (const s of screens) s.setAlpha(alpha);
+    if (!tickerWidth) return;
+    ticker.x -= (dt / 1000) * 24;
+    if (ticker.x < band.x - tickerWidth) ticker.x = band.x + band.w;
+  };
+  scene.events.on("update", onUpdate);
+  cleanups.push(() => scene.events.off("update", onUpdate));
+
+  let lastUpdate = -1;
+  cleanups.push(stockMarket.subscribe((state) => {
+    if (state.updatedAt === lastUpdate) return;
+    lastUpdate = state.updatedAt;
     rebuildTicker(state);
-    ranked = rankForBoards(state);
+    ranked = STOCKS
+      .filter((s) => state.quotes[s.mint])
+      .map((s) => ({ stock: s, change: state.quotes[s.mint].change24h }))
+      .sort((a, b) => b.change - a.change);
     showPage();
-  });
-  cleanups.push(unsubscribe);
+  }));
 
   cleanups.push(() => {
-    g.destroy(); sign.destroy(); nyse.destroy(); ticker.destroy(); maskShape.destroy();
-    for (const b of boards) b.destroy();
+    for (const o of objects) o.destroy();
+    for (const s of screens) s.destroy();
   });
   return () => { for (const c of cleanups.splice(0)) c(); };
 }
 
-/** Writes solid tiles into the hidden collider layer under a footprint. */
-function blockFootprint(layer: Phaser.Tilemaps.TilemapLayer | undefined, col: number, row: number, w: number, h: number) {
-  if (!layer) return;
-  let index = 0;
-  layer.forEachTile((t: Phaser.Tilemaps.Tile) => { if (!index && t.index > 0) index = t.index; });
-  if (!index) return;
-  for (let y = row; y < row + h; y++) {
-    for (let x = col; x < col + w; x++) {
-      const tile = layer.putTileAt(index, x, y);
-      tile?.setCollision(true, true, true, true);
-    }
-  }
-}
-
-/**
- * Which stocks the boards show, best first: gainers by size of the move, then
- * the rest. Only gainers rotate through the boards (a page every
- * BOARD_PAGE_MS); losers only fill in when there aren't enough gainers.
- */
-function rankForBoards(state: StockMarketState): Array<{ stock: StockInfo; change: number }> {
-  return STOCKS
-    .filter((s) => state.quotes[s.mint])
-    .map((s) => ({ stock: s, change: state.quotes[s.mint].change24h }))
-    .sort((a, b) => b.change - a.change);
-}
-
-/** A board with a few large single-column rows, readable when zoomed out. */
-function buildBoard(
-  scene: Phaser.Scene,
-  area: { col: number; row: number; w: number; h: number },
-  T: number,
-) {
-  const x = area.col * T, y = area.row * T, w = area.w * T, h = area.h * T;
-  const depth = y + h;
-  const g = scene.add.graphics().setDepth(depth);
-  // Posts + frame
-  g.fillStyle(0x3a3f55, 1).fillRect(x + T + 8, y + h - T, 8, T).fillRect(x + w - 2 * T + 8, y + h - T, 8, T);
-  g.fillStyle(0x000000, 0.25).fillRect(x + 4, y + 6, w, h - T);
-  g.fillStyle(0x0b0f24, 1).fillRect(x, y, w, h - T);
-  g.lineStyle(2, 0xffb547, 1).strokeRect(x, y, w, h - T);
-
-  const pad = 5, cellW = w - pad * 2, cellH = (h - T - pad * (BOARD_ROWS + 1)) / BOARD_ROWS;
-  const logoSize = Math.min(18, cellH - 4);
-  const cells = Array.from({ length: BOARD_ROWS }, (_, i) => {
-    const cy = y + pad + i * (cellH + pad);
-    const midY = cy + cellH / 2;
-    const logoX = x + pad + 3 + logoSize / 2;
-    const rect = scene.add.rectangle(x + pad, cy, cellW, cellH, 0x2a3048).setOrigin(0).setDepth(depth + 1);
-    // White disc behind the logo so dark marks (Apple, Tesla) stay visible.
-    const disc = scene.add.circle(logoX, midY, logoSize / 2 + 1, 0xffffff).setDepth(depth + 2);
-    const logo = scene.add.image(logoX, midY, "__MISSING").setDepth(depth + 3).setVisible(false);
-    const label = scene.add.text(logoX + logoSize / 2 + 5, midY, "", {
-      fontFamily: FONT, fontSize: "8px", color: "#FFFFFF",
-    }).setOrigin(0, 0.5).setDepth(depth + 3).setResolution(4);
-    return { rect, disc, logo, label };
+/** World position of the layer's top-left painted tile. */
+function layerOrigin(layer: Phaser.Tilemaps.TilemapLayer): { x: number; y: number } | null {
+  let col = Infinity, row = Infinity;
+  layer.forEachTile((t: Phaser.Tilemaps.Tile) => {
+    if (t.index <= 0) return;
+    if (t.x < col) col = t.x;
+    if (t.y < row) row = t.y;
   });
+  if (!isFinite(col)) return null;
+  return { x: layer.tileToWorldX(col)!, y: layer.tileToWorldY(row)! };
+}
+
+/** A tall screen split into a few stacked cells: logo, ticker, 24h move. */
+function buildScreen(scene: Phaser.Scene, r: Rect, depth: number) {
+  const pad = 2;
+  const cellH = (r.h - pad * (ROWS_PER_SCREEN + 1)) / ROWS_PER_SCREEN;
+  const logoSize = 16;
+  const cells = Array.from({ length: ROWS_PER_SCREEN }, (_, i) => {
+    const cy = r.y + pad + i * (cellH + pad);
+    const cx = r.x + r.w / 2;
+    const bg = scene.add.rectangle(r.x + pad, cy, r.w - pad * 2, cellH, 0x16323a).setOrigin(0).setDepth(depth + 1);
+    const logoY = cy + 3 + logoSize / 2;
+    // White disc behind the logo so dark marks (Apple, Tesla) stay visible.
+    const disc = scene.add.circle(cx, logoY, logoSize / 2 + 1, 0xffffff).setDepth(depth + 2);
+    const logo = scene.add.image(cx, logoY, "__MISSING").setDepth(depth + 3).setVisible(false);
+    const name = scene.add.text(cx, logoY + logoSize / 2 + 5, "", {
+      fontFamily: FONT, fontSize: "6px", color: "#FFFFFF",
+    }).setOrigin(0.5, 0.5).setDepth(depth + 3).setResolution(4);
+    const move = scene.add.text(cx, logoY + logoSize / 2 + 12, "", {
+      fontFamily: FONT, fontSize: "6px", color: UP,
+    }).setOrigin(0.5, 0.5).setDepth(depth + 3).setResolution(4);
+    return { bg, disc, logo, name, move };
+  });
+  const all = cells.flatMap((c) => [c.bg, c.disc, c.logo, c.name, c.move]);
 
   return {
-    show(rows: Array<{ stock: StockInfo; change: number }>) {
+    show(rows: Row[]) {
       cells.forEach((c, i) => {
-        const r = rows[i];
-        for (const o of [c.rect, c.disc, c.label]) o.setVisible(!!r);
-        if (!r) { c.logo.setVisible(false); return; }
-        // Stronger move, stronger color; capped at 3% so one outlier doesn't wash the board.
-        const k = 0.35 + 0.65 * Math.min(Math.abs(r.change) / 3, 1);
-        c.rect.setFillStyle(r.change >= 0 ? lerpColor(0x1f3a33, 0x14f195, k) : lerpColor(0x3d1f2a, 0xff4d6d, k));
-        c.label.setColor(r.change >= 0 && k > 0.7 ? "#06140E" : "#FFFFFF");
-        c.label.setText(`${r.stock.ticker} ${fmtPct(r.change)}`);
-
-        const key = logoKey(r.stock);
+        const row = rows[i];
+        for (const o of [c.bg, c.disc, c.name, c.move]) o.setVisible(!!row);
+        if (!row) { c.logo.setVisible(false); return; }
+        // Tint the cell by the move; stronger move, stronger tint (capped at 3%).
+        const k = Math.min(Math.abs(row.change) / 3, 1);
+        c.bg.setFillStyle(row.change >= 0 ? lerpColor(0x14303a, 0x0f6b4c, k) : lerpColor(0x14303a, 0x6b1f33, k));
+        c.name.setText(row.stock.ticker);
+        c.move.setText(fmtPct(row.change)).setColor(row.change > 0 ? UP : row.change < 0 ? DOWN : FLAT);
+        const key = logoKey(row.stock);
         if (scene.textures.exists(key)) {
           c.logo.setTexture(key).setDisplaySize(logoSize, logoSize).setVisible(true);
           c.disc.setFillStyle(0xffffff);
         } else {
           c.logo.setVisible(false);
-          c.disc.setFillStyle(Phaser.Display.Color.HexStringToColor(r.stock.color).color);
+          c.disc.setFillStyle(Phaser.Display.Color.HexStringToColor(row.stock.color).color);
         }
       });
     },
-    destroy() {
-      g.destroy();
-      for (const c of cells) { c.rect.destroy(); c.disc.destroy(); c.logo.destroy(); c.label.destroy(); }
-    },
+    setAlpha(a: number) { for (const o of all) (o as unknown as Phaser.GameObjects.Components.Alpha).setAlpha(a); },
+    destroy() { for (const o of all) o.destroy(); },
   };
 }
 

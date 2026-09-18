@@ -26,6 +26,12 @@ export interface NPCDefinition {
   role: string;
   tileX: number;
   tileY: number;
+  /**
+   * Horizontal nudge in world pixels after the spawn tile is resolved, for
+   * an NPC that must stand between two tiles (e.g. centered on a door
+   * whose middle falls on a tile boundary). Defaults to 0.
+   */
+  offsetX?: number;
   color: number;
   dialog: string[];
   action: NPCAction;
@@ -265,12 +271,14 @@ export const NPC_REGISTRY: NPCDefinition[] = [
   {
     id: "stocks-broker",
     name: "Stocks Broker",
-    role: "Sunrise Stock Exchange",
-    // At the door of the Sunrise Stock Exchange in the north plaza
-    // (world/StockExchange.ts, building cols 78-91 / rows 6-15); findNpcSpawn
-    // lands on row 17.
-    tileX: 84,
-    tileY: 16,
+    role: "Stocklana Exchange",
+    // Centered at the foot of the Stocklana stairs (BuildStocklana, cols
+    // 72-85 / rows 12-23). The steps (row 22) are solid, so findNpcSpawn
+    // lands on row 23; the building's middle is the col 78/79 boundary,
+    // hence the half-tile nudge.
+    tileX: 78,
+    tileY: 22,
+    offsetX: 12,
     color: 0xffb547,
     dialog: [
       "Welcome to the Sunrise Stock Exchange!",

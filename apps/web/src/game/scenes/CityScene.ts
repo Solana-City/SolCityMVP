@@ -17,6 +17,7 @@ import { onMiniGameFinished, watchNpcConversations, stopWatchingNpcConversations
 import { showEmoji, EmojiDef } from "../chat/EmojiSystem";
 import { soundManager } from "../audio/SoundManager";
 import { publishMinimap } from "../minimap/MinimapHost";
+import { createStockExchange } from "../world/StockExchange";
 import { cachedName, onNames, requestNames, NAME_CHANGED_EVENT } from "../names/nameService";
 import { track } from "../telemetry/track";
 import { startHeatmap } from "../telemetry/heatmap";
@@ -301,11 +302,12 @@ export class CityScene extends Phaser.Scene {
       }
     }
 
-    // Sunrise Stock Exchange building is now real Tiled art (BuildStocklana,
-    // map artist, 2026-09-16) — the Phaser-graphics placeholder from
-    // world/StockExchange.ts is retired to avoid drawing a second building
-    // and double-blocking its footprint. The Stocks Broker NPC below still
-    // needs its spawn tile checked against the new art's actual door.
+    // Stocklana exchange: the building is Tiled art (BuildStocklana); this
+    // only draws live market data into its blank screens.
+    const destroyStockScreens = createStockExchange(
+      this, allLayers.find(l => l.layer.name.endsWith("BuildStocklana")),
+    );
+    this.events.once("shutdown", destroyStockScreens);
 
     // Spawn on the central fountain's walkway (col 78, row 38) — the two-tile
     // flight of steps climbing from the south path up to the sculpture.
@@ -623,7 +625,9 @@ export class CityScene extends Phaser.Scene {
     // NPCs — position read from Tiled NPC layer, scanned to first walkable row
     for (const def of NPC_REGISTRY) {
       if (def.enabled === false) continue;
-      const { wx, wy } = this.findNpcSpawn(map, def.tileX, def.tileY, tileSize);
+      const spawn = this.findNpcSpawn(map, def.tileX, def.tileY, tileSize);
+      const wx = spawn.wx + (def.offsetX ?? 0);
+      const wy = spawn.wy;
       const npc = new NPCSprite(this, def, wx, wy, this.collisionLayers);
       this.npcSprites.push(npc);
 
