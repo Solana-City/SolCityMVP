@@ -1,16 +1,42 @@
 # Sol City — Next Program Redeploy Checklist
 
-Target: **week of 2026-08-11** (deferred from 2026-08-07). Deploy via **Solana
-Playground / beta.solpg.io**. Program ID `HPvDFVnruSXHwKKP44eUvRh8oYqBaHCeQbK1sKWT1aU2`,
-upgrade authority = game wallet `9592QS34mPUwqA7sPAkug1kcuFddjn59QPQMzzCgKhEp`.
-See `apps/web/DEPLOY_ANCHOR.md` for the Playground procedure (expect ~1h through
-rate limits; iterate on any Rust build errors — e.g. a missing `pubkey` import).
+Deploy via **Solana Playground / beta.solpg.io**. Program ID
+`HPvDFVnruSXHwKKP44eUvRh8oYqBaHCeQbK1sKWT1aU2`, upgrade authority = game wallet
+`9592QS34mPUwqA7sPAkug1kcuFddjn59QPQMzzCgKhEp`. See `apps/web/DEPLOY_ANCHOR.md`
+for the Playground procedure.
 
-This file is the single source of truth so nothing is forgotten. Everything below
-is **staged, NOT applied** — the live site (the "Parabéns 2.0" build, commit
-`b495a04`) still runs against the CURRENTLY deployed program. **Client changes
-marked "(post-deploy)" MUST NOT be pushed before the new program is live**, or the
-client/program layouts diverge and multiplayer breaks.
+## FINAL SCOPE (decided 2026-09-18, "option A")
+
+The Rust is **already applied** in `programs/sol-city/src/lib.rs`, not staged
+here. One deploy ships:
+
+| # | Item | Status |
+|---|------|--------|
+| 2 | `record_swap_session` / `record_transfer_session` / `record_bounty_session` | in lib.rs |
+| 5 | Outfit boxes: `open_booster` + `callback_open_booster` (MagicBlock VRF) | in lib.rs |
+| 5 | `claim_free_outfit` (quest / NPC reward items, free, once per wallet) | in lib.rs |
+| 5 | Wardrobe enforcement: `player_v3` + `unlocked` snapshot + `sync_unlocks` + enforcing `update_look_session` | in lib.rs |
+| 1 | HuntScore PDA | **deferred** (the KV leaderboard covers the player-facing part) |
+| 3 | `delegate_hunt` | **skipped** |
+| 4 | On-chain display names | **dropped** (the off-chain nickname registry replaced them) |
+
+**Reset accepted:** the `player_v3` seed means every wallet re-inits its
+player PDA on next connect and on-chain scores start from zero (devnet test
+phase). Unlocks live in `UnlockState`, which does not reset.
+
+**Build notes:**
+- `Cargo.toml` needs only `anchor-lang` (`init-if-needed`). Playground builds a
+  fixed crate list and `ephemeral-vrf-sdk` is NOT on it, so the VRF request is a
+  hand-rolled CPI (same approach as `delegate`), laid out from
+  ephemeral-vrf-sdk 0.17.0.
+- The request is the **scoped** variant (discriminator 10). The oracle signs the
+  callback with `PDA(["identity", our program id], VRF program)`, which
+  `callback_open_booster` checks. The legacy global `VRF_PROGRAM_IDENTITY` is
+  deprecated and is NOT accepted.
+- Nothing could be compiled locally (no SBF/MSVC toolchain); Playground's build
+  is the first compile. Fix whatever it names and keep the account order.
+
+Sections for items 1, 3 and 4 below are kept for reference only.
 
 ---
 
@@ -53,7 +79,7 @@ client/program layouts diverge and multiplayer breaks.
 
 ## PROGRAM changes — `programs/sol-city/src/lib.rs` (paste-ready)
 
-### Item 1 — Dedicated Find Someone leaderboard (recommended: a `HuntScore` PDA on BASE)
+### Item 1 — Dedicated Find Someone leaderboard (DEFERRED, not in this deploy)
 
 Rationale for a separate account over adding a field to `PlayerState`:
 - **No `PlayerState` layout change → no `player_v3` seed bump → no forced re-init**
@@ -126,7 +152,7 @@ pub struct RecordHuntFind<'info> {
 > by that arg, and trust the session key). Decide at implementation time; the base
 > HuntScore is the key idea.
 
-### Item 2 — Session variants of the NPC interaction records
+### Item 2 — Session variants of the NPC interaction records (APPLIED in lib.rs)
 
 ```rust
 pub fn record_swap_session(ctx: Context<UpdatePlayerSession>) -> Result<()> {
@@ -153,7 +179,7 @@ pub fn record_bounty_session(ctx: Context<UpdatePlayerSession>) -> Result<()> {
 ```
 (`UpdatePlayerSession` already exists and validates the session key — no new struct.)
 
-### Item 3 — (OPTIONAL) Hunt state on the ER — `delegate_hunt`
+### Item 3 — Hunt state on the ER — `delegate_hunt` (SKIPPED)
 
 Mirror the existing `delegate` (see `pub fn delegate` + `struct DelegatePlayer`)
 but for the hunt PDA: seeds `[HUNT_SEED]`, NO `authority` (it's a global account —
@@ -163,7 +189,7 @@ run on the ER and reads come off the ER poll. **Evaluate whether it's worth the
 complexity** (shared delegated account, who delegates it once, never undelegate).
 If skipped, the hunt simply stays on base — which works fine today.
 
-### Item 4 — Player names: `set_display_name_session` + `NameClaim` first-come registry
+### Item 4 — Player names (DROPPED: the off-chain nickname registry replaced this)
 
 Two pieces. The name change writes to the EXISTING `display_name` field on
 `PlayerState` (no size change → no seed bump — the field is already there, we're
@@ -243,70 +269,50 @@ field, so no seed bump either).
 
 ## CLIENT changes (post-deploy — apply ONLY after the new program is live)
 
-Order: deploy program → verify → then push these together.
+Order: deploy program → verify → then push these together. Booster and
+free-outfit wiring stays behind `NEXT_PUBLIC_BOOSTER_ONCHAIN` until verified.
 
-1. **`apps/web/src/game/solana/program.ts`**
-   - Add `HUNT_SCORE_SEED = "hunt_score"` + `deriveHuntScorePDA(wallet)`.
-   - Add `interface HuntScore { authority: PublicKey; wins: number }` + `decodeHuntScore(data)`.
-   - `PLAYER_SEED` stays `"player_v2"` (no seed bump — HuntScore avoids it).
-
-2. **`apps/web/src/game/solana/instructions.ts`**
-   - Add `DISC` entries: `recordHuntFind`, `recordSwapSession`, `recordTransferSession`,
-     `recordBountySession` (+ `delegateHunt` if doing Item 3).
-   - Add builders: `buildRecordHuntFindIx(player, sessionKey)`,
-     `buildRecordSwapSessionIx/TransferSessionIx/BountySessionIx(player, sessionKey)`.
-
-3. **`apps/web/src/game/multiplayer/OnChainMultiplayer.ts`**
-   - `claimFind`: on a winning claim, replace
-     `this.recordScoreSession(true, 1, "Find someone ★ +1")` with a call to
-     `record_hunt_find` (session-signed on base) → +1 to HuntScore.wins.
-   - `recordAction("swap"|"transfer"|"bounty")`: switch from `signAndSendViaWallet`
-     (wallet popup, base) to the session/ER path (`record_*_session`, no popup) —
-     mirror `recordScoreSession`. Keeps the DeFi action's own wallet tx; only the
-     stat record becomes seamless.
-   - (Item 3 only) route `ensureHuntInitialized`/`claimFind`/`expireRound`/`pollHunt`
-     to the ER, and delegate the hunt once.
-
-4. **`apps/web/src/ui/WhereIsNPCCard.tsx` + `WhereIsNPCGame.ts`**
-   - Replace the `localStorage` leaderboard (`getLeaderboard`/`recordFind`/`getMyScore`)
-     with an on-chain read: `getProgramAccounts(HuntScore)` on the base failover RPC,
-     decode `{authority, wins}`, sort desc → global leaderboard. `myScore` = our
-     wallet's HuntScore.wins.
-
-5. **Player names (Item 4).**
-   - `program.ts`: `NAME_CLAIM_SEED = "name_claim"` + `deriveNameClaimPDA(normalizedName)`
-     + `interface NameClaim { owner: PublicKey; name: string }` + `decodeNameClaim`.
-   - `instructions.ts`: `DISC.setDisplayNameSession` (+ `DISC.claimName` if using
-     the split option b) + `buildSetDisplayNameSessionIx(player, sessionKey, name)`.
-   - `ProfileManager.setDisplayName`: after saving locally, fire the on-chain set
-     via `OnChainMultiplayer` (session-signed, no popup) so peers re-render the name
-     from their next poll. STOP defaulting `displayName` to the wallet in `setWallet`
-     — keep `"Citizen"` (or an empty sentinel) until the player picks a name, so the
-     nameplate shows a real name, not the address.
-   - Login/name UI: a name field (on the ConnectScreen gate or first-run ProfilePanel)
-     that calls `claim_name`; surface "name taken" when the `init` fails (the PDA
-     already exists) so the player picks another. First claimer wins.
-   - `CityScene.addRemotePlayer`: already uses `player.displayName ?? shortAddr` — once
-     names propagate it will show the real name automatically; keep `shortAddr` as the
-     fallback for players who never set one.
-
-6. **Verify layouts match** the deployed program before pushing (this is what broke
-   things historically). `npx tsc --noEmit` + a quick `simulateTransaction` of the
-   new ixs against the deployed program on the ephemeral node (the technique that
-   cracked the init bug — see `project-multiplayer-transport` memory).
+1. **`game/solana/program.ts`**: `PLAYER_SEED` → `"player_v3"`. Add
+   `unlocked: Uint8Array(32)` at the END of the `PlayerState` decoder (after
+   `message_at`).
+2. **`game/solana/instructions.ts`**: `DISC` + builders for
+   `recordSwapSession`, `recordTransferSession`, `recordBountySession`,
+   `syncUnlocks`, `claimFreeOutfit(index: u16)`, `openBooster(poolCount: u16,
+   clientSeed: [u8;32])`, taking the discriminators from the new IDL.
+   `open_booster` accounts, in order: `payer` (w, signer), `unlock_state` (w),
+   `treasury` (w), `oracle_queue` (w, `Cuj97ggrhhidhbu39TijNVqE74xvKJ69gDervRUXAxGh`),
+   `program_identity` (PDA `["identity"]` of OUR program), `vrf_program`
+   (`Vrf1RNUjXmQGjmQrQLvJHs9SNkvDJEsRVFPkfSQUwGz`), `slot_hashes` (sysvar),
+   `system_program`.
+3. **`multiplayer/OnChainMultiplayer.ts`**
+   - `recordAction("swap"|"transfer"|"bounty")`: wallet popup on base →
+     `record_*_session` on the ER, mirroring `recordScoreSession`.
+   - Before `delegate`: if the wallet's `UnlockState` exists, send
+     `sync_unlocks` (session-signed, base). Skip it when the account is
+     missing: the snapshot stays zero and only free items are wearable.
+   - Loadout broadcast: encode as `slot=<global catalog index>|...` and decode
+     the same way on read. A name-based loadout is now REJECTED by the program.
+4. **Booster / free outfits** (behind the flag): `open_booster` → poll
+   `UnlockState.pending` until false / read `BoosterOpened` → reveal.
+   `track("purchase", "outfit-box", { value: 25_000_000, wallet })` on success.
+   Quest rewards call `claim_free_outfit(index)`.
+5. **Verify layouts** before pushing: `npx tsc --noEmit` + `simulateTransaction`
+   of every new ix against the deployed program.
 
 ---
 
 ## Post-deploy verification
 
 - [ ] Program `last_deploy_slot` advanced; upgrade authority still the game wallet.
-- [ ] Simulate `record_hunt_find` + the `*_session` records against the deployed
-      program (ephemeral node) → all succeed.
-- [ ] Find a citizen → HuntScore.wins +1 (NOT score +100/+1); log shows it.
-- [ ] Leaderboard shows the SAME numbers on 2 devices (truly global/on-chain).
-- [ ] NPC swap/transfer/bounty records: no 2nd wallet popup; log entry appears.
-- [ ] Set a name → it shows above YOUR head on the OTHER device (not the wallet).
-- [ ] A 2nd wallet trying to claim the SAME name is rejected ("name taken").
+- [ ] Fresh connect creates a `player_v3` PDA; delegation + movement work on 2 devices.
+- [ ] Simulate the three `record_*_session` ixs on the ER → succeed; NPC actions
+      show no second wallet popup.
+- [ ] Wearing a free item broadcasts; wearing a locked item is rejected
+      (`ItemNotUnlocked`), an unlocked one (after `sync_unlocks`) is accepted.
+- [ ] Open a box: one payment popup, `pending` flips back, 5 bits set, same 5
+      items revealed on both devices; 0.025 SOL landed in the treasury; the
+      purchase shows in the dev panel Money section.
+- [ ] `claim_free_outfit` twice with the same index → no error, one bit.
 - [ ] Full cross-device multiplayer still green (compare to Parabéns 2.0).
 
 ---

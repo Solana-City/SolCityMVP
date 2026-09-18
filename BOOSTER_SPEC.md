@@ -20,19 +20,18 @@ program is live (same rule as `REDEPLOY_CHECKLIST.md`).
 - `callback_open_booster(randomness)` — VRF-identity-signed; 5 distinct indices
   in `[0, pool_count)` → bits in `UnlockState` (seed `["unlocks", wallet]`,
   256-bit capacity), emits `BoosterOpened { authority, indices }`.
-- Cargo: `anchor-lang` + `init-if-needed`, `ephemeral-vrf-sdk = 0.3.0` (anchor).
+- Cargo: `anchor-lang` + `init-if-needed` only. The VRF request is a hand-rolled
+  CPI (Playground cannot build `ephemeral-vrf-sdk`); scoped identity, see
+  REDEPLOY_CHECKLIST.md "FINAL SCOPE".
 
 ### Deploy (Solana Playground) — do this next
-1. Open the program in beta.solpg.io, add the two deps to `Cargo.toml`, build.
-   **Expect to iterate** on `ephemeral-vrf-sdk` path/name mismatches — the
-   `BUILD NOTES` block in `lib.rs` lists what to check (`#[vrf]` macro,
-   `create_request_randomness_ix`, `consts::DEFAULT_QUEUE` / `VRF_PROGRAM_IDENTITY`).
+1. Open the program in beta.solpg.io and build. No extra crates are needed.
 2. Deploy to devnet (upgrade authority = game wallet). Program id unchanged
    (`HPvDFVnruSXHwKKP44eUvRh8oYqBaHCeQbK1sKWT1aU2`).
 3. **VRF oracle:** confirm from MagicBlock's docs whether the request payer must
    pre-fund the oracle queue / any per-request fee on devnet; top up if so.
-4. Export the new IDL — the client needs the `open_booster` accounts (the
-   `#[vrf]` macro appends VRF-program accounts) + the `BoosterOpened` event.
+4. Export the new IDL — the client needs the `open_booster` accounts
+   (`program_identity`, `vrf_program`, `slot_hashes` added) + the `BoosterOpened` event.
 
 ### Client — Phase 2
 

@@ -10,19 +10,11 @@ use anchor_lang::solana_program::{
 };
 
 // ── MagicBlock ephemeral VRF (outfit booster) ──────────────────────────────
-// BUILD NOTES (verify against ephemeral-vrf-sdk 0.3.0 when building in Solana
-// Playground — the crate's exact module paths may differ slightly and the
-// build will name any mismatch):
-//   • #[vrf] macro augments the request Accounts ctx with the VRF program and
-//     adds `ctx.accounts.invoke_signed_vrf(&payer, &ix)`.
-//   • create_request_randomness_ix(RequestRandomnessParams { payer, oracle_queue,
-//     callback_program_id, callback_discriminator, caller_seed, accounts_metas, .. })
-//   • consts::DEFAULT_QUEUE (base devnet Cuj97…AxGh) / VRF_PROGRAM_IDENTITY
-//   • rnd helpers exist too; we derive indices from the raw [u8;32] here.
-use ephemeral_vrf_sdk::anchor::vrf;
-use ephemeral_vrf_sdk::instructions::{create_request_randomness_ix, RequestRandomnessParams};
-use ephemeral_vrf_sdk::types::SerializableAccountMeta;
-use ephemeral_vrf_sdk::consts::VRF_PROGRAM_IDENTITY;
+// Hand-rolled CPI, same approach as delegation: Solana Playground only builds a
+// fixed crate list and `ephemeral-vrf-sdk` is not on it. Layout mirrors
+// ephemeral-vrf-sdk 0.17.0 (`create_request_randomness_ix` + `#[vrf]` +
+// `#[vrf_callback]`): a SCOPED request, so the oracle signs our callback with
+// the per-program identity PDA ["identity", our program id] under the VRF program.
 
 declare_id!("HPvDFVnruSXHwKKP44eUvRh8oYqBaHCeQbK1sKWT1aU2");
 
@@ -69,6 +61,38 @@ pub const BOOSTER_PRICE_LAMPORTS: u64 = 25_000_000;
 /// Treasury that receives pack payments (the game wallet).
 pub const TREASURY: Pubkey = pubkey!("9592QS34mPUwqA7sPAkug1kcuFddjn59QPQMzzCgKhEp");
 
+/// MagicBlock VRF program.
+pub const VRF_PROGRAM_ID: Pubkey = pubkey!("Vrf1RNUjXmQGjmQrQLvJHs9SNkvDJEsRVFPkfSQUwGz");
+/// Default base-layer oracle queue.
+pub const VRF_DEFAULT_QUEUE: Pubkey = pubkey!("Cuj97ggrhhidhbu39TijNVqE74xvKJ69gDervRUXAxGh");
+/// Seed of both identity PDAs: ours ["identity"] signs the request; the VRF
+/// program's ["identity", our id] signs the callback.
+pub const VRF_IDENTITY_SEED: &[u8] = b"identity";
+/// Request variant: scoped identity, regular priority.
+const VRF_REQUEST_SCOPED: u8 = 10;
+
+/// Borsh payload of the VRF program's request instruction.
+#[derive(AnchorSerialize)]
+struct VrfRequest {
+    caller_seed: [u8; 32],
+    callback_program_id: Pubkey,
+    callback_discriminator: Vec<u8>,
+    callback_accounts_metas: Vec<VrfCallbackMeta>,
+    callback_args: Vec<u8>,
+}
+
+#[derive(AnchorSerialize)]
+struct VrfCallbackMeta {
+    pubkey: Pubkey,
+    is_signer: bool,
+    is_writable: bool,
+}
+
+/// The only key allowed to sign callback_open_booster.
+fn vrf_callback_identity() -> Pubkey {
+    Pubkey::find_program_address(&[VRF_IDENTITY_SEED, crate::ID.as_ref()], &VRF_PROGRAM_ID).0
+}
+
 /// MagicBlock delegation program on devnet.
 pub const DELEGATION_PROGRAM_ID: Pubkey =
     pubkey!("DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh");
@@ -93,6 +117,8 @@ pub enum SolCityError {
     ItemNotUnlocked,
     #[msg("Not a claimable quest-reward item")]
     InvalidQuestItem,
+    #[msg("Callback not signed by the VRF program identity")]
+    InvalidVrfIdentity,
 }
 
 /// Truncates a string to at most `max` BYTES on a char boundary, so a
@@ -172,24 +198,52 @@ pub mod sol_city {
 
     pub fn record_swap(ctx: Context<UpdatePlayer>) -> Result<()> {
         let player = &mut ctx.accounts.player;
-        player.swap_count += 1;
-        player.score += 50;
+        player.swap_count = player.swap_count.saturating_add(1);
+        player.score = player.score.saturating_add(50);
         player.last_active = Clock::get()?.unix_timestamp;
         Ok(())
     }
 
     pub fn record_transfer(ctx: Context<UpdatePlayer>) -> Result<()> {
         let player = &mut ctx.accounts.player;
-        player.transfer_count += 1;
-        player.score += 25;
+        player.transfer_count = player.transfer_count.saturating_add(1);
+        player.score = player.score.saturating_add(25);
         player.last_active = Clock::get()?.unix_timestamp;
         Ok(())
     }
 
     pub fn record_bounty(ctx: Context<UpdatePlayer>) -> Result<()> {
         let player = &mut ctx.accounts.player;
-        player.bounty_count += 1;
-        player.score += 30;
+        player.bounty_count = player.bounty_count.saturating_add(1);
+        player.score = player.score.saturating_add(30);
+        player.last_active = Clock::get()?.unix_timestamp;
+        Ok(())
+    }
+
+    // Session-key variants of the three record_* above. Once the player PDA is
+    // delegated, the wallet-signed versions can't be routed to the rollup
+    // seamlessly; these run on the ER with no wallet popup. Same points.
+
+    pub fn record_swap_session(ctx: Context<UpdatePlayerSession>) -> Result<()> {
+        let player = &mut ctx.accounts.player;
+        player.swap_count = player.swap_count.saturating_add(1);
+        player.score = player.score.saturating_add(50);
+        player.last_active = Clock::get()?.unix_timestamp;
+        Ok(())
+    }
+
+    pub fn record_transfer_session(ctx: Context<UpdatePlayerSession>) -> Result<()> {
+        let player = &mut ctx.accounts.player;
+        player.transfer_count = player.transfer_count.saturating_add(1);
+        player.score = player.score.saturating_add(25);
+        player.last_active = Clock::get()?.unix_timestamp;
+        Ok(())
+    }
+
+    pub fn record_bounty_session(ctx: Context<UpdatePlayerSession>) -> Result<()> {
+        let player = &mut ctx.accounts.player;
+        player.bounty_count = player.bounty_count.saturating_add(1);
+        player.score = player.score.saturating_add(30);
         player.last_active = Clock::get()?.unix_timestamp;
         Ok(())
     }
@@ -508,6 +562,11 @@ pub mod sol_city {
         client_seed: [u8; 32],
     ) -> Result<()> {
         require!(pool_count as usize >= BOOSTER_PACK_SIZE, SolCityError::InvalidPoolCount);
+        // Every drawable bit must fit the bitset, or a draw would be silently lost.
+        require!(
+            QUEST_FREE_SLOTS as usize + pool_count as usize <= UNLOCK_BITS * 8,
+            SolCityError::InvalidPoolCount
+        );
         require_keys_eq!(ctx.accounts.treasury.key(), TREASURY, SolCityError::InvalidTreasury);
 
         {
@@ -535,20 +594,43 @@ pub mod sol_city {
         )?;
 
         // Request randomness; the callback grants into this UnlockState.
-        let ix = create_request_randomness_ix(RequestRandomnessParams {
-            payer: ctx.accounts.payer.key(),
-            oracle_queue: ctx.accounts.oracle_queue.key(),
-            callback_program_id: ID,
-            callback_discriminator: instruction::CallbackOpenBooster::DISCRIMINATOR.to_vec(),
+        let mut data = vec![VRF_REQUEST_SCOPED, 0, 0, 0, 0, 0, 0, 0];
+        VrfRequest {
             caller_seed: client_seed,
-            accounts_metas: Some(vec![SerializableAccountMeta {
+            callback_program_id: crate::ID,
+            callback_discriminator: instruction::CallbackOpenBooster::DISCRIMINATOR.to_vec(),
+            callback_accounts_metas: vec![VrfCallbackMeta {
                 pubkey: ctx.accounts.unlock_state.key(),
                 is_signer: false,
                 is_writable: true,
-            }]),
-            ..Default::default()
-        });
-        ctx.accounts.invoke_signed_vrf(&ctx.accounts.payer.to_account_info(), &ix)?;
+            }],
+            callback_args: vec![],
+        }
+        .serialize(&mut data)
+        .map_err(|_| ProgramError::InvalidInstructionData)?;
+        let ix = SolInstruction {
+            program_id: VRF_PROGRAM_ID,
+            accounts: vec![
+                SolAccountMeta::new(ctx.accounts.payer.key(), true),
+                SolAccountMeta::new_readonly(ctx.accounts.program_identity.key(), true),
+                SolAccountMeta::new(ctx.accounts.oracle_queue.key(), false),
+                SolAccountMeta::new_readonly(ctx.accounts.system_program.key(), false),
+                SolAccountMeta::new_readonly(ctx.accounts.slot_hashes.key(), false),
+            ],
+            data,
+        };
+        invoke_signed(
+            &ix,
+            &[
+                ctx.accounts.payer.to_account_info(),
+                ctx.accounts.program_identity.to_account_info(),
+                ctx.accounts.oracle_queue.to_account_info(),
+                ctx.accounts.system_program.to_account_info(),
+                ctx.accounts.slot_hashes.to_account_info(),
+                ctx.accounts.vrf_program.to_account_info(),
+            ],
+            &[&[VRF_IDENTITY_SEED, &[ctx.bumps.program_identity]]],
+        )?;
         Ok(())
     }
 
@@ -775,7 +857,6 @@ pub struct PlayerState {
 
 // ── Outfit booster accounts ────────────────────────────────────────────────
 
-#[vrf]
 #[derive(Accounts)]
 pub struct OpenBooster<'info> {
     #[account(mut)]
@@ -792,15 +873,24 @@ pub struct OpenBooster<'info> {
     #[account(mut)]
     pub treasury: AccountInfo<'info>,
     /// CHECK: MagicBlock VRF oracle queue (base devnet).
-    #[account(mut, address = ephemeral_vrf_sdk::consts::DEFAULT_QUEUE)]
+    #[account(mut, address = VRF_DEFAULT_QUEUE)]
     pub oracle_queue: AccountInfo<'info>,
+    /// CHECK: this program's identity PDA; signs the VRF request.
+    #[account(seeds = [VRF_IDENTITY_SEED], bump)]
+    pub program_identity: UncheckedAccount<'info>,
+    /// CHECK: MagicBlock VRF program.
+    #[account(address = VRF_PROGRAM_ID)]
+    pub vrf_program: UncheckedAccount<'info>,
+    /// CHECK: SlotHashes sysvar, read by the VRF program.
+    #[account(address = anchor_lang::solana_program::sysvar::slot_hashes::ID)]
+    pub slot_hashes: UncheckedAccount<'info>,
     pub system_program: Program<'info, System>,
 }
 
 #[derive(Accounts)]
 pub struct CallbackOpenBooster<'info> {
-    /// Only the MagicBlock VRF program identity may invoke the callback.
-    #[account(address = VRF_PROGRAM_IDENTITY)]
+    /// Only the VRF program's scoped identity for THIS program may invoke the callback.
+    #[account(address = vrf_callback_identity() @ SolCityError::InvalidVrfIdentity)]
     pub vrf_program_identity: Signer<'info>,
     /// Re-derived from the authority stored on the account (the wallet doesn't
     /// sign the callback — the oracle does), so the grant lands on the right PDA.
