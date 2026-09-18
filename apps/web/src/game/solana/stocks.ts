@@ -48,10 +48,16 @@ export interface StockMarketState {
 
 /** One Price V3 call for every stock + SOL (limit is 50 ids). */
 export async function fetchStockPrices(): Promise<Omit<StockMarketState, "error">> {
-  const ids = [...STOCKS.map((s) => s.mint), SOL_MINT].join(",");
-  const res = await fetch(`${JUP_BASE}/price/v3?ids=${ids}`, { headers: jupHeaders() });
-  if (!res.ok) throw new Error(res.status === 429 ? "Prices are busy, retrying." : `Price API failed (${res.status})`);
-  const data = (await res.json()) as Record<string, any>;
+  // Price V3 takes at most 50 ids per call, so the catalog goes in chunks.
+  const ids = [SOL_MINT, ...STOCKS.map((s) => s.mint)];
+  const chunks: string[][] = [];
+  for (let i = 0; i < ids.length; i += 50) chunks.push(ids.slice(i, i + 50));
+  const data: Record<string, any> = {};
+  for (const chunk of chunks) {
+    const res = await fetch(`${JUP_BASE}/price/v3?ids=${chunk.join(",")}`, { headers: jupHeaders() });
+    if (!res.ok) throw new Error(res.status === 429 ? "Prices are busy, retrying." : `Price API failed (${res.status})`);
+    Object.assign(data, await res.json());
+  }
 
   const quotes: Record<string, StockQuote> = {};
   for (const stock of STOCKS) {

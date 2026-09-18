@@ -9,9 +9,12 @@ import { useWallet } from "@solana/wallet-adapter-react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import {
   STOCKS, stockMarket, getMarketClock, fetchHoldings, holdingUsd, quoteBuy, quoteSell,
-  getStockVenue, submitStockOrder, stockTxUrl, BASKETS, basketStocks,
-  type StockInfo, type StockBasket, type StockMarketState, type WalletHoldings, type PayToken,
+  getStockVenue, submitStockOrder, stockTxUrl, BASKETS, basketStocks, SECTOR_LABELS,
+  type StockInfo, type StockBasket, type StockMarketState, type WalletHoldings, type PayToken, type StockSector,
 } from "@/game/solana/stocks";
+
+/** Sector filter chips, in display order (only sectors that have stocks). */
+const SECTORS = (Object.keys(SECTOR_LABELS) as StockSector[]).filter((sct) => STOCKS.some((s) => s.sector === sct));
 import { getShareTrades, setShareTrades } from "@/game/chat/tradeBroadcast";
 import { ORDER_TTL_MS, deserializeTransaction, fromSmallestUnit, type OrderResponse } from "@/game/solana/jupiterSwap";
 import { transactionLog } from "@/game/telemetry/transactionLog";
@@ -66,6 +69,8 @@ export default function StockExchangePanel({ onClose }: { onClose: () => void })
   const [tab, setTab] = useState<"market" | "baskets" | "mine">("market");
   const [selected, setSelected] = useState<StockInfo | null>(null);
   const [selectedBasket, setSelectedBasket] = useState<StockBasket | null>(null);
+  const [query, setQuery] = useState("");
+  const [sector, setSector] = useState<StockSector | "all">("all");
   const clock = useMemo(() => getMarketClock(), [market.updatedAt]);
 
   useEffect(() => stockMarket.subscribe(setMarket), []);
@@ -106,7 +111,11 @@ export default function StockExchangePanel({ onClose }: { onClose: () => void })
   }
 
   const owned = holdings ? STOCKS.filter((s) => holdings.stocks[s.mint]) : [];
-  const list = tab === "market" ? STOCKS : tab === "mine" ? owned : [];
+  const q = query.trim().toLowerCase();
+  const marketList = STOCKS.filter((s) =>
+    (sector === "all" || s.sector === sector) &&
+    (!q || s.ticker.toLowerCase().includes(q) || s.name.toLowerCase().includes(q)));
+  const list = tab === "market" ? marketList : tab === "mine" ? owned : [];
   const basis = wallet ? loadBasis(wallet) : {};
 
   return (
@@ -144,6 +153,36 @@ export default function StockExchangePanel({ onClose }: { onClose: () => void })
           </button>
         ))}
       </div>
+
+      {tab === "market" && (
+        <div style={{ marginBottom: 10 }}>
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            // Same signal the chat input uses: typing must not walk the avatar.
+            onFocus={() => emitGameEvent("chat:focus", true)}
+            onBlur={() => emitGameEvent("chat:focus", false)}
+            placeholder={`SEARCH ${STOCKS.length} STOCKS`}
+            style={{
+              width: "100%", boxSizing: "border-box", padding: "9px 10px", borderRadius: 8, marginBottom: 8,
+              background: "#12162b", border: "1px solid #2a2f45", color: "#fff", fontFamily: PIXEL, fontSize: 7, outline: "none",
+            }}
+          />
+          {/* Sector chips scroll sideways instead of wrapping into a wall of buttons. */}
+          <div style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 4, scrollbarWidth: "none" }}>
+            {(["all", ...SECTORS] as const).map((sct) => (
+              <button key={sct} onClick={() => setSector(sct)} style={{
+                ...chip(sector === sct), flex: "0 0 auto", padding: "6px 9px", fontSize: 6,
+              }}>
+                {sct === "all" ? "ALL" : SECTOR_LABELS[sct]}
+              </button>
+            ))}
+          </div>
+          {marketList.length === 0 && (
+            <div style={{ textAlign: "center", padding: "18px 0", fontSize: 7, color: MUTED }}>No stock matches.</div>
+          )}
+        </div>
+      )}
 
       {tab === "baskets" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>

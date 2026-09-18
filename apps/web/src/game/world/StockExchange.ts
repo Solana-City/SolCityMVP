@@ -117,7 +117,8 @@ export function createStockExchange(
   const rebuildTicker = (state: StockMarketState) => {
     const clock = getMarketClock();
     items = [{ text: clock.wallStreetOpen ? "NYSE OPEN" : "WALL ST CLOSED. SOLANA IS OPEN", color: "#FFD27A", gapAfter: 24 }];
-    for (const s of STOCKS) {
+    // Only the best-known names, so one loop stays short enough to watch.
+    for (const s of STOCKS.filter((x) => x.featured)) {
       const q = state.quotes[s.mint];
       const change = q ? q.change24h : 0;
       items.push({ text: s.ticker, color: "#FFFFFF", gapAfter: 5 });
