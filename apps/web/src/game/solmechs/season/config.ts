@@ -14,7 +14,7 @@ export const LAMPORTS_PER_SOL = 1_000_000_000;
  * SOL/USD, used only to convert USD budget figures into the SOL constants
  * below. Never read at runtime. Set to the real rate before launch.
  */
-export const ASSUMED_SOL_USD = 165;
+export const ASSUMED_SOL_USD = 100;
 
 /** 0.1 SOL — the Genesis pass price. */
 export const PASS_PRICE_LAMPORTS = LAMPORTS_PER_SOL / 10;
