@@ -156,9 +156,14 @@ export function createStockExchange(
     const perPage = ROWS_PER_SCREEN * screens.length;
     // Rotate through the gainers; top up with the best of the rest if short.
     const pool = gainers.length >= perPage ? gainers : ranked.slice(0, perPage);
+    if (!pool.length) return;
     const pages = Math.max(1, Math.ceil(pool.length / perPage));
     page %= pages;
-    const rows = pool.slice(page * perPage, page * perPage + perPage);
+    // Wrap around the end of the list so every page is full: with 5 gainers
+    // the second page shows #5 plus #1-#3, never one stock and an empty half.
+    // (pool.length >= perPage whenever there are enough stocks, so a page
+    // never repeats a stock.)
+    const rows = Array.from({ length: Math.min(perPage, pool.length) }, (_, j) => pool[(page * perPage + j) % pool.length]);
     screens.forEach((s, i) => s.paint((ctx) => paintScreen(ctx, scene, s.rect, rows.slice(i * ROWS_PER_SCREEN, (i + 1) * ROWS_PER_SCREEN))));
   };
 
