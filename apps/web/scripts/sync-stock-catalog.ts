@@ -4,7 +4,8 @@
  *   npx tsx apps/web/scripts/sync-stock-catalog.ts
  *
  * Takes every VERIFIED token Jupiter tags "stocks", keeps the 1:1-backed
- * issuers (xStocks by Backed, Backpack Securities listed via Sunrise), drops
+ * issuers (xStocks by Backed, Backpack Securities listed via Sunrise) whose
+ * mint appears in that issuer's own public asset list for the same ticker, drops
  * thin markets (MIN_LIQUIDITY) and keeps one token per company (the more
  * liquid issuer). Pre-IPO (PreStocks), leveraged (Shift) and near-zero
  * liquidity (Ondo) products are skipped on purpose.
@@ -34,10 +35,46 @@ function cleanName(name: string): string {
     .trim();
 }
 
+/**
+ * Mint -> real-world ticker, straight from each issuer's own public list.
+ * A token only makes the catalog if its issuer lists that exact mint AND
+ * says it tracks the same ticker, so a look-alike can't slip in even if it
+ * were ever tagged verified.
+ */
+async function officialMints(): Promise<Map<string, { issuer: Issuer; ticker: string }>> {
+  const out = new Map<string, { issuer: Issuer; ticker: string }>();
+
+  // xStocks (Backed): paginated; each asset has its underlying symbol + ISIN.
+  for (let page = 0; page < 50; page++) {
+    const r = await fetch(`https://api.xstocks.fi/api/v2/public/assets?page=${page}`);
+    if (!r.ok) throw new Error(`xStocks assets ${r.status}`);
+    const j = (await r.json()) as { nodes: Array<{ underlyingSymbol: string; deployments?: Array<{ network: string; address: string }> }>; page?: { hasNextPage?: boolean } };
+    for (const n of j.nodes ?? []) {
+      for (const d of n.deployments ?? []) {
+        if (d.network === "Solana") out.set(d.address, { issuer: "xstocks", ticker: n.underlyingSymbol });
+      }
+    }
+    if (!j.page?.hasNextPage) break;
+  }
+
+  // Backpack Securities: symbols are "TICKER.US".
+  const b = await fetch("https://api.backpack.exchange/api/v1/assets");
+  if (!b.ok) throw new Error(`Backpack assets ${b.status}`);
+  for (const a of (await b.json()) as Array<{ symbol: string; tokens?: Array<{ blockchain: string; contractAddress: string }> }>) {
+    if (!a.symbol.endsWith(".US")) continue;
+    for (const t of a.tokens ?? []) {
+      if (t.blockchain === "Solana") out.set(t.contractAddress, { issuer: "backpack", ticker: a.symbol.slice(0, -3) });
+    }
+  }
+  return out;
+}
+
 async function main() {
+  const official = await officialMints();
   const res = await fetch("https://lite-api.jup.ag/tokens/v2/tag?query=verified");
   if (!res.ok) throw new Error(`Jupiter tokens ${res.status}`);
   const tokens = (await res.json()) as JupToken[];
+  const rejected: string[] = [];
 
   const best = new Map<string, { token: JupToken; issuer: Issuer; ticker: string }>();
   const seen = new Set<string>();
@@ -49,6 +86,11 @@ async function main() {
     const issuer: Issuer | null = tags.includes("xstocks") ? "xstocks" : tags.includes("backpack") ? "backpack" : null;
     if (!issuer || (t.liquidity ?? 0) < MIN_LIQUIDITY) continue;
     const ticker = issuer === "xstocks" ? t.symbol.replace(/x$/, "") : t.symbol;
+    const listed = official.get(t.id);
+    if (!listed || listed.issuer !== issuer || listed.ticker !== ticker) {
+      rejected.push(`${t.symbol} ${t.id} (${listed ? `issuer says ${listed.issuer}:${listed.ticker}` : "not in issuer's list"})`);
+      continue;
+    }
     const cur = best.get(ticker);
     if (!cur || (t.liquidity ?? 0) > (cur.token.liquidity ?? 0)) best.set(ticker, { token: t, issuer, ticker });
   }
@@ -81,6 +123,7 @@ ${rows.join("\n")}
 `;
   fs.writeFileSync(OUT, file);
   console.log(`wrote ${rows.length} stocks to ${path.relative(process.cwd(), OUT)}`);
+  if (rejected.length) console.log(`rejected ${rejected.length} not matching the issuer's official list:\n  ${rejected.join("\n  ")}`);
 }
 
 main().catch((e) => { console.error(e); process.exit(1); });
