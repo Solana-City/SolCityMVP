@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * The chat's "i" card: three quick steps on how the chat works, drawn with
+ * The chat's "i" card: a few quick steps on how the chat works, drawn with
  * the game's own sprites like the city guide. Opens from the chat header.
  */
 import { useEffect, useState } from "react";
@@ -13,6 +13,7 @@ const LOCAL = "#14F195";
 const YOU = "#14F195";
 const OTHERS = "#00D1FF";
 const DANGER = "#ff5a5a";
+const DM = "#FFD700";
 
 /** A speech bubble like the ones that float over avatars in the city. */
 function Bubble({ text, color }: { text: string; color: string }) {
@@ -59,6 +60,16 @@ function steps(touch: boolean): Step[] {
           <Speaker sheet="Kuka.png" text="gm!" color={OTHERS} size={44} />
           <Speaker sheet="main_char.png" text="hello!" color={YOU} size={52} />
           <Speaker sheet="Sushi Man.png" text="hi" color={OTHERS} size={44} />
+        </div>
+      ),
+    },
+    {
+      title: "DIRECT MESSAGES",
+      line: "Open Direct Message and type a nickname or wallet, or tap a player and MESSAGE. Only online players get them.",
+      scene: (
+        <div style={{ display: "flex", alignItems: "flex-end", gap: 18 }}>
+          <Speaker sheet="main_char.png" text="psst" color={DM} size={52} />
+          <Speaker sheet="Kuka.png" text="hey!" color={DM} size={52} />
         </div>
       ),
     },

@@ -49,6 +49,7 @@ const ExpressionWheel     = dynamic(() => import("@/ui/ExpressionWheel"),     { 
 const Minimap             = dynamic(() => import("@/ui/Minimap"),             { ssr: false });
 
 import ErrorBoundary from "@/ui/ErrorBoundary";
+import { OPEN_DM_EVENT } from "@/game/chat/dmEvents";
 
 function useIsTouch() {
   const [isTouch, setIsTouch] = useState(false);
@@ -178,6 +179,13 @@ export default function Home() {
     game.events.on("player:cardOpen", handler);
     return () => { game.events.off("player:cardOpen", handler); };
   }, [game]);
+
+  // "Message" on a player card: on mobile the chat is a toggled panel, so open it.
+  useEffect(() => {
+    const open = () => setChatOpen(true);
+    window.addEventListener(OPEN_DM_EVENT, open);
+    return () => window.removeEventListener(OPEN_DM_EVENT, open);
+  }, []);
 
   const handleDialogClose = useCallback(() => {
     setActiveNPC(null);

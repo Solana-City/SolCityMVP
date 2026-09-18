@@ -2,10 +2,20 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import type { ChatManager, ChatMessage, ChatChannel, DMChannel } from "@/game/chat/ChatManager";
-import { getChannelColor, getChannelLabel } from "@/game/chat/ChatManager";
+import { getChannelColor, getChannelLabel, SELF_COLOR } from "@/game/chat/ChatManager";
 import { EMOJI_REGISTRY } from "@/game/chat/EmojiSystem";
 import ChatGuide from "./ChatGuide";
-import { containsLink } from "@/game/chat/linkFilter";
+import { containsLink, maskLinks } from "@/game/chat/linkFilter";
+import { DMClient, OPEN_DM_EVENT, resolveRecipient } from "@/game/chat/dmClient";
+import { cachedName, requestNames } from "@/game/names/nameService";
+import type { OnChainMultiplayer } from "@/game/multiplayer/OnChainMultiplayer";
+import { useWallet } from "@solana/wallet-adapter-react";
+
+const DM_COLOR = "#FFD700";
+
+function short(wallet: string): string {
+  return `${wallet.slice(0, 4)}…${wallet.slice(-4)}`;
+}
 
 interface ChatPanelProps {
   gameRef: Phaser.Game | null;
@@ -16,7 +26,15 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [activeChannel, setActiveChannel] = useState<ChatChannel>("city");
-  const [linkBlocked, setLinkBlocked] = useState(false);
+  /** A one-line problem shown above the input (link blocked, player offline...). */
+  const [notice, setNotice] = useState<string | null>(null);
+  const [dmMode, setDmMode] = useState(false);
+  /** Wallet of the open conversation; null shows the "who to" prompt. */
+  const [dmPeer, setDmPeer] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const { publicKey } = useWallet();
+  const myWallet = publicKey?.toBase58() ?? null;
+  const dmRef = useRef<DMClient | null>(null);
   const [dmChannels, setDmChannels] = useState<DMChannel[]>([]);
   const [isTouch, setIsTouch] = useState(false);
   const [isExpanded, setIsExpanded] = useState(true);
@@ -61,18 +79,105 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
     if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
   }, [messages]);
 
-  const handleSend = useCallback(() => {
+  // Direct messages: one client per connected wallet, fed into ChatManager's
+  // dm:<wallet> conversations. Needs the multiplayer session key to sign.
+  useEffect(() => {
+    if (!gameRef || !myWallet || !chatManager) return;
+    let client: DMClient | null = null;
+    let unsubscribe = () => {};
+    const id = setInterval(() => {
+      const net = gameRef.scene.getScene("CityScene")?.registry.get("network") as OnChainMultiplayer | undefined;
+      if (!net) return;
+      clearInterval(id);
+      client = new DMClient(myWallet, () => net.getSessionKeys().getSessionKey());
+      unsubscribe = client.onMessage((m) => {
+        requestNames([m.from]);
+        const name = cachedName(m.from) ?? short(m.from);
+        const ch = chatManager.ensureDM(m.from, name);
+        chatManager.addMessage(ch, m.from, name, maskLinks(m.text), DM_COLOR);
+      });
+      client.start();
+      dmRef.current = client;
+    }, 500);
+    return () => {
+      clearInterval(id);
+      unsubscribe();
+      client?.stop();
+      dmRef.current = null;
+    };
+  }, [gameRef, myWallet, chatManager]);
+
+  const openPeer = useCallback((wallet: string, name?: string) => {
+    if (!chatManager) return;
+    requestNames([wallet]);
+    const ch = chatManager.openDM(wallet, name || cachedName(wallet) || short(wallet));
+    setActiveChannel(ch);
+    setDmMode(true);
+    setDmPeer(wallet);
+    setNotice(null);
+  }, [chatManager]);
+
+  const showDmPrompt = useCallback(() => {
+    setDmMode(true);
+    setDmPeer(null);
+    setNotice(null);
+    setActiveChannel("city");
+    chatManager?.setActiveChannel("city");
+  }, [chatManager]);
+
+  const handleSend = useCallback(async () => {
     const text = input.trim();
-    if (!text || !gameRef) return;
-    // Keep the text so the player can take the link out and resend.
-    if (containsLink(text)) {
-      setLinkBlocked(true);
+    if (!text || !gameRef || busy) return;
+
+    // DM tab with no conversation open: the input is the "to" field.
+    if (dmMode && !dmPeer) {
+      if (!myWallet) { setNotice("Connect a wallet to send direct messages."); return; }
+      setBusy(true);
+      const found = await resolveRecipient(text);
+      setBusy(false);
+      if ("error" in found) { setNotice(found.error); return; }
+      if (found.wallet === myWallet) { setNotice("That's you."); return; }
+      setInput("");
+      openPeer(found.wallet, found.wallet === text ? undefined : text.replace(/^@/, ""));
       return;
     }
+
+    // Keep the text so the player can take the link out and resend.
+    if (containsLink(text)) {
+      setNotice("Links are not allowed in chat.");
+      return;
+    }
+
+    if (dmMode && dmPeer) {
+      const client = dmRef.current;
+      if (!client || !myWallet) { setNotice("Connect a wallet to send direct messages."); return; }
+      setBusy(true);
+      const res = await client.send(dmPeer, text);
+      setBusy(false);
+      if (!res.ok) { setNotice(res.message); return; }
+      const me = cachedName(myWallet) ?? short(myWallet);
+      chatManager?.addMessage(`dm:${dmPeer}`, myWallet, me, text, SELF_COLOR);
+      setInput("");
+      return;
+    }
+
     gameRef.events.emit("chat:send", text);
     setInput("");
     setShowEmojis(false);
-  }, [input, gameRef]);
+  }, [input, gameRef, busy, dmMode, dmPeer, myWallet, openPeer, chatManager]);
+
+  // "Message" on a player card opens the conversation here.
+  useEffect(() => {
+    const onOpen = (e: Event) => {
+      const { wallet, name } = (e as CustomEvent<{ wallet: string; name?: string }>).detail ?? {};
+      if (!wallet) return;
+      setIsExpanded(true);
+      openPeer(wallet, name);
+      setTimeout(() => inputRef.current?.focus(), 80);
+    };
+    window.addEventListener(OPEN_DM_EVENT, onOpen);
+    return () => window.removeEventListener(OPEN_DM_EVENT, onOpen);
+  }, [openPeer]);
 
   const handleFocus = useCallback(() => {
     gameRef?.events.emit("chat:focus", true);
@@ -93,7 +198,7 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
   }, [chatManager]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-    if (e.key === "Enter") handleSend();
+    if (e.key === "Enter") void handleSend();
     if (e.key === "Escape") inputRef.current?.blur();
     e.stopPropagation();
   }, [handleSend]);
@@ -126,8 +231,11 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
   if (isTouch && !visible) return null;
 
   const channelColor = getChannelColor(activeChannel);
-
-  const fixedTabs: ChatChannel[] = ["city"];
+  const dmUnread = dmChannels.reduce((n, dm) => n + dm.unread, 0);
+  const peerName = dmPeer ? (dmChannels.find((d) => d.sessionId === dmPeer)?.name ?? short(dmPeer)) : "";
+  const placeholder = !dmMode
+    ? "Say something..."
+    : dmPeer ? `Message ${peerName}...` : "Nickname or wallet...";
 
   return (
     <div
@@ -145,28 +253,23 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
       {showGuide && <ChatGuide touch={isTouch} onClose={() => setShowGuide(false)} />}
       {/* Channel tabs */}
       <div className="flex gap-0.5 mb-0.5 overflow-x-auto">
-        {fixedTabs.map((ch) => (
-          <TabButton
-            key={ch}
-            label={getChannelLabel(ch, dmChannels)}
-            color={getChannelColor(ch)}
-            active={activeChannel === ch}
-            onClick={() => switchChannel(ch)}
-          />
-        ))}
-        {dmChannels.map((dm) => {
-          const ch: ChatChannel = `dm:${dm.sessionId}`;
-          return (
-            <TabButton
-              key={ch}
-              label={dm.name}
-              color="#FFD700"
-              active={activeChannel === ch}
-              badge={dm.unread > 0 ? dm.unread : undefined}
-              onClick={() => switchChannel(ch)}
-            />
-          );
-        })}
+        <TabButton
+          label={getChannelLabel("city", dmChannels)}
+          color={getChannelColor("city")}
+          active={!dmMode}
+          onClick={() => { setDmMode(false); setNotice(null); switchChannel("city"); }}
+        />
+        <TabButton
+          label="Direct Message"
+          color={DM_COLOR}
+          active={dmMode}
+          badge={dmUnread > 0 ? dmUnread : undefined}
+          onClick={() => {
+            if (dmMode) return;
+            const last = dmPeer && dmChannels.some((d) => d.sessionId === dmPeer) ? dmPeer : null;
+            if (last) openPeer(last); else showDmPrompt();
+          }}
+        />
         <button
           onClick={() => setShowGuide((v) => !v)}
           aria-label="How the chat works"
@@ -192,8 +295,41 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
         </button>
       </div>
 
+      {/* Conversations */}
+      {dmMode && isExpanded && (
+        <div
+          className="flex gap-1 p-1 overflow-x-auto"
+          style={{ background: "rgba(10,10,30,0.92)", borderLeft: "1px solid rgba(153,69,255,0.2)", borderRight: "1px solid rgba(153,69,255,0.2)" }}
+        >
+          {dmChannels.map((dm) => (
+            <Chip
+              key={dm.sessionId}
+              label={dm.name}
+              active={dm.sessionId === dmPeer}
+              unread={dm.unread}
+              onClick={() => openPeer(dm.sessionId, dm.name)}
+            />
+          ))}
+          <Chip label="+ NEW" active={!dmPeer} onClick={() => { showDmPrompt(); inputRef.current?.focus(); }} />
+        </div>
+      )}
+
       {/* Message log */}
-      {isExpanded && (
+      {isExpanded && dmMode && !dmPeer && (
+        <div
+          className="mb-0.5 p-2 rounded-b"
+          style={{
+            background: "linear-gradient(180deg, rgba(15,18,40,0.96) 0%, rgba(8,10,24,0.96) 100%)",
+            minHeight: 92, border: "1px solid rgba(153,69,255,0.2)", borderTop: "none",
+            color: "#9a9ab5", fontSize: 8, lineHeight: 1.8,
+          }}
+        >
+          {myWallet
+            ? <>Who do you want to message?<br /><span style={{ color: DM_COLOR }}>Type a nickname or wallet below.</span></>
+            : "Connect a wallet to send direct messages."}
+        </div>
+      )}
+      {isExpanded && !(dmMode && !dmPeer) && (
         <div
           ref={logRef}
           className="overflow-y-auto mb-0.5 p-2 rounded-b"
@@ -208,8 +344,8 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
           }}
         >
           {messages.length === 0 && (
-            <div style={{ color: "#333344", fontSize: 8 }}>
-              No messages yet. Press Enter to chat.
+            <div style={{ color: "#555566", fontSize: 8, lineHeight: 1.8 }}>
+              {dmMode ? `Say hi to ${peerName}. Only online players receive messages.` : "No messages yet. Press Enter to chat."}
             </div>
           )}
           {messages.map((msg) => (
@@ -263,12 +399,12 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
         </div>
       )}
 
-      {linkBlocked && (
+      {notice && (
         <div className="mb-0.5 px-2 py-1 rounded" style={{
           background: "rgba(255,80,80,0.12)", border: "1px solid rgba(255,80,80,0.4)",
           color: "#ff8a8a", fontSize: 7, lineHeight: 1.6,
         }}>
-          Links are not allowed in chat.
+          {notice}
         </div>
       )}
 
@@ -308,12 +444,12 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
           ref={inputRef}
           type="text"
           value={input}
-          onChange={(e) => { setInput(e.target.value); setLinkBlocked(false); }}
+          onChange={(e) => { setInput(e.target.value); setNotice(null); }}
           onKeyDown={handleKeyDown}
           onFocus={handleFocus}
           onBlur={handleBlur}
           enterKeyHint="send"
-          placeholder={activeChannel === "city" ? "Say something..." : `${getChannelLabel(activeChannel, dmChannels)}...`}
+          placeholder={placeholder}
           maxLength={140}
           className="flex-1 px-2 py-1.5 rounded outline-none"
           style={{
@@ -330,8 +466,8 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
           <button
             // Keep focus in the input so a desktop player can keep typing.
             onPointerDown={(e) => { if (!isTouch) e.preventDefault(); }}
-            onClick={handleSend}
-            disabled={!input.trim()}
+            onClick={() => void handleSend()}
+            disabled={!input.trim() || busy}
             className="px-3 rounded cursor-pointer"
             style={{
               background: input.trim() ? "rgba(20,241,149,0.18)" : "rgba(10,10,30,0.94)",
@@ -348,6 +484,30 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
         )}
       </div>
     </div>
+  );
+}
+
+function Chip({ label, active, unread = 0, onClick }: { label: string; active: boolean; unread?: number; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className="px-2 py-1 rounded relative"
+      style={{
+        flexShrink: 0, whiteSpace: "nowrap", cursor: "pointer", fontSize: 7,
+        fontFamily: '"Press Start 2P", monospace',
+        background: active ? "rgba(255,215,0,0.14)" : "transparent",
+        color: active ? DM_COLOR : "#8a8aa5",
+        border: `1px solid ${active ? "rgba(255,215,0,0.5)" : "rgba(153,69,255,0.25)"}`,
+      }}
+    >
+      {label}
+      {unread > 0 && (
+        <span style={{
+          position: "absolute", top: -3, right: -3, width: 7, height: 7, borderRadius: "50%",
+          background: DM_COLOR,
+        }} />
+      )}
+    </button>
   );
 }
 

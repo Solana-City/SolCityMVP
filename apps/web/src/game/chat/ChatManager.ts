@@ -23,7 +23,7 @@ const CLEANUP_INTERVAL_MS = 5_000;
 /**
  * Chat channels:
  *   city   - the one public channel: everyone online, plus system notices
- *   dm:xyz - private messages with player xyz (auto-created)
+ *   dm:xyz - direct messages with the player whose wallet is xyz
  */
 export class ChatManager {
   private log: ChatMessage[] = [];
@@ -45,7 +45,8 @@ export class ChatManager {
   private purgeExpired(): void {
     const cutoff = Date.now() - MESSAGE_TTL_MS;
     const before = this.log.length;
-    this.log = this.log.filter((m) => m.senderSessionId === "system" || m.timestamp >= cutoff);
+    // City chat fades; system notices and direct messages stay.
+    this.log = this.log.filter((m) => m.senderSessionId === "system" || m.channel.startsWith("dm:") || m.timestamp >= cutoff);
     if (this.log.length !== before) this.notifyLogListeners();
   }
 
@@ -64,6 +65,15 @@ export class ChatManager {
 
   getDMChannels(): DMChannel[] {
     return Array.from(this.dmChannels.values());
+  }
+
+  /** Creates the conversation if missing, without switching to it. */
+  ensureDM(sessionId: string, name: string): ChatChannel {
+    const key: ChatChannel = `dm:${sessionId}`;
+    const existing = this.dmChannels.get(key);
+    if (!existing) this.dmChannels.set(key, { sessionId, name, unread: 0 });
+    else if (name && existing.name !== name) existing.name = name;
+    return key;
   }
 
   openDM(sessionId: string, name: string): ChatChannel {

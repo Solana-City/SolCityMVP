@@ -11,6 +11,7 @@ import type { OnChainPlayer } from "@/game/multiplayer/OnChainMultiplayer";
 import { ACHIEVEMENTS, TIER_COLORS } from "@/game/progression/achievementRegistry";
 import { fetchLeaderboard, type LeaderboardEntry } from "@/game/solana/leaderboard";
 import { soundManager } from "@/game/audio/SoundManager";
+import { dmsOffPref, setDmsOffPref } from "@/game/chat/dmEvents";
 
 interface ProfilePanelProps {
   gameRef: Phaser.Game | null;
@@ -576,9 +577,11 @@ export default function ProfilePanel({ gameRef, isOpen, onClose }: ProfilePanelP
 function SettingsTab() {
   const [volume, setVolume] = useState(0);
   const [muted, setMuted] = useState(false);
+  const [dmsOff, setDmsOff] = useState(false);
   useEffect(() => {
     setVolume(soundManager.getVolume());
     setMuted(soundManager.isMuted());
+    setDmsOff(dmsOffPref());
   }, []);
 
   const onVolume = (v: number) => {
@@ -629,6 +632,27 @@ function SettingsTab() {
           All in-game effects: clicks, chimes, footsteps. Saved on this device.
         </div>
       </div>
+
+      <div className="text-xs mb-3 mt-4" style={{ color: "#555566" }}>
+        Chat
+      </div>
+      <label
+        className="rounded-lg p-3 flex items-center gap-3"
+        style={{ background: "#12122a", border: "1px solid rgba(255,255,255,0.04)", cursor: "pointer" }}
+      >
+        <input
+          type="checkbox"
+          checked={dmsOff}
+          onChange={(e) => { setDmsOff(e.target.checked); setDmsOffPref(e.target.checked); }}
+          style={{ accentColor: "#9945FF", width: 16, height: 16, cursor: "pointer", flexShrink: 0 }}
+        />
+        <span className="text-xs" style={{ color: "#aaaacc", lineHeight: 1.6 }}>
+          Turn off direct messages
+          <span style={{ display: "block", color: "#444455", fontSize: 8 }}>
+            Nobody can send you a DM while this is on.
+          </span>
+        </span>
+      </label>
     </div>
   );
 }

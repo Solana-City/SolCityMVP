@@ -50,6 +50,28 @@ export async function set(key: string, value: string): Promise<void> {
   memory.set(key, value);
 }
 
+/** SET with an expiry in seconds. */
+export async function setex(key: string, value: string, seconds: number): Promise<void> {
+  if (storeMode() === "redis") { await redis(["SET", key, value, "EX", seconds]); return; }
+  memory.set(key, value);
+  setTimeout(() => { if (memory.get(key) === value) memory.delete(key); }, seconds * 1000).unref?.();
+}
+
+/**
+ * Runs a Lua script atomically: one Redis command however much it does,
+ * which keeps hot paths (the DM poll) cheap. `local` is the in-memory
+ * equivalent for development, handed the raw memory map.
+ */
+export async function evalScript<T>(
+  script: string,
+  keys: string[],
+  args: (string | number)[],
+  local: (mem: Map<string, unknown>) => T,
+): Promise<T> {
+  if (storeMode() === "redis") return redis<T>(["EVAL", script, keys.length, ...keys, ...args]);
+  return local(memory);
+}
+
 /** SET NX: true when this call created the key. */
 export async function setnx(key: string, value: string): Promise<boolean> {
   if (storeMode() === "redis") return (await redis<string | null>(["SET", key, value, "NX"])) === "OK";
