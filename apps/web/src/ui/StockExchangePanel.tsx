@@ -90,7 +90,7 @@ export default function StockExchangePanel({ onClose }: { onClose: () => void })
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10, paddingRight: 24 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <span style={{ fontSize: 9, color: GOLD }}>STOCK EXCHANGE</span>
+          <span style={{ fontSize: 9, color: GOLD }}>STOCKLANA</span>
           {IS_DEVNET && (
             <span style={{ fontSize: 5, padding: "3px 5px", borderRadius: 5, background: "rgba(0,209,255,0.14)", color: "#00D1FF" }}>DEVNET TEST</span>
           )}

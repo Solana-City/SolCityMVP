@@ -281,7 +281,7 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     offsetX: 12,
     color: 0xffb547,
     dialog: [
-      "Welcome to the Sunrise Stock Exchange!",
+      "Welcome to Stocklana!",
       "Buy real stocks as Solana tokens, from $1. Wall Street closes, Solana never does.",
     ],
     action: { type: "stock-exchange", label: "Open the exchange" },

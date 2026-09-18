@@ -57,5 +57,5 @@ export const LANDMARK_LAYERS: Record<string, string> = {
   Pier: "Pier",
   BuildSolMechs: "Sol Mechs",
   BuildDungeousMoles: "Dungeous Moles",
-  BuildStocklana: "Sunrise Stock Exchange",
+  BuildStocklana: "Stocklana",
 };
