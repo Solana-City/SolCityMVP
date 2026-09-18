@@ -5,6 +5,7 @@ import type { ChatManager, ChatMessage, ChatChannel, DMChannel } from "@/game/ch
 import { getChannelColor, getChannelLabel } from "@/game/chat/ChatManager";
 import { EMOJI_REGISTRY } from "@/game/chat/EmojiSystem";
 import ChatGuide from "./ChatGuide";
+import { containsLink } from "@/game/chat/linkFilter";
 
 interface ChatPanelProps {
   gameRef: Phaser.Game | null;
@@ -14,7 +15,8 @@ interface ChatPanelProps {
 export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
-  const [activeChannel, setActiveChannel] = useState<ChatChannel>("local");
+  const [activeChannel, setActiveChannel] = useState<ChatChannel>("city");
+  const [linkBlocked, setLinkBlocked] = useState(false);
   const [dmChannels, setDmChannels] = useState<DMChannel[]>([]);
   const [isTouch, setIsTouch] = useState(false);
   const [isExpanded, setIsExpanded] = useState(true);
@@ -62,6 +64,11 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
   const handleSend = useCallback(() => {
     const text = input.trim();
     if (!text || !gameRef) return;
+    // Keep the text so the player can take the link out and resend.
+    if (containsLink(text)) {
+      setLinkBlocked(true);
+      return;
+    }
     gameRef.events.emit("chat:send", text);
     setInput("");
     setShowEmojis(false);
@@ -120,7 +127,7 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
 
   const channelColor = getChannelColor(activeChannel);
 
-  const fixedTabs: ChatChannel[] = ["local", "global"];
+  const fixedTabs: ChatChannel[] = ["city"];
 
   return (
     <div
@@ -256,6 +263,15 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
         </div>
       )}
 
+      {linkBlocked && (
+        <div className="mb-0.5 px-2 py-1 rounded" style={{
+          background: "rgba(255,80,80,0.12)", border: "1px solid rgba(255,80,80,0.4)",
+          color: "#ff8a8a", fontSize: 7, lineHeight: 1.6,
+        }}>
+          Links are not allowed in chat.
+        </div>
+      )}
+
       {/* Input row */}
       <div className="flex gap-1">
         <button
@@ -292,12 +308,12 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
           ref={inputRef}
           type="text"
           value={input}
-          onChange={(e) => setInput(e.target.value)}
+          onChange={(e) => { setInput(e.target.value); setLinkBlocked(false); }}
           onKeyDown={handleKeyDown}
           onFocus={handleFocus}
           onBlur={handleBlur}
           enterKeyHint="send"
-          placeholder={`${getChannelLabel(activeChannel, dmChannels)} chat...`}
+          placeholder={activeChannel === "city" ? "Say something..." : `${getChannelLabel(activeChannel, dmChannels)}...`}
           maxLength={140}
           className="flex-1 px-2 py-1.5 rounded outline-none"
           style={{

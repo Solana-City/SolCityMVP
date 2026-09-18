@@ -10,7 +10,9 @@ import { track } from "@/game/telemetry/track";
 
 const PIXEL = '"Press Start 2P", monospace';
 const LOCAL = "#14F195";
-const GLOBAL = "#00D1FF";
+const YOU = "#14F195";
+const OTHERS = "#00D1FF";
+const DANGER = "#ff5a5a";
 
 /** A speech bubble like the ones that float over avatars in the city. */
 function Bubble({ text, color }: { text: string; color: string }) {
@@ -41,17 +43,6 @@ function Speaker({ sheet, text, color, size = 52 }: { sheet: string; text: strin
   );
 }
 
-function Tab({ label, color }: { label: string; color: string }) {
-  return (
-    <span style={{
-      fontFamily: PIXEL, fontSize: 7, color, padding: "4px 7px",
-      background: "rgba(10,10,30,0.92)", borderBottom: `2px solid ${color}`, borderRadius: "4px 4px 0 0",
-    }}>
-      {label}
-    </span>
-  );
-}
-
 interface Step {
   title: string;
   line: string;
@@ -61,28 +52,29 @@ interface Step {
 function steps(touch: boolean): Step[] {
   return [
     {
-      title: "GLOBAL",
-      line: "The whole city. Messages from everyone online show up here.",
+      title: "CITY CHAT",
+      line: "One chat for the whole city. Everyone online reads it, and your words float over your head.",
       scene: (
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
-          <div style={{ display: "flex", alignItems: "flex-end", gap: 6 }}>
-            <Speaker sheet="Kuka.png" text="gm!" color={GLOBAL} size={44} />
-            <Speaker sheet="Jupiter Joe.png" text="swap?" color={GLOBAL} size={44} />
-            <Speaker sheet="Sushi Man.png" text="hi" color={GLOBAL} size={44} />
-          </div>
+        <div style={{ display: "flex", alignItems: "flex-end", gap: 6 }}>
+          <Speaker sheet="Kuka.png" text="gm!" color={OTHERS} size={44} />
+          <Speaker sheet="main_char.png" text="hello!" color={YOU} size={52} />
+          <Speaker sheet="Sushi Man.png" text="hi" color={OTHERS} size={44} />
         </div>
       ),
     },
     {
-      title: "LOCAL",
-      line: "Your own messages and city notices. What you say floats over your head.",
+      title: "NO LINKS",
+      line: "Links are blocked to keep scams out. Nobody here will ever send you one.",
       scene: (
         <div style={{ display: "flex", alignItems: "flex-end", gap: 16 }}>
-          <Speaker sheet="main_char.png" text="hello!" color={LOCAL} size={60} />
-          <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 14 }}>
-            <Tab label="Local" color={LOCAL} />
-            <Tab label="Global" color={GLOBAL} />
+          <div style={{ position: "relative" }}>
+            <Speaker sheet="Kuka.png" text="free-sol.xyz" color={DANGER} size={52} />
+            <span style={{
+              position: "absolute", left: -4, right: -4, top: 12, height: 3,
+              background: DANGER, transform: "rotate(-8deg)", borderRadius: 2,
+            }} />
           </div>
+          <Img src="/assets/ui/attention_red.png" h={34} style={{ marginBottom: 20 }} />
         </div>
       ),
     },

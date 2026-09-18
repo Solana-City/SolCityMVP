@@ -5,7 +5,8 @@ import { Direction } from "../entities/SimpleSprite";
 import { AvatarSprite } from "../entities/AvatarSprite";
 import { loadSavedLoadout, DEFAULT_LOADOUT, type Loadout } from "../config/paperDoll";
 import { OnChainMultiplayer, OnChainPlayer } from "../multiplayer/OnChainMultiplayer";
-import { ChatManager, getChannelColor } from "../chat/ChatManager";
+import { ChatManager, getChannelColor, SELF_COLOR } from "../chat/ChatManager";
+import { containsLink, maskLinks } from "../chat/linkFilter";
 import { ChatBubble } from "../chat/ChatBubble";
 import { NPCSprite } from "../entities/NPCSprite";
 import { NPC_REGISTRY } from "../config/npcRegistry";
@@ -426,9 +427,14 @@ export class CityScene extends Phaser.Scene {
 
     // Listen for chat input from React UI
     this.onGameEvent("chat:send", (text: string) => {
+      // The panel already refuses links; this is the backstop.
+      if (containsLink(text)) {
+        this.chat.addSystemMessage("Links are not allowed in chat.");
+        return;
+      }
       const channel = this.chat.getActiveChannel();
       track("chat", channel.startsWith("dm:") ? "dm" : channel, { label: "message sent" });
-      const color = getChannelColor(channel);
+      const color = channel.startsWith("dm:") ? getChannelColor(channel) : SELF_COLOR;
 
       this.chat.addMessage(
         channel,
@@ -449,11 +455,13 @@ export class CityScene extends Phaser.Scene {
     // Registered here, NOT inside the wallet:connected handler where it used to
     // live: game.events outlives a session, so every reconnect added another
     // copy and each network message got appended to the chat once per connect.
-    this.onGameEvent("chat:network", ({ wallet, name, text }: { wallet?: string; name: string; text: string }) => {
-      const color = getChannelColor("global");
+    this.onGameEvent("chat:network", ({ wallet, name, text: raw }: { wallet?: string; name: string; text: string }) => {
+      // A modified client can still write a link on-chain: mask it on arrival.
+      const text = maskLinks(raw);
+      const color = getChannelColor("city");
       if (wallet) requestNames([wallet]);
       const shown = (wallet ? cachedName(wallet) : null) ?? name;
-      this.chat.addMessage("global", shown, shown, text, color);
+      this.chat.addMessage("city", shown, shown, text, color);
       // Float the message over the sender's avatar, if they're in view.
       const avatar = wallet ? this.remotePlayers.get(wallet) : undefined;
       if (avatar) this.showBubble(avatar.getContainer(), text, color);
@@ -476,7 +484,7 @@ export class CityScene extends Phaser.Scene {
     this.onGameEvent("emoji:trigger", (emoji: EmojiDef) => {
       track("expression", `emoji-${emoji.id}`, { label: emoji.symbol });
       showEmoji(this, this.avatar.getContainer(), emoji);
-      this.chat.addMessage("local", "local", this.profile.get().displayName, emoji.symbol, emoji.color);
+      this.chat.addMessage("city", "local", this.profile.get().displayName, emoji.symbol, emoji.color);
     });
 
     // Facial expression trigger from the React expressions picker. Swaps the

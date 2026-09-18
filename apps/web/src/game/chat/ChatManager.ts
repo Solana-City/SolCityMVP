@@ -1,4 +1,4 @@
-export type ChatChannel = "local" | "global" | `dm:${string}`;
+export type ChatChannel = "city" | `dm:${string}`;
 
 export interface ChatMessage {
   id: string;
@@ -22,13 +22,12 @@ const CLEANUP_INTERVAL_MS = 5_000;
 
 /**
  * Chat channels:
- *   local  - proximity-based, visible to nearby players
- *   global - visible to everyone in the room
+ *   city   - the one public channel: everyone online, plus system notices
  *   dm:xyz - private messages with player xyz (auto-created)
  */
 export class ChatManager {
   private log: ChatMessage[] = [];
-  private activeChannel: ChatChannel = "local";
+  private activeChannel: ChatChannel = "city";
   private dmChannels = new Map<string, DMChannel>();
   private listeners: Array<(msg: ChatMessage) => void> = [];
   private logListeners: Array<(log: ChatMessage[]) => void> = [];
@@ -112,16 +111,14 @@ export class ChatManager {
   }
 
   addSystemMessage(text: string): void {
-    this.addMessage("local", "system", "System", text, "#9945FF");
+    this.addMessage("city", "system", "System", text, "#9945FF");
   }
 
   getVisibleLog(): ChatMessage[] {
     if (this.activeChannel.startsWith("dm:")) {
       return this.log.filter((m) => m.channel === this.activeChannel);
     }
-    return this.log.filter(
-      (m) => m.channel === this.activeChannel || (m.senderSessionId === "system" && this.activeChannel === "local")
-    );
+    return this.log.filter((m) => !m.channel.startsWith("dm:"));
   }
 
   onMessage(cb: (msg: ChatMessage) => void): void {
@@ -138,9 +135,11 @@ export class ChatManager {
   }
 }
 
+/** Name color of your own messages, so they stand out from everyone else's. */
+export const SELF_COLOR = "#14F195";
+
 export const CHANNEL_COLORS: Record<string, string> = {
-  local: "#14F195",
-  global: "#00D1FF",
+  city: "#00D1FF",
   dm: "#FFD700",
   system: "#9945FF",
 };
@@ -151,8 +150,7 @@ export function getChannelColor(channel: ChatChannel): string {
 }
 
 export function getChannelLabel(channel: ChatChannel, dmChannels: Map<string, DMChannel> | DMChannel[]): string {
-  if (channel === "local") return "Local";
-  if (channel === "global") return "Global";
+  if (channel === "city") return "Chat";
   if (channel.startsWith("dm:")) {
     const arr = Array.isArray(dmChannels) ? dmChannels : Array.from(dmChannels.values());
     const dm = arr.find((d) => `dm:${d.sessionId}` === channel);
