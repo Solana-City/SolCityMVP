@@ -3,12 +3,14 @@
 import { useWallet } from "@solana/wallet-adapter-react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import { useCallback, useEffect, useState } from "react";
+import GuestNotice from "./GuestNotice";
 
 export default function ConnectScreen() {
   const { connected } = useWallet();
   const { setVisible } = useWalletModal();
   const openModal = useCallback(() => setVisible(true), [setVisible]);
   const [dismissed, setDismissed] = useState(false);
+  const [guestNotice, setGuestNotice] = useState(false);
 
   // Reset "continue as guest" dismissal whenever the wallet disconnects so
   // clicking the disconnect button always returns the user to this screen.
@@ -126,7 +128,7 @@ export default function ConnectScreen() {
         </button>
 
         <button
-          onClick={() => setDismissed(true)}
+          onClick={() => setGuestNotice(true)}
           style={{
             fontFamily: '"Press Start 2P", monospace',
             fontSize: 9,
@@ -154,6 +156,13 @@ export default function ConnectScreen() {
           ⚠ DEVNET
         </div>
       </div>
+
+      {guestNotice && (
+        <GuestNotice
+          onPlay={() => { setGuestNotice(false); setDismissed(true); }}
+          onConnect={() => { setGuestNotice(false); openModal(); }}
+        />
+      )}
     </div>
   );
 }
