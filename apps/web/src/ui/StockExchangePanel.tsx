@@ -168,8 +168,9 @@ export default function StockExchangePanel({ onClose }: { onClose: () => void })
               background: "#12162b", border: "1px solid #2a2f45", color: "#fff", fontFamily: PIXEL, fontSize: 7, outline: "none",
             }}
           />
-          {/* Sector chips scroll sideways instead of wrapping into a wall of buttons. */}
-          <div style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 4, scrollbarWidth: "none" }}>
+          {/* Sector chips wrap onto a second line so every one stays visible
+              (a sideways scroll hid the last ones behind the panel edge). */}
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
             {(["all", ...SECTORS] as const).map((sct) => (
               <button key={sct} onClick={() => setSector(sct)} style={{
                 ...chip(sector === sct), flex: "0 0 auto", padding: "6px 9px", fontSize: 6,
