@@ -282,8 +282,10 @@ function CompactMap({ host, mobile, corners, onOpen, onCollapse }: {
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const D = mobile ? 108 : 176;
-  // World px shown across the diameter: about 46 tiles on desktop, 33 on a phone.
-  const zoom = D / (mobile ? 800 : 1100);
+  // World px shown across the diameter. The city is 3240 wide, so this is
+  // about half of it on desktop and 40% on a phone: testers could not tell
+  // where anything was when the corner map showed only a third.
+  const zoom = D / (mobile ? 1300 : 1650);
 
   useEffect(() => {
     const c = canvasRef.current;
@@ -318,7 +320,9 @@ function CompactMap({ host, mobile, corners, onOpen, onCollapse }: {
         const p = toScreen(v, D, D, l.x, l.y);
         if (inside(p, 4)) drawMarker(ctx, "landmark", p.x, p.y, mobile ? 2.4 : 3);
       }
-      const bodyH = mobile ? 15 : 22;
+      // Smaller than before: the wider view fits more citizens at once, and
+      // full-size pins started hiding the streets behind them.
+      const bodyH = mobile ? 13 : 18;
       // South-most last, so nearer pins overlap the ones behind them.
       for (const n of [...snap.npcs].sort((a, b) => a.y - b.y)) {
         const p = toScreen(v, D, D, n.x, n.y);
