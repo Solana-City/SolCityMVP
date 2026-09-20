@@ -1,0 +1,154 @@
+# Playtest feedback backlog
+
+Every open item from player feedback, ranked. Newest round: **playtest of
+2026-09-20**. Items that shipped are not listed; see git history.
+
+Priority means: **P0** hurts everyone right now, **P1** is the next real
+improvement, **P2** is wanted but can wait, **P3** is an idea we like.
+Effort is a rough size: **S** under a day, **M** a few days, **L** more.
+
+---
+
+## P0 — Broken or hurting every session
+
+### 1. Memory and lag (Chrome at 1.1GB+) — L
+*"Lags and lots of caching, chrome memory is going way too high (1.1GB+) and
+the game lags."* Called out as very important.
+
+What we know already:
+- Derived hair textures are cached per hair+hat pair (`AvatarSprite.ts`,
+  `cappedHairTextureCache`). Each is a 256x256 canvas, about 256KB, and they
+  are never released. Every combination worn by any player on screen adds one.
+- Pedestrians, remote players and NPCs each build paper-doll avatars from
+  several layers; the shadow texture is also a canvas per character.
+- Mini-games load their own images (kite, Sol Mechs renderers) and the city
+  keeps running behind them.
+- The service worker caches builds; testers have reported needing every tab
+  closed to get a new build, which also means old assets can stay resident.
+
+First step (before changing anything): measure. Take a Chrome heap snapshot
+after 10 minutes of play, and log `game.textures.list` size over time in the
+dev panel. Then cut the biggest one. Guesses are how we waste a week here.
+
+### 2. Stocks cannot be sold on devnet — S (confirmed cause)
+The devnet venue is a mock: a buy pays SOL into a treasury and mints the
+stock, a sell burns the stock and the **treasury pays SOL back**
+(`devnetStocks.ts`). That treasury is
+`B7g2euoDoD5ewVMZUgSoPGuctZXCjhn1jtZM8ZYrsK4e` and currently holds
+**0.07 SOL**, so any sell worth more than that fails for lack of funds.
+
+Fix: fund the treasury from the game wallet (2 SOL covers a lot of testing),
+and make the panel say "the test venue is out of funds" instead of a raw
+transaction error. Also worth a top-up check in the dev panel.
+
+### 3. sol-city program redeploy — waiting on the user
+Everything is written and committed; the build and deploy happen in Solana
+Playground. See REDEPLOY_CHECKLIST.md "FINAL SCOPE". Blocks: wardrobe
+enforcement, outfit boxes, quest reward outfits, and the last wallet popups
+after DeFi actions.
+
+---
+
+## P1 — Next real improvements
+
+### 4. Minimap shows too little — S
+*"Zoom out on the minimap. Should show 30-50% of the map at least."*
+The corner map shows 1100 world pixels across, out of a 3240 wide city, so
+about a third, and less on mobile (800). Raising it to roughly 1600 (desktop)
+and 1200 (mobile) puts it at half the city. One constant in `ui/Minimap.tsx`,
+then a look on both screen sizes.
+
+### 5. Kite tutorial: why is the circle not completing? — M
+Two complaints, and they are probably the same one:
+- Players cannot tell **why** a circle fails to close.
+- *"Sometimes it is fast, but sometimes takes too much time to complete."*
+
+So the rule is invisible. Step one is to show the circle being drawn as it is
+recognised: an arc that fills as you turn, with the missing part visible, so a
+failed loop explains itself. Then check whether the timing really varies, or
+only feels that way because the feedback is missing.
+
+### 6. General UI and UX pass — M
+*"General Solana City UI/UX needs improvement."* Too vague to act on as is.
+Turn it into a list by watching one session and writing down every moment
+someone hesitates. Known candidates already: the HUD corners are crowded, the
+panels do not share one visual language, and font sizes jump between screens.
+Worth asking the tester for their three worst moments.
+
+### 7. Sol Mechs: too many clicks — M
+*"Study how to make it less; maybe there is nothing much we can do."*
+Concrete candidates, each removing one click per turn:
+- Pre-select a default target, so attacking is one click, not two.
+- Remember the last action per mech and offer it as the default.
+- Skip the confirmation step when nothing is ambiguous.
+- Auto-end the turn once no action is possible.
+
+Needs a decision on which of these to try; they change how the game feels.
+
+### 8. Sol Mechs: legs have no purpose — M
+*"No point attacking/using legs."* The user's own proposal: give legs one
+attack, and move the buffs that belong to the legs onto the Matrix. That is a
+balance change across `BattleEngine` and the catalog, so it wants the exact
+numbers decided first, then the tests updated.
+
+---
+
+## P2 — Wanted, not urgent
+
+### 9. Kite Fight PvP — L
+Player versus player kite duels. The rival is a bot today. Real PvP needs the
+same transport as Sol Mechs duels (session keys on the rollup) plus
+interpolation of the rival's line.
+
+### 10. Kite Fight leaderboard — S
+The boards already exist server side (`/api/leaderboard`, per-game best
+scores). This is mostly wiring the kite result into it and adding a board
+screen.
+
+### 11. Kick a ball, player to player — M
+Suggested as a first "we are both here" interaction. Needs a shared object
+with an owner: whoever last touched the ball owns its physics and broadcasts
+its position, the same trick the city already uses for players.
+
+### 12. Rabbit Royale building — M
+Another Indies on Solana game. Needs a building on the map, a door, and
+whatever the two teams agree the door does (a link, an NPC, a portal). Needs
+art and a conversation with them before any code.
+
+### 13. Sol Mechs ranked upgrade — M
+Built and committed, not deployed; the RANKED row is hidden. Deploy path is
+the fast one now: build in Playground, export the `.so`, deploy from here.
+
+---
+
+## P3 — Ideas we like
+
+- **Trustless ranked settlement** (no self-reported results). Parked: needs the
+  battle rules ported to Rust with fixed-point math on both sides.
+- Kite beach background NPCs and decorative kites (needs an art decision).
+- Companion pet or drone as a moving HUD (events, news, directions).
+- Invisible walls become visual limits (roadworks, bridges out, train lines).
+- World quests: combined city actions unlock areas (e.g. 1,000 interactions
+  open the beach).
+- Player-owned houses, influencer parties, per-project metrics.
+
+---
+
+## Housekeeping (small, do when nearby)
+
+- **Re-lock the hats** when testing is done: `TEST_UNLOCK_ALL_HATS = false` in
+  `game/config/paperDoll.ts` (Black Hat stays free).
+- Dev panel on mobile: the layout does not fit.
+- MagicBlock questline endpoint, once their spec arrives.
+- Battle pass candy machine (`scripts/solmechs-pass-setup.ts`) before passes
+  can sell.
+- Outfit box price: 0.025 SOL now; the user was weighing 0.05.
+
+---
+
+## Confirmed good, do not change
+
+- "Press E to open external links".
+- The HUD with map and player card merged into one card. A version with the
+  buttons in a row above the map was tried and rejected.
+- No rank tiers or badges in ranked: rating and position only.
