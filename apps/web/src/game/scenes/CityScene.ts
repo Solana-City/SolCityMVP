@@ -60,6 +60,8 @@ export class CityScene extends Phaser.Scene {
   private remotePlayers = new Map<string, AvatarSprite>();
   /** JSON of the loadout last applied to each remote avatar — to skip rebuilds. */
   private remoteLoadoutKey = new Map<string, string>();
+  /** wallet → when their last position sample arrived, for the catch-up tween. */
+  private remoteSampleAt = new Map<string, number>();
   /** Per-remote expression auto-revert timers. */
   private remoteExprTimers = new Map<string, Phaser.Time.TimerEvent>();
   /** Per-remote last position + last dust time, so remotes kick up foot dust too. */
@@ -612,6 +614,20 @@ export class CityScene extends Phaser.Scene {
         // Cleared either way: a failed handshake must stay retryable.
         if (this.walletConnecting === walletAddress) this.walletConnecting = null;
       }
+    });
+
+    // The "hidden from the city" badge asks for another go at the on-chain
+    // setup — the player keeps playing while it runs.
+    this.onGameEvent("multiplayer:retry", () => {
+      this.chat.addSystemMessage("Reconnecting to the city...");
+      this.network.retryOnline()
+        .then(() => {
+          this.chat.addSystemMessage(
+            this.network.visibleToOthers
+              ? "You are back in the shared city."
+              : "Still offline to other players. Try again in a moment.");
+        })
+        .catch(() => this.chat.addSystemMessage("Reconnect failed. Try again in a moment."));
     });
 
     this.onGameEvent("wallet:disconnected", () => {
@@ -1174,6 +1190,7 @@ export class CityScene extends Phaser.Scene {
       this.remotePlayers.delete(wallet);
     }
     this.remoteLoadoutKey.delete(wallet);
+    this.remoteSampleAt.delete(wallet);
     this.remoteDust.delete(wallet);
     const exprTimer = this.remoteExprTimers.get(wallet);
     if (exprTimer) { exprTimer.remove(false); this.remoteExprTimers.delete(wallet); }
@@ -1225,14 +1242,26 @@ export class CityScene extends Phaser.Scene {
       });
     } else if (dist > 2) {
       if (container.alpha < 1) container.setAlpha(1);
-      // Interpolate over 600ms so motion between the ~500ms position samples
-      // stays continuous (never reaches the target and stalls before the next).
+      // Interpolate up to the next expected sample so motion stays continuous
+      // (never reaches the target and stalls before the next one arrives).
+      //
+      // The duration follows how fast that player's updates are actually
+      // arriving instead of a fixed 600ms: rollup pushes land far quicker than
+      // the old poll, and holding every avatar 600ms behind its known position
+      // was, on its own, a third of the lag players were reporting. A turn or a
+      // stop arrives on the leading edge, so the gap shrinks and the avatar
+      // catches up in a few frames rather than sliding on for half a second.
+      const now = Date.now();
+      const prev = this.remoteSampleAt.get(wallet);
+      this.remoteSampleAt.set(wallet, now);
+      const gap = prev ? now - prev : 400;
+      const duration = Phaser.Math.Clamp(gap, 120, 600);
       this.tweens.killTweensOf(container);
       this.tweens.add({
         targets: container,
         x: player.x,
         y: player.y,
-        duration: 600,
+        duration,
         ease: "Linear",
       });
     }

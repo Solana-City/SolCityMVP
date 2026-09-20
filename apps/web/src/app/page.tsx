@@ -27,6 +27,7 @@ const ActionPanel         = dynamic(() => import("@/ui/ActionPanel"),         { 
 const ProfilePanel        = dynamic(() => import("@/ui/ProfilePanel"),        { ssr: false });
 const TransactionLogPanel = dynamic(() => import("@/ui/TransactionLogPanel"), { ssr: false });
 const ToastStack          = dynamic(() => import("@/ui/ToastStack"),          { ssr: false });
+const OfflineBadge        = dynamic(() => import("@/ui/OfflineBadge"),        { ssr: false });
 const WalletSignBridge    = dynamic(() => import("@/ui/WalletSignBridge"),    { ssr: false });
 const MobileControls      = dynamic(() => import("@/ui/MobileControls"),      { ssr: false });
 const ZoomControl         = dynamic(() => import("@/ui/ZoomControl"),         { ssr: false });
@@ -500,6 +501,7 @@ export default function Home() {
           </div>
 
           <DuelInvite wallet={walletAddress} />
+          <OfflineBadge />
           <ToastStack />
           <AudioBridge game={game} />
           {playerCardTarget && (

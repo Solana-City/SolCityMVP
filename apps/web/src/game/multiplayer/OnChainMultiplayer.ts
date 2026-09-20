@@ -106,6 +106,17 @@ type BCMsg =
 
 // Throttle position broadcasts. 500ms = 2 tx/s — stays under devnet ER rate limits.
 const POS_THROTTLE_MS = 500;
+// Floor for the leading-edge sends (turns and stops). Short enough that a
+// corner reads as instant, long enough that it can't become a tx firehose.
+const POS_EVENT_MIN_MS = 150;
+// Re-write the current position after this long without any on-chain write,
+// so a standing player stays inside everyone else's freshness window.
+const HEARTBEAT_MS = 30_000;
+// After this many consecutive position writes that never reached the network,
+// the player is effectively invisible to the city and is told so.
+const OFFLINE_AFTER_FAILURES = 5;
+// How long a rollup push keeps a player off the polling list.
+const PUSH_TRUST_MS = 2_000;
 
 // ── Types ──────────────────────────────────────────────────────────────
 
@@ -182,6 +193,24 @@ export class OnChainMultiplayer {
   // Throttling
   private lastPosSent = 0;
   private lastPos = { x: 0, y: 0, direction: 0, isWalking: false };
+  /** When the last position write was handed to the network (heartbeat clock). */
+  private lastChainSendAt = 0;
+  private moveFailStreak = 0;
+  /** Last value published on "multiplayer:online" — only changes are emitted. */
+  private onlineFlag: boolean | null = null;
+  /** Display name kept from connect(), so a retry can re-run the setup. */
+  private displayName: string | undefined;
+  private retrying = false;
+  /** wallet → when the ER websocket last pushed an update for them. */
+  private lastPush = new Map<string, number>();
+  // ── Device clock vs chain clock ───────────────────────────────────────
+  // The freshness gate compares an on-chain timestamp against Date.now(), so
+  // a device whose clock is a few minutes fast judges EVERY live player as
+  // idle and lands in an empty city. We learn the offset instead of trusting
+  // the device: when a player's last_active increases, we just watched that
+  // write happen, so chain time and device time are the same instant.
+  private chainFreshestTs = 0;   // highest last_active (unix seconds) seen
+  private clockSkewMs = 0;       // device clock minus chain clock
 
   // Local player score (kept in sync by CityScene via updateScore())
   private localScore = 0;
@@ -299,6 +328,7 @@ export class OnChainMultiplayer {
     if (this._connected) return; // prevent duplicate initialization from wallet adapter re-fires
     this.wallet = walletPublicKey;
     this.localLoadout = loadout;
+    this.displayName = displayName;
     const walletStr = walletPublicKey.toBase58();
 
     // Session key authorization happens inside startMagicBlockMultiplayer (real)
@@ -362,6 +392,8 @@ export class OnChainMultiplayer {
       this.ephemeralConnection.removeAccountChangeListener(subId).catch(() => {});
     }
     this.accountSubs.clear();
+    this.lastPush.clear();
+    this.setOnline(false);
 
     // Remove the program-wide and chat-log subscriptions — leaking these
     // across reconnect cycles exhausts devnet's connection-level rate limit.
@@ -463,8 +495,18 @@ export class OnChainMultiplayer {
       isWalking === this.lastPos.isWalking
     ) return;
 
+    // Two throttles, not one. A walk in a straight line only needs a sample
+    // every POS_THROTTLE_MS — the receiver interpolates between them. But the
+    // moments that READ as lag are the turns and the stops: with a single
+    // 500ms gate, a player who turns a corner or halts right after a sample
+    // keeps walking on every other screen for up to half a second, and their
+    // avatar then snaps. Those events go out on the leading edge instead,
+    // floored only by POS_EVENT_MIN_MS so a key-mash can't flood the rollup.
     const now = Date.now();
-    if (now - this.lastPosSent < POS_THROTTLE_MS) return;
+    const isEvent =
+      dirNum !== this.lastPos.direction || isWalking !== this.lastPos.isWalking;
+    const minGap = isEvent ? POS_EVENT_MIN_MS : POS_THROTTLE_MS;
+    if (now - this.lastPosSent < minGap) return;
     this.lastPosSent = now;
 
     this.lastPos = { x: roundX, y: roundY, direction: dirNum, isWalking };
@@ -493,39 +535,66 @@ export class OnChainMultiplayer {
 
     // Layer 2: on-chain position update
     if (isProgramDeployed()) {
-      // Record the layer this move will actually be sent to — when
-      // delegation failed and we fall back to base devnet, the explorer
-      // link must query base, not the ER (which would show nothing).
-      const entry = transactionLog.recordMove({
-        status: "pending",
-        layer: this.useEphemeral ? "ephemeral" : "base",
-      });
-      const sentAt = Date.now();
-      this.sendPositionTransaction(x, y, dirNum)
-        .then(sig => {
-          if (sig) {
-            // How long the network took to accept it — the number the player
-            // sees in the on-chain log.
-            transactionLog.attachSignature(entry.id, sig, Date.now() - sentAt);
-            this.trackMoveConfirmation(entry.id, sig);
-          } else {
-            // A single un-submitted position move is transient and self-heals —
-            // the next move overwrites the position — so don't paint the whole
-            // coalesced batch red. Other moves in it keep it confirmed; only a
-            // genuine on-chain rejection (trackMoveConfirmation) turns it red.
-            console.warn("[Multiplayer] position tx returned null sig (transient, dropped)");
-          }
-        })
-        .catch(err => {
-          transactionLog.markFailed(entry.id, err?.message ?? "tx failed");
-          if ((this as any)._posErrCount === undefined) (this as any)._posErrCount = 0;
-          if (++(this as any)._posErrCount <= 3) {
-            console.warn("[Multiplayer] position tx failed:", err?.message);
-          }
-        });
+      this.pushPosition(x, y, dirNum);
     } else {
       transactionLog.recordMove({ signature: "sim:move", status: "confirmed" });
     }
+  }
+
+  /**
+   * Writes a position on-chain and keeps the "are we actually visible to
+   * other players" signal up to date. Shared by real movement and by the
+   * idle heartbeat below.
+   */
+  private pushPosition(x: number, y: number, dirNum: number): void {
+    // Record the layer this move will actually be sent to — when
+    // delegation failed and we fall back to base devnet, the explorer
+    // link must query base, not the ER (which would show nothing).
+    const entry = transactionLog.recordMove({
+      status: "pending",
+      layer: this.useEphemeral ? "ephemeral" : "base",
+    });
+    const sentAt = Date.now();
+    this.lastChainSendAt = sentAt;
+    this.sendPositionTransaction(x, y, dirNum)
+      .then(sig => {
+        if (sig) {
+          // How long the network took to accept it — the number the player
+          // sees in the on-chain log.
+          transactionLog.attachSignature(entry.id, sig, Date.now() - sentAt);
+          this.noteMoveSent(true);
+          this.trackMoveConfirmation(entry.id, sig);
+        } else {
+          // A single un-submitted position move is transient and self-heals —
+          // the next move overwrites the position — so don't paint the whole
+          // coalesced batch red. Other moves in it keep it confirmed; only a
+          // genuine on-chain rejection (trackMoveConfirmation) turns it red.
+          console.warn("[Multiplayer] position tx returned null sig (transient, dropped)");
+          this.noteMoveSent(false);
+        }
+      })
+      .catch(err => {
+        transactionLog.markFailed(entry.id, err?.message ?? "tx failed");
+        this.noteMoveSent(false);
+        if ((this as any)._posErrCount === undefined) (this as any)._posErrCount = 0;
+        if (++(this as any)._posErrCount <= 3) {
+          console.warn("[Multiplayer] position tx failed:", err?.message);
+        }
+      });
+  }
+
+  /**
+   * Standing still writes nothing, and everyone else drops a player whose
+   * on-chain last_active is older than IDLE_TIMEOUT_MS — so a player reading
+   * a panel or idling by the fountain used to vanish from the city after two
+   * minutes and stay gone until they moved again. A cheap re-write of the
+   * position we already hold keeps them present without any visible motion.
+   */
+  private heartbeat(): void {
+    if (!this._connected || !this.wallet || !isProgramDeployed()) return;
+    if (this.lastPos.x < 0) return; // no position written yet this session
+    if (Date.now() - this.lastChainSendAt < HEARTBEAT_MS) return;
+    this.pushPosition(this.lastPos.x, this.lastPos.y, this.lastPos.direction);
   }
 
   sendChat(text: string): void {
@@ -1013,6 +1082,51 @@ export class OnChainMultiplayer {
     try { (globalThis as any).__solCityGameEvents?.emit("game:sessionProgress", label); } catch {}
   }
 
+  // ── Visible-to-others signal ──────────────────────────────────────────
+  //
+  // Everyone reads positions off the rollup, so a player whose PDA never got
+  // delegated (declined signature, failed delegate, ER unreachable) writes to
+  // base and is simply absent from every other screen — while seeing everyone
+  // else normally, which reads as "the game is fine, nobody is around". This
+  // publishes that state so the UI can say it out loud and offer a retry.
+
+  private setOnline(v: boolean): void {
+    if (this.onlineFlag === v) return;
+    this.onlineFlag = v;
+    try { (globalThis as any).__solCityGameEvents?.emit("multiplayer:online", v); } catch {}
+  }
+
+  private noteMoveSent(ok: boolean): void {
+    if (ok) {
+      this.moveFailStreak = 0;
+      if (this.useEphemeral) this.setOnline(true);
+      return;
+    }
+    if (++this.moveFailStreak >= OFFLINE_AFTER_FAILURES) this.setOnline(false);
+  }
+
+  /** True once the session is writing to the rollup, where others read it. */
+  get visibleToOthers(): boolean {
+    return this.onlineFlag === true;
+  }
+
+  /**
+   * Re-runs the whole on-chain setup (init / authorize / delegate) for the
+   * connected wallet. Wired to the "you are hidden" badge, so a player who
+   * dismissed a signature or hit a rate-limited RPC can recover without
+   * disconnecting the wallet and reloading the city.
+   */
+  async retryOnline(): Promise<void> {
+    if (!this.wallet || this.retrying) return;
+    this.retrying = true;
+    try {
+      this.moveFailStreak = 0;
+      await this.startMagicBlockMultiplayer(this.wallet, this.displayName);
+    } finally {
+      this.retrying = false;
+    }
+  }
+
   private async startMagicBlockMultiplayer(wallet: PublicKey, displayName?: string): Promise<void> {
     const walletStr = wallet.toBase58();
     const [playerPDA] = derivePlayerPDA(wallet);
@@ -1140,6 +1254,9 @@ export class OnChainMultiplayer {
     console.log(`→ position layer: ${this.useEphemeral ? "🚀 EPHEMERAL ROLLUP" : "📡 BASE DEVNET"}`);
     console.groupEnd();
 
+    // Others read the rollup only: on base we are invisible to the city.
+    this.setOnline(this.useEphemeral);
+
     // 2. Discover existing players from the ER (getProgramAccounts on the
     //    ephemeral endpoint returns exactly the delegated/online players).
     setTimeout(() => this.discoverPlayersFromBase(wallet), 1_500);
@@ -1156,10 +1273,19 @@ export class OnChainMultiplayer {
       setInterval(() => this.pollKnownPlayerPDAs(wallet), 500),
       // Refresh the online roster from the ER. getProgramAccounts on the ER is
       // cheap (~20ms) and returns exactly the delegated (online) players.
-      setInterval(() => this.discoverPlayersFromBase(wallet), 12_000),
+      // Someone who just joined only exists for others once this runs, so 12s
+      // meant up to twelve seconds of standing next to an invisible player.
+      setInterval(() => this.discoverPlayersFromBase(wallet), 5_000),
       // Global "Find Someone" hunt — read the shared round/deadline off base so
       // every client targets the same citizen (low-frequency; every 3s is ample).
       setInterval(() => this.pollHunt(), 3_000),
+      // Keep a standing player inside everyone's freshness window.
+      setInterval(() => this.heartbeat(), 10_000),
+      // Keep a fresh rollup blockhash in hand while the player is moving. The
+      // send path used to fetch one every ~2s inline, so one move in four paid
+      // a full extra round trip to the validator before it could even be
+      // signed. Fetching it off the critical path removes that spike.
+      setInterval(() => this.prefetchMoveBlockhash(), 1_200),
     ];
 
     // Ensure the global hunt exists (first player ever creates it), then seed
@@ -1224,7 +1350,12 @@ export class OnChainMultiplayer {
    */
   private async pollKnownPlayerPDAs(self: PublicKey): Promise<void> {
     const selfStr = self.toBase58();
-    const wallets = [...this.knownPlayers.keys()].filter(w => w !== selfStr);
+    const now = Date.now();
+    const wallets = [...this.knownPlayers.keys()].filter(w =>
+      // Skip anyone the rollup websocket is already pushing: polling them adds
+      // nothing and the request budget is better spent on players whose pushes
+      // are not arriving (or whose socket dropped).
+      w !== selfStr && now - (this.lastPush.get(w) ?? 0) > PUSH_TRUST_MS);
     if (wallets.length === 0) return;
 
     try {
@@ -1636,7 +1767,22 @@ export class OnChainMultiplayer {
       const messageAt    = readTsLo();
 
       if (walletStr === this.wallet?.toBase58()) return; // skip self
+
+      // Watching last_active move forward dates the device clock against the
+      // chain: this write is happening now on both. Only a gross difference is
+      // treated as skew — small ones are ordinary propagation delay.
+      if (lastActiveLo > this.chainFreshestTs) {
+        this.chainFreshestTs = lastActiveLo;
+        const skew = Date.now() - lastActiveLo * 1000;
+        this.clockSkewMs = Math.abs(skew) > 60_000 ? skew : 0;
+        if (this.clockSkewMs !== 0) {
+          console.warn(`[Multiplayer] device clock is ${Math.round(skew / 1000)}s off chain time — correcting`);
+        }
+      }
       const now = Date.now();
+      // Device time, shifted onto the chain's clock — the only timeline an
+      // on-chain timestamp can be compared against.
+      const chainNow = now - this.clockSkewMs;
 
       // Skip wallets that were recently ghost-pruned — prevents the rapid
       // add→prune→rediscover cycle for accounts with stale on-chain timestamps
@@ -1657,9 +1803,9 @@ export class OnChainMultiplayer {
       // last_active and passes the gate again — no block map needed.
       const IDLE_TIMEOUT_MS = 120_000; // 2 min of on-chain inactivity
       const isKnown = this.knownPlayers.has(walletStr);
-      if (now - lastActiveMs > IDLE_TIMEOUT_MS) {
+      if (chainNow - lastActiveMs > IDLE_TIMEOUT_MS) {
         if (isKnown) {
-          console.log(`[Multiplayer] dropping idle/stale ${walletStr.slice(0,8)} (${Math.round((now - lastActiveMs) / 60_000)}min inactive)`);
+          console.log(`[Multiplayer] dropping idle/stale ${walletStr.slice(0,8)} (${Math.round((chainNow - lastActiveMs) / 60_000)}min inactive)`);
           this.handlePlayerLeave(walletStr);
         }
         return;
@@ -1734,6 +1880,22 @@ export class OnChainMultiplayer {
    * expires early the tx is dropped and the status verifier flags it.
    */
   private cachedMoveBlockhash: { hash: string; fetchedAt: number; layer: "ephemeral" | "base" } | null = null;
+
+  /**
+   * Refreshes the cached blockhash in the background while the player is
+   * actively moving, so sendPositionTransaction always finds a warm one.
+   * Idle players skip it: no moves, no reason to spend the request.
+   */
+  private prefetchMoveBlockhash(): void {
+    if (!this._connected || !isProgramDeployed()) return;
+    if (Date.now() - this.lastPosSent > 10_000) return; // idle — heartbeat can pay the trip
+    const layer = this.useEphemeral ? "ephemeral" : "base";
+    const cached = this.cachedMoveBlockhash;
+    const ttlMs = layer === "ephemeral" ? 2_000 : 20_000;
+    // Refresh a little before it goes stale, never on top of a fresh one.
+    if (cached && cached.layer === layer && Date.now() - cached.fetchedAt < ttlMs * 0.6) return;
+    this.getMoveBlockhash(layer).catch(() => { /* next tick retries */ });
+  }
 
   private async getMoveBlockhash(layer: "ephemeral" | "base"): Promise<string> {
     // Shorter TTL on the ER: its blockhash validity window is tight, and a
@@ -2004,24 +2166,55 @@ export class OnChainMultiplayer {
     for (const cb of this.changeCallbacks) cb(wallet, player);
   }
 
-  /** Subscribe to base layer onAccountChange for a specific player's PDA. */
+  /**
+   * Subscribes to a player's PDA ON THE ROLLUP, where their live copy is.
+   *
+   * This used to subscribe on base. The base copy of a delegated account is
+   * frozen until it commits, so that subscription never delivered a single
+   * position — every metre of movement you saw came from the 500ms poll, and
+   * meanwhile each client held one idle websocket per player against the same
+   * base RPC that the whole playtest was already rate-limiting.
+   *
+   * On the rollup the validator pushes each write as it executes, so a remote
+   * step arrives about half a round trip after it happens instead of waiting
+   * out the poll interval. The poll stays as the fallback (see
+   * pollKnownPlayerPDAs) for anyone whose pushes are not arriving.
+   */
   private subscribeToPlayerWallet(wallet: string): void {
     try {
       const walletPub = new PublicKey(wallet);
       const [pda] = derivePlayerPDA(walletPub);
       const key = pda.toBase58();
-      if (!this.accountSubs.has(key)) {
-        const subId = this.baseConnection.onAccountChange(
-          pda,
-          (info) => this.decodeAndUpdatePlayer(key, info.data),
-          "confirmed",
-        );
-        this.accountSubs.set(key, subId);
-      }
+      if (this.accountSubs.has(key)) return;
+      const subId = this.ephemeralConnection.onAccountChange(
+        pda,
+        (info) => {
+          this.lastPush.set(wallet, Date.now());
+          this.decodeAndUpdatePlayer(key, info.data);
+        },
+        "processed",
+      );
+      this.accountSubs.set(key, subId);
+    } catch { /* ignore invalid wallet */ }
+  }
+
+  /** Drops the rollup subscription for a player who left the city. */
+  private unsubscribeFromPlayerWallet(wallet: string): void {
+    try {
+      const [pda] = derivePlayerPDA(new PublicKey(wallet));
+      const key = pda.toBase58();
+      const subId = this.accountSubs.get(key);
+      if (subId === undefined) return;
+      this.accountSubs.delete(key);
+      this.ephemeralConnection.removeAccountChangeListener(subId).catch(() => {});
     } catch { /* ignore invalid wallet */ }
   }
 
   private handlePlayerLeave(wallet: string): void {
+    this.lastPush.delete(wallet);
+    // Unsubscribe even for an unknown wallet: leaving is also how a ghost is
+    // pruned, and a leaked subscription per prune is what exhausts the socket.
+    this.unsubscribeFromPlayerWallet(wallet);
     if (!this.knownPlayers.has(wallet)) return;
     this.knownPlayers.delete(wallet);
     for (const cb of this.removeCallbacks) cb(wallet);
