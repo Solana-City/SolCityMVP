@@ -15,7 +15,6 @@ const CHROMA_TOLERANCE = 30;
 const TILESET_KEYS = [
   "SCTileGrass",
   "SCBuildMonkeyDAO",
-  "SCBuildSTBrazil",
   "SCBuildJupter",
   "SCTileFountain",
   "SCTileGround",

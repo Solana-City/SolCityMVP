@@ -24,6 +24,8 @@ import { showEmoji, EmojiDef } from "../chat/EmojiSystem";
 import { soundManager } from "../audio/SoundManager";
 import { publishMinimap } from "../minimap/MinimapHost";
 import { createStockExchange } from "../world/StockExchange";
+import { buildPhysicsLayer, mergeGroundRun } from "../world/mergeLayers";
+import { LANDMARK_LAYERS } from "../minimap/categories";
 import { cachedName, onNames, requestNames, NAME_CHANGED_EVENT } from "../names/nameService";
 import { track } from "../telemetry/track";
 import { startHeatmap } from "../telemetry/heatmap";
@@ -142,7 +144,7 @@ export class CityScene extends Phaser.Scene {
     // Add all tileset spritesheets loaded in BootScene. Names MUST match the
     // embedded tileset names in city.json and the loaded image keys.
     const allTilesets = [
-      "SCTileGrass", "SCBuildMonkeyDAO", "SCBuildSTBrazil", "SCBuildJupter",
+      "SCTileGrass", "SCBuildMonkeyDAO", "SCBuildJupter",
       "SCTileFountain", "SCTileGround", "SCVegetationSet", "SCPalm",
       "SCBuildIndies", "SCUrbanEquipament", "SCBuildGenericBuild",
       "SCBuildKeepGreen", "SCGameAssets", "ScTileBeach",
@@ -220,6 +222,16 @@ export class CityScene extends Phaser.Scene {
     // incorporates the Tiled offsetx/offsety for each layer. Passing 0,0
     // would override those offsets and shift every layer to the origin.
     const allLayers: Phaser.Tilemaps.TilemapLayer[] = [];
+    // Contiguous runs of flat ground (no collision, no fade, no y-sort) are
+    // collapsed after this loop — see the consolidation pass below. Runs must
+    // stay contiguous in draw order for the result to be pixel-identical, so a
+    // layer that is NOT plain ground closes the run it interrupts.
+    const groundRuns: Phaser.Tilemaps.TilemapLayer[][] = [];
+    let groundRun: Phaser.Tilemaps.TilemapLayer[] = [];
+    const closeGroundRun = () => {
+      if (groundRun.length > 1) groundRuns.push(groundRun);
+      groundRun = [];
+    };
     for (let i = 0; i < map.layers.length; i++) {
       const layerName = map.layers[i].name;
       const layer = map.createLayer(i, allTilesets);
@@ -307,8 +319,52 @@ export class CityScene extends Phaser.Scene {
       } else {
         // Ground / background layer → always below the player.
         layer.setDepth(i);
+        // Landmarks are read back by name for the minimap labels, so they
+        // keep their own layer even when they are flat ground.
+        if (LANDMARK_LAYERS[leafName]) closeGroundRun();
+        else groundRun.push(layer);
+        continue;
+      }
+      closeGroundRun();
+    }
+    closeGroundRun();
+
+    // ── Consolidation pass ────────────────────────────────────────────
+    // Only flat ground and collision are touched here; every layer that fades
+    // or y-sorts is left exactly as authored, so a palm still goes
+    // transparent on its own. See world/mergeLayers.ts.
+    const layersBefore = allLayers.length;
+    const dropped = new Set<Phaser.Tilemaps.TilemapLayer>();
+    groundRuns.forEach((run, n) => {
+      const merged = mergeGroundRun(map, allTilesets, run, `__ground${n}`);
+      if (merged.length === 0) return; // not reproducible exactly — left alone
+      allLayers.splice(allLayers.indexOf(run[0]), 0, ...merged);
+      for (const l of run) dropped.add(l);
+    });
+    for (let i = allLayers.length - 1; i >= 0; i--) {
+      if (dropped.has(allLayers[i])) allLayers.splice(i, 1);
+    }
+
+    // One collision volume for the whole city: the player, 96 pedestrians and
+    // every NPC used to be tested against ~74 separate tile layers per frame.
+    const collisionSources = this.collisionLayers;
+    const physics = buildPhysicsLayer(map, allTilesets, collisionSources);
+    if (physics) {
+      this.collisionLayers = [physics.layer, ...physics.leftovers];
+      // The Collider* layers are pure geometry — never drawn, no art to keep.
+      // Their tiles now live in the merged volume, so the originals are dead
+      // weight. Visible layers stay: only their collider moved.
+      for (const src of collisionSources) {
+        if (src.visible || physics.leftovers.includes(src)) continue;
+        const at = allLayers.indexOf(src);
+        if (at >= 0) allLayers.splice(at, 1);
+        src.destroy(true);
       }
     }
+    console.log(
+      `[CityScene] layers ${layersBefore} → ${allLayers.length}` +
+      ` | collision layers → ${this.collisionLayers.length}`,
+    );
 
     // Stocklana exchange: the building is Tiled art (BuildStocklana); this
     // only draws live market data into its blank screens.
@@ -834,8 +890,12 @@ export class CityScene extends Phaser.Scene {
       this.playerBody.setVelocity(0);
       this.avatar.idle();
       this.scene.pause();
+      // pause() only stops update(); Phaser keeps RENDERING a paused scene, so
+      // the whole city was still drawing every frame behind the overlay.
+      this.scene.setVisible(false);
     });
     this.onGameEvent("minigame:close", () => {
+      this.scene.setVisible(true);
       this.scene.resume();
       this.interactionBlocked = false;
     });
