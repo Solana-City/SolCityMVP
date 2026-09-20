@@ -11,24 +11,9 @@ Effort is a rough size: **S** under a day, **M** a few days, **L** more.
 
 ## P0 — Broken or hurting every session
 
-### 1. Memory and lag (Chrome at 1.1GB+) — L
-*"Lags and lots of caching, chrome memory is going way too high (1.1GB+) and
-the game lags."* Called out as very important.
-
-What we know already:
-- Derived hair textures are cached per hair+hat pair (`AvatarSprite.ts`,
-  `cappedHairTextureCache`). Each is a 256x256 canvas, about 256KB, and they
-  are never released. Every combination worn by any player on screen adds one.
-- Pedestrians, remote players and NPCs each build paper-doll avatars from
-  several layers; the shadow texture is also a canvas per character.
-- Mini-games load their own images (kite, Sol Mechs renderers) and the city
-  keeps running behind them.
-- The service worker caches builds; testers have reported needing every tab
-  closed to get a new build, which also means old assets can stay resident.
-
-First step (before changing anything): measure. Take a Chrome heap snapshot
-after 10 minutes of play, and log `game.textures.list` size over time in the
-dev panel. Then cut the biggest one. Guesses are how we waste a week here.
+### 1. Memory and lag (Chrome at 1.1GB+) — TRACKED ELSEWHERE
+Being worked on in a separate chat (2026-09-20). Left here as a pointer only,
+so nobody picks it up twice.
 
 ### 2. Stocks cannot be sold on devnet — DONE 2026-09-20
 The devnet venue is a mock: a buy pays SOL into a treasury and mints the
