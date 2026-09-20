@@ -8,7 +8,7 @@
  * (see assets.ts). Each render helper keeps a primitive-drawing fallback
  * for frames before its image finishes loading.
  */
-import type { OpponentKiteProvider, WindDirection, WindTier } from "./types";
+import type { OpponentKiteProvider, OpponentKiteState, WindDirection, WindTier } from "./types";
 import { LocalAIOpponentProvider } from "./LocalAIOpponentProvider";
 import {
   loadKiteAssets, ready, type KiteAssets,
@@ -32,7 +32,9 @@ import {
   WIND_CHANGE_MAX_MS,
   WIND_DRAG_BASE_PX_PER_SEC,
   windDragMultiplier,
-  CUT_RESOLUTION_INTERVAL_MS,
+  cutBackfireChance,
+  cutBackfireRoll,
+  playerCutDurationMs,
   CUT_DEPTH_TOLERANCE,
   PLAYER_SKIN_COLOR,
   READY_OVERLAY_MS,
@@ -52,8 +54,15 @@ export interface EngineSnapshot {
   cutMessage: string | null;
   /** A rival's line is close enough to attempt a cut — show the HUD hint. */
   nearbyOpponent: boolean;
-  /** nearbyOpponent && currently holding the reel-in key — cut roll is actively ticking. */
+  /** nearbyOpponent && currently holding the reel-in key — the cut is sawing. */
   cutReady: boolean;
+  /** 0..1 of the player's own cut on the rival's line (gold ring). */
+  cutProgress: number;
+  /** Chance this cut snaps YOUR line instead, 0..1, from your own line out. */
+  cutRisk: number;
+  /** Lines cross on screen but the kites fly at different depths, so the
+   *  crossing does not count: tells the player which way to correct. */
+  depthBlocked: null | "let-out" | "reel-in";
   /** 0..1 buildup of the rival's cut on the player's line (red ring). */
   rivalThreat: number;
   /** Why the run ended, shown on the end screen. Null while playing. */
@@ -158,7 +167,10 @@ export class KiteClashEngine {
   private nearbyOpponentId: string | null = null;
   private crossingPoint: { x: number; y: number } | null = null;
 
-  private cutResolveTimerMs = 0;
+  /** 0..1 buildup of the player's own cut (gold ring at the crossing). */
+  private cutProgress = 0;
+  /** A crossing we had to ignore because the depths are too far apart. */
+  private depthBlocked: { point: { x: number; y: number }; theirExposure: number } | null = null;
   private spoolAngle = 0;
   /** Spool animation cursor (float, wraps over HANDS_SHEET_FRAMES).
    *  Advances forward while reeling in, backward while letting out. */
@@ -241,6 +253,8 @@ export class KiteClashEngine {
     this.rivalThreat = 0;
     this.nearbyOpponentId = null;
     this.crossingPoint = null;
+    this.cutProgress = 0;
+    this.depthBlocked = null;
     this.severedKites = [];
     this.cutVfx = [];
     this.timeScale = 1;
@@ -418,28 +432,40 @@ export class KiteClashEngine {
     const activeOpponents = this.opponents.getActiveOpponents();
     let nearbyId: string | null = null;
     let crossing: { x: number; y: number } | null = null;
+    let target: OpponentKiteState | null = null;
+    let blocked: { point: { x: number; y: number }; theirExposure: number } | null = null;
     for (const o of activeOpponents) {
-      if (Math.abs(o.exposure - exposure) > CUT_DEPTH_TOLERANCE) continue;
       const opponentLine = this.opponentLineSegment(o.position, o.anchorX);
       const hit = segmentIntersection(playerLine[0], playerLine[1], opponentLine[0], opponentLine[1]);
-      if (hit) {
-        nearbyId = o.id;
-        crossing = hit;
-        break;
+      if (!hit) continue;
+      // The lines cross on screen, but two kites at very different line
+      // lengths are not actually near each other in the sky. That rule was
+      // invisible: the ring simply never filled and nothing said why.
+      if (Math.abs(o.exposure - exposure) > CUT_DEPTH_TOLERANCE) {
+        blocked ??= { point: hit, theirExposure: o.exposure };
+        continue;
       }
+      nearbyId = o.id;
+      crossing = hit;
+      target = o;
+      break;
     }
     this.nearbyOpponentId = nearbyId;
     this.crossingPoint = crossing;
+    this.depthBlocked = nearbyId ? null : blocked;
 
-    if (reeling && nearbyId) {
-      this.cutResolveTimerMs += dt * 1000;
-      if (this.cutResolveTimerMs >= CUT_RESOLUTION_INTERVAL_MS) {
-        this.cutResolveTimerMs = 0;
-        this.tryResolveCutAttempt(nearbyId, exposure);
+    // ── The player's cut: a ring that fills while held, not a hidden roll.
+    // It saws faster through a rival flying on a loose line.
+    if (reeling && nearbyId && target) {
+      this.cutProgress += (dt * 1000) / playerCutDurationMs(target.exposure);
+      if (this.cutProgress >= 1) {
+        this.cutProgress = 0;
+        this.resolvePlayerCut(nearbyId, exposure);
         if (this.phase !== "playing") return; // own cut backfired
       }
-    } else {
-      this.cutResolveTimerMs = 0;
+    } else if (this.cutProgress > 0) {
+      // Letting go loses the progress, so a cut is a commitment.
+      this.cutProgress = Math.max(0, this.cutProgress - (dt * 1000) / 600);
     }
 
     const rivalOutcome = this.opponents.rollOpponentAttacksOnPlayer(exposure, !!nearbyId, dt);
@@ -467,21 +493,17 @@ export class KiteClashEngine {
     }
   }
 
-  private tryResolveCutAttempt(opponentId: string, playerExposure: number): void {
-    // Capture the target's state BEFORE resolving — a successful cut kills
-    // it inside the provider, and the severed-kite animation needs its
-    // last position and exposure.
+  /**
+   * The ring completed. The only gamble left is the one the ring's colour
+   * warned about: cutting with your own line far out can snap yours instead.
+   */
+  private resolvePlayerCut(opponentId: string, playerExposure: number): void {
+    // Capture the target's state BEFORE resolving — the cut kills it inside
+    // the provider, and the severed-kite animation needs its last position.
     const target = this.opponents.getActiveOpponents().find((o) => o.id === opponentId);
-    const result = this.opponents.attemptCut(opponentId, playerExposure);
     // The cut happens to the LINE, at the crossing point — not at the kite.
     const vfxOrigin = this.crossingPoint ?? this.playerPos;
-    if (result.outcome === "success") {
-      this.score += result.scoreBonus;
-      this.multiplierIdx = Math.min(this.multiplierIdx + 1, MULTIPLIER_STEPS.length - 1);
-      if (target) this.spawnSeveredKite(target.position, target.exposure, false);
-      this.triggerCutJuice(vfxOrigin, false);
-      this.flashCutMessage(`Line cut! +${result.scoreBonus}`);
-    } else if (result.outcome === "backfire") {
+    if (cutBackfireRoll(playerExposure)) {
       this.endRun(
         {
           kind: "backfire",
@@ -490,6 +512,15 @@ export class KiteClashEngine {
         },
         vfxOrigin,
       );
+      return;
+    }
+    const result = this.opponents.cutOpponent(opponentId);
+    if (result.outcome === "success") {
+      this.score += result.scoreBonus;
+      this.multiplierIdx = Math.min(this.multiplierIdx + 1, MULTIPLIER_STEPS.length - 1);
+      if (target) this.spawnSeveredKite(target.position, target.exposure, false);
+      this.triggerCutJuice(vfxOrigin, false);
+      this.flashCutMessage(`Line cut! +${result.scoreBonus}`);
     }
   }
 
@@ -507,6 +538,7 @@ export class KiteClashEngine {
     this.phase = "ended";
     this.endReason = reason;
     this.rivalThreat = 0;
+    this.cutProgress = 0;
     // The player's kite tumbles away with the wind — the normal player kite
     // stops being drawn during the "ended" phase, this replaces it.
     this.spawnSeveredKite(this.playerPos, exposureFromLineLength(this.lineLength), true);
@@ -574,6 +606,11 @@ export class KiteClashEngine {
       cutMessage: this.cutMessage,
       nearbyOpponent: this.nearbyOpponentId !== null,
       cutReady: this.nearbyOpponentId !== null && this.isHoldingReelKey(),
+      cutProgress: this.cutProgress,
+      cutRisk: cutBackfireChance(exposureFromLineLength(this.lineLength)),
+      depthBlocked: this.depthBlocked
+        ? (this.depthBlocked.theirExposure > exposureFromLineLength(this.lineLength) ? "let-out" : "reel-in")
+        : null,
       rivalThreat: this.rivalThreat,
       endReason: this.endReason,
       briefing: this.briefing,
@@ -625,6 +662,7 @@ export class KiteClashEngine {
     // The cut targets the LINE near the kite, not the kite itself — the
     // highlight lives at the actual crossing point of the two lines.
     if (this.crossingPoint) this.renderCrossingHighlight(ctx, this.crossingPoint, this.isHoldingReelKey());
+    else this.renderDepthBlocked(ctx);
 
     this.renderCutVfx(ctx);
     this.renderRailing(ctx);
@@ -908,6 +946,22 @@ export class KiteClashEngine {
     ctx.fill();
     ctx.stroke();
 
+    // Our own cut, filling while held. Colour is the risk of snapping our
+    // own line when it completes, so "this is a gamble" is visible up front.
+    if (this.cutProgress > 0) {
+      const risk = cutBackfireChance(exposureFromLineLength(this.lineLength));
+      const r = 11;
+      ctx.lineWidth = 3.5;
+      ctx.strokeStyle = "rgba(0,0,0,0.45)";
+      ctx.beginPath();
+      ctx.arc(pos.x, pos.y, r, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.strokeStyle = risk > 0.2 ? "#ff7a45" : risk > 0.12 ? "#FFD700" : "#14F195";
+      ctx.beginPath();
+      ctx.arc(pos.x, pos.y, r, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * this.cutProgress);
+      ctx.stroke();
+    }
+
     // The rival's cut buildup: a red ring closing around the crossing.
     // When it completes the rival rolls its cut, so this is the warning.
     if (this.rivalThreat > 0) {
@@ -922,6 +976,38 @@ export class KiteClashEngine {
       ctx.arc(pos.x, pos.y, r, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * this.rivalThreat);
       ctx.stroke();
     }
+    ctx.restore();
+  }
+
+  /**
+   * Lines drawn crossing but at depths too far apart to touch. Shown as a
+   * dashed grey ring with an arrow saying which way to fix your line, so a
+   * ring that refuses to fill explains itself.
+   */
+  private renderDepthBlocked(ctx: CanvasRenderingContext2D): void {
+    const blocked = this.depthBlocked;
+    if (!blocked) return;
+    const letOut = blocked.theirExposure > exposureFromLineLength(this.lineLength);
+    const { x, y } = blocked.point;
+    ctx.save();
+    ctx.setLineDash([4, 4]);
+    ctx.strokeStyle = "rgba(255,255,255,0.55)";
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(x, y, 13, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    // An arrow toward the fix: down = let line out, up = reel in.
+    const dir = letOut ? 1 : -1;
+    ctx.strokeStyle = "rgba(255,255,255,0.9)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x, y - 6 * dir);
+    ctx.lineTo(x, y + 6 * dir);
+    ctx.moveTo(x - 4, y + 2 * dir);
+    ctx.lineTo(x, y + 6 * dir);
+    ctx.lineTo(x + 4, y + 2 * dir);
+    ctx.stroke();
     ctx.restore();
   }
 

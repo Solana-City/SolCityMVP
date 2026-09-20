@@ -56,6 +56,23 @@ export function cutSuccessChance(targetExposure: number): number {
 export function cutBackfireChance(attackerExposure: number): number {
   return clamp(0.04 + 0.26 * attackerExposure, 0.04, 0.3);
 }
+/**
+ * How long the player has to hold the cut on a crossing before the rival's
+ * line gives, by how much line the TARGET has out: a loose line saws through
+ * fast, a tight one resists. This used to be a dice roll every 500ms, which
+ * is why the same cut sometimes took one second and sometimes ten with
+ * nothing on screen explaining the difference.
+ */
+export const PLAYER_CUT_TIGHT_MS = 3_200;
+export const PLAYER_CUT_LOOSE_MS = 1_100;
+export function playerCutDurationMs(targetExposure: number): number {
+  return PLAYER_CUT_TIGHT_MS + (PLAYER_CUT_LOOSE_MS - PLAYER_CUT_TIGHT_MS) * clamp01(targetExposure);
+}
+/** The gamble is kept, but rolled ONCE, when the ring completes. */
+export function cutBackfireRoll(attackerExposure: number): boolean {
+  return Math.random() < cutBackfireChance(attackerExposure);
+}
+
 export function resolveCutAttempt(
   targetExposure: number,
   attackerExposure: number,
@@ -67,8 +84,6 @@ export function resolveCutAttempt(
   if (roll < successChance + backfireChance) return "backfire";
   return "neutral";
 }
-/** Resolution ticks, not every frame — feels like discrete attempts. */
-export const CUT_RESOLUTION_INTERVAL_MS = 500;
 /**
  * Two kites' lines can only meaningfully cross if they're flying at a
  * similar depth — a kite reeled in close and one let far out aren't

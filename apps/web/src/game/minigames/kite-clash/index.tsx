@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { track } from "@/game/telemetry/track";
 import { KiteClashEngine, type EngineSnapshot } from "./KiteClashEngine";
 import type { MiniGameComponentProps } from "../types";
+import { fetchBoard, invalidateBoard, type BoardResult } from "@/game/leaderboards/boards";
 import type { MiniGameBaseContext } from "../types";
 
 const isTouchDevice = () =>
@@ -43,7 +44,13 @@ function markHowToPlaySeen(): void {
 
 const OUTLINE = "0 2px 0 #000, 2px 0 0 #000, -2px 0 0 #000, 0 -2px 0 #000";
 
-export default function KiteClashGame({ onResult, onClose }: MiniGameComponentProps<MiniGameBaseContext>) {
+const BOARD = "game:kite-clash";
+
+export default function KiteClashGame({ context, onResult, onClose }: MiniGameComponentProps<MiniGameBaseContext>) {
+  const wallet = context?.wallet?.toBase58() ?? null;
+  const [board, setBoard] = useState<BoardResult | null>(null);
+  /** Runs already reported, so RELAUNCH can never report one twice. */
+  const reportedRun = useRef<number | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const engineRef = useRef<KiteClashEngine | null>(null);
   const lastUiUpdateRef = useRef(0);
@@ -78,6 +85,24 @@ export default function KiteClashGame({ onResult, onClose }: MiniGameComponentPr
     const id = setInterval(() => setWindShimmer((v) => !v), 350);
     return () => clearInterval(id);
   }, []);
+
+  // The score is reported when the RUN ends, not when the player leaves:
+  // RELAUNCH used to throw the run away without it ever reaching the board.
+  // `keepOpen` leaves the end screen up, the way Sol Mechs does.
+  useEffect(() => {
+    if (snapshot?.phase !== "ended") return;
+    const run = snapshot.runNumber;
+    if (reportedRun.current === run) return;
+    reportedRun.current = run;
+    const score = snapshot.score;
+    onResult({ success: score > 0, metadata: { score, keepOpen: true } })
+      .catch(() => undefined)
+      .finally(() => {
+        // Our own score has just landed, so the cached board is stale.
+        invalidateBoard(BOARD);
+        fetchBoard(BOARD, { wallet, limit: 5, force: true }).then(setBoard).catch(() => undefined);
+      });
+  }, [snapshot?.phase, snapshot?.runNumber, snapshot?.score, onResult, wallet]);
 
   // joystick state refs (not React state — updated on every pointer move)
   const joystickOrigin = useRef({ x: 0, y: 0 });
@@ -312,6 +337,28 @@ export default function KiteClashGame({ onResult, onClose }: MiniGameComponentPr
         </div>
       )}
 
+      {/* The lines cross but the kites fly at different depths, so nothing
+          happens. Without this the ring just never filled. */}
+      {snapshot?.phase === "playing" && snapshot.depthBlocked && (
+        <div
+          style={{
+            position: "absolute",
+            top: "26%",
+            left: "50%",
+            transform: "translateX(-50%)",
+            fontSize: 9,
+            color: "#fff",
+            textShadow: OUTLINE,
+            pointerEvents: "none",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {snapshot.depthBlocked === "let-out"
+            ? "TOO FAR APART — LET LINE OUT TO REACH THEM"
+            : "TOO FAR APART — REEL IN TO REACH THEM"}
+        </div>
+      )}
+
       {/* Rival cut warning: mirrors the red ring at the crossing point */}
       {snapshot?.phase === "playing" && snapshot.rivalThreat > 0 && (
         <div
@@ -416,7 +463,7 @@ export default function KiteClashGame({ onResult, onClose }: MiniGameComponentPr
           <br />
           {snapshot?.nearbyOpponent ? (
             <span style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 8 }}>
-              ✂ HOLD SPACE TO CUT!
+              ✂ HOLD SPACE — KEEP HOLDING TO CUT
             </span>
           ) : (
             "Cross the orange line, hold Space"
@@ -535,6 +582,38 @@ export default function KiteClashGame({ onResult, onClose }: MiniGameComponentPr
           <div style={{ fontSize: 10, color: "#e2e8f0" }}>
             SCORE <span style={{ color: "#FFD700", fontSize: 14 }}>{snapshot.score}</span>
           </div>
+
+          {board && (board.rows.length > 0 || board.mine) && (
+            <div style={{ width: "min(280px, 76vw)", fontSize: 8, lineHeight: 1.9 }}>
+              <div style={{ color: "#8ab4f8", marginBottom: 4 }}>BEST KITES IN THE CITY</div>
+              {board.rows.map((row, i) => (
+                <div
+                  key={row.wallet}
+                  style={{
+                    display: "flex", gap: 8,
+                    color: wallet && row.wallet === wallet ? "#FFD700" : "#cbd5e1",
+                  }}
+                >
+                  <span style={{ width: 14, color: "#64748b" }}>{i + 1}</span>
+                  <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {row.name ?? `${row.wallet.slice(0, 4)}…${row.wallet.slice(-4)}`}
+                  </span>
+                  <span>{row.value}</span>
+                </div>
+              ))}
+              {board.mine && (
+                <div style={{ color: "#94a3b8", marginTop: 4 }}>
+                  Your best {board.mine.value}
+                  {board.mine.rank ? ` · #${board.mine.rank}` : ""}
+                </div>
+              )}
+              {!wallet && (
+                <div style={{ color: "#64748b", marginTop: 4 }}>
+                  Connect a wallet to take your place on the board.
+                </div>
+              )}
+            </div>
+          )}
           <button
             onClick={() => engineRef.current?.relaunch()}
             style={{
@@ -564,10 +643,7 @@ export default function KiteClashGame({ onResult, onClose }: MiniGameComponentPr
             ? HOW TO PLAY
           </button>
           <button
-            onClick={() => {
-              onResult({ success: snapshot.score > 0, metadata: { score: snapshot.score } }).catch(() => undefined);
-              onClose();
-            }}
+            onClick={onClose}
             style={{
               background: "transparent",
               border: "1px solid rgba(255,255,255,0.2)",
@@ -614,13 +690,23 @@ function HowToPlayCard({ isTouch, onStart }: { isTouch: boolean; onStart: (compl
     {
       key: isTouch ? "HOLD CUT" : "SPACE TO CUT",
       text: isTouch
-        ? "When your line crosses the orange dashed line, a circle appears. Hold the button to cut it."
-        : "When your line crosses the orange dashed line, a circle appears. Hold Space there to cut it.",
+        ? "Cross the orange line and hold the button: a ring fills. Full ring = their line is cut."
+        : "Cross the orange line and hold Space: a ring fills. Full ring = their line is cut.",
+      scene: <CrossScene ring="cut" />,
+    },
+    {
+      key: "SAME HEIGHT",
+      text: "Only kites flying at a similar line length can touch. If the crossing shows a dashed ring and an arrow, match their line: the arrow says reel in or let out.",
+      scene: <CrossScene ring="cut" />,
+    },
+    {
+      key: "RING COLOUR",
+      text: "Green ring: your line is tight and the cut is safe. Orange: you have a lot of line out and it may snap yours instead. Let go and the ring empties.",
       scene: <CrossScene ring="cut" />,
     },
     {
       key: "WATCH OUT",
-      text: "While the lines stay crossed, a RED RING fills around the crossing. When it closes the rival tries to cut you. Steer away to reset it. Cutting with lots of line out can snap your own line.",
+      text: "While the lines stay crossed, a RED RING fills around the crossing. When it closes the rival cuts you. Steer away to reset it.",
       scene: <CrossScene ring="threat" />,
       warning: true,
     },

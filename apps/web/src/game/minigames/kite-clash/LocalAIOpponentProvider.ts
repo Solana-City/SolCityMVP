@@ -97,17 +97,12 @@ export class LocalAIOpponentProvider implements OpponentKiteProvider {
     ];
   }
 
-  attemptCut(opponentId: string, attackerExposure: number): CutAttemptResult {
+  cutOpponent(opponentId: string): CutAttemptResult {
     if (opponentId !== RIVAL_ID || !this.alive) {
       return { outcome: "neutral", scoreBonus: 0 };
     }
-    const targetExposure = exposureFromLineLength(this.lineLength);
-    const outcome = resolveCutAttempt(targetExposure, attackerExposure);
-    if (outcome === "success") {
-      this.killRival();
-      return { outcome, scoreBonus: CUT_SUCCESS_SCORE_BONUS };
-    }
-    return { outcome, scoreBonus: 0 };
+    this.killRival();
+    return { outcome: "success", scoreBonus: CUT_SUCCESS_SCORE_BONUS };
   }
 
   /**

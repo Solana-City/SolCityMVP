@@ -44,15 +44,26 @@ about a third, and less on mobile (800). Now 1650 on desktop and 1300 on
 mobile, about half the city, with slightly smaller citizen pins so they do not
 cover the streets. Check it on both screen sizes.
 
-### 5. Kite tutorial: why is the circle not completing? — M
-Two complaints, and they are probably the same one:
-- Players cannot tell **why** a circle fails to close.
-- *"Sometimes it is fast, but sometimes takes too much time to complete."*
+### 5. Kite: the circle, and why it stalls — DONE 2026-09-20 (needs playtest)
+Both complaints had the same root: the rules were invisible.
+- The player's own cut was a hidden dice roll every 0.5s (15-50%), which is
+  why the same cut took one second or ten. It is now a **gold ring that fills
+  while you hold**, faster against a rival flying on a loose line (1.1s) than
+  a tight one (3.2s). Full ring = the line is cut. Letting go empties it.
+- The gamble is kept but rolled **once**, when the ring completes, and the
+  ring's colour warns about it first: green safe, gold middling, orange risky,
+  driven by how much line YOU have out.
+- A crossing between kites at very different line lengths never counted, with
+  nothing saying so. It now draws a dashed ring with an arrow and says
+  "TOO FAR APART, LET LINE OUT / REEL IN TO REACH THEM".
+- Two new tutorial cards: SAME HEIGHT and RING COLOUR.
 
-So the rule is invisible. Step one is to show the circle being drawn as it is
-recognised: an arc that fills as you turn, with the missing part visible, so a
-failed loop explains itself. Then check whether the timing really varies, or
-only feels that way because the feedback is missing.
+Balance numbers are in `constants.ts` (`PLAYER_CUT_TIGHT_MS`,
+`PLAYER_CUT_LOOSE_MS`), covered by tests. Tune after a playtest.
+
+### 10b. Kite scores never reached the board — DONE 2026-09-20
+The run only reported its score if the player pressed LEAVE; RELAUNCH threw it
+away. It now reports when the run ends, once per run.
 
 ### 6. General UI and UX pass — M
 *"General Solana City UI/UX needs improvement."* Too vague to act on as is.
@@ -86,10 +97,10 @@ Player versus player kite duels. The rival is a bot today. Real PvP needs the
 same transport as Sol Mechs duels (session keys on the rollup) plus
 interpolation of the rival's line.
 
-### 10. Kite Fight leaderboard — S
-The boards already exist server side (`/api/leaderboard`, per-game best
-scores). This is mostly wiring the kite result into it and adding a board
-screen.
+### 10. Kite Fight leaderboard — DONE 2026-09-20 (needs playtest)
+The end screen shows the city's top five with nicknames, your own line
+highlighted, plus your best and your place. Reads `/api/leaderboard`
+(`game:kite-clash`), which was already collecting the scores.
 
 ### 11. Kick a ball, player to player — M
 Suggested as a first "we are both here" interaction. Needs a shared object

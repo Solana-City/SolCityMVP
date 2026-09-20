@@ -34,8 +34,12 @@ export interface OpponentKiteProvider {
   /** Advance this tick's simulation (movement, exposure changes, respawns). */
   update(dtSeconds: number): void;
   getActiveOpponents(): OpponentKiteState[];
-  /** Resolve a cut attempt the player makes against one opponent. */
-  attemptCut(opponentId: string, attackerExposure: number): CutAttemptResult;
+  /**
+   * The player's cut ring completed on this opponent: sever its line. The
+   * outcome is already decided by then (the engine rolls the backfire when
+   * the ring fills), so this only applies it and reports the bonus.
+   */
+  cutOpponent(opponentId: string): CutAttemptResult;
   /**
    * Resolve a cut attempt an opponent makes against the player. The engine
    * passes `isNearby` (computed from the same line-proximity check that
