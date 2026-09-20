@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { allNames, nameCount, namesFor, storeMode } from "@/lib/names/nameStore";
 import { FLAGS, readFlags } from "@/lib/flags";
-import { mechsStatus, onlinePlayers } from "@/lib/admin/onchain";
+import { mechsStatus, onlinePlayers, walletBalances } from "@/lib/admin/onchain";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -19,9 +19,10 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ ok: false }, { status: 401 });
   }
 
-  const [players, mechs, flags, names, count] = await Promise.all([
+  const [players, mechs, wallets, flags, names, count] = await Promise.all([
     onlinePlayers(),
     mechsStatus(),
+    walletBalances().catch(() => []),
     readFlags(),
     allNames().catch(() => [] as string[]),
     nameCount().catch(() => 0),
@@ -40,6 +41,7 @@ export async function GET(req: NextRequest) {
       error: players.error ?? null,
     },
     mechs,
+    wallets,
     names: { count, list: names.slice(0, 200) },
     flags,
     flagDefs: FLAGS,

@@ -18,6 +18,39 @@ const CITY_PROGRAM = new PublicKey(
 );
 const MECHS_PROGRAM = process.env.NEXT_PUBLIC_SOLMECHS_PROGRAM || "";
 
+/**
+ * Wallets whose balance the team needs to watch.
+ *
+ * The devnet stock exchange pays sellers out of its own treasury, so when it
+ * runs dry every sell fails ("the devnet exchange is low on SOL"). Its address
+ * is derived from a public seed in game/solana/devnetStocks.ts.
+ */
+export const WATCHED_WALLETS = [
+  { id: "stocks", label: "Devnet stock exchange", address: "B7g2euoDoD5ewVMZUgSoPGuctZXCjhn1jtZM8ZYrsK4e", low: 0.5 },
+  { id: "game", label: "Game wallet (treasury, deploys)", address: "9592QS34mPUwqA7sPAkug1kcuFddjn59QPQMzzCgKhEp", low: 1 },
+] as const;
+
+export interface WalletBalance {
+  id: string;
+  label: string;
+  address: string;
+  sol: number | null;
+  /** Below the level where it stops being able to do its job. */
+  low: boolean;
+}
+
+export async function walletBalances(): Promise<WalletBalance[]> {
+  const conn = new Connection(HELIUS_DEVNET, "confirmed");
+  return Promise.all(WATCHED_WALLETS.map(async (w) => {
+    try {
+      const sol = (await conn.getBalance(new PublicKey(w.address))) / 1e9;
+      return { id: w.id, label: w.label, address: w.address, sol, low: sol < w.low };
+    } catch {
+      return { id: w.id, label: w.label, address: w.address, sol: null, low: false };
+    }
+  }));
+}
+
 /** The current PlayerState layout; shorter accounts are stale pre-v2 PDAs. */
 const PLAYER_MIN_LEN = 200;
 

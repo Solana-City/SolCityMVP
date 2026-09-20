@@ -30,16 +30,17 @@ First step (before changing anything): measure. Take a Chrome heap snapshot
 after 10 minutes of play, and log `game.textures.list` size over time in the
 dev panel. Then cut the biggest one. Guesses are how we waste a week here.
 
-### 2. Stocks cannot be sold on devnet — S (confirmed cause)
+### 2. Stocks cannot be sold on devnet — DONE 2026-09-20
 The devnet venue is a mock: a buy pays SOL into a treasury and mints the
 stock, a sell burns the stock and the **treasury pays SOL back**
 (`devnetStocks.ts`). That treasury is
 `B7g2euoDoD5ewVMZUgSoPGuctZXCjhn1jtZM8ZYrsK4e` and currently holds
 **0.07 SOL**, so any sell worth more than that fails for lack of funds.
 
-Fix: fund the treasury from the game wallet (2 SOL covers a lot of testing),
-and make the panel say "the test venue is out of funds" instead of a raw
-transaction error. Also worth a top-up check in the dev panel.
+Fixed: funded with 2 SOL from the game wallet (treasury now 2.07 SOL, game
+wallet 5.68). The client already says "The devnet exchange is low on SOL" when
+it cannot cover a sell, so no code was needed there; the dev panel now shows
+both balances with a "top up" mark. **Needs a retest on devnet.**
 
 ### 3. sol-city program redeploy — waiting on the user
 Everything is written and committed; the build and deploy happen in Solana
@@ -51,12 +52,12 @@ after DeFi actions.
 
 ## P1 — Next real improvements
 
-### 4. Minimap shows too little — S
+### 4. Minimap shows too little — DONE 2026-09-20 (needs a look)
 *"Zoom out on the minimap. Should show 30-50% of the map at least."*
 The corner map shows 1100 world pixels across, out of a 3240 wide city, so
-about a third, and less on mobile (800). Raising it to roughly 1600 (desktop)
-and 1200 (mobile) puts it at half the city. One constant in `ui/Minimap.tsx`,
-then a look on both screen sizes.
+about a third, and less on mobile (800). Now 1650 on desktop and 1300 on
+mobile, about half the city, with slightly smaller citizen pins so they do not
+cover the streets. Check it on both screen sizes.
 
 ### 5. Kite tutorial: why is the circle not completing? — M
 Two complaints, and they are probably the same one:

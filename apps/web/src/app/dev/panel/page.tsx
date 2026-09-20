@@ -36,6 +36,7 @@ interface Overview {
     configured: boolean; programId: string | null; deployed: boolean;
     duelists: number; seasonOpen: boolean; queueOpen: boolean; poolOpen: boolean; error?: string;
   };
+  wallets: { id: string; label: string; address: string; sol: number | null; low: boolean }[];
   names: { count: number; list: string[] };
   flags: Record<string, boolean>;
   flagDefs: FlagDef[];
@@ -307,6 +308,23 @@ export default function DeveloperPanel() {
             </div>
           );
         })}
+      </Panel>
+
+      {/* ── Wallets ── */}
+      <Panel title="Wallets to keep funded">
+        <p style={sx.dim}>
+          The devnet stock exchange pays sellers from its own balance: at zero,
+          every sell fails. The game wallet pays for deploys.
+        </p>
+        <dl style={sx.dl}>
+          {(data.wallets ?? []).map((w) => (
+            <Item
+              key={w.id}
+              k={w.label}
+              v={w.sol === null ? "could not read" : `${w.sol.toFixed(3)} SOL${w.low ? "  ← top up" : ""}`}
+            />
+          ))}
+        </dl>
       </Panel>
 
       {/* ── Sol Mechs ── */}
