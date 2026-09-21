@@ -287,6 +287,22 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     action: { type: "stock-exchange", label: "Open the exchange" },
     // No spriteKey yet: placeholder avatar until the broker's original art lands.
   },
+  {
+    id: "hair-specialist",
+    name: "Hair Specialist",
+    role: "Superteam Turkey",
+    // Empty sidewalk in the north-east, east of Stocklana and north of the
+    // generic blocks (cols ~102-120 / rows 14-18); findNpcSpawn lands on row 16.
+    tileX: 110,
+    tileY: 15,
+    color: 0xe30a17,
+    dialog: [
+      "Merhaba! I'm the Hair Specialist, visiting from Superteam Turkey.",
+      "Hairstyles fly by fast. Tap at the right moment to land one on your head!",
+    ],
+    action: { type: "minigame", label: "Try a new look", miniGameId: "hair-specialist" },
+    // No spriteKey yet: placeholder avatar until the specialist's own art lands.
+  },
   // ── Expansion district NPCs ──────────────────────────────────────
   {
     id: "kuka",
