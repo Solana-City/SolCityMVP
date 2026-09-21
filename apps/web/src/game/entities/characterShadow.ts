@@ -89,7 +89,7 @@ export function acquireSilhouetteTexture(
   const canvas = document.createElement("canvas");
   canvas.width = w;
   canvas.height = h;
-  const ctx = canvas.getContext("2d");
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
   if (!ctx) return null;
 
   for (const tk of textureKeys) {

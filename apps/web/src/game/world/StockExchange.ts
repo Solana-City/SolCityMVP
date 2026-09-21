@@ -153,7 +153,30 @@ export function createStockExchange(
     }
   });
 
+  // ── Only paint what can be seen ───────────────────────────────────────
+  // Every paint re-uploads the whole canvas to the GPU (tex.refresh()), and
+  // each upload makes Chrome copy the bitmap in native memory — memory the JS
+  // heap never shows. At 30 paints a second, whether or not the building was
+  // anywhere near the camera, that copying was what swelled the tab toward a
+  // gigabyte between collections. Off camera, paints are deferred instead:
+  // the side screens are marked dirty and caught up the moment they return.
+  const area = new Phaser.Geom.Rectangle(
+    Math.min(...surfaces.map((s) => s.rect.x)),
+    Math.min(...surfaces.map((s) => s.rect.y)),
+    0, 0,
+  );
+  area.width = Math.max(...surfaces.map((s) => s.rect.x + s.rect.w)) - area.x;
+  area.height = Math.max(...surfaces.map((s) => s.rect.y + s.rect.h)) - area.y;
+  const onCamera = () => Phaser.Geom.Rectangle.Overlaps(scene.cameras.main.worldView, area);
+  let screensDirty = false;
+
   const paintScreens = () => {
+    if (!onCamera()) { screensDirty = true; return; }
+    screensDirty = false;
+    paintScreensNow();
+  };
+
+  const paintScreensNow = () => {
     const gainers = ranked.filter((r) => r.change > 0);
     const perPage = ROWS_PER_SCREEN * screens.length;
     // Rotate through the gainers; top up with the best of the rest if short.
@@ -183,14 +206,24 @@ export function createStockExchange(
   cleanups.push(() => pageTimer.remove());
 
   let sinceBandPaint = 0;
+  let lastBandPx = -1;
   const onUpdate = (_t: number, dt: number) => {
+    offset += (dt / 1000) * SCROLL_SPEED;
+    if (!onCamera()) return;
     syncScale();
     const alpha = building.alpha;
     for (const s of surfaces) s.image.setAlpha(alpha);
-    offset += (dt / 1000) * SCROLL_SPEED;
+    if (screensDirty) paintScreens();
     // ~30 fps is plenty for a 24 px/s scroll and halves the canvas work.
     sinceBandPaint += dt;
-    if (sinceBandPaint >= 33) { sinceBandPaint = 0; paintBand(); }
+    if (sinceBandPaint < 33) return;
+    sinceBandPaint = 0;
+    // A repaint that lands on the same texture pixel uploads an identical
+    // canvas; at low zoom that is most of them.
+    const px = Math.floor(offset * band.scale);
+    if (px === lastBandPx) return;
+    lastBandPx = px;
+    paintBand();
   };
   scene.events.on("update", onUpdate);
   cleanups.push(() => scene.events.off("update", onUpdate));

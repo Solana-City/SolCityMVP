@@ -31,7 +31,7 @@ function readTexturePixels(scene: Phaser.Scene, textureKey: string): { data: Uin
     const canvas = document.createElement("canvas");
     canvas.width = w;
     canvas.height = h;
-    const ctx = canvas.getContext("2d")!;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
     ctx.drawImage(img, 0, 0);
     return { data: ctx.getImageData(0, 0, w, h).data, w, h };
   } catch {
@@ -154,7 +154,7 @@ function getHairTextureFor(
   const canvas = document.createElement("canvas");
   canvas.width = w;
   canvas.height = h;
-  const ctx = canvas.getContext("2d")!;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
   const hairTexture = scene.textures.get(hairTextureKey);
   ctx.drawImage(hairTexture.source[0].image as CanvasImageSource, 0, 0);
   const imageData = ctx.getImageData(0, 0, w, h);
