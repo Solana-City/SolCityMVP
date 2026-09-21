@@ -15,7 +15,7 @@ import { decodeTrade, encodeTrade, tradeLogLine, type TradeSide } from "../chat/
 const TRADE_COLOR = "#FFB547";
 import { NPCSprite } from "../entities/NPCSprite";
 import { NPC_REGISTRY } from "../config/npcRegistry";
-import { PedestrianManager } from "../entities/PedestrianManager";
+import { PedestrianManager, cullContainer } from "../entities/PedestrianManager";
 import { hasAlreadyFoundCurrent, markCurrentFound, isCitizenExpired, advanceFindSlot, resetCitizenTimer, isHuntOnChain, getRoundIndex } from "../minigames/whereIsNPC/WhereIsNPCGame";
 import { ProfileManager, profileManager } from "../config/profileManager";
 import { AchievementEngine } from "../progression/achievementEngine";
@@ -1080,6 +1080,14 @@ export class CityScene extends Phaser.Scene {
       // Off-screen objects are not drawn at all (a Blitter does not cull itself).
       const view = this.cameras.main.worldView;
       for (const s of this.sparseLayers) s.cull(view);
+      // Characters off screen are not drawn either (Phaser never culls a
+      // Container on its own). The pad covers a sprite's full height above
+      // its feet, and the one frame the camera view lags behind.
+      const CHARACTER_PAD = 96;
+      this.pedestrians?.cull(view, CHARACTER_PAD);
+      for (const avatar of this.remotePlayers.values()) {
+        cullContainer(avatar.getContainer(), view, CHARACTER_PAD);
+      }
 
       for (const layer of this.overheadLayers) {
         // Layer is "overhead" only when it draws above the player's depth.

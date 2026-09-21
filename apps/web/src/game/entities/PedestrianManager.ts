@@ -364,8 +364,33 @@ export class PedestrianManager {
     for (const p of this.pedestrians) p.updateDepth();
   }
 
+  /**
+   * Hides every pedestrian outside the camera view (plus `pad` world px).
+   *
+   * Phaser does not cull Containers: each pedestrian is a container of ~10
+   * layer sprites (skin, eyes, hair, clothes, hat, shadow...), each drawn from
+   * its own texture, and all 96 of them were drawn every frame wherever they
+   * were on the map. That was about half of the game's CPU time. Hidden ones
+   * still walk, collide and animate; they just are not drawn.
+   */
+  cull(view: Phaser.Geom.Rectangle, pad: number): void {
+    for (const p of this.pedestrians) cullContainer(p.getContainer(), view, pad);
+  }
+
   destroy(): void {
     for (const p of this.pedestrians) p.destroy();
     this.pedestrians = [];
   }
+}
+
+/** Shows a container only while it is within `pad` world px of the camera view. */
+export function cullContainer(
+  c: Phaser.GameObjects.Container,
+  view: Phaser.Geom.Rectangle,
+  pad: number,
+): void {
+  const on =
+    c.x > view.x - pad && c.x < view.right + pad &&
+    c.y > view.y - pad && c.y < view.bottom + pad;
+  if (c.visible !== on) c.setVisible(on);
 }
