@@ -1390,13 +1390,17 @@ export class CityScene extends Phaser.Scene {
     const moved = !prevTarget || prevTarget.x !== player.x || prevTarget.y !== player.y;
     let vx = prevTarget?.vx ?? 0;
     let vy = prevTarget?.vy ?? 0;
-    if (player.walkFlag === false) {
-      vx = 0; vy = 0;
-    } else if (moved && prevTarget) {
+    // A stop keeps the last velocity: prediction is off anyway once the sender
+    // says it stopped, and followRemote needs the direction of travel to tell
+    // an overshoot (ease back) from lagging behind (walk on).
+    if (player.walkFlag !== false && moved && prevTarget) {
       // Velocity from the last two positions over their arrival gap. Arrival
       // times jitter, so the gap is clamped, the speed capped, and the result
       // blended with the previous estimate.
-      const dtS = Phaser.Math.Clamp(now - prevTarget.movedAt, 120, 600) / 1000;
+      // Never divide by less than one send interval (200ms): two samples that
+      // land close together were still sent ~200ms apart, and dividing by
+      // their arrival gap inflated the speed — the remote looked faster.
+      const dtS = Phaser.Math.Clamp(now - prevTarget.movedAt, 200, 600) / 1000;
       let nvx = (player.x - prevTarget.x) / dtS;
       let nvy = (player.y - prevTarget.y) / dtS;
       const sp = Math.hypot(nvx, nvy);
@@ -1452,42 +1456,92 @@ export class CityScene extends Phaser.Scene {
     now: number,
   ): void {
     const REMOTE_LAG_S = 0.45;            // slack before the avatar speeds up to catch up
+    const REMOTE_CATCHUP_MAX = 1.3;       // never more than 1.3x its own walking speed
+    const REMOTE_SETTLE_SPEED = 50;       // px/s when easing back from an overshoot
     const REMOTE_WALK_HOLD_MS = 280;      // flagless senders: keep legs going between samples
-    const REMOTE_LATENCY_MS = 80;         // one network hop, send to arrival
-    const REMOTE_PREDICT_MAX_MS = 300;    // never predict further ahead than this
+    const REMOTE_LATENCY_MS = 140;        // send → rollup → push to this screen
+    const REMOTE_PREDICT_MAX_MS = 320;    // never predict further ahead than this
     const REMOTE_PREDICT_STALE_MS = 450;  // no new sample for this long: assume stopped (network spikes reach ~480ms)
 
     const age = now - t.movedAt;
     const predicting = t.walking === true && age < REMOTE_PREDICT_STALE_MS;
     const ahead = predicting ? Math.min(age + REMOTE_LATENCY_MS, REMOTE_PREDICT_MAX_MS) / 1000 : 0;
-    const aimX = t.x + t.vx * ahead;
-    const aimY = t.y + t.vy * ahead;
+    // The prediction never runs into a wall: someone walking into a building
+    // stops moving (and stops sending), so an unchecked prediction carried
+    // their avatar half a second deep into it.
+    const [aimX, aimY] = ahead > 0
+      ? this.clearRay(t.x, t.y, t.x + t.vx * ahead, t.y + t.vy * ahead)
+      : [t.x, t.y];
 
     const c = avatar.getContainer();
     const dx = aimX - c.x;
     const dy = aimY - c.y;
     const dist = Math.hypot(dx, dy);
     if (dist > 180) return; // a jump: updateRemotePlayer fades them across
-    if (dist > 0.75) {
-      const speed = PLAYER_SPEED * Phaser.Math.Clamp(dist / (PLAYER_SPEED * REMOTE_LAG_S), 1, 2.5);
-      const step = Math.min(dist, speed * dt);
-      c.x += (dx / dist) * step;
-      c.y += (dy / dist) * step;
-      // Settling onto a stop the prediction overshot: slide, don't walk back.
-      if (t.walking === false || (t.walking === true && !predicting)) {
-        avatar.idle();
-        return;
-      }
-      // Face the way the avatar is really moving on this screen.
-      const dir: Direction = Math.abs(dx) > Math.abs(dy)
-        ? (dx < 0 ? "left" : "right")
-        : (dy < 0 ? "up" : "down");
-      avatar.walk(dir);
-    } else if (t.walking === true || (t.walking === undefined && age < REMOTE_WALK_HOLD_MS)) {
-      avatar.walk(t.dir);
-    } else {
-      avatar.idle();
+
+    if (dist <= 0.75) {
+      if (t.walking === true || (t.walking === undefined && age < REMOTE_WALK_HOLD_MS)) avatar.walk(t.dir);
+      else avatar.idle();
+      return;
     }
+
+    // Past the real position along the way they were going: the prediction
+    // overshot a stop. Ease back slowly, legs still — snapping back at walking
+    // speed is what read as the avatar bouncing off the spot.
+    const overshot = !predicting && (dx * t.vx + dy * t.vy) < 0;
+    const ownSpeed = Math.max(PLAYER_SPEED, Math.hypot(t.vx, t.vy));
+    const speed = overshot
+      ? REMOTE_SETTLE_SPEED
+      : ownSpeed * Phaser.Math.Clamp(dist / (ownSpeed * REMOTE_LAG_S), 1, REMOTE_CATCHUP_MAX);
+    const step = Math.min(dist, speed * dt);
+    this.stepAvoidingWalls(c, (dx / dist) * step, (dy / dist) * step, dist > ownSpeed * REMOTE_LAG_S);
+
+    if (overshot || (t.walking === false && dist < 12)) {
+      avatar.idle();
+      return;
+    }
+    // Face the way the avatar is really moving on this screen.
+    const dir: Direction = Math.abs(dx) > Math.abs(dy)
+      ? (dx < 0 ? "left" : "right")
+      : (dy < 0 ? "up" : "down");
+    avatar.walk(dir);
+  }
+
+  /** True when a character's feet at (wx, wy) would stand on a solid tile. */
+  private isSolidAt(wx: number, wy: number): boolean {
+    return this.collisionLayers.some((layer) => {
+      const tile = layer.getTileAtWorldXY(wx, wy);
+      return tile !== null && tile.collides;
+    });
+  }
+
+  /** The last free point on the straight line from (x0,y0) toward (x1,y1). */
+  private clearRay(x0: number, y0: number, x1: number, y1: number): [number, number] {
+    const len = Math.hypot(x1 - x0, y1 - y0);
+    const steps = Math.ceil(len / 6);
+    let fx = x0, fy = y0;
+    for (let i = 1; i <= steps; i++) {
+      const k = i / steps;
+      const px = x0 + (x1 - x0) * k;
+      const py = y0 + (y1 - y0) * k;
+      if (this.isSolidAt(px, py)) break;
+      fx = px; fy = py;
+    }
+    return [fx, fy];
+  }
+
+  /**
+   * Moves a remote avatar by (mx, my) without walking it through walls: a
+   * straight line between two samples taken either side of a corner cuts
+   * through the building. Blocked diagonally, it slides along whichever axis
+   * is free. `force` lets it through anyway when it has fallen far behind,
+   * so a concave corner can never trap it.
+   */
+  private stepAvoidingWalls(c: Phaser.GameObjects.Container, mx: number, my: number, force: boolean): void {
+    const nx = c.x + mx, ny = c.y + my;
+    if (force || this.isSolidAt(c.x, c.y) || !this.isSolidAt(nx, ny)) { c.x = nx; c.y = ny; return; }
+    if (!this.isSolidAt(nx, c.y)) { c.x = nx; return; }
+    if (!this.isSolidAt(c.x, ny)) { c.y = ny; }
   }
 
   /** Plays a remote player's facial expression, auto-reverting after 3.5s. */

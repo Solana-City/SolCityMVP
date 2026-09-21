@@ -532,7 +532,10 @@ export class OnChainMultiplayer {
     const now = Date.now();
     const isEvent =
       dirNum !== this.lastPos.direction || isWalking !== this.lastPos.isWalking;
-    const minGap = isEvent ? POS_EVENT_MIN_MS : POS_THROTTLE_MS;
+    // A stop goes out at once: every millisecond it waits is distance the
+    // other screens' prediction carries the avatar past the real spot.
+    const stopped = !isWalking && this.lastPos.isWalking;
+    const minGap = stopped ? 0 : isEvent ? POS_EVENT_MIN_MS : POS_THROTTLE_MS;
     if (now - this.lastPosSent < minGap) return;
     this.lastPosSent = now;
 
