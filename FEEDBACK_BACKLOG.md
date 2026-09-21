@@ -49,6 +49,19 @@ day N of your streak, what today's reward is, what tomorrow's will be. Missing
 a day resets it. Stored per wallet on the server like the quests. Measure it
 in the dev panel: players with a streak of 2, 3, 7.
 
+### Shipped 2026-09-21: profile = you, calendar = the city
+- **Profile:** streak + week strip first, wallet one line with copy, numbers
+  that move (score, swaps, transfers, finds, best kite, quest points), today's
+  quests with CLAIM, achievements as an icon grid. Removed: the dead Bounties
+  counter, the duplicated on-chain block, the ranking.
+- **City calendar** (was "Today"): calendar, city leaders, Online / All Time
+  ranking. Opens once a day and from the calendar button on the map card.
+- The daily quest list left the HUD; quests live in the profile.
+- The two bounty achievements (never reachable) became 3-day and 7-day streak
+  achievements. Achievement outfit rewards removed: they belonged to a retired
+  outfit system (placeholder art, never wearable). **Open:** reward real
+  wardrobe items for achievements? (user's call)
+
 ### R2. Hidden items, a few per day, in random places — P1, M (third)
 *"X items daily in random places."* Same seed for everyone each day (like the
 hunt), so players can compare and help each other in chat. Found items go to
