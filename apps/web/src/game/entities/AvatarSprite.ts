@@ -361,7 +361,15 @@ export class AvatarSprite {
     // the loop below only rebuilt an array and a key string per layer and
     // looked each one up in the animation manager: ~7% of the frame across
     // ~100 characters, to conclude there was nothing to do.
-    if (this.walkSynced && this.isWalking && this.currentDirection === direction) return;
+    //
+    // The flags alone are not enough: some callers stop the layer animations
+    // directly (PedestrianSprite.showIdleFrame) without going through idle(),
+    // and trusting the flags then left characters sliding with frozen legs.
+    // One real check on the first layer catches that and stays cheap.
+    if (this.walkSynced && this.isWalking && this.currentDirection === direction) {
+      const first = this.layerSprites.values().next().value as Phaser.GameObjects.Sprite | undefined;
+      if (first?.anims.isPlaying) return;
+    }
     this.currentDirection = direction;
     this.isWalking = true;
     let synced = true;

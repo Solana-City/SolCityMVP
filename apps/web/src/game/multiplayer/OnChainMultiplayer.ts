@@ -115,8 +115,6 @@ const HEARTBEAT_MS = 30_000;
 // After this many consecutive position writes that never reached the network,
 // the player is effectively invisible to the city and is told so.
 const OFFLINE_AFTER_FAILURES = 5;
-// How long a rollup push keeps a player off the polling list.
-const PUSH_TRUST_MS = 2_000;
 
 // ── Types ──────────────────────────────────────────────────────────────
 
@@ -201,8 +199,14 @@ export class OnChainMultiplayer {
   /** Display name kept from connect(), so a retry can re-run the setup. */
   private displayName: string | undefined;
   private retrying = false;
-  /** wallet → when the ER websocket last pushed an update for them. */
-  private lastPush = new Map<string, number>();
+  /**
+   * wallet → rollup slot of the newest state applied for them. Positions
+   * arrive over two paths (websocket push, poll) that can land out of order;
+   * last_active only has one-second resolution, so without the slot an older
+   * sample could win and pull the avatar backwards before the newer one
+   * pushed it forward again — the slide-freeze-jump players saw.
+   */
+  private lastSlot = new Map<string, number>();
   // ── Device clock vs chain clock ───────────────────────────────────────
   // The freshness gate compares an on-chain timestamp against Date.now(), so
   // a device whose clock is a few minutes fast judges EVERY live player as
@@ -393,7 +397,7 @@ export class OnChainMultiplayer {
       this.ephemeralConnection.removeAccountChangeListener(subId).catch(() => {});
     }
     this.accountSubs.clear();
-    this.lastPush.clear();
+    this.lastSlot.clear();
     this.setOnline(false);
 
     // Remove the program-wide and chat-log subscriptions — leaking these
@@ -1351,12 +1355,12 @@ export class OnChainMultiplayer {
    */
   private async pollKnownPlayerPDAs(self: PublicKey): Promise<void> {
     const selfStr = self.toBase58();
-    const now = Date.now();
-    const wallets = [...this.knownPlayers.keys()].filter(w =>
-      // Skip anyone the rollup websocket is already pushing: polling them adds
-      // nothing and the request budget is better spent on players whose pushes
-      // are not arriving (or whose socket dropped).
-      w !== selfStr && now - (this.lastPush.get(w) ?? 0) > PUSH_TRUST_MS);
+    // Every known player, every tick. Skipping players the websocket had
+    // pushed recently looked like a saving, but pushes arrive unevenly: a
+    // player whose next push was late sat frozen for the whole skip window
+    // and then jumped. The poll is the steady clock; pushes only get there
+    // sooner.
+    const wallets = [...this.knownPlayers.keys()].filter(w => w !== selfStr);
     if (wallets.length === 0) return;
 
     try {
@@ -1365,9 +1369,10 @@ export class OnChainMultiplayer {
       const pdas = wallets.map(w => derivePlayerPDA(new PublicKey(w))[0]);
       // "processed" — lowest-latency ER read; positions are cosmetic so we don't
       // need "confirmed" and the extra latency it adds.
-      const infos = await this.ephemeralConnection.getMultipleAccountsInfo(pdas, "processed");
+      const { context, value: infos } =
+        await this.ephemeralConnection.getMultipleAccountsInfoAndContext(pdas, "processed");
       infos.forEach((info, i) => {
-        if (info) this.decodeAndUpdatePlayer(pdas[i].toBase58(), info.data);
+        if (info) this.decodeAndUpdatePlayer(pdas[i].toBase58(), info.data, context.slot);
       });
     } catch { /* transient ER read error — next tick retries */ }
   }
@@ -1680,8 +1685,8 @@ export class OnChainMultiplayer {
 
     const subId = this.ephemeralConnection.onAccountChange(
       playerPDA,
-      (accountInfo) => {
-        this.decodeAndUpdatePlayer(key, accountInfo.data);
+      (accountInfo, context) => {
+        this.decodeAndUpdatePlayer(key, accountInfo.data, context.slot);
       },
       "processed"
     );
@@ -1710,7 +1715,13 @@ export class OnChainMultiplayer {
    *
    * We read only authority, x, y, direction, display_name for the multiplayer view.
    */
-  private decodeAndUpdatePlayer(pda: string, data: Buffer | Uint8Array): void {
+  /**
+   * `slot` is the rollup slot the data was read at. Reads that carry one (poll,
+   * websocket) are applied only if not older than the last one applied. The
+   * roster refresh passes none: it reads at "confirmed", which trails the live
+   * "processed" reads, so it may ADD a player but never moves a known one.
+   */
+  private decodeAndUpdatePlayer(pda: string, data: Buffer | Uint8Array, slot?: number): void {
     try {
       const buf = Buffer.from(data);
       if (buf.length < 83) return; // 8 + 32 + 33 + 4 + 4 + 4 (min)
@@ -1820,6 +1831,12 @@ export class OnChainMultiplayer {
 
       // Only update if this data is newer than what we have.
       const existing = this.knownPlayers.get(walletStr);
+      if (existing) {
+        if (slot === undefined) return; // roster refresh — never moves a known player
+        const lastSlot = this.lastSlot.get(walletStr);
+        if (lastSlot !== undefined && slot < lastSlot) return; // arrived out of order
+      }
+      if (slot !== undefined) this.lastSlot.set(walletStr, slot);
       const onChainTs = lastActiveLo; // u32 unix seconds
       if (existing && (existing as any)._onChainTs !== undefined) {
         if (onChainTs < (existing as any)._onChainTs) return; // stale — skip
@@ -2195,10 +2212,7 @@ export class OnChainMultiplayer {
       if (this.accountSubs.has(key)) return;
       const subId = this.ephemeralConnection.onAccountChange(
         pda,
-        (info) => {
-          this.lastPush.set(wallet, Date.now());
-          this.decodeAndUpdatePlayer(key, info.data);
-        },
+        (info, context) => this.decodeAndUpdatePlayer(key, info.data, context.slot),
         "processed",
       );
       this.accountSubs.set(key, subId);
@@ -2218,7 +2232,7 @@ export class OnChainMultiplayer {
   }
 
   private handlePlayerLeave(wallet: string): void {
-    this.lastPush.delete(wallet);
+    this.lastSlot.delete(wallet);
     // Unsubscribe even for an unknown wallet: leaving is also how a ghost is
     // pruned, and a leaked subscription per prune is what exhausts the socket.
     this.unsubscribeFromPlayerWallet(wallet);

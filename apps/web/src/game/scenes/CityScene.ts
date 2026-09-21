@@ -68,6 +68,8 @@ export class CityScene extends Phaser.Scene {
   private remoteLoadoutKey = new Map<string, string>();
   /** wallet → when their last position sample arrived, for the catch-up tween. */
   private remoteSampleAt = new Map<string, number>();
+  /** wallet → smoothed gap between their samples, which sets the tween length. */
+  private remoteGapAvg = new Map<string, number>();
   /** Per-remote expression auto-revert timers. */
   private remoteExprTimers = new Map<string, Phaser.Time.TimerEvent>();
   /** Per-remote last position + last dust time, so remotes kick up foot dust too. */
@@ -1301,6 +1303,7 @@ export class CityScene extends Phaser.Scene {
     }
     this.remoteLoadoutKey.delete(wallet);
     this.remoteSampleAt.delete(wallet);
+    this.remoteGapAvg.delete(wallet);
     this.remoteDust.delete(wallet);
     const exprTimer = this.remoteExprTimers.get(wallet);
     if (exprTimer) { exprTimer.remove(false); this.remoteExprTimers.delete(wallet); }
@@ -1361,11 +1364,19 @@ export class CityScene extends Phaser.Scene {
       // was, on its own, a third of the lag players were reporting. A turn or a
       // stop arrives on the leading edge, so the gap shrinks and the avatar
       // catches up in a few frames rather than sliding on for half a second.
+      //
+      // The gap is smoothed (moving average) rather than taken raw: samples
+      // arrive unevenly (poll, websocket, leading-edge turns), and following
+      // each raw gap made the avatar crawl after a slow one and sprint through
+      // the next burst.
       const now = Date.now();
       const prev = this.remoteSampleAt.get(wallet);
       this.remoteSampleAt.set(wallet, now);
-      const gap = prev ? now - prev : 400;
-      const duration = Phaser.Math.Clamp(gap, 120, 600);
+      const rawGap = prev ? Phaser.Math.Clamp(now - prev, 100, 800) : 450;
+      const avg = this.remoteGapAvg.get(wallet) ?? 450;
+      const smoothed = avg + (rawGap - avg) * 0.25;
+      this.remoteGapAvg.set(wallet, smoothed);
+      const duration = Phaser.Math.Clamp(smoothed, 250, 600);
       this.tweens.killTweensOf(container);
       this.tweens.add({
         targets: container,
