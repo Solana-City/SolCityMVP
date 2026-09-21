@@ -373,7 +373,6 @@ function ProfileTab({ profile, wallet, onConnect }: {
   const [streak, setStreak] = useState<StreakView | null>(null);
   const [mine, setMine] = useState({ finds: 0, kite: 0, quest: 0 });
   const [copied, setCopied] = useState(false);
-  const [picked, setPicked] = useState<string | null>(null);
   const [, bump] = useState(0);
 
   useEffect(() => {
@@ -427,7 +426,6 @@ function ProfileTab({ profile, wallet, onConnect }: {
   }
   const checked = new Set(streak?.recent ?? []);
   const progress = getQuestProgress(wallet);
-  const pickedAch = ACHIEVEMENTS.find((a) => a.id === picked);
 
   const copy = () => {
     navigator.clipboard?.writeText(wallet)
@@ -535,45 +533,25 @@ function ProfileTab({ profile, wallet, onConnect }: {
         })}
       </Section>
 
-      {/* ── Achievements: icons first, the story on tap ── */}
+      {/* ── Achievements: a plain list ── */}
       <Label icon={ICON.trophy} right={`${profile.unlockedAchievements.length}/${ACHIEVEMENTS.length}`}>ACHIEVEMENTS</Label>
       <Section>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
-          {ACHIEVEMENTS.map((ach) => {
-            const unlocked = profile.unlockedAchievements.includes(ach.id);
-            const color = TIER_COLORS[ach.tier];
-            return (
-              <button
-                key={ach.id}
-                onClick={() => setPicked(picked === ach.id ? null : ach.id)}
-                title={ach.title}
-                style={{
-                  display: "flex", flexDirection: "column", alignItems: "center", gap: 5, padding: "6px 2px",
-                  borderRadius: 6, cursor: "pointer",
-                  background: picked === ach.id ? "rgba(153,69,255,0.2)" : unlocked ? `${color}12` : "transparent",
-                  border: `1px solid ${unlocked ? `${color}40` : "rgba(255,255,255,0.05)"}`,
-                }}
-              >
-                <span style={{ position: "relative", lineHeight: 0, filter: unlocked ? "none" : "grayscale(1)", opacity: unlocked ? 1 : 0.45 }}>
-                  <AchievementIcon id={ach.id} size={26} />
-                  {!unlocked && <span style={{ position: "absolute", right: -4, bottom: -4 }}><LockIcon size={11} /></span>}
-                </span>
-                <span style={{
-                  fontFamily: PIXEL, fontSize: 5, color: unlocked ? color : "#475569", lineHeight: 1.4,
-                  textAlign: "center", maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                }}>
-                  {ach.title}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-        {pickedAch && (
-          <div style={{ marginTop: 10, fontSize: 7, color: "#94a3b8", lineHeight: 1.7 }}>
-            <span style={{ color: TIER_COLORS[pickedAch.tier] }}>{pickedAch.title}</span>
-            {" · "}{pickedAch.description}
-          </div>
-        )}
+        {ACHIEVEMENTS.map((ach) => {
+          const unlocked = profile.unlockedAchievements.includes(ach.id);
+          const color = TIER_COLORS[ach.tier];
+          return (
+            <div key={ach.id} style={{ display: "flex", alignItems: "center", gap: 8, margin: "4px 0", opacity: unlocked ? 1 : 0.5 }}>
+              <span style={{ position: "relative", lineHeight: 0, flexShrink: 0, filter: unlocked ? "none" : "grayscale(1)" }}>
+                <AchievementIcon id={ach.id} size={20} />
+                {!unlocked && <span style={{ position: "absolute", right: -4, bottom: -4 }}><LockIcon size={10} /></span>}
+              </span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 7, color: unlocked ? color : "#94a3b8" }}>{ach.title}</div>
+                <div style={{ fontSize: 7, color: "#555566", marginTop: 3 }}>{ach.description}</div>
+              </div>
+            </div>
+          );
+        })}
       </Section>
     </div>
   );

@@ -150,7 +150,7 @@ export const ACHIEVEMENT_ART: Record<string, { sheet?: string; img?: string }> =
   "first-transfer": { sheet: "send-npc.png" },
   "streak-3": { img: `${UI}/attention_yellow.png` },
   "met-sol": { sheet: "Sol.png" },
-  "met-everyone": { sheet: "Kuka.png" },
+  "met-everyone": { img: `${UI}/ico_chat.png` },
   "trader-10": { sheet: "Jupiter Joe.png" },
   "streak-7": { img: `${UI}/attention_yellow.png` },
   "score-1000": { img: ICON.trophy },
