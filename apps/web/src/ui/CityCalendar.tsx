@@ -82,7 +82,13 @@ export function buildEntries(bounties: EarnListing[], hackathons: EarnListing[])
   return { entries, spans };
 }
 
-export default function CityCalendar() {
+export default function CityCalendar({ cellHeight = 22, showLegend = true, maxRows = 3 }: {
+  /** Fixed day height, so the whole month fits the card without scrolling. */
+  cellHeight?: number;
+  showLegend?: boolean;
+  /** Most rows listed for the selected day; the rest collapse into "+N MORE". */
+  maxRows?: number;
+}) {
   const today = utcDay();
   const [bounties, setBounties] = useState<EarnListing[]>([]);
   const [hackathons, setHackathons] = useState<EarnListing[]>([]);
@@ -114,12 +120,12 @@ export default function CityCalendar() {
   ];
 
   const onDay = byDay.get(selected) ?? [];
-  const next = onDay.length === 0 ? entries.filter((e) => e.day > selected).slice(0, 3) : [];
+  const next = onDay.length === 0 ? entries.filter((e) => e.day > selected).slice(0, maxRows) : [];
 
   return (
     <div>
       {/* Month header */}
-      <div style={{ display: "flex", alignItems: "center", marginBottom: 8 }}>
+      <div style={{ display: "flex", alignItems: "center", marginBottom: 6 }}>
         <NavButton disabled={monthOffset <= -1} onClick={() => setMonthOffset((n) => n - 1)}>‹</NavButton>
         <div style={{ flex: 1, textAlign: "center", fontFamily: PIXEL, fontSize: 7, color: "#e2e8f0" }}>{monthLabel}</div>
         <NavButton disabled={monthOffset >= 3} onClick={() => setMonthOffset((n) => n + 1)}>›</NavButton>
@@ -146,14 +152,14 @@ export default function CityCalendar() {
               key={day}
               onClick={() => setSelected(day)}
               style={{
-                aspectRatio: "1", borderRadius: 5, padding: 0, cursor: "pointer",
-                display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 3,
+                height: cellHeight, borderRadius: 4, padding: 0, cursor: "pointer",
+                display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2,
                 background: isSelected ? "rgba(153,69,255,0.35)" : spans.has(day) ? "rgba(20,241,149,0.1)" : "#0d0d22",
                 border: isToday ? "1px solid #fff" : "1px solid rgba(255,255,255,0.05)",
                 opacity: past ? 0.45 : 1,
               }}
             >
-              <span style={{ fontFamily: PIXEL, fontSize: 7, color: isToday ? "#fff" : "#cbd5e1" }}>
+              <span style={{ fontFamily: PIXEL, fontSize: 6, color: isToday ? "#fff" : "#cbd5e1" }}>
                 {Number(day.slice(8))}
               </span>
               <span style={{ display: "flex", gap: 2, height: 4 }}>
@@ -167,23 +173,26 @@ export default function CityCalendar() {
       </div>
 
       {/* Legend */}
-      <div style={{ display: "flex", justifyContent: "center", gap: 10, margin: "8px 0" }}>
+      {showLegend && <div style={{ display: "flex", justifyContent: "center", gap: 10, marginTop: 6 }}>
         {(Object.keys(KIND) as Kind[]).map((k) => (
           <span key={k} style={{ display: "flex", alignItems: "center", gap: 4, fontFamily: PIXEL, fontSize: 5, color: "#64748b" }}>
             <span style={{ width: 5, height: 5, borderRadius: "50%", background: KIND[k].color }} />
             {KIND[k].label}
           </span>
         ))}
-      </div>
+      </div>}
 
       {/* The selected day */}
-      <div style={{ borderTop: "1px solid rgba(255,255,255,0.06)", paddingTop: 8 }}>
+      <div style={{ borderTop: "1px solid rgba(255,255,255,0.06)", paddingTop: 6, marginTop: 6 }}>
         <div style={{ fontFamily: PIXEL, fontSize: 6, color: "#64748b", marginBottom: 6 }}>
           {selected === today ? "TODAY" : new Date(`${selected}T00:00:00Z`).toLocaleDateString("en-US", {
             weekday: "short", month: "short", day: "numeric", timeZone: "UTC",
           }).toUpperCase()}
         </div>
-        {onDay.map((e, i) => <Row key={i} entry={e} />)}
+        {onDay.slice(0, maxRows).map((e, i) => <Row key={i} entry={e} />)}
+        {onDay.length > maxRows && (
+          <div style={{ fontFamily: PIXEL, fontSize: 6, color: "#64748b", marginTop: 4 }}>+{onDay.length - maxRows} MORE</div>
+        )}
         {onDay.length === 0 && (
           <>
             <div style={{ fontFamily: PIXEL, fontSize: 6, color: "#475569", marginBottom: next.length ? 6 : 0 }}>
@@ -199,7 +208,7 @@ export default function CityCalendar() {
 
 function Row({ entry, showDate }: { entry: Entry; showDate?: boolean }) {
   const body = (
-    <div style={{ display: "flex", alignItems: "flex-start", gap: 7, margin: "5px 0" }}>
+    <div style={{ display: "flex", alignItems: "flex-start", gap: 7, margin: "4px 0" }}>
       <span style={{ width: 6, height: 6, borderRadius: "50%", background: KIND[entry.kind].color, marginTop: 2, flexShrink: 0 }} />
       <div style={{ minWidth: 0, flex: 1 }}>
         <div style={{ fontFamily: PIXEL, fontSize: 7, color: "#e2e8f0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -223,7 +232,7 @@ function NavButton({ children, disabled, onClick }: { children: React.ReactNode;
       onClick={onClick}
       disabled={disabled}
       style={{
-        width: 24, height: 22, borderRadius: 5, border: "1px solid rgba(255,255,255,0.08)",
+        width: 22, height: 18, borderRadius: 4, border: "1px solid rgba(255,255,255,0.08)",
         background: "#0d0d22", color: disabled ? "#334155" : "#cbd5e1", cursor: disabled ? "default" : "pointer",
         fontSize: 14, lineHeight: 1, padding: 0,
       }}
