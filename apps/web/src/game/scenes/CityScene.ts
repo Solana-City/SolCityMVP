@@ -25,6 +25,7 @@ import { soundManager } from "../audio/SoundManager";
 import { publishMinimap } from "../minimap/MinimapHost";
 import { createStockExchange } from "../world/StockExchange";
 import { buildPhysicsLayer, mergeGroundRun } from "../world/mergeLayers";
+import { SparseLayer, SPARSE_MAX_TILES, type CityLayer } from "../world/sparseLayer";
 import { LANDMARK_LAYERS } from "../minimap/categories";
 import { cachedName, onNames, requestNames, NAME_CHANGED_EVENT } from "../names/nameService";
 import { track } from "../telemetry/track";
@@ -55,7 +56,9 @@ export class CityScene extends Phaser.Scene {
   private wasd!: Record<string, Phaser.Input.Keyboard.Key>;
   private collisionLayers: Phaser.Tilemaps.TilemapLayer[] = [];
   /** Layers that can render above the player — faded when they occlude the player. */
-  private overheadLayers: Phaser.Tilemaps.TilemapLayer[] = [];
+  private overheadLayers: CityLayer[] = [];
+  /** City objects drawn as Blitters, culled to the camera every frame. */
+  private sparseLayers: SparseLayer[] = [];
 
   private network!: OnChainMultiplayer;
   private chat!: ChatManager;
@@ -221,7 +224,7 @@ export class CityScene extends Phaser.Scene {
     // Do NOT pass x/y — Phaser defaults to layerData.x/y which already
     // incorporates the Tiled offsetx/offsety for each layer. Passing 0,0
     // would override those offsets and shift every layer to the origin.
-    const allLayers: Phaser.Tilemaps.TilemapLayer[] = [];
+    const allLayers: CityLayer[] = [];
     // Contiguous runs of flat ground (no collision, no fade, no y-sort) are
     // collapsed after this loop — see the consolidation pass below. Runs must
     // stay contiguous in draw order for the result to be pixel-identical, so a
@@ -334,7 +337,7 @@ export class CityScene extends Phaser.Scene {
     // or y-sorts is left exactly as authored, so a palm still goes
     // transparent on its own. See world/mergeLayers.ts.
     const layersBefore = allLayers.length;
-    const dropped = new Set<Phaser.Tilemaps.TilemapLayer>();
+    const dropped = new Set<CityLayer>();
     groundRuns.forEach((run, n) => {
       const merged = mergeGroundRun(map, allTilesets, run, `__ground${n}`);
       if (merged.length === 0) return; // not reproducible exactly — left alone
@@ -361,9 +364,34 @@ export class CityScene extends Phaser.Scene {
         src.destroy(true);
       }
     }
+    // ── Objects off the grid ──────────────────────────────────────────
+    // Every palm, lamp post and building still keeps its own depth and its
+    // own alpha, so it fades on its own exactly as authored; it just stops
+    // paying for 15,525 empty cells. See world/sparseLayer.ts.
+    // `?tiles=legacy` keeps the old tilemaps, to compare the two side by side.
+    const legacyTiles = new URLSearchParams(window.location.search).get("tiles") === "legacy";
+    if (!legacyTiles) {
+      const keepAsTilemap = new Set<CityLayer>(this.collisionLayers);
+      for (let i = 0; i < allLayers.length; i++) {
+        const src = allLayers[i];
+        if (!(src instanceof Phaser.Tilemaps.TilemapLayer)) continue;
+        if (keepAsTilemap.has(src) || !src.visible) continue;
+        let painted = 0;
+        src.forEachTile((t: Phaser.Tilemaps.Tile) => { if (t.index > 0) painted++; });
+        if (painted === 0 || painted > SPARSE_MAX_TILES) continue;
+        const sparse = SparseLayer.from(this, src);
+        if (!sparse) continue; // not reproducible exactly — stays a tilemap
+        allLayers[i] = sparse;
+        const at = this.overheadLayers.indexOf(src);
+        if (at >= 0) this.overheadLayers[at] = sparse;
+        this.sparseLayers.push(sparse);
+      }
+    }
     console.log(
       `[CityScene] layers ${layersBefore} → ${allLayers.length}` +
-      ` | collision layers → ${this.collisionLayers.length}`,
+      ` (${this.sparseLayers.length} as blitters${legacyTiles ? ", legacy mode" : ""})` +
+      ` | collision layers → ${this.collisionLayers.length}` +
+      ` | tile cells ${map.layers.reduce((n, l) => n + l.width * l.height, 0).toLocaleString()}`,
     );
 
     // Stocklana exchange: the building is Tiled art (BuildStocklana); this
@@ -1044,6 +1072,10 @@ export class CityScene extends Phaser.Scene {
     {
       const px = this.avatar.x;
       const py = this.avatar.y;
+      // Off-screen objects are not drawn at all (a Blitter does not cull itself).
+      const view = this.cameras.main.worldView;
+      for (const s of this.sparseLayers) s.cull(view);
+
       for (const layer of this.overheadLayers) {
         // Layer is "overhead" only when it draws above the player's depth.
         const isAbove = layer.depth > py;

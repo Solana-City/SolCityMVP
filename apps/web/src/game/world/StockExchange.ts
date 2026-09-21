@@ -20,6 +20,7 @@
  * from the shared stockMarket feed (one Price API poll for the whole game).
  */
 import * as Phaser from "phaser";
+import type { CityLayer, PaintedTile } from "./sparseLayer";
 import { STOCKS, stockMarket, getMarketClock, type StockInfo, type StockMarketState } from "../solana/stocks";
 
 /** Screen rectangles in BuildStocklana art pixels (from its top-left tile). */
@@ -92,7 +93,7 @@ class Surface {
 
 export function createStockExchange(
   scene: Phaser.Scene,
-  building: Phaser.Tilemaps.TilemapLayer | undefined,
+  building: CityLayer | undefined,
 ): () => void {
   if (!building) return () => {};
   const origin = layerOrigin(building);
@@ -270,9 +271,9 @@ function paintScreen(ctx: CanvasRenderingContext2D, scene: Phaser.Scene, r: Rect
 }
 
 /** World position of the layer's top-left painted tile. */
-function layerOrigin(layer: Phaser.Tilemaps.TilemapLayer): { x: number; y: number } | null {
+function layerOrigin(layer: CityLayer): { x: number; y: number } | null {
   let col = Infinity, row = Infinity;
-  layer.forEachTile((t: Phaser.Tilemaps.Tile) => {
+  layer.forEachTile((t: PaintedTile) => {
     if (t.index <= 0) return;
     if (t.x < col) col = t.x;
     if (t.y < row) row = t.y;

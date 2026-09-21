@@ -12,6 +12,7 @@
  */
 import * as Phaser from "phaser";
 import { LANDMARK_LAYERS, npcCategory, type MinimapCategory } from "./categories";
+import type { CityLayer, PaintedTile } from "../world/sparseLayer";
 import type { NPCSprite } from "../entities/NPCSprite";
 import type { AvatarSprite } from "../entities/AvatarSprite";
 
@@ -62,7 +63,7 @@ export const MINIMAP_READY_EVENT = "solcity:minimap-ready";
 export function publishMinimap(
   scene: Phaser.Scene,
   map: Phaser.Tilemaps.Tilemap,
-  layers: Phaser.Tilemaps.TilemapLayer[],
+  layers: CityLayer[],
   sources: {
     player: () => { x: number; y: number } | null;
     npcs: () => NPCSprite[];
@@ -88,7 +89,7 @@ export function publishMinimap(
     if (!layer.visible) continue;
     const leaf = layer.layer.name.slice(layer.layer.name.lastIndexOf("/") + 1);
     const label = LANDMARK_LAYERS[leaf];
-    layer.forEachTile((tile: Phaser.Tilemaps.Tile) => {
+    layer.forEachTile((tile: PaintedTile) => {
       if (tile.index <= 0) return;
       const ts = tile.tileset;
       const tex = ts?.image;
