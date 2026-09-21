@@ -106,9 +106,19 @@ type BCMsg =
 
 // Throttle position broadcasts. Every other screen can only be as current as
 // the last sample, so this interval is a floor under the delay players see.
-// 300ms is ~3 tx/s per walking player: rollup transactions carry no fee, and
+// 200ms is ~5 tx/s per walking player: rollup transactions carry no fee, and
 // the rate limits that bit us were on READS (polls), which this does not touch.
-const POS_THROTTLE_MS = 300;
+const POS_THROTTLE_MS = 200;
+
+// The on-chain direction byte is a plain u8 the program never validates, and
+// only values 0-3 are directions. Two spare bits carry what receivers need to
+// predict motion: whether the sender is walking, and a marker that says this
+// sender sets that bit at all (so an older client's 0 is not read as "stopped").
+const DIR_MASK = 0b0011;
+const DIR_WALKING = 0b0100;
+const DIR_HAS_WALK_FLAG = 0b1000;
+const packDirection = (dir: number, walking: boolean): number =>
+  (dir & DIR_MASK) | (walking ? DIR_WALKING : 0) | DIR_HAS_WALK_FLAG;
 // Floor for the leading-edge sends (turns and stops). Short enough that a
 // corner reads as instant, long enough that it can't become a tx firehose.
 const POS_EVENT_MIN_MS = 150;
@@ -127,6 +137,12 @@ export interface OnChainPlayer {
   y: number;
   direction: number;
   isWalking: boolean;
+  /**
+   * The sender's own "walking" flag, when it sends one (see DIR_WALKING).
+   * Undefined for clients that predate it — then only isWalking, inferred
+   * from position changes, is known.
+   */
+  walkFlag?: boolean;
   lastUpdate: number;
   displayName?: string;
   score?: number;
@@ -546,7 +562,7 @@ export class OnChainMultiplayer {
 
     // Layer 2: on-chain position update
     if (isProgramDeployed()) {
-      this.pushPosition(x, y, dirNum);
+      this.pushPosition(x, y, packDirection(dirNum, isWalking));
     } else {
       transactionLog.recordMove({ signature: "sim:move", status: "confirmed" });
     }
@@ -605,7 +621,7 @@ export class OnChainMultiplayer {
     if (!this._connected || !this.wallet || !isProgramDeployed()) return;
     if (this.lastPos.x < 0) return; // no position written yet this session
     if (Date.now() - this.lastChainSendAt < HEARTBEAT_MS) return;
-    this.pushPosition(this.lastPos.x, this.lastPos.y, this.lastPos.direction);
+    this.pushPosition(this.lastPos.x, this.lastPos.y, packDirection(this.lastPos.direction, this.lastPos.isWalking));
   }
 
   sendChat(text: string): void {
@@ -1773,7 +1789,11 @@ export class OnChainMultiplayer {
       const y = buf.readUInt32LE(offset); offset += 4;
 
       // direction (u8)
-      const direction = buf.readUInt8(offset); offset += 1;
+      const rawDirection = buf.readUInt8(offset); offset += 1;
+      const direction = rawDirection & DIR_MASK;
+      const walkFlag = (rawDirection & DIR_HAS_WALK_FLAG) !== 0
+        ? (rawDirection & DIR_WALKING) !== 0
+        : undefined;
 
       // Skip outfit_id, score, swap_count, transfer_count, bounty_count
       offset += 1 + 4 + 2 + 2 + 2;
@@ -1868,14 +1888,15 @@ export class OnChainMultiplayer {
       }
 
       const wasKnown = existing !== undefined;
-      const isWalking = existing !== undefined && (x !== existing.x || y !== existing.y);
-      if (existing && !isWalking && existing.direction === direction) {
+      const moved = existing !== undefined && (x !== existing.x || y !== existing.y);
+      const isWalking = walkFlag ?? moved;
+      if (existing && !moved && existing.direction === direction && existing.walkFlag === walkFlag) {
         // The same state again — every write now arrives twice (websocket
         // push, then the poll). Passing it on as a "move" told the scene the
         // player had stopped, and their legs froze until the next sample.
         existing.lastUpdate = Date.now();
       } else {
-        this.handlePlayerMove(walletStr, x, y, direction, isWalking, displayName);
+        this.handlePlayerMove(walletStr, x, y, direction, isWalking, displayName, undefined, walkFlag);
         if (slot !== undefined) this.noteRead(fromPush);
       }
       const updated = this.knownPlayers.get(walletStr);
@@ -2198,7 +2219,7 @@ export class OnChainMultiplayer {
 
   private handlePlayerMove(
     wallet: string, x: number, y: number, d: number, m: boolean,
-    name?: string, score?: number,
+    name?: string, score?: number, walkFlag?: boolean,
   ): void {
     // Always use Date.now() for lastUpdate so polling keeps players visible
     // even when on-chain writes are temporarily failing (e.g. delegated PDAs).
@@ -2208,7 +2229,7 @@ export class OnChainMultiplayer {
     let player = this.knownPlayers.get(wallet);
     if (!player) {
       const pend = this.pendingLoadouts.get(wallet);
-      player = { wallet, x, y, direction: d, isWalking: m, lastUpdate, displayName: name, score, loadout: pend };
+      player = { wallet, x, y, direction: d, isWalking: m, walkFlag, lastUpdate, displayName: name, score, loadout: pend };
       this.knownPlayers.set(wallet, player);
       this.pendingLoadouts.delete(wallet);
       for (const cb of this.addCallbacks) cb(wallet, player);
@@ -2216,7 +2237,7 @@ export class OnChainMultiplayer {
       this.scheduleLookRebroadcast(); // re-announce our look so the newcomer sees us
       return;
     }
-    player.x = x; player.y = y; player.direction = d; player.isWalking = m;
+    player.x = x; player.y = y; player.direction = d; player.isWalking = m; player.walkFlag = walkFlag;
     player.lastUpdate = lastUpdate;
     if (name) player.displayName = name;
     if (score !== undefined) player.score = score;

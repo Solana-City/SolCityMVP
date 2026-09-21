@@ -50,6 +50,24 @@ export type GameWithSceneReady = Phaser.Game & { __solCitySceneReady?: boolean }
  */
 export type SolCityWalletHost = typeof globalThis & { __solCityWallet?: string | null };
 
+/**
+ * What this client knows about a remote player's motion: the last position
+ * the chain gave, when it arrived, the velocity measured between the last two
+ * positions, and the sender's own walking flag when it sends one.
+ */
+interface RemoteTarget {
+  x: number;
+  y: number;
+  dir: Direction;
+  /** When the position last changed (local clock). */
+  movedAt: number;
+  /** Velocity between the last two positions, px/s. */
+  vx: number;
+  vy: number;
+  /** Sender says it is walking; undefined for clients without the flag. */
+  walking?: boolean;
+}
+
 export class CityScene extends Phaser.Scene {
   private avatar!: AvatarSprite;
   private playerBody!: Phaser.Physics.Arcade.Body;
@@ -71,7 +89,7 @@ export class CityScene extends Phaser.Scene {
    * and when that position last changed. Remote avatars walk toward it every
    * frame (followRemote) rather than being tweened to it.
    */
-  private remoteTarget = new Map<string, { x: number; y: number; dir: Direction; movedAt: number }>();
+  private remoteTarget = new Map<string, RemoteTarget>();
   /** Per-remote expression auto-revert timers. */
   private remoteExprTimers = new Map<string, Phaser.Time.TimerEvent>();
   /** Per-remote last position + last dust time, so remotes kick up foot dust too. */
@@ -1368,12 +1386,32 @@ export class CityScene extends Phaser.Scene {
     // read as "stopped" and freeze the legs mid-walk.
     const dirs: Direction[] = ["down", "left", "right", "up"];
     const prevTarget = this.remoteTarget.get(wallet);
+    const now = Date.now();
     const moved = !prevTarget || prevTarget.x !== player.x || prevTarget.y !== player.y;
+    let vx = prevTarget?.vx ?? 0;
+    let vy = prevTarget?.vy ?? 0;
+    if (player.walkFlag === false) {
+      vx = 0; vy = 0;
+    } else if (moved && prevTarget) {
+      // Velocity from the last two positions over their arrival gap. Arrival
+      // times jitter, so the gap is clamped, the speed capped, and the result
+      // blended with the previous estimate.
+      const dtS = Phaser.Math.Clamp(now - prevTarget.movedAt, 120, 600) / 1000;
+      let nvx = (player.x - prevTarget.x) / dtS;
+      let nvy = (player.y - prevTarget.y) / dtS;
+      const sp = Math.hypot(nvx, nvy);
+      const cap = PLAYER_SPEED * 1.5;
+      if (sp > cap) { nvx *= cap / sp; nvy *= cap / sp; }
+      vx = prevTarget.walking === false ? nvx : (vx + nvx) / 2;
+      vy = prevTarget.walking === false ? nvy : (vy + nvy) / 2;
+    }
     this.remoteTarget.set(wallet, {
       x: player.x,
       y: player.y,
       dir: dirs[player.direction] ?? prevTarget?.dir ?? "down",
-      movedAt: moved ? Date.now() : prevTarget?.movedAt ?? 0,
+      movedAt: moved ? now : prevTarget?.movedAt ?? 0,
+      vx, vy,
+      walking: player.walkFlag,
     });
 
     // Apply a changed outfit (only when it actually differs — setLoadout
@@ -1389,29 +1427,45 @@ export class CityScene extends Phaser.Scene {
   }
 
   /**
-   * Moves a remote avatar toward where the chain last put that player.
+   * Moves a remote avatar toward where that player most likely is NOW.
    *
-   * It walks at the player's own speed, so the legs and the ground agree, and
-   * only speeds up (to 2.5x) when it has fallen more than REMOTE_LAG_S of
-   * walking behind — a late sample, a burst after a stall. Tweening to each
-   * sample over a fixed duration did neither: it held every avatar a full
-   * duration behind, and uneven sample spacing turned into uneven speed.
+   * The chain position is already old when it arrives: taken at send time,
+   * then a network hop later. While the sender says it is walking, the aim
+   * point runs ahead of that position along the measured velocity, by the
+   * sample's age plus the one-way latency, capped at REMOTE_PREDICT_MAX_MS.
+   * That hides the send interval and the network instead of showing them.
    *
-   * Between samples the legs keep going for REMOTE_WALK_HOLD_MS after the
-   * position last changed: the next sample is usually already in flight, and
-   * flicking to idle for a frame or two is what read as truncated animation.
+   * If no new position arrives within REMOTE_PREDICT_STALE_MS the player has
+   * probably stopped or hit a wall (a blocked sender stops sending), so the
+   * prediction is dropped and the avatar settles back on the real position.
+   * Settling back is done without walking legs, so an overshoot at a stop
+   * reads as a small slide, not a step backwards.
+   *
+   * The avatar itself walks toward the aim point at the player's speed and
+   * only speeds up (to 2.5x) when it has fallen behind — a late sample, a
+   * burst after a stall.
    */
   private followRemote(
     avatar: AvatarSprite,
-    t: { x: number; y: number; dir: Direction; movedAt: number },
+    t: RemoteTarget,
     dt: number,
     now: number,
   ): void {
-    const REMOTE_LAG_S = 0.45;          // 1.5 send intervals of slack before catching up
-    const REMOTE_WALK_HOLD_MS = 380;    // a bit over one send interval
+    const REMOTE_LAG_S = 0.45;            // slack before the avatar speeds up to catch up
+    const REMOTE_WALK_HOLD_MS = 280;      // flagless senders: keep legs going between samples
+    const REMOTE_LATENCY_MS = 80;         // one network hop, send to arrival
+    const REMOTE_PREDICT_MAX_MS = 300;    // never predict further ahead than this
+    const REMOTE_PREDICT_STALE_MS = 450;  // no new sample for this long: assume stopped (network spikes reach ~480ms)
+
+    const age = now - t.movedAt;
+    const predicting = t.walking === true && age < REMOTE_PREDICT_STALE_MS;
+    const ahead = predicting ? Math.min(age + REMOTE_LATENCY_MS, REMOTE_PREDICT_MAX_MS) / 1000 : 0;
+    const aimX = t.x + t.vx * ahead;
+    const aimY = t.y + t.vy * ahead;
+
     const c = avatar.getContainer();
-    const dx = t.x - c.x;
-    const dy = t.y - c.y;
+    const dx = aimX - c.x;
+    const dy = aimY - c.y;
     const dist = Math.hypot(dx, dy);
     if (dist > 180) return; // a jump: updateRemotePlayer fades them across
     if (dist > 0.75) {
@@ -1419,12 +1473,17 @@ export class CityScene extends Phaser.Scene {
       const step = Math.min(dist, speed * dt);
       c.x += (dx / dist) * step;
       c.y += (dy / dist) * step;
+      // Settling onto a stop the prediction overshot: slide, don't walk back.
+      if (t.walking === false || (t.walking === true && !predicting)) {
+        avatar.idle();
+        return;
+      }
       // Face the way the avatar is really moving on this screen.
       const dir: Direction = Math.abs(dx) > Math.abs(dy)
         ? (dx < 0 ? "left" : "right")
         : (dy < 0 ? "up" : "down");
       avatar.walk(dir);
-    } else if (now - t.movedAt < REMOTE_WALK_HOLD_MS) {
+    } else if (t.walking === true || (t.walking === undefined && age < REMOTE_WALK_HOLD_MS)) {
       avatar.walk(t.dir);
     } else {
       avatar.idle();
