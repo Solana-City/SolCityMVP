@@ -1,11 +1,104 @@
 # Playtest feedback backlog
 
-Every open item from player feedback, ranked. Newest round: **playtest of
-2026-09-20**. Items that shipped are not listed; see git history.
+Every open item from player feedback, ranked. Newest rounds: **playtest of
+2026-09-20** and **mentor notes of 2026-09-21** (the Direction section).
+Items that shipped are marked DONE until the next cleanup.
 
 Priority means: **P0** hurts everyone right now, **P1** is the next real
 improvement, **P2** is wanted but can wait, **P3** is an idea we like.
 Effort is a rough size: **S** under a day, **M** a few days, **L** more.
+
+---
+
+## Direction: a daily reason to come back (mentor notes, 2026-09-21)
+
+The vision, in the user's words: a place people are driven to log into every
+day, to see what is up, get news, make friends, show their on-chain
+accomplishments, inspire others, meet builders and gather communities.
+
+The mentor's warning sits next to it: **learn to say no.** Small team, little
+time, so pick one loop and make it good before adding the next. Everything in
+this section is judged against one question: *does it give someone a reason
+to open the city tomorrow?*
+
+### Open decision: which part of the day is Solana City?
+Work, socials, study, or leisure. It decides session length and tone, so it
+comes before building any of the items below. Our read: **a short daily
+check-in (5 to 10 minutes, coffee break or evening), social first**. It fits
+what the city already does well (walking around, chatting, quick mini-games)
+and what it does not (long sessions, since the memory issue is still open).
+If the answer is "study", Solana School moves up; if it is "work", news does.
+
+### What already exists to build on
+- Daily quests: 3 fixed ones (`game/quests/QuestManager.ts`), progress saved
+  per wallet on the server, points on a city-wide board.
+- Find Someone: a city-wide hunt with a leaderboard.
+- Superteam Earn bounties through Pratik: real, curated, live content.
+- Protocol micro-tutorials (Jupiter, Steve, Pratik, Magic Man): the seed of a
+  school.
+- Chat, DMs, nicknames, player cards: the social layer.
+- Analytics already record sessions per device, so a return rate can be
+  measured once there is something to return for.
+
+Missing entirely: check-in, streaks, anything that changes day to day on its
+own, news, collectibles, events.
+
+### R1. Daily check-in with a streak — P1, S
+The cheapest "come back tomorrow". A small card on first entry of the day:
+day N of your streak, what today's reward is, what tomorrow's will be. Missing
+a day resets it. Stored per wallet on the server like the quests. Measure it
+in the dev panel: players with a streak of 2, 3, 7.
+
+### R2. Hidden items, a few per day, in random places — P1, M
+*"X items daily in random places."* Same seed for everyone each day (like the
+hunt), so players can compare and help each other in chat. Found items go to
+a collection, which is also the first **collectible**. Reuses the hunt's
+"deterministic target from a daily seed" approach. Needs a small set of item
+sprites (ask before drawing new ones).
+
+### R3. City news, curated daily — P1, M
+One screen (a newspaper stand or a board near spawn) with a few items a day:
+Solana news, ecosystem launches, the day's Superteam bounties, and what
+happened in the city (top kite score, who found the most citizens). Start
+**hand-curated from the dev panel** (a "post today's news" form) rather than
+scraped: curation is the value, and it needs no moderation pipeline.
+
+### R4. Onboarding questline by interest — P2, M
+Ask on first login what they came for (DeFi, games, collectibles, RWA, DePIN,
+building) and lead them to the matching citizens first. Improves the first
+session, not the daily return, so it follows R1 to R3. Reuses the quest
+system and the city guide.
+
+### R5. Seasonal events and a calendar — P2, M (content heavy)
+Not everything at once: a visible calendar of what is coming creates
+anticipation, and a record of who took part ("was there for X") recognises
+early players. The code is small; the real cost is producing an event every
+few weeks. Worth doing once R1 to R3 show people return.
+
+### R6. Solana School — P2, M
+Grow the protocol micro-tutorials into short lessons with a completion mark.
+Moves up if the answer to "which part of the day" is study.
+
+### R7. Rewards layer — decide per item, not in general
+- **Cosmetics:** the natural reward for streaks and collections. The on-chain
+  path is already written (`claim_free_outfit`, ships with the redeploy).
+- **In-game currency:** the quest points and score already act like one, but
+  nothing spends them. Either give points a use (a cosmetic shop) or keep
+  them as score; a second currency would be confusing.
+- **Real money:** only through things that already pay (Superteam bounties,
+  season prize pool). Paying players directly has cost, fraud and legal
+  weight; not now.
+
+### R8. Show on-chain accomplishments — P2, M
+Part of the vision (inspire others). The player card could show what a wallet
+has done in the city and on Solana. Needs a decision on what counts, and it
+must stay factual (no invented ranks or badges).
+
+### Saying no (proposed, for the user to confirm)
+Until R1 to R3 exist and the return rate is measured, these wait even though
+they are good ideas: Kite PvP, kick a ball, player-owned houses, influencer
+parties, trustless ranked settlement, companion pet. Each adds depth to a
+session; none gives a reason to come back tomorrow.
 
 ---
 
