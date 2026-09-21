@@ -190,62 +190,81 @@ export default function HairSpecialist({ onResult, onClose }: MiniGameComponentP
     setKept(true);
   }, [landed]);
 
+  // Touch devices get a bigger button and "tap" wording; keyboards get E.
+  const [touch, setTouch] = useState(false);
+  useEffect(() => { setTouch(window.matchMedia("(pointer: coarse)").matches); }, []);
+
+  /** One action for every input: drop a hair, or start over after one landed. */
+  const act = useCallback(() => {
+    if (landedRef.current) again(); else drop();
+  }, [again, drop]);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") { e.preventDefault(); onClose(); return; }
-      if (e.key === " " || e.key === "Enter") {
+      if (e.repeat) return;
+      if (e.key === "e" || e.key === "E" || e.key === " " || e.key === "Enter") {
         e.preventDefault();
         // A focused button would also fire on Space keyup and act twice.
         (document.activeElement as HTMLElement | null)?.blur();
-        if (landedRef.current) again(); else drop();
+        act();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [drop, again, onClose]);
+  }, [act, onClose]);
 
   const r = landed ? RATING[landed.rating] : null;
 
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center"
-      style={{ background: "rgba(6,10,20,0.9)", fontFamily: FONT, padding: 16 }}
+      style={{ background: "rgba(6,10,20,0.9)", fontFamily: FONT, padding: 8, touchAction: "manipulation" }}
     >
       <div
         style={{
           width: "min(560px, 100%)",
+          maxHeight: "100%",
           background: "#141a2b",
           border: `3px solid ${ACCENT}`,
           borderRadius: 12,
-          padding: 16,
+          padding: "10px 12px 12px",
           position: "relative",
           color: "#fff",
           textAlign: "center",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
         }}
       >
         <button
           onClick={onClose}
           aria-label="Close"
-          style={{ position: "absolute", top: 8, right: 10, color: "#9AA4B2", fontSize: 14, fontFamily: FONT }}
+          style={{ position: "absolute", top: 4, right: 4, color: "#9AA4B2", fontSize: 14, fontFamily: FONT, padding: 8 }}
         >
           X
         </button>
-        <div style={{ color: ACCENT, fontSize: 13, marginBottom: 6 }}>HAIR SPECIALIST</div>
-        <div style={{ color: "#9AA4B2", fontSize: 9, marginBottom: 12, minHeight: 12 }}>
-          {r ? landed!.hair.variant.name : "Tap when a hair is on your head!"}
+        <div style={{ color: ACCENT, fontSize: 12, marginBottom: 6 }}>HAIR SPECIALIST</div>
+        <div style={{ color: "#9AA4B2", fontSize: 8, marginBottom: 8, minHeight: 10 }}>
+          {r ? landed!.hair.variant.name : touch ? "Tap when a hair is on your head!" : "Press E when a hair is on your head!"}
         </div>
 
         {/* Marker over the head: where the hair has to be. */}
-        <div style={{ color: ACCENT, fontSize: 12, lineHeight: 1 }}>▼</div>
+        <div style={{ color: ACCENT, fontSize: 10, lineHeight: 1 }}>▼</div>
+        {/* Width follows the screen height too, so a landscape phone fits
+            the whole card without scrolling (stage is 208:64 = 3.25:1). */}
         <div
-          onPointerDown={(e) => { e.preventDefault(); if (landedRef.current) again(); else drop(); }}
+          onPointerDown={(e) => { e.preventDefault(); act(); }}
           style={{
             position: "relative",
+            width: "min(100%, calc((100dvh - 150px) * 3.25))",
             background: "#0b1020",
             borderRadius: 8,
             cursor: "pointer",
-            touchAction: "manipulation",
+            touchAction: "none",
             userSelect: "none",
+            WebkitUserSelect: "none",
+            WebkitTouchCallout: "none",
           }}
         >
           <canvas
@@ -260,24 +279,32 @@ export default function HairSpecialist({ onResult, onClose }: MiniGameComponentP
             </div>
           )}
           {r && (
-            <div style={{ position: "absolute", top: 10, left: 0, right: 0, fontSize: 18, color: r.color, textShadow: "0 2px 0 #000" }}>
+            <div style={{ position: "absolute", top: 8, left: 0, right: 0, fontSize: 16, color: r.color, textShadow: "0 2px 0 #000", pointerEvents: "none" }}>
               {r.label}
             </div>
           )}
         </div>
 
-        <div style={{ display: "flex", gap: 10, justifyContent: "center", marginTop: 14, minHeight: 38 }}>
+        <div style={{ display: "flex", gap: 10, justifyContent: "center", marginTop: 10, minHeight: 38 }}>
           {landed ? (
             <>
-              <button onClick={again} style={btn("#2a3350")}>AGAIN</button>
+              <button onClick={again} style={btn("#2a3350", touch)}>AGAIN</button>
               {landed.rating !== "miss" && (
-                <button onClick={keep} disabled={kept} style={btn(kept ? "#14F195" : ACCENT, kept)}>
+                <button onClick={keep} disabled={kept} style={{ ...btn(kept ? "#14F195" : ACCENT, touch), color: kept ? "#0b1020" : "#fff" }}>
                   {kept ? "SAVED!" : "KEEP IT"}
                 </button>
               )}
             </>
           ) : (
-            <button onClick={drop} disabled={!ready} style={btn(ACCENT)}>DROP!</button>
+            // Pointer-down, not click: click waits for the finger to lift,
+            // which would land the hair late.
+            <button
+              onPointerDown={(e) => { e.preventDefault(); drop(); }}
+              disabled={!ready}
+              style={{ ...btn(ACCENT, touch), touchAction: "none" }}
+            >
+              {touch ? "DROP!" : "DROP! (E)"}
+            </button>
           )}
         </div>
       </div>
@@ -285,13 +312,13 @@ export default function HairSpecialist({ onResult, onClose }: MiniGameComponentP
   );
 }
 
-function btn(bg: string, dim = false): CSSProperties {
+function btn(bg: string, big = false): CSSProperties {
   return {
     background: bg,
-    color: dim ? "#0b1020" : "#fff",
+    color: "#fff",
     fontFamily: FONT,
-    fontSize: 11,
-    padding: "10px 16px",
+    fontSize: big ? 12 : 11,
+    padding: big ? "12px 22px" : "10px 16px",
     borderRadius: 8,
     border: "2px solid rgba(0,0,0,0.4)",
     boxShadow: "0 3px 0 rgba(0,0,0,0.45)",

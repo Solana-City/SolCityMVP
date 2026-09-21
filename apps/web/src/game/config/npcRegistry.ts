@@ -1,3 +1,5 @@
+import type { Loadout } from "./paperDoll";
+
 export interface NPCAction {
   type: "tutor" | "swap" | "transfer" | "bounties" | "link" | "placeholder" | "private-payment" | "minigame" | "stock-exchange";
   label: string;
@@ -41,6 +43,11 @@ export interface NPCDefinition {
    * Points to a spritesheet (same format as the player: 64×64 frames).
    */
   spriteKey?: string;
+  /**
+   * Dress the NPC in wardrobe items instead of its own art: the layers are
+   * flattened into one sheet at spawn (see NPCSprite). Wins over spriteKey.
+   */
+  loadout?: Loadout;
   /**
    * Optional second sheet, swapped in while this NPC is walking and swapped
    * back on arrival. Same 64×64 walk-grid contract as `spriteKey`.
@@ -301,7 +308,8 @@ export const NPC_REGISTRY: NPCDefinition[] = [
       "Hairstyles fly by fast. Tap at the right moment to land one on your head!",
     ],
     action: { type: "minigame", label: "Try a new look", miniGameId: "hair-specialist" },
-    // No spriteKey yet: placeholder avatar until the specialist's own art lands.
+    // Dressed from the wardrobe: a red mohawk, no hat, White T-Shirt.
+    loadout: { skin: "Brown", eyesFace: "Happy", pants: "Grey_pants", tshirt: "White_tshirt", hair: "Magawk_red" },
   },
   // ── Expansion district NPCs ──────────────────────────────────────
   {
