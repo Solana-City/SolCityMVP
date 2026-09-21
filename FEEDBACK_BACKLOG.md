@@ -21,13 +21,13 @@ time, so pick one loop and make it good before adding the next. Everything in
 this section is judged against one question: *does it give someone a reason
 to open the city tomorrow?*
 
-### Open decision: which part of the day is Solana City?
-Work, socials, study, or leisure. It decides session length and tone, so it
-comes before building any of the items below. Our read: **a short daily
-check-in (5 to 10 minutes, coffee break or evening), social first**. It fits
-what the city already does well (walking around, chatting, quick mini-games)
-and what it does not (long sessions, since the memory issue is still open).
-If the answer is "study", Solana School moves up; if it is "work", news does.
+### Which part of the day is Solana City? (the user's call, still open)
+Leaning, as of 2026-09-21: **the social part of the day.** And news belongs
+to that slot: a player opens the city to see **what is happening on Solana**,
+the way one opens a feed, and stays for the people. So news is not a side
+panel; it is the reason to come in, and the check-in rewards the habit.
+Revisit if the answer changes: "study" would move Solana School up, "work"
+would favour builders and bounties.
 
 ### What already exists to build on
 - Daily quests: 3 fixed ones (`game/quests/QuestManager.ts`), progress saved
@@ -43,20 +43,20 @@ If the answer is "study", Solana School moves up; if it is "work", news does.
 Missing entirely: check-in, streaks, anything that changes day to day on its
 own, news, collectibles, events.
 
-### R1. Daily check-in with a streak — P1, S
+### R1. Daily check-in with a streak — P1, S (second)
 The cheapest "come back tomorrow". A small card on first entry of the day:
 day N of your streak, what today's reward is, what tomorrow's will be. Missing
 a day resets it. Stored per wallet on the server like the quests. Measure it
 in the dev panel: players with a streak of 2, 3, 7.
 
-### R2. Hidden items, a few per day, in random places — P1, M
+### R2. Hidden items, a few per day, in random places — P1, M (third)
 *"X items daily in random places."* Same seed for everyone each day (like the
 hunt), so players can compare and help each other in chat. Found items go to
 a collection, which is also the first **collectible**. Reuses the hunt's
 "deterministic target from a daily seed" approach. Needs a small set of item
 sprites (ask before drawing new ones).
 
-### R3. City news, curated daily — P1, M
+### R3. City news, curated daily — P1, M (FIRST: the reason to come in)
 One screen (a newspaper stand or a board near spawn) with a few items a day:
 Solana news, ecosystem launches, the day's Superteam bounties, and what
 happened in the city (top kite score, who found the most citizens). Start
