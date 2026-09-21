@@ -410,7 +410,10 @@ export class CityScene extends Phaser.Scene {
         // tile, every frame — ~35% of a profiled frame — where a Bob is a
         // precomputed quad, and off-screen chunks are skipped whole.
         const chunk = painted > SPARSE_MAX_TILES ? GROUND_CHUNK_TILES : 0;
-        const sparse = SparseLayer.from(this, src, chunk);
+        // Y-sorted layers (not the always-on-top foreground) sort each of
+        // their objects by its own base, not by the layer's southernmost one.
+        const ySorted = this.overheadLayers.includes(src) && src.depth !== FOREGROUND_DEPTH;
+        const sparse = SparseLayer.from(this, src, chunk, ySorted);
         if (!sparse) continue; // not reproducible exactly — stays a tilemap
         allLayers[i] = sparse;
         const at = this.overheadLayers.indexOf(src);
@@ -1149,6 +1152,9 @@ export class CityScene extends Phaser.Scene {
       }
 
       for (const layer of this.overheadLayers) {
+        // Converted layers fade per object: walking behind one palm used to
+        // fade every palm on its layer, including ones across the screen.
+        if (layer instanceof SparseLayer) { layer.updateFade(px, py); continue; }
         // Layer is "overhead" only when it draws above the player's depth.
         const isAbove = layer.depth > py;
         const covers = isAbove && (

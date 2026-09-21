@@ -14,6 +14,13 @@ import * as Phaser from "phaser";
  * the tileset texture. So each object still fades on its own, exactly as
  * before, for a few hundred bytes instead of a few megabytes.
  *
+ * One layer is often MORE than one object: a Tiled layer named
+ * "VegetationPalmCenter" holds all seven palms around the plaza. So a layer is
+ * split into objects (clusters of touching tiles), and each object gets its
+ * own depth and its own fade. Otherwise walking behind one palm faded every
+ * palm on the layer, including ones across the screen, and a northern palm
+ * was depth-sorted by the base of the southernmost one.
+ *
  * Collision is NOT handled here. By the time a layer is converted its solid
  * tiles already live in the merged physics layer (see mergeLayers.ts); a
  * layer whose collision could not be merged is never converted.
@@ -28,6 +35,22 @@ export interface PaintedTile {
   flipX: boolean;
   flipY: boolean;
   rotation: number;
+  /** Solid in the source layer: marks a trunk or a wall base for y-sorting. */
+  collides?: boolean;
+}
+
+/** Tiles at most this far apart (in cells) belong to the same object. */
+const OBJECT_GAP = 2;
+/** Alpha of an object while it hides the player. */
+const FADED_ALPHA = 0.25;
+
+type Part = { blitter: Phaser.GameObjects.Blitter; bounds: Phaser.Geom.Rectangle; on: boolean };
+
+/** One object on the layer: its own blitters, depth and fade. */
+interface CityObject {
+  parts: Part[];
+  depth: number;
+  alpha: number;
 }
 
 /**
@@ -60,11 +83,15 @@ export class SparseLayer implements CityLayer {
   /** World-space rectangle covering every tile, for culling. */
   readonly bounds: Phaser.Geom.Rectangle;
 
-  /** One Blitter per (texture, chunk), each with the world rect it covers. */
-  private readonly parts: Array<{ blitter: Phaser.GameObjects.Blitter; bounds: Phaser.Geom.Rectangle; on: boolean }> = [];
+  /** One Blitter per (object or chunk, texture), each with the world rect it covers. */
+  private readonly parts: Part[] = [];
+  /** The separate objects on this layer (one entry for a chunked ground layer). */
+  private readonly objects: CityObject[] = [];
   private readonly tiles: PaintedTile[];
   /** row * gridW + col → tile, for the fade loop's per-frame lookups. */
   private readonly cells = new Map<number, PaintedTile>();
+  /** row * gridW + col → index into `objects`. */
+  private readonly cellObject = new Map<number, number>();
   private readonly offX: number;
   private readonly offY: number;
   private readonly tileW: number;
@@ -78,6 +105,7 @@ export class SparseLayer implements CityLayer {
     src: Phaser.Tilemaps.TilemapLayer,
     tiles: PaintedTile[],
     chunkTiles: number,
+    ySorted: boolean,
   ) {
     this.layer = { name: src.layer.name };
     this.tiles = tiles;
@@ -89,48 +117,60 @@ export class SparseLayer implements CityLayer {
     this._alpha = src.alpha;
     this._depth = src.depth;
 
-    const byPart = new Map<string, { blitter: Phaser.GameObjects.Blitter; bounds: Phaser.Geom.Rectangle; on: boolean }>();
+    for (const t of tiles) this.cells.set(t.y * this.gridW + t.x, t);
+
+    // Chunked ground is one group; everything else is split into objects.
+    const groups = chunkTiles > 0 ? [tiles] : this.splitObjects(tiles);
+
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    groups.forEach((group, objectIndex) => {
+      // A y-sorted object sorts by ITS OWN base, not the layer's.
+      const depth = ySorted && chunkTiles === 0 ? this.baseDepth(group) : this._depth;
+      const object: CityObject = { parts: [], depth, alpha: this._alpha };
+      const byPart = new Map<string, Part>();
 
-    for (const t of tiles) {
-      const ts = t.tileset!;
-      const tex = ts.image!;
-      // One frame per tile id, added to the tileset texture itself and shared
-      // by every object that uses the tile.
-      const frameName = `__tile${t.index}`;
-      if (!tex.has(frameName)) {
-        const c = ts.getTileTextureCoordinates(t.index) as { x: number; y: number };
-        tex.add(frameName, 0, c.x, c.y, ts.tileWidth, ts.tileHeight);
+      for (const t of group) {
+        const ts = t.tileset!;
+        const tex = ts.image!;
+        // One frame per tile id, added to the tileset texture itself and shared
+        // by every object that uses the tile.
+        const frameName = `__tile${t.index}`;
+        if (!tex.has(frameName)) {
+          const c = ts.getTileTextureCoordinates(t.index) as { x: number; y: number };
+          tex.add(frameName, 0, c.x, c.y, ts.tileWidth, ts.tileHeight);
+        }
+
+        // Same placement as TilemapLayerWebGLRenderer: grid cell, minus the
+        // tileset's draw offset (Phaser subtracts it), top-left anchored.
+        const x = this.offX + t.x * this.tileW - ts.tileOffset.x;
+        const y = this.offY + t.y * this.tileH - ts.tileOffset.y;
+
+        const partKey = chunkTiles > 0
+          ? `${tex.key}|${Math.floor(t.x / chunkTiles)},${Math.floor(t.y / chunkTiles)}`
+          : tex.key;
+        let part = byPart.get(partKey);
+        if (!part) {
+          const blitter = scene.add.blitter(0, 0, tex.key);
+          blitter.setDepth(depth);
+          blitter.setAlpha(this._alpha);
+          part = { blitter, bounds: new Phaser.Geom.Rectangle(x, y, 0, 0), on: true };
+          byPart.set(partKey, part);
+          object.parts.push(part);
+          this.parts.push(part);
+        }
+        const bob = part.blitter.create(x, y, frameName);
+        bob.flipX = t.flipX;
+        bob.flipY = t.flipY;
+        Phaser.Geom.Rectangle.MergeRect(part.bounds, new Phaser.Geom.Rectangle(x, y, ts.tileWidth, ts.tileHeight));
+
+        this.cellObject.set(t.y * this.gridW + t.x, objectIndex);
+        minX = Math.min(minX, x);
+        minY = Math.min(minY, y);
+        maxX = Math.max(maxX, x + ts.tileWidth);
+        maxY = Math.max(maxY, y + ts.tileHeight);
       }
-
-      // Same placement as TilemapLayerWebGLRenderer: grid cell, minus the
-      // tileset's draw offset (Phaser subtracts it), top-left anchored.
-      const x = this.offX + t.x * this.tileW - ts.tileOffset.x;
-      const y = this.offY + t.y * this.tileH - ts.tileOffset.y;
-
-      const partKey = chunkTiles > 0
-        ? `${tex.key}|${Math.floor(t.x / chunkTiles)},${Math.floor(t.y / chunkTiles)}`
-        : tex.key;
-      let part = byPart.get(partKey);
-      if (!part) {
-        const blitter = scene.add.blitter(0, 0, tex.key);
-        blitter.setDepth(this._depth);
-        blitter.setAlpha(this._alpha);
-        part = { blitter, bounds: new Phaser.Geom.Rectangle(x, y, 0, 0), on: true };
-        byPart.set(partKey, part);
-        this.parts.push(part);
-      }
-      const bob = part.blitter.create(x, y, frameName);
-      bob.flipX = t.flipX;
-      bob.flipY = t.flipY;
-      Phaser.Geom.Rectangle.MergeRect(part.bounds, new Phaser.Geom.Rectangle(x, y, ts.tileWidth, ts.tileHeight));
-
-      this.cells.set(t.y * this.gridW + t.x, t);
-      minX = Math.min(minX, x);
-      minY = Math.min(minY, y);
-      maxX = Math.max(maxX, x + ts.tileWidth);
-      maxY = Math.max(maxY, y + ts.tileHeight);
-    }
+      this.objects.push(object);
+    });
 
     this.bounds = new Phaser.Geom.Rectangle(minX, minY, maxX - minX, maxY - minY);
   }
@@ -148,6 +188,8 @@ export class SparseLayer implements CityLayer {
     scene: Phaser.Scene,
     src: Phaser.Tilemaps.TilemapLayer,
     chunkTiles = 0,
+    /** Depth-sorted against the player: each object then sorts by its own base. */
+    ySorted = false,
   ): SparseLayer | null {
     const map = src.tilemap;
     const tiles: PaintedTile[] = [];
@@ -167,7 +209,7 @@ export class SparseLayer implements CityLayer {
       // with it the whole grid — alive.
       tiles.push({
         index: t.index, x: t.x, y: t.y, tileset: ts,
-        flipX: t.flipX, flipY: t.flipY, rotation: 0,
+        flipX: t.flipX, flipY: t.flipY, rotation: 0, collides: t.collides,
       });
     });
     if (!ok || tiles.length === 0) return null;
@@ -179,22 +221,111 @@ export class SparseLayer implements CityLayer {
     // overlap, or it could come out stacked differently. Those stay tilemaps.
     if (oversized && (multiTexture || chunkTiles > 0)) return null;
 
-    const sparse = new SparseLayer(scene, src, tiles, chunkTiles);
+    const sparse = new SparseLayer(scene, src, tiles, chunkTiles, ySorted);
     src.destroy(true);
     return sparse;
   }
 
+  /** The layer's lowest object depth (what the static bake compares against). */
   get depth(): number {
-    return this._depth;
+    return this.objects.reduce((d, o) => Math.min(d, o.depth), Infinity);
   }
 
+  /** The most faded object's alpha: exact for a one-object layer. */
   get alpha(): number {
-    return this._alpha;
+    return this.objects.reduce((a, o) => Math.min(a, o.alpha), 1);
   }
 
   set alpha(value: number) {
     this._alpha = value;
-    for (const p of this.parts) p.blitter.setAlpha(value);
+    for (const o of this.objects) this.setObjectAlpha(o, value);
+  }
+
+  /**
+   * Fades only the object that actually hides the player: it has to draw
+   * above them (its own depth past their feet) AND cover their body. Sampled
+   * at the torso and head, since the player is drawn upward from the feet.
+   * Every other object on the layer eases back to fully opaque.
+   */
+  updateFade(px: number, feetY: number): void {
+    const hiding = new Set<number>();
+    for (const y of [feetY - this.tileH, feetY - this.tileH * 1.5]) {
+      const idx = this.objectAt(px, y);
+      if (idx !== undefined && this.objects[idx].depth > feetY) hiding.add(idx);
+    }
+    this.objects.forEach((o, i) => {
+      const target = hiding.has(i) ? FADED_ALPHA : 1;
+      if (Math.abs(o.alpha - target) > 0.004) {
+        this.setObjectAlpha(o, Phaser.Math.Linear(o.alpha, target, 0.12));
+      }
+    });
+  }
+
+  private objectAt(worldX: number, worldY: number): number | undefined {
+    const col = Math.floor((worldX - this.offX) / this.tileW);
+    const row = Math.floor((worldY - this.offY) / this.tileH);
+    if (col < 0 || row < 0 || col >= this.gridW) return undefined;
+    return this.cellObject.get(row * this.gridW + col);
+  }
+
+  private setObjectAlpha(o: CityObject, value: number): void {
+    o.alpha = value;
+    for (const p of o.parts) p.blitter.setAlpha(value);
+  }
+
+  /** Groups tiles that touch (within OBJECT_GAP cells) into separate objects. */
+  private splitObjects(tiles: PaintedTile[]): PaintedTile[][] {
+    const key = (x: number, y: number) => y * this.gridW + x;
+    const left = new Map<number, PaintedTile>();
+    for (const t of tiles) left.set(key(t.x, t.y), t);
+    const groups: PaintedTile[][] = [];
+    for (const start of tiles) {
+      if (!left.has(key(start.x, start.y))) continue;
+      left.delete(key(start.x, start.y));
+      const group = [start];
+      const stack = [start];
+      while (stack.length) {
+        const t = stack.pop()!;
+        for (let dy = -OBJECT_GAP; dy <= OBJECT_GAP; dy++) {
+          for (let dx = -OBJECT_GAP; dx <= OBJECT_GAP; dx++) {
+            const k = key(t.x + dx, t.y + dy);
+            const n = left.get(k);
+            if (!n) continue;
+            left.delete(k);
+            group.push(n);
+            stack.push(n);
+          }
+        }
+      }
+      // Keep the source's row-by-row paint order inside the object.
+      group.sort((a, b) => a.y - b.y || a.x - b.x);
+      groups.push(group);
+    }
+    return groups;
+  }
+
+  /**
+   * Where an object meets the ground, as a depth. Same rule the scene uses for
+   * a whole layer: the southernmost well-populated row of its solid tiles
+   * (a trunk, a wall base), ignoring a stray tile or two; with no solid
+   * tiles, the bottom of whatever it paints.
+   */
+  private baseDepth(group: PaintedTile[]): number {
+    const solid = group.filter((t) => t.collides);
+    let baseRow: number;
+    if (solid.length > 0) {
+      const perRow = new Map<number, number>();
+      for (const t of solid) perRow.set(t.y, (perRow.get(t.y) ?? 0) + 1);
+      const busiest = Math.max(...perRow.values());
+      baseRow = -1;
+      for (const [row, count] of perRow) {
+        if (count * 4 < busiest) continue;
+        if (row > baseRow) baseRow = row;
+      }
+    } else {
+      baseRow = Math.max(...group.map((t) => t.y));
+    }
+    return this.offY + baseRow * this.tileH + this.tileH;
   }
 
   /** Same contract as TilemapLayer: something when a tile is painted there, null otherwise. */
