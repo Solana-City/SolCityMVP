@@ -295,7 +295,11 @@ free-outfit wiring stays behind `NEXT_PUBLIC_BOOSTER_ONCHAIN` until verified.
 4. **Booster / free outfits** (behind the flag): `open_booster` → poll
    `UnlockState.pending` until false / read `BoosterOpened` → reveal.
    `track("purchase", "outfit-box", { value: 25_000_000, wallet })` on success.
-   Quest rewards call `claim_free_outfit(index)`.
+   Quest rewards call `claim_free_outfit(index)`. Needs an APPEND-ONLY
+   quest-item index table (< 16 slots): today `unlockVia: "quest"` covers
+   STB_cap, STB_shirt, Brazilian_shirt, Jetpack and Cap_Sol (7-day streak;
+   moved out of the booster pool on 2026-09-21, before the pool indices were
+   ever deployed, so nothing shifts).
 5. **Verify layouts** before pushing: `npx tsc --noEmit` + `simulateTransaction`
    of every new ix against the deployed program.
 

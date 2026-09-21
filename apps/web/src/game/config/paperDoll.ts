@@ -138,7 +138,7 @@ export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
     { id: "STB_shirt", name: "Superteam Brasil Shirt", textureKey: "pd-tshirt-STB_shirt",
       file: "tshirt/STB_shirt.png", unlockVia: "quest", unlockHint: "Talk to Kuka" },
     { id: "Brazilian_shirt", name: "Brazil Shirt", textureKey: "pd-tshirt-Brazilian_shirt",
-      file: "tshirt/Brazilian_shirt.png", unlockVia: "quest", unlockHint: "Talk to every citizen in the city" },
+      file: "tshirt/Brazilian_shirt.png", unlockVia: "quest", unlockHint: "Meet Kuka, Kite Pro and the Caramel Dog" },
   ],
   accessory: [
     { id: "Golden_ring", name: "Golden Ring", textureKey: "pd-accessory-Golden_ring", file: "accessory/Golden_ring.png" },
@@ -158,7 +158,10 @@ export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
     { id: "Magawk_red",  name: "Magawk Red",  textureKey: "pd-hair-Magawk_red",  file: "hair/Magawk_red.png" },
   ],
   hat: [
-    { id: "Cap_Sol",    name: "Cap Sol",    textureKey: "pd-hat-Cap_Sol",    file: "hat/Cap_Sol.png" },
+    // Earned, not boxed: the reward for a 7-day check-in streak. Moved out of
+    // the booster pool BEFORE the pool's on-chain indices were first deployed.
+    { id: "Cap_Sol",    name: "Cap Sol",    textureKey: "pd-hat-Cap_Sol",    file: "hat/Cap_Sol.png",
+      unlockVia: "quest", unlockHint: "Come back 7 days in a row" },
     { id: "Cap_blue",   name: "Cap Blue",   textureKey: "pd-hat-Cap_blue",   file: "hat/Cap_blue.png" },
     { id: "Cap_kid",    name: "Cap Kid",    textureKey: "pd-hat-Cap_kid",    file: "hat/Cap_kid.png" },
     { id: "Crown",      name: "Crown",      textureKey: "pd-hat-Crown",      file: "hat/Crown.png" },
