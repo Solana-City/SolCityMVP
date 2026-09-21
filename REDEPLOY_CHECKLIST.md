@@ -12,7 +12,7 @@ here. One deploy ships:
 
 | # | Item | Status |
 |---|------|--------|
-| 2 | `record_swap_session` / `record_transfer_session` / `record_bounty_session` | in lib.rs |
+| 2 | `record_swap_session` / `record_transfer_session` (bounty variant dropped 2026-09-21: nothing records bounties) | in lib.rs |
 | 5 | Outfit boxes: `open_booster` + `callback_open_booster` (MagicBlock VRF) | in lib.rs |
 | 5 | `claim_free_outfit` (quest / NPC reward items, free, once per wallet) | in lib.rs |
 | 5 | Wardrobe enforcement: `player_v3` + `unlocked` snapshot + `sync_unlocks` + enforcing `update_look_session` | in lib.rs |
@@ -152,7 +152,7 @@ pub struct RecordHuntFind<'info> {
 > by that arg, and trust the session key). Decide at implementation time; the base
 > HuntScore is the key idea.
 
-### Item 2 — Session variants of the NPC interaction records (APPLIED in lib.rs)
+### Item 2 — Session variants of the NPC interaction records (APPLIED in lib.rs, except the bounty one)
 
 ```rust
 pub fn record_swap_session(ctx: Context<UpdatePlayerSession>) -> Result<()> {
@@ -276,7 +276,7 @@ free-outfit wiring stays behind `NEXT_PUBLIC_BOOSTER_ONCHAIN` until verified.
    `unlocked: Uint8Array(32)` at the END of the `PlayerState` decoder (after
    `message_at`).
 2. **`game/solana/instructions.ts`**: `DISC` + builders for
-   `recordSwapSession`, `recordTransferSession`, `recordBountySession`,
+   `recordSwapSession`, `recordTransferSession`,
    `syncUnlocks`, `claimFreeOutfit(index: u16)`, `openBooster(poolCount: u16,
    clientSeed: [u8;32])`, taking the discriminators from the new IDL.
    `open_booster` accounts, in order: `payer` (w, signer), `unlock_state` (w),
@@ -285,7 +285,7 @@ free-outfit wiring stays behind `NEXT_PUBLIC_BOOSTER_ONCHAIN` until verified.
    (`Vrf1RNUjXmQGjmQrQLvJHs9SNkvDJEsRVFPkfSQUwGz`), `slot_hashes` (sysvar),
    `system_program`.
 3. **`multiplayer/OnChainMultiplayer.ts`**
-   - `recordAction("swap"|"transfer"|"bounty")`: wallet popup on base →
+   - `recordAction("swap"|"transfer")`: wallet popup on base →
      `record_*_session` on the ER, mirroring `recordScoreSession`.
    - Before `delegate`: if the wallet's `UnlockState` exists, send
      `sync_unlocks` (session-signed, base). Skip it when the account is
@@ -305,7 +305,7 @@ free-outfit wiring stays behind `NEXT_PUBLIC_BOOSTER_ONCHAIN` until verified.
 
 - [ ] Program `last_deploy_slot` advanced; upgrade authority still the game wallet.
 - [ ] Fresh connect creates a `player_v3` PDA; delegation + movement work on 2 devices.
-- [ ] Simulate the three `record_*_session` ixs on the ER → succeed; NPC actions
+- [ ] Simulate the two `record_*_session` ixs on the ER → succeed; NPC actions
       show no second wallet popup.
 - [ ] Wearing a free item broadcasts; wearing a locked item is rejected
       (`ItemNotUnlocked`), an unlocked one (after `sync_unlocks`) is accepted.

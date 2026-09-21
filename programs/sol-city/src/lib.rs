@@ -220,7 +220,8 @@ pub mod sol_city {
         Ok(())
     }
 
-    // Session-key variants of the three record_* above. Once the player PDA is
+    // Session-key variants of record_swap / record_transfer. (No bounty
+    // variant: nothing in the game records Superteam bounties.) Once the player PDA is
     // delegated, the wallet-signed versions can't be routed to the rollup
     // seamlessly; these run on the ER with no wallet popup. Same points.
 
@@ -236,14 +237,6 @@ pub mod sol_city {
         let player = &mut ctx.accounts.player;
         player.transfer_count = player.transfer_count.saturating_add(1);
         player.score = player.score.saturating_add(25);
-        player.last_active = Clock::get()?.unix_timestamp;
-        Ok(())
-    }
-
-    pub fn record_bounty_session(ctx: Context<UpdatePlayerSession>) -> Result<()> {
-        let player = &mut ctx.accounts.player;
-        player.bounty_count = player.bounty_count.saturating_add(1);
-        player.score = player.score.saturating_add(30);
         player.last_active = Clock::get()?.unix_timestamp;
         Ok(())
     }
