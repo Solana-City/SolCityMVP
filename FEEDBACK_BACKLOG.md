@@ -117,9 +117,33 @@ session; none gives a reason to come back tomorrow.
 
 ## P0 — Broken or hurting every session
 
-### 1. Memory and lag (Chrome at 1.1GB+) — TRACKED ELSEWHERE
-Being worked on in a separate chat (2026-09-20). Left here as a pointer only,
-so nobody picks it up twice.
+### 1. Memory, lag and multiplayer delay — DONE 2026-09-22
+Confirmed by the user on desktop ("the experience is very good, the
+optimisation caused no harm"). Tab memory went from 1.1GB+ (1.6GB spike on
+load) to ~400MB steady; the map parse went from 1.8M Tile objects to ~96k;
+render work from 46% of the frame to a small share. What did it, in order:
+merged collision layer, map layers cropped before parsing (`cropMap.ts`),
+sparse layers as Blitters (`sparseLayer.ts`), static ground baked into chunk
+textures (`groundBake.ts`), off-camera characters culled, Stocklana ticker
+not repainted off camera. `?tiles=legacy` turns the map work off to compare.
+
+Multiplayer delay went from ~2s to a small residual: rollup websocket push
+(poll as fallback), 200ms sends, and remote avatars that walk to a predicted
+position (see memory note on the direction byte). Each player always sees
+themselves win a side-by-side race; that is inherent.
+
+Left for later, none urgent:
+- pause animations of off-camera pedestrians (~2-4% CPU)
+- find the React HUD component re-rendering every tick (~5% CPU)
+- atlas only the used tiles of the 1800px tilesets (-80 to -120MB)
+- character canvas textures kept twice, pedestrian shadows rebuilt every 90s
+- chroma-key the paper-doll sheets at build time (faster load on phones)
+- send a position as soon as a phone returns from background
+- the page sometimes reloads by itself: `[reload] the page reloaded itself:
+  <reason>` in the console names the trigger; waiting for a sighting.
+- a playtest in Brazil should use the US rollup validator (the default one
+  is in Asia); needs a test of whether a validator-less delegation follows
+  the endpoint, else a program change.
 
 ### 2. Stocks cannot be sold on devnet — DONE 2026-09-20
 The devnet venue is a mock: a buy pays SOL into a treasury and mints the
