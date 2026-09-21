@@ -94,7 +94,7 @@ Part of the vision (inspire others). The player card could show what a wallet
 has done in the city and on Solana. Needs a decision on what counts, and it
 must stay factual (no invented ranks or badges).
 
-### Saying no (proposed, for the user to confirm)
+### Saying no (a mental note for prioritising, not a cut list)
 Until R1 to R3 exist and the return rate is measured, these wait even though
 they are good ideas: Kite PvP, kick a ball, player-owned houses, influencer
 parties, trustless ranked settlement, companion pet. Each adds depth to a
