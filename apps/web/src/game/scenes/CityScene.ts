@@ -1457,11 +1457,13 @@ export class CityScene extends Phaser.Scene {
     topRow: number,
     tileSize: number
   ): { wx: number; wy: number } {
-    // A tile position is blocked if ANY layer has a collidable tile there.
-    // Uses Phaser's tile.collides flag set by setCollisionFromCollisionGroup().
+    // A tile position is blocked if the merged collision volume has a
+    // collidable tile there. Read in WORLD space: layers are cropped to what
+    // they paint and carry their own offsets, so a layer-local (col, row) no
+    // longer names the same spot on the map.
     const isTileBlocked = (c: number, r: number): boolean =>
-      map.layers.some(layerData => {
-        const tile = map.getTileAt(c, r, false, layerData.name);
+      this.collisionLayers.some(layer => {
+        const tile = layer.getTileAtWorldXY(c * tileSize + tileSize / 2, r * tileSize + tileSize / 2);
         return tile !== null && tile.collides;
       });
 

@@ -1,5 +1,6 @@
 import * as Phaser from "phaser";
 import { SimpleSprite } from "../entities/SimpleSprite";
+import { cropTileLayers } from "../world/cropMap";
 import { AvatarSprite } from "../entities/AvatarSprite";
 import { NPC_REGISTRY } from "../config/npcRegistry";
 import { getAllLayerVariants, EXPRESSIONS, SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT } from "../config/paperDoll";
@@ -111,6 +112,18 @@ export class BootScene extends Phaser.Scene {
 
   create(): void {
     const isMobile = window.matchMedia("(pointer: coarse)").matches;
+
+    // Crop every tile layer to what it paints BEFORE CityScene makes the
+    // tilemap: Phaser allocates a Tile per cell at parse time, empty or not,
+    // which was the memory spike on opening the city. See world/cropMap.ts.
+    // `?tiles=legacy` keeps the full-size layers, for comparison.
+    if (new URLSearchParams(window.location.search).get("tiles") !== "legacy") {
+      const cached = this.cache.tilemap.get("city-map") as { data?: Parameters<typeof cropTileLayers>[0] } | undefined;
+      if (cached?.data) {
+        const r = cropTileLayers(cached.data);
+        console.log(`[BootScene] map cells ${r.cellsBefore.toLocaleString()} → ${r.cellsAfter.toLocaleString()} after cropping layers`);
+      }
+    }
 
     // Static animated NPCs (idle-loop sheets, e.g. Kite Pro) ship with the
     // same pink chroma-key background as the paperdoll sheets — key each
