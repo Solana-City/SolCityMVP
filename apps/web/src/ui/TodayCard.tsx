@@ -4,9 +4,9 @@
  * Today in Solana City: the card that opens on the first visit of each day.
  *
  * Everything on it updates by itself, so it never waits on someone to post:
- * your check-in streak, today's quests, who leads the city, Superteam
- * bounties closing soon, and what is coming up (hackathon deadlines plus the
- * city's own events from game/daily/calendar.ts).
+ * your check-in streak, today's quests, who leads the city, and a calendar
+ * of Superteam bounty and hackathon deadlines plus the city's own events
+ * (game/daily/calendar.ts).
  *
  * The component is always mounted: it also does the daily check-in, signed
  * with the session key, whether or not the card is shown.
@@ -17,11 +17,10 @@ import { useWallet } from "@solana/wallet-adapter-react";
 import type { OnChainMultiplayer } from "@/game/multiplayer/OnChainMultiplayer";
 import { checkinMessage } from "@/lib/checkinMessage";
 import { fetchBoard, type BoardRow } from "@/game/leaderboards/boards";
-import { fetchEarnListings, type EarnListing } from "@/game/solana/superteamEarn";
 import { DAILY_QUESTS, getQuestProgress, onQuestsChanged } from "@/game/quests/QuestManager";
-import { CITY_EVENTS } from "@/game/daily/calendar";
 import { OPEN_TODAY_EVENT } from "@/game/daily/todayEvents";
 import { Citizen, Img, guideSeen } from "./CityGuide";
+import CityCalendar from "./CityCalendar";
 
 export { OPEN_TODAY_EVENT };
 
@@ -38,13 +37,6 @@ interface StreakView {
   recent: string[];
 }
 
-interface Upcoming {
-  date: string;
-  title: string;
-  url?: string;
-  source: "city" | "hackathon";
-}
-
 function utcDay(d: Date = new Date()): string {
   return d.toISOString().slice(0, 10);
 }
@@ -55,10 +47,6 @@ function seenToday(): boolean {
 
 function markSeenToday(): void {
   try { localStorage.setItem(SEEN_KEY, utcDay()); } catch { /* storage blocked */ }
-}
-
-function shortDate(iso: string): string {
-  return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" }).toUpperCase();
 }
 
 function short(wallet: string): string {
@@ -82,8 +70,6 @@ export default function TodayCard({ gameRef }: { gameRef: Phaser.Game | null }) 
   const [open, setOpen] = useState(false);
   const [streak, setStreak] = useState<StreakView | null>(null);
   const [leaders, setLeaders] = useState<{ kite?: BoardRow; hunt?: BoardRow; streak?: BoardRow }>({});
-  const [bounties, setBounties] = useState<EarnListing[]>([]);
-  const [upcoming, setUpcoming] = useState<Upcoming[]>([]);
   const [, setQuestTick] = useState(0);
 
   // ── Daily check-in: signed with the session key, retried while the key is
@@ -159,18 +145,6 @@ export default function TodayCard({ gameRef }: { gameRef: Phaser.Game | null }) 
     ]).then(([kite, hunt, st]) => {
       if (!cancelled) setLeaders({ kite: kite.rows[0], hunt: hunt.rows[0], streak: st.rows[0] });
     }).catch(() => undefined);
-    fetchEarnListings("bounty", 2).then((b) => { if (!cancelled) setBounties(b.slice(0, 2)); });
-    fetchEarnListings("hackathon", 3).then((h) => {
-      if (cancelled) return;
-      const today = utcDay();
-      const events: Upcoming[] = [
-        ...CITY_EVENTS.filter((e) => e.date >= today).map((e) => ({ ...e, source: "city" as const })),
-        ...h.filter((x) => x.deadline).map((x) => ({
-          date: x.deadline!.slice(0, 10), title: x.title, url: x.url, source: "hackathon" as const,
-        })),
-      ].sort((a, b) => a.date.localeCompare(b.date));
-      setUpcoming(events.slice(0, 3));
-    });
     return () => { cancelled = true; };
   }, [open]);
 
@@ -288,59 +262,11 @@ export default function TodayCard({ gameRef }: { gameRef: Phaser.Game | null }) 
           <Leader img={`${UI}/ico_achievements.png`} label="STREAK" row={leaders.streak} me={wallet} unit="d" />
         </div>
 
-        {/* Bounties */}
-        {bounties.length > 0 && (
-          <>
-            <Title sheet="Pratik.png">BOUNTIES CLOSING SOON</Title>
-            <Block>
-              {bounties.map((b) => (
-                <a
-                  key={b.slug}
-                  href={b.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{ display: "block", textDecoration: "none", margin: "4px 0" }}
-                >
-                  <div style={{ fontSize: 7, color: "#e2e8f0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {b.title}
-                  </div>
-                  <div style={{ fontSize: 6, color: "#64748b", marginTop: 3 }}>
-                    {b.sponsorName}
-                    {b.rewardAmount ? <span style={{ color: GOLD }}> · {b.rewardAmount.toLocaleString()} {b.token}</span> : null}
-                    {b.deadline ? ` · ${shortDate(b.deadline)}` : ""}
-                  </div>
-                </a>
-              ))}
-            </Block>
-          </>
-        )}
-
-        {/* Coming up */}
-        {upcoming.length > 0 && (
-          <>
-            <Title icon={`${UI}/attention_purple.png`}>COMING UP</Title>
-            <Block>
-              {upcoming.map((e) => {
-                const row = (
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "4px 0" }}>
-                    <span style={{
-                      fontSize: 6, color: "#0a0a14", background: e.source === "city" ? GREEN : "#c084fc",
-                      borderRadius: 3, padding: "3px 5px", flexShrink: 0,
-                    }}>
-                      {shortDate(`${e.date}T00:00:00Z`)}
-                    </span>
-                    <span style={{ fontSize: 7, color: "#cbd5e1", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {e.title}
-                    </span>
-                  </div>
-                );
-                return e.url
-                  ? <a key={`${e.date}-${e.title}`} href={e.url} target="_blank" rel="noopener noreferrer" style={{ textDecoration: "none" }}>{row}</a>
-                  : <div key={`${e.date}-${e.title}`}>{row}</div>;
-              })}
-            </Block>
-          </>
-        )}
+        {/* Calendar: deadlines and city events, filled by itself */}
+        <Title icon={`${UI}/attention_purple.png`}>CALENDAR</Title>
+        <Block>
+          <CityCalendar />
+        </Block>
 
         <button
           onClick={close}
