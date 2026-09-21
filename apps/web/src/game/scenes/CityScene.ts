@@ -25,7 +25,7 @@ import { soundManager } from "../audio/SoundManager";
 import { publishMinimap } from "../minimap/MinimapHost";
 import { createStockExchange } from "../world/StockExchange";
 import { buildPhysicsLayer, mergeGroundRun } from "../world/mergeLayers";
-import { SparseLayer, SPARSE_MAX_TILES, type CityLayer } from "../world/sparseLayer";
+import { SparseLayer, SPARSE_MAX_TILES, GROUND_CHUNK_TILES, type CityLayer } from "../world/sparseLayer";
 import { LANDMARK_LAYERS } from "../minimap/categories";
 import { cachedName, onNames, requestNames, NAME_CHANGED_EVENT } from "../names/nameService";
 import { track } from "../telemetry/track";
@@ -379,8 +379,13 @@ export class CityScene extends Phaser.Scene {
         if (keepAsTilemap.has(src) || !src.visible) continue;
         let painted = 0;
         src.forEachTile((t: Phaser.Tilemaps.Tile) => { if (t.index > 0) painted++; });
-        if (painted === 0 || painted > SPARSE_MAX_TILES) continue;
-        const sparse = SparseLayer.from(this, src);
+        if (painted === 0) continue;
+        // Dense layers (the ground) go in chunks: the tilemap renderer
+        // recomputes texture coordinates and a transform for every visible
+        // tile, every frame — ~35% of a profiled frame — where a Bob is a
+        // precomputed quad, and off-screen chunks are skipped whole.
+        const chunk = painted > SPARSE_MAX_TILES ? GROUND_CHUNK_TILES : 0;
+        const sparse = SparseLayer.from(this, src, chunk);
         if (!sparse) continue; // not reproducible exactly — stays a tilemap
         allLayers[i] = sparse;
         const at = this.overheadLayers.indexOf(src);

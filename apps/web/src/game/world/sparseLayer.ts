@@ -46,9 +46,13 @@ export interface CityLayer {
   tileToWorldY(tileY: number): number | null;
 }
 
-/** Layers painting more tiles than this stay tilemaps: they are ground, and a
- *  TilemapLayer only draws the cells on screen, while a Blitter draws them all. */
+/** Layers painting up to this many tiles become ONE Blitter (one object,
+ *  culled as a whole). Denser layers — the ground — are split into chunks. */
 export const SPARSE_MAX_TILES = 1000;
+
+/** Chunk edge, in tiles, for dense layers: each chunk is its own Blitter and
+ *  is culled on its own, so only the chunks near the camera are drawn. */
+export const GROUND_CHUNK_TILES = 16;
 
 export class SparseLayer implements CityLayer {
   readonly layer: { name: string };
@@ -56,7 +60,8 @@ export class SparseLayer implements CityLayer {
   /** World-space rectangle covering every tile, for culling. */
   readonly bounds: Phaser.Geom.Rectangle;
 
-  private readonly blitters: Phaser.GameObjects.Blitter[] = [];
+  /** One Blitter per (texture, chunk), each with the world rect it covers. */
+  private readonly parts: Array<{ blitter: Phaser.GameObjects.Blitter; bounds: Phaser.Geom.Rectangle; on: boolean }> = [];
   private readonly tiles: PaintedTile[];
   /** row * gridW + col → tile, for the fade loop's per-frame lookups. */
   private readonly cells = new Map<number, PaintedTile>();
@@ -67,12 +72,12 @@ export class SparseLayer implements CityLayer {
   private readonly gridW: number;
   private _alpha: number;
   private _depth: number;
-  private onScreen = true;
 
   private constructor(
     scene: Phaser.Scene,
     src: Phaser.Tilemaps.TilemapLayer,
     tiles: PaintedTile[],
+    chunkTiles: number,
   ) {
     this.layer = { name: src.layer.name };
     this.tiles = tiles;
@@ -84,7 +89,7 @@ export class SparseLayer implements CityLayer {
     this._alpha = src.alpha;
     this._depth = src.depth;
 
-    const byTexture = new Map<string, Phaser.GameObjects.Blitter>();
+    const byPart = new Map<string, { blitter: Phaser.GameObjects.Blitter; bounds: Phaser.Geom.Rectangle; on: boolean }>();
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
 
     for (const t of tiles) {
@@ -98,22 +103,27 @@ export class SparseLayer implements CityLayer {
         tex.add(frameName, 0, c.x, c.y, ts.tileWidth, ts.tileHeight);
       }
 
-      let blitter = byTexture.get(tex.key);
-      if (!blitter) {
-        blitter = scene.add.blitter(0, 0, tex.key);
-        blitter.setDepth(this._depth);
-        blitter.setAlpha(this._alpha);
-        byTexture.set(tex.key, blitter);
-        this.blitters.push(blitter);
-      }
-
       // Same placement as TilemapLayerWebGLRenderer: grid cell, minus the
       // tileset's draw offset (Phaser subtracts it), top-left anchored.
       const x = this.offX + t.x * this.tileW - ts.tileOffset.x;
       const y = this.offY + t.y * this.tileH - ts.tileOffset.y;
-      const bob = blitter.create(x, y, frameName);
+
+      const partKey = chunkTiles > 0
+        ? `${tex.key}|${Math.floor(t.x / chunkTiles)},${Math.floor(t.y / chunkTiles)}`
+        : tex.key;
+      let part = byPart.get(partKey);
+      if (!part) {
+        const blitter = scene.add.blitter(0, 0, tex.key);
+        blitter.setDepth(this._depth);
+        blitter.setAlpha(this._alpha);
+        part = { blitter, bounds: new Phaser.Geom.Rectangle(x, y, 0, 0), on: true };
+        byPart.set(partKey, part);
+        this.parts.push(part);
+      }
+      const bob = part.blitter.create(x, y, frameName);
       bob.flipX = t.flipX;
       bob.flipY = t.flipY;
+      Phaser.Geom.Rectangle.MergeRect(part.bounds, new Phaser.Geom.Rectangle(x, y, ts.tileWidth, ts.tileHeight));
 
       this.cells.set(t.y * this.gridW + t.x, t);
       minX = Math.min(minX, x);
@@ -128,24 +138,33 @@ export class SparseLayer implements CityLayer {
   /**
    * Converts `src` and destroys it, or returns null and leaves it alone when
    * it cannot be reproduced exactly (rotated or tinted tiles, a tile whose
-   * tileset has no texture).
+   * tileset has no texture, or a stacking order Blitters cannot keep).
+   *
+   * `chunkTiles` > 0 splits the layer into square chunks of that many tiles,
+   * each its own Blitter culled on its own: that is how the dense ground is
+   * converted, where one Blitter would draw the whole map every frame.
    */
-  static from(scene: Phaser.Scene, src: Phaser.Tilemaps.TilemapLayer): SparseLayer | null {
+  static from(
+    scene: Phaser.Scene,
+    src: Phaser.Tilemaps.TilemapLayer,
+    chunkTiles = 0,
+  ): SparseLayer | null {
+    const map = src.tilemap;
     const tiles: PaintedTile[] = [];
     let ok = true;
     let texture: Phaser.Textures.Texture | null = null;
+    let multiTexture = false;
+    let oversized = false;
     src.forEachTile((t: Phaser.Tilemaps.Tile) => {
       if (!ok || t.index <= 0) return;
       const ts = t.tileset;
       if (!ts || !ts.image || t.rotation !== 0 || t.alpha !== 1) { ok = false; return; }
-      // A tilemap paints row by row, so an oversized tile overlaps its
-      // neighbours in that order. Bobs keep creation order only within one
-      // Blitter, and a Blitter draws from one texture — a layer mixing
-      // tilesets could come out stacked differently, so it stays a tilemap.
-      if (texture && texture !== ts.image) { ok = false; return; }
+      if (texture && texture !== ts.image) multiTexture = true;
       texture = ts.image;
+      if (ts.tileWidth !== map.tileWidth || ts.tileHeight !== map.tileHeight ||
+          ts.tileOffset.x !== 0 || ts.tileOffset.y !== 0) oversized = true;
       // Plain objects: holding the Tile itself would keep its LayerData — and
-      // with it the whole 15,525-cell grid — alive.
+      // with it the whole grid — alive.
       tiles.push({
         index: t.index, x: t.x, y: t.y, tileset: ts,
         flipX: t.flipX, flipY: t.flipY, rotation: 0,
@@ -153,7 +172,14 @@ export class SparseLayer implements CityLayer {
     });
     if (!ok || tiles.length === 0) return null;
 
-    const sparse = new SparseLayer(scene, src, tiles);
+    // A tilemap paints row by row, so a tile bigger than its grid cell
+    // overlaps its neighbours in that order. Bobs keep creation order only
+    // inside one Blitter — so whenever a layer needs more than one (several
+    // tilesets, or chunks), it must be made of grid-sized tiles that never
+    // overlap, or it could come out stacked differently. Those stay tilemaps.
+    if (oversized && (multiTexture || chunkTiles > 0)) return null;
+
+    const sparse = new SparseLayer(scene, src, tiles, chunkTiles);
     src.destroy(true);
     return sparse;
   }
@@ -168,7 +194,7 @@ export class SparseLayer implements CityLayer {
 
   set alpha(value: number) {
     this._alpha = value;
-    for (const b of this.blitters) b.setAlpha(value);
+    for (const p of this.parts) p.blitter.setAlpha(value);
   }
 
   /** Same contract as TilemapLayer: something when a tile is painted there, null otherwise. */
@@ -193,19 +219,21 @@ export class SparseLayer implements CityLayer {
   }
 
   /**
-   * Hides the object while it is off screen. A Blitter submits every Bob each
-   * frame (a TilemapLayer culls to the camera), so without this every palm in
-   * the city would be drawn whether you can see it or not.
+   * Hides every part that is off screen. A Blitter submits every Bob each
+   * frame (a TilemapLayer culls to the camera), so without this every palm —
+   * and every chunk of street — would be drawn whether you can see it or not.
    */
   cull(view: Phaser.Geom.Rectangle): void {
-    const on = Phaser.Geom.Rectangle.Overlaps(view, this.bounds);
-    if (on === this.onScreen) return;
-    this.onScreen = on;
-    for (const b of this.blitters) b.setVisible(on);
+    for (const p of this.parts) {
+      const on = Phaser.Geom.Rectangle.Overlaps(view, p.bounds);
+      if (on === p.on) continue;
+      p.on = on;
+      p.blitter.setVisible(on);
+    }
   }
 
   destroy(): void {
-    for (const b of this.blitters) b.destroy();
-    this.blitters.length = 0;
+    for (const p of this.parts) p.blitter.destroy();
+    this.parts.length = 0;
   }
 }
