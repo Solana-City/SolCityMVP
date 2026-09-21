@@ -148,11 +148,11 @@ export function CheckBox({ state, size = 14 }: { state: "todo" | "done" | "claim
 export const ACHIEVEMENT_ART: Record<string, { sheet?: string; img?: string }> = {
   "first-swap": { sheet: "Jupiter Joe.png" },
   "first-transfer": { sheet: "send-npc.png" },
-  "first-bounty": { sheet: "Pratik.png" },
+  "streak-3": { img: `${UI}/attention_yellow.png` },
   "met-sol": { sheet: "Sol.png" },
   "met-everyone": { sheet: "Kuka.png" },
   "trader-10": { sheet: "Jupiter Joe.png" },
-  "builder-3": { sheet: "Pratik.png" },
+  "streak-7": { img: `${UI}/attention_yellow.png` },
   "score-1000": { img: ICON.trophy },
 };
 

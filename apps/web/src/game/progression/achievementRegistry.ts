@@ -17,7 +17,11 @@ export interface AchievementDef {
   tier: "common" | "rare" | "epic" | "legendary";
   /** Returns true if the profile currently satisfies this achievement. */
   check: (p: PlayerProfile) => boolean;
-  /** Optional outfit id to unlock on first award. */
+  /**
+   * Optional outfit id to unlock on first award. None set today: the old
+   * rewards belonged to a retired outfit system and were never wearable.
+   * Real wardrobe rewards go through game/progression/outfitRewards.ts.
+   */
   outfitReward?: string;
 }
 
@@ -30,7 +34,6 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     icon: "💱",
     tier: "common",
     check: (p) => p.swapCount >= 1,
-    outfitReward: "trader-novice",
   },
   {
     id: "first-transfer",
@@ -41,13 +44,12 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     check: (p) => p.transferCount >= 1,
   },
   {
-    id: "first-bounty",
-    title: "First Bounty",
-    description: "Finish a Superteam bounty.",
-    icon: "🎯",
+    id: "streak-3",
+    title: "Regular",
+    description: "Come back 3 days in a row.",
+    icon: "📅",
     tier: "common",
-    check: (p) => p.bountyCount >= 1,
-    outfitReward: "builder-novice",
+    check: (p) => (p.streakBest ?? 0) >= 3,
   },
 
   // ── Exploration (social/discovery) ─────────────────────────────────
@@ -69,7 +71,6 @@ export const ACHIEVEMENTS: AchievementDef[] = [
       ["sol-guide", "swap-npc", "send-npc", "pratik", "magic-man", "kuka", "bk-indies", "mr-bananas", "sushi-man"].every((id) =>
         p.visitedNPCs.includes(id)
       ),
-    outfitReward: "explorer-cloak",
   },
 
   // ── Progression (rare, shows commitment) ───────────────────────────
@@ -80,16 +81,14 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     icon: "📈",
     tier: "rare",
     check: (p) => p.swapCount >= 10,
-    outfitReward: "trader-cloak",
   },
   {
-    id: "builder-3",
-    title: "Sol City Builder",
-    description: "Finish 3 bounties.",
-    icon: "🛠️",
+    id: "streak-7",
+    title: "Week in the City",
+    description: "Come back 7 days in a row.",
+    icon: "🗓️",
     tier: "rare",
-    check: (p) => p.bountyCount >= 3,
-    outfitReward: "builder-jacket",
+    check: (p) => (p.streakBest ?? 0) >= 7,
   },
 
   // ── Summit (legendary) ─────────────────────────────────────────────
@@ -100,7 +99,6 @@ export const ACHIEVEMENTS: AchievementDef[] = [
     icon: "🏆",
     tier: "legendary",
     check: (p) => p.score >= 1000,
-    outfitReward: "mayor-robes",
   },
 ];
 

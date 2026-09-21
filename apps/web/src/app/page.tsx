@@ -38,12 +38,11 @@ const WardrobePanel       = dynamic(() => import("@/ui/WardrobePanel"),       { 
 const ConnectScreen       = dynamic(() => import("@/ui/ConnectScreen"),       { ssr: false });
 const SWUpdater           = dynamic(() => import("@/ui/SWUpdater"),            { ssr: false });
 const WhereIsNPCCard      = dynamic(() => import("@/ui/WhereIsNPCCard"),      { ssr: false });
-const QuestPanel          = dynamic(() => import("@/ui/QuestPanel"),          { ssr: false });
 const PlayerCard          = dynamic(() => import("@/ui/PlayerCard"),          { ssr: false });
 const AudioBridge         = dynamic(() => import("@/ui/AudioBridge"),         { ssr: false });
 const NicknameModal       = dynamic(() => import("@/ui/NicknameModal"),       { ssr: false });
 const DuelInvite          = dynamic(() => import("@/ui/DuelInvite"),          { ssr: false });
-const TodayCard           = dynamic(() => import("@/ui/TodayCard"),           { ssr: false });
+const CalendarPanel       = dynamic(() => import("@/ui/CalendarPanel"),       { ssr: false });
 
 /** Sol Mechs duel invites: sent from a player card, answered from the city. */
 const DUEL_INVITE_EVENT = "solcity:solmechs-duel";
@@ -52,6 +51,7 @@ const Minimap             = dynamic(() => import("@/ui/Minimap"),             { 
 
 import ErrorBoundary from "@/ui/ErrorBoundary";
 import { OPEN_DM_EVENT } from "@/game/chat/dmEvents";
+import { OPEN_CALENDAR_EVENT } from "@/game/daily/calendarEvents";
 
 function useIsTouch() {
   const [isTouch, setIsTouch] = useState(false);
@@ -77,7 +77,7 @@ export default function Home() {
   const [wardrobeOpen, setWardrobeOpen] = useState(false);
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
   const [logOpen, setLogOpen] = useState(false);
-  const [mobilePanel, setMobilePanel] = useState<"hunt" | "quests" | null>(null);
+  const [mobilePanel, setMobilePanel] = useState<"hunt" | null>(null);
   /** Last wallet state actually handed to Phaser; undefined = nothing sent yet. */
   const lastSentWalletRef = useRef<string | null | undefined>(undefined);
   // Chat hidden by default on touch devices, visible on desktop
@@ -149,7 +149,7 @@ export default function Home() {
 
   // Mobile panels and chat are mutually exclusive — the screen is too small
   // to stack overlays on top of the game view.
-  const toggleMobilePanel = useCallback((panel: "hunt" | "quests") => {
+  const toggleMobilePanel = useCallback((panel: "hunt") => {
     setChatOpen(false);
     setMobilePanel(v => (v === panel ? null : panel));
   }, []);
@@ -399,10 +399,9 @@ export default function Home() {
               display: "flex", flexDirection: "column", gap: 6,
             }}>
               <WhereIsNPCCard gameRef={game} wallet={walletAddress} />
-              <QuestPanel wallet={walletAddress} />
             </div>
           ) : (
-            /* Mobile: single icon rail — hunt, quests and chat toggles.
+            /* Mobile: single icon rail — hunt and chat toggles.
                Panels open as overlays and are mutually exclusive with the
                chat so the small screen never stacks multiple windows. */
             <>
@@ -413,7 +412,6 @@ export default function Home() {
                 display: "flex", flexDirection: "column", gap: 6,
               }}>
                 <MobilePanelToggle iconSrc="/assets/ui/ico_achievements.png" label="Find someone" active={mobilePanel === "hunt"} onClick={() => toggleMobilePanel("hunt")} />
-                <MobilePanelToggle iconSrc="/assets/ui/ico_tasks.png" label="Daily quests" active={mobilePanel === "quests"} onClick={() => toggleMobilePanel("quests")} />
                 <MobilePanelToggle iconSrc="/assets/ui/ico_chat.png" label="Chat" active={chatOpen} onClick={toggleMobileChat} />
                 <ExpressionToggle />
               </div>
@@ -436,7 +434,6 @@ export default function Home() {
                     onClick={e => e.stopPropagation()}
                   >
                     {mobilePanel === "hunt" && <WhereIsNPCCard gameRef={game} wallet={walletAddress} />}
-                    {mobilePanel === "quests" && <QuestPanel wallet={walletAddress} />}
                   </div>
                 </div>
               )}
@@ -474,8 +471,13 @@ export default function Home() {
                         </span>
                       ),
                       tr: (
-                        <span style={{ display: "block", borderRadius: 8, background: "rgba(8,10,22,0.95)", boxShadow: "0 2px 10px rgba(0,0,0,0.5)" }}>
-                          <WardrobeButton size={isTouch ? 30 : 34} onClick={() => setWardrobeOpen(true)} />
+                        <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
+                          <span style={{ display: "block", borderRadius: 8, background: "rgba(8,10,22,0.95)", boxShadow: "0 2px 10px rgba(0,0,0,0.5)" }}>
+                            <WardrobeButton size={isTouch ? 30 : 34} onClick={() => setWardrobeOpen(true)} />
+                          </span>
+                          <span style={{ display: "block", borderRadius: 7, background: "rgba(8,10,22,0.95)", boxShadow: "0 2px 10px rgba(0,0,0,0.5)" }}>
+                            <CalendarButton size={isTouch ? 26 : 30} />
+                          </span>
                         </span>
                       ),
                     }}
@@ -517,7 +519,7 @@ export default function Home() {
           <MobileControls />
           <ExpressionWheel gameRef={game} />
           {flags.chat && <ChatPanel gameRef={game} visible={chatOpen} />}
-          <TodayCard gameRef={game} />
+          <CalendarPanel gameRef={game} />
           <NPCDialog npc={activeNPC} onClose={handleDialogClose} onAction={handleAction} />
           {nickname && walletAddress && (
             <NicknameModal wallet={walletAddress} current={nickname.current} forced={nickname.forced} onDone={closeNickname} />
@@ -606,6 +608,57 @@ function ExpressionToggle() {
         width={24} height={24} alt="Expressions" draggable={false}
         style={{ imageRendering: "pixelated", position: "relative" }}
       />
+    </button>
+  );
+}
+
+/**
+ * Opens the city calendar. Drawn as a tiny page-a-day calendar showing
+ * today's date, with a dot until the calendar has been opened today.
+ */
+function CalendarButton({ size = 30 }: { size?: number }) {
+  const [day, setDay] = useState<number | null>(null);
+  const [fresh, setFresh] = useState(false);
+  useEffect(() => {
+    const read = () => {
+      const today = new Date().toISOString().slice(0, 10);
+      setDay(new Date().getUTCDate());
+      try { setFresh(localStorage.getItem("solcity:calendar-seen") !== today); } catch { setFresh(false); }
+    };
+    read();
+    const id = setInterval(read, 30_000);
+    window.addEventListener(OPEN_CALENDAR_EVENT, read);
+    return () => { clearInterval(id); window.removeEventListener(OPEN_CALENDAR_EVENT, read); };
+  }, []);
+  return (
+    <button
+      onClick={() => { window.dispatchEvent(new Event(OPEN_CALENDAR_EVENT)); setFresh(false); }}
+      title="City calendar"
+      aria-label="City calendar"
+      style={{
+        position: "relative", width: size, height: size, borderRadius: 7, padding: 3, cursor: "pointer",
+        border: "1px solid rgba(255,215,0,0.4)", background: "rgba(255,215,0,0.07)",
+        display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+      }}
+    >
+      <span style={{
+        width: "100%", height: "100%", borderRadius: 3, overflow: "hidden", background: "#f8fafc",
+        display: "flex", flexDirection: "column",
+      }}>
+        <span style={{ height: "32%", background: "#9945FF" }} />
+        <span style={{
+          flex: 1, display: "flex", alignItems: "center", justifyContent: "center",
+          fontFamily: '"Press Start 2P", monospace', fontSize: size >= 30 ? 8 : 7, color: "#0a0a14", lineHeight: 1,
+        }}>
+          {day ?? ""}
+        </span>
+      </span>
+      {fresh && (
+        <span style={{
+          position: "absolute", top: -3, right: -3, width: 8, height: 8, borderRadius: "50%",
+          background: "#FFD700", boxShadow: "0 0 6px #FFD700",
+        }} />
+      )}
     </button>
   );
 }

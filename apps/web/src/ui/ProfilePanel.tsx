@@ -1,15 +1,15 @@
 "use client";
 
-import { AchievementIcon, LockIcon, SpeakerIcon, RankBadge } from "@/ui/PixelIcons";
+import { AchievementIcon, LockIcon, SpeakerIcon, PixelImg, ICON } from "@/ui/PixelIcons";
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
-import { useNicknames } from "@/ui/useNicknames";
 import type { PlayerProfile } from "@/game/config/profileManager";
 import type { ProfileManager } from "@/game/config/profileManager";
-import type { OnChainPlayer } from "@/game/multiplayer/OnChainMultiplayer";
 import { ACHIEVEMENTS, TIER_COLORS } from "@/game/progression/achievementRegistry";
-import { fetchLeaderboard, type LeaderboardEntry } from "@/game/solana/leaderboard";
+import { fetchBoard } from "@/game/leaderboards/boards";
+import { DAILY_QUESTS, claimQuest, getQuestProgress, onQuestsChanged } from "@/game/quests/QuestManager";
+import { OPEN_CALENDAR_EVENT, STREAK_EVENT, type StreakView } from "@/game/daily/calendarEvents";
 import { soundManager } from "@/game/audio/SoundManager";
 import { dmsOffPref, setDmsOffPref } from "@/game/chat/dmEvents";
 
@@ -24,18 +24,10 @@ export default function ProfilePanel({ gameRef, isOpen, onClose }: ProfilePanelP
   const [manager, setManager] = useState<ProfileManager | null>(null);
   const [editingName, setEditingName] = useState(false);
   const [nameInput, setNameInput] = useState("");
-  const [onlinePlayers, setOnlinePlayers] = useState<OnChainPlayer[]>([]);
-  const [lbTab, setLbTab] = useState<"online" | "alltime">("online");
   const [panelTab, setPanelTab] = useState<"profile" | "settings">("profile");
-  const [allTimeEntries, setAllTimeEntries] = useState<LeaderboardEntry[]>([]);
-  const [allTimeLoading, setAllTimeLoading] = useState(false);
-  const [allTimeError, setAllTimeError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { connected } = useWallet();
   const { setVisible: openWalletModal } = useWalletModal();
-  // Leaderboards show the nickname a player chose, not their address.
-  const onlineNames = useNicknames(onlinePlayers.map((p) => p.wallet));
-  const allTimeNames = useNicknames(allTimeEntries.slice(0, 50).map((e) => e.wallet));
 
   useEffect(() => {
     if (!gameRef) return;
@@ -53,44 +45,6 @@ export default function ProfilePanel({ gameRef, isOpen, onClose }: ProfilePanelP
     }, 200);
     return () => clearInterval(check);
   }, [gameRef]);
-
-  // Poll online players from the multiplayer network every 2s
-  useEffect(() => {
-    if (!gameRef || !isOpen) return;
-    const poll = setInterval(() => {
-      const scene = gameRef.scene.getScene("CityScene");
-      if (!scene) return;
-      const net = scene.registry.get("network") as { getActivePlayers?: () => OnChainPlayer[] } | undefined;
-      if (net?.getActivePlayers) setOnlinePlayers(net.getActivePlayers());
-    }, 2000);
-    // Initial fetch
-    const scene = gameRef.scene.getScene("CityScene");
-    const net = scene?.registry.get("network") as { getActivePlayers?: () => OnChainPlayer[] } | undefined;
-    if (net?.getActivePlayers) setOnlinePlayers(net.getActivePlayers());
-    return () => clearInterval(poll);
-  }, [gameRef, isOpen]);
-
-  // Fetch all-time leaderboard when the "All Time" tab is selected
-  useEffect(() => {
-    if (!isOpen || lbTab !== "alltime") return;
-    let cancelled = false;
-    setAllTimeLoading(true);
-    setAllTimeError(null);
-    fetchLeaderboard()
-      .then((entries) => { if (!cancelled) setAllTimeEntries(entries); })
-      .catch((err) => { if (!cancelled) setAllTimeError(err?.message ?? "Failed to load"); })
-      .finally(() => { if (!cancelled) setAllTimeLoading(false); });
-    return () => { cancelled = true; };
-  }, [isOpen, lbTab]);
-
-  const refreshAllTime = useCallback(() => {
-    setAllTimeLoading(true);
-    setAllTimeError(null);
-    fetchLeaderboard(true)
-      .then(setAllTimeEntries)
-      .catch((err) => setAllTimeError(err?.message ?? "Failed to load"))
-      .finally(() => setAllTimeLoading(false));
-  }, []);
 
   const saveName = useCallback(() => {
     if (manager && nameInput.trim()) {
@@ -296,272 +250,11 @@ export default function ProfilePanel({ gameRef, isOpen, onClose }: ProfilePanelP
         {panelTab === "settings" && <SettingsTab />}
 
         {panelTab === "profile" && (<>
-        {/* Wallet */}
-        <div className="mb-4">
-          <div className="text-xs mb-1" style={{ color: "#555566" }}>
-            Wallet
-          </div>
-          {connected && profile.wallet ? (
-            <div className="px-2 py-1.5 rounded" style={{ background: "#12122a" }}>
-              <span style={{ color: "#00D1FF", fontSize: "9px" }}>
-                {profile.wallet}
-              </span>
-            </div>
-          ) : (
-            <button
-              onClick={() => openWalletModal(true)}
-              className="w-full px-3 py-2 rounded text-xs cursor-pointer"
-              style={{
-                background: "rgba(153,69,255,0.8)",
-                color: "#fff",
-                border: "none",
-                fontFamily: '"Press Start 2P", monospace',
-                fontSize: "7px",
-              }}
-            >
-              CONNECT WALLET
-            </button>
-          )}
-        </div>
-
-        {/* Stats */}
-        <div className="grid grid-cols-2 gap-2 mb-4">
-          <StatCard label="Score" value={profile.score} color="#FFD700" />
-          <StatCard label="Swaps" value={profile.swapCount} color="#14F195" />
-          <StatCard label="Transfers" value={profile.transferCount} color="#00D1FF" />
-          <StatCard label="Bounties" value={profile.bountyCount} color="#9945FF" />
-        </div>
-
-        {/* On-chain activity */}
-        <div className="mb-4 mt-4">
-          <div className="text-xs mb-2" style={{ color: "#555566" }}>
-            On-chain activity
-          </div>
-          <div
-            className="rounded-lg p-3"
-            style={{ background: "#12122a", border: "1px solid rgba(255,255,255,0.04)" }}
-          >
-            <div className="flex justify-between mb-2">
-              <span className="text-xs" style={{ color: "#888899" }}>Total interactions</span>
-              <span className="text-xs font-bold" style={{ color: "#14F195" }}>
-                {profile.swapCount + profile.transferCount + profile.bountyCount}
-              </span>
-            </div>
-            <div className="w-full rounded-full h-1.5 mb-3" style={{ background: "#1a1a3a" }}>
-              <div
-                className="rounded-full h-1.5 transition-all"
-                style={{
-                  background: "linear-gradient(90deg, #9945FF, #14F195)",
-                  width: `${Math.min((profile.swapCount + profile.transferCount + profile.bountyCount) * 5, 100)}%`,
-                }}
-              />
-            </div>
-            <div className="grid grid-cols-3 gap-2 text-center">
-              <div>
-                <div className="text-lg font-bold" style={{ color: "#14F195" }}>{profile.swapCount}</div>
-                <div className="text-xs" style={{ color: "#555566" }}>Swaps</div>
-              </div>
-              <div>
-                <div className="text-lg font-bold" style={{ color: "#00D1FF" }}>{profile.transferCount}</div>
-                <div className="text-xs" style={{ color: "#555566" }}>Transfers</div>
-              </div>
-              <div>
-                <div className="text-lg font-bold" style={{ color: "#9945FF" }}>{profile.bountyCount}</div>
-                <div className="text-xs" style={{ color: "#555566" }}>Bounties</div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Leaderboard */}
-        <div className="mb-4">
-          {/* Tab bar */}
-          <div className="flex items-center gap-0 mb-2" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-            <button
-              onClick={() => setLbTab("online")}
-              className="text-xs px-3 py-1.5 cursor-pointer"
-              style={{
-                background: "none",
-                border: "none",
-                borderBottom: lbTab === "online" ? "2px solid #14F195" : "2px solid transparent",
-                color: lbTab === "online" ? "#14F195" : "#555566",
-                fontFamily: '"Press Start 2P", monospace',
-                marginBottom: -1,
-              }}
-            >
-              <span
-                className="inline-block rounded-full mr-1.5"
-                style={{ width: 5, height: 5, background: "#14F195", boxShadow: "0 0 4px #14F195", verticalAlign: "middle" }}
-              />
-              Online {onlinePlayers.length > 0 && `(${onlinePlayers.length})`}
-            </button>
-            <button
-              onClick={() => setLbTab("alltime")}
-              className="text-xs px-3 py-1.5 cursor-pointer"
-              style={{
-                background: "none",
-                border: "none",
-                borderBottom: lbTab === "alltime" ? "2px solid #FFD700" : "2px solid transparent",
-                color: lbTab === "alltime" ? "#FFD700" : "#555566",
-                fontFamily: '"Press Start 2P", monospace',
-                marginBottom: -1,
-              }}
-            >
-              All Time
-            </button>
-            {lbTab === "alltime" && (
-              <button
-                onClick={refreshAllTime}
-                disabled={allTimeLoading}
-                title="Refresh"
-                className="ml-auto text-xs cursor-pointer"
-                style={{
-                  background: "none",
-                  border: "none",
-                  color: allTimeLoading ? "#333344" : "#555566",
-                  padding: "4px 8px",
-                  fontFamily: "monospace",
-                }}
-              >
-                ↻
-              </button>
-            )}
-          </div>
-
-          {/* Online tab */}
-          {lbTab === "online" && (
-            onlinePlayers.length === 0 ? (
-              <div className="text-xs py-3 text-center" style={{ color: "#333344" }}>
-                No other players online right now
-              </div>
-            ) : (
-              <div className="flex flex-col gap-1">
-                {[...onlinePlayers]
-                  .sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
-                  .map((p, i) => {
-                    const isSelf = p.wallet === profile.wallet;
-                    const name = onlineNames.display(p.wallet, p.displayName);
-                    return (
-                      <LeaderboardRow
-                        key={p.wallet}
-                        rank={i + 1}
-                        name={name}
-                        score={p.score ?? 0}
-                        isSelf={isSelf}
-                        wallet={p.wallet}
-                      />
-                    );
-                  })}
-              </div>
-            )
-          )}
-
-          {/* All Time tab */}
-          {lbTab === "alltime" && (
-            allTimeLoading ? (
-              <div className="text-xs py-4 text-center" style={{ color: "#555566" }}>
-                Fetching from devnet…
-              </div>
-            ) : allTimeError ? (
-              <div className="text-xs py-3 text-center" style={{ color: "#ff4444" }}>
-                {allTimeError}
-              </div>
-            ) : allTimeEntries.length === 0 ? (
-              <div className="text-xs py-3 text-center" style={{ color: "#333344" }}>
-                No on-chain records found
-              </div>
-            ) : (
-              <div className="flex flex-col gap-1">
-                {allTimeEntries.slice(0, 50).map((entry, i) => {
-                  const isSelf = entry.wallet === profile.wallet;
-                  const name = allTimeNames.display(entry.wallet, entry.displayName);
-                  return (
-                    <LeaderboardRow
-                      key={entry.wallet}
-                      rank={i + 1}
-                      name={name}
-                      score={entry.score}
-                      isSelf={isSelf}
-                      wallet={entry.wallet}
-                      extra={
-                        <span className="text-xs" style={{ color: "#444455", fontSize: 7 }}>
-                          {entry.swapCount}s·{entry.transferCount}t·{entry.bountyCount}b
-                        </span>
-                      }
-                    />
-                  );
-                })}
-                {allTimeEntries.length > 50 && (
-                  <div className="text-xs text-center pt-1" style={{ color: "#333344" }}>
-                    +{allTimeEntries.length - 50} more
-                  </div>
-                )}
-              </div>
-            )
-          )}
-        </div>
-
-        {/* Achievements */}
-        <div className="mb-4">
-          <div className="text-xs mb-2 flex items-center justify-between" style={{ color: "#555566" }}>
-            <span>Achievements</span>
-            <span style={{ color: "#444455" }}>
-              {profile.unlockedAchievements.length}/{ACHIEVEMENTS.length}
-            </span>
-          </div>
-          <div className="flex flex-col gap-1.5">
-            {ACHIEVEMENTS.map((ach) => {
-              const unlocked = profile.unlockedAchievements.includes(ach.id);
-              const color = TIER_COLORS[ach.tier];
-              return (
-                <div
-                  key={ach.id}
-                  className="flex items-center gap-3 px-3 py-2 rounded-lg"
-                  style={{
-                    background: unlocked ? `${color}10` : "rgba(255,255,255,0.02)",
-                    border: `1px solid ${unlocked ? `${color}30` : "rgba(255,255,255,0.04)"}`,
-                    opacity: unlocked ? 1 : 0.45,
-                  }}
-                >
-                  <span style={{ position: "relative", lineHeight: 0, filter: unlocked ? "none" : "grayscale(1)", flexShrink: 0 }}>
-                    <AchievementIcon id={ach.id} size={28} />
-                    {!unlocked && (
-                      <span style={{ position: "absolute", right: -4, bottom: -4 }}><LockIcon size={12} /></span>
-                    )}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <div
-                      style={{
-                        fontSize: 8,
-                        fontFamily: '"Press Start 2P", monospace',
-                        color: unlocked ? color : "#555566",
-                        marginBottom: 2,
-                      }}
-                    >
-                      {ach.title}
-                    </div>
-                    <div style={{ fontSize: 8, color: "#666677", lineHeight: 1.4 }}>
-                      {ach.description}
-                    </div>
-                  </div>
-                  {unlocked && (
-                    <span
-                      style={{
-                        fontSize: 7,
-                        fontFamily: '"Press Start 2P", monospace',
-                        color,
-                        textTransform: "uppercase",
-                        flexShrink: 0,
-                      }}
-                    >
-                      {ach.tier}
-                    </span>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
+        <ProfileTab
+          profile={profile}
+          wallet={connected ? profile.wallet : null}
+          onConnect={() => openWalletModal(true)}
+        />
 
         {/* Member info */}
         <div className="flex justify-between text-xs mt-2" style={{ color: "#333344" }}>
@@ -657,81 +350,262 @@ function SettingsTab() {
   );
 }
 
-function LeaderboardRow({
-  rank,
-  name,
-  score,
-  isSelf,
-  wallet,
-  extra,
-}: {
-  rank: number;
-  name: string;
-  score: number;
-  isSelf: boolean;
-  wallet: string;
-  extra?: React.ReactNode;
+// ── Profile tab: you in the city ────────────────────────────────────────────
+
+const PIXEL = '"Press Start 2P", monospace';
+const GOLD = "#FFD700";
+const GREEN = "#14F195";
+
+function utcDay(d: Date = new Date()): string {
+  return d.toISOString().slice(0, 10);
+}
+
+/**
+ * Your own progress, most alive first: the daily streak, your numbers, what is
+ * left to do today, and what you have unlocked. The city at large (calendar,
+ * leaders, who is online) lives in the calendar panel.
+ */
+function ProfileTab({ profile, wallet, onConnect }: {
+  profile: PlayerProfile;
+  wallet: string | null;
+  onConnect: () => void;
 }) {
-  const rankColor =
-    rank === 1 ? "#FFD700" :
-    rank === 2 ? "#C0C0C0" :
-    rank === 3 ? "#CD7F32" :
-    "#444455";
+  const [streak, setStreak] = useState<StreakView | null>(null);
+  const [mine, setMine] = useState({ finds: 0, kite: 0, quest: 0 });
+  const [copied, setCopied] = useState(false);
+  const [picked, setPicked] = useState<string | null>(null);
+  const [, bump] = useState(0);
+
+  useEffect(() => {
+    if (!wallet) { setStreak(null); return; }
+    let cancelled = false;
+    fetch(`/api/checkin?wallet=${wallet}`)
+      .then((r) => r.json())
+      .then((b) => { if (!cancelled && b.streak) setStreak(b.streak); })
+      .catch(() => undefined);
+    const onStreak = (e: Event) => setStreak((e as CustomEvent<StreakView>).detail);
+    window.addEventListener(STREAK_EVENT, onStreak);
+    return () => { cancelled = true; window.removeEventListener(STREAK_EVENT, onStreak); };
+  }, [wallet]);
+
+  useEffect(() => {
+    if (!wallet) return;
+    let cancelled = false;
+    Promise.all([
+      fetchBoard("hunt", { wallet, limit: 1 }),
+      fetchBoard("game:kite-clash", { wallet, limit: 1 }),
+      fetchBoard("quests", { wallet, limit: 1 }),
+    ]).then(([hunt, kite, quest]) => {
+      if (!cancelled) setMine({ finds: hunt.mine?.value ?? 0, kite: kite.mine?.value ?? 0, quest: quest.mine?.value ?? 0 });
+    }).catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [wallet]);
+
+  useEffect(() => onQuestsChanged(() => bump((n) => n + 1)), []);
+
+  if (!wallet) {
+    return (
+      <div className="mb-4">
+        <div style={{ fontSize: 8, color: "#94a3b8", lineHeight: 1.8, marginBottom: 10 }}>
+          Connect a wallet to keep a daily streak, track your numbers and claim quests.
+        </div>
+        <button
+          onClick={onConnect}
+          className="w-full px-3 py-2 rounded cursor-pointer"
+          style={{ background: "rgba(153,69,255,0.8)", color: "#fff", border: "none", fontFamily: PIXEL, fontSize: 7 }}
+        >
+          CONNECT WALLET
+        </button>
+      </div>
+    );
+  }
+
+  const days: string[] = [];
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date();
+    days.push(utcDay(new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() - i))));
+  }
+  const checked = new Set(streak?.recent ?? []);
+  const progress = getQuestProgress(wallet);
+  const pickedAch = ACHIEVEMENTS.find((a) => a.id === picked);
+
+  const copy = () => {
+    navigator.clipboard?.writeText(wallet)
+      .then(() => { setCopied(true); setTimeout(() => setCopied(false), 1200); })
+      .catch(() => {});
+  };
 
   return (
-    <div
-      className="flex items-center justify-between px-2 py-1 rounded"
-      style={{
-        background: isSelf ? "rgba(20,241,149,0.06)" : "#12122a",
-        border: isSelf ? "1px solid rgba(20,241,149,0.2)" : "1px solid rgba(255,255,255,0.03)",
-      }}
-    >
-      <div className="flex items-center gap-2 min-w-0">
-        <span
-          className="text-xs flex-shrink-0"
-          style={{ color: rankColor, width: 18, textAlign: "right", fontWeight: rank <= 3 ? "bold" : "normal" }}
+    <div className="mb-3">
+      {/* ── Streak ── */}
+      <Section>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <span style={{ fontSize: 22, color: GOLD, lineHeight: 1 }}>{streak?.current ?? 0}</span>
+          <span style={{ fontSize: 7, color: "#94a3b8", lineHeight: 1.6, flex: 1 }}>DAY<br />STREAK</span>
+          <button
+            onClick={() => window.dispatchEvent(new Event(OPEN_CALENDAR_EVENT))}
+            style={{
+              background: "rgba(255,215,0,0.08)", border: "1px solid rgba(255,215,0,0.35)", borderRadius: 6,
+              color: GOLD, padding: "5px 7px", cursor: "pointer", fontFamily: PIXEL, fontSize: 6,
+            }}
+          >
+            CALENDAR
+          </button>
+        </div>
+        <div style={{ display: "flex", gap: 4, marginTop: 10 }}>
+          {days.map((d) => {
+            const on = checked.has(d);
+            const isToday = d === utcDay();
+            return (
+              <div key={d} style={{
+                flex: 1, height: 20, borderRadius: 4, display: "flex", alignItems: "center", justifyContent: "center",
+                background: on ? GOLD : "#1e1e3a",
+                boxShadow: isToday ? `0 0 0 1px ${on ? "#fff" : "#64748b"}` : "none",
+                fontFamily: PIXEL, fontSize: 6, color: on ? "#0a0a14" : "#64748b",
+              }}>
+                {new Date(`${d}T00:00:00Z`).toLocaleDateString("en-US", { weekday: "narrow", timeZone: "UTC" })}
+              </div>
+            );
+          })}
+        </div>
+        <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8, fontSize: 6, color: "#64748b" }}>
+          <span>BEST {streak?.best ?? 0}</span>
+          <span>{streak?.checkedInToday ? "COME BACK TOMORROW" : "CHECKING IN..."}</span>
+        </div>
+      </Section>
+
+      {/* ── Wallet, one line ── */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "0 2px 12px" }}>
+        <span style={{ fontSize: 6, color: "#555566" }}>WALLET</span>
+        <span style={{ fontSize: 7, color: "#00D1FF", flex: 1 }}>{wallet.slice(0, 4)}…{wallet.slice(-4)}</span>
+        <button
+          onClick={copy}
+          style={{
+            background: "none", border: "1px solid rgba(0,209,255,0.35)", borderRadius: 5, color: "#00D1FF",
+            padding: "3px 6px", cursor: "pointer", fontFamily: PIXEL, fontSize: 6,
+          }}
         >
-          <RankBadge rank={rank} size={16} />
-        </span>
-        <span
-          className="text-xs truncate"
-          style={{ color: isSelf ? "#14F195" : "#aaaacc", maxWidth: 150 }}
-          title={wallet}
-        >
-          {name}{isSelf ? " (you)" : ""}
-        </span>
-        {extra && <span className="flex-shrink-0">{extra}</span>}
+          {copied ? "COPIED" : "COPY"}
+        </button>
       </div>
-      <span className="text-xs font-bold flex-shrink-0" style={{ color: "#FFD700" }}>
-        {score}
-      </span>
+
+      {/* ── Your numbers: only ones that move ── */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6, marginBottom: 12 }}>
+        <Num label="SCORE" value={profile.score} color={GOLD} />
+        <Num label="SWAPS" value={profile.swapCount} color={GREEN} />
+        <Num label="TRANSFERS" value={profile.transferCount} color="#00D1FF" />
+        <Num label="FINDS" value={mine.finds} color="#c084fc" />
+        <Num label="BEST KITE" value={mine.kite} color="#FFA94D" />
+        <Num label="QUEST PTS" value={mine.quest} color={GREEN} />
+      </div>
+
+      {/* ── Today's quests ── */}
+      <Label icon={ICON.tasks}>TODAY&apos;S QUESTS</Label>
+      <Section>
+        {DAILY_QUESTS.map((q) => {
+          const p = progress[q.id];
+          const current = Math.min(p?.current ?? 0, q.target);
+          const done = !!p?.completed;
+          const claimed = !!p?.claimedAt;
+          return (
+            <div key={q.id} style={{ display: "flex", alignItems: "center", gap: 8, margin: "3px 0" }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 7, color: claimed ? "#475569" : done ? GREEN : "#cbd5e1" }}>{q.title}</div>
+                <div style={{ height: 4, background: "#1e1e3a", borderRadius: 2, overflow: "hidden", marginTop: 4 }}>
+                  <div style={{ width: `${(current / q.target) * 100}%`, height: "100%", background: done ? GREEN : "#9945FF" }} />
+                </div>
+              </div>
+              {done && !claimed ? (
+                <button
+                  onClick={() => { claimQuest(wallet, q.id); bump((n) => n + 1); }}
+                  style={{
+                    background: GREEN, color: "#0a0a14", border: "none", borderRadius: 5, padding: "5px 7px",
+                    cursor: "pointer", fontFamily: PIXEL, fontSize: 6, flexShrink: 0,
+                  }}
+                >
+                  CLAIM {q.rewardLabel.toUpperCase()}
+                </button>
+              ) : (
+                <span style={{ fontSize: 6, color: claimed ? "#475569" : "#64748b", flexShrink: 0, width: 56, textAlign: "right" }}>
+                  {claimed ? "CLAIMED" : `${current}/${q.target}`}
+                </span>
+              )}
+            </div>
+          );
+        })}
+      </Section>
+
+      {/* ── Achievements: icons first, the story on tap ── */}
+      <Label icon={ICON.trophy} right={`${profile.unlockedAchievements.length}/${ACHIEVEMENTS.length}`}>ACHIEVEMENTS</Label>
+      <Section>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
+          {ACHIEVEMENTS.map((ach) => {
+            const unlocked = profile.unlockedAchievements.includes(ach.id);
+            const color = TIER_COLORS[ach.tier];
+            return (
+              <button
+                key={ach.id}
+                onClick={() => setPicked(picked === ach.id ? null : ach.id)}
+                title={ach.title}
+                style={{
+                  display: "flex", flexDirection: "column", alignItems: "center", gap: 5, padding: "6px 2px",
+                  borderRadius: 6, cursor: "pointer",
+                  background: picked === ach.id ? "rgba(153,69,255,0.2)" : unlocked ? `${color}12` : "transparent",
+                  border: `1px solid ${unlocked ? `${color}40` : "rgba(255,255,255,0.05)"}`,
+                }}
+              >
+                <span style={{ position: "relative", lineHeight: 0, filter: unlocked ? "none" : "grayscale(1)", opacity: unlocked ? 1 : 0.45 }}>
+                  <AchievementIcon id={ach.id} size={26} />
+                  {!unlocked && <span style={{ position: "absolute", right: -4, bottom: -4 }}><LockIcon size={11} /></span>}
+                </span>
+                <span style={{
+                  fontFamily: PIXEL, fontSize: 5, color: unlocked ? color : "#475569", lineHeight: 1.4,
+                  textAlign: "center", maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                }}>
+                  {ach.title}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+        {pickedAch && (
+          <div style={{ marginTop: 10, fontSize: 7, color: "#94a3b8", lineHeight: 1.7 }}>
+            <span style={{ color: TIER_COLORS[pickedAch.tier] }}>{pickedAch.title}</span>
+            {" · "}{pickedAch.description}
+          </div>
+        )}
+      </Section>
     </div>
   );
 }
 
-function StatCard({
-  label,
-  value,
-  color,
-}: {
-  label: string;
-  value: number;
-  color: string;
-}) {
+function Section({ children }: { children: React.ReactNode }) {
   return (
-    <div
-      className="rounded-lg p-2.5 text-center"
-      style={{ background: "#12122a" }}
-    >
-      <div className="text-xs" style={{ color: "#555566" }}>
-        {label}
-      </div>
-      <div
-        className="text-lg font-bold mt-0.5"
-        style={{ color, fontFamily: '"Press Start 2P", monospace', fontSize: "11px" }}
-      >
-        {value}
-      </div>
+    <div className="rounded-lg" style={{
+      background: "#12122a", border: "1px solid rgba(255,255,255,0.04)", padding: 10, marginBottom: 12,
+    }}>
+      {children}
+    </div>
+  );
+}
+
+function Label({ icon, right, children }: { icon: string; right?: string; children: React.ReactNode }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
+      <PixelImg src={icon} size={12} />
+      <span style={{ fontSize: 7, color: "#94a3b8", flex: 1 }}>{children}</span>
+      {right && <span style={{ fontSize: 7, color: "#555566" }}>{right}</span>}
+    </div>
+  );
+}
+
+function Num({ label, value, color }: { label: string; value: number; color: string }) {
+  return (
+    <div className="rounded-lg" style={{
+      background: "#12122a", border: "1px solid rgba(255,255,255,0.04)", padding: "8px 4px", textAlign: "center",
+    }}>
+      <div style={{ fontSize: 11, color, lineHeight: 1 }}>{value}</div>
+      <div style={{ fontSize: 5, color: "#64748b", marginTop: 6 }}>{label}</div>
     </div>
   );
 }

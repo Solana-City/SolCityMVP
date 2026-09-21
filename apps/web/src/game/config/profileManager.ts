@@ -9,6 +9,8 @@ export interface PlayerProfile {
   swapCount: number;
   transferCount: number;
   bountyCount: number;
+  /** Best daily check-in streak, mirrored from the server for achievements. */
+  streakBest?: number;
   unlockedOutfits: string[];
   unlockedAchievements: string[];
   visitedNPCs: string[];
@@ -41,6 +43,13 @@ export class ProfileManager {
     if (wallet && this.profile.displayName === "Citizen") {
       this.profile.displayName = `${wallet.slice(0, 4)}...${wallet.slice(-4)}`;
     }
+    this.save();
+  }
+
+  /** Only ever goes up: the server's best streak never shrinks. */
+  setStreakBest(best: number): void {
+    if (!(best > (this.profile.streakBest ?? 0))) return;
+    this.profile.streakBest = best;
     this.save();
   }
 
