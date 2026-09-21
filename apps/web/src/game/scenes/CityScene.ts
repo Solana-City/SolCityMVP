@@ -30,6 +30,7 @@ import { LANDMARK_LAYERS } from "../minimap/categories";
 import { cachedName, onNames, requestNames, NAME_CHANGED_EVENT } from "../names/nameService";
 import { track } from "../telemetry/track";
 import { startHeatmap } from "../telemetry/heatmap";
+import { startMemStats } from "../telemetry/memStats";
 
 // Pixel-perfect zoom values and snapping live in config/zoomConfig.ts —
 // shared with ZoomControl and the pinch-zoom hook.
@@ -418,6 +419,10 @@ export class CityScene extends Phaser.Scene {
     }
 
     this.createFootDust();
+
+    // Memory census: __solCityStats() in the console, and a [mem] line a minute.
+    const stopMemStats = startMemStats(this);
+    this.events.once("shutdown", stopMemStats);
 
     // Where the player can go = the tilesets' authored collision + the
     // ColliderInvisible barrier layer + the world bounds (the map edges). No
