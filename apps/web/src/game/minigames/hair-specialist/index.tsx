@@ -21,6 +21,11 @@ import {
   saveLoadout,
   type LayerVariant,
 } from "../../config/paperDoll";
+import { NPC_REGISTRY } from "../../config/npcRegistry";
+import { track } from "../../telemetry/track";
+
+/** Partner pitch shown after the first hair that lands (Superteam Turkey). */
+const REMEDI_URL = "https://superteamtr.remedifinance.com/";
 
 const FONT = '"Press Start 2P", monospace';
 const ACCENT = "#E30A17";
@@ -99,6 +104,12 @@ export default function HairSpecialist({ onResult, onClose }: MiniGameComponentP
   const [ready, setReady] = useState(false);
   const [landed, setLanded] = useState<Landed | null>(null);
   const [kept, setKept] = useState(false);
+  /** The Remedi Finance dialog: opens once per visit, after the first hit. */
+  const [pitch, setPitch] = useState(false);
+  const pitchedRef = useRef(false);
+  const pitchRef = useRef(false);
+  pitchRef.current = pitch;
+  const portraitRef = useRef<HTMLCanvasElement>(null);
 
   // Load the player's own look minus hair and hat, plus every hairstyle
   // except Avatar (a full head, not a hairstyle).
@@ -171,6 +182,11 @@ export default function HairSpecialist({ onResult, onClose }: MiniGameComponentP
     landedRef.current = hit;
     setLanded(hit);
     setKept(false);
+    if (hit.rating !== "miss" && !pitchedRef.current) {
+      pitchedRef.current = true;
+      // A beat to enjoy the new hair before the specialist speaks up.
+      setTimeout(() => setPitch(true), 1200);
+    }
     void onResult({
       success: hit.rating !== "miss",
       metadata: { score: RATING[hit.rating].score, hair: hit.hair.variant.id, keepOpen: true },
@@ -201,8 +217,12 @@ export default function HairSpecialist({ onResult, onClose }: MiniGameComponentP
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") { e.preventDefault(); onClose(); return; }
-      if (e.repeat) return;
+      if (e.key === "Escape") {
+        e.preventDefault();
+        if (pitchRef.current) setPitch(false); else onClose();
+        return;
+      }
+      if (e.repeat || pitchRef.current) return;
       if (e.key === "e" || e.key === "E" || e.key === " " || e.key === "Enter") {
         e.preventDefault();
         // A focused button would also fire on Space keyup and act twice.
@@ -213,6 +233,28 @@ export default function HairSpecialist({ onResult, onClose }: MiniGameComponentP
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [act, onClose]);
+
+  // The specialist's own face for the dialog, built from his wardrobe look.
+  useEffect(() => {
+    if (!pitch) return;
+    const look = NPC_REGISTRY.find((n) => n.id === "hair-specialist")?.loadout;
+    if (!look) return;
+    const files = LAYER_ORDER
+      .map((cat) => getVariant(cat, look[cat])?.file)
+      .filter((f): f is string => !!f);
+    Promise.all(files.map(loadFrame)).then((layers) => {
+      const ctx = portraitRef.current?.getContext("2d");
+      if (!ctx) return;
+      ctx.imageSmoothingEnabled = false;
+      ctx.clearRect(0, 0, FW, FH);
+      for (const layer of layers) ctx.drawImage(layer, 0, 0);
+    }).catch(() => undefined);
+  }, [pitch]);
+
+  const openRemedi = useCallback(() => {
+    track("protocol-open", "remedi-finance", { label: "Remedi Finance" });
+    window.open(REMEDI_URL, "_blank", "noopener,noreferrer");
+  }, []);
 
   const r = landed ? RATING[landed.rating] : null;
 
@@ -308,6 +350,49 @@ export default function HairSpecialist({ onResult, onClose }: MiniGameComponentP
           )}
         </div>
       </div>
+
+      {pitch && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center"
+          style={{ background: "rgba(6,10,20,0.75)", padding: 8 }}
+        >
+          <div
+            style={{
+              width: "min(520px, 100%)",
+              maxHeight: "100%",
+              overflowY: "auto",
+              background: "#141a2b",
+              border: `3px solid ${ACCENT}`,
+              borderRadius: 12,
+              padding: 14,
+              color: "#fff",
+              display: "flex",
+              gap: 12,
+              alignItems: "flex-start",
+            }}
+          >
+            <canvas
+              ref={portraitRef}
+              width={FW}
+              height={FH}
+              style={{ width: 72, height: 72, flexShrink: 0, imageRendering: "pixelated", background: "#0b1020", borderRadius: 8 }}
+            />
+            <div style={{ flex: 1, textAlign: "left" }}>
+              <div style={{ color: ACCENT, fontSize: 11, marginBottom: 8 }}>TURKISH HAIRLINES</div>
+              <p style={{ fontSize: 9, lineHeight: 1.7, margin: "0 0 8px" }}>
+                Remedi Finance connects you with real hair transplant clinics in Türkiye.
+              </p>
+              <p style={{ fontSize: 9, lineHeight: 1.7, margin: "0 0 12px", color: "#FFD700" }}>
+                Exclusive discounts for ST Members worldwide + checkout on Solana.
+              </p>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <button onClick={openRemedi} style={btn(ACCENT, touch)}>VISIT REMEDI</button>
+                <button onClick={() => setPitch(false)} style={btn("#2a3350", touch)}>KEEP PLAYING</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
