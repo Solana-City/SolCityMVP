@@ -42,6 +42,9 @@ const KITE_CLASH_ID = "kite-clash";
  * than a chase. Filtered against the registry so a disabled NPC can never make
  * the reward unreachable.
  */
+// Planned: 8-10 builder NPCs in the ST Brasil area. Once ALL of them are in
+// the city, the shirt becomes "talk to every builder": add their ids here and
+// update the Brazilian_shirt unlockHint in paperDoll.ts.
 const STBR_CREW = ["kuka", "kite-pro", "caramel-dog"];
 
 function requiredNpcIds(): string[] {
