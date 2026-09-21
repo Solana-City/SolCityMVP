@@ -43,6 +43,41 @@ export interface PaintedTile {
 const OBJECT_GAP = 2;
 /** Alpha of an object while it hides the player. */
 const FADED_ALPHA = 0.25;
+/** A pixel counts as covering the player from this alpha up (0..255). */
+const OPAQUE_ALPHA = 32;
+
+/**
+ * Per-tile "is this pixel visible" masks, built lazily and shared by every
+ * layer. Big buildings are sliced into a grid, so a building's rectangle is
+ * full of fully transparent tiles: a tile being PAINTED somewhere says
+ * nothing about whether it hides anything there.
+ */
+const opaqueMasks = new Map<string, Uint8Array>();
+/** One scratch canvas for reading tile pixels, reused for every mask. */
+let maskCanvas: HTMLCanvasElement | null = null;
+
+function opaqueMask(ts: Phaser.Tilemaps.Tileset, index: number): Uint8Array | null {
+  const tex = ts.image;
+  if (!tex) return null;
+  const key = `${tex.key}|${index}`;
+  const hit = opaqueMasks.get(key);
+  if (hit) return hit;
+  const w = ts.tileWidth;
+  const h = ts.tileHeight;
+  maskCanvas ??= document.createElement("canvas");
+  if (maskCanvas.width < w) maskCanvas.width = w;
+  if (maskCanvas.height < h) maskCanvas.height = h;
+  const ctx = maskCanvas.getContext("2d", { willReadFrequently: true });
+  if (!ctx) return null;
+  ctx.clearRect(0, 0, w, h);
+  const c = ts.getTileTextureCoordinates(index) as { x: number; y: number };
+  ctx.drawImage(tex.getSourceImage() as CanvasImageSource, c.x, c.y, w, h, 0, 0, w, h);
+  const data = ctx.getImageData(0, 0, w, h).data;
+  const mask = new Uint8Array(w * h);
+  for (let i = 0; i < mask.length; i++) mask[i] = data[i * 4 + 3] >= OPAQUE_ALPHA ? 1 : 0;
+  opaqueMasks.set(key, mask);
+  return mask;
+}
 
 type Part = { blitter: Phaser.GameObjects.Blitter; bounds: Phaser.Geom.Rectangle; on: boolean };
 
@@ -249,9 +284,16 @@ export class SparseLayer implements CityLayer {
    */
   updateFade(px: number, feetY: number): void {
     const hiding = new Set<number>();
-    for (const y of [feetY - this.tileH, feetY - this.tileH * 1.5]) {
-      const idx = this.objectAt(px, y);
-      if (idx !== undefined && this.objects[idx].depth > feetY) hiding.add(idx);
+    // Torso and head, centre and both sides: the object hides the player only
+    // where it has VISIBLE pixels over their body, not wherever it has a tile.
+    const points: Array<[number, number]> = [
+      [px, feetY - this.tileH], [px - 6, feetY - this.tileH], [px + 6, feetY - this.tileH],
+      [px, feetY - this.tileH * 1.5],
+    ];
+    for (const [x, y] of points) {
+      const idx = this.objectAt(x, y);
+      if (idx === undefined || hiding.has(idx) || !(this.objects[idx].depth > feetY)) continue;
+      if (this.opaqueAt(x, y)) hiding.add(idx);
     }
     this.objects.forEach((o, i) => {
       const target = hiding.has(i) ? FADED_ALPHA : 1;
@@ -266,6 +308,23 @@ export class SparseLayer implements CityLayer {
     const row = Math.floor((worldY - this.offY) / this.tileH);
     if (col < 0 || row < 0 || col >= this.gridW) return undefined;
     return this.cellObject.get(row * this.gridW + col);
+  }
+
+  /** True when the tile painted at this world point has a visible pixel there. */
+  private opaqueAt(worldX: number, worldY: number): boolean {
+    const col = Math.floor((worldX - this.offX) / this.tileW);
+    const row = Math.floor((worldY - this.offY) / this.tileH);
+    const t = this.cells.get(row * this.gridW + col);
+    if (!t?.tileset) return false;
+    const ts = t.tileset;
+    const mask = opaqueMask(ts, t.index);
+    if (!mask) return true; // cannot read the pixels: keep the old, tile-level answer
+    let lx = Math.floor(worldX - (this.offX + t.x * this.tileW - ts.tileOffset.x));
+    let ly = Math.floor(worldY - (this.offY + t.y * this.tileH - ts.tileOffset.y));
+    if (lx < 0 || ly < 0 || lx >= ts.tileWidth || ly >= ts.tileHeight) return false;
+    if (t.flipX) lx = ts.tileWidth - 1 - lx;
+    if (t.flipY) ly = ts.tileHeight - 1 - ly;
+    return mask[ly * ts.tileWidth + lx] === 1;
   }
 
   private setObjectAlpha(o: CityObject, value: number): void {
