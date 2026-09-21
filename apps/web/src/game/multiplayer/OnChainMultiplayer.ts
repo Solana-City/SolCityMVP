@@ -209,7 +209,8 @@ export class OnChainMultiplayer {
   // idle and lands in an empty city. We learn the offset instead of trusting
   // the device: when a player's last_active increases, we just watched that
   // write happen, so chain time and device time are the same instant.
-  private chainFreshestTs = 0;   // highest last_active (unix seconds) seen
+  /** wallet → last_active (unix seconds) at the previous sighting. */
+  private lastSeenTs = new Map<string, number>();
   private clockSkewMs = 0;       // device clock minus chain clock
 
   // Local player score (kept in sync by CityScene via updateScore())
@@ -1769,15 +1770,21 @@ export class OnChainMultiplayer {
       if (walletStr === this.wallet?.toBase58()) return; // skip self
 
       // Watching last_active move forward dates the device clock against the
-      // chain: this write is happening now on both. Only a gross difference is
-      // treated as skew — small ones are ordinary propagation delay.
-      if (lastActiveLo > this.chainFreshestTs) {
-        this.chainFreshestTs = lastActiveLo;
+      // chain: this write is happening now on both. It has to be the SAME
+      // account advancing between two sightings — a first sighting proves
+      // nothing, since it may be a ghost that stopped writing weeks ago, and
+      // learning "skew" from one made every ghost look alive (a 14-day "skew"
+      // was measured exactly that way). Only a gross difference counts as
+      // skew; small ones are ordinary propagation delay.
+      const prevTs = this.lastSeenTs.get(walletStr);
+      this.lastSeenTs.set(walletStr, lastActiveLo);
+      if (prevTs !== undefined && lastActiveLo > prevTs) {
         const skew = Date.now() - lastActiveLo * 1000;
-        this.clockSkewMs = Math.abs(skew) > 60_000 ? skew : 0;
-        if (this.clockSkewMs !== 0) {
+        const next = Math.abs(skew) > 60_000 ? skew : 0;
+        if (next !== 0 && Math.abs(next - this.clockSkewMs) > 60_000) {
           console.warn(`[Multiplayer] device clock is ${Math.round(skew / 1000)}s off chain time — correcting`);
         }
+        this.clockSkewMs = next;
       }
       const now = Date.now();
       // Device time, shifted onto the chain's clock — the only timeline an
