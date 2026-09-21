@@ -26,6 +26,7 @@ import { publishMinimap } from "../minimap/MinimapHost";
 import { createStockExchange } from "../world/StockExchange";
 import { buildPhysicsLayer, mergeGroundRun } from "../world/mergeLayers";
 import { SparseLayer, SPARSE_MAX_TILES, GROUND_CHUNK_TILES, type CityLayer } from "../world/sparseLayer";
+import { bakeStaticLayers, type BakedGround } from "../world/groundBake";
 import { LANDMARK_LAYERS } from "../minimap/categories";
 import { cachedName, onNames, requestNames, NAME_CHANGED_EVENT } from "../names/nameService";
 import { track } from "../telemetry/track";
@@ -78,6 +79,8 @@ export class CityScene extends Phaser.Scene {
   private overheadLayers: CityLayer[] = [];
   /** City objects drawn as Blitters, culled to the camera every frame. */
   private sparseLayers: SparseLayer[] = [];
+  /** Static layers baked into textures, drawn once (see world/groundBake.ts). */
+  private bakedGround: BakedGround | null = null;
 
   private network!: OnChainMultiplayer;
   private chat!: ChatManager;
@@ -413,6 +416,34 @@ export class CityScene extends Phaser.Scene {
         const at = this.overheadLayers.indexOf(src);
         if (at >= 0) this.overheadLayers[at] = sparse;
         this.sparseLayers.push(sparse);
+      }
+    }
+    // ── Static layers, drawn once ─────────────────────────────────────
+    // Ground and never-fading buildings sit below everything that moves and
+    // never change, so their pixels are baked once into chunk textures instead
+    // of being redrawn as ~10k tile quads every frame. Anything that fades or
+    // y-sorts stays live. Skipped if any static layer is still a tilemap, since
+    // baking the rest would reorder it. See world/groundBake.ts.
+    if (!legacyTiles) {
+      const overhead = new Set<CityLayer>(this.overheadLayers);
+      const statics = this.sparseLayers.filter((l) => !overhead.has(l));
+      const liveStaticTilemap = allLayers.some((l) =>
+        l instanceof Phaser.Tilemaps.TilemapLayer && l.visible && !overhead.has(l));
+      // The bake draws at the highest static depth, which is only right while
+      // every fading / y-sorted layer sits above that (today: 110 vs 552). A
+      // map edit that breaks it gets the unbaked, per-layer path instead.
+      const maxStatic = Math.max(-Infinity, ...statics.map((l) => l.depth));
+      const minOverhead = Math.min(Infinity, ...this.overheadLayers.map((l) => l.depth));
+      if (minOverhead <= maxStatic) {
+        console.warn(`[CityScene] static bake skipped: a fading layer (depth ${minOverhead}) sits inside the static range (up to ${maxStatic})`);
+      }
+      if (!liveStaticTilemap && minOverhead > maxStatic) {
+        this.bakedGround = bakeStaticLayers(this, statics);
+        if (this.bakedGround) {
+          const baked = this.bakedGround;
+          this.events.once("shutdown", () => baked.destroy());
+          console.log(`[CityScene] baked ${statics.length} static layers (${baked.tiles.toLocaleString()} tiles) into ${baked.chunks} chunk textures`);
+        }
       }
     }
     console.log(
@@ -1107,6 +1138,7 @@ export class CityScene extends Phaser.Scene {
       // Off-screen objects are not drawn at all (a Blitter does not cull itself).
       const view = this.cameras.main.worldView;
       for (const s of this.sparseLayers) s.cull(view);
+      this.bakedGround?.cull(view);
       // Characters off screen are not drawn either (Phaser never culls a
       // Container on its own). The pad covers a sprite's full height above
       // its feet, and the one frame the camera view lags behind.

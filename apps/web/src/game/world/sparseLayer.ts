@@ -232,8 +232,36 @@ export class SparseLayer implements CityLayer {
     }
   }
 
-  destroy(): void {
+  /**
+   * Every tile as the renderer draws it — texture, frame and world position —
+   * in draw order, for baking into a static texture (see groundBake.ts).
+   * Null if a tile is flipped: the bake draws frames as-is and cannot flip.
+   */
+  drawList(): Array<{ key: string; frame: string; x: number; y: number }> | null {
+    const out: Array<{ key: string; frame: string; x: number; y: number }> = [];
+    for (const t of this.tiles) {
+      if (t.flipX || t.flipY) return null;
+      const ts = t.tileset!;
+      out.push({
+        key: ts.image!.key,
+        frame: `__tile${t.index}`,
+        x: this.offX + t.x * this.tileW - ts.tileOffset.x,
+        y: this.offY + t.y * this.tileH - ts.tileOffset.y,
+      });
+    }
+    return out;
+  }
+
+  /**
+   * Stops drawing this layer: its pixels now live in a baked texture. The
+   * tile data stays, so the minimap and tile lookups keep working.
+   */
+  releaseRendering(): void {
     for (const p of this.parts) p.blitter.destroy();
     this.parts.length = 0;
+  }
+
+  destroy(): void {
+    this.releaseRendering();
   }
 }
