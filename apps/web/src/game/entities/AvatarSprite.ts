@@ -230,6 +230,8 @@ export class AvatarSprite {
   private currentDirection: Direction = "down";
   private currentLoadout: Loadout;
   private isWalking = false;
+  /** Every layer is already playing the walk for currentDirection. */
+  private walkSynced = false;
 
   constructor(scene: Phaser.Scene, x: number, y: number, loadout: Loadout = DEFAULT_LOADOUT) {
     this.scene = scene;
@@ -354,18 +356,28 @@ export class AvatarSprite {
    * Plays the walk animation for the given direction.
    */
   walk(direction: Direction): void {
+    // Callers invoke this every frame for as long as a character walks (the
+    // player, every pedestrian, every remote player). When nothing changed,
+    // the loop below only rebuilt an array and a key string per layer and
+    // looked each one up in the animation manager: ~7% of the frame across
+    // ~100 characters, to conclude there was nothing to do.
+    if (this.walkSynced && this.isWalking && this.currentDirection === direction) return;
     this.currentDirection = direction;
     this.isWalking = true;
+    let synced = true;
     for (const sprite of this.animatedSprites()) {
       const key = `${sprite.texture.key}-walk-${direction}`;
       const anim = this.scene.anims.get(key);
-      if (!anim || anim.frames.length === 0) continue;
+      if (!anim || anim.frames.length === 0) { synced = false; continue; }
       // Already playing this exact animation — let it continue from the current frame.
       if (sprite.anims.isPlaying && sprite.anims.currentAnim?.key === key) continue;
       // Start at frame 1 (mid-stride) so even a single-frame tap shows visible movement.
       // Frame 0 is the neutral/idle pose — starting there looks like no animation at all.
       sprite.anims.play({ key, startFrame: Math.min(1, anim.frames.length - 1) });
     }
+    // Only trust the fast path once every layer is actually playing; a layer
+    // whose animation was missing gets retried on the next call.
+    this.walkSynced = synced;
   }
 
   /**
@@ -374,6 +386,7 @@ export class AvatarSprite {
   idle(): void {
     if (!this.isWalking) return;
     this.isWalking = false;
+    this.walkSynced = false;
     const row = DIRECTION_ROW[this.currentDirection];
     for (const sprite of this.animatedSprites()) {
       sprite.anims.stop();
@@ -403,6 +416,8 @@ export class AvatarSprite {
   // ── Internal ──────────────────────────────────────────
 
   private buildLayers(): void {
+    // Fresh sprites are not playing anything: the next walk() must start them.
+    this.walkSynced = false;
     const FOOT_Y_LOCAL = -2;
     const hatVariant = getVariant("hat", this.currentLoadout.hat);
 
