@@ -97,6 +97,8 @@ export default function GuestNotice({ onConnect, onPlay }: { onConnect: () => vo
     }}>
       <div style={{
         width: "min(340px, 100%)", padding: 12, borderRadius: 10,
+        // A phone held sideways has ~330px of height: never cut the buttons off.
+        maxHeight: "calc(100dvh - 32px)", overflowY: "auto",
         background: "linear-gradient(180deg, rgba(15,18,40,0.98) 0%, rgba(8,10,24,0.98) 100%)",
         border: "1px solid rgba(153,69,255,0.35)", boxShadow: "0 8px 24px rgba(0,0,0,0.5)",
       }}>
@@ -105,7 +107,7 @@ export default function GuestNotice({ onConnect, onPlay }: { onConnect: () => vo
           <span style={{ marginLeft: "auto", fontFamily: PIXEL, fontSize: 7, color: "#555566" }}>{i + 1}/{STEPS.length}</span>
         </div>
 
-        <div key={i} className="gn-step" style={{
+        <div key={i} className="gn-step gn-scene" style={{
           height: 118, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center",
           background: "radial-gradient(circle at 50% 60%, rgba(255,90,90,0.10), rgba(10,10,30,0) 70%), #0d0d22",
           border: "1px solid rgba(255,90,90,0.18)", overflow: "hidden",
@@ -152,6 +154,7 @@ export default function GuestNotice({ onConnect, onPlay }: { onConnect: () => vo
       <style>{`
         @keyframes gn-in { from { opacity: 0; transform: translateX(10px); } to { opacity: 1; transform: none; } }
         .gn-step { animation: gn-in .2s ease; }
+        @media (max-height: 420px) { .gn-scene { height: 84px !important; } }
       `}</style>
     </div>
   );

@@ -56,8 +56,13 @@ export default function OfflineBadge() {
         width: 8, height: 8, borderRadius: "50%", background: DANGER, flexShrink: 0,
         animation: "ob-pulse 1.4s ease-in-out infinite",
       }} />
-      <span style={{ fontFamily: PIXEL, fontSize: 7, color: "#ffd9d9", lineHeight: 1.6 }}>
+      {/* Phones: the top edge is shared with the icon rail (left) and the
+          minimap card (right), so narrow screens get the short label. */}
+      <span className="ob-long" style={{ fontFamily: PIXEL, fontSize: 7, color: "#ffd9d9", lineHeight: 1.6, whiteSpace: "nowrap" }}>
         NOBODY CAN SEE YOU
+      </span>
+      <span className="ob-short" style={{ fontFamily: PIXEL, fontSize: 7, color: "#ffd9d9", lineHeight: 1.6, whiteSpace: "nowrap" }}>
+        HIDDEN
       </span>
       <button
         onClick={() => {
@@ -74,6 +79,8 @@ export default function OfflineBadge() {
       </button>
       <style>{`
         @keyframes ob-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
+        .ob-short { display: none; }
+        @media (max-width: 600px) { .ob-long { display: none; } .ob-short { display: inline; } }
       `}</style>
     </div>
   );
