@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { reloadWithReason, reportPreviousReload } from "./reloadReason";
 
 const RELOAD_STAMP_KEY = "solcity:chunk-reload-at";
 const RELOAD_COOLDOWN_MS = 30_000;
@@ -23,22 +24,25 @@ function isChunkError(value: unknown): boolean {
  */
 export function ChunkReloadGuard() {
   useEffect(() => {
-    const reloadOnce = () => {
+    // Mounted on every load (root layout): report why the last one reloaded.
+    reportPreviousReload();
+
+    const reloadOnce = (detail?: string) => {
       const last = Number(sessionStorage.getItem(RELOAD_STAMP_KEY) ?? 0);
       if (Date.now() - last < RELOAD_COOLDOWN_MS) return;
       sessionStorage.setItem(RELOAD_STAMP_KEY, String(Date.now()));
-      window.location.reload();
+      reloadWithReason("chunk failed to load", detail);
     };
 
     const onError = (event: ErrorEvent) => {
       if (isChunkError(event.message) || isChunkError(event.error?.name)) {
-        reloadOnce();
+        reloadOnce(event.message);
       }
     };
     const onRejection = (event: PromiseRejectionEvent) => {
       const reason = event.reason as { name?: string; message?: string } | undefined;
       if (isChunkError(reason?.name) || isChunkError(reason?.message)) {
-        reloadOnce();
+        reloadOnce(reason?.message);
       }
     };
 

@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { reloadWithReason } from "./reloadReason";
 
 interface Props {
   children: React.ReactNode;
@@ -94,7 +95,7 @@ export default class ErrorBoundary extends React.Component<Props, State> {
 
   handleReload = () => {
     try { sessionStorage.clear(); } catch {}
-    window.location.reload();
+    reloadWithReason("player pressed reload on the error screen", this.state.error?.message);
   };
 
   render() {
@@ -105,7 +106,9 @@ export default class ErrorBoundary extends React.Component<Props, State> {
     if (error && isWalletError(error.message ?? "")) {
       console.warn("[ErrorBoundary] wallet render error — auto-reloading:", error.message);
       // Reload after a brief delay so the user sees something happened
-      setTimeout(() => { try { window.location.reload(); } catch {} }, 1500);
+      setTimeout(() => {
+        try { reloadWithReason("wallet error during render", error.message); } catch {}
+      }, 1500);
       return null; // blank screen for 1.5s then reload
     }
 

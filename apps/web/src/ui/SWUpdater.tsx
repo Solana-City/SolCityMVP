@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { reloadWithReason } from "./reloadReason";
 
 /**
  * Seamless service-worker updates — so a broken/old cached build recovers on
@@ -26,7 +27,7 @@ export default function SWUpdater() {
       // Fired when the newly-activated SW takes control → jump onto it.
       if (reloaded) return;
       reloaded = true;
-      window.location.reload();
+      reloadWithReason("new build deployed");
     };
     navigator.serviceWorker.addEventListener("controllerchange", onControllerChange);
 

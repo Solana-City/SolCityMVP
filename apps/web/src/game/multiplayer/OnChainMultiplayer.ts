@@ -104,8 +104,11 @@ type BCMsg =
   | { t: "expr";  w: string; e: string }
   | { t: "leave"; w: string };
 
-// Throttle position broadcasts. 500ms = 2 tx/s — stays under devnet ER rate limits.
-const POS_THROTTLE_MS = 500;
+// Throttle position broadcasts. Every other screen can only be as current as
+// the last sample, so this interval is a floor under the delay players see.
+// 300ms is ~3 tx/s per walking player: rollup transactions carry no fee, and
+// the rate limits that bit us were on READS (polls), which this does not touch.
+const POS_THROTTLE_MS = 300;
 // Floor for the leading-edge sends (turns and stops). Short enough that a
 // corner reads as instant, long enough that it can't become a tx firehose.
 const POS_EVENT_MIN_MS = 150;
@@ -207,6 +210,9 @@ export class OnChainMultiplayer {
    * pushed it forward again — the slide-freeze-jump players saw.
    */
   private lastSlot = new Map<string, number>();
+  /** Changed states applied per source since the last [mp] log line. */
+  private readsByPush = 0;
+  private readsByPoll = 0;
   // ── Device clock vs chain clock ───────────────────────────────────────
   // The freshness gate compares an on-chain timestamp against Date.now(), so
   // a device whose clock is a few minutes fast judges EVERY live player as
@@ -1083,6 +1089,24 @@ export class OnChainMultiplayer {
 
   /** Surfaces the current connect stage on the login gate (real progress, so a
    *  stall is visible at the exact step instead of a time-based guess). */
+  /** Counts which path delivered a player's state, for the [mp] log line. */
+  private noteRead(fromPush: boolean): void {
+    if (fromPush) this.readsByPush++;
+    else this.readsByPoll++;
+  }
+
+  /**
+   * Once a minute: how many remote states arrived by websocket push versus
+   * poll. If pushes stay at 0 while players move, the rollup socket is not
+   * delivering and everything rides the 500ms poll.
+   */
+  private logReadPaths(): void {
+    if (this.knownPlayers.size <= 1) return;
+    console.log(`[mp] last 60s: ${this.readsByPush} states by push, ${this.readsByPoll} by poll`);
+    this.readsByPush = 0;
+    this.readsByPoll = 0;
+  }
+
   private progress(label: string): void {
     try { (globalThis as any).__solCityGameEvents?.emit("game:sessionProgress", label); } catch {}
   }
@@ -1291,6 +1315,7 @@ export class OnChainMultiplayer {
       // a full extra round trip to the validator before it could even be
       // signed. Fetching it off the critical path removes that spike.
       setInterval(() => this.prefetchMoveBlockhash(), 1_200),
+      setInterval(() => this.logReadPaths(), 60_000),
     ];
 
     // Ensure the global hunt exists (first player ever creates it), then seed
@@ -1721,7 +1746,7 @@ export class OnChainMultiplayer {
    * roster refresh passes none: it reads at "confirmed", which trails the live
    * "processed" reads, so it may ADD a player but never moves a known one.
    */
-  private decodeAndUpdatePlayer(pda: string, data: Buffer | Uint8Array, slot?: number): void {
+  private decodeAndUpdatePlayer(pda: string, data: Buffer | Uint8Array, slot?: number, fromPush = false): void {
     try {
       const buf = Buffer.from(data);
       if (buf.length < 83) return; // 8 + 32 + 33 + 4 + 4 + 4 (min)
@@ -1844,7 +1869,15 @@ export class OnChainMultiplayer {
 
       const wasKnown = existing !== undefined;
       const isWalking = existing !== undefined && (x !== existing.x || y !== existing.y);
-      this.handlePlayerMove(walletStr, x, y, direction, isWalking, displayName);
+      if (existing && !isWalking && existing.direction === direction) {
+        // The same state again — every write now arrives twice (websocket
+        // push, then the poll). Passing it on as a "move" told the scene the
+        // player had stopped, and their legs froze until the next sample.
+        existing.lastUpdate = Date.now();
+      } else {
+        this.handlePlayerMove(walletStr, x, y, direction, isWalking, displayName);
+        if (slot !== undefined) this.noteRead(fromPush);
+      }
       const updated = this.knownPlayers.get(walletStr);
       if (updated) {
         (updated as any)._onChainTs = onChainTs;
@@ -2212,7 +2245,7 @@ export class OnChainMultiplayer {
       if (this.accountSubs.has(key)) return;
       const subId = this.ephemeralConnection.onAccountChange(
         pda,
-        (info, context) => this.decodeAndUpdatePlayer(key, info.data, context.slot),
+        (info, context) => this.decodeAndUpdatePlayer(key, info.data, context.slot, true),
         "processed",
       );
       this.accountSubs.set(key, subId);

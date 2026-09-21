@@ -66,10 +66,12 @@ export class CityScene extends Phaser.Scene {
   private remotePlayers = new Map<string, AvatarSprite>();
   /** JSON of the loadout last applied to each remote avatar — to skip rebuilds. */
   private remoteLoadoutKey = new Map<string, string>();
-  /** wallet → when their last position sample arrived, for the catch-up tween. */
-  private remoteSampleAt = new Map<string, number>();
-  /** wallet → smoothed gap between their samples, which sets the tween length. */
-  private remoteGapAvg = new Map<string, number>();
+  /**
+   * wallet → where that player is according to the chain, the way they face,
+   * and when that position last changed. Remote avatars walk toward it every
+   * frame (followRemote) rather than being tweened to it.
+   */
+  private remoteTarget = new Map<string, { x: number; y: number; dir: Direction; movedAt: number }>();
   /** Per-remote expression auto-revert timers. */
   private remoteExprTimers = new Map<string, Phaser.Time.TimerEvent>();
   /** Per-remote last position + last dust time, so remotes kick up foot dust too. */
@@ -1126,9 +1128,13 @@ export class CityScene extends Phaser.Scene {
     // Pedestrian depth sorting
     this.pedestrians.updateDepths();
 
-    // Interpolate remote players + kick up their foot dust as they move.
+    // Walk remote players toward their chain position + kick up their foot dust.
     const dustNow = this.time.now;
+    const followDt = Math.min(this.game.loop.delta, 100) / 1000;
+    const followNow = Date.now();
     this.remotePlayers.forEach((remote, wallet) => {
+      const target = this.remoteTarget.get(wallet);
+      if (target) this.followRemote(remote, target, followDt, followNow);
       remote.updateDepth();
       const c = remote.getContainer();
       const prev = this.remoteDust.get(wallet);
@@ -1302,8 +1308,7 @@ export class CityScene extends Phaser.Scene {
       this.remotePlayers.delete(wallet);
     }
     this.remoteLoadoutKey.delete(wallet);
-    this.remoteSampleAt.delete(wallet);
-    this.remoteGapAvg.delete(wallet);
+    this.remoteTarget.delete(wallet);
     this.remoteDust.delete(wallet);
     const exprTimer = this.remoteExprTimers.get(wallet);
     if (exprTimer) { exprTimer.remove(false); this.remoteExprTimers.delete(wallet); }
@@ -1353,39 +1358,23 @@ export class CityScene extends Phaser.Scene {
           this.tweens.add({ targets: container, alpha: 1, duration: 300, ease: "Quad.easeOut" });
         },
       });
-    } else if (dist > 2) {
-      if (container.alpha < 1) container.setAlpha(1);
-      // Interpolate up to the next expected sample so motion stays continuous
-      // (never reaches the target and stalls before the next one arrives).
-      //
-      // The duration follows how fast that player's updates are actually
-      // arriving instead of a fixed 600ms: rollup pushes land far quicker than
-      // the old poll, and holding every avatar 600ms behind its known position
-      // was, on its own, a third of the lag players were reporting. A turn or a
-      // stop arrives on the leading edge, so the gap shrinks and the avatar
-      // catches up in a few frames rather than sliding on for half a second.
-      //
-      // The gap is smoothed (moving average) rather than taken raw: samples
-      // arrive unevenly (poll, websocket, leading-edge turns), and following
-      // each raw gap made the avatar crawl after a slow one and sprint through
-      // the next burst.
-      const now = Date.now();
-      const prev = this.remoteSampleAt.get(wallet);
-      this.remoteSampleAt.set(wallet, now);
-      const rawGap = prev ? Phaser.Math.Clamp(now - prev, 100, 800) : 450;
-      const avg = this.remoteGapAvg.get(wallet) ?? 450;
-      const smoothed = avg + (rawGap - avg) * 0.25;
-      this.remoteGapAvg.set(wallet, smoothed);
-      const duration = Phaser.Math.Clamp(smoothed, 250, 600);
-      this.tweens.killTweensOf(container);
-      this.tweens.add({
-        targets: container,
-        x: player.x,
-        y: player.y,
-        duration,
-        ease: "Linear",
-      });
+    } else if (container.alpha < 1 && !this.tweens.isTweening(container)) {
+      container.setAlpha(1);
     }
+
+    // Where they are now; followRemote() walks the avatar there. Legs are
+    // decided by what the avatar actually does on screen, not by comparing
+    // samples — two identical samples in a row (push, then poll) used to
+    // read as "stopped" and freeze the legs mid-walk.
+    const dirs: Direction[] = ["down", "left", "right", "up"];
+    const prevTarget = this.remoteTarget.get(wallet);
+    const moved = !prevTarget || prevTarget.x !== player.x || prevTarget.y !== player.y;
+    this.remoteTarget.set(wallet, {
+      x: player.x,
+      y: player.y,
+      dir: dirs[player.direction] ?? prevTarget?.dir ?? "down",
+      movedAt: moved ? Date.now() : prevTarget?.movedAt ?? 0,
+    });
 
     // Apply a changed outfit (only when it actually differs — setLoadout
     // rebuilds every layer, so guard against per-move churn).
@@ -1397,9 +1386,46 @@ export class CityScene extends Phaser.Scene {
       }
     }
 
-    const dirs: Direction[] = ["down", "left", "right", "up"];
-    if (player.isWalking && dirs[player.direction]) {
-      avatar.walk(dirs[player.direction]);
+  }
+
+  /**
+   * Moves a remote avatar toward where the chain last put that player.
+   *
+   * It walks at the player's own speed, so the legs and the ground agree, and
+   * only speeds up (to 2.5x) when it has fallen more than REMOTE_LAG_S of
+   * walking behind — a late sample, a burst after a stall. Tweening to each
+   * sample over a fixed duration did neither: it held every avatar a full
+   * duration behind, and uneven sample spacing turned into uneven speed.
+   *
+   * Between samples the legs keep going for REMOTE_WALK_HOLD_MS after the
+   * position last changed: the next sample is usually already in flight, and
+   * flicking to idle for a frame or two is what read as truncated animation.
+   */
+  private followRemote(
+    avatar: AvatarSprite,
+    t: { x: number; y: number; dir: Direction; movedAt: number },
+    dt: number,
+    now: number,
+  ): void {
+    const REMOTE_LAG_S = 0.45;          // 1.5 send intervals of slack before catching up
+    const REMOTE_WALK_HOLD_MS = 380;    // a bit over one send interval
+    const c = avatar.getContainer();
+    const dx = t.x - c.x;
+    const dy = t.y - c.y;
+    const dist = Math.hypot(dx, dy);
+    if (dist > 180) return; // a jump: updateRemotePlayer fades them across
+    if (dist > 0.75) {
+      const speed = PLAYER_SPEED * Phaser.Math.Clamp(dist / (PLAYER_SPEED * REMOTE_LAG_S), 1, 2.5);
+      const step = Math.min(dist, speed * dt);
+      c.x += (dx / dist) * step;
+      c.y += (dy / dist) * step;
+      // Face the way the avatar is really moving on this screen.
+      const dir: Direction = Math.abs(dx) > Math.abs(dy)
+        ? (dx < 0 ? "left" : "right")
+        : (dy < 0 ? "up" : "down");
+      avatar.walk(dir);
+    } else if (now - t.movedAt < REMOTE_WALK_HOLD_MS) {
+      avatar.walk(t.dir);
     } else {
       avatar.idle();
     }
