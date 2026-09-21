@@ -14,8 +14,8 @@ const strangerSk = Keypair.generate();
 beforeAll(async () => {
   // No chain in tests: an unknown session key finds no player account.
   vi.stubGlobal("fetch", vi.fn(async () => ({ json: async () => ({ result: { value: null } }) })));
-  await setex(`dm:sk:${aliceSk.publicKey.toBase58()}`, alice, 60);
-  await setex(`dm:sk:${bobSk.publicKey.toBase58()}`, bob, 60);
+  await setex(`auth:sk:${aliceSk.publicKey.toBase58()}`, alice, 60);
+  await setex(`auth:sk:${bobSk.publicKey.toBase58()}`, bob, 60);
 });
 
 describe("signatures", () => {

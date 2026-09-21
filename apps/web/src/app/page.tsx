@@ -43,6 +43,7 @@ const PlayerCard          = dynamic(() => import("@/ui/PlayerCard"),          { 
 const AudioBridge         = dynamic(() => import("@/ui/AudioBridge"),         { ssr: false });
 const NicknameModal       = dynamic(() => import("@/ui/NicknameModal"),       { ssr: false });
 const DuelInvite          = dynamic(() => import("@/ui/DuelInvite"),          { ssr: false });
+const TodayCard           = dynamic(() => import("@/ui/TodayCard"),           { ssr: false });
 
 /** Sol Mechs duel invites: sent from a player card, answered from the city. */
 const DUEL_INVITE_EVENT = "solcity:solmechs-duel";
@@ -516,6 +517,7 @@ export default function Home() {
           <MobileControls />
           <ExpressionWheel gameRef={game} />
           {flags.chat && <ChatPanel gameRef={game} visible={chatOpen} />}
+          <TodayCard gameRef={game} />
           <NPCDialog npc={activeNPC} onClose={handleDialogClose} onAction={handleAction} />
           {nickname && walletAddress && (
             <NicknameModal wallet={walletAddress} current={nickname.current} forced={nickname.forced} onDone={closeNickname} />

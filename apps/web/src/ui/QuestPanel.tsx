@@ -10,6 +10,7 @@ import {
   getQuestLeaderboard, getMyQuestPoints, getDailyPointsEarned,
   type QuestProgress, type QuestLeaderEntry,
 } from "@/game/quests/QuestManager";
+import { OPEN_TODAY_EVENT } from "@/game/daily/todayEvents";
 
 // ── Leaderboard modal ─────────────────────────────────────────────────────────
 function QuestLeaderboardModal({ onClose }: { onClose: () => void }) {
@@ -186,6 +187,15 @@ export default function QuestPanel({ wallet }: Props) {
               {dailyEarned}/{dailyMax}
             </span>
           )}
+          <button
+            onClick={e => { e.stopPropagation(); window.dispatchEvent(new Event(OPEN_TODAY_EVENT)); }}
+            title="Today in Solana City"
+            style={{
+              background: "rgba(255,215,0,0.08)", border: "1px solid rgba(255,215,0,0.3)",
+              borderRadius: 6, color: "#FFD700", height: 22, padding: "0 6px", cursor: "pointer",
+              fontFamily: '"Press Start 2P", monospace', fontSize: 6, flexShrink: 0,
+            }}
+          >TODAY</button>
           <button style={{
             background: "rgba(20,241,149,0.08)", border: "1px solid rgba(20,241,149,0.2)",
             borderRadius: 6, color: "#14F195", fontSize: 9,

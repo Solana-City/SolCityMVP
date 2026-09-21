@@ -11,6 +11,7 @@
  *   ev:hunt:found:by         finds per wallet          -> the Find Someone board
  *   ev:minigame:<id>:best    best score per wallet     -> per-game boards
  *   lb:quest                 quest points per wallet   -> the quest board
+ *   lb:streak                best check-in streak      -> the streak board (lib/streak.ts)
  *
  * Quest progress is per wallet per UTC day:
  *   quests:<YYYY-MM-DD>:<wallet>   hash questId -> JSON progress
@@ -44,7 +45,7 @@ function gameKey(id: string): string {
 }
 
 /**
- * `hunt`, `quests`, or `game:<id>`. Unknown boards return empty rather than
+ * `hunt`, `quests`, `streak`, or `game:<id>`. Unknown boards return empty rather than
  * throwing: the caller is a public endpoint.
  */
 export async function readBoard(board: string, limit = 10): Promise<BoardRow[]> {
@@ -52,6 +53,7 @@ export async function readBoard(board: string, limit = 10): Promise<BoardRow[]> 
   let key: string | null = null;
   if (board === "hunt") key = huntKey();
   else if (board === "quests") key = QUEST_POINTS_KEY;
+  else if (board === "streak") key = "lb:streak";
   else if (board.startsWith("game:")) {
     const id = board.slice(5);
     if (/^[a-z0-9][a-z0-9_-]{0,39}$/i.test(id)) key = gameKey(id);

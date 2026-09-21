@@ -43,7 +43,7 @@ would favour builders and bounties.
 Missing entirely: check-in, streaks, anything that changes day to day on its
 own, news, collectibles, events.
 
-### R1. Daily check-in with a streak — P1, S (second)
+### R1. Daily check-in with a streak — FIRST VERSION 2026-09-21 ("Today in Solana City")
 The cheapest "come back tomorrow". A small card on first entry of the day:
 day N of your streak, what today's reward is, what tomorrow's will be. Missing
 a day resets it. Stored per wallet on the server like the quests. Measure it
@@ -56,7 +56,7 @@ a collection, which is also the first **collectible**. Reuses the hunt's
 "deterministic target from a daily seed" approach. Needs a small set of item
 sprites (ask before drawing new ones).
 
-### R3. City news, curated daily — P1, M (FIRST: the reason to come in)
+### R3. City news, curated daily — P3 (user, 2026-09-21: must not depend on daily posts; interesting, not a priority)
 One screen (a newspaper stand or a board near spawn) with a few items a day:
 Solana news, ecosystem launches, the day's Superteam bounties, and what
 happened in the city (top kite score, who found the most citizens). Start
