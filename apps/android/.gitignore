@@ -1,0 +1,21 @@
+*.iml
+.gradle
+/local.properties
+.local/
+
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+
+
+.idea
+
+# Release signing material never enters the repo. Losing the keystore means the
+# dApp Store listing can never be updated, so it lives in a password manager.
+*.keystore
+*.jks
+keystore.properties
+/app/release

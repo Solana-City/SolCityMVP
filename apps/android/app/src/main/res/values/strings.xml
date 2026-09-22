@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">Sol City</string>
+    <string name="load_error_title">Can\'t reach the city</string>
+    <string name="load_error_retry">Retry</string>
+</resources>

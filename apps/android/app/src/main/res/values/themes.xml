@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!--
+      Navy window background, so there is no white flash between the splash and
+      the first WebView paint.
+    -->
+    <style name="Theme.SolCity" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/solcity_navy</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+    </style>
+
+    <style name="Theme.SolCity.Splash" parent="Theme.SplashScreen.IconBackground">
+        <item name="windowSplashScreenBackground">@color/solcity_navy</item>
+        <item name="windowSplashScreenAnimatedIcon">@mipmap/ic_launcher_foreground</item>
+        <item name="windowSplashScreenIconBackgroundColor">@color/solcity_navy</item>
+        <item name="postSplashScreenTheme">@style/Theme.SolCity</item>
+    </style>
+</resources>
