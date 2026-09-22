@@ -292,7 +292,7 @@ export const NPC_REGISTRY: NPCDefinition[] = [
       "Buy real stocks as Solana tokens, from $1. Wall Street closes, Solana never does.",
     ],
     action: { type: "stock-exchange", label: "Open the exchange" },
-    // No spriteKey yet: placeholder avatar until the broker's original art lands.
+    spriteKey: "Stocks Broker",
   },
   {
     id: "hair-specialist",
