@@ -1,7 +1,7 @@
 {
-  "name": "Sol Mechs Battle Pass — Season 1",
+  "name": "Sol Mechs Battle Pass: Season 1",
   "symbol": "SMBP",
-  "description": "Season 1 Battle Pass for Sol Mechs, inside Solana City. Grants the four mechs — Titan, Striker, Arclight and HeartCore — and entry to the ranked season ladder. 1,111 minted; whatever is unsold is burned. Beta.",
+  "description": "Season 1 Battle Pass for Sol Mechs, inside Solana City. Grants the four mechs (Titan, Striker, Arclight and HeartCore) and entry to the ranked season ladder. 1,111 minted; whatever is unsold is burned. Beta.",
   "image": "https://solanacity.io/assets/minigames/sol-mechs/ui/logo.png",
   "external_url": "https://solanacity.io",
   "attributes": [

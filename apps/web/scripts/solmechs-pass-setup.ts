@@ -71,7 +71,7 @@ async function main(): Promise<void> {
   console.log(`\ncreating collection ${collection.publicKey} ...`);
   await createCollection(umi, {
     collection,
-    name: "Sol Mechs Battle Pass — Season 1",
+    name: "Sol Mechs Battle Pass: Season 1",
     uri: METADATA_URI,
     plugins: [
       {
