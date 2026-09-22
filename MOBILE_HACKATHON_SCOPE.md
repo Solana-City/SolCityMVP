@@ -8,6 +8,101 @@ This file is the scope of work. It is the plan, not a record of what is done.
 
 ---
 
+## 0. Revision 2026-09-22 (supersedes the sections below where they conflict)
+
+### The hackathon, from the official announcement
+
+**CLOCK IN**, Solana Mobile with RadiantsDAO. Opened 2026-09-08, **submissions
+close 2026-10-08**. $125,000 USDC across the top 10 (30k / 25k / 20k / 15k / 10k,
+then 5k each), plus a separate **$10,000 SKR integration prize** for creative use
+of SKR ("in-app purchases, staking, rewards, access"). Winners must publish on the
+dApp Store.
+
+Judging, no weights published:
+
+1. **Stickiness and product-market fit**: does it give Seeker users a reason to
+   come back?
+2. **User experience**: intuitive, polished, actually fun?
+3. **Innovation**: a fresh idea or a new way to use mobile?
+4. **Presentation and demo**: can you show what you built and why it matters?
+
+### Does the Mobile Wallet Adapter count? No.
+
+- It is **not a judging criterion**. It is listed as a starter resource. Every
+  submission will have it, so it earns nothing on its own.
+- It **predates the hackathon** in this project (`MwaRegistration.tsx`), so it is
+  not "new mobile development during the hackathon".
+- In the app it works through Solana Mobile's official web-shell mechanism with
+  **no code of ours**.
+
+MWA is the entry ticket, not the score. What counts is everything built on top
+that a browser cannot do, mapped to the four criteria above.
+
+### Architecture change: official web-shell, remote-loaded
+
+Section 3's Capacitor plan with a bundled client is replaced. Solana Mobile's
+docs now point dApp Store web apps to `@solana-mobile/webshell-cli` instead of
+Bubblewrap, and `wallet-standard-mobile` >= 0.5.1 (we ship 0.5.2) registers MWA
+inside a WebView whose user agent says `Solana Mobile Web Shell`. That template,
+vendored into `apps/android/` and adapted for a game, is the app. Landed in
+`6264f68`; details in `apps/android/README.md`.
+
+It **loads www.solanacity.io** rather than bundling the client, because:
+
+- The pending program redeploy (player_v3) would break a frozen bundled client.
+- Every push to `main` updates web and app together; a bundled build would need a
+  dApp Store release, with 2 to 5 days of review, for every game change.
+- A live on-chain multiplayer game needs the network anyway, so offline boot
+  bought nothing real.
+
+This keeps one web build for desktop, mobile browsers and the app. The web stays
+the primary client; the APK targets Seeker through the dApp Store.
+
+Consequently **native Kotlin MWA (W2) is dropped**: judges score what the player
+sees, and the wallet sheet looks identical either way. The Keystore work in W2
+becomes optional hardening.
+
+### Priorities, mapped to the criteria
+
+| Criterion | Work | Status |
+|---|---|---|
+| (base) | Game-grade shell: landscape, immersive, no pull-to-refresh or WebView zoom, back to Escape, battery-safe background, bridge, icon | **Done**, `6264f68` |
+| UX | W3 touch-first pass on the Seeker | Next, largest item |
+| UX | W4 haptics wired into game events (bridge is ready) | Next, small |
+| Stickiness | W5 push notifications. **Promoted from swing item to core**: it is the most direct answer to "a reason to come back" | Core |
+| Innovation | Web and Seeker players in one on-chain world in real time, no wallet popups mid-game (session keys). Harden with W7 | Core |
+| Presentation | W8 video and deck, two devices side by side | Core |
+| SKR prize | Optional, needs a product decision (see below) | Open |
+| Security | Session key encrypted at rest with a Keystore key | Optional |
+| (dropped) | Native Kotlin MWA | Dropped |
+| (dropped) | W6 as a separate item; the shell already pauses timers in background | Folded into base |
+
+**SKR prize, decision needed.** The game already sells energy packs, outfit boxes
+and battle passes. Accepting SKR for those is the most natural fit for "creative
+SKR integration" without inventing a new system. Whether to pursue it is a
+product call, not a technical one.
+
+### Calendar to 2026-10-08
+
+| Window | Work |
+|---|---|
+| Sep 22-23 | Toolchain installed, first APK on the Seeker, checks 0.3 and 0.4 |
+| Sep 24-29 | W3 touch-first pass, W4 haptics wiring |
+| Sep 29 - Oct 3 | W5 push (Firebase project, token routes, triggers) |
+| Oct 3-5 | W7 cross-play hardening, demo rehearsal, SKR if chosen |
+| **Oct 6** | **Freeze web deploys and the APK** |
+| Oct 6-7 | Video, deck, submission. Oct 8 is buffer, not a work day |
+
+### Open items for the user
+
+1. Install Android Studio (toolchain steps in `apps/android/README.md`).
+2. Confirm Google Play services is present on the Seeker, which FCM push needs.
+3. Create a Firebase project for push, with an Android app `io.solanacity.app`.
+4. Decide on the SKR prize.
+5. Eligible countries list (unchanged from section 8).
+
+---
+
 ## 1. Where we stand today (verified against the repo)
 
 | Fact | Evidence |
