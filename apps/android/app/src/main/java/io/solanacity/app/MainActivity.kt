@@ -199,7 +199,6 @@ class MainActivity : ComponentActivity() {
 
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
-            settings.databaseEnabled = true
             settings.loadWithOverviewMode = false
             settings.useWideViewPort = false
             // Kept from the template until verified on device: the MWA session
@@ -235,7 +234,8 @@ class MainActivity : ComponentActivity() {
             webChromeClient =
                 WebShellChromeClient(
                     onProgressChanged = { newProgress ->
-                        progress = newProgress / 100f
+                        // Qualified: inside apply, a bare `progress` is WebView.getProgress().
+                        this@MainActivity.progress = newProgress / 100f
                         if (newProgress > 0) showSplash = false
                         isLoading = newProgress < 100
                     },
