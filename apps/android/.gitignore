@@ -1,5 +1,7 @@
 *.iml
 .gradle
+# Gradle writes build output per module, so /build alone missed app/build.
+build/
 /local.properties
 .local/
 
