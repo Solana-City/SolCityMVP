@@ -24,9 +24,12 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LinearProgressIndicator
@@ -194,7 +197,7 @@ class MainActivity : ComponentActivity() {
         val startUrl = normalizeHttpUrl() ?: BuildConfig.WEB_SHELL_URL
         val scopeHosts = scopeHostsFor(startUrl)
 
-        return WebView(context).apply {
+        return GameWebView(context).apply {
             layoutParams =
                 ViewGroup.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
@@ -309,13 +312,16 @@ private fun GameLayer(
     showSplash: Boolean,
     onRetry: () -> Unit,
 ) {
-    // No inset padding: the game fills the panel edge to edge. Black rather
-    // than the navy brand colour, so any letterboxing reads as screen edge.
+    // No inset padding except the keyboard: the game fills the panel edge to
+    // edge, black rather than the navy brand colour so any letterboxing reads
+    // as screen edge. The ime inset shrinks the page while the keyboard is up,
+    // which is what puts the chat box above the keys instead of behind them.
     Box(
         modifier =
             Modifier
                 .fillMaxSize()
-                .background(Color.Black),
+                .background(Color.Black)
+                .windowInsetsPadding(WindowInsets.ime),
     ) {
         AndroidView(modifier = Modifier.fillMaxSize(), factory = { webView })
 

@@ -38,6 +38,7 @@
             android:screenOrientation="sensorLandscape"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|navigation|uiMode|density"
             android:launchMode="singleTask"
+            android:windowSoftInputMode="adjustResize"
             android:theme="@style/Theme.SolCity.Splash"
             tools:ignore="DiscouragedApi,LockedOrientationActivity">
             <intent-filter>
