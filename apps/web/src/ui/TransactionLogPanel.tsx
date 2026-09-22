@@ -140,14 +140,15 @@ export default function TransactionLogPanel({ isOpen, onToggle, gameRef, compact
       className="fixed z-30 rounded-xl overflow-hidden flex flex-col"
       style={{
         // On a phone the 420px card anchored under the HUD had almost no room
-        // left in landscape, so on touch the log becomes a sheet pinned to all
-        // four edges. Using top+bottom instead of a computed height also keeps
-        // it out of the WebViews that report 100vh wrong.
+        // left in landscape, so on touch the log is a side sheet down the right
+        // edge: full height, part of the width, leaving the joystick side free
+        // so the player can still walk while watching transactions land.
+        // Pinning top and bottom instead of computing a height also keeps it
+        // out of the WebViews that report 100vh wrong.
         top: compact ? 8 : panelTop,
         bottom: compact ? 8 : undefined,
-        left: compact ? 8 : undefined,
         right: compact ? 8 : 16,
-        width: compact ? undefined : 420,
+        width: compact ? "min(58%, 380px)" : 420,
         maxWidth: compact ? undefined : "calc(100vw - 32px)",
         height: compact ? undefined : `min(560px, calc(100vh - ${panelTop + 8}px))`,
         background: "rgba(10,10,30,0.97)",
