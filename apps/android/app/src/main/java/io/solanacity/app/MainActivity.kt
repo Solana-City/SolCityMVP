@@ -2,6 +2,7 @@ package io.solanacity.app
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -23,12 +24,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LinearProgressIndicator
@@ -41,6 +39,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -92,6 +91,12 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        // Fill the whole panel, camera cutout included. Padding the cutout away
+        // left a letterbox strip down one side in landscape.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            window.attributes.layoutInDisplayCutoutMode =
+                WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+        }
         hideSystemBars()
         WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG)
 
@@ -195,7 +200,7 @@ class MainActivity : ComponentActivity() {
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.MATCH_PARENT,
                 )
-            setBackgroundColor(0xFF061B3A.toInt())
+            setBackgroundColor(android.graphics.Color.BLACK)
 
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
@@ -304,13 +309,13 @@ private fun GameLayer(
     showSplash: Boolean,
     onRetry: () -> Unit,
 ) {
-    // Bars are hidden, so only the camera cutout needs keeping clear.
+    // No inset padding: the game fills the panel edge to edge. Black rather
+    // than the navy brand colour, so any letterboxing reads as screen edge.
     Box(
         modifier =
             Modifier
                 .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background)
-                .windowInsetsPadding(WindowInsets.displayCutout),
+                .background(Color.Black),
     ) {
         AndroidView(modifier = Modifier.fillMaxSize(), factory = { webView })
 

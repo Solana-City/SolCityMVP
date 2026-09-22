@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { isNativeShell } from "@/lib/nativeShell";
 
 /**
  * RotatePrompt
@@ -8,6 +9,11 @@ import { useState, useEffect } from "react";
  * Shows a full-screen overlay on touch (mobile) devices when the user is
  * holding the phone in portrait orientation. Disappears automatically when
  * they rotate to landscape. No-op on desktop.
+ *
+ * Never shown inside the Android app, which locks landscape natively. There it
+ * was actively harmful: opening the wallet brings up a portrait activity, the
+ * display rotates, and this overlay covered the game at z-index 9999 in the
+ * middle of the wallet hand-off, which looked like a freeze.
  */
 export default function RotatePrompt() {
   const [show, setShow] = useState(false);
@@ -15,6 +21,9 @@ export default function RotatePrompt() {
   useEffect(() => {
     // Only relevant on touch devices (phones/tablets)
     if (!window.matchMedia("(pointer: coarse)").matches) return;
+    // The Android app is landscape-locked; a portrait reading there only means
+    // another app (the wallet) is briefly in front.
+    if (isNativeShell()) return;
 
     const mq = window.matchMedia("(orientation: portrait)");
     setShow(mq.matches);

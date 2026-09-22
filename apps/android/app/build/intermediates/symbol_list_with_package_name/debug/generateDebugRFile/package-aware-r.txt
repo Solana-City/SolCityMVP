@@ -1,0 +1,14 @@
+io.solanacity.app
+color black
+color solcity_navy
+color white
+mipmap ic_launcher
+mipmap ic_launcher_foreground
+string app_name
+string load_error_retry
+string load_error_title
+style Theme_SolCity
+style Theme_SolCity_Splash
+xml backup_rules
+xml data_extraction_rules
+xml network_security_config
