@@ -139,12 +139,15 @@ module.exports = withPWA({
           },
         },
       },
-      // Icons / manifest
+      // Icons / manifest. Bump the cache name (and the ?v= on the icon URLs in
+      // manifest.json and layout.tsx) whenever the icons change: CacheFirst with
+      // a year of expiry otherwise serves the old ones to installed clients.
+      // v2: real icons replaced a 24px sprite in the corner of an empty canvas.
       {
         urlPattern: /\/(icons|manifest\.json)/,
         handler: "CacheFirst",
         options: {
-          cacheName: "sc-shell",
+          cacheName: "sc-shell-v2",
           expiration: {
             maxEntries: 20,
             maxAgeSeconds: 365 * 24 * 60 * 60, // 1 year
