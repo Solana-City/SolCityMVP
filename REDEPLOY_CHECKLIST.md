@@ -593,6 +593,41 @@ claim_prize(place)                       // claim-based, after season close
 
 ---
 
+## Candidates found 2026-09-21/22 (latency and performance pass) — NOT decided yet
+
+The user's rule (2026-09-22): **one redeploy, only once everything that touches
+the program is prepared** — no incremental upgrades. These came up while
+tuning multiplayer and are listed so they are weighed before that deploy.
+
+1. **Choose the rollup validator on delegation.** `delegate_pda` passes
+   `None` as the validator (the `ix_data.push(0u8)` "None validator" line).
+   Today everyone lands on the default endpoint `devnet.magicblock.app`, which
+   is the **Asia** validator `MAS1Dt9qreoRMQ14YQuhg8UTZMMzDdKhmkZMECCzk57`
+   for every country (checked via DNS from BR/US/DE/VN/SG). Players in Brazil
+   measured ~300ms+ to it; the US validator `MUS3hc9TCw4cGC12vHNoYcCGzJG1txjgQLZWVoeNHNd`
+   (`devnet-us`) would be far closer for them. All players of one session must
+   share a validator (an account is served by one). **First test without a
+   redeploy:** point the client at `devnet-us` and see whether a `None`
+   delegation is picked up there. Only if it is not, add an
+   `Option<Pubkey>` validator argument to `delegate_pda` and write it into
+   the CPI instead of `0u8`.
+
+2. **Do NOT validate `direction` in `update_position` / the session variant.**
+   The client packs two extra bits into that byte (bit 2 = walking, bit 3 =
+   "this sender sets the walking bit"); receivers mask with `& 3`. A
+   `require!(direction < 4)` would reject every move from current clients.
+   If `player_v3` is the moment to make it explicit, add a separate
+   `walking: bool` field instead and keep accepting the packed byte.
+
+3. **Ghost PDAs after the `player_v3` reset.** Every `player_v2` account still
+   delegated on the ER stays there with an old `last_active`, and
+   `getProgramAccounts` keeps returning it. The client already drops them by
+   the 2-minute freshness gate (and learns clock skew only from accounts it
+   sees advance), so this is safe — but plan a one-off commit+undelegate of
+   the known test wallets' v2 PDAs, or discovery keeps paying for them.
+
+---
+
 ## NOT a redeploy item (separate deferred CLIENT task)
 
 **"NPCs in exactly the same positions for everyone" (true-MMO world sync).** Pure
