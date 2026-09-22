@@ -16,6 +16,17 @@
 
 import { useEffect } from "react";
 
+/**
+ * The chain the wallet is asked to authorize, from the same env var the rest of
+ * the app reads. It must be ONE chain: createDefaultChainSelector picks mainnet
+ * whenever mainnet is in the list, so passing both made a devnet game ask for
+ * mainnet authorization, and wallets in devnet mode answered with "Sol City is
+ * trying to connect to mainnet, disable devnet mode".
+ */
+const NETWORK = process.env.NEXT_PUBLIC_NETWORK;
+const CHAIN: `solana:${string}` =
+  NETWORK === "mainnet" || NETWORK === "mainnet-beta" ? "solana:mainnet" : "solana:devnet";
+
 const APP_IDENTITY = {
   name: "The Solana City",
   uri:
@@ -44,7 +55,7 @@ export default function MwaRegistration() {
           registerMwa({
             appIdentity: APP_IDENTITY,
             authorizationCache: createDefaultAuthorizationCache(),
-            chains: ["solana:mainnet", "solana:devnet"],
+            chains: [CHAIN],
             chainSelector: createDefaultChainSelector(),
             onWalletNotFound: createDefaultWalletNotFoundHandler(),
           });
