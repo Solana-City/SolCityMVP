@@ -17,6 +17,7 @@
  */
 
 import { track } from "./track";
+import { trackLatency } from "./latency";
 
 export type TxKind =
   | "move"       // update_position on ephemeral rollup
@@ -185,7 +186,7 @@ class TransactionLogService {
     } else {
       entry.latencyMs = rounded;
     }
-    track("latency", `${entry.layer}-${entry.kind}`, { value: rounded, label: entry.label });
+    trackLatency(`${entry.layer}-${entry.kind}`, rounded, entry.kind);
   }
 
   /** Times a send and records the result. Returns whatever `send` returned. */

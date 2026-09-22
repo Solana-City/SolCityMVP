@@ -12,7 +12,10 @@ import { dmMessage, type DmAction } from "@/lib/dm/dmMessage";
 import { DM_SETTINGS_EVENT, DMS_OFF_KEY, DMS_PENDING_KEY, dmsOffPref } from "./dmEvents";
 export { OPEN_DM_EVENT, DM_SETTINGS_EVENT, dmsOffPref, setDmsOffPref } from "./dmEvents";
 
-const POLL_MS = 5_000;
+/** Each poll is one Redis command; presence on the server lasts 25s. */
+const POLL_MS = 10_000;
+/** After a failed poll (session key not verified yet, store down), wait longer. */
+const BACKOFF_MS = 60_000;
 
 export interface IncomingDM {
   from: string;
@@ -69,9 +72,11 @@ export class DMClient {
     this.timer = null;
     if (this.stopped) return;
     if (document.visibilityState !== "visible") return; // resumes on visibilitychange
+    let next = BACKOFF_MS;
     try {
       const res = await this.post("poll");
       if (res.ok) {
+        next = POLL_MS;
         // The server is the source of truth (the setting follows the wallet
         // across devices); a change made here but not yet pushed wins.
         let pending = false;
@@ -85,7 +90,7 @@ export class DMClient {
         }
       }
     } catch { /* network blip: try again next tick */ }
-    if (!this.stopped) this.timer = setTimeout(() => void this.tick(), POLL_MS);
+    if (!this.stopped) this.timer = setTimeout(() => void this.tick(), next);
   }
 
   private async syncSettings(): Promise<void> {

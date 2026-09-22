@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { hgetall, hset, storeMode } from "@/lib/kv";
+import { batch, hgetall, storeMode, type BatchOp } from "@/lib/kv";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -34,17 +34,14 @@ export async function POST(req: NextRequest) {
   const cells = (body as { cells?: Record<string, unknown> } | null)?.cells;
   if (!cells || typeof cells !== "object") return NextResponse.json({ ok: false }, { status: 400 });
 
-  // Read once, add, write once: a batch is a handful of cells and this keeps
-  // it to two round trips rather than one per cell.
-  const current = await hgetall(KEY).catch(() => ({} as Record<string, string>));
-  let written = 0;
+  // One Redis command per batch: HINCRBY every cell inside a single script.
+  // It used to read the whole map and write each cell separately.
+  const ops: BatchOp[] = [];
   for (const [cell, value] of Object.entries(cells).slice(0, MAX_CELLS)) {
     if (!CELL_RE.test(cell)) continue;
     const add = Math.max(0, Math.min(MAX_PER_CELL, Math.round(Number(value) || 0)));
-    if (add === 0) continue;
-    const next = (Number(current[cell]) || 0) + add;
-    await hset(KEY, cell, String(next));
-    written++;
+    if (add > 0) ops.push({ op: "hincrby", key: KEY, field: cell, by: add });
   }
-  return NextResponse.json({ ok: true, written });
+  await batch(ops);
+  return NextResponse.json({ ok: true, written: ops.length });
 }

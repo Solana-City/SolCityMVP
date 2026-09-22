@@ -23,7 +23,8 @@ import { verifyEd25519, verifySessionOwner } from "@/lib/auth/sessionAuth";
 
 export { storeMode, verifyEd25519, verifySessionOwner };
 
-const SEEN_SECS = 20;
+/** Presence window: comfortably longer than the client's 10s poll. */
+const SEEN_SECS = 25;
 const INBOX_SECS = 180;
 const INBOX_CAP = 50;
 const RATE_WINDOW = 10;

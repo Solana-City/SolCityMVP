@@ -20,7 +20,7 @@ import {
   PublicKey, Transaction, type TransactionInstruction,
 } from "@solana/web3.js";
 import { SessionKeyManager } from "@/game/solana/sessionKeys";
-import { track } from "@/game/telemetry/track";
+import { trackLatency } from "@/game/telemetry/latency";
 import { BASE_RPC_PRIMARY, resilientBaseFetch } from "@/game/solana/baseRpc";
 import { DELEGATION_PROGRAM_ID } from "@/game/solana/program";
 import type { TeamBuild } from "../../data/team";
@@ -595,7 +595,7 @@ export class ChainTransport implements PvpTransport {
         const sig = await this.er.sendRawTransaction(tx.serialize(), {
           skipPreflight: by === "session",
         });
-        track("latency", "ephemeral-mechs", { value: Date.now() - startedAt, label: "rollup send" });
+        trackLatency("ephemeral-mechs", Date.now() - startedAt, "rollup send");
         await this.confirm(this.er, sig);
         return sig;
       } catch (err) {

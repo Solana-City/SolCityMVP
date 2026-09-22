@@ -72,6 +72,68 @@ export async function evalScript<T>(
   return local(memory);
 }
 
+/**
+ * Several writes as ONE Redis command. Upstash bills per command, and an
+ * analytics event used to cost ten (one per counter), so a busy client could
+ * spend the whole free tier in a few hours of play. One Lua call runs them all.
+ */
+export type BatchOp =
+  | { op: "incrby"; key: string; by?: number }
+  | { op: "sadd"; key: string; member: string }
+  | { op: "zincrby"; key: string; member: string; by?: number }
+  | { op: "zmax"; key: string; member: string; score: number }
+  | { op: "lpushcap"; key: string; value: string; cap: number }
+  | { op: "hincrby"; key: string; field: string; by: number };
+
+const BATCH_SCRIPT = `
+for i = 1, #KEYS do
+  local op, a, b, k = ARGV[i*3-2], ARGV[i*3-1], ARGV[i*3], KEYS[i]
+  if op == 'incrby' then redis.call('INCRBY', k, a)
+  elseif op == 'sadd' then redis.call('SADD', k, a)
+  elseif op == 'zincrby' then redis.call('ZINCRBY', k, b, a)
+  elseif op == 'zmax' then redis.call('ZADD', k, 'GT', b, a)
+  elseif op == 'lpushcap' then redis.call('LPUSH', k, a); redis.call('LTRIM', k, 0, tonumber(b) - 1)
+  elseif op == 'hincrby' then redis.call('HINCRBY', k, a, b)
+  end
+end
+return #KEYS`;
+
+export async function batch(ops: BatchOp[]): Promise<void> {
+  if (ops.length === 0) return;
+  if (storeMode() === "redis") {
+    const keys: string[] = [];
+    const args: (string | number)[] = [];
+    for (const o of ops) {
+      keys.push(o.key);
+      switch (o.op) {
+        case "incrby": args.push(o.op, o.by ?? 1, ""); break;
+        case "sadd": args.push(o.op, o.member, ""); break;
+        case "zincrby": args.push(o.op, o.member, o.by ?? 1); break;
+        case "zmax": args.push(o.op, o.member, o.score); break;
+        case "lpushcap": args.push(o.op, o.value, o.cap); break;
+        case "hincrby": args.push(o.op, o.field, o.by); break;
+      }
+    }
+    await redis(["EVAL", BATCH_SCRIPT, keys.length, ...keys, ...args]);
+    return;
+  }
+  for (const o of ops) {
+    switch (o.op) {
+      case "incrby": await incr(o.key, o.by ?? 1); break;
+      case "sadd": await sadd(o.key, o.member); break;
+      case "zincrby": await zincrby(o.key, o.member, o.by ?? 1); break;
+      case "zmax": await zmax(o.key, o.member, o.score); break;
+      case "lpushcap": await lpushCapped(o.key, o.value, o.cap); break;
+      case "hincrby": {
+        const h = (memory.get(o.key) as Record<string, string> | undefined) ?? {};
+        h[o.field] = String((Number(h[o.field]) || 0) + o.by);
+        memory.set(o.key, h);
+        break;
+      }
+    }
+  }
+}
+
 /** SET NX: true when this call created the key. */
 export async function setnx(key: string, value: string): Promise<boolean> {
   if (storeMode() === "redis") return (await redis<string | null>(["SET", key, value, "NX"])) === "OK";

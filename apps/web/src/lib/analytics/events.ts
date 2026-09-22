@@ -25,7 +25,7 @@
  * Only counters and wallets are stored. No addresses beyond the wallet the
  * player already broadcasts in the city, and nothing a third party sends.
  */
-import { incr, lpushCapped, lrange, sadd, scard, smembers, storeMode, zincrby, zmax, ztop } from "@/lib/kv";
+import { batch, lrange, mget, scard, smembers, storeMode, ztop, type BatchOp } from "@/lib/kv";
 
 /** What can be reported. Anything else is rejected. */
 export const EVENT_KINDS = [
@@ -65,34 +65,38 @@ export async function recordEvent(ev: GameEvent): Promise<boolean> {
   const base = `ev:${ev.kind}:${ev.id}`;
   const score = Number.isFinite(ev.value) ? Math.max(0, Math.min(1_000_000, Math.round(ev.value!))) : 0;
 
-  await Promise.all([
-    incr(`${base}:count`),
-    sadd(`${base}:users`, ev.wallet),
-    incr(`${base}:d:${dayKey()}`),
-    zincrby(`${base}:by`, ev.wallet),
-    sadd(`ev:ids:${ev.kind}`, ev.id),
-    score > 0 ? zmax(`${base}:best`, ev.wallet, score) : Promise.resolve(),
-    // A tutorial reports the step it reached, so the drop-off is visible per
-    // card rather than only as "started" versus "finished".
-    ev.kind === "tutorial" && score > 0 && score <= 20
-      ? incr(`${base}:s:${score}`)
-      : Promise.resolve(),
-    ev.success === true ? incr(`${base}:ok`) : Promise.resolve(),
-    // A running total makes the average free at read time. It matters for
-    // latency (ms), sessions (seconds) and purchases (lamports); for the
-    // count-only kinds it is a harmless extra counter.
-    score > 0 ? incr(`${base}:sum`, score) : Promise.resolve(),
-    // Lifetime value per wallet, kept as a board so the top spenders and the
-    // total are one read rather than a scan of every player.
-    ev.kind === "purchase" && score > 0 ? zincrby("lb:spend", ev.wallet, score) : Promise.resolve(),
-    ev.kind === "latency" && score > 1_000 ? incr(`${base}:slow`) : Promise.resolve(),
-    lpushCapped("ev:feed", JSON.stringify({
+  // One Redis command for the whole event (see batch in lib/kv.ts): each of
+  // these used to be its own command, about ten per event.
+  const ops: BatchOp[] = [
+    { op: "incrby", key: `${base}:count` },
+    { op: "sadd", key: `${base}:users`, member: ev.wallet },
+    { op: "incrby", key: `${base}:d:${dayKey()}` },
+    { op: "zincrby", key: `${base}:by`, member: ev.wallet },
+    { op: "sadd", key: `ev:ids:${ev.kind}`, member: ev.id },
+  ];
+  if (score > 0) ops.push({ op: "zmax", key: `${base}:best`, member: ev.wallet, score });
+  // A tutorial reports the step it reached, so the drop-off is visible per
+  // card rather than only as "started" versus "finished".
+  if (ev.kind === "tutorial" && score > 0 && score <= 20) ops.push({ op: "incrby", key: `${base}:s:${score}` });
+  if (ev.success === true) ops.push({ op: "incrby", key: `${base}:ok` });
+  // A running total makes the average free at read time. It matters for
+  // latency (ms), sessions (seconds) and purchases (lamports); for the
+  // count-only kinds it is a harmless extra counter.
+  if (score > 0) ops.push({ op: "incrby", key: `${base}:sum`, by: score });
+  // Lifetime value per wallet, kept as a board so the top spenders and the
+  // total are one read rather than a scan of every player.
+  if (ev.kind === "purchase" && score > 0) ops.push({ op: "zincrby", key: "lb:spend", member: ev.wallet, by: score });
+  if (ev.kind === "latency" && score > 1_000) ops.push({ op: "incrby", key: `${base}:slow` });
+  ops.push({
+    op: "lpushcap", key: "ev:feed", cap: FEED_CAP,
+    value: JSON.stringify({
       k: ev.kind, i: ev.id, w: ev.wallet, v: score,
       s: ev.success === undefined ? null : ev.success,
       l: (ev.label ?? "").slice(0, 60),
       t: Date.now(),
-    }), FEED_CAP),
-  ]);
+    }),
+  });
+  await batch(ops);
   return true;
 }
 
@@ -119,17 +123,21 @@ async function summarise(kind: EventKind, id: string): Promise<KindSummary> {
   const base = `ev:${kind}:${id}`;
   const days = Array.from({ length: 7 }, (_, i) => dayKey(Date.now() - i * 86_400_000));
   const stepSlots = kind === "tutorial" ? Array.from({ length: 12 }, (_, i) => i + 1) : [];
-  const [count, users, ok, sum, slow, top, best, ...rest] = await Promise.all([
-    incr(`${base}:count`, 0),
+  // Every plain counter in one MGET: reading them one by one cost 15 to 27
+  // commands per id, for every id, each time the panel opened.
+  const counterKeys = [
+    `${base}:count`, `${base}:ok`, `${base}:sum`, `${base}:slow`,
+    ...days.map((d) => `${base}:d:${d}`),
+    ...stepSlots.map((n) => `${base}:s:${n}`),
+  ];
+  const [counters, users, top, best] = await Promise.all([
+    mget(counterKeys).then((v) => v.map((x) => Number(x) || 0)),
     scard(`${base}:users`),
-    incr(`${base}:ok`, 0),
-    incr(`${base}:sum`, 0),
-    kind === "latency" ? incr(`${base}:slow`, 0) : Promise.resolve(0),
     ztop(`${base}:by`, 5),
     ztop(`${base}:best`, 5),
-    ...days.map((d) => incr(`${base}:d:${d}`, 0)),
-    ...stepSlots.map((n) => incr(`${base}:s:${n}`, 0)),
   ]);
+  const [count, ok, sum, slowAll, ...rest] = counters;
+  const slow = kind === "latency" ? slowAll : 0;
   const daily = rest.slice(0, days.length);
   const steps = rest.slice(days.length);
   // Trailing zero steps are steps the tutorial does not have.
