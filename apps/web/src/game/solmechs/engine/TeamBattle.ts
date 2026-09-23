@@ -31,7 +31,7 @@ import type { MechBuild, ModuleSlot } from "../data/types";
 import type { BattleEvent, PlayerSide, DefeatCause } from "./BattleEngine";
 import {
   createUnit, cloneUnit, applyMove, validateMove, defeatCauseOf, isDefeated, tieBreak,
-  effectiveStats, opponentOfSide, legalTargets,
+  effectiveStats, opponentOfSide, legalTargets, movesOf,
 } from "./BattleEngine";
 import type { MechUnit } from "../data/types";
 import { TEAM_SIZE, type TeamBuild } from "../data/team";
@@ -59,7 +59,8 @@ export type TeamAction =
   | {
       kind: "move";
       side: PlayerSide;
-      sourceSlot: Exclude<ModuleSlot, "matrix">;
+      /** Which slot fires: a limb, or the matrix with the chassis' buff. */
+      sourceSlot: ModuleSlot;
       moveIndex: number;
       targetSlot: ModuleSlot;
     }
@@ -283,7 +284,7 @@ export function resolveTeamRound(state: TeamBattleState, actions: TeamRoundActio
     // first legal one instead of fizzling. Without this, switching out a mech
     // whose core was exposed dodged the very attack coming for it for free.
     let targetSlot = action.targetSlot;
-    const firing = actor.parts[action.sourceSlot]?.moves[action.moveIndex];
+    const firing = movesOf(actor, action.sourceSlot)[action.moveIndex];
     if (switchedIn.has(opponentOfSide(side)) && firing && firing.targetType !== "self") {
       const legal = legalTargets(target);
       if (!legal.includes(targetSlot) && legal.length > 0) targetSlot = legal[0];

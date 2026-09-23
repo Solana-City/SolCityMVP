@@ -13,7 +13,7 @@ import {
   type TeamBattleState, type TeamAction, type TeamEvent, type TeamRoundActions, type TeamResolveResult,
 } from "@/game/solmechs/engine/TeamBattle";
 import {
-  availableMoves, legalTargets, legalSelfTargets,
+  availableMoves, movesOf, legalTargets, legalSelfTargets,
 } from "@/game/solmechs/engine/BattleEngine";
 import type { SquadOpponent } from "@/game/solmechs/opponent/SquadOpponent";
 import type { PlayerSide } from "@/game/solmechs/engine/BattleEngine";
@@ -132,10 +132,10 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, opponent, onFi
     return s;
   });
   const [log, setLog] = useState<string[]>(["Squad battle: 3 v 3."]);
-  const [pending, setPending] = useState<{ slot: Exclude<ModuleSlot, "matrix">; moveIndex: number } | null>(null);
+  const [pending, setPending] = useState<{ slot: ModuleSlot; moveIndex: number } | null>(null);
   const [picking, setPicking] = useState(false);
   /** Move under the pointer in the action list, previewed before it is picked. */
-  const [hoverMove, setHoverMove] = useState<{ slot: Exclude<ModuleSlot, "matrix">; moveIndex: number } | null>(null);
+  const [hoverMove, setHoverMove] = useState<{ slot: ModuleSlot; moveIndex: number } | null>(null);
   /** Part under the pointer while choosing a target (button or the mech itself). */
   const [hoverTarget, setHoverTarget] = useState<ModuleSlot | null>(null);
   /** The part just committed to, kept marked while the round plays. */
@@ -275,7 +275,7 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, opponent, onFi
     // may already be gone, or the mech may have been substituted out.
     const moveOf = (a: TeamAction | null, side: PlayerSide) =>
       a?.kind === "move"
-        ? activeUnit(side === "p1" ? cur.p1 : cur.p2).parts[a.sourceSlot]?.moves[a.moveIndex]
+        ? movesOf(activeUnit(side === "p1" ? cur.p1 : cur.p2), a.sourceSlot)[a.moveIndex]
         : undefined;
     play(resolveTeamRound(cur, round), { p1: moveOf(action, "p1"), p2: moveOf(rival, "p2") });
   }, [opponent, play, credit]);
@@ -387,7 +387,7 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, opponent, onFi
    * legs, and the arm you were about to swing with could never be the one you
    * powered up.
    */
-  const pendingMove = pending ? me.parts[pending.slot].moves[pending.moveIndex] : null;
+  const pendingMove = pending ? movesOf(me, pending.slot)[pending.moveIndex] : null;
   const pendingSelf = pendingMove?.targetType === "self";
   const pendingTargets = pendingSelf ? selfTargets : ENEMY_SLOTS;
   /** Parts that miss unless the rival switches — see ENEMY_SLOTS. */
@@ -399,7 +399,7 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, opponent, onFi
 
   const commitMove = useCallback((slot: ModuleSlot) => {
     if (!pending) return;
-    const self = me.parts[pending.slot].moves[pending.moveIndex]?.targetType === "self";
+    const self = movesOf(me, pending.slot)[pending.moveIndex]?.targetType === "self";
     setLocked({ side: self ? "p1" : "p2", slot, self });
     submitRound({ kind: "move", side: "p1", sourceSlot: pending.slot, moveIndex: pending.moveIndex, targetSlot: slot });
     setPending(null);
@@ -421,7 +421,7 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, opponent, onFi
     }
     if (locked) return { side: locked.side, slots: [locked.slot], hot: locked.slot, color: locked.self ? C.teal : RED };
     if (hoverMove && canAct) {
-      const m = me.parts[hoverMove.slot].moves[hoverMove.moveIndex];
+      const m = movesOf(me, hoverMove.slot)[hoverMove.moveIndex];
       if (!m) return null;
       const self = m.targetType === "self";
       return { side: self ? "p1" : "p2", slots: self ? selfTargets : targets, hot: null, color: self ? C.teal : RED };
@@ -448,7 +448,7 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, opponent, onFi
   const infoMove = pending
     ? { slot: pending.slot, move: pendingMove }
     : hoverMove && canAct
-      ? { slot: hoverMove.slot, move: me.parts[hoverMove.slot].moves[hoverMove.moveIndex] ?? null }
+      ? { slot: hoverMove.slot, move: movesOf(me, hoverMove.slot)[hoverMove.moveIndex] ?? null }
       : null;
 
   const finished = state.status.kind === "finished";
@@ -459,7 +459,7 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, opponent, onFi
       <style>{`
         @keyframes sm-pulse-kf { 0%, 100% { box-shadow: 0 0 0 0 rgba(95,160,255,.7); } 50% { box-shadow: 0 0 0 6px rgba(95,160,255,0); } }
         .sm-pulse { animation: sm-pulse-kf 1.2s ease-out infinite; }
-        .sm-phone .sm-btnrow { grid-auto-rows: 32px !important; gap: 5px !important; }
+        .sm-phone .sm-btnrow { grid-auto-rows: 32px !important; gap: 5px !important; min-height: 69px !important; grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
         .sm-phone .sm-btnrow > button { height: 32px !important; }
       `}</style>
       <div className={phone ? "sm-phone" : undefined} style={{ ...sx.frame, ...(phone ? sx.framePhone : null) }}>
@@ -944,14 +944,17 @@ const sx: Record<string, React.CSSProperties> = {
     color: C.teal, fontSize: 11, fontWeight: 700, letterSpacing: 1,
   },
   /**
-   * Two up, two down. A single row across a card this wide left the actions
-   * tiny against a lot of empty card, and the strip grew every time a mech
-   * had a fourth option.
+   * Two up, two down, and the strip is FOOT_H tall whether a mech has three
+   * options or four, so the arena never resizes when the matrix buff shows up.
+   * Columns are capped rather than stretched: a button only needs room for an
+   * icon, a name and its damage, and full-width ones read as empty bars.
    */
   btnRow: {
     display: "grid", gap: 6,
-    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+    gridTemplateColumns: "repeat(2, minmax(0, 232px))",
+    justifyContent: "center",
     gridAutoRows: `${BTN_H}px`,
+    minHeight: 2 * BTN_H + 6,
   },
   /**
    * One line: name, then its detail in the same row. Title over subtitle made

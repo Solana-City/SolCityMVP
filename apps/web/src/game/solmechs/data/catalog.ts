@@ -10,8 +10,29 @@
  * Arclight's right arm. Nothing enforces that pairing — mixing parts across
  * mechs is the point of the build system.
  */
-import type { MechMatrix, MechPart, MechBuild, MechId } from "./types";
+import type { MechMatrix, MechPart, MechBuild, MechId, MoveDefinition } from "./types";
 import { parseEffect } from "./moves";
+
+/**
+ * Each chassis' self-buff, which used to be the legs' only move.
+ *
+ * Legs were the utility slot and nothing else, so a player had no reason to
+ * aim at them and little reason to fire them. The buff now belongs to the
+ * chassis it describes (Titan fortifies, Arclight charges) and the legs got a
+ * real attack instead, which gives both slots a job.
+ */
+function buff(name: string, effect: string): MoveDefinition[] {
+  const parsed = parseEffect(effect);
+  return [{
+    name,
+    baseDamage: 0,
+    damageType: "Effect",
+    targetType: "self",
+    effect,
+    statModifiers: parsed.statModifiers,
+    healAmount: parsed.healAmount,
+  }];
+}
 
 /**
  * Roles come from Data/SolMechs_Matrices.json, which only covered the first
@@ -40,6 +61,7 @@ export const MATRICES: MechMatrix[] = [
     baseStats: { HP: 260, ATK: 50, DEF: 45, ENG: 25, SPD: 30, SYS: 50, PROC: 20 },
     passive1: "Fortify",
     passive2: "Thermal Stability",
+    moves: buff("Fortify", "+1 DEF"),
   },
   {
     matrixCode: "M02",
@@ -49,6 +71,7 @@ export const MATRICES: MechMatrix[] = [
     baseStats: { HP: 200, ATK: 45, DEF: 30, ENG: 40, SPD: 45, SYS: 40, PROC: 80 },
     passive1: "Hostile Instinct",
     passive2: "Backdoor",
+    moves: buff("Focus Aim", "+1 ATK"),
   },
   {
     matrixCode: "M03",
@@ -58,6 +81,7 @@ export const MATRICES: MechMatrix[] = [
     baseStats: { HP: 200, ATK: 30, DEF: 30, ENG: 60, SPD: 45, SYS: 35, PROC: 60 },
     passive1: "Residual Energy",
     passive2: "First Shot",
+    moves: buff("Energy Boost", "+1 ENG"),
   },
   {
     matrixCode: "M04",
@@ -67,6 +91,7 @@ export const MATRICES: MechMatrix[] = [
     baseStats: { HP: 250, ATK: 30, DEF: 45, ENG: 50, SPD: 25, SYS: 50, PROC: 60 },
     passive1: "Auto-Regen",
     passive2: "Echo Sensor",
+    moves: buff("System Reboot", "+1 SYS"),
   },
   {
     matrixCode: "M05",
@@ -94,6 +119,7 @@ export const MATRICES: MechMatrix[] = [
     baseStats: { HP: 260, ATK: 45, DEF: 45, ENG: 45, SPD: 45, SYS: 45, PROC: 0 },
     passive1: "Solana Speed",
     passive2: "Huge Community",
+    moves: buff("Boost Dash", "+1 SPD"),
   },
 ];
 
@@ -178,35 +204,39 @@ const RAW_LEFT_ARMS: RawPart[] = [
 ];
 
 /**
- * Every lower body is a self-buff with no damage — legs are the utility slot.
- * IN05's .asset leaves damageType blank; "Effect" is the honest reading since
- * it deals no damage, and it keeps the field off the Physical/Energy split.
+ * Legs attack. Each one hits with its chassis' primary damage type (the type
+ * of that kit's RIGHT arm, except Solus, which kicks rather than burns) for
+ * the damage of that kit's WEAKER arm, and carries no debuff. So a leg is a
+ * plain third weapon: never better than the arm it copies, and worth aiming
+ * at, which is what the utility-only legs never were.
+ *
+ * Their old self-buffs moved to the matching matrix (see MATRICES above).
  */
 const RAW_LOWER_BODIES: RawPart[] = [
   {
     code: "IN01", name: "Titan Legs", mech: "titan",
     stats: [140, 10, 10, 10, 10, 10],
-    moves: [{ name: "Fortify", dmg: 0, type: "Effect", target: 1, effect: "+1 DEF" }],
+    moves: [{ name: "Titan Stomp", dmg: 40, type: "Physical", target: 0 }],
   },
   {
     code: "IN02", name: "Striker Legs", mech: "striker",
     stats: [100, 20, 10, 10, 10, 10],
-    moves: [{ name: "Focus Aim", dmg: 0, type: "Physical", target: 1, effect: "+1 ATK" }],
+    moves: [{ name: "Sprint Kick", dmg: 40, type: "Physical", target: 0 }],
   },
   {
     code: "IN03", name: "Arclight Thrusters", mech: "arclight",
     stats: [100, 10, 10, 10, 10, 20],
-    moves: [{ name: "Energy Boost", dmg: 0, type: "Energy", target: 1, effect: "+1 ENG" }],
+    moves: [{ name: "Thruster Burn", dmg: 40, type: "Energy", target: 0 }],
   },
   {
     code: "IN04", name: "HeartCore Legs", mech: "heartcore",
     stats: [140, 10, 10, 10, 10, 10],
-    moves: [{ name: "System Reboot", dmg: 0, type: "Energy", target: 1, effect: "+1 SYS" }],
+    moves: [{ name: "Pulse Kick", dmg: 40, type: "Energy", target: 0 }],
   },
   {
     code: "IN05", name: "Solus Thrusters", mech: "solus",
     stats: [145, 10, 10, 10, 10, 10],
-    moves: [{ name: "Boost Dash", dmg: 0, type: "Effect", target: 1, effect: "+1 SPD" }],
+    moves: [{ name: "Solus Stomp", dmg: 45, type: "Physical", target: 0 }],
   },
 ];
 
