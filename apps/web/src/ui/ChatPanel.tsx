@@ -41,6 +41,42 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
   const [showEmojis, setShowEmojis] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
 
+  /**
+   * How much of the viewport the on-screen keyboard is covering, and how much
+   * height is left above it.
+   *
+   * visualViewport is measured rather than assumed, because the two cases look
+   * different to CSS: when the window resizes for the keyboard the panel is
+   * already clear of it and the inset reads 0, and when it does not resize the
+   * panel sits behind the keyboard and must be lifted by hand. The Android app
+   * and the mobile browser each behave one of those two ways.
+   */
+  const [keyboard, setKeyboard] = useState({ inset: 0, visible: 0 });
+  /**
+   * The input holding focus is the signal that the keyboard is up, and it is
+   * the only one that works in both cases: when the window resizes for the
+   * keyboard, the measured inset is 0 even though the space is now tiny, and
+   * the panel still has to drop its 156px gap or it lands off the top.
+   */
+  const [typing, setTyping] = useState(false);
+
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const update = () => {
+      const covered = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+      // Below ~120px it is a browser chrome change, not a keyboard.
+      setKeyboard({ inset: covered > 120 ? covered : 0, visible: vv.height });
+    };
+    update();
+    vv.addEventListener("resize", update);
+    vv.addEventListener("scroll", update);
+    return () => {
+      vv.removeEventListener("resize", update);
+      vv.removeEventListener("scroll", update);
+    };
+  }, []);
+
   useEffect(() => {
     const mq = window.matchMedia("(pointer: coarse)");
     setIsTouch(mq.matches);
@@ -180,6 +216,7 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
   }, [openPeer]);
 
   const handleFocus = useCallback(() => {
+    setTyping(true);
     gameRef?.events.emit("chat:focus", true);
     // On mobile, scroll the input into view after the virtual keyboard rises.
     // Small delay lets the keyboard animate before measuring layout.
@@ -189,6 +226,7 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
   }, [gameRef, isTouch]);
 
   const handleBlur = useCallback(() => {
+    setTyping(false);
     gameRef?.events.emit("chat:focus", false);
   }, [gameRef]);
 
@@ -244,7 +282,11 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
       style={{
         left: "max(env(safe-area-inset-left, 0px), 16px)",
         bottom: isTouch
-          ? "calc(env(safe-area-inset-bottom, 0px) + 156px)"
+          ? typing
+            // Typing: sit just above the keys. The 156px gap exists to clear
+            // the movement controls, which do not matter while typing.
+            ? `${keyboard.inset + 8}px`
+            : "calc(env(safe-area-inset-bottom, 0px) + 156px)"
           : "16px",
         width: isTouch ? "min(280px, calc(100vw - 180px))" : "360px",
         fontFamily: '"Press Start 2P", monospace',
@@ -335,8 +377,10 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
           className="overflow-y-auto mb-0.5 p-2 rounded-b"
           style={{
             background: "linear-gradient(180deg, rgba(15,18,40,0.96) 0%, rgba(8,10,24,0.96) 100%)",
-            maxHeight: 210,
-            minHeight: 92,
+            // With the keyboard up in landscape there is very little height
+            // left, so the log gives way and keeps the input on screen.
+            maxHeight: typing && isTouch ? Math.max(56, keyboard.visible - 130) : 210,
+            minHeight: typing && isTouch ? 0 : 92,
             border: "1px solid rgba(153,69,255,0.2)",
             borderTop: "none",
             backdropFilter: "blur(3px)",
