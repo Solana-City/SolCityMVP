@@ -24,6 +24,7 @@ import { showEmoji, EmojiDef } from "../chat/EmojiSystem";
 import { soundManager } from "../audio/SoundManager";
 import { publishMinimap } from "../minimap/MinimapHost";
 import { createStockExchange } from "../world/StockExchange";
+import { createAnimatedDecor } from "../world/AnimatedDecor";
 import { readLastPosition, saveLastPosition } from "../world/lastPosition";
 import { buildPhysicsLayer, mergeGroundRun } from "../world/mergeLayers";
 import { SparseLayer, SPARSE_MAX_TILES, GROUND_CHUNK_TILES, type CityLayer } from "../world/sparseLayer";
@@ -464,6 +465,11 @@ export class CityScene extends Phaser.Scene {
       this, allLayers.find(l => l.layer.name.endsWith("BuildStocklana")),
     );
     this.events.once("shutdown", destroyStockScreens);
+
+    // Waving props (the Superteam Turkey flag by the Remedi building): sprites,
+    // not tiles, since Phaser does not play Tiled's tile animations.
+    const destroyDecor = createAnimatedDecor(this, FOREGROUND_DEPTH);
+    this.events.once("shutdown", destroyDecor);
 
     // Spawn on the central fountain's walkway (col 78, row 38) — the two-tile
     // flight of steps climbing from the south path up to the sculpture...
