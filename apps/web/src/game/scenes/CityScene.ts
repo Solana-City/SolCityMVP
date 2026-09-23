@@ -19,7 +19,7 @@ import { PedestrianManager, cullContainer } from "../entities/PedestrianManager"
 import { hasAlreadyFoundCurrent, markCurrentFound, isCitizenExpired, advanceFindSlot, resetCitizenTimer, isHuntOnChain, getRoundIndex } from "../minigames/whereIsNPC/WhereIsNPCGame";
 import { ProfileManager, profileManager } from "../config/profileManager";
 import { AchievementEngine } from "../progression/achievementEngine";
-import { onMiniGameFinished, watchNpcConversations, stopWatchingNpcConversations } from "../progression/outfitRewards";
+import { onMiniGameFinished, onStockTraded, watchNpcConversations, stopWatchingNpcConversations } from "../progression/outfitRewards";
 import { showEmoji, EmojiDef } from "../chat/EmojiSystem";
 import { soundManager } from "../audio/SoundManager";
 import { publishMinimap } from "../minimap/MinimapHost";
@@ -675,6 +675,8 @@ export class CityScene extends Phaser.Scene {
       new TradeBubble(this, this.avatar.getContainer(), trade);
       this.chat.addMessage("city", "local", this.profile.get().displayName, tradeLogLine(trade), TRADE_COLOR);
       if (e.share && this.network?.connected) this.network.sendChat(encodeTrade(trade));
+      // First trade at Stocklana earns the Trader Shades.
+      onStockTraded();
     });
 
     this.onGameEvent("chat:focus", (focused: boolean) => {
