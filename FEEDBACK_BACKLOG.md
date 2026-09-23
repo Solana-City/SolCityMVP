@@ -205,11 +205,12 @@ Worth asking the tester for their three worst moments.
 ### 7. Sol Mechs: too many clicks — CLOSED 2026-09-23
 Dropped by the user: nothing to do here. The turn flow stays as it is.
 
-### 8. Sol Mechs: legs have no purpose — M
-*"No point attacking/using legs."* The user's own proposal: give legs one
-attack, and move the buffs that belong to the legs onto the Matrix. That is a
-balance change across `BattleEngine` and the catalog, so it wants the exact
-numbers decided first, then the tests updated.
+### 8. Sol Mechs: legs have no purpose — DONE 2026-09-23 (needs playtest)
+Each self-buff moved to its own matrix and firing it costs the round; legs got
+a plain attack (the chassis' primary type, the weaker arm's damage, no
+debuff). Every mech now has four options, and the action strip keeps its
+height so the arena never resizes. **Balance needs a playtest:** every mech
+gained a third source of damage.
 
 ---
 
