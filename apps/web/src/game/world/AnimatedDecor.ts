@@ -29,6 +29,21 @@ export interface AnimatedDecorDef {
   tileY: number;
   /** Source pixels to world pixels. 0.5 matches the character sheets. */
   scale: number;
+  /**
+   * Stamp a solid cell on the prop's own tile, so nobody walks through
+   * the foot of the pole. It is written into the city's merged collision
+   * volume, which the player, the NPCs and the pedestrians all test
+   * against.
+   */
+  blocks?: boolean;
+  /**
+   * Draw by where the prop meets the ground, like a palm or a lamp post:
+   * the player passes in front of it from the south and behind it from the
+   * north. Without this the prop always draws above the player, which is
+   * right for something they walk under (the fountain's jet) and wrong for
+   * something they walk around (a flag pole).
+   */
+  ySort?: boolean;
 }
 
 export const ANIMATED_DECOR: AnimatedDecorDef[] = [
@@ -62,6 +77,8 @@ export const ANIMATED_DECOR: AnimatedDecorDef[] = [
     tileX: 114,
     tileY: 16,
     scale: 0.5,
+    blocks: true,
+    ySort: true,
   },
 ];
 
@@ -73,11 +90,16 @@ export function preloadAnimatedDecor(scene: Phaser.Scene): void {
 }
 
 /**
- * Spawns every item. `depth` is the city's foreground depth: cloth flies above
- * head height, so a flag draws over the player like the other flag poles do.
+ * Spawns every item. `foregroundDepth` is the city's above-the-player depth,
+ * used by everything that is not `ySort`. `collision` is the city's merged
+ * collision volume, where a `blocks` prop stamps its foot.
  * Returns a cleanup for the scene's shutdown.
  */
-export function createAnimatedDecor(scene: Phaser.Scene, depth: number): () => void {
+export function createAnimatedDecor(
+  scene: Phaser.Scene,
+  foregroundDepth: number,
+  collision?: Phaser.Tilemaps.TilemapLayer,
+): () => void {
   const sprites: Phaser.GameObjects.Sprite[] = [];
   for (const d of ANIMATED_DECOR) {
     if (!scene.textures.exists(d.key)) {
@@ -92,13 +114,27 @@ export function createAnimatedDecor(scene: Phaser.Scene, depth: number): () => v
         repeat: -1,
       });
     }
+    const baseY = (d.tileY + 1) * TILE_SIZE;
     const sprite = scene.add
-      .sprite(d.tileX * TILE_SIZE + TILE_SIZE / 2, (d.tileY + 1) * TILE_SIZE, d.key)
+      .sprite(d.tileX * TILE_SIZE + TILE_SIZE / 2, baseY, d.key)
       .setOrigin(0.5, 1)
       .setScale(d.scale)
-      .setDepth(depth);
+      // A y-sorted prop follows the same rule as a y-sorted layer: depth is
+      // the world Y where it meets the ground.
+      .setDepth(d.ySort ? baseY : foregroundDepth);
     sprite.anims.play(`${d.key}-loop`);
     sprites.push(sprite);
+
+    // Only ever written into the invisible merged volume — stamping a cell
+    // into a layer that IS drawn would paint a stray tile on the map.
+    if (d.blocks && collision && !collision.visible) {
+      // Any index does: the volume is never drawn, only collided against.
+      const cell = collision.putTileAt(1, d.tileX, d.tileY, false);
+      if (cell) {
+        cell.setCollision(true, true, true, true, false);
+        collision.calculateFacesAt(d.tileX, d.tileY);
+      }
+    }
   }
   return () => { for (const s of sprites) s.destroy(); };
 }
