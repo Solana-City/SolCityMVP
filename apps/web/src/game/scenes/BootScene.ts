@@ -132,6 +132,13 @@ export class BootScene extends Phaser.Scene {
     const animatedNpcSheets = NPC_REGISTRY.filter(
       (npc) => npc.spriteKey && npc.spriteAnimation && this.textures.exists(npc.spriteKey)
     );
+    // Walk-grid NPC sheets: most ship already keyed out (transparent PNGs),
+    // so only the ones still carrying the pink are processed. That way new
+    // art works whether or not the artist exported it with transparency.
+    const walkNpcSheets = NPC_REGISTRY
+      .flatMap((npc) => (npc.spriteAnimation ? [] : [npc.spriteKey, npc.spriteWalkKey]))
+      .filter((k): k is string => !!k && this.textures.exists(k) && hasChromaBackground(this, k));
+
     // Expression face sheets carry the same pink background too.
     const exprKeys = EXPRESSIONS
       .map((e) => e.textureKey)
@@ -145,17 +152,20 @@ export class BootScene extends Phaser.Scene {
         ({ variant }) => this.textures.exists(variant.textureKey)
       );
       const npcStart = variants.length;
-      const exprStart = npcStart + animatedNpcSheets.length;
+      const walkStart = npcStart + animatedNpcSheets.length;
+      const exprStart = walkStart + walkNpcSheets.length;
       const total = exprStart + exprKeys.length;
       let i = 0;
       const processNext = () => {
         if (i < npcStart) {
           applyLayerChromaKey(this, variants[i].category, variants[i].variant.textureKey);
-        } else if (i < exprStart) {
+        } else if (i < walkStart) {
           const npc = animatedNpcSheets[i - npcStart];
           // Flat: NPC art has pink background pockets enclosed by the sprite
           // (e.g. Kite Pro's kite) that a flood fill can't reach.
           applyChromaKey(this, npc.spriteKey!, npc.spriteAnimation!.frameWidth, npc.spriteAnimation!.frameHeight, false);
+        } else if (i < exprStart) {
+          applyChromaKey(this, walkNpcSheets[i - walkStart], SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT, false);
         } else if (i < total) {
           applyChromaKey(this, exprKeys[i - exprStart], SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT, false);
         } else {
@@ -179,6 +189,9 @@ export class BootScene extends Phaser.Scene {
     for (const npc of animatedNpcSheets) {
       // Flat pass (no flood fill) — clears pink pockets enclosed by the NPC art.
       applyChromaKey(this, npc.spriteKey!, npc.spriteAnimation!.frameWidth, npc.spriteAnimation!.frameHeight, false);
+    }
+    for (const key of walkNpcSheets) {
+      applyChromaKey(this, key, SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT, false);
     }
     for (const key of exprKeys) {
       applyChromaKey(this, key, SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT, false);
@@ -212,6 +225,26 @@ function waitForGameFont(onReady: () => void): void {
  */
 function applyLayerChromaKey(scene: Phaser.Scene, category: string, key: string): void {
   applyChromaKey(scene, key, SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT, category === "skin");
+}
+
+/**
+ * True when a sheet still carries the pink chroma key, judged by its top-left
+ * pixel (the frame corner is background in every sheet we ship). Sheets the
+ * artist already exported with transparency skip the keying pass entirely.
+ */
+function hasChromaBackground(scene: Phaser.Scene, key: string): boolean {
+  const source = scene.textures.get(key).source[0];
+  const canvas = document.createElement("canvas");
+  canvas.width = 1;
+  canvas.height = 1;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  if (!ctx) return false;
+  ctx.drawImage(source.image as HTMLImageElement, 0, 0, 1, 1, 0, 0, 1, 1);
+  const [r, g, b, a] = ctx.getImageData(0, 0, 1, 1).data;
+  return a !== 0
+    && Math.abs(r - CHROMA_R) <= CHROMA_TOLERANCE
+    && Math.abs(g - CHROMA_G) <= CHROMA_TOLERANCE
+    && Math.abs(b - CHROMA_B) <= CHROMA_TOLERANCE;
 }
 
 /**
