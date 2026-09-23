@@ -29,6 +29,9 @@ export interface AnimatedDecorDef {
   tileY: number;
   /** Source pixels to world pixels. 0.5 matches the character sheets. */
   scale: number;
+  /** Nudge in world pixels, for art that does not land on a tile centre. */
+  offsetX?: number;
+  offsetY?: number;
   /**
    * Stamp a solid cell on the prop's own tile, so nobody walks through
    * the foot of the pole. It is written into the city's merged collision
@@ -48,20 +51,24 @@ export interface AnimatedDecorDef {
 
 export const ANIMATED_DECOR: AnimatedDecorDef[] = [
   {
-    // The north plaza fountain's jet. The water was taken OUT of the fountain
-    // tileset art (SCTileFountain.png) so it could move: this sheet is the
-    // water alone, played over the now-dry sculpture. It stands on the
-    // centrepiece (DecorFountain paints x77-80 / y32-33) with its splash in
-    // the basin, so the jet rises from the middle of the pool.
+    // The north plaza fountain. The water was taken OUT of the fountain
+    // tileset art (SCTileFountain.png) so it could move: ONE frame carries
+    // BOTH falls pouring off the S, drawn at 1:1 over the now-dry sculpture.
+    //
+    // Placement is not a guess. Comparing the tileset before and after the
+    // water was removed gives the exact rectangle the painted water used to
+    // occupy (world 1823,803 to 1968,905), and a frame's own art box is the
+    // same 146 pixels wide, so the sheet lands back where the water was.
     key: "fountain-water",
     file: "assets/sprites/decor/fountain_water.png",
-    frameWidth: 96,
+    frameWidth: 192,
     frameHeight: 183,
-    frameCount: 12,
-    frameRate: 12,
+    frameCount: 6,
+    frameRate: 8,
     tileX: 78,
-    tileY: 33,
-    scale: 0.5,
+    tileY: 39,
+    offsetX: 10,
+    scale: 1,
   },
   {
     // Superteam Turkey flag at the TOP-RIGHT corner of the Remedi building
@@ -116,7 +123,7 @@ export function createAnimatedDecor(
     }
     const baseY = (d.tileY + 1) * TILE_SIZE;
     const sprite = scene.add
-      .sprite(d.tileX * TILE_SIZE + TILE_SIZE / 2, baseY, d.key)
+      .sprite(d.tileX * TILE_SIZE + TILE_SIZE / 2 + (d.offsetX ?? 0), baseY + (d.offsetY ?? 0), d.key)
       .setOrigin(0.5, 1)
       .setScale(d.scale)
       // A y-sorted prop follows the same rule as a y-sorted layer: depth is
