@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { batch, hgetall, storeMode, type BatchOp } from "@/lib/kv";
+import { ANALYTICS_ON } from "@/lib/analytics/enabled";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -29,6 +30,7 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  if (!ANALYTICS_ON) return NextResponse.json({ ok: false, off: true }, { status: 503 });
   if (storeMode() === "off") return NextResponse.json({ ok: false }, { status: 503 });
   const body = await req.json().catch(() => null);
   const cells = (body as { cells?: Record<string, unknown> } | null)?.cells;

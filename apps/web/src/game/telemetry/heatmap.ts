@@ -11,6 +11,8 @@
  * of the city are dead", not "which pixel". A coarse grid also means the
  * whole map is a few hundred numbers, so the panel can draw it in one read.
  */
+import { ANALYTICS_ON } from "@/lib/analytics/enabled";
+
 const SAMPLE_MS = 4_000;
 const FLUSH_MS = 30_000;
 /** Map tiles per heat cell. The map is 135x115 tiles, so this is 17x15 cells. */
@@ -54,7 +56,8 @@ async function flush(useBeacon = false): Promise<void> {
  * when they are not in the city (a mini-game, a menu), which is not walking.
  */
 export function startHeatmap(readPosition: () => { x: number; y: number } | null): () => void {
-  if (typeof window === "undefined" || sampleTimer) return () => {};
+  // Part of the analytics, so it follows the same switch.
+  if (!ANALYTICS_ON || typeof window === "undefined" || sampleTimer) return () => {};
 
   sampleTimer = setInterval(() => {
     const at = readPosition();
