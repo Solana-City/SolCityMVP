@@ -58,6 +58,11 @@ function rate(offset: number): Rating {
 
 /** Loads a paper-doll sheet and returns its front-facing frame 0, chroma removed. */
 function loadFrame(file: string): Promise<HTMLCanvasElement> {
+  return loadSheetFrame(`/assets/sprites/paperdoll/${file}`);
+}
+
+/** Same for any 64x64 walk sheet under /public (e.g. an NPC's own art). */
+function loadSheetFrame(url: string): Promise<HTMLCanvasElement> {
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => {
@@ -79,7 +84,7 @@ function loadFrame(file: string): Promise<HTMLCanvasElement> {
       resolve(c);
     };
     img.onerror = reject;
-    img.src = `/assets/sprites/paperdoll/${file}`;
+    img.src = url;
   });
 }
 
@@ -234,20 +239,17 @@ export default function HairSpecialist({ onResult, onClose }: MiniGameComponentP
     return () => window.removeEventListener("keydown", onKey);
   }, [act, onClose]);
 
-  // The specialist's own face for the dialog, built from his wardrobe look.
+  // The specialist's own face for the dialog, taken from his city sprite.
   useEffect(() => {
     if (!pitch) return;
-    const look = NPC_REGISTRY.find((n) => n.id === "hair-specialist")?.loadout;
-    if (!look) return;
-    const files = LAYER_ORDER
-      .map((cat) => getVariant(cat, look[cat])?.file)
-      .filter((f): f is string => !!f);
-    Promise.all(files.map(loadFrame)).then((layers) => {
+    const key = NPC_REGISTRY.find((n) => n.id === "hair-specialist")?.spriteKey;
+    if (!key) return;
+    loadSheetFrame(`/assets/sprites/${encodeURIComponent(key)}.png`).then((face) => {
       const ctx = portraitRef.current?.getContext("2d");
       if (!ctx) return;
       ctx.imageSmoothingEnabled = false;
       ctx.clearRect(0, 0, FW, FH);
-      for (const layer of layers) ctx.drawImage(layer, 0, 0);
+      ctx.drawImage(face, 0, 0);
     }).catch(() => undefined);
   }, [pitch]);
 
