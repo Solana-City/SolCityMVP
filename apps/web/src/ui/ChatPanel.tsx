@@ -26,7 +26,7 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [activeChannel, setActiveChannel] = useState<ChatChannel>("city");
-  /** A one-line problem shown above the input (link blocked, player offline...). */
+  /** A one-line problem shown above the input (link blocked, DMs off...). */
   const [notice, setNotice] = useState<string | null>(null);
   const [dmMode, setDmMode] = useState(false);
   /** Wallet of the open conversation; null shows the "who to" prompt. */
@@ -201,6 +201,10 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
     setInput("");
     setShowEmojis(false);
   }, [input, gameRef, busy, dmMode, dmPeer, myWallet, openPeer, chatManager]);
+
+  // Reading direct messages: check the inbox often while the tab is open,
+  // and rarely otherwise (each check is a paid command).
+  useEffect(() => { dmRef.current?.setActive(dmMode); }, [dmMode]);
 
   // "Message" on a player card opens the conversation here.
   useEffect(() => {
@@ -389,7 +393,7 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
         >
           {messages.length === 0 && (
             <div style={{ color: "#555566", fontSize: 8, lineHeight: 1.8 }}>
-              {dmMode ? `Say hi to ${peerName}. Only online players receive messages.` : "No messages yet. Press Enter to chat."}
+              {dmMode ? `Say hi to ${peerName}. Messages wait for them for a day.` : "No messages yet. Press Enter to chat."}
             </div>
           )}
           {messages.map((msg) => (

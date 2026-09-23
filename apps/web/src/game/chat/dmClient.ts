@@ -12,8 +12,14 @@ import { dmMessage, type DmAction } from "@/lib/dm/dmMessage";
 import { DM_SETTINGS_EVENT, DMS_OFF_KEY, DMS_PENDING_KEY, dmsOffPref } from "./dmEvents";
 export { OPEN_DM_EVENT, DM_SETTINGS_EVENT, dmsOffPref, setDmsOffPref } from "./dmEvents";
 
-/** Each poll is one Redis command; presence on the server lasts 25s. */
-const POLL_MS = 10_000;
+/**
+ * Each poll is one paid command, so the inbox is checked often only while the
+ * player is actually reading direct messages; otherwise it is a slow heartbeat
+ * that brings the unread badge along. Messages wait a day on the server, so
+ * nothing is lost by checking rarely.
+ */
+const POLL_ACTIVE_MS = 10_000;
+const POLL_IDLE_MS = 5 * 60_000;
 /** After a failed poll (session key not verified yet, store down), wait longer. */
 const BACKOFF_MS = 60_000;
 
@@ -27,6 +33,8 @@ type Result = { ok: true } | { ok: false; message: string };
 
 export class DMClient {
   private timer: ReturnType<typeof setTimeout> | null = null;
+  /** True while the player has the DM tab open. */
+  private active = false;
   private listeners = new Set<(m: IncomingDM) => void>();
   private stopped = false;
 
@@ -45,6 +53,18 @@ export class DMClient {
     this.timer = null;
     window.removeEventListener(DM_SETTINGS_EVENT, this.onSettings);
     document.removeEventListener("visibilitychange", this.onVisibility);
+  }
+
+  /** The chat tells us when direct messages are on screen. */
+  setActive(on: boolean): void {
+    if (this.active === on) return;
+    this.active = on;
+    // Opening the tab: read the inbox now rather than at the next heartbeat.
+    if (on && !this.stopped) {
+      if (this.timer) clearTimeout(this.timer);
+      this.timer = null;
+      void this.tick();
+    }
   }
 
   onMessage(cb: (m: IncomingDM) => void): () => void {
@@ -76,7 +96,7 @@ export class DMClient {
     try {
       const res = await this.post("poll");
       if (res.ok) {
-        next = POLL_MS;
+        next = this.active ? POLL_ACTIVE_MS : POLL_IDLE_MS;
         // The server is the source of truth (the setting follows the wallet
         // across devices); a change made here but not yet pushed wins.
         let pending = false;

@@ -9,11 +9,12 @@
  * session key (see lib/auth/sessionAuth.ts). The poll and send scripts read
  * the same `auth:sk:<sessionKey>` cache that module fills.
  *
- * Presence is the poll itself: each poll refreshes `dm:seen:<wallet>` for a
- * few seconds, so "online" means "has the city open right now".
+ * An inbox, not a live wire: a message waits a day for its recipient, so
+ * nobody has to be online when it is sent. The client used to poll every few
+ * seconds to keep a presence flag alive; it now polls while the player has
+ * the DM tab open and rarely otherwise, which is what the store is billed for.
  *
  * Keys:
- *   dm:seen:<wallet>    -> "1" while the player is polling (SEEN_SECS)
  *   dm:inbox:<wallet>   -> list of JSON messages waiting (INBOX_SECS)
  *   dm:off:<wallet>     -> "1" when the player turned DMs off
  *   dm:rate:<wallet>    -> sends in the current RATE_WINDOW
@@ -23,9 +24,8 @@ import { verifyEd25519, verifySessionOwner } from "@/lib/auth/sessionAuth";
 
 export { storeMode, verifyEd25519, verifySessionOwner };
 
-/** Presence window: comfortably longer than the client's 10s poll. */
-const SEEN_SECS = 25;
-const INBOX_SECS = 180;
+/** How long an undelivered message waits for its recipient. */
+const INBOX_SECS = 86_400;
 const INBOX_CAP = 50;
 const RATE_WINDOW = 10;
 const RATE_MAX = 6;
@@ -42,23 +42,21 @@ export interface DM {
 
 const POLL_SCRIPT = `
 if redis.call('GET', KEYS[1]) ~= ARGV[1] then return {-1} end
-redis.call('SET', KEYS[2], '1', 'EX', tonumber(ARGV[2]))
-local m = redis.call('LRANGE', KEYS[3], 0, -1)
-if #m > 0 then redis.call('DEL', KEYS[3]) end
-local off = redis.call('GET', KEYS[4])
+local m = redis.call('LRANGE', KEYS[2], 0, -1)
+if #m > 0 then redis.call('DEL', KEYS[2]) end
+local off = redis.call('GET', KEYS[3])
 if off then return {1, m} end
 return {0, m}`;
 
 export type PollResult = { ok: true; off: boolean; messages: DM[] } | { ok: false };
 
 export async function poll(wallet: string, sessionKey: string): Promise<PollResult> {
-  const keys = [`auth:sk:${sessionKey}`, `dm:seen:${wallet}`, `dm:inbox:${wallet}`, `dm:off:${wallet}`];
-  const run = () => evalScript<[number, string[]?]>(POLL_SCRIPT, keys, [wallet, SEEN_SECS], (mem) => {
+  const keys = [`auth:sk:${sessionKey}`, `dm:inbox:${wallet}`, `dm:off:${wallet}`];
+  const run = () => evalScript<[number, string[]?]>(POLL_SCRIPT, keys, [wallet], (mem) => {
     if (mem.get(keys[0]) !== wallet) return [-1];
-    mem.set(keys[1], String(Date.now() + SEEN_SECS * 1000));
-    const m = (mem.get(keys[2]) as string[] | undefined) ?? [];
-    mem.delete(keys[2]);
-    return [mem.get(keys[3]) ? 1 : 0, m];
+    const m = (mem.get(keys[1]) as string[] | undefined) ?? [];
+    mem.delete(keys[1]);
+    return [mem.get(keys[2]) ? 1 : 0, m];
   });
   let res = await run();
   if (res[0] === -1) {
@@ -73,34 +71,32 @@ export async function poll(wallet: string, sessionKey: string): Promise<PollResu
   return { ok: true, off: res[0] === 1, messages };
 }
 
-// ── Send: auth, DMs off, online, rate limit, deliver; one command ───────────
+// ── Send: auth, DMs off, rate limit, deliver; one command ──────────────────
 
 const SEND_SCRIPT = `
 if redis.call('GET', KEYS[1]) ~= ARGV[1] then return -1 end
 if redis.call('GET', KEYS[2]) then return -2 end
-if not redis.call('GET', KEYS[3]) then return -3 end
-local n = redis.call('INCR', KEYS[5])
-if n == 1 then redis.call('EXPIRE', KEYS[5], tonumber(ARGV[3])) end
+local n = redis.call('INCR', KEYS[4])
+if n == 1 then redis.call('EXPIRE', KEYS[4], tonumber(ARGV[3])) end
 if n > tonumber(ARGV[4]) then return -4 end
-redis.call('RPUSH', KEYS[4], ARGV[2])
-redis.call('LTRIM', KEYS[4], -tonumber(ARGV[5]), -1)
-redis.call('EXPIRE', KEYS[4], tonumber(ARGV[6]))
+redis.call('RPUSH', KEYS[3], ARGV[2])
+redis.call('LTRIM', KEYS[3], -tonumber(ARGV[5]), -1)
+redis.call('EXPIRE', KEYS[3], tonumber(ARGV[6]))
 return 1`;
 
-export type SendOutcome = "sent" | "unauthorized" | "off" | "offline" | "rate";
+export type SendOutcome = "sent" | "unauthorized" | "off" | "rate";
 
 export async function send(from: string, sessionKey: string, to: string, text: string): Promise<SendOutcome> {
-  const keys = [`auth:sk:${sessionKey}`, `dm:off:${to}`, `dm:seen:${to}`, `dm:inbox:${to}`, `dm:rate:${from}`];
+  const keys = [`auth:sk:${sessionKey}`, `dm:off:${to}`, `dm:inbox:${to}`, `dm:rate:${from}`];
   const payload = JSON.stringify({ from, text, at: Date.now() } satisfies DM);
   const run = () => evalScript<number>(
     SEND_SCRIPT, keys, [from, payload, RATE_WINDOW, RATE_MAX, INBOX_CAP, INBOX_SECS],
     (mem) => {
       if (mem.get(keys[0]) !== from) return -1;
       if (mem.get(keys[1])) return -2;
-      if (Number(mem.get(keys[2]) ?? 0) < Date.now()) return -3;
-      const inbox = (mem.get(keys[3]) as string[] | undefined) ?? [];
+      const inbox = (mem.get(keys[2]) as string[] | undefined) ?? [];
       inbox.push(payload);
-      mem.set(keys[3], inbox.slice(-INBOX_CAP));
+      mem.set(keys[2], inbox.slice(-INBOX_CAP));
       return 1;
     },
   );
@@ -109,7 +105,7 @@ export async function send(from: string, sessionKey: string, to: string, text: s
     if (!(await verifySessionOwner(from, sessionKey))) return "unauthorized";
     code = await run();
   }
-  return code === 1 ? "sent" : code === -2 ? "off" : code === -3 ? "offline" : code === -4 ? "rate" : "unauthorized";
+  return code === 1 ? "sent" : code === -2 ? "off" : code === -4 ? "rate" : "unauthorized";
 }
 
 export async function setDmsOff(wallet: string, off: boolean): Promise<void> {
