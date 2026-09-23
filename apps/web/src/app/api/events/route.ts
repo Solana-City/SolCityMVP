@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { recordEvent, type EventKind, type GameEvent } from "@/lib/analytics/events";
+import { ANALYTICS_ON, alwaysRecorded } from "@/lib/analytics/enabled";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -31,6 +32,7 @@ export async function POST(req: NextRequest) {
   for (const raw of list) {
     const e = raw as Partial<GameEvent>;
     if (!e || typeof e.kind !== "string" || typeof e.id !== "string" || typeof e.wallet !== "string") continue;
+    if (!ANALYTICS_ON && !alwaysRecorded(e.kind)) continue;
     const ok = await recordEvent({
       kind: e.kind as EventKind,
       id: e.id,

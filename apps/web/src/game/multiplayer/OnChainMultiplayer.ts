@@ -395,6 +395,9 @@ export class OnChainMultiplayer {
 
       // Session key in sim mode — connect to base layer for authorize
       await this.sessionKeys.authorize(walletPublicKey, this.baseConnection);
+      // No program deployed: local play is as online as it gets, and the
+      // connect screen must not wait for a rollup that cannot exist.
+      this.setOnline(true);
     }
 
     // Stale player cleanup (every 15s)

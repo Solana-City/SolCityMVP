@@ -13,7 +13,6 @@ export const dynamic = "force-dynamic";
 const SEND_TEXT: Record<Exclude<SendOutcome, "sent">, string> = {
   unauthorized: "Could not verify your session. Try again in a moment.",
   off: "This player doesn't accept direct messages.",
-  offline: "This player is offline.",
   rate: "Slow down a little.",
 };
 

@@ -7,7 +7,40 @@
  */
 import { claimMessage } from "@/lib/names/claimMessage";
 
-const cache = new Map<string, string | null>();
+/**
+ * Names seen before, kept on the device.
+ *
+ * The registry is off-chain, so it can be unreachable (network, an outage, a
+ * quota). A nameplate turning back into a wallet address mid-session is the
+ * one outcome to avoid, so every name resolved is remembered here and shown
+ * again next time, whatever the server does.
+ */
+const STORE_KEY = "solcity:names";
+const STORE_MAX = 500;
+
+function loadStored(): Map<string, string | null> {
+  try {
+    const raw = localStorage.getItem(STORE_KEY);
+    if (!raw) return new Map();
+    return new Map(Object.entries(JSON.parse(raw) as Record<string, string>));
+  } catch {
+    return new Map();
+  }
+}
+
+const cache: Map<string, string | null> = typeof window === "undefined" ? new Map() : loadStored();
+
+let saveTimer: ReturnType<typeof setTimeout> | null = null;
+function saveStored(): void {
+  if (saveTimer || typeof window === "undefined") return;
+  saveTimer = setTimeout(() => {
+    saveTimer = null;
+    try {
+      const named = [...cache.entries()].filter(([, n]) => n).slice(-STORE_MAX);
+      localStorage.setItem(STORE_KEY, JSON.stringify(Object.fromEntries(named)));
+    } catch { /* storage blocked or full */ }
+  }, 1_000);
+}
 const listeners = new Set<(names: Record<string, string>) => void>();
 let pending = new Set<string>();
 let timer: ReturnType<typeof setTimeout> | null = null;
@@ -43,9 +76,14 @@ export function requestNames(wallets: string[], force = false): void {
       const changed: Record<string, string> = {};
       for (const w of batch) {
         const next = found[w] ?? null;
+        // Never overwrite a known name with nothing: the registry being
+        // unavailable reads as "no name", and the nameplate would flip back
+        // to the wallet address.
+        if (!next && cache.get(w)) continue;
         if (cache.get(w) !== next && next) changed[w] = next;
         cache.set(w, next);
       }
+      saveStored();
       emit(changed);
     } catch { /* offline: try again next time */ }
   }, 150);
@@ -63,6 +101,7 @@ export async function fetchStatus(wallet: string): Promise<NameStatus> {
     const body = await res.json();
     if (body.name && cache.get(wallet) !== body.name) {
       cache.set(wallet, body.name);
+      saveStored();
       emit({ [wallet]: body.name });
     }
     return { enabled: !!body.enabled, name: body.name ?? null, locked: body.locked ?? null };
@@ -94,6 +133,7 @@ export async function claimName(
   const body = await res.json().catch(() => ({}));
   if (body.ok) {
     cache.set(wallet, name);
+    saveStored();
     emit({ [wallet]: name });
     window.dispatchEvent(new CustomEvent(NAME_CHANGED_EVENT, { detail: { wallet, name } }));
   }

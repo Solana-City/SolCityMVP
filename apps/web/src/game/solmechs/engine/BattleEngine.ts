@@ -101,8 +101,8 @@ export type BattleStatus =
 /** One resolved action. This is the unit that gets committed on-chain. */
 export interface BattleAction {
   side: PlayerSide;
-  /** Which of the attacker's limbs is firing. */
-  sourceSlot: Exclude<ModuleSlot, "matrix">;
+  /** Which slot is firing. The matrix fires the chassis' own self-buff. */
+  sourceSlot: ModuleSlot;
   /** Index into that part's `moves`. */
   moveIndex: number;
   /** Slot being hit — on the opponent, or on self for self-target moves. */
@@ -304,12 +304,20 @@ export function opponentOfSide(side: PlayerSide): PlayerSide {
 /** Local alias — `opponentOfSide` is the exported name for other formats. */
 const opponentOf = opponentOfSide;
 
-/** The moves a side can legally pick right now — broken limbs can't fire. */
-export function availableMoves(unit: MechUnit): Array<{ slot: Exclude<ModuleSlot, "matrix">; moveIndex: number; move: MoveDefinition }> {
-  const out: Array<{ slot: Exclude<ModuleSlot, "matrix">; moveIndex: number; move: MoveDefinition }> = [];
-  for (const slot of LIMB_SLOTS as Array<Exclude<ModuleSlot, "matrix">>) {
+/** The moves in a slot: the matrix carries the chassis' self-buff. */
+export function movesOf(unit: MechUnit, slot: ModuleSlot): MoveDefinition[] {
+  return slot === "matrix" ? unit.matrix.moves : unit.parts[slot].moves;
+}
+
+/**
+ * The moves a side can legally pick right now — broken limbs can't fire. The
+ * matrix always can: a mech whose matrix is gone has already lost.
+ */
+export function availableMoves(unit: MechUnit): Array<{ slot: ModuleSlot; moveIndex: number; move: MoveDefinition }> {
+  const out: Array<{ slot: ModuleSlot; moveIndex: number; move: MoveDefinition }> = [];
+  for (const slot of ["matrix", ...LIMB_SLOTS] as ModuleSlot[]) {
     if (isPartBroken(unit, slot)) continue;
-    unit.parts[slot].moves.forEach((move, moveIndex) => out.push({ slot, moveIndex, move }));
+    movesOf(unit, slot).forEach((move, moveIndex) => out.push({ slot, moveIndex, move }));
   }
   return out;
 }
@@ -401,13 +409,13 @@ export function isDefeated(unit: MechUnit): boolean {
 export function validateMove(
   attacker: MechUnit,
   defender: MechUnit,
-  sourceSlot: Exclude<ModuleSlot, "matrix">,
+  sourceSlot: ModuleSlot,
   moveIndex: number,
   targetSlot: ModuleSlot,
 ): string | null {
   if (isPartBroken(attacker, sourceSlot)) return `${sourceSlot} is broken`;
 
-  const move = attacker.parts[sourceSlot].moves[moveIndex];
+  const move = movesOf(attacker, sourceSlot)[moveIndex];
   if (!move) return "No such move";
 
   if (move.targetType === "self") {
@@ -428,13 +436,13 @@ export function applyMove(
   attacker: MechUnit,
   defender: MechUnit,
   attackerSide: PlayerSide,
-  sourceSlot: Exclude<ModuleSlot, "matrix">,
+  sourceSlot: ModuleSlot,
   moveIndex: number,
   targetSlot: ModuleSlot,
 ): BattleEvent[] {
   const events: BattleEvent[] = [];
   const defenderSide = opponentOf(attackerSide);
-  const move = attacker.parts[sourceSlot].moves[moveIndex];
+  const move = movesOf(attacker, sourceSlot)[moveIndex];
 
   const selfTargeted = move.targetType === "self";
   const target = selfTargeted ? attacker : defender;

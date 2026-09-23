@@ -65,7 +65,7 @@ function steps(touch: boolean): Step[] {
     },
     {
       title: "DIRECT MESSAGES",
-      line: "Open Direct Message and type a nickname or wallet, or tap a player and MESSAGE. Only online players get them.",
+      line: "Open Direct Message and type a nickname or wallet, or tap a player and MESSAGE. They read it next time they play.",
       scene: (
         <div style={{ display: "flex", alignItems: "flex-end", gap: 18 }}>
           <Speaker sheet="main_char.png" text="psst" color={DM} size={52} />

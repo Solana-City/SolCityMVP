@@ -13,6 +13,8 @@ export type TrackKind =
   | "protocol" | "protocol-open" | "minigame" | "hunt" | "duel" | "tutorial" | "quest"
   | "latency" | "session" | "npc" | "chat" | "expression" | "purchase";
 
+import { ANALYTICS_ON, alwaysRecorded } from "@/lib/analytics/enabled";
+
 let currentWallet: string | null = null;
 
 /** The city calls this when the wallet connects or disconnects. */
@@ -27,6 +29,8 @@ export function track(
 ): void {
   const wallet = opts.wallet ?? currentWallet;
   if (!wallet || typeof fetch === "undefined") return;
+  // Off by default: see lib/analytics/enabled.ts. Purchases always count.
+  if (!ANALYTICS_ON && !alwaysRecorded(kind)) return;
   try {
     void fetch("/api/events", {
       method: "POST",

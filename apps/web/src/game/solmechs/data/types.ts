@@ -109,6 +109,11 @@ export interface MechPart {
 export interface MechMatrix {
   matrixCode: string;
   matrixName: string;
+  /**
+   * The chassis' own move: the self-buff that used to sit on the legs. Firing
+   * it costs the mech's action for the round, like any other move.
+   */
+  moves: MoveDefinition[];
   id: MechId;
   role: string;
   baseStats: StatBlock;

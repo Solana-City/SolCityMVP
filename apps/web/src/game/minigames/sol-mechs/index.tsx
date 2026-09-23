@@ -16,7 +16,7 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import type { MiniGameComponentProps, MiniGameBaseContext } from "../types";
 import {
-  createBattle, resolveRound, forfeit, availableMoves, legalTargets, createUnit,
+  createBattle, resolveRound, forfeit, availableMoves, movesOf, legalTargets, createUnit,
   type BattleState, type BattleAction, type BattleEvent, type PlayerSide,
   type RoundActions,
 } from "@/game/solmechs/engine/BattleEngine";
@@ -207,7 +207,7 @@ export default function SolMechsBattle({ context, onResult, onClose }: MiniGameC
   const [busy, setBusy] = useState(false);
   /** True while the renderer is mid-sequence; blocks input and the AI. */
   const [animating, setAnimating] = useState(false);
-  const [pendingMove, setPendingMove] = useState<{ slot: Exclude<ModuleSlot, "matrix">; moveIndex: number } | null>(null);
+  const [pendingMove, setPendingMove] = useState<{ slot: ModuleSlot; moveIndex: number } | null>(null);
   const [playerTeam, setPlayerTeam] = useState<TeamBuild | null>(null);
   /** The squad battle's opponent — the CPU, or a matched player. */
   const [squadOpponent, setSquadOpponent] = useState<SquadOpponent | null>(null);
@@ -374,8 +374,8 @@ export default function SolMechsBattle({ context, onResult, onClose }: MiniGameC
 
     // Effects are picked from the pre-round moves; afterwards the limb that
     // fired may already be gone.
-    const p1Move = action ? current.p1.parts[action.sourceSlot]?.moves[action.moveIndex] : undefined;
-    const p2Move = rivalAction ? current.p2.parts[rivalAction.sourceSlot]?.moves[rivalAction.moveIndex] : undefined;
+    const p1Move = action ? movesOf(current.p1, action.sourceSlot)[action.moveIndex] : undefined;
+    const p2Move = rivalAction ? movesOf(current.p2, rivalAction.sourceSlot)[rivalAction.moveIndex] : undefined;
 
     const lines = events
       .map((e) => describe(e, nextState))
@@ -812,7 +812,7 @@ export default function SolMechsBattle({ context, onResult, onClose }: MiniGameC
   const moves = availableMoves(battle.p1);
   const targets = legalTargets(battle.p2);
   const selectedMove = pendingMove
-    ? battle.p1.parts[pendingMove.slot].moves[pendingMove.moveIndex]
+    ? movesOf(battle.p1, pendingMove.slot)[pendingMove.moveIndex]
     : null;
 
   const onTargetPicked = (slot: ModuleSlot) => {

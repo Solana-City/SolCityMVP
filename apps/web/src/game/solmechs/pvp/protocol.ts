@@ -81,13 +81,14 @@ export type WireAction =
   | { kind: "none" }
   | {
       kind: "move";
-      sourceSlot: Exclude<ModuleSlot, "matrix">;
+      sourceSlot: ModuleSlot;
       moveIndex: number;
       targetSlot: ModuleSlot;
     }
   | { kind: "switch"; toIndex: number };
 
-const LIMBS = ["rightArm", "leftArm", "lowerBody"] as const;
+/** Move sources, in wire order. Two bits, so the matrix fits beside the limbs. */
+const LIMBS = ["rightArm", "leftArm", "lowerBody", "matrix"] as const;
 const TARGETS = ["matrix", "rightArm", "leftArm", "lowerBody"] as const;
 
 export function toWire(action: TeamAction | null): WireAction {
@@ -153,7 +154,6 @@ export function decodeAction(bytes: Uint8Array): WireAction {
     case 1: {
       const b = bytes[1];
       const src = b & 0b11;
-      if (src > 2) throw new Error("Malformed move");
       return {
         kind: "move",
         sourceSlot: LIMBS[src],

@@ -24,6 +24,7 @@ import { showEmoji, EmojiDef } from "../chat/EmojiSystem";
 import { soundManager } from "../audio/SoundManager";
 import { publishMinimap } from "../minimap/MinimapHost";
 import { createStockExchange } from "../world/StockExchange";
+import { readLastPosition, saveLastPosition } from "../world/lastPosition";
 import { buildPhysicsLayer, mergeGroundRun } from "../world/mergeLayers";
 import { SparseLayer, SPARSE_MAX_TILES, GROUND_CHUNK_TILES, type CityLayer } from "../world/sparseLayer";
 import { bakeStaticLayers, type BakedGround } from "../world/groundBake";
@@ -465,9 +466,23 @@ export class CityScene extends Phaser.Scene {
     this.events.once("shutdown", destroyStockScreens);
 
     // Spawn on the central fountain's walkway (col 78, row 38) — the two-tile
-    // flight of steps climbing from the south path up to the sculpture.
-    const spawnX = 78 * tileSize + tileSize / 2;
-    const spawnY = 38 * tileSize + tileSize / 2;
+    // flight of steps climbing from the south path up to the sculpture...
+    let spawnX = 78 * tileSize + tileSize / 2;
+    let spawnY = 38 * tileSize + tileSize / 2;
+    // ...unless this is a reload of a session already in progress. The page
+    // reloads itself on a new build, a failed chunk or a wallet error caught
+    // mid-render, and landing back at the fountain every time is the part the
+    // player actually feels. A spot saved in the last half hour is used, as
+    // long as nothing solid stands there now (the map may have changed).
+    const resume = readLastPosition();
+    if (resume && !this.collisionLayers.some((l) => {
+      const t = l.getTileAtWorldXY(resume.x, resume.y);
+      return t !== null && t.collides;
+    })) {
+      spawnX = resume.x;
+      spawnY = resume.y;
+      console.log(`[CityScene] resumed at ${resume.x},${resume.y} (${Math.round((Date.now() - resume.at) / 1000)}s ago)`);
+    }
     this.avatar = new AvatarSprite(this, spawnX, spawnY, loadSavedLoadout());
 
     const container = this.avatar.getContainer();
@@ -481,6 +496,19 @@ export class CityScene extends Phaser.Scene {
     }
 
     this.createFootDust();
+
+    // Keep the resume point fresh: every few seconds while walking, and once
+    // more the moment the tab is hidden (a reload gives no warning).
+    const saveSpot = () => { if (this.avatar) saveLastPosition(this.avatar.x, this.avatar.y); };
+    const saveTimer = this.time.addEvent({ delay: 3_000, loop: true, callback: saveSpot });
+    const onHide = () => saveSpot();
+    window.addEventListener("pagehide", onHide);
+    document.addEventListener("visibilitychange", onHide);
+    this.events.once("shutdown", () => {
+      saveTimer.remove();
+      window.removeEventListener("pagehide", onHide);
+      document.removeEventListener("visibilitychange", onHide);
+    });
 
     // Memory census: __solCityStats() in the console, and a [mem] line a minute.
     const stopMemStats = startMemStats(this);
@@ -722,7 +750,12 @@ export class CityScene extends Phaser.Scene {
       // A reconnect cancels any pending flap-disconnect for this wallet.
       if (this.walletFlapTimer) { clearTimeout(this.walletFlapTimer); this.walletFlapTimer = null; }
       // Ignore re-fires for a wallet we're already connected to (adapter flaps).
-      if (this.network.connected && this.walletAddress === walletAddress) return;
+      if (this.network.connected && this.walletAddress === walletAddress) {
+        // The adapter re-fires on reconnects; the connect screen is waiting on
+        // this event, so say again that the session is already up.
+        this.game.events.emit("multiplayer:ready", this.network.visibleToOthers);
+        return;
+      }
       // ...and for one whose handshake is still running. connect() takes seconds
       // (PDA init, then delegation), and network.connected stays false the whole
       // time, so the check above alone would let a second event start a parallel
@@ -753,6 +786,9 @@ export class CityScene extends Phaser.Scene {
 
         await this.network.connect(new PublicKey(walletAddress), displayName, loadSavedLoadout());
         this.chat.addSystemMessage("Multiplayer session started.");
+        // The connect screen waits on this before letting the player in, so
+        // nobody walks into a city that cannot see them (see ConnectScreen).
+        this.game.events.emit("multiplayer:ready", this.network.visibleToOthers);
 
         // Warnings from multiplayer (e.g. delegated PDA detected)
         this.game.events.once("multiplayer:warning", (msg: string) => {
@@ -761,6 +797,7 @@ export class CityScene extends Phaser.Scene {
       } catch (err: any) {
         console.error("[CityScene] session error:", err);
         this.chat.addSystemMessage("Session offline (local mode)");
+        this.game.events.emit("multiplayer:ready", false);
       } finally {
         // Cleared either way: a failed handshake must stay retryable.
         if (this.walletConnecting === walletAddress) this.walletConnecting = null;

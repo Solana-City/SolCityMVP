@@ -10,6 +10,7 @@
  * mini-game rounds, which stay in the player's browser.
  */
 import { useCallback, useEffect, useState } from "react";
+import { ANALYTICS_ON } from "@/lib/analytics/enabled";
 
 interface Series { day: string; count: number }
 
@@ -125,6 +126,15 @@ export default function Analytics({ adminKey }: { adminKey: string }) {
 
   return (
     <>
+      {!ANALYTICS_ON && (
+        <div style={{ ...sx.dim, border: "1px solid rgba(255,169,77,0.4)", borderRadius: 8, padding: 10, marginBottom: 12 }}>
+          Analytics are OFF, so nothing new is being recorded and what follows is
+          the old data. The key-value store is kept for what players would miss
+          (nicknames, direct messages, check-in, quests, boards). Purchases are
+          still recorded. Set NEXT_PUBLIC_ANALYTICS=1 and redeploy to measure a
+          session, then set it back.
+        </div>
+      )}
       <div style={sx.toolbar}>
         <span style={sx.dim}>
           Snapshot from {new Date(data.generatedAt).toLocaleTimeString()}, cached for a minute.

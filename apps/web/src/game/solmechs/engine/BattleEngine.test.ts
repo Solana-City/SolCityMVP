@@ -40,8 +40,10 @@ describe("createUnit", () => {
 describe("calculateDamage", () => {
   const attacker = createUnit("A", PRESET_BUILDS.titan);
   const defender = createUnit("B", PRESET_BUILDS.striker);
-  const move = availableMoves(attacker)[0].move;
-  const sourceSlot = availableMoves(attacker)[0].slot;
+  // The first option is the matrix self-buff now, which deals no damage.
+  const attack = availableMoves(attacker).find((o) => o.move.baseDamage > 0)!;
+  const move = attack.move;
+  const sourceSlot = attack.slot;
 
   it("always does at least the floor when a move connects", () => {
     const damage = calculateDamage(move, attacker, defender, sourceSlot, "rightArm");

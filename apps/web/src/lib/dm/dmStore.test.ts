@@ -28,12 +28,7 @@ describe("signatures", () => {
 });
 
 describe("delivery", () => {
-  it("refuses an offline recipient", async () => {
-    expect(await send(alice, aliceSk.publicKey.toBase58(), bob, "hi")).toBe("offline");
-  });
-
-  it("delivers once the recipient is polling, then drains the inbox", async () => {
-    expect((await poll(bob, bobSk.publicKey.toBase58())).ok).toBe(true);
+  it("waits in the inbox for a recipient who is not playing, then drains it", async () => {
     expect(await send(alice, aliceSk.publicKey.toBase58(), bob, "hi bob")).toBe("sent");
     const res = await poll(bob, bobSk.publicKey.toBase58());
     expect(res.ok && res.messages.map((m) => [m.from, m.text])).toEqual([[alice, "hi bob"]]);

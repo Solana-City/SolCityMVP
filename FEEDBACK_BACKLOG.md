@@ -202,15 +202,8 @@ someone hesitates. Known candidates already: the HUD corners are crowded, the
 panels do not share one visual language, and font sizes jump between screens.
 Worth asking the tester for their three worst moments.
 
-### 7. Sol Mechs: too many clicks — M
-*"Study how to make it less; maybe there is nothing much we can do."*
-Concrete candidates, each removing one click per turn:
-- Pre-select a default target, so attacking is one click, not two.
-- Remember the last action per mech and offer it as the default.
-- Skip the confirmation step when nothing is ambiguous.
-- Auto-end the turn once no action is possible.
-
-Needs a decision on which of these to try; they change how the game feels.
+### 7. Sol Mechs: too many clicks — CLOSED 2026-09-23
+Dropped by the user: nothing to do here. The turn flow stays as it is.
 
 ### 8. Sol Mechs: legs have no purpose — M
 *"No point attacking/using legs."* The user's own proposal: give legs one
@@ -262,6 +255,10 @@ the fast one now: build in Playground, export the `.so`, deploy from here.
 ---
 
 ## Housekeeping (small, do when nearby)
+
+- **Analytics are off** (2026-09-23): the dev panel shows old data until
+  someone sets `NEXT_PUBLIC_ANALYTICS=1` for a measured session. Decide later
+  whether to keep them off, sample them, or pay for the store.
 
 - **Re-lock the hats** when testing is done: `TEST_UNLOCK_ALL_HATS = false` in
   `game/config/paperDoll.ts` (Black Hat stays free).
