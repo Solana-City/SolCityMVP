@@ -4,6 +4,7 @@ import { useWallet } from "@solana/wallet-adapter-react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import { useCallback, useEffect, useState } from "react";
 import GuestNotice from "./GuestNotice";
+import ConnectingOverlay from "./ConnectingOverlay";
 
 export default function ConnectScreen() {
   const { connected } = useWallet();
@@ -11,21 +12,54 @@ export default function ConnectScreen() {
   const openModal = useCallback(() => setVisible(true), [setVisible]);
   const [dismissed, setDismissed] = useState(false);
   const [guestNotice, setGuestNotice] = useState(false);
+  /** The on-chain session is up (or the player chose to go in without it). */
+  const [sessionReady, setSessionReady] = useState(false);
 
   // Reset "continue as guest" dismissal whenever the wallet disconnects so
   // clicking the disconnect button always returns the user to this screen.
   useEffect(() => {
-    if (!connected) setDismissed(false);
+    if (!connected) { setDismissed(false); setSessionReady(false); }
   }, [connected]);
+
+  // A connected wallet is not a working session: creating the player,
+  // authorizing the session key and delegating to the rollup each take a
+  // signature. The city waits here until that finishes, so nobody plays in a
+  // city that cannot see them without knowing it (see ConnectingOverlay).
+  useEffect(() => {
+    let off: (() => void) | null = null;
+    const attach = (): boolean => {
+      const bus = (globalThis as any).__solCityGameEvents as
+        | { on: Function; off: Function } | undefined;
+      if (!bus) return false;
+      const onReady = (online: boolean) => { if (online) setSessionReady(true); };
+      // "ready" is the end of the handshake; "online" also fires when a retry
+      // from the overlay succeeds, or when the first position write lands.
+      bus.on("multiplayer:ready", onReady);
+      bus.on("multiplayer:online", onReady);
+      off = () => {
+        bus.off("multiplayer:ready", onReady);
+        bus.off("multiplayer:online", onReady);
+      };
+      return true;
+    };
+    if (!attach()) {
+      const poll = setInterval(() => { if (attach()) clearInterval(poll); }, 300);
+      return () => { clearInterval(poll); off?.(); };
+    }
+    return () => off?.();
+  }, []);
 
   // Tell the page the player is in the city (connected or guest), so the
   // first-time city guide can open over the map instead of this screen.
-  const entered = connected || dismissed;
+  const entered = (connected && sessionReady) || dismissed;
   useEffect(() => {
     if (entered) window.dispatchEvent(new Event("solcity:entered-city"));
   }, [entered]);
 
   if (entered) return null;
+
+  // Wallet connected, session still coming up: the handshake, not the menu.
+  const connecting = connected && !sessionReady;
 
   return (
     <div
@@ -156,6 +190,13 @@ export default function ConnectScreen() {
           ⚠ DEVNET
         </div>
       </div>
+
+      {connecting && (
+        <ConnectingOverlay
+          onEnter={() => setSessionReady(true)}
+          onRetry={() => (globalThis as any).__solCityGameEvents?.emit("multiplayer:retry")}
+        />
+      )}
 
       {guestNotice && (
         <GuestNotice
