@@ -65,7 +65,10 @@ export async function POST(req: NextRequest) {
   try {
     if (action === "poll") {
       const res = await poll(wallet, sessionKey);
-      if (!res.ok) return NextResponse.json({ ok: false, message: SEND_TEXT.unauthorized }, { status: 401 });
+      // `retry`: the session key is probably still being authorized on-chain,
+      // which happens seconds after a player enters. The client comes back
+      // quickly for those rather than waiting out its long backoff.
+      if (!res.ok) return NextResponse.json({ ok: false, retry: true, message: SEND_TEXT.unauthorized }, { status: 401 });
       return NextResponse.json(res);
     }
 
