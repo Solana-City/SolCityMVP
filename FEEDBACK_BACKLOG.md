@@ -263,6 +263,10 @@ the fast one now: build in Playground, export the `.so`, deploy from here.
 
 ## Housekeeping (small, do when nearby)
 
+- **Analytics are off** (2026-09-23): the dev panel shows old data until
+  someone sets `NEXT_PUBLIC_ANALYTICS=1` for a measured session. Decide later
+  whether to keep them off, sample them, or pay for the store.
+
 - **Re-lock the hats** when testing is done: `TEST_UNLOCK_ALL_HATS = false` in
   `game/config/paperDoll.ts` (Black Hat stays free).
 - Dev panel on mobile: the layout does not fit.
