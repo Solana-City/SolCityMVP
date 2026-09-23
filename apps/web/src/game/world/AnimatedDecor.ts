@@ -33,17 +33,18 @@ export interface AnimatedDecorDef {
 
 export const ANIMATED_DECOR: AnimatedDecorDef[] = [
   {
-    // Superteam Turkey flag, on the sidewalk at the left corner of the Remedi
-    // building (BuildRemedi, cols 103-113 / rows 12-20), next to the Hair
-    // Specialist, who stands at its door.
+    // Superteam Turkey flag at the TOP-RIGHT corner of the Remedi building
+    // (BuildRemedi, cols 103-113 / rows 12-20): the pole stands just right of
+    // its last column and the cloth flies out over the street, well above the
+    // Hair Specialist at the door.
     key: "flag-st-turkey",
     file: "assets/sprites/decor/flag_st_turkey.png",
     frameWidth: 78,
     frameHeight: 183,
     frameCount: 4,
     frameRate: 6,
-    tileX: 102,
-    tileY: 21,
+    tileX: 114,
+    tileY: 16,
     scale: 0.5,
   },
 ];

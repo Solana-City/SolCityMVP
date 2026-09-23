@@ -291,10 +291,11 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     id: "hair-specialist",
     name: "Hair Specialist",
     role: "Superteam Turkey",
-    // Empty sidewalk in the north-east, east of Stocklana and north of the
-    // generic blocks (cols ~102-120 / rows 14-18); findNpcSpawn lands on row 16.
-    tileX: 110,
-    tileY: 15,
+    // At the door of the Remedi building (BuildRemedi, cols 103-113 / rows
+    // 12-20), centered on its entrance; findNpcSpawn steps down to row 21,
+    // the carpet in front of the doors.
+    tileX: 108,
+    tileY: 20,
     color: 0xe30a17,
     dialog: [
       "Merhaba! I'm the Hair Specialist, visiting from Superteam Turkey.",
