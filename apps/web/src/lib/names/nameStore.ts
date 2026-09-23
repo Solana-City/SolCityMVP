@@ -67,11 +67,53 @@ export async function validate(name: string, wallet?: string): Promise<NameProbl
 
 // ── Reads ────────────────────────────────────────────────────────────────────
 
+/**
+ * Wallet -> name, cached in the server's memory.
+ *
+ * A name changes once in a while and is read constantly (every nameplate in
+ * the city), so reading Redis for each one is both slow and expensive. The
+ * cache is also what keeps names working when Redis is down or out of quota:
+ * a stale name is served rather than a wallet address, because a nameplate
+ * turning back into "7NXk...uqbA" mid-session is the worst outcome.
+ */
+const FRESH_MS = 5 * 60_000;
+const nameCache = new Map<string, { name: string | null; at: number }>();
+
+/** Called after a write, so the next read does not serve the old name. */
+export function cacheName(wallet: string, name: string | null): void {
+  nameCache.set(wallet, { name, at: Date.now() });
+}
+
 export async function namesFor(wallets: string[]): Promise<Record<string, string>> {
   const unique = [...new Set(wallets)].slice(0, 100);
-  const values = await mget(unique.map((w) => `names:byWallet:${w}`));
+  const now = Date.now();
   const out: Record<string, string> = {};
-  unique.forEach((w, i) => { if (values[i]) out[w] = values[i]!; });
+  const stale: string[] = [];
+  for (const w of unique) {
+    const hit = nameCache.get(w);
+    if (hit && now - hit.at < FRESH_MS) {
+      if (hit.name) out[w] = hit.name;
+    } else {
+      stale.push(w);
+    }
+  }
+  if (stale.length === 0) return out;
+
+  try {
+    const values = await mget(stale.map((w) => `names:byWallet:${w}`));
+    stale.forEach((w, i) => {
+      const name = values[i] ?? null;
+      nameCache.set(w, { name, at: now });
+      if (name) out[w] = name;
+    });
+  } catch (err) {
+    // Redis unreachable or over quota: serve whatever was known, at any age.
+    console.error("[names] read failed, serving cache", err);
+    for (const w of stale) {
+      const hit = nameCache.get(w);
+      if (hit?.name) out[w] = hit.name;
+    }
+  }
   return out;
 }
 
@@ -93,6 +135,7 @@ export async function claim(wallet: string, name: string): Promise<NameProblem |
     if (owner !== wallet) return "taken";
   }
   await set(`names:byWallet:${wallet}`, name);
+  cacheName(wallet, name);
   await sadd("names:all", name);
   if (previous && previous.toLowerCase() !== lower) {
     await del(`names:byName:${previous.toLowerCase()}`);
@@ -115,6 +158,8 @@ export async function lock(target: { name?: string; wallet?: string }, reason: s
   if (wallet) {
     await set(`names:lockedWallet:${wallet}`, entry);
     await del(`names:byWallet:${wallet}`);
+    // A locked name must disappear everywhere at once, cache included.
+    cacheName(wallet, null);
   }
   if (name) await del(`names:byName:${name.toLowerCase()}`);
   return { name, wallet };

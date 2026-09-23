@@ -467,7 +467,7 @@ function ProfileTab({ profile, wallet, onConnect }: {
           })}
         </div>
         <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8, fontSize: 6, color: "#64748b" }}>
-          <span>BEST {streak?.best ?? 0}</span>
+          <span>BEST {Math.max(streak?.best ?? 0, profile.streakBest ?? 0)}</span>
           <span>{streak?.checkedInToday ? "COME BACK TOMORROW" : "CHECKING IN..."}</span>
         </div>
       </Section>
