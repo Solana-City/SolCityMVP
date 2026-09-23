@@ -67,7 +67,8 @@ export const ANIMATED_DECOR: AnimatedDecorDef[] = [
     frameRate: 8,
     tileX: 78,
     tileY: 39,
-    offsetX: 10,
+    // 12, not 10: the falls sat a couple of pixels left of the S.
+    offsetX: 12,
     scale: 1,
   },
   {
