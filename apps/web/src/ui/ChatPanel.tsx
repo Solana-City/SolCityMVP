@@ -7,6 +7,7 @@ import { EMOJI_REGISTRY } from "@/game/chat/EmojiSystem";
 import ChatGuide from "./ChatGuide";
 import { containsLink, maskLinks } from "@/game/chat/linkFilter";
 import { DMClient, OPEN_DM_EVENT, resolveRecipient } from "@/game/chat/dmClient";
+import { DM_UNREAD_EVENT } from "@/game/chat/dmEvents";
 import { cachedName, requestNames } from "@/game/names/nameService";
 import type { OnChainMultiplayer } from "@/game/multiplayer/OnChainMultiplayer";
 import { useWallet } from "@solana/wallet-adapter-react";
@@ -205,6 +206,13 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
   // Reading direct messages: check the inbox often while the tab is open,
   // and rarely otherwise (each check is a paid command).
   useEffect(() => { dmRef.current?.setActive(dmMode); }, [dmMode]);
+
+  // The chat may be a closed panel on a phone, where the tab badge cannot be
+  // seen: tell the HUD so its chat button can show a dot.
+  const unreadTotal = dmChannels.reduce((n, dm) => n + dm.unread, 0);
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent(DM_UNREAD_EVENT, { detail: { count: unreadTotal } }));
+  }, [unreadTotal]);
 
   // "Message" on a player card opens the conversation here.
   useEffect(() => {
