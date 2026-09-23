@@ -58,6 +58,14 @@ function emitGameEvent(event: string, payload?: unknown): void {
 const usd = (n: number) => `$${n >= 1000 ? n.toLocaleString("en-US", { maximumFractionDigits: 0 }) : n.toFixed(2)}`;
 const pct = (n: number) => `${n > 0 ? "+" : ""}${n.toFixed(2)}%`;
 const moveColor = (n: number) => (n > 0 ? UP : n < 0 ? DOWN : MUTED);
+const isPreIpo = (s: StockInfo) => s.issuer === "prestocks";
+/** What the reference price is called: an exchange close, or the SPV mark. */
+const refLabel = (s: StockInfo) => (isPreIpo(s) ? "SPV MARK" : "WALL ST");
+function issuerLine(s: StockInfo): string {
+  if (isPreIpo(s)) return "PRESTOCKS SPV . PRE-IPO, NOT A LISTED SHARE";
+  const house = s.issuer === "backpack" ? "BACKPACK SECURITIES VIA SUNRISE" : "XSTOCKS BY BACKED";
+  return house + " . 1:1 BACKED";
+}
 
 export default function StockExchangePanel({ onClose }: { onClose: () => void }) {
   const { connected, publicKey, signTransaction, signAllTransactions } = useWallet();
@@ -243,7 +251,10 @@ export default function StockExchangePanel({ onClose }: { onClose: () => void })
               <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
                 <StockLogo stock={s} size={22} />
                 <div style={{ minWidth: 0 }}>
-                  <div style={{ fontFamily: PIXEL, fontSize: 8, color: "#fff" }}>{s.ticker}</div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                    <span style={{ fontFamily: PIXEL, fontSize: 8, color: "#fff" }}>{s.ticker}</span>
+                    {isPreIpo(s) && <span style={{ fontFamily: PIXEL, fontSize: 4, color: "#00D1FF", border: "1px solid #00D1FF55", borderRadius: 3, padding: "1px 2px" }}>PRE</span>}
+                  </div>
                   <div style={{ fontFamily: PIXEL, fontSize: 5, color: MUTED, marginTop: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.name}</div>
                 </div>
               </div>
@@ -423,14 +434,14 @@ function TradeView(props: {
       {/* Solana vs Wall Street */}
       {q?.wallStreetPrice != null && q.premiumPct != null && (
         <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 10px", borderRadius: 8, background: "#12162b", marginBottom: 10, fontSize: 6 }}>
-          <span style={{ color: MUTED }}>WALL ST {usd(q.wallStreetPrice)}</span>
+          <span style={{ color: MUTED }}>{refLabel(stock)} {usd(q.wallStreetPrice)}</span>
           <span style={{ color: Math.abs(q.premiumPct) < 0.5 ? UP : GOLD }}>SOLANA {pct(q.premiumPct)}</span>
         </div>
       )}
 
       {/* Issuer badge */}
-      <div style={{ fontSize: 5, color: MUTED, marginBottom: 12 }}>
-        {stock.issuer === "backpack" ? "BACKPACK SECURITIES VIA SUNRISE" : "XSTOCKS BY BACKED"} . 1:1 BACKED
+      <div style={{ fontSize: 5, color: isPreIpo(stock) ? "#00D1FF" : MUTED, marginBottom: 12 }}>
+        {issuerLine(stock)}
       </div>
 
       {/* Buy / Sell */}
@@ -679,12 +690,12 @@ function BasketView(props: {
                   <div style={{ color: "#c9cde0" }}>{s.about}</div>
                   {q?.wallStreetPrice != null && q.premiumPct != null && (
                     <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6, color: MUTED }}>
-                      <span>WALL ST {usd(q.wallStreetPrice)}</span>
+                      <span>{refLabel(s)} {usd(q.wallStreetPrice)}</span>
                       <span style={{ color: Math.abs(q.premiumPct) < 0.5 ? UP : GOLD }}>SOLANA {pct(q.premiumPct)}</span>
                     </div>
                   )}
                   <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4, color: MUTED }}>
-                    <span>{s.issuer === "backpack" ? "BACKPACK SECURITIES" : "XSTOCKS BY BACKED"}</span>
+                    <span style={{ color: isPreIpo(s) ? "#00D1FF" : MUTED }}>{isPreIpo(s) ? "PRE-IPO, NOT A LISTED SHARE" : s.issuer === "backpack" ? "BACKPACK SECURITIES" : "XSTOCKS BY BACKED"}</span>
                     {perLeg > 0 && <span style={{ color: "#fff" }}>YOU BUY {usd(perLeg)}</span>}
                   </div>
                 </div>

@@ -13,12 +13,18 @@ import { GENERATED_STOCKS } from "@/game/solana/stockList.generated";
 export const SOL_MINT = "So11111111111111111111111111111111111111112";
 export const USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 
-/** backpack = Backpack Securities (listed on Solana through Sunrise); xstocks = Backed. */
-export type StockIssuer = "backpack" | "xstocks";
+/**
+ * backpack = Backpack Securities (listed on Solana through Sunrise) and
+ * xstocks = Backed both hold one real share per token. prestocks is pre-IPO
+ * exposure to a private company through an SPV, NOT a listed share, which is
+ * why it carries its own label everywhere it is shown.
+ */
+export type StockIssuer = "backpack" | "xstocks" | "prestocks";
 /** Market filter groups in the Broker panel. */
-export type StockSector = "tech" | "chips" | "crypto" | "brands" | "fun" | "health" | "industry" | "finance" | "funds";
+export type StockSector = "preipo" | "tech" | "chips" | "crypto" | "brands" | "fun" | "health" | "industry" | "finance" | "funds";
 
 export const SECTOR_LABELS: Record<StockSector, string> = {
+  preipo: "PRE-IPO",
   tech: "TECH", chips: "CHIPS", crypto: "CRYPTO", brands: "BRANDS", fun: "FUN",
   health: "HEALTH", industry: "INDUSTRY", finance: "FINANCE", funds: "FUNDS",
 };
@@ -46,6 +52,28 @@ type Meta = { name?: string; about: string; sector: StockSector; color: string; 
 
 /** Player-facing details per ticker. A ticker the sync adds later still works with defaults. */
 const META: Record<string, Meta> = {
+  // Pre-IPO (PreStocks SPV exposure, not listed shares).
+  OPENAI:     { name: "OpenAI", about: "ChatGPT and the models behind it. Still private.", sector: "preipo", color: "#10A37F" },
+  ANTHROPIC:  { name: "Anthropic", about: "Claude, the AI assistant. Still private.", sector: "preipo", color: "#D97757" },
+  ANDURIL:    { name: "Anduril", about: "AI defense systems and autonomous drones.", sector: "preipo", color: "#4B5563" },
+  NEURALINK:  { name: "Neuralink", about: "Brain implants that connect minds to computers.", sector: "preipo", color: "#E5E7EB" },
+  POLYMARKET: { name: "Polymarket", about: "Prediction market where people bet on real events.", sector: "preipo", color: "#2D9CDB" },
+  SPACEX:     { name: "SpaceX Pre-IPO", about: "Rockets and Starlink, through the private company.", sector: "preipo", color: "#C8D1DC" },
+  KALSHI:     { name: "Kalshi", about: "US regulated exchange for event contracts.", sector: "preipo", color: "#00D1B2" },
+  FIGUREAI:   { name: "Figure AI", about: "Humanoid robots for factories and homes.", sector: "preipo", color: "#F97316" },
+  // Newer listings.
+  IONQ:       { name: "IonQ", about: "Quantum computers built on trapped ions.", sector: "tech", color: "#8B5CF6" },
+  IBM:        { name: "IBM", about: "Enterprise computing, cloud and quantum research.", sector: "tech", color: "#1F70C1" },
+  SHOP:       { name: "Shopify", about: "The software behind millions of online stores.", sector: "tech", color: "#95BF47" },
+  NBIS:       { name: "Nebius", about: "Cloud built for training and running AI.", sector: "tech", color: "#2563EB" },
+  BB:         { name: "BlackBerry", about: "Security software for cars and connected devices.", sector: "tech", color: "#0F172A" },
+  GPRO:       { name: "GoPro", about: "Action cameras for sports and travel.", sector: "brands", color: "#00A6E0" },
+  MRVL:       { name: "Marvell", about: "Custom chips for AI data centers.", sector: "chips", color: "#0B5FFF" },
+  LLY:        { name: "Eli Lilly", about: "Maker of the best selling weight loss drugs.", sector: "health", color: "#D52B1E" },
+  PFE:        { name: "Pfizer", about: "Vaccines and medicines worldwide.", sector: "health", color: "#0093D0" },
+  BA:         { name: "Boeing", about: "Airplanes, defense and space.", sector: "industry", color: "#1D4F91" },
+  COPX:       { name: "Copper Miners ETF", about: "A fund of the companies that mine copper.", sector: "funds", color: "#B87333" },
+  URA:        { name: "Uranium ETF", about: "A fund of uranium miners and nuclear fuel.", sector: "funds", color: "#84CC16" },
   AAPL:   { about: "iPhone, Mac and services. The most valuable brand on Earth.", sector: "tech", color: "#A2AAAD" },
   GOOGL:  { about: "Google Search, YouTube, Android and Gemini AI.", sector: "tech", color: "#4285F4" },
   AMZN:   { about: "The online store giant, plus AWS, the biggest cloud.", sector: "brands", color: "#FF9900" },
@@ -114,7 +142,7 @@ const META: Record<string, Meta> = {
 /** Best-known names, in this order, lead every list. The rest follow by liquidity. */
 const FEATURED = [
   "AAPL", "GOOGL", "AMZN", "TSLA", "NVDA", "SPCX", "META", "MSFT", "NKE", "RBLX",
-  "MCD", "KO", "COIN", "SPY", "QQQ", "GME",
+  "MCD", "KO", "COIN", "SPY", "QQQ", "GME", "OPENAI", "ANTHROPIC",
 ];
 
 export const STOCKS: readonly StockInfo[] = (() => {
@@ -172,6 +200,7 @@ export const BASKETS: readonly StockBasket[] = [
   { id: "snacks",    name: "Snack Break",     tagline: "Burgers, soda, coffee and doughnuts.", tickers: ["MCD", "KO", "WEN", "BROS", "DNUT"],             color: "#FFC72C" },
   { id: "brands",    name: "Everyday Brands", tagline: "Names you already know and love.",     tickers: ["AAPL", "NKE", "AMZN", "COST", "LULU"],          color: "#FF9900" },
   { id: "memes",     name: "Meme Stocks",     tagline: "The internet's favorite rollercoasters.", tickers: ["GME", "AMC", "DJT", "RDDT"],                 color: "#E4002B" },
+  { id: "frontier",  name: "AI Frontier",     tagline: "The private labs building AI, pre-IPO.", tickers: ["OPENAI", "ANTHROPIC", "ANDURIL", "NEURALINK", "FIGUREAI"], color: "#10A37F" },
   { id: "index",     name: "Whole Market",    tagline: "The S&P 500, the Nasdaq 100 and gold.", tickers: ["SPY", "QQQ", "GLD"],                           color: "#E23B3B" },
 ];
 
