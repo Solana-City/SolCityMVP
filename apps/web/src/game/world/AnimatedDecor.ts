@@ -33,6 +33,22 @@ export interface AnimatedDecorDef {
 
 export const ANIMATED_DECOR: AnimatedDecorDef[] = [
   {
+    // The north plaza fountain's jet. The water was taken OUT of the fountain
+    // tileset art (SCTileFountain.png) so it could move: this sheet is the
+    // water alone, played over the now-dry sculpture. It stands on the
+    // centrepiece (DecorFountain paints x77-80 / y32-33) with its splash in
+    // the basin, so the jet rises from the middle of the pool.
+    key: "fountain-water",
+    file: "assets/sprites/decor/fountain_water.png",
+    frameWidth: 96,
+    frameHeight: 183,
+    frameCount: 12,
+    frameRate: 12,
+    tileX: 78,
+    tileY: 33,
+    scale: 0.5,
+  },
+  {
     // Superteam Turkey flag at the TOP-RIGHT corner of the Remedi building
     // (BuildRemedi, cols 103-113 / rows 12-20): the pole stands just right of
     // its last column and the cloth flies out over the street, well above the
