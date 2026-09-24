@@ -59,11 +59,18 @@ export async function fetchStockPrices(): Promise<Omit<StockMarketState, "error"
     Object.assign(data, await res.json());
   }
 
+  // Pre-IPO tokens have no exchange price behind them; PreStocks publishes the
+  // SPV's mark for the private company instead, which plays the same role as
+  // the Wall Street price for listed stocks.
+  const marks = await fetchPreIpoMarks();
+
   const quotes: Record<string, StockQuote> = {};
   for (const stock of STOCKS) {
     const p = data[stock.mint];
     if (!p || typeof p.usdPrice !== "number") continue;
-    const wallStreet = typeof p.stockData?.price === "number" ? p.stockData.price : undefined;
+    const wallStreet = stock.issuer === "prestocks"
+      ? marks[stock.mint]
+      : typeof p.stockData?.price === "number" ? p.stockData.price : undefined;
     quotes[stock.mint] = {
       usdPrice: p.usdPrice,
       usdPricePrescaled: typeof p.scaledUiConfig?.usdPricePrescaled === "number" ? p.scaledUiConfig.usdPricePrescaled : p.usdPrice,
@@ -73,6 +80,33 @@ export async function fetchStockPrices(): Promise<Omit<StockMarketState, "error"
     };
   }
   return { quotes, solPrice: data[SOL_MINT]?.usdPrice ?? 0, updatedAt: Date.now() };
+}
+
+/**
+ * PreStocks' own public list, mint -> the SPV's mark for the private company.
+ * Never fails the price poll: without it the pre-IPO cards simply show no
+ * premium.
+ */
+async function fetchPreIpoMarks(): Promise<Record<string, number>> {
+  if (!STOCKS.some((s) => s.issuer === "prestocks")) return {};
+  try {
+    // prestocks.com sends no CORS header, so the browser goes through our own
+    // route; scripts and server code call their API directly.
+    if (typeof window !== "undefined") {
+      const res = await fetch("/api/prestocks-marks");
+      return res.ok ? ((await res.json()) as Record<string, number>) : {};
+    }
+    const res = await fetch("https://prestocks.com/api/prestocks");
+    if (!res.ok) return {};
+    const out: Record<string, number> = {};
+    for (const a of (await res.json()) as Array<{ contract_address?: string; markPrice?: number | string }>) {
+      const mark = Number(a.markPrice);
+      if (a.contract_address && mark > 0) out[a.contract_address] = mark;
+    }
+    return out;
+  } catch {
+    return {};
+  }
 }
 
 const POLL_MS = 15_000;

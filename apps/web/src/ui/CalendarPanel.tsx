@@ -26,6 +26,7 @@ import { profileManager } from "@/game/config/profileManager";
 import { useNicknames } from "./useNicknames";
 import { Citizen, Img, guideSeen } from "./CityGuide";
 import CityCalendar from "./CityCalendar";
+import { useViewportBox, overlayBox } from "@/ui/useViewportBox";
 
 export { OPEN_CALENDAR_EVENT, STREAK_EVENT };
 
@@ -67,6 +68,7 @@ export default function CalendarPanel({ gameRef }: { gameRef: Phaser.Game | null
   const [online, setOnline] = useState<OnChainPlayer[]>([]);
   const [allTime, setAllTime] = useState<LeaderboardEntry[] | null>(null);
   const layout = useLayout();
+  const viewport = useViewportBox();
 
   // ── Daily check-in: signed with the session key, retried while the key is
   // still being authorized on-chain in the first seconds after connecting.
@@ -178,7 +180,7 @@ export default function CalendarPanel({ gameRef }: { gameRef: Phaser.Game | null
     <div
       onPointerDown={(e) => { if (e.target === e.currentTarget) close(); }}
       style={{
-        position: "fixed", inset: 0, zIndex: 60, display: "flex", alignItems: "center", justifyContent: "center",
+        ...overlayBox(viewport), zIndex: 60, display: "flex", alignItems: "center", justifyContent: "center",
         background: "rgba(4,6,14,0.62)", padding: 8,
       }}
     >
@@ -188,7 +190,7 @@ export default function CalendarPanel({ gameRef }: { gameRef: Phaser.Game | null
           width: layout.wide ? "min(780px, 100%)" : "min(420px, 100%)",
           // Sized to fit without scrolling; the scroll is only a safety net
           // for screens smaller than anything we design for.
-          maxHeight: "96vh", overflowY: "auto",
+          maxHeight: "100%", overflowY: "auto",
           background: "linear-gradient(180deg, #14142e 0%, #0b0b1c 100%)",
           borderWidth: 20, borderStyle: "solid", borderColor: "transparent",
           borderImage: 'url(/assets/branding/ui/frame-panel-test.png) 64 fill / 20px / 0 round',

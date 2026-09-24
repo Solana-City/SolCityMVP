@@ -4,6 +4,7 @@ import { cropTileLayers } from "../world/cropMap";
 import { AvatarSprite } from "../entities/AvatarSprite";
 import { NPC_REGISTRY } from "../config/npcRegistry";
 import { getAllLayerVariants, EXPRESSIONS, SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT } from "../config/paperDoll";
+import { preloadAnimatedDecor } from "../world/AnimatedDecor";
 
 // Background color used in the spriter's sheets — treated as transparent.
 const CHROMA_R = 215;
@@ -79,6 +80,8 @@ export class BootScene extends Phaser.Scene {
     }
 
     SimpleSprite.load(this, "avatar-player", "assets/sprites/main_char.png", 64, 64);
+    // Flags and other props that wave in place (see world/AnimatedDecor).
+    preloadAnimatedDecor(this);
 
     const loadedKeys = new Set<string>();
     for (const npc of NPC_REGISTRY) {

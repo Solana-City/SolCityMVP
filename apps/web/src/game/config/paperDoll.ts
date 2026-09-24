@@ -143,6 +143,8 @@ export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
   accessory: [
     { id: "Golden_ring", name: "Golden Ring", textureKey: "pd-accessory-Golden_ring", file: "accessory/Golden_ring.png" },
     { id: "Pirate",      name: "Pirate",      textureKey: "pd-accessory-Pirate",      file: "accessory/Pirate.png" },
+    { id: "Trader_shades", name: "Trader Shades", textureKey: "pd-accessory-Trader_shades",
+      file: "accessory/Trader_shades.png", unlockVia: "quest", unlockHint: "Trade your first stock at Stocklana" },
   ],
   hair: [
     { id: "Avatar",      name: "Avatar",      textureKey: "pd-hair-Avatar",      file: "hair/Avatar.png" },

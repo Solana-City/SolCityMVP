@@ -13,17 +13,35 @@ import { decodeTrade, encodeTrade, tradeLogLine, type TradeSide } from "../chat/
 
 /** Chat-log color for stock trade lines. */
 const TRADE_COLOR = "#FFB547";
+
+/**
+ * Friendly names for the ?at= deep link, so a shared link can read
+ * ?at=stocklana instead of an internal NPC id. Any NPC id also works as is.
+ */
+const NPC_DEEP_LINKS: Record<string, string> = {
+  stocklana: "stocks-broker",
+  stocks: "stocks-broker",
+  jupiter: "swap-npc",
+  swap: "swap-npc",
+  send: "send-npc",
+  earn: "pratik",
+  magicblock: "magic-man",
+  mechs: "mech-handler",
+  kite: "kite-pro",
+  guide: "sol-guide",
+};
 import { NPCSprite } from "../entities/NPCSprite";
 import { NPC_REGISTRY } from "../config/npcRegistry";
 import { PedestrianManager, cullContainer } from "../entities/PedestrianManager";
 import { hasAlreadyFoundCurrent, markCurrentFound, isCitizenExpired, advanceFindSlot, resetCitizenTimer, isHuntOnChain, getRoundIndex } from "../minigames/whereIsNPC/WhereIsNPCGame";
 import { ProfileManager, profileManager } from "../config/profileManager";
 import { AchievementEngine } from "../progression/achievementEngine";
-import { onMiniGameFinished, watchNpcConversations, stopWatchingNpcConversations } from "../progression/outfitRewards";
+import { onMiniGameFinished, onStockTraded, watchNpcConversations, stopWatchingNpcConversations } from "../progression/outfitRewards";
 import { showEmoji, EmojiDef } from "../chat/EmojiSystem";
 import { soundManager } from "../audio/SoundManager";
 import { publishMinimap } from "../minimap/MinimapHost";
 import { createStockExchange } from "../world/StockExchange";
+import { createAnimatedDecor } from "../world/AnimatedDecor";
 import { readLastPosition, saveLastPosition } from "../world/lastPosition";
 import { buildPhysicsLayer, mergeGroundRun } from "../world/mergeLayers";
 import { SparseLayer, SPARSE_MAX_TILES, GROUND_CHUNK_TILES, type CityLayer } from "../world/sparseLayer";
@@ -69,6 +87,9 @@ interface RemoteTarget {
   /** Sender says it is walking; undefined for clients without the flag. */
   walking?: boolean;
 }
+
+/** Camera follow damping: ~200ms to settle on the player (see startFollow). */
+const CAMERA_LERP = 0.16;
 
 export class CityScene extends Phaser.Scene {
   private avatar!: AvatarSprite;
@@ -465,6 +486,11 @@ export class CityScene extends Phaser.Scene {
     );
     this.events.once("shutdown", destroyStockScreens);
 
+    // Waving props (the Superteam Turkey flag by the Remedi building): sprites,
+    // not tiles, since Phaser does not play Tiled's tile animations.
+    const destroyDecor = createAnimatedDecor(this, FOREGROUND_DEPTH, this.collisionLayers[0]);
+    this.events.once("shutdown", destroyDecor);
+
     // Spawn on the central fountain's walkway (col 78, row 38) — the two-tile
     // flight of steps climbing from the south path up to the sculpture...
     let spawnX = 78 * tileSize + tileSize / 2;
@@ -474,7 +500,37 @@ export class CityScene extends Phaser.Scene {
     // mid-render, and landing back at the fountain every time is the part the
     // player actually feels. A spot saved in the last half hour is used, as
     // long as nothing solid stands there now (the map may have changed).
-    const resume = readLastPosition();
+    // ...or in front of a named NPC, for a link that drops someone straight
+    // at a building: ?at=stocks-broker (aliases in NPC_DEEP_LINKS). Beats
+    // asking a first-time visitor to find the place on the map.
+    const atParam = new URLSearchParams(window.location.search).get("at")?.toLowerCase() ?? "";
+    const atTarget = atParam
+      ? NPC_REGISTRY.find((n) => n.enabled !== false && n.id === (NPC_DEEP_LINKS[atParam] ?? atParam))
+      : undefined;
+    let facing: Direction | null = null;
+    if (atTarget) {
+      const npcSpot = this.findNpcSpawn(map, atTarget.tileX, atTarget.tileY, tileSize);
+      const col = Math.floor(npcSpot.wx / tileSize);
+      const npcRow = Math.floor(npcSpot.wy / tileSize);
+      // Stand a tile south of the NPC, the first row that is actually free, so
+      // the talk prompt is already up when the scene fades in.
+      for (let row = npcRow + 1; row <= npcRow + 4; row++) {
+        const x = col * tileSize + tileSize / 2;
+        const y = row * tileSize + tileSize / 2;
+        const blocked = this.collisionLayers.some((l) => {
+          const t = l.getTileAt(col, row);
+          return t !== null && t.collides;
+        });
+        if (blocked) continue;
+        spawnX = x + (atTarget.offsetX ?? 0);
+        spawnY = y;
+        facing = "up";
+        break;
+      }
+      console.log(`[CityScene] deep link ?at=${atParam} → ${atTarget.name}`);
+    }
+
+    const resume = !atTarget && readLastPosition();
     if (resume && !this.collisionLayers.some((l) => {
       const t = l.getTileAtWorldXY(resume.x, resume.y);
       return t !== null && t.collides;
@@ -484,6 +540,12 @@ export class CityScene extends Phaser.Scene {
       console.log(`[CityScene] resumed at ${resume.x},${resume.y} (${Math.round((Date.now() - resume.at) / 1000)}s ago)`);
     }
     this.avatar = new AvatarSprite(this, spawnX, spawnY, loadSavedLoadout());
+    if (facing) {
+      // walk() then idle() is how a direction is committed without moving.
+      this.currentDirection = facing;
+      this.avatar.walk(facing);
+      this.avatar.idle();
+    }
 
     const container = this.avatar.getContainer();
     this.physics.world.enable(container);
@@ -564,7 +626,16 @@ export class CityScene extends Phaser.Scene {
     // zooms from getValidZooms() are used. Anything else lands source
     // pixels on fractional positions → irregular pixel sizes and blurry
     // outlines — the classic "shimmy" look.
-    this.cameras.main.startFollow(container, true, 1.0, 1.0);
+    // Damping, not a rigid lock. At 1.0 the camera was pinned to the player
+    // every frame, so every step and every correction from the joystick threw
+    // the whole city sideways; on a phone that reads as jitter. 0.16 settles
+    // in about 200ms: the view trails a step behind and catches up, which is
+    // what makes walking feel smooth. `roundPixels` below keeps the art crisp
+    // while the scroll lands between pixels.
+    this.cameras.main.startFollow(container, true, CAMERA_LERP, CAMERA_LERP);
+    // Start ON the player: a fresh camera sits at 0,0 and would otherwise
+    // glide across the map on the first frames.
+    this.cameras.main.centerOn(container.x, container.y);
     this.cameras.main.setZoom(loadZoom());
     this.applyZoomSmoothing(loadZoom());
     this.cameras.main.setBackgroundColor(0x061a2c);
@@ -664,11 +735,13 @@ export class CityScene extends Phaser.Scene {
 
     // Our own stock trade (Stocks Broker panel). Always shown over our head;
     // announced to the city unless the player opted out in the panel.
-    this.onGameEvent("game:stock-trade", (e: { side: TradeSide; ticker?: string; basketId?: string; share?: boolean }) => {
-      const trade = { side: e.side, ticker: e.ticker, basketId: e.basketId };
+    this.onGameEvent("game:stock-trade", (e: { side: TradeSide; ticker?: string; basketId?: string; usd?: number; share?: boolean }) => {
+      const trade = { side: e.side, ticker: e.ticker, basketId: e.basketId, usd: e.usd };
       new TradeBubble(this, this.avatar.getContainer(), trade);
       this.chat.addMessage("city", "local", this.profile.get().displayName, tradeLogLine(trade), TRADE_COLOR);
       if (e.share && this.network?.connected) this.network.sendChat(encodeTrade(trade));
+      // First trade at Stocklana earns the Trader Shades.
+      onStockTraded();
     });
 
     this.onGameEvent("chat:focus", (focused: boolean) => {
@@ -908,6 +981,9 @@ export class CityScene extends Phaser.Scene {
         const c = this.avatar.getContainer();
         this.playerBody.reset(spot.x, spot.y);
         c.setPosition(spot.x, spot.y);
+        // Fast travel is a cut, not a pan: without this the camera would
+        // slide across the city behind the fade.
+        cam.centerOn(spot.x, spot.y);
         cam.fadeIn(320, 6, 8, 20);
         cam.once(Phaser.Cameras.Scene2D.Events.FADE_IN_COMPLETE, () => {
           travelling = false;

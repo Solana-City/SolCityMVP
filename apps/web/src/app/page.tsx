@@ -54,6 +54,7 @@ import ErrorBoundary from "@/ui/ErrorBoundary";
 import { chamferBox, avatarFrame, avatarPhoto } from "@/ui/chamfer";
 import { OPEN_DM_EVENT } from "@/game/chat/dmEvents";
 import { OPEN_CALENDAR_EVENT } from "@/game/daily/calendarEvents";
+import { DM_UNREAD_EVENT, SEND_TOKENS_EVENT } from "@/game/chat/dmEvents";
 
 function useIsTouch() {
   const [isTouch, setIsTouch] = useState(false);
@@ -185,6 +186,26 @@ export default function Home() {
     game.events.on("player:cardOpen", handler);
     return () => { game.events.off("player:cardOpen", handler); };
   }, [game]);
+
+  // "Send tokens" on a player's card: the same transfer panel Steve opens,
+  // with that player already filled in as the recipient.
+  useEffect(() => {
+    const onSend = (e: Event) => {
+      const { wallet, name } = (e as CustomEvent<{ wallet: string; name?: string }>).detail ?? {};
+      if (!wallet) return;
+      setActiveAction({ type: "transfer", label: "Send tokens", recipient: wallet, recipientName: name });
+    };
+    window.addEventListener(SEND_TOKENS_EVENT, onSend);
+    return () => window.removeEventListener(SEND_TOKENS_EVENT, onSend);
+  }, []);
+
+  // Unread direct messages, for the dot on the chat button.
+  const [unreadDms, setUnreadDms] = useState(0);
+  useEffect(() => {
+    const onUnread = (e: Event) => setUnreadDms((e as CustomEvent<{ count: number }>).detail?.count ?? 0);
+    window.addEventListener(DM_UNREAD_EVENT, onUnread);
+    return () => window.removeEventListener(DM_UNREAD_EVENT, onUnread);
+  }, []);
 
   // "Message" on a player card: on mobile the chat is a toggled panel, so open it.
   useEffect(() => {
@@ -416,7 +437,7 @@ export default function Home() {
                 display: "flex", flexDirection: "column", gap: 6,
               }}>
                 <MobilePanelToggle iconSrc="/assets/ui/ico_achievements.png" label="Find someone" active={mobilePanel === "hunt"} onClick={() => toggleMobilePanel("hunt")} />
-                <MobilePanelToggle iconSrc="/assets/ui/ico_chat.png" label="Chat" active={chatOpen} onClick={toggleMobileChat} />
+                <MobilePanelToggle iconSrc="/assets/ui/ico_chat.png" label="Chat" active={chatOpen} onClick={toggleMobileChat} dot={unreadDms > 0} />
                 <ExpressionToggle />
               </div>
               {mobilePanel !== null && (
@@ -561,8 +582,10 @@ export default function Home() {
   );
 }
 
-function MobilePanelToggle({ iconSrc, label, active, onClick }: {
+function MobilePanelToggle({ iconSrc, label, active, onClick, dot }: {
   iconSrc: string; label: string; active: boolean; onClick: () => void;
+  /** A direct message is waiting and the panel is closed. */
+  dot?: boolean;
 }) {
   return (
     <button
@@ -592,6 +615,13 @@ function MobilePanelToggle({ iconSrc, label, active, onClick }: {
         <span style={{
           position: "absolute", inset: 1, borderRadius: 7,
           boxShadow: "0 0 0 2px rgba(183,233,40,0.75)",
+          pointerEvents: "none",
+        }} />
+      )}
+      {dot && (
+        <span style={{
+          position: "absolute", top: 2, right: 2, width: 9, height: 9, borderRadius: "50%",
+          background: "#FFD700", boxShadow: "0 0 6px rgba(255,215,0,0.9)",
           pointerEvents: "none",
         }} />
       )}

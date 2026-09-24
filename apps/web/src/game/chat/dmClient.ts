@@ -18,9 +18,17 @@ export { OPEN_DM_EVENT, DM_SETTINGS_EVENT, dmsOffPref, setDmsOffPref } from "./d
  * that brings the unread badge along. Messages wait a day on the server, so
  * nothing is lost by checking rarely.
  */
-const POLL_ACTIVE_MS = 10_000;
+const POLL_ACTIVE_MS = 4_000;
 const POLL_IDLE_MS = 5 * 60_000;
-/** After a failed poll (session key not verified yet, store down), wait longer. */
+/**
+ * The session key is authorized on-chain a few seconds AFTER the city loads,
+ * so the first polls of a session fail while it catches up. Those retry
+ * quickly: waiting a minute there is what made a message sent while the
+ * player was away look like it never arrived. Any other failure (the store
+ * down, no network) waits the long one.
+ */
+const AUTH_RETRY_MS = 4_000;
+const AUTH_RETRIES = 20;
 const BACKOFF_MS = 60_000;
 
 export interface IncomingDM {
@@ -35,6 +43,8 @@ export class DMClient {
   private timer: ReturnType<typeof setTimeout> | null = null;
   /** True while the player has the DM tab open. */
   private active = false;
+  /** Quick retries left while the session key is still being authorized. */
+  private authRetries = AUTH_RETRIES;
   private listeners = new Set<(m: IncomingDM) => void>();
   private stopped = false;
 
@@ -75,6 +85,11 @@ export class DMClient {
   async send(to: string, text: string): Promise<Result> {
     try {
       const res = await this.post("send", { to, text });
+      // A reply usually comes right back, so listen sooner than the next beat.
+      if (res.ok && this.active && !this.stopped) {
+        if (this.timer) clearTimeout(this.timer);
+        this.timer = setTimeout(() => void this.tick(), POLL_ACTIVE_MS);
+      }
       if (res.ok) return { ok: true };
       return { ok: false, message: res.message ?? "Could not send." };
     } catch {
@@ -95,7 +110,12 @@ export class DMClient {
     let next = BACKOFF_MS;
     try {
       const res = await this.post("poll");
+      if (!res.ok && res.retry && this.authRetries > 0) {
+        this.authRetries--;
+        next = AUTH_RETRY_MS;
+      }
       if (res.ok) {
+        this.authRetries = AUTH_RETRIES;
         next = this.active ? POLL_ACTIVE_MS : POLL_IDLE_MS;
         // The server is the source of truth (the setting follows the wallet
         // across devices); a change made here but not yet pushed wins.
@@ -126,7 +146,7 @@ export class DMClient {
   private async post(
     action: DmAction,
     extra: { to?: string; text?: string; off?: boolean } = {},
-  ): Promise<{ ok: boolean; message?: string; off?: boolean; messages?: IncomingDM[] }> {
+  ): Promise<{ ok: boolean; retry?: boolean; message?: string; off?: boolean; messages?: IncomingDM[] }> {
     const kp = this.sessionKey();
     const ts = Date.now();
     const msg = new TextEncoder().encode(dmMessage(action, this.wallet, ts, extra));

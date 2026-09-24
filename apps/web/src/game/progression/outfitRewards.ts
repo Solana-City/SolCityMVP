@@ -12,7 +12,8 @@ import { unlockItem } from "@/game/config/wardrobeUnlocks";
  *   shirt          talk to Kuka
  *   Brazil shirt   meet the whole ST Brasil crew: Kuka, Kite Pro, Caramel Dog
  *
- * And the Solana cap, for coming back 7 days in a row.
+ * And the Solana cap, for coming back 7 days in a row, plus the Trader
+ * Shades for buying or selling a first stock at Stocklana.
  *
  * "Only one of each per wallet" needs no bookkeeping here: `unlockItem` returns
  * true only the first time a wallet is granted a key, and is a no-op after that.
@@ -25,6 +26,7 @@ const REWARDS = {
   kuka:      { category: "tshirt", id: "STB_shirt", name: "Superteam Brasil Shirt" },
   stbrCrew:  { category: "tshirt", id: "Brazilian_shirt", name: "Brazil Shirt" },
   streak7:   { category: "hat", id: "Cap_Sol", name: "Cap Sol" },
+  firstTrade: { category: "accessory", id: "Trader_shades", name: "Trader Shades" },
 } as const;
 
 /** Best check-in streak that earns the Solana cap. */
@@ -71,6 +73,15 @@ export function hasMetStbrCrew(): boolean {
 export function onMiniGameFinished(miniGameId: string, success: boolean): void {
   if (miniGameId !== KITE_CLASH_ID || !success) return;
   grant(REWARDS.kiteClash);
+}
+
+/**
+ * Grant the Stocklana reward. Called by CityScene when a trade lands, for a
+ * buy or a sell, single stock or basket. Granting is idempotent, so a player
+ * who traded before this reward existed earns it on their next trade.
+ */
+export function onStockTraded(): void {
+  grant(REWARDS.firstTrade);
 }
 
 /**

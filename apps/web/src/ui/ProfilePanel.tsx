@@ -22,6 +22,7 @@ const MUTED = "#7f88a8";
 
 type PanelTab = "profile" | "achievements" | "settings";
 const TABS: PanelTab[] = ["profile", "achievements", "settings"];
+import { useViewportBox, overlayBox } from "@/ui/useViewportBox";
 
 interface ProfilePanelProps {
   gameRef: Phaser.Game | null;
@@ -35,6 +36,7 @@ export default function ProfilePanel({ gameRef, isOpen, onClose }: ProfilePanelP
   const [panelTab, setPanelTab] = useState<PanelTab>("profile");
   const [copied, setCopied] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const viewport = useViewportBox();
   const { connected } = useWallet();
   const { setVisible: openWalletModal } = useWalletModal();
 
@@ -88,7 +90,7 @@ export default function ProfilePanel({ gameRef, isOpen, onClose }: ProfilePanelP
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
+    <div className="z-50 flex items-center justify-center" style={overlayBox(viewport)}>
       <div
         className="absolute inset-0"
         style={{ background: "rgba(6,10,20,0.6)" }}
@@ -104,7 +106,7 @@ export default function ProfilePanel({ gameRef, isOpen, onClose }: ProfilePanelP
           fontFamily: PIXEL,
           // dvh falls back to vh; on landscape phones dvh tracks the actual
           // viewport height after browser chrome collapses, giving ~10% more room.
-          maxHeight: "min(92dvh, 640px)",
+          maxHeight: "min(100%, 640px)",
           overflowY: "auto",
           overscrollBehavior: "contain",
           WebkitOverflowScrolling: "touch",

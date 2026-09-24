@@ -12,6 +12,11 @@
  */
 import { getBasket, getStockByTicker } from "@/game/solana/stockCatalog";
 
+/** "$10", "$2.50": whole dollars stay whole. */
+function money(usd: number): string {
+  return "$" + (Number.isInteger(usd) ? usd : usd.toFixed(2));
+}
+
 const TAG = "§trade:";
 
 export type TradeSide = "buy" | "sell";
@@ -22,33 +27,45 @@ export interface TradeAnnouncement {
   ticker?: string;
   /** Basket buy (tickers come from the catalog). */
   basketId?: string;
+  /** Size of the trade in USD, shown in the tag and the chat line. */
+  usd?: number;
 }
 
 export function encodeTrade(t: TradeAnnouncement): string {
-  return t.basketId ? `${TAG}${t.side}:basket:${t.basketId}` : `${TAG}${t.side}:${t.ticker}`;
+  const what = t.basketId ? `basket:${t.basketId}` : t.ticker;
+  // The amount is optional: an older client's tag still parses.
+  return `${TAG}${t.side}:${what}${t.usd && t.usd > 0 ? `:${t.usd.toFixed(2)}` : ""}`;
 }
 
 /** Parses a chat line; null when it isn't a (valid) trade tag. */
 export function decodeTrade(text: string): TradeAnnouncement | null {
   if (!text.startsWith(TAG)) return null;
-  const [side, a, b] = text.slice(TAG.length).split(":");
+  const parts = text.slice(TAG.length).split(":");
+  const side = parts[0];
   if (side !== "buy" && side !== "sell") return null;
-  if (a === "basket") return b && getBasket(b) ? { side, basketId: b } : null;
-  return a && getStockByTicker(a) ? { side, ticker: a } : null;
+  const isBasket = parts[1] === "basket";
+  const what = isBasket ? parts[2] : parts[1];
+  const usd = Number(isBasket ? parts[3] : parts[2]);
+  const amount = usd > 0 && isFinite(usd) ? { usd } : {};
+  if (isBasket) return what && getBasket(what) ? { side, basketId: what, ...amount } : null;
+  return what && getStockByTicker(what) ? { side, ticker: what, ...amount } : null;
 }
 
-/** "BOUGHT NVDA" / "SOLD NVDA" / "BOUGHT BIG TECH". */
+/** "BOUGHT $10 OF APPLE" / "SOLD NVIDIA" / "BOUGHT $25 OF BIG TECH". */
 export function tradeHeadline(t: TradeAnnouncement): string {
   const verb = t.side === "buy" ? "BOUGHT" : "SOLD";
-  const what = t.basketId ? getBasket(t.basketId)?.name.toUpperCase() : t.ticker;
-  return `${verb} ${what ?? ""}`.trim();
+  const what = (t.basketId ? getBasket(t.basketId)?.name : getStockByTicker(t.ticker ?? "")?.name) ?? t.ticker ?? "";
+  const size = t.usd && t.usd > 0 ? `${money(t.usd)} OF ` : "";
+  return `${verb} ${size}${what}`.trim().toUpperCase();
 }
 
-/** Chat-log line, e.g. "bought NVDA" or "bought the Big Tech basket". */
+/** Chat-log line, e.g. "bought $10 of Apple" or "bought the Big Tech basket". */
 export function tradeLogLine(t: TradeAnnouncement): string {
   const verb = t.side === "buy" ? "bought" : "sold";
-  if (t.basketId) return `${verb} the ${getBasket(t.basketId)?.name ?? "stock"} basket`;
-  return `${verb} ${t.ticker}`;
+  const size = t.usd && t.usd > 0 ? `${money(t.usd)} of ` : "";
+  if (t.basketId) return `${verb} ${size}the ${getBasket(t.basketId)?.name ?? "stock"} basket`;
+  const name = getStockByTicker(t.ticker ?? "")?.name ?? t.ticker;
+  return `${verb} ${size}${name}`;
 }
 
 // ── Share preference (per browser) ────────────────────────────────────────

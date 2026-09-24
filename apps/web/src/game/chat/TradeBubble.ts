@@ -2,7 +2,9 @@ import * as Phaser from "phaser";
 import { basketStocks, getBasket, getStockByTicker, type StockInfo } from "@/game/solana/stockCatalog";
 import { tradeHeadline, type TradeAnnouncement } from "./tradeBroadcast";
 
-const DURATION = 5000;
+// 30s: long enough that a player who closed the Broker panel still catches
+// their own trade floating over their head, and that people walking by see it.
+const DURATION = 30000;
 const LOGO = 12;
 const LOGO_OVERLAP = 4;
 const PAD = 5;
@@ -61,7 +63,7 @@ export class TradeBubble {
     // Pop in, hold, fade out.
     this.container.setScale(0.6);
     scene.tweens.add({ targets: this.container, scale: 1, duration: 180, ease: "Back.Out" });
-    scene.tweens.add({ targets: this.container, alpha: 0, delay: DURATION - 500, duration: 500 });
+    scene.tweens.add({ targets: this.container, alpha: 0, delay: DURATION - 900, duration: 900 });
     this.timer = scene.time.delayedCall(DURATION, () => this.destroy());
   }
 

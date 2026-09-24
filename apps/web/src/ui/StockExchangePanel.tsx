@@ -59,6 +59,38 @@ function emitGameEvent(event: string, payload?: unknown): void {
 const usd = (n: number) => `$${n >= 1000 ? n.toLocaleString("en-US", { maximumFractionDigits: 0 }) : n.toFixed(2)}`;
 const pct = (n: number) => `${n > 0 ? "+" : ""}${n.toFixed(2)}%`;
 const moveColor = (n: number) => (n > 0 ? UP : n < 0 ? DOWN : MUTED);
+const isPreIpo = (s: StockInfo) => s.issuer === "prestocks";
+/** What the reference price is called: an exchange close, or the SPV mark. */
+const refLabel = (s: StockInfo) => (isPreIpo(s) ? "SPV MARK" : "WALL ST");
+/**
+ * What the player is agreeing to, shown right above the buy button rather
+ * than only in the list footer. Pre-IPO carries a second line: those markets
+ * are thin and the token price drifts from the SPV mark.
+ */
+function TradeNotice({ stocks }: { stocks: StockInfo[] }) {
+  const preIpo = stocks.some(isPreIpo);
+  return (
+    <div style={chamferBox(8, {
+      fontFamily: PIXEL, fontSize: 6, lineHeight: 1.8, color: "#A8B0C4", marginBottom: 10,
+      padding: "8px 10px", background: "#12162b", borderLeft: `2px solid ${IS_DEVNET ? "#14F0C6" : GOLD}`,
+    })}>
+      {IS_DEVNET
+        ? "Devnet test tokens. No real value."
+        : "Real transaction on Solana mainnet. Not available to US persons. Not investment advice."}
+      {preIpo && (
+        <div style={{ color: "#14F0C6", marginTop: 5 }}>
+          Pre-IPO: thin market, price can drift far from the SPV mark.
+        </div>
+      )}
+    </div>
+  );
+}
+
+function issuerLine(s: StockInfo): string {
+  if (isPreIpo(s)) return "PRESTOCKS SPV . PRE-IPO, NOT A LISTED SHARE";
+  const house = s.issuer === "backpack" ? "BACKPACK SECURITIES VIA SUNRISE" : "XSTOCKS BY BACKED";
+  return house + " . 1:1 BACKED";
+}
 
 export default function StockExchangePanel({ onClose }: { onClose: () => void }) {
   const { connected, publicKey, signTransaction, signAllTransactions } = useWallet();
@@ -244,7 +276,10 @@ export default function StockExchangePanel({ onClose }: { onClose: () => void })
               <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
                 <StockLogo stock={s} size={22} />
                 <div style={{ minWidth: 0 }}>
-                  <div style={{ fontFamily: PIXEL, fontSize: 8, color: "#fff" }}>{s.ticker}</div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                    <span style={{ fontFamily: PIXEL, fontSize: 8, color: "#fff" }}>{s.ticker}</span>
+                    {isPreIpo(s) && <span style={{ fontFamily: PIXEL, fontSize: 4, color: "#14F0C6", border: "1px solid #14F0C655", borderRadius: 3, padding: "1px 2px" }}>PRE</span>}
+                  </div>
                   <div style={{ fontFamily: PIXEL, fontSize: 5, color: MUTED, marginTop: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.name}</div>
                 </div>
               </div>
@@ -265,7 +300,7 @@ export default function StockExchangePanel({ onClose }: { onClose: () => void })
       </div>
 
       <div style={{ display: "flex", justifyContent: "space-between", marginTop: 12, fontSize: 5, color: "#555a70", lineHeight: 1.6 }}>
-        <span>{IS_DEVNET ? "Devnet test tokens at live prices." : "Mainnet via Jupiter. Not for US persons."}</span>
+        <span>{IS_DEVNET ? "Devnet test tokens. No real value." : "Mainnet via Jupiter. Not for US persons."}</span>
         <button onClick={onClose} style={{ background: "none", border: "none", color: MUTED, fontFamily: PIXEL, fontSize: 6, cursor: "pointer" }}>ESC</button>
       </div>
     </div>
@@ -367,7 +402,10 @@ function TradeView(props: {
       });
       emitGameEvent("game:swap");
       emitGameEvent("game:stock-trade", {
-        side, ticker: stock.ticker, sector: stock.sector, wallStreetOpen: getMarketClock().wallStreetOpen, share: getShareTrades(),
+        side, ticker: stock.ticker, sector: stock.sector, wallStreetOpen: getMarketClock().wallStreetOpen,
+        // What the trade was worth: the order's own USD value, else the amount picked.
+        usd: o.inUsdValue ?? (side === "buy" ? usdAmount ?? 0 : 0),
+        share: getShareTrades(),
       });
       onTraded();
     } catch (e: any) {
@@ -424,14 +462,14 @@ function TradeView(props: {
       {/* Solana vs Wall Street */}
       {q?.wallStreetPrice != null && q.premiumPct != null && (
         <div style={chamferBox(8, { display: "flex", justifyContent: "space-between", padding: "8px 10px", background: "#12162b", marginBottom: 10, fontSize: 6 })}>
-          <span style={{ color: MUTED }}>WALL ST {usd(q.wallStreetPrice)}</span>
+          <span style={{ color: MUTED }}>{refLabel(stock)} {usd(q.wallStreetPrice)}</span>
           <span style={{ color: Math.abs(q.premiumPct) < 0.5 ? UP : GOLD }}>SOLANA {pct(q.premiumPct)}</span>
         </div>
       )}
 
       {/* Issuer badge */}
-      <div style={{ fontSize: 5, color: MUTED, marginBottom: 12 }}>
-        {stock.issuer === "backpack" ? "BACKPACK SECURITIES VIA SUNRISE" : "XSTOCKS BY BACKED"} . 1:1 BACKED
+      <div style={{ fontSize: 5, color: isPreIpo(stock) ? "#14F0C6" : MUTED, marginBottom: 12 }}>
+        {issuerLine(stock)}
       </div>
 
       {/* Buy / Sell */}
@@ -486,6 +524,7 @@ function TradeView(props: {
         {status === "submitting" && <span style={{ color: GOLD }}>Sending to Solana...</span>}
       </div>
 
+      <TradeNotice stocks={[stock]} />
       <ShareToggle />
 
       {!connected ? (
@@ -574,6 +613,7 @@ function BasketView(props: {
 
     // 3. Land each leg; one failure doesn't stop the others.
     setPhase("sending");
+    const legsCount = next.length;
     let okCount = 0;
     for (let k = 0; k < ready.length; k++) {
       const { l, i } = ready[k];
@@ -596,7 +636,12 @@ function BasketView(props: {
     if (okCount) {
       profileManager.recordSwap({ inputToken: payWith, outputToken: `basket:${basket.id}`, amount: String(total) });
       emitGameEvent("game:swap");
-      emitGameEvent("game:stock-trade", { side: "buy", basketId: basket.id, share: getShareTrades() });
+      emitGameEvent("game:stock-trade", {
+        side: "buy", basketId: basket.id,
+        // Only the legs that actually landed.
+        usd: okCount === legsCount ? total : perLeg * okCount,
+        share: getShareTrades(),
+      });
       onTraded();
       setPhase("done");
     } else {
@@ -680,12 +725,12 @@ function BasketView(props: {
                   <div style={{ color: "#c9cde0" }}>{s.about}</div>
                   {q?.wallStreetPrice != null && q.premiumPct != null && (
                     <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6, color: MUTED }}>
-                      <span>WALL ST {usd(q.wallStreetPrice)}</span>
+                      <span>{refLabel(s)} {usd(q.wallStreetPrice)}</span>
                       <span style={{ color: Math.abs(q.premiumPct) < 0.5 ? UP : GOLD }}>SOLANA {pct(q.premiumPct)}</span>
                     </div>
                   )}
                   <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4, color: MUTED }}>
-                    <span>{s.issuer === "backpack" ? "BACKPACK SECURITIES" : "XSTOCKS BY BACKED"}</span>
+                    <span style={{ color: isPreIpo(s) ? "#14F0C6" : MUTED }}>{isPreIpo(s) ? "PRE-IPO, NOT A LISTED SHARE" : s.issuer === "backpack" ? "BACKPACK SECURITIES" : "XSTOCKS BY BACKED"}</span>
                     {perLeg > 0 && <span style={{ color: "#fff" }}>YOU BUY {usd(perLeg)}</span>}
                   </div>
                 </div>
@@ -717,6 +762,7 @@ function BasketView(props: {
         {phase === "error" && <span style={{ color: DOWN }}>{error}</span>}
       </div>
 
+      <TradeNotice stocks={stocks} />
       <ShareToggle />
 
       {!connected ? (

@@ -24,6 +24,7 @@ import { progressionBus } from "@/game/progression/progressionBus";
 import BoosterOverlay from "@/ui/BoosterOverlay";
 import { chamferBox } from "@/ui/chamfer";
 import ChamferGlow from "@/ui/ChamferGlow";
+import { useViewportBox, overlayBox } from "@/ui/useViewportBox";
 
 const CHROMA_R = 215, CHROMA_G = 123, CHROMA_B = 186, CHROMA_TOL = 30;
 
@@ -252,6 +253,7 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
   const [activeCategory, setActiveCategory] = useState<LayerCategory>("skin");
   const [flash, setFlash] = useState<string | null>(null);
   const [isMobile, setIsMobile] = useState(false);
+  const viewport = useViewportBox();
   const [wallet] = useState<string | null>(() => profileManager?.get().wallet ?? null);
   const [boosterOpen, setBoosterOpen] = useState(false);
   // Bumped whenever an item is unlocked so the locked grid re-renders.
@@ -330,8 +332,8 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center"
-      style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(4px)" }}
+      className="z-50 flex items-center justify-center"
+      style={{ ...overlayBox(viewport), background: "rgba(0,0,0,0.7)", backdropFilter: "blur(4px)" }}
       onClick={e => e.target === e.currentTarget && onClose()}
     >
       <div style={{
@@ -345,8 +347,8 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
             }),
         width: isMobile ? "100vw" : 700,
         maxWidth: isMobile ? "100vw" : "96vw",
-        height: isMobile ? "100dvh" : undefined,
-        maxHeight: isMobile ? "100dvh" : "92vh",
+        height: isMobile ? "100%" : undefined,
+        maxHeight: isMobile ? "100%" : "92vh",
         display: "flex",
         flexDirection: "column",
         overflow: "hidden",

@@ -12,6 +12,8 @@ import CityGuide from "@/ui/CityGuide";
 import MagicBlockHub from "@/ui/MagicBlockHub";
 import StockExchangePanel from "@/ui/StockExchangePanel";
 import { chamferBox } from "@/ui/chamfer";
+import { backdropClose } from "@/ui/backdrop";
+import { useViewportBox, overlayBox } from "@/ui/useViewportBox";
 
 /** Pratik: how Superteam Earn pays, before the bounty list. */
 const EARN_INTRO: IntroSpec = {
@@ -77,7 +79,7 @@ const STOCK_INTRO: IntroSpec = {
   steps: [
     { title: "PICK", line: "Choose a stock: NVIDIA, Tesla, SpaceX and more.", edge: 0 },
     { title: "BUY", line: "Pay from $1 in USDC or SOL. Jupiter finds the best price.", edge: 0, chip: "USDC" },
-    { title: "OWN", line: "Each token is backed 1:1 by a real share. Trade it 24/7.", edge: 1, chip: "NVDA" },
+    { title: "OWN", line: "Most tokens are backed 1:1 by a real share. Pre-IPO ones track a private company through an SPV.", edge: 1, chip: "NVDA" },
   ],
 };
 
@@ -92,6 +94,11 @@ interface ActionPanelProps {
 
 export default function ActionPanel({ action, onClose }: ActionPanelProps) {
   const [isTouch, setIsTouch] = useState(false);
+  // Anchored to the VISIBLE viewport: with the browser's address bar showing,
+  // a fixed inset-0 box hangs off the bottom of the screen and takes the sheet
+  // with it. See useViewportBox.
+  const viewport = useViewportBox();
+
   useEffect(() => {
     const mq = window.matchMedia("(pointer: coarse)");
     setIsTouch(mq.matches);
@@ -113,11 +120,11 @@ export default function ActionPanel({ action, onClose }: ActionPanelProps) {
   // ── Mobile: bottom-sheet ────────────────────────────────────────────────
   if (isTouch) {
     return (
-      <div className="fixed inset-0 z-40 flex items-end justify-center">
+      <div className="z-40 flex items-end justify-center" style={overlayBox(viewport)}>
         <div
           className="absolute inset-0"
           style={{ background: "rgba(6,10,20,0.55)" }}
-          onClick={onClose}
+          {...backdropClose(onClose)}
         />
         <div
           className="relative w-full rounded-t-2xl"
@@ -126,7 +133,7 @@ export default function ActionPanel({ action, onClose }: ActionPanelProps) {
             border: "1px solid rgba(153,69,255,0.25)",
             borderBottom: "none",
             fontFamily: '"Press Start 2P", monospace',
-            maxHeight: "85dvh",
+            maxHeight: "100%",
             overflowY: "auto",
             maxWidth: 480,
             padding: "16px 16px 0",
@@ -143,7 +150,7 @@ export default function ActionPanel({ action, onClose }: ActionPanelProps) {
 
           {action.type === "tutor"           && <TutorPanel           onClose={onClose} />}
           {action.type === "swap"            && <ProtocolIntroGate spec={SWAP_INTRO}><SwapPanel onClose={onClose} /></ProtocolIntroGate>}
-          {action.type === "transfer"        && <ProtocolIntroGate spec={TRANSFER_INTRO}><TransferPanel onClose={onClose} /></ProtocolIntroGate>}
+          {action.type === "transfer"        && <ProtocolIntroGate spec={TRANSFER_INTRO}><TransferPanel onClose={onClose} to={action.recipient} toName={action.recipientName} /></ProtocolIntroGate>}
           {action.type === "bounties"        && <ProtocolIntroGate spec={EARN_INTRO}><BountiesPanel onClose={onClose} /></ProtocolIntroGate>}
           {action.type === "private-payment" && (
             <MagicBlockHub><PrivatePaymentPanel onClose={onClose} /></MagicBlockHub>
@@ -156,11 +163,11 @@ export default function ActionPanel({ action, onClose }: ActionPanelProps) {
 
   // ── Desktop: centered modal ─────────────────────────────────────────────
   return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center">
+    <div className="z-40 flex items-center justify-center" style={overlayBox(viewport)}>
       <div
         className="absolute inset-0"
         style={{ background: "rgba(6,10,20,0.6)" }}
-        onClick={onClose}
+        {...backdropClose(onClose)}
       />
       <div
         className="relative p-6 w-full max-w-md"
@@ -184,7 +191,7 @@ export default function ActionPanel({ action, onClose }: ActionPanelProps) {
 
         {action.type === "tutor"           && <TutorPanel           onClose={onClose} />}
         {action.type === "swap"            && <ProtocolIntroGate spec={SWAP_INTRO}><SwapPanel onClose={onClose} /></ProtocolIntroGate>}
-        {action.type === "transfer"        && <ProtocolIntroGate spec={TRANSFER_INTRO}><TransferPanel onClose={onClose} /></ProtocolIntroGate>}
+        {action.type === "transfer"        && <ProtocolIntroGate spec={TRANSFER_INTRO}><TransferPanel onClose={onClose} to={action.recipient} toName={action.recipientName} /></ProtocolIntroGate>}
         {action.type === "bounties"        && <ProtocolIntroGate spec={EARN_INTRO}><BountiesPanel onClose={onClose} /></ProtocolIntroGate>}
         {action.type === "private-payment" && (
             <MagicBlockHub><PrivatePaymentPanel onClose={onClose} /></MagicBlockHub>
@@ -387,10 +394,11 @@ function SwapPanel({ onClose }: { onClose: () => void }) {
 
 // ── Transfer Panel ────────────────────────────────────────────────────
 
-function TransferPanel({ onClose }: { onClose: () => void }) {
+function TransferPanel({ onClose, to, toName }: { onClose: () => void; to?: string; toName?: string }) {
   const { connected, publicKey, sendTransaction } = useWallet();
   const { connection } = useConnection();
-  const [recipient, setRecipient] = useState("");
+  // Opened from a player's card: their wallet is already in the box.
+  const [recipient, setRecipient] = useState(to ?? "");
   const [amount, setAmount] = useState("0.01");
   const [status, setStatus] = useState<"idle" | "sending" | "done" | "error">("idle");
   const [result, setResult] = useState<{ signature?: string; error?: string } | null>(null);
@@ -458,7 +466,7 @@ function TransferPanel({ onClose }: { onClose: () => void }) {
   return (
     <>
       <h3 style={{ fontFamily: '"Press Start 2P", monospace', fontSize: "8px", color: "#14F0C6", marginBottom: 16 }}>SEND SOL</h3>
-      <InputBox label="Recipient address">
+      <InputBox label={toName ? `Recipient (${toName})` : "Recipient address"}>
         <input type="text" value={recipient} onChange={(e) => setRecipient(e.target.value)}
           placeholder="Paste Solana address…"
           style={{ background: "transparent", color: "#fff", border: "none", fontSize: 9, fontFamily: "monospace", width: "100%", outline: "none" }} />

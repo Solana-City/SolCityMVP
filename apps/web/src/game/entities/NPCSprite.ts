@@ -2,7 +2,6 @@ import * as Phaser from "phaser";
 import { TILE_SIZE } from "../config/constants";
 import { SimpleSprite, NPC_DIRECTION_ROW, PLAYER_DIRECTION_ROW, type Direction } from "./SimpleSprite";
 import type { NPCDefinition } from "../config/npcRegistry";
-import { LAYER_ORDER, getVariant, type Loadout } from "../config/paperDoll";
 import { profileManager } from "../config/profileManager";
 import { progressionBus } from "../progression/progressionBus";
 
@@ -90,9 +89,7 @@ export class NPCSprite {
     this.originX = x;
     this.originY = y;
 
-    const desiredKey = def.loadout
-      ? bakeLoadoutSheet(scene, `npc-${def.id}`, def.loadout)
-      : def.spriteKey ?? "avatar-player";
+    const desiredKey = def.spriteKey ?? "avatar-player";
     const spriteKey = scene.textures.exists(desiredKey) ? desiredKey : "avatar-player";
     this.textureKey = spriteKey;
     // Row order belongs to the TEXTURE, not the NPC: Dom's NPC sheets are
@@ -455,24 +452,3 @@ export class NPCSprite {
   }
 }
 
-/**
- * Flattens a paper-doll loadout into one spritesheet texture, so an NPC can
- * wear wardrobe items instead of needing its own art. The layers are already
- * chroma-keyed by BootScene and share the paper-doll row order (down, up,
- * right, left), which is the NPC order. No hat masking: bake hatless looks.
- */
-function bakeLoadoutSheet(scene: Phaser.Scene, key: string, loadout: Loadout): string {
-  if (scene.textures.exists(key)) return key;
-  const layers = LAYER_ORDER
-    .map((cat) => getVariant(cat, loadout[cat])?.textureKey)
-    .filter((k): k is string => !!k && scene.textures.exists(k))
-    .map((k) => scene.textures.get(k).getSourceImage() as HTMLImageElement | HTMLCanvasElement);
-  if (layers.length === 0) return "avatar-player";
-  const canvas = document.createElement("canvas");
-  canvas.width = layers[0].width;
-  canvas.height = layers[0].height;
-  const ctx = canvas.getContext("2d")!;
-  for (const img of layers) ctx.drawImage(img, 0, 0);
-  scene.textures.addSpriteSheet(key, canvas as unknown as HTMLImageElement, { frameWidth: 64, frameHeight: 64 });
-  return key;
-}

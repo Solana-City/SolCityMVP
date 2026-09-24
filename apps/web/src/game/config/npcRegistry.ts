@@ -1,11 +1,13 @@
-import type { Loadout } from "./paperDoll";
-
 export interface NPCAction {
   type: "tutor" | "swap" | "transfer" | "bounties" | "link" | "placeholder" | "private-payment" | "minigame" | "stock-exchange";
   label: string;
   url?: string;
   miniGameId?: string;
   orderType?: "sushi";
+  /** Prefilled recipient, when a transfer is opened from a player's card. */
+  recipient?: string;
+  /** That player's name, to show instead of the raw address. */
+  recipientName?: string;
 }
 
 /** A picture + a word or two, shown on an NPC's last dialog line. */
@@ -43,11 +45,6 @@ export interface NPCDefinition {
    * Points to a spritesheet (same format as the player: 64×64 frames).
    */
   spriteKey?: string;
-  /**
-   * Dress the NPC in wardrobe items instead of its own art: the layers are
-   * flattened into one sheet at spawn (see NPCSprite). Wins over spriteKey.
-   */
-  loadout?: Loadout;
   /**
    * Optional second sheet, swapped in while this NPC is walking and swapped
    * back on arrival. Same 64×64 walk-grid contract as `spriteKey`.
@@ -298,18 +295,18 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     id: "hair-specialist",
     name: "Hair Specialist",
     role: "Superteam Turkey",
-    // Empty sidewalk in the north-east, east of Stocklana and north of the
-    // generic blocks (cols ~102-120 / rows 14-18); findNpcSpawn lands on row 16.
-    tileX: 110,
-    tileY: 15,
+    // At the door of the Remedi building (BuildRemedi, cols 103-113 / rows
+    // 12-20), centered on its entrance; findNpcSpawn steps down to row 21,
+    // the carpet in front of the doors.
+    tileX: 108,
+    tileY: 20,
     color: 0xe30a17,
     dialog: [
       "Merhaba! I'm the Hair Specialist, visiting from Superteam Turkey.",
       "Hairstyles fly by fast. Tap at the right moment to land one on your head!",
     ],
     action: { type: "minigame", label: "Try a new look", miniGameId: "hair-specialist" },
-    // Dressed from the wardrobe: a red mohawk, no hat, White T-Shirt.
-    loadout: { skin: "Brown", eyesFace: "Happy", pants: "Grey_pants", tshirt: "White_tshirt", hair: "Magawk_red" },
+    spriteKey: "Hair Specialist",
   },
   // ── Expansion district NPCs ──────────────────────────────────────
   {
