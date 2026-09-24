@@ -467,7 +467,19 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, opponent, onFi
             own, and the arena gets that height back. */}
         <header style={sx.header}>
           {!phone && <h2 style={sx.title}>SQUAD BATTLE</h2>}
-          <SquadPortraits side={state.p1} label="YOU" size={phone ? 26 : undefined} />
+          <SquadPortraits
+            side={state.p1}
+            label="YOU"
+            size={phone ? 26 : undefined}
+            substitutable={bench}
+            onSubstitute={
+              mustSwitch
+                ? submitForced
+                : canAct && !pending && !picking && !finished
+                  ? (i) => submitRound({ kind: "switch", side: "p1", toIndex: i })
+                  : undefined
+            }
+          />
           <div style={{ flex: 1 }} />
           {phone && <span style={sx.roundChipInline}>ROUND {state.round}</span>}
           <div style={{ flex: 1 }} />
@@ -617,7 +629,19 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, opponent, onFi
             </>
           ) : (
             <>
-              <div style={sx.prompt}>Choose an action</div>
+              <div style={sx.promptRow}>
+                <span style={sx.promptText}>Choose an action</span>
+                {bench.length > 0 && (
+                  <button
+                    onClick={() => setPicking(true)}
+                    className={armsDown ? "sm-pulse" : undefined}
+                    style={sx.swap}
+                    title="Substitute: uses your action this round"
+                  >
+                    {tight ? "\u21c4 SWAP" : "\u21c4 SUBSTITUTE"}
+                  </button>
+                )}
+              </div>
               <div className="sm-btnrow" style={sx.btnRow}>
                 {moves.map((o) => (
                   <button
@@ -636,17 +660,6 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, opponent, onFi
                     {!tight && <MoveBadge m={o.move} />}
                   </button>
                 ))}
-                {bench.length > 0 && (
-                  <button
-                    onClick={() => setPicking(true)}
-                    className={armsDown ? "sm-pulse" : undefined}
-                    style={{ ...sx.btn, ...(tight ? sx.tightBtn : null), borderColor: C.blue }}
-                  >
-                    <Bust build={state.p1.units[bench[0]].build} size={tight ? 20 : 24} />
-                    <div style={{ ...sx.btnTitle, ...(tight ? sx.tightTitle : null), color: C.blue }}>SUBSTITUTE</div>
-                    {!tight && <div style={sx.btnSub}>your action this round</div>}
-                  </button>
-                )}
               </div>
             </>
           )}
@@ -937,6 +950,13 @@ const sx: Record<string, React.CSSProperties> = {
   promptText: {
     fontSize: 11, color: C.dim, letterSpacing: 1,
     whiteSpace: "nowrap", overflow: "hidden", minWidth: 0,
+  },
+  /** Substitute, beside the attacks rather than among them. */
+  swap: {
+    marginLeft: "auto", flexShrink: 0, padding: "0 6px", height: 18,
+    background: "rgba(95,160,255,.12)", border: `1px solid ${C.blue}`, borderRadius: 4,
+    cursor: "pointer", fontFamily: "inherit",
+    color: C.blue, fontSize: 11, fontWeight: 700, letterSpacing: 1,
   },
   back: {
     marginLeft: "auto", flexShrink: 0, padding: 0,

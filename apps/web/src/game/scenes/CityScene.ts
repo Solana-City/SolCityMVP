@@ -41,7 +41,7 @@ import { showEmoji, EmojiDef } from "../chat/EmojiSystem";
 import { soundManager } from "../audio/SoundManager";
 import { publishMinimap } from "../minimap/MinimapHost";
 import { createStockExchange } from "../world/StockExchange";
-import { createAnimatedDecor } from "../world/AnimatedDecor";
+import { createAnimatedDecor, REPLACED_MAP_LAYERS } from "../world/AnimatedDecor";
 import { readLastPosition, saveLastPosition } from "../world/lastPosition";
 import { buildPhysicsLayer, mergeGroundRun } from "../world/mergeLayers";
 import { SparseLayer, SPARSE_MAX_TILES, GROUND_CHUNK_TILES, type CityLayer } from "../world/sparseLayer";
@@ -256,17 +256,13 @@ export class CityScene extends Phaser.Scene {
     // foundation the player spawns on) must NOT inherit this: it y-sorts like
     // a building instead (see Y_SORT_PREFIXES).
     //
-    // DecorSTBrFlag / DecorSolanaFlag / DecorMonkeDaoFlag (2026-09-01): flag
-    // poles — the cloth flies above head height same as the umbrellas/gantries.
-    // NOTE: DecorMonkeDaoFlag's banner (not just its pole) is currently marked
-    // solid in SCBuildMonkeyDAO's own tileset collision — unlike the other two
-    // flags, where only the pole base collides. That's a source-art issue (see
-    // MAP_INTEGRATION.md / ask the map artist), not something this list fixes:
-    // above-head only changes DRAW order, the banner tiles will still block
-    // movement under them until their collision shapes are removed in Tiled.
+    // The three flag layers used to be listed here as above-head decor. They
+    // are gone from the map now: a waving sprite draws each of them (see
+    // world/AnimatedDecor, REPLACED_MAP_LAYERS) and y-sorts off its own pole
+    // foot, so the player walks in front of a flag from the south and behind
+    // it from the north instead of always under it.
     const ABOVE_HEAD_PREFIXES = [
       "DecorBilboard", "DecorPalmBridge", "DecorSTBrUmbrella", "DecorSolanaUmbrella",
-      "DecorSTBrFlag", "DecorSolanaFlag", "DecorMonkeDaoFlag",
     ];
 
     // Create all tile layers in order from the JSON.
@@ -286,6 +282,21 @@ export class CityScene extends Phaser.Scene {
     };
     for (let i = 0; i < map.layers.length; i++) {
       const layerName = map.layers[i].name;
+
+      // Painted art an AnimatedDecor sprite now draws instead: never built, so
+      // the static cloth cannot show under the animated one and its collision
+      // never reaches the merged volume (the sprite stamps its own foot).
+      //
+      // Skipped BEFORE createLayer, and never destroyed: TilemapLayer.destroy
+      // removes the layer from the tilemap by default, which splices
+      // map.layers while this loop walks it by index — every later layer
+      // shifts down one and the loop stops that many short. That is what ate
+      // the MonkeDAO banana stand, the layer right after a dropped one.
+      if (REPLACED_MAP_LAYERS.has(layerName.slice(layerName.lastIndexOf("/") + 1))) {
+        closeGroundRun();
+        continue;
+      }
+
       const layer = map.createLayer(i, allTilesets);
       if (!layer) continue;
       allLayers.push(layer);
@@ -935,7 +946,7 @@ export class CityScene extends Phaser.Scene {
       if (def.enabled === false) continue;
       const spawn = this.findNpcSpawn(map, def.tileX, def.tileY, tileSize);
       const wx = spawn.wx + (def.offsetX ?? 0);
-      const wy = spawn.wy;
+      const wy = spawn.wy + (def.offsetY ?? 0);
       const npc = new NPCSprite(this, def, wx, wy, this.collisionLayers);
       this.npcSprites.push(npc);
 
@@ -1170,6 +1181,28 @@ export class CityScene extends Phaser.Scene {
     this.dustEmitter.emitParticleAt(fx, fy, count);
   }
 
+  /**
+   * NPCs nobody may walk up to (see NPCDefinition.repel). The push is a plain
+   * velocity away from the NPC rather than a teleport, so it reads as being
+   * shoved and never punches the player through a wall.
+   */
+  private applyRepel(): void {
+    for (const npc of this.npcSprites) {
+      const repel = npc.definition.repel;
+      if (!repel) continue;
+      const at = npc.getPosition();
+      const dx = this.avatar.x - at.x;
+      const dy = this.avatar.y - at.y;
+      const dist = Math.hypot(dx, dy);
+      if (dist >= repel.radius) continue;
+      // Dead centre (dist 0) has no direction to push along: send them south,
+      // which is where the player came from at every repelling NPC so far.
+      const k = dist > 0.5 ? repel.speed / dist : 0;
+      this.playerBody.setVelocity(k ? dx * k : 0, k ? dy * k : repel.speed);
+      npc.say(repel.say);
+    }
+  }
+
   update(): void {
     if (this.chatInputActive || this.interactionBlocked) {
       this.playerBody.setVelocity(0);
@@ -1214,6 +1247,11 @@ export class CityScene extends Phaser.Scene {
     }
 
     this.playerBody.setVelocity(vx, vy);
+
+    // The builder at the construction site: inside his radius the player is
+    // pushed straight back out, whatever they are holding down, and he says
+    // so. Set AFTER the input velocity on purpose — it overrides it.
+    this.applyRepel();
 
     if (direction) {
       this.idleDelay = 0;

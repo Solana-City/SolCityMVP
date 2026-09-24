@@ -12,6 +12,8 @@ import CityGuide from "@/ui/CityGuide";
 import MagicBlockHub from "@/ui/MagicBlockHub";
 import StockExchangePanel from "@/ui/StockExchangePanel";
 import { chamferBox } from "@/ui/chamfer";
+import PegRiskPanel from "@/ui/PegRiskPanel";
+import TokenScanPanel from "@/ui/TokenScanPanel";
 import { backdropClose } from "@/ui/backdrop";
 import { useViewportBox, overlayBox } from "@/ui/useViewportBox";
 
@@ -156,6 +158,9 @@ export default function ActionPanel({ action, onClose }: ActionPanelProps) {
             <MagicBlockHub><PrivatePaymentPanel onClose={onClose} /></MagicBlockHub>
           )}
           {action.type === "stock-exchange"  && <ProtocolIntroGate spec={STOCK_INTRO}><StockExchangePanel onClose={onClose} /></ProtocolIntroGate>}
+          {/* ST Brasil stands: the project's own public API behind the button. */}
+          {action.type === "peg-risk"        && <PegRiskPanel   onClose={onClose} />}
+          {action.type === "token-scan"      && <TokenScanPanel onClose={onClose} />}
         </div>
       </div>
     );
@@ -197,6 +202,9 @@ export default function ActionPanel({ action, onClose }: ActionPanelProps) {
             <MagicBlockHub><PrivatePaymentPanel onClose={onClose} /></MagicBlockHub>
           )}
         {action.type === "stock-exchange"  && <ProtocolIntroGate spec={STOCK_INTRO}><StockExchangePanel onClose={onClose} /></ProtocolIntroGate>}
+          {/* ST Brasil stands: the project's own public API behind the button. */}
+          {action.type === "peg-risk"        && <PegRiskPanel   onClose={onClose} />}
+          {action.type === "token-scan"      && <TokenScanPanel onClose={onClose} />}
       </div>
     </div>
   );

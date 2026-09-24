@@ -1,5 +1,5 @@
 export interface NPCAction {
-  type: "tutor" | "swap" | "transfer" | "bounties" | "link" | "placeholder" | "private-payment" | "minigame" | "stock-exchange";
+  type: "tutor" | "swap" | "transfer" | "bounties" | "link" | "placeholder" | "private-payment" | "minigame" | "stock-exchange" | "peg-risk" | "token-scan";
   label: string;
   url?: string;
   miniGameId?: string;
@@ -36,6 +36,12 @@ export interface NPCDefinition {
    * whose middle falls on a tile boundary). Defaults to 0.
    */
   offsetX?: number;
+  /**
+   * Vertical nudge in world pixels, negative being north. Same idea as
+   * offsetX, for standing somebody on a step or a strip of ground that does
+   * not line up with a tile centre. Defaults to 0.
+   */
+  offsetY?: number;
   color: number;
   dialog: string[];
   action: NPCAction;
@@ -69,6 +75,16 @@ export interface NPCDefinition {
    * Defaults to true.
    */
   enabled?: boolean;
+  /**
+   * Nobody gets close. Inside `radius` world pixels the player is pushed
+   * straight back out at `speed` px/s, whatever they are pressing, and the
+   * NPC says `say` in a drawn bubble over its head (chat/SpeechBubble).
+   *
+   * An NPC with this never shows the "!" or the talk prompt: there is no
+   * conversation to reach, and offering one the player cannot have is worse
+   * than offering none.
+   */
+  repel?: { radius: number; speed: number; say: string };
   /**
    * Optional path to a portrait PNG (served from /public).
    * Recommended: 256x256 px, transparent background, pixel art.
@@ -372,5 +388,110 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     ],
     action: { type: "link", label: "Visit MonkeDAO", url: "https://monkedao.io/" },
     spriteKey: "Mr. Bananas",
+  },
+  // ── ST Brasil builder stands ──────────────────────────────────────
+  //
+  // Projects that applied through the Superteam Brasil form and were
+  // approved. Each one stands at its own stand on the beach and, where the
+  // project has a public API, the panel behind the button is that API, not a
+  // mock: Pegana reads peg state, SolSentry reads a token's risk.
+  //
+  // All three sheets are 6 frames of 64x64 in one row, idle in place, so they
+  // carry spriteAnimation rather than a walk grid.
+  {
+    id: "pegana-raffx",
+    name: "Raffx",
+    role: "Pegana",
+    // On the sand in front of the Pegana stand (BuildStandPegana, cols 40-46
+    // / rows 71-76), two tiles clear of Kite Pro at 40/79.
+    tileX: 43,
+    tileY: 77,
+    color: 0x00c2a8,
+    dialog: [
+      "I am Raffx. Pegana watches the peg on 69 stablecoins and LSTs.",
+      "A coin holds its peg only while somebody is checking. We check in real time.",
+      "Give me an asset and I read you its risk. No charge.",
+    ],
+    highlights: [
+      { img: "/assets/ui/attention_red.png", label: "DEPEG ALERTS" },
+      { img: "/assets/ui/ico_tasks.png", label: "69 ASSETS" },
+    ],
+    action: { type: "peg-risk", label: "Check a peg" },
+    spriteKey: "Raffx",
+    spriteAnimation: { frameWidth: 64, frameHeight: 64, frameCount: 6 },
+  },
+  {
+    id: "solsentry-crash",
+    name: "Crash",
+    role: "SolSentry",
+    // On the sand in front of the SolSentry stand (BuildStandSolSentry, cols
+    // 26-32 / rows 70-76).
+    tileX: 29,
+    tileY: 77,
+    color: 0xff5c5c,
+    dialog: [
+      "Pass me the address. I read the operator behind the token, not just the token.",
+      "SolSentry calls the risk before the rug, and every call stays auditable.",
+      "This one is free. No signup, no wallet.",
+    ],
+    highlights: [
+      { img: "/assets/ui/attention_orange.png", label: "RUG SIGNALS" },
+      { img: "/assets/ui/ico_achievements.png", label: "FREE SCAN" },
+    ],
+    action: { type: "token-scan", label: "Scan a token" },
+    spriteKey: "Crash",
+    spriteAnimation: { frameWidth: 64, frameHeight: 64, frameCount: 6 },
+  },
+  {
+    id: "dungeons-moles",
+    name: "Mole",
+    role: "Dungeons & Moles",
+    // At the mouth of the dungeon south of the beach (BuildDungeousMoles,
+    // cols 42-48 / rows 100-106). Row 106 is the sand at the foot of the door,
+    // under the D&M sign and between the two lanterns: the only three walkable
+    // tiles (44, 45, 46) touching the cave. Row 107 below it is the boardwalk,
+    // which reads as passing by rather than waiting at the door.
+    //
+    // tileY is the row ABOVE the one the NPC stands on: findNpcSpawn starts
+    // its scan at tileY + 1. So 105 here puts him on row 106, and 106 put him
+    // on the boardwalk, which is what happened.
+    tileX: 44,
+    tileY: 105,
+    offsetY: -8,
+    color: 0xc98a3c,
+    dialog: [
+      "Every dungeon hides a path. Not every path wants to be found.",
+      "The map does not exist yet. Take the first step and it appears.",
+      "Keep digging. Some answers are deeper.",
+    ],
+    highlights: [
+      { img: "/assets/ui/controller.png", label: "ROGUELITE" },
+      { img: "/assets/ui/ico_achievements.png", label: "ON CHAIN LOOT" },
+    ],
+    // Half a tile left of centre and up onto the sand, so he stands beside
+    // the treasure chest with the doorway clear behind him.
+    offsetX: -6,
+    action: { type: "link", label: "Enter the dungeon", url: "https://www.dungeonsandmoles.com/" },
+    spriteKey: "Mole",
+    spriteAnimation: { frameWidth: 64, frameHeight: 64, frameCount: 6 },
+  },
+  {
+    id: "builder",
+    name: "Builder",
+    role: "Under Construction",
+    // The fenced plot in the south east (cols 91-129 / rows 63-110), the one
+    // opposite the ST Brasil beach. Every tile of it is solid, so he stands
+    // on the road along its north edge, right in front of the barriers that
+    // start at col 100. tileY is the row above the one he stands on.
+    tileX: 101,
+    tileY: 61,
+    color: 0xffb547,
+    // Never read: `repel` means the talk prompt never appears. Kept so the
+    // registry stays uniform and the minimap has something to label.
+    dialog: ["We are working here!"],
+    action: { type: "placeholder", label: "Come back later" },
+    repel: { radius: 56, speed: 170, say: "We are working here!" },
+    spriteKey: "Builder",
+    spriteAnimation: { frameWidth: 64, frameHeight: 64, frameCount: 6 },
   },
 ];

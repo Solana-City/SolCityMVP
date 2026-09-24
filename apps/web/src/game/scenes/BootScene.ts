@@ -3,6 +3,7 @@ import { SimpleSprite } from "../entities/SimpleSprite";
 import { cropTileLayers } from "../world/cropMap";
 import { AvatarSprite } from "../entities/AvatarSprite";
 import { NPC_REGISTRY } from "../config/npcRegistry";
+import { BUBBLE_TEXTURE, BUBBLE_FRAMES } from "../chat/SpeechBubble";
 import { getAllLayerVariants, EXPRESSIONS, SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT } from "../config/paperDoll";
 import { preloadAnimatedDecor } from "../world/AnimatedDecor";
 
@@ -79,6 +80,9 @@ export class BootScene extends Phaser.Scene {
       this.load.image(`attention-${variant}`, `assets/ui/attention_${variant}.png`);
     }
 
+    // The drawn speech bubble an NPC talks in (see chat/SpeechBubble).
+    this.load.image(BUBBLE_TEXTURE, "assets/ui/bubble.png");
+
     SimpleSprite.load(this, "avatar-player", "assets/sprites/main_char.png", 64, 64);
     // Flags and other props that wave in place (see world/AnimatedDecor).
     preloadAnimatedDecor(this);
@@ -127,6 +131,16 @@ export class BootScene extends Phaser.Scene {
         const r = cropTileLayers(cached.data);
         console.log(`[BootScene] map cells ${r.cellsBefore.toLocaleString()} → ${r.cellsAfter.toLocaleString()} after cropping layers`);
       }
+    }
+
+    // The bubble is used in two pieces: the box is stretched as a nine-slice,
+    // the tail is drawn at native size so it never smears. Frames are added
+    // here because they need the decoded texture.
+    if (this.textures.exists(BUBBLE_TEXTURE)) {
+      const tex = this.textures.get(BUBBLE_TEXTURE);
+      const { box, tail } = BUBBLE_FRAMES;
+      if (!tex.has("bubble-box")) tex.add("bubble-box", 0, box.x, box.y, box.w, box.h);
+      if (!tex.has("bubble-tail")) tex.add("bubble-tail", 0, tail.x, tail.y, tail.w, tail.h);
     }
 
     // Static animated NPCs (idle-loop sheets, e.g. Kite Pro) ship with the

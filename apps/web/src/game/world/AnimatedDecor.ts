@@ -88,7 +88,87 @@ export const ANIMATED_DECOR: AnimatedDecorDef[] = [
     blocks: true,
     ySort: true,
   },
+  // ── The city's three painted flags, now waving ───────────────────
+  //
+  // These replace tile layers rather than adding to the map, so each one is
+  // measured rather than placed by eye: the art box of the painted flag in
+  // city.json and the art box of frame 0 line up pixel for pixel, which also
+  // settles the scale (1 for all three: the sheets are drawn at world
+  // resolution, unlike the Turkey sheet, which is a 2x draw of the same pole).
+  // CityScene drops the layers listed in REPLACED_MAP_LAYERS below.
+  {
+    // Solana flag on the south beach path (DecorSolanaFlag, cols 33-34 /
+    // rows 93-96). Painted art sat at world 797,2232 to 836,2327 and the
+    // sheet's own art box is the same 40x96, so tile 33 plus half a tile puts
+    // it back where it was.
+    key: "flag-solana",
+    file: "assets/sprites/decor/flag_solana.png",
+    frameWidth: 48,
+    frameHeight: 96,
+    frameCount: 6,
+    frameRate: 6,
+    tileX: 33,
+    tileY: 96,
+    offsetX: 12,
+    scale: 1,
+    // The pole foot was the one solid cell on the old layer (33,96).
+    blocks: true,
+    ySort: true,
+  },
+  {
+    // Superteam Brasil flag by the lighthouse walk (DecorSTBrFlag, cols 54-55
+    // / rows 86-89). Painted art at world 1299,2064 to 1338,2159.
+    key: "flag-st-brasil",
+    file: "assets/sprites/decor/flag_st_brasil.png",
+    frameWidth: 48,
+    frameHeight: 96,
+    frameCount: 8,
+    frameRate: 6,
+    tileX: 54,
+    tileY: 89,
+    offsetX: 12,
+    scale: 1,
+    // Matches the old layer's one solid cell (54,89).
+    blocks: true,
+    ySort: true,
+  },
+  {
+    // MonkeDAO flag, moved (2026-09-25) from the strip between the banana
+    // stand and the tower to the open corner EAST of the MonkeDAO tower,
+    // where it has room. The painted flag stood at cols 51-54 / rows 24-30;
+    // this stands with its foot on tile 68, row 29, on the pavement between
+    // the tower's east wall (which ends at col 65) and the grass verge.
+    //
+    // The sheet's pole is not centred in its frame: the foot occupies x 0-24
+    // of 78, so the sprite centre sits 27px right of the pole. tileX 69 plus
+    // offsetX 3 therefore puts the FOOT on tile 68.
+    key: "flag-monkedao",
+    file: "assets/sprites/decor/flag_monkedao.png",
+    frameWidth: 78,
+    frameHeight: 183,
+    frameCount: 4,
+    frameRate: 6,
+    tileX: 69,
+    tileY: 29,
+    offsetX: 3,
+    scale: 1,
+    // Out in the open now, so it behaves like the other poles: one solid
+    // cell under the foot, and y-sorted rather than always-on-top. Nothing
+    // of the tower reaches this far east, so nothing can paint over it.
+    blocks: true,
+    ySort: true,
+  },
 ];
+
+/**
+ * Tile layers whose art is now drawn by a sprite above. CityScene drops them
+ * when it builds the map, so the static cloth never shows under the animated
+ * one, and their collision does not reach the merged volume either: each
+ * sprite stamps its own foot with `blocks` instead.
+ */
+export const REPLACED_MAP_LAYERS: ReadonlySet<string> = new Set([
+  "DecorSolanaFlag", "DecorSTBrFlag", "DecorMonkeDaoFlag",
+]);
 
 /** Call from BootScene.preload. */
 export function preloadAnimatedDecor(scene: Phaser.Scene): void {

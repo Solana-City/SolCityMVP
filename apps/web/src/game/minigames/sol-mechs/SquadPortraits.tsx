@@ -21,8 +21,12 @@ const SLOT_LABEL: Record<ModuleSlot, string> = {
   matrix: "MATRIX", rightArm: "R.ARM", leftArm: "L.ARM", lowerBody: "LEGS",
 };
 
-export function SquadPortraits({ side, label, align, size = SIZE }: {
+export function SquadPortraits({ side, label, align, size = SIZE, substitutable, onSubstitute }: {
   side: TeamSide; label: string; align?: "right"; size?: number;
+  /** Reserves that can be sent in right now, by index in the squad. */
+  substitutable?: number[];
+  /** Given, a reserve card carries a button that sends that mech in. */
+  onSubstitute?: (index: number) => void;
 }) {
   const [open, setOpen] = useState<number | null>(null);
   const right = align === "right";
@@ -34,31 +38,46 @@ export function SquadPortraits({ side, label, align, size = SIZE }: {
     }}>
       <div style={{ fontSize: 11, color: C.faint, letterSpacing: 2 }}>{label}</div>
       <div style={{ display: "flex", gap: 5, flexDirection: right ? "row-reverse" : "row" }}>
-        {side.units.map((u, i) => (
-          <div
-            key={i}
-            style={{ position: "relative" }}
-            onMouseEnter={() => setOpen(i)}
-            onMouseLeave={() => setOpen((cur) => (cur === i ? null : cur))}
-            onClick={() => setOpen((cur) => (cur === i ? null : i))}
-          >
-            <Portrait unit={u} active={i === side.activeIndex} size={size} />
-            {open === i && <PartsCard unit={u} index={i} active={i === side.activeIndex} right={right} top={size + 10} />}
-          </div>
-        ))}
+        {side.units.map((u, i) => {
+          const canSwap = !!onSubstitute && (substitutable?.includes(i) ?? false);
+          return (
+            <div
+              key={i}
+              style={{ position: "relative" }}
+              onMouseEnter={() => setOpen(i)}
+              onMouseLeave={() => setOpen((cur) => (cur === i ? null : cur))}
+              onClick={() => setOpen((cur) => (cur === i ? null : i))}
+            >
+              <Portrait unit={u} active={i === side.activeIndex} size={size} swappable={canSwap} />
+              {open === i && (
+                <PartsCard
+                  unit={u}
+                  index={i}
+                  active={i === side.activeIndex}
+                  right={right}
+                  top={size + 10}
+                  onSubstitute={canSwap && onSubstitute ? () => { setOpen(null); onSubstitute(i); } : undefined}
+                />
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
 }
 
-function Portrait({ unit, active, size: SIZE }: { unit: MechUnit; active: boolean; size: number }) {
+function Portrait({ unit, active, size: SIZE, swappable }: {
+  unit: MechUnit; active: boolean; size: number; swappable?: boolean;
+}) {
   const down = isDefeated(unit);
   const hp = unit.matrixMaxHP > 0 ? Math.max(0, unit.matrixHP / unit.matrixMaxHP) : 0;
   return (
     <div
       aria-label={`${unit.matrix.matrixName}${down ? ", down" : active ? ", on the field" : ", reserve"}`}
       style={{
-        position: "relative", width: SIZE, height: SIZE + 5, cursor: "help",
+        position: "relative", width: SIZE, height: SIZE + 5,
+        cursor: swappable ? "pointer" : "help",
         opacity: down ? 0.45 : 1,
         filter: down ? "grayscale(1)" : "none",
       }}
@@ -66,7 +85,9 @@ function Portrait({ unit, active, size: SIZE }: { unit: MechUnit; active: boolea
       <div style={{
         width: SIZE, height: SIZE, borderRadius: "50%", overflow: "hidden",
         background: active ? "#12302e" : "#140b24",
-        boxShadow: active ? `0 0 0 2px ${C.teal}, 0 0 10px ${C.teal}66` : `0 0 0 1px ${C.line}`,
+        boxShadow: active
+          ? `0 0 0 2px ${C.teal}, 0 0 10px ${C.teal}66`
+          : swappable ? `0 0 0 2px ${C.blue}66` : `0 0 0 1px ${C.line}`,
         display: "flex", alignItems: "flex-end", justifyContent: "center",
       }}>
         <Bust build={unit.build} size={SIZE} />
@@ -133,14 +154,17 @@ export function Bust({ build, size = SIZE }: { build: MechBuild; size?: number }
   );
 }
 
-function PartsCard({ unit, index, active, right, top }: {
+function PartsCard({ unit, index, active, right, top, onSubstitute }: {
   unit: MechUnit; index: number; active: boolean; right: boolean; top: number;
+  onSubstitute?: () => void;
 }) {
   const down = isDefeated(unit);
   return (
     <div style={{
       position: "absolute", top, [right ? "right" : "left"]: 0, zIndex: 20,
-      width: 210, padding: "8px 10px", pointerEvents: "none",
+      // The card only takes the pointer when there is something to press on
+      // it; otherwise it would swallow clicks meant for the arena behind it.
+      width: 210, padding: "8px 10px", pointerEvents: onSubstitute ? "auto" : "none",
       background: "rgba(8,4,16,.97)", border: `1px solid ${C.lineBright}`, borderRadius: 6,
       boxShadow: "0 10px 30px rgba(0,0,0,.65)",
     }}>
@@ -175,6 +199,19 @@ function PartsCard({ unit, index, active, right, top }: {
           </div>
         );
       })}
+      {onSubstitute && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onSubstitute(); }}
+          style={{
+            width: "100%", marginTop: 6, padding: "6px 0",
+            background: "rgba(95,160,255,.12)", border: `1px solid ${C.blue}`, borderRadius: 4,
+            color: C.blue, fontFamily: "inherit", fontSize: 11, fontWeight: 700, letterSpacing: 1,
+            cursor: "pointer",
+          }}
+        >
+          SUBSTITUTE
+        </button>
+      )}
     </div>
   );
 }
