@@ -58,7 +58,7 @@ const META: Record<string, Meta> = {
   ANDURIL:    { name: "Anduril", about: "AI defense systems and autonomous drones.", sector: "preipo", color: "#4B5563" },
   NEURALINK:  { name: "Neuralink", about: "Brain implants that connect minds to computers.", sector: "preipo", color: "#E5E7EB" },
   POLYMARKET: { name: "Polymarket", about: "Prediction market where people bet on real events.", sector: "preipo", color: "#2D9CDB" },
-  SPACEX:     { name: "SpaceX Pre-IPO", about: "Rockets and Starlink, through the private company.", sector: "preipo", color: "#C8D1DC" },
+  SPACEX:     { name: "SpaceX SPV", about: "PreStocks SPV exposure to SpaceX, next to the listed SPCX.", sector: "preipo", color: "#C8D1DC" },
   KALSHI:     { name: "Kalshi", about: "US regulated exchange for event contracts.", sector: "preipo", color: "#00D1B2" },
   FIGUREAI:   { name: "Figure AI", about: "Humanoid robots for factories and homes.", sector: "preipo", color: "#F97316" },
   // Newer listings.
