@@ -1,11 +1,14 @@
 import * as Phaser from "phaser";
 import { TILE_SIZE } from "../config/constants";
+import { SpeechBubble } from "../chat/SpeechBubble";
 import { SimpleSprite, NPC_DIRECTION_ROW, PLAYER_DIRECTION_ROW, type Direction } from "./SimpleSprite";
 import type { NPCDefinition } from "../config/npcRegistry";
 import { profileManager } from "../config/profileManager";
 import { progressionBus } from "../progression/progressionBus";
 
 const INTERACT_RANGE = TILE_SIZE * 1.8;
+/** How long a spoken line owns the bubble before another can replace it. */
+const SAY_COOLDOWN = 3600;
 
 // Pixel-art attention balloons come in five palette variants (see
 // assets/ui/attention_*.png). Each NPC uses the variant closest to its
@@ -43,6 +46,8 @@ export class NPCSprite {
   private nameText: Phaser.GameObjects.Text;
   private promptText: Phaser.GameObjects.Text;
   private _isInRange = false;
+  private bubble: SpeechBubble | null = null;
+  private quietUntil = 0;
   private originX: number;
   private originY: number;
   private unsubBus: (() => void) | null = null;
@@ -228,6 +233,23 @@ export class NPCSprite {
     return this._isInRange;
   }
 
+  /** The definition this sprite was built from, for scene-level behaviour. */
+  get definition(): NPCDefinition {
+    return this.def;
+  }
+
+  /**
+   * Say a line in the drawn bubble over this NPC's head, ignoring calls that
+   * arrive while the last one is still up — the repel check runs every frame.
+   */
+  say(text: string): void {
+    const now = this.scene.time.now;
+    if (now < this.quietUntil) return;
+    this.quietUntil = now + SAY_COOLDOWN;
+    this.bubble?.destroy();
+    this.bubble = new SpeechBubble(this.scene, this.getContainer(), text, -(this.avatar.getVisualHeight() + 14));
+  }
+
   checkProximity(playerX: number, playerY: number): boolean {
     const container = this.getContainer();
     const dx = container.x - playerX;
@@ -237,8 +259,10 @@ export class NPCSprite {
 
     if (inRange !== this._isInRange) {
       this._isInRange = inRange;
-      this.promptText.setVisible(inRange);
-      this.exclamation.setVisible(!inRange);
+      // A repelling NPC has nothing to open: no prompt, and no "!" either.
+      const talkable = !this.def.repel;
+      this.promptText.setVisible(inRange && talkable);
+      this.exclamation.setVisible(!inRange && talkable);
     }
 
     return inRange;

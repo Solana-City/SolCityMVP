@@ -76,6 +76,16 @@ export interface NPCDefinition {
    */
   enabled?: boolean;
   /**
+   * Nobody gets close. Inside `radius` world pixels the player is pushed
+   * straight back out at `speed` px/s, whatever they are pressing, and the
+   * NPC says `say` in a drawn bubble over its head (chat/SpeechBubble).
+   *
+   * An NPC with this never shows the "!" or the talk prompt: there is no
+   * conversation to reach, and offering one the player cannot have is worse
+   * than offering none.
+   */
+  repel?: { radius: number; speed: number; say: string };
+  /**
    * Optional path to a portrait PNG (served from /public).
    * Recommended: 256x256 px, transparent background, pixel art.
    * If missing or fails to load, the dialog falls back to a
@@ -463,6 +473,25 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     offsetX: -6,
     action: { type: "link", label: "Enter the dungeon", url: "https://www.dungeonsandmoles.com/" },
     spriteKey: "Mole",
+    spriteAnimation: { frameWidth: 64, frameHeight: 64, frameCount: 6 },
+  },
+  {
+    id: "builder",
+    name: "Builder",
+    role: "Under Construction",
+    // The fenced plot in the south east (cols 91-129 / rows 63-110), the one
+    // opposite the ST Brasil beach. Every tile of it is solid, so he stands
+    // on the road along its north edge, right in front of the barriers that
+    // start at col 100. tileY is the row above the one he stands on.
+    tileX: 101,
+    tileY: 61,
+    color: 0xffb547,
+    // Never read: `repel` means the talk prompt never appears. Kept so the
+    // registry stays uniform and the minimap has something to label.
+    dialog: ["We are working here!"],
+    action: { type: "placeholder", label: "Come back later" },
+    repel: { radius: 56, speed: 170, say: "We are working here!" },
+    spriteKey: "Builder",
     spriteAnimation: { frameWidth: 64, frameHeight: 64, frameCount: 6 },
   },
 ];

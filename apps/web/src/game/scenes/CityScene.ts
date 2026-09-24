@@ -1181,6 +1181,28 @@ export class CityScene extends Phaser.Scene {
     this.dustEmitter.emitParticleAt(fx, fy, count);
   }
 
+  /**
+   * NPCs nobody may walk up to (see NPCDefinition.repel). The push is a plain
+   * velocity away from the NPC rather than a teleport, so it reads as being
+   * shoved and never punches the player through a wall.
+   */
+  private applyRepel(): void {
+    for (const npc of this.npcSprites) {
+      const repel = npc.definition.repel;
+      if (!repel) continue;
+      const at = npc.getPosition();
+      const dx = this.avatar.x - at.x;
+      const dy = this.avatar.y - at.y;
+      const dist = Math.hypot(dx, dy);
+      if (dist >= repel.radius) continue;
+      // Dead centre (dist 0) has no direction to push along: send them south,
+      // which is where the player came from at every repelling NPC so far.
+      const k = dist > 0.5 ? repel.speed / dist : 0;
+      this.playerBody.setVelocity(k ? dx * k : 0, k ? dy * k : repel.speed);
+      npc.say(repel.say);
+    }
+  }
+
   update(): void {
     if (this.chatInputActive || this.interactionBlocked) {
       this.playerBody.setVelocity(0);
@@ -1225,6 +1247,11 @@ export class CityScene extends Phaser.Scene {
     }
 
     this.playerBody.setVelocity(vx, vy);
+
+    // The builder at the construction site: inside his radius the player is
+    // pushed straight back out, whatever they are holding down, and he says
+    // so. Set AFTER the input velocity on purpose — it overrides it.
+    this.applyRepel();
 
     if (direction) {
       this.idleDelay = 0;
