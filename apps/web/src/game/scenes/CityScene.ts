@@ -282,18 +282,23 @@ export class CityScene extends Phaser.Scene {
     };
     for (let i = 0; i < map.layers.length; i++) {
       const layerName = map.layers[i].name;
-      const layer = map.createLayer(i, allTilesets);
-      if (!layer) continue;
 
-      // Painted art an AnimatedDecor sprite now draws instead. Dropped rather
-      // than hidden: a hidden layer still hands its collision to the merged
-      // volume, and the sprite stamps whatever it needs to block itself.
+      // Painted art an AnimatedDecor sprite now draws instead: never built, so
+      // the static cloth cannot show under the animated one and its collision
+      // never reaches the merged volume (the sprite stamps its own foot).
+      //
+      // Skipped BEFORE createLayer, and never destroyed: TilemapLayer.destroy
+      // removes the layer from the tilemap by default, which splices
+      // map.layers while this loop walks it by index — every later layer
+      // shifts down one and the loop stops that many short. That is what ate
+      // the MonkeDAO banana stand, the layer right after a dropped one.
       if (REPLACED_MAP_LAYERS.has(layerName.slice(layerName.lastIndexOf("/") + 1))) {
-        layer.destroy();
         closeGroundRun();
         continue;
       }
 
+      const layer = map.createLayer(i, allTilesets);
+      if (!layer) continue;
       allLayers.push(layer);
 
       layer.setCollisionFromCollisionGroup();
