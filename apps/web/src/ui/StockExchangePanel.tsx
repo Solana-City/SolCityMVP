@@ -61,6 +61,30 @@ const moveColor = (n: number) => (n > 0 ? UP : n < 0 ? DOWN : MUTED);
 const isPreIpo = (s: StockInfo) => s.issuer === "prestocks";
 /** What the reference price is called: an exchange close, or the SPV mark. */
 const refLabel = (s: StockInfo) => (isPreIpo(s) ? "SPV MARK" : "WALL ST");
+/**
+ * What the player is agreeing to, shown right above the buy button rather
+ * than only in the list footer. Pre-IPO carries a second line: those markets
+ * are thin and the token price drifts from the SPV mark.
+ */
+function TradeNotice({ stocks }: { stocks: StockInfo[] }) {
+  const preIpo = stocks.some(isPreIpo);
+  return (
+    <div style={{
+      fontFamily: PIXEL, fontSize: 6, lineHeight: 1.8, color: "#A8B0C4", marginBottom: 10,
+      padding: "8px 10px", borderRadius: 8, background: "#12162b", borderLeft: `2px solid ${IS_DEVNET ? "#00D1FF" : GOLD}`,
+    }}>
+      {IS_DEVNET
+        ? "Devnet test tokens. No real value."
+        : "Real transaction on Solana mainnet. Not available to US persons. Not investment advice."}
+      {preIpo && (
+        <div style={{ color: "#00D1FF", marginTop: 5 }}>
+          Pre-IPO: thin market, price can drift far from the SPV mark.
+        </div>
+      )}
+    </div>
+  );
+}
+
 function issuerLine(s: StockInfo): string {
   if (isPreIpo(s)) return "PRESTOCKS SPV . PRE-IPO, NOT A LISTED SHARE";
   const house = s.issuer === "backpack" ? "BACKPACK SECURITIES VIA SUNRISE" : "XSTOCKS BY BACKED";
@@ -275,7 +299,7 @@ export default function StockExchangePanel({ onClose }: { onClose: () => void })
       </div>
 
       <div style={{ display: "flex", justifyContent: "space-between", marginTop: 12, fontSize: 5, color: "#555a70", lineHeight: 1.6 }}>
-        <span>{IS_DEVNET ? "Devnet test tokens at live prices." : "Mainnet via Jupiter. Not for US persons."}</span>
+        <span>{IS_DEVNET ? "Devnet test tokens. No real value." : "Mainnet via Jupiter. Not for US persons."}</span>
         <button onClick={onClose} style={{ background: "none", border: "none", color: MUTED, fontFamily: PIXEL, fontSize: 6, cursor: "pointer" }}>ESC</button>
       </div>
     </div>
@@ -499,6 +523,7 @@ function TradeView(props: {
         {status === "submitting" && <span style={{ color: GOLD }}>Sending to Solana...</span>}
       </div>
 
+      <TradeNotice stocks={[stock]} />
       <ShareToggle />
 
       {!connected ? (
@@ -736,6 +761,7 @@ function BasketView(props: {
         {phase === "error" && <span style={{ color: DOWN }}>{error}</span>}
       </div>
 
+      <TradeNotice stocks={stocks} />
       <ShareToggle />
 
       {!connected ? (

@@ -78,7 +78,7 @@ const STOCK_INTRO: IntroSpec = {
   steps: [
     { title: "PICK", line: "Choose a stock: NVIDIA, Tesla, SpaceX and more.", edge: 0 },
     { title: "BUY", line: "Pay from $1 in USDC or SOL. Jupiter finds the best price.", edge: 0, chip: "USDC" },
-    { title: "OWN", line: "Each token is backed 1:1 by a real share. Trade it 24/7.", edge: 1, chip: "NVDA" },
+    { title: "OWN", line: "Most tokens are backed 1:1 by a real share. Pre-IPO ones track a private company through an SPV.", edge: 1, chip: "NVDA" },
   ],
 };
 
