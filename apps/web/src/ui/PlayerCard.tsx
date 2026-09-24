@@ -5,7 +5,7 @@ import type { OnChainMultiplayer, OnChainPlayer } from "@/game/multiplayer/OnCha
 import { useFlags } from "@/ui/useFlags";
 import { track } from "@/game/telemetry/track";
 import { useNickname } from "@/ui/useNicknames";
-import { OPEN_DM_EVENT } from "@/game/chat/dmEvents";
+import { OPEN_DM_EVENT, SEND_TOKENS_EVENT } from "@/game/chat/dmEvents";
 
 /** The city opens Sol Mechs on this, with the player to duel. */
 export const DUEL_INVITE_EVENT = "solcity:solmechs-duel";
@@ -115,6 +115,23 @@ export default function PlayerCard({ gameRef, wallet, displayName, myWallet, onC
         <div style={{ margin: "12px 0 4px" }}>
           <Stat label="Score" value={player?.score ?? 0} color="#14F195" />
         </div>
+
+        {!isSelf && (
+          <button
+            onClick={() => {
+              window.dispatchEvent(new CustomEvent(SEND_TOKENS_EVENT, { detail: { wallet, name } }));
+              onClose();
+            }}
+            style={{
+              width: "100%", marginTop: 10, padding: "11px 0", borderRadius: 8,
+              fontFamily: '"Press Start 2P", monospace', fontSize: 7, letterSpacing: 1,
+              color: "#00D1FF", background: "rgba(0,209,255,0.1)",
+              border: "1px solid rgba(0,209,255,0.45)", cursor: "pointer",
+            }}
+          >
+            SEND TOKENS
+          </button>
+        )}
 
         {!isSelf && flags.chat && (
           <button

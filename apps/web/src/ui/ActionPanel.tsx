@@ -149,7 +149,7 @@ export default function ActionPanel({ action, onClose }: ActionPanelProps) {
 
           {action.type === "tutor"           && <TutorPanel           onClose={onClose} />}
           {action.type === "swap"            && <ProtocolIntroGate spec={SWAP_INTRO}><SwapPanel onClose={onClose} /></ProtocolIntroGate>}
-          {action.type === "transfer"        && <ProtocolIntroGate spec={TRANSFER_INTRO}><TransferPanel onClose={onClose} /></ProtocolIntroGate>}
+          {action.type === "transfer"        && <ProtocolIntroGate spec={TRANSFER_INTRO}><TransferPanel onClose={onClose} to={action.recipient} toName={action.recipientName} /></ProtocolIntroGate>}
           {action.type === "bounties"        && <ProtocolIntroGate spec={EARN_INTRO}><BountiesPanel onClose={onClose} /></ProtocolIntroGate>}
           {action.type === "private-payment" && (
             <MagicBlockHub><PrivatePaymentPanel onClose={onClose} /></MagicBlockHub>
@@ -188,7 +188,7 @@ export default function ActionPanel({ action, onClose }: ActionPanelProps) {
 
         {action.type === "tutor"           && <TutorPanel           onClose={onClose} />}
         {action.type === "swap"            && <ProtocolIntroGate spec={SWAP_INTRO}><SwapPanel onClose={onClose} /></ProtocolIntroGate>}
-        {action.type === "transfer"        && <ProtocolIntroGate spec={TRANSFER_INTRO}><TransferPanel onClose={onClose} /></ProtocolIntroGate>}
+        {action.type === "transfer"        && <ProtocolIntroGate spec={TRANSFER_INTRO}><TransferPanel onClose={onClose} to={action.recipient} toName={action.recipientName} /></ProtocolIntroGate>}
         {action.type === "bounties"        && <ProtocolIntroGate spec={EARN_INTRO}><BountiesPanel onClose={onClose} /></ProtocolIntroGate>}
         {action.type === "private-payment" && (
             <MagicBlockHub><PrivatePaymentPanel onClose={onClose} /></MagicBlockHub>
@@ -391,10 +391,11 @@ function SwapPanel({ onClose }: { onClose: () => void }) {
 
 // ── Transfer Panel ────────────────────────────────────────────────────
 
-function TransferPanel({ onClose }: { onClose: () => void }) {
+function TransferPanel({ onClose, to, toName }: { onClose: () => void; to?: string; toName?: string }) {
   const { connected, publicKey, sendTransaction } = useWallet();
   const { connection } = useConnection();
-  const [recipient, setRecipient] = useState("");
+  // Opened from a player's card: their wallet is already in the box.
+  const [recipient, setRecipient] = useState(to ?? "");
   const [amount, setAmount] = useState("0.01");
   const [status, setStatus] = useState<"idle" | "sending" | "done" | "error">("idle");
   const [result, setResult] = useState<{ signature?: string; error?: string } | null>(null);
@@ -462,7 +463,7 @@ function TransferPanel({ onClose }: { onClose: () => void }) {
   return (
     <>
       <h3 style={{ fontFamily: '"Press Start 2P", monospace', fontSize: "8px", color: "#00D1FF", marginBottom: 16 }}>SEND SOL</h3>
-      <InputBox label="Recipient address">
+      <InputBox label={toName ? `Recipient (${toName})` : "Recipient address"}>
         <input type="text" value={recipient} onChange={(e) => setRecipient(e.target.value)}
           placeholder="Paste Solana address…"
           style={{ background: "transparent", color: "#fff", border: "none", fontSize: 9, fontFamily: "monospace", width: "100%", outline: "none" }} />

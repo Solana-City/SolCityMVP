@@ -4,6 +4,10 @@ export interface NPCAction {
   url?: string;
   miniGameId?: string;
   orderType?: "sushi";
+  /** Prefilled recipient, when a transfer is opened from a player's card. */
+  recipient?: string;
+  /** That player's name, to show instead of the raw address. */
+  recipientName?: string;
 }
 
 /** A picture + a word or two, shown on an NPC's last dialog line. */

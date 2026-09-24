@@ -52,7 +52,7 @@ const Minimap             = dynamic(() => import("@/ui/Minimap"),             { 
 import ErrorBoundary from "@/ui/ErrorBoundary";
 import { OPEN_DM_EVENT } from "@/game/chat/dmEvents";
 import { OPEN_CALENDAR_EVENT } from "@/game/daily/calendarEvents";
-import { DM_UNREAD_EVENT } from "@/game/chat/dmEvents";
+import { DM_UNREAD_EVENT, SEND_TOKENS_EVENT } from "@/game/chat/dmEvents";
 
 function useIsTouch() {
   const [isTouch, setIsTouch] = useState(false);
@@ -182,6 +182,18 @@ export default function Home() {
     game.events.on("player:cardOpen", handler);
     return () => { game.events.off("player:cardOpen", handler); };
   }, [game]);
+
+  // "Send tokens" on a player's card: the same transfer panel Steve opens,
+  // with that player already filled in as the recipient.
+  useEffect(() => {
+    const onSend = (e: Event) => {
+      const { wallet, name } = (e as CustomEvent<{ wallet: string; name?: string }>).detail ?? {};
+      if (!wallet) return;
+      setActiveAction({ type: "transfer", label: "Send tokens", recipient: wallet, recipientName: name });
+    };
+    window.addEventListener(SEND_TOKENS_EVENT, onSend);
+    return () => window.removeEventListener(SEND_TOKENS_EVENT, onSend);
+  }, []);
 
   // Unread direct messages, for the dot on the chat button.
   const [unreadDms, setUnreadDms] = useState(0);

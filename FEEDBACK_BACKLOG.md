@@ -212,6 +212,11 @@ A GTM timeline, KPIs, and who steps in and when: Solflare/Miracle, Solana
 Gaming, games.gg. A document and a calendar, which the city's own calendar
 can then show.
 
+### M14. Send tokens from a player's card — DONE 2026-09-24 (needs a test)
+Tapping a player now offers SEND TOKENS next to MESSAGE and MECH BATTLE: it
+opens the same transfer panel Steve opens, with that player already in the
+recipient box (their nickname on the label, the address still editable).
+
 ### M13. A test session with everyone — scheduling
 Worth doing right after M1 and M2 land, since those are what testers feel.
 
