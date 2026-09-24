@@ -90,6 +90,12 @@ export async function fetchStockPrices(): Promise<Omit<StockMarketState, "error"
 async function fetchPreIpoMarks(): Promise<Record<string, number>> {
   if (!STOCKS.some((s) => s.issuer === "prestocks")) return {};
   try {
+    // prestocks.com sends no CORS header, so the browser goes through our own
+    // route; scripts and server code call their API directly.
+    if (typeof window !== "undefined") {
+      const res = await fetch("/api/prestocks-marks");
+      return res.ok ? ((await res.json()) as Record<string, number>) : {};
+    }
     const res = await fetch("https://prestocks.com/api/prestocks");
     if (!res.ok) return {};
     const out: Record<string, number> = {};
