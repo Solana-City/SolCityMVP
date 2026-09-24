@@ -941,7 +941,7 @@ export class CityScene extends Phaser.Scene {
       if (def.enabled === false) continue;
       const spawn = this.findNpcSpawn(map, def.tileX, def.tileY, tileSize);
       const wx = spawn.wx + (def.offsetX ?? 0);
-      const wy = spawn.wy;
+      const wy = spawn.wy + (def.offsetY ?? 0);
       const npc = new NPCSprite(this, def, wx, wy, this.collisionLayers);
       this.npcSprites.push(npc);
 

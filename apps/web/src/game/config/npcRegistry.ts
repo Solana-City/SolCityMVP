@@ -36,6 +36,12 @@ export interface NPCDefinition {
    * whose middle falls on a tile boundary). Defaults to 0.
    */
   offsetX?: number;
+  /**
+   * Vertical nudge in world pixels, negative being north. Same idea as
+   * offsetX, for standing somebody on a step or a strip of ground that does
+   * not line up with a tile centre. Defaults to 0.
+   */
+  offsetY?: number;
   color: number;
   dialog: string[];
   action: NPCAction;
@@ -431,13 +437,17 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     name: "Mole",
     role: "Dungeons & Moles",
     // At the mouth of the dungeon south of the beach (BuildDungeousMoles,
-    // cols 42-48 / rows 100-106). Row 106 is the step at the foot of the door,
+    // cols 42-48 / rows 100-106). Row 106 is the sand at the foot of the door,
     // under the D&M sign and between the two lanterns: the only three walkable
-    // tiles (44, 45, 46) touching the cave. Row 107, where this used to stand,
-    // is the boardwalk BELOW the entrance, which reads as passing by rather
-    // than waiting at the door.
-    tileX: 45,
-    tileY: 106,
+    // tiles (44, 45, 46) touching the cave. Row 107 below it is the boardwalk,
+    // which reads as passing by rather than waiting at the door.
+    //
+    // tileY is the row ABOVE the one the NPC stands on: findNpcSpawn starts
+    // its scan at tileY + 1. So 105 here puts him on row 106, and 106 put him
+    // on the boardwalk, which is what happened.
+    tileX: 44,
+    tileY: 105,
+    offsetY: -8,
     color: 0xc98a3c,
     dialog: [
       "Every dungeon hides a path. Not every path wants to be found.",
@@ -448,6 +458,9 @@ export const NPC_REGISTRY: NPCDefinition[] = [
       { img: "/assets/ui/controller.png", label: "ROGUELITE" },
       { img: "/assets/ui/ico_achievements.png", label: "ON CHAIN LOOT" },
     ],
+    // Half a tile left of centre and up onto the sand, so he stands beside
+    // the treasure chest with the doorway clear behind him.
+    offsetX: -6,
     action: { type: "link", label: "Enter the dungeon", url: "https://www.dungeonsandmoles.com/" },
     spriteKey: "Mole",
     spriteAnimation: { frameWidth: 64, frameHeight: 64, frameCount: 6 },
