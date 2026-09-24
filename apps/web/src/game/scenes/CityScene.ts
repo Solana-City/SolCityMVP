@@ -735,8 +735,8 @@ export class CityScene extends Phaser.Scene {
 
     // Our own stock trade (Stocks Broker panel). Always shown over our head;
     // announced to the city unless the player opted out in the panel.
-    this.onGameEvent("game:stock-trade", (e: { side: TradeSide; ticker?: string; basketId?: string; share?: boolean }) => {
-      const trade = { side: e.side, ticker: e.ticker, basketId: e.basketId };
+    this.onGameEvent("game:stock-trade", (e: { side: TradeSide; ticker?: string; basketId?: string; usd?: number; share?: boolean }) => {
+      const trade = { side: e.side, ticker: e.ticker, basketId: e.basketId, usd: e.usd };
       new TradeBubble(this, this.avatar.getContainer(), trade);
       this.chat.addMessage("city", "local", this.profile.get().displayName, tradeLogLine(trade), TRADE_COLOR);
       if (e.share && this.network?.connected) this.network.sendChat(encodeTrade(trade));

@@ -377,7 +377,10 @@ function TradeView(props: {
       });
       emitGameEvent("game:swap");
       emitGameEvent("game:stock-trade", {
-        side, ticker: stock.ticker, sector: stock.sector, wallStreetOpen: getMarketClock().wallStreetOpen, share: getShareTrades(),
+        side, ticker: stock.ticker, sector: stock.sector, wallStreetOpen: getMarketClock().wallStreetOpen,
+        // What the trade was worth: the order's own USD value, else the amount picked.
+        usd: o.inUsdValue ?? (side === "buy" ? usdAmount ?? 0 : 0),
+        share: getShareTrades(),
       });
       onTraded();
     } catch (e: any) {
@@ -584,6 +587,7 @@ function BasketView(props: {
 
     // 3. Land each leg; one failure doesn't stop the others.
     setPhase("sending");
+    const legsCount = next.length;
     let okCount = 0;
     for (let k = 0; k < ready.length; k++) {
       const { l, i } = ready[k];
@@ -606,7 +610,12 @@ function BasketView(props: {
     if (okCount) {
       profileManager.recordSwap({ inputToken: payWith, outputToken: `basket:${basket.id}`, amount: String(total) });
       emitGameEvent("game:swap");
-      emitGameEvent("game:stock-trade", { side: "buy", basketId: basket.id, share: getShareTrades() });
+      emitGameEvent("game:stock-trade", {
+        side: "buy", basketId: basket.id,
+        // Only the legs that actually landed.
+        usd: okCount === legsCount ? total : perLeg * okCount,
+        share: getShareTrades(),
+      });
       onTraded();
       setPhase("done");
     } else {
