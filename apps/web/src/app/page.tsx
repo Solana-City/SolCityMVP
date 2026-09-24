@@ -80,7 +80,7 @@ export default function Home() {
   const [wardrobeOpen, setWardrobeOpen] = useState(false);
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
   const [logOpen, setLogOpen] = useState(false);
-  const [mapOpen, setMapOpen] = useState(false);
+  const [mapOpen, setMapOpen] = useState(true);
   const displayName = useDisplayName();
   const [mobilePanel, setMobilePanel] = useState<"hunt" | null>(null);
   /** Last wallet state actually handed to Phaser; undefined = nothing sent yet. */
