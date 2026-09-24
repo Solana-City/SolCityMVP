@@ -11,10 +11,12 @@ import { DM_UNREAD_EVENT } from "@/game/chat/dmEvents";
 import { cachedName, requestNames } from "@/game/names/nameService";
 import type { OnChainMultiplayer } from "@/game/multiplayer/OnChainMultiplayer";
 import { useWallet } from "@solana/wallet-adapter-react";
-import { chamferBox } from "@/ui/chamfer";
+import { chamferBox, chamferClip } from "@/ui/chamfer";
 
 const DM_COLOR = "#FFD700";
 const BTN_FRAME = 'url(/assets/branding/ui/frame-btn.png) 18 fill / 4px / 0 round';
+/** Trims the element's own background to the frame's octagon (the frame's corners are transparent). */
+const BTN_CLIP = chamferClip(3.6);
 const BTN_FRAME_FILL = 'url(/assets/branding/ui/frame-btn-fill.png) 18 fill / 4px / 0 round';
 
 function short(wallet: string): string {
@@ -351,10 +353,10 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
         </button>
         <button
           onClick={() => setIsExpanded(!isExpanded)}
-          className="px-2 py-1 text-xs"
-          style={{ background: "transparent", color: "#555566", border: "none", cursor: "pointer" }}
+          className="self-center"
+          style={{ background: "transparent", border: "none", padding: 0, cursor: "pointer", flexShrink: 0 }}
         >
-          {isExpanded ? "\u25BC" : "\u25B2"}
+          <img src={`/assets/ui/icon_${isExpanded ? "down" : "up"}.png`} width={24} height={24} alt="" draggable={false} style={{ imageRendering: "pixelated", display: "block" }} />
         </button>
       </div>
 
@@ -385,7 +387,7 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
             background: "linear-gradient(180deg, rgba(15,18,40,0.96) 0%, rgba(8,10,24,0.96) 100%)",
             minHeight: 92,
             borderWidth: 4, borderStyle: "solid", borderColor: "transparent",
-            borderImage: BTN_FRAME, imageRendering: "pixelated",
+            borderImage: BTN_FRAME, imageRendering: "pixelated", clipPath: BTN_CLIP,
             color: "#9a9ab5", fontSize: 8, lineHeight: 1.8,
           }}
         >
@@ -405,7 +407,7 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
             maxHeight: typing && isTouch ? Math.max(56, keyboard.visible - 130) : 210,
             minHeight: typing && isTouch ? 0 : 92,
             borderWidth: 4, borderStyle: "solid", borderColor: "transparent",
-            borderImage: BTN_FRAME, imageRendering: "pixelated",
+            borderImage: BTN_FRAME, imageRendering: "pixelated", clipPath: BTN_CLIP,
             backdropFilter: "blur(3px)",
             overflowX: "hidden", // long words wrap (below) instead of scrolling sideways
           }}
@@ -481,35 +483,22 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
           onClick={() => { setShowEmojis(v => !v); }}
           className="cursor-pointer flex items-center justify-center"
           style={{
-            width: 28, height: 28, flexShrink: 0,
-            background: "rgba(10,10,30,0.94)",
-            color: showEmojis ? "#B7E928" : "#555566",
-            borderWidth: 4, borderStyle: "solid", borderColor: "transparent",
-            borderImage: BTN_FRAME, imageRendering: "pixelated",
+            width: 32, height: 32, flexShrink: 0, padding: 0, background: "none", border: "none",
+            filter: showEmojis ? "brightness(1.3) drop-shadow(0 0 4px rgba(183,233,40,0.7))" : "none",
           }}
           title="Emotes"
         >
-          <img
-            src="/assets/ui/ico_chat.png" width={16} height={16} alt="Emotes" draggable={false}
-            style={{ imageRendering: "pixelated", display: "block", opacity: showEmojis ? 1 : 0.75 }}
-          />
+          <img src="/assets/ui/icon_chat.png" width={32} height={32} alt="Emotes" draggable={false} style={{ imageRendering: "pixelated", display: "block" }} />
         </button>
         <button
           onClick={() => { window.dispatchEvent(new Event("solcity:openExpressionWheel")); setShowEmojis(false); }}
           className="cursor-pointer flex items-center justify-center"
           style={{
-            width: 28, height: 28, flexShrink: 0,
-            background: "rgba(10,10,30,0.94)",
-            color: "#c084fc",
-            borderWidth: 4, borderStyle: "solid", borderColor: "transparent",
-            borderImage: BTN_FRAME, imageRendering: "pixelated",
+            width: 32, height: 32, flexShrink: 0, padding: 0, background: "none", border: "none",
           }}
           title="Face expressions"
         >
-          <img
-            src="/assets/ui/ico_emoji.png" width={16} height={16} alt="Face expressions" draggable={false}
-            style={{ imageRendering: "pixelated", display: "block" }}
-          />
+          <img src="/assets/ui/icon_emoji.png" width={32} height={32} alt="Face expressions" draggable={false} style={{ imageRendering: "pixelated", display: "block" }} />
         </button>
         <input
           ref={inputRef}
@@ -524,11 +513,11 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
           maxLength={140}
           className="flex-1 px-2 outline-none"
           style={{
-            height: 28,
+            height: 32,
             background: "rgba(10,10,30,0.94)",
             color: "#d9d9ec",
             borderWidth: 4, borderStyle: "solid", borderColor: "transparent",
-            borderImage: BTN_FRAME, imageRendering: "pixelated",
+            borderImage: BTN_FRAME, imageRendering: "pixelated", clipPath: BTN_CLIP,
             fontFamily: '"Press Start 2P", monospace',
             fontSize: 8,
           }}
@@ -543,18 +532,14 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
             disabled={!input.trim() || busy}
             className="cursor-pointer flex items-center justify-center"
             style={{
-              width: 28, height: 28, flexShrink: 0,
-              background: input.trim() ? "rgba(183,233,40,0.18)" : "rgba(10,10,30,0.94)",
-              color: input.trim() ? "#B7E928" : "#555566",
-              borderWidth: 4, borderStyle: "solid", borderColor: "transparent",
-              borderImage: BTN_FRAME, imageRendering: "pixelated",
-              fontFamily: '"Press Start 2P", monospace',
-              fontSize: 10,
+              width: 32, height: 32, flexShrink: 0, padding: 0, background: "none", border: "none",
+              opacity: input.trim() ? 1 : 0.45,
+              filter: input.trim() ? "drop-shadow(0 0 4px rgba(183,233,40,0.6))" : "grayscale(0.6)",
               WebkitTapHighlightColor: "transparent",
             }}
             title="Send"
           >
-            ▶
+            <img src="/assets/ui/icon_send.png" width={32} height={32} alt="Send" draggable={false} style={{ imageRendering: "pixelated", display: "block" }} />
           </button>
         )}
       </div>
@@ -607,7 +592,7 @@ function TabButton({
         background: "rgba(10,10,30,0.5)",
         color: active ? color : "#555566",
         borderWidth: 4, borderStyle: "solid", borderColor: "transparent",
-        borderImage: BTN_FRAME, imageRendering: "pixelated",
+        borderImage: BTN_FRAME, imageRendering: "pixelated", clipPath: BTN_CLIP,
         cursor: "pointer",
         fontSize: 8,
       }}

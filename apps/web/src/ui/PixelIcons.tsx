@@ -12,7 +12,7 @@
 const UI = "/assets/ui";
 
 export const ICON = {
-  trophy: "/assets/minigames/sol-mechs/ui/win-trophy.png",
+  trophy: `${UI}/icon_trophy.png`,
   tasks: `${UI}/ico_tasks.png`,
   hunt: `${UI}/ico_achievements.png`,
   wardrobe: `${UI}/ico_wardrop.png`,
@@ -160,4 +160,20 @@ export function AchievementIcon({ id, size = 28 }: { id: string; size?: number }
   const art = ACHIEVEMENT_ART[id];
   if (art?.sheet) return <CitizenIcon sheet={art.sheet} size={size} />;
   return <PixelImg src={art?.img ?? ICON.trophy} size={size} />;
+}
+
+/** The calendar sprite with a date written on its white page. */
+export function CalendarDayIcon({ size, day }: { size: number; day: number | string }) {
+  return (
+    <span style={{ position: "relative", display: "inline-block", width: size, height: size, flexShrink: 0 }}>
+      <img src={`${UI}/icon_calendar.png`} alt="" draggable={false}
+        style={{ width: "100%", height: "100%", imageRendering: "pixelated", display: "block" }} />
+      <span style={{
+        position: "absolute", left: 0, right: 0, top: "40%", height: "44%",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        fontFamily: '"Press Start 2P", monospace', fontSize: Math.max(6, Math.round(size * 0.24)),
+        color: "#0a1a2e", lineHeight: 1, pointerEvents: "none",
+      }}>{day}</span>
+    </span>
+  );
 }

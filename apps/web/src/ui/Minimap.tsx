@@ -273,11 +273,11 @@ export default function Minimap({ compact, corners, bare, iconOnly }: { compact?
           title="City map [M]"
           style={chamferBox(8, {
             width: mobile ? 26 : 28, height: mobile ? 26 : 28,
-            border: "1px solid rgba(183,233,40,0.35)", background: "rgba(183,233,40,0.07)",
+            border: "none", background: "none", padding: 0,
             cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
             fontSize: mobile ? 13 : 15, flexShrink: 0,
           })}
-        >🗺️</button>
+        ><img src="/assets/ui/icon_map.png" alt="" draggable={false} style={{ width: "100%", height: "100%", imageRendering: "pixelated", display: "block" }} /></button>
       ) : bare ? (
         <CompactMap host={host} mobile={mobile} bare onOpen={() => setOpenAndNotify(true)} onCollapse={toggleCollapsed} />
       ) : collapsed ? (

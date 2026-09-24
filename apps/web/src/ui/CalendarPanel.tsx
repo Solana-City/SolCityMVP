@@ -14,6 +14,7 @@
  */
 import { useCallback, useEffect, useState } from "react";
 import { chamferBox, octagonFrame } from "@/ui/chamfer";
+import { CalendarDayIcon } from "@/ui/PixelIcons";
 import ChamferGlow from "@/ui/ChamferGlow";
 import nacl from "tweetnacl";
 import { useWallet } from "@solana/wallet-adapter-react";
@@ -201,7 +202,7 @@ export default function CalendarPanel({ gameRef }: { gameRef: Phaser.Game | null
       >
         {/* Header, with today's check-in as the first thing you see */}
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: layout.short ? 6 : 10 }}>
-          <CalIcon size={layout.short ? 24 : 32} day={today.getUTCDate()} />
+          <CalendarDayIcon size={layout.short ? 24 : 40} day={today.getUTCDate()} />
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 8, color: GREEN }}>CITY CALENDAR</div>
             <div style={{ fontSize: 6, color: "#64748b", marginTop: 4 }}>

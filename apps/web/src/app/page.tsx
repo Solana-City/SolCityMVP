@@ -494,21 +494,14 @@ export default function Home() {
                     fontFamily: '"Press Start 2P", monospace', fontSize: isTouch ? 8 : 11, color: "#F3F7FC",
                   }}>{displayName}</span>
                   <span style={{ display: "flex", gap: 4, flexShrink: 0 }}>
-                    <WardrobeButton size={isTouch ? 26 : 28} onClick={() => setWardrobeOpen(true)} />
-                    <CalendarButton size={isTouch ? 26 : 28} />
-                    <button
+                    <WardrobeButton size={isTouch ? 30 : 34} onClick={() => setWardrobeOpen(true)} />
+                    <CalendarButton size={isTouch ? 30 : 34} />
+                    <HudIconBtn
+                      size={isTouch ? 30 : 34} src="/assets/ui/icon_map.png"
                       onClick={() => setMapOpen((v) => !v)}
-                      aria-expanded={mapOpen}
-                      aria-controls="hud-map-preview"
+                      title="Minimap" aria-expanded={mapOpen} aria-controls="hud-map-preview"
                       aria-label={mapOpen ? "Hide minimap" : "Show minimap"}
-                      title="Minimap"
-                      style={chamferBox(8, {
-                        width: isTouch ? 26 : 28, height: isTouch ? 26 : 28,
-                        border: "1px solid rgba(183,233,40,0.35)", background: "rgba(183,233,40,0.07)",
-                        cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
-                        fontSize: isTouch ? 13 : 15, flexShrink: 0,
-                      })}
-                    >🗺️</button>
+                    />
                   </span>
                 </div>
               </Framed>
@@ -708,66 +701,52 @@ function CalendarButton({ size = 30 }: { size?: number }) {
     return () => { clearInterval(id); window.removeEventListener(OPEN_CALENDAR_EVENT, read); };
   }, []);
   return (
-    <button
+    <HudIconBtn
+      size={size} src="/assets/ui/icon_calendar.png" title="City calendar" aria-label="City calendar"
       onClick={() => { window.dispatchEvent(new Event(OPEN_CALENDAR_EVENT)); setFresh(false); }}
-      title="City calendar"
-      aria-label="City calendar"
-      style={{
-        position: "relative", width: size, height: size, borderRadius: 7, padding: 3, cursor: "pointer",
-        border: "1px solid rgba(255,215,0,0.4)", background: "rgba(255,215,0,0.07)",
-        display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
-      }}
-    >
-      <span style={{
-        width: "100%", height: "100%", borderRadius: 3, overflow: "hidden", background: "#f8fafc",
-        display: "flex", flexDirection: "column",
-      }}>
-        <span style={{ height: "32%", background: "#9945FF" }} />
-        <span style={{
-          flex: 1, display: "flex", alignItems: "center", justifyContent: "center",
-          fontFamily: '"Press Start 2P", monospace', fontSize: size >= 30 ? 8 : 7, color: "#0a0a14", lineHeight: 1,
-        }}>
-          {day ?? ""}
-        </span>
-      </span>
-      {fresh && (
-        <span style={{
-          position: "absolute", top: -3, right: -3, width: 8, height: 8, borderRadius: "50%",
-          background: "#FFD700", boxShadow: "0 0 6px #FFD700",
-        }} />
-      )}
-    </button>
+      overlay={<span style={{
+        position: "absolute", left: 0, right: 0, top: "40%", height: "44%",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        fontFamily: '"Press Start 2P", monospace', fontSize: Math.max(6, Math.round(size * 0.24)),
+        color: "#0a1a2e", lineHeight: 1, pointerEvents: "none",
+      }}>{day ?? ""}</span>}
+      dot={fresh}
+    />
   );
 }
 
 function WardrobeButton({ onClick, size = 36 }: { onClick: () => void; size?: number }) {
+  return <HudIconBtn size={size} src="/assets/ui/icon_wardrob.png" title="Wardrobe" onClick={onClick} />;
+}
+
+/** One HUD-rail icon button: the sprite carries its own frame; hover brightens and lifts it. */
+function HudIconBtn({ size, src, onClick, title, overlay, dot, ...aria }: {
+  size: number; src: string; onClick: () => void; title: string;
+  overlay?: ReactNode; dot?: boolean;
+  "aria-label"?: string; "aria-expanded"?: boolean; "aria-controls"?: string;
+}) {
+  const [hover, setHover] = useState(false);
   return (
     <button
-      onClick={onClick}
-      title="Wardrobe"
+      onClick={onClick} title={title} {...aria}
+      onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
       style={{
-        width: size,
-        height: size,
-        borderRadius: 8,
-        border: "1px solid rgba(183,233,40,0.35)",
-        background: "rgba(183,233,40,0.07)",
-        cursor: "pointer",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        fontSize: 18,
-        transition: "background 0.15s",
-        flexShrink: 0,
+        position: "relative", width: size, height: size, padding: 0, border: "none", background: "none",
+        cursor: "pointer", flexShrink: 0, display: "block",
+        filter: hover ? "brightness(1.25) drop-shadow(0 0 4px rgba(20,240,198,0.7))" : "none",
+        transform: hover ? "translateY(-1px)" : "none",
+        transition: "filter 0.12s, transform 0.12s",
       }}
-      onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(183,233,40,0.18)")}
-      onMouseLeave={(e) => (e.currentTarget.style.background = "rgba(183,233,40,0.07)")}
     >
-      <img
-        src="/assets/ui/ico_wardrop.png"
-        width={size >= 36 ? 24 : 20} height={size >= 36 ? 24 : 20}
-        alt="Wardrobe" draggable={false}
-        style={{ imageRendering: "pixelated" }}
-      />
+      <img src={src} alt="" draggable={false}
+        style={{ width: "100%", height: "100%", imageRendering: "pixelated", display: "block" }} />
+      {overlay}
+      {dot && (
+        <span style={{
+          position: "absolute", top: -2, right: -2, width: 8, height: 8, borderRadius: "50%",
+          background: "#FFD700", boxShadow: "0 0 6px #FFD700",
+        }} />
+      )}
     </button>
   );
 }

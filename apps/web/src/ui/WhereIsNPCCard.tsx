@@ -383,7 +383,7 @@ export default function WhereIsNPCCard({ gameRef, wallet }: Props) {
             title="How to play"
           >?</button>
           <span className="hunt-collapse" style={{ color: "#444466", fontSize: 8, marginLeft: 2 }}>
-            {collapsed ? "▲" : "▼"}
+            <PixelImg src={`/assets/ui/icon_${collapsed ? "up" : "down"}.png`} size={14} />
           </span>
         </div>
 
