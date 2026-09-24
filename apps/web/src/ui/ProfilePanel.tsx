@@ -12,6 +12,7 @@ import { DAILY_QUESTS, claimQuest, getQuestProgress, onQuestsChanged } from "@/g
 import { OPEN_CALENDAR_EVENT, STREAK_EVENT, type StreakView } from "@/game/daily/calendarEvents";
 import { soundManager } from "@/game/audio/SoundManager";
 import { dmsOffPref, setDmsOffPref } from "@/game/chat/dmEvents";
+import { useViewportBox, overlayBox } from "@/ui/useViewportBox";
 
 interface ProfilePanelProps {
   gameRef: Phaser.Game | null;
@@ -26,6 +27,7 @@ export default function ProfilePanel({ gameRef, isOpen, onClose }: ProfilePanelP
   const [nameInput, setNameInput] = useState("");
   const [panelTab, setPanelTab] = useState<"profile" | "settings">("profile");
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const viewport = useViewportBox();
   const { connected } = useWallet();
   const { setVisible: openWalletModal } = useWalletModal();
 
@@ -88,7 +90,7 @@ export default function ProfilePanel({ gameRef, isOpen, onClose }: ProfilePanelP
   if (!isOpen || !profile) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
+    <div className="z-50 flex items-center justify-center" style={overlayBox(viewport)}>
       <div
         className="absolute inset-0"
         style={{ background: "rgba(6,10,20,0.6)" }}
@@ -102,7 +104,7 @@ export default function ProfilePanel({ gameRef, isOpen, onClose }: ProfilePanelP
           fontFamily: '"Press Start 2P", monospace',
           // dvh falls back to vh; on landscape phones dvh tracks the actual
           // viewport height after browser chrome collapses, giving ~10% more room.
-          maxHeight: "min(92dvh, 640px)",
+          maxHeight: "min(100%, 640px)",
           overflowY: "auto",
           overscrollBehavior: "contain",
           WebkitOverflowScrolling: "touch",

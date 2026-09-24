@@ -12,6 +12,7 @@ import CityGuide from "@/ui/CityGuide";
 import MagicBlockHub from "@/ui/MagicBlockHub";
 import StockExchangePanel from "@/ui/StockExchangePanel";
 import { backdropClose } from "@/ui/backdrop";
+import { useViewportBox, overlayBox } from "@/ui/useViewportBox";
 
 /** Pratik: how Superteam Earn pays, before the bounty list. */
 const EARN_INTRO: IntroSpec = {
@@ -92,6 +93,11 @@ interface ActionPanelProps {
 
 export default function ActionPanel({ action, onClose }: ActionPanelProps) {
   const [isTouch, setIsTouch] = useState(false);
+  // Anchored to the VISIBLE viewport: with the browser's address bar showing,
+  // a fixed inset-0 box hangs off the bottom of the screen and takes the sheet
+  // with it. See useViewportBox.
+  const viewport = useViewportBox();
+
   useEffect(() => {
     const mq = window.matchMedia("(pointer: coarse)");
     setIsTouch(mq.matches);
@@ -113,7 +119,7 @@ export default function ActionPanel({ action, onClose }: ActionPanelProps) {
   // ── Mobile: bottom-sheet ────────────────────────────────────────────────
   if (isTouch) {
     return (
-      <div className="fixed inset-0 z-40 flex items-end justify-center">
+      <div className="z-40 flex items-end justify-center" style={overlayBox(viewport)}>
         <div
           className="absolute inset-0"
           style={{ background: "rgba(6,10,20,0.55)" }}
@@ -126,7 +132,7 @@ export default function ActionPanel({ action, onClose }: ActionPanelProps) {
             border: "1px solid rgba(153,69,255,0.25)",
             borderBottom: "none",
             fontFamily: '"Press Start 2P", monospace',
-            maxHeight: "85dvh",
+            maxHeight: "100%",
             overflowY: "auto",
             maxWidth: 480,
             padding: "16px 16px 0",
@@ -156,7 +162,7 @@ export default function ActionPanel({ action, onClose }: ActionPanelProps) {
 
   // ── Desktop: centered modal ─────────────────────────────────────────────
   return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center">
+    <div className="z-40 flex items-center justify-center" style={overlayBox(viewport)}>
       <div
         className="absolute inset-0"
         style={{ background: "rgba(6,10,20,0.6)" }}
