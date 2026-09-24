@@ -1,5 +1,5 @@
 export interface NPCAction {
-  type: "tutor" | "swap" | "transfer" | "bounties" | "link" | "placeholder" | "private-payment" | "minigame" | "stock-exchange";
+  type: "tutor" | "swap" | "transfer" | "bounties" | "link" | "placeholder" | "private-payment" | "minigame" | "stock-exchange" | "peg-risk" | "token-scan";
   label: string;
   url?: string;
   miniGameId?: string;
@@ -372,5 +372,80 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     ],
     action: { type: "link", label: "Visit MonkeDAO", url: "https://monkedao.io/" },
     spriteKey: "Mr. Bananas",
+  },
+  // ── ST Brasil builder stands ──────────────────────────────────────
+  //
+  // Projects that applied through the Superteam Brasil form and were
+  // approved. Each one stands at its own stand on the beach and, where the
+  // project has a public API, the panel behind the button is that API, not a
+  // mock: Pegana reads peg state, SolSentry reads a token's risk.
+  //
+  // All three sheets are 6 frames of 64x64 in one row, idle in place, so they
+  // carry spriteAnimation rather than a walk grid.
+  {
+    id: "pegana-raffx",
+    name: "Raffx",
+    role: "Pegana",
+    // On the sand in front of the Pegana stand (BuildStandPegana, cols 40-46
+    // / rows 71-76), two tiles clear of Kite Pro at 40/79.
+    tileX: 43,
+    tileY: 77,
+    color: 0x00c2a8,
+    dialog: [
+      "I am Raffx. Pegana watches the peg on 69 stablecoins and LSTs.",
+      "A coin holds its peg only while somebody is checking. We check in real time.",
+      "Give me an asset and I read you its risk. No charge.",
+    ],
+    highlights: [
+      { img: "/assets/ui/attention_red.png", label: "DEPEG ALERTS" },
+      { img: "/assets/ui/ico_tasks.png", label: "69 ASSETS" },
+    ],
+    action: { type: "peg-risk", label: "Check a peg" },
+    spriteKey: "Raffx",
+    spriteAnimation: { frameWidth: 64, frameHeight: 64, frameCount: 6 },
+  },
+  {
+    id: "solsentry-crash",
+    name: "Crash",
+    role: "SolSentry",
+    // On the sand in front of the SolSentry stand (BuildStandSolSentry, cols
+    // 26-32 / rows 70-76).
+    tileX: 29,
+    tileY: 77,
+    color: 0xff5c5c,
+    dialog: [
+      "Pass me the address. I read the operator behind the token, not just the token.",
+      "SolSentry calls the risk before the rug, and every call stays auditable.",
+      "This one is free. No signup, no wallet.",
+    ],
+    highlights: [
+      { img: "/assets/ui/attention_orange.png", label: "RUG SIGNALS" },
+      { img: "/assets/ui/ico_achievements.png", label: "FREE SCAN" },
+    ],
+    action: { type: "token-scan", label: "Scan a token" },
+    spriteKey: "Crash",
+    spriteAnimation: { frameWidth: 64, frameHeight: 64, frameCount: 6 },
+  },
+  {
+    id: "dungeons-moles",
+    name: "Mole",
+    role: "Dungeons & Moles",
+    // At the mouth of the dungeon south of the beach (BuildDungeousMoles,
+    // cols 42-48 / rows 100-106); row 107 is the open ground in front of it.
+    tileX: 45,
+    tileY: 107,
+    color: 0xc98a3c,
+    dialog: [
+      "Every dungeon hides a path. Not every path wants to be found.",
+      "The map does not exist yet. Take the first step and it appears.",
+      "Keep digging. Some answers are deeper.",
+    ],
+    highlights: [
+      { img: "/assets/ui/controller.png", label: "ROGUELITE" },
+      { img: "/assets/ui/ico_achievements.png", label: "ON CHAIN LOOT" },
+    ],
+    action: { type: "link", label: "Enter the dungeon", url: "https://www.dungeonsandmoles.com/" },
+    spriteKey: "Mole",
+    spriteAnimation: { frameWidth: 64, frameHeight: 64, frameCount: 6 },
   },
 ];

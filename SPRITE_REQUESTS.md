@@ -29,7 +29,7 @@ says what it replaces.
 | **Mech Builder** (Sol Mechs hangar door) | default avatar | own character sheet; mechanic / engineer look |
 | **Stocks Broker** (Stocklana, Sunrise Stock Exchange) | default avatar | own character sheet; trader look |
 | **Hair Specialist** (Superteam Turkey) | dressed from the wardrobe (red mohawk, white tee) | optional own sheet; Turkey red `#E30A17` accent |
-| **8-10 ST Brasil builders** | not in the game yet | one sheet each; they go live together, and meeting all of them will earn the Brazil shirt |
+| **8-10 ST Brasil builders** | 3 delivered and in the city (Raffx / Pegana, Crash / SolSentry, Mole / Dungeons & Moles), the rest not drawn yet | one sheet each, same format as the three delivered: one row of 6 frames at 64x64, idle in place, pink `215,123,186` background. Meeting all of them earns the Brazil shirt, so the list closes only when every builder is in |
 
 ## 2. Outfits: a Solana set
 
