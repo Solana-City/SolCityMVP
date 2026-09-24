@@ -71,6 +71,9 @@ interface RemoteTarget {
   walking?: boolean;
 }
 
+/** Camera follow damping: ~200ms to settle on the player (see startFollow). */
+const CAMERA_LERP = 0.16;
+
 export class CityScene extends Phaser.Scene {
   private avatar!: AvatarSprite;
   private playerBody!: Phaser.Physics.Arcade.Body;
@@ -570,7 +573,16 @@ export class CityScene extends Phaser.Scene {
     // zooms from getValidZooms() are used. Anything else lands source
     // pixels on fractional positions → irregular pixel sizes and blurry
     // outlines — the classic "shimmy" look.
-    this.cameras.main.startFollow(container, true, 1.0, 1.0);
+    // Damping, not a rigid lock. At 1.0 the camera was pinned to the player
+    // every frame, so every step and every correction from the joystick threw
+    // the whole city sideways; on a phone that reads as jitter. 0.16 settles
+    // in about 200ms: the view trails a step behind and catches up, which is
+    // what makes walking feel smooth. `roundPixels` below keeps the art crisp
+    // while the scroll lands between pixels.
+    this.cameras.main.startFollow(container, true, CAMERA_LERP, CAMERA_LERP);
+    // Start ON the player: a fresh camera sits at 0,0 and would otherwise
+    // glide across the map on the first frames.
+    this.cameras.main.centerOn(container.x, container.y);
     this.cameras.main.setZoom(loadZoom());
     this.applyZoomSmoothing(loadZoom());
     this.cameras.main.setBackgroundColor(0x061a2c);
@@ -916,6 +928,9 @@ export class CityScene extends Phaser.Scene {
         const c = this.avatar.getContainer();
         this.playerBody.reset(spot.x, spot.y);
         c.setPosition(spot.x, spot.y);
+        // Fast travel is a cut, not a pan: without this the camera would
+        // slide across the city behind the fade.
+        cam.centerOn(spot.x, spot.y);
         cam.fadeIn(320, 6, 8, 20);
         cam.once(Phaser.Cameras.Scene2D.Events.FADE_IN_COMPLETE, () => {
           travelling = false;
