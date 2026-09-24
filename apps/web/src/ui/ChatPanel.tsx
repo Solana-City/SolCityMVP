@@ -10,8 +10,11 @@ import { DMClient, OPEN_DM_EVENT, resolveRecipient } from "@/game/chat/dmClient"
 import { cachedName, requestNames } from "@/game/names/nameService";
 import type { OnChainMultiplayer } from "@/game/multiplayer/OnChainMultiplayer";
 import { useWallet } from "@solana/wallet-adapter-react";
+import { chamferBox } from "@/ui/chamfer";
 
 const DM_COLOR = "#FFD700";
+const BTN_FRAME = 'url(/assets/branding/ui/frame-btn.png) 18 fill / 4px / 0 round';
+const BTN_FRAME_FILL = 'url(/assets/branding/ui/frame-btn-fill.png) 18 fill / 4px / 0 round';
 
 function short(wallet: string): string {
   return `${wallet.slice(0, 4)}…${wallet.slice(-4)}`;
@@ -294,6 +297,12 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
           : "16px",
         width: isTouch ? "min(280px, calc(100vw - 180px))" : "360px",
         fontFamily: '"Press Start 2P", monospace',
+        borderWidth: 20,
+        borderStyle: "solid",
+        borderColor: "transparent",
+        borderImage: 'url(/assets/branding/ui/frame-chat.png) 64 fill / 20px / 0 round',
+        imageRendering: "pixelated",
+        padding: 6,
       }}
     >
       {showGuide && <ChatGuide touch={isTouch} onClose={() => setShowGuide(false)} />}
@@ -323,9 +332,9 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
           className="ml-auto self-center"
           style={{
             width: 18, height: 18, borderRadius: "50%", flexShrink: 0,
-            background: showGuide ? "rgba(20,241,149,0.18)" : "rgba(10,10,30,0.7)",
-            color: showGuide ? "#14F195" : "#9a9ab5",
-            border: `1px solid ${showGuide ? "rgba(20,241,149,0.5)" : "rgba(153,69,255,0.35)"}`,
+            background: showGuide ? "rgba(183,233,40,0.18)" : "rgba(10,10,30,0.7)",
+            color: showGuide ? "#B7E928" : "#9a9ab5",
+            border: `1px solid ${showGuide ? "rgba(183,233,40,0.5)" : "rgba(153,69,255,0.35)"}`,
             fontFamily: "Georgia, serif", fontStyle: "italic", fontWeight: "bold", fontSize: 11,
             lineHeight: "16px", padding: 0, cursor: "pointer",
           }}
@@ -363,10 +372,12 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
       {/* Message log */}
       {isExpanded && dmMode && !dmPeer && (
         <div
-          className="mb-0.5 p-2 rounded-b"
+          className="mb-0.5 p-2"
           style={{
             background: "linear-gradient(180deg, rgba(15,18,40,0.96) 0%, rgba(8,10,24,0.96) 100%)",
-            minHeight: 92, border: "1px solid rgba(153,69,255,0.2)", borderTop: "none",
+            minHeight: 92,
+            borderWidth: 4, borderStyle: "solid", borderColor: "transparent",
+            borderImage: BTN_FRAME, imageRendering: "pixelated",
             color: "#9a9ab5", fontSize: 8, lineHeight: 1.8,
           }}
         >
@@ -378,15 +389,15 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
       {isExpanded && !(dmMode && !dmPeer) && (
         <div
           ref={logRef}
-          className="overflow-y-auto mb-0.5 p-2 rounded-b"
+          className="overflow-y-auto mb-0.5 p-2"
           style={{
             background: "linear-gradient(180deg, rgba(15,18,40,0.96) 0%, rgba(8,10,24,0.96) 100%)",
             // With the keyboard up in landscape there is very little height
             // left, so the log gives way and keeps the input on screen.
             maxHeight: typing && isTouch ? Math.max(56, keyboard.visible - 130) : 210,
             minHeight: typing && isTouch ? 0 : 92,
-            border: "1px solid rgba(153,69,255,0.2)",
-            borderTop: "none",
+            borderWidth: 4, borderStyle: "solid", borderColor: "transparent",
+            borderImage: BTN_FRAME, imageRendering: "pixelated",
             backdropFilter: "blur(3px)",
             overflowX: "hidden", // long words wrap (below) instead of scrolling sideways
           }}
@@ -411,12 +422,12 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
       {/* Emoji bar */}
       {showEmojis && (
         <div
-          className="flex gap-1 p-1.5 rounded mb-0.5"
-          style={{
+          className="flex gap-1 p-1.5 mb-0.5"
+          style={chamferBox(6, {
             background: "rgba(10,10,30,0.92)",
             border: "1px solid rgba(153,69,255,0.2)",
             backdropFilter: "blur(2px)",
-          }}
+          })}
         >
           {EMOJI_REGISTRY.map((em) => (
             <button
@@ -428,8 +439,8 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
                 gameRef?.events.emit("emoji:trigger", em);
                 setShowEmojis(false);
               }}
-              className="px-2 py-1 rounded text-xs cursor-pointer"
-              style={{
+              className="px-2 py-1 text-xs cursor-pointer"
+              style={chamferBox(4, {
                 background: `${em.color}15`,
                 color: em.color,
                 border: `1px solid ${em.color}30`,
@@ -438,7 +449,7 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
                 display: "flex",
                 alignItems: "center",
                 gap: 4,
-              }}
+              })}
               title={`${em.label} [${em.key}]`}
             >
               <span>{em.symbol}</span>
@@ -448,10 +459,10 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
       )}
 
       {notice && (
-        <div className="mb-0.5 px-2 py-1 rounded" style={{
-          background: "rgba(255,80,80,0.12)", border: "1px solid rgba(255,80,80,0.4)",
+        <div className="mb-0.5 px-2 py-1" style={chamferBox(4, {
+          background: "rgba(255,80,80,0.12)", border: "1px solid rgba(255,80,80,0.4)", 
           color: "#ff8a8a", fontSize: 7, lineHeight: 1.6,
-        }}>
+        })}>
           {notice}
         </div>
       )}
@@ -460,11 +471,13 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
       <div className="flex gap-1">
         <button
           onClick={() => { setShowEmojis(v => !v); }}
-          className="px-2 rounded text-sm cursor-pointer"
+          className="cursor-pointer flex items-center justify-center"
           style={{
+            width: 28, height: 28, flexShrink: 0,
             background: "rgba(10,10,30,0.94)",
-            color: showEmojis ? "#14F195" : "#555566",
-            border: "1px solid rgba(153,69,255,0.2)",
+            color: showEmojis ? "#B7E928" : "#555566",
+            borderWidth: 4, borderStyle: "solid", borderColor: "transparent",
+            borderImage: BTN_FRAME, imageRendering: "pixelated",
           }}
           title="Emotes"
         >
@@ -475,11 +488,13 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
         </button>
         <button
           onClick={() => { window.dispatchEvent(new Event("solcity:openExpressionWheel")); setShowEmojis(false); }}
-          className="px-2 rounded text-sm cursor-pointer"
+          className="cursor-pointer flex items-center justify-center"
           style={{
+            width: 28, height: 28, flexShrink: 0,
             background: "rgba(10,10,30,0.94)",
             color: "#c084fc",
-            border: "1px solid rgba(153,69,255,0.2)",
+            borderWidth: 4, borderStyle: "solid", borderColor: "transparent",
+            borderImage: BTN_FRAME, imageRendering: "pixelated",
           }}
           title="Face expressions"
         >
@@ -499,11 +514,13 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
           enterKeyHint="send"
           placeholder={placeholder}
           maxLength={140}
-          className="flex-1 px-2 py-1.5 rounded outline-none"
+          className="flex-1 px-2 outline-none"
           style={{
+            height: 28,
             background: "rgba(10,10,30,0.94)",
             color: "#d9d9ec",
-            border: "1px solid rgba(153,69,255,0.2)",
+            borderWidth: 4, borderStyle: "solid", borderColor: "transparent",
+            borderImage: BTN_FRAME, imageRendering: "pixelated",
             fontFamily: '"Press Start 2P", monospace',
             fontSize: 8,
           }}
@@ -516,11 +533,13 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
             onPointerDown={(e) => { if (!isTouch) e.preventDefault(); }}
             onClick={() => void handleSend()}
             disabled={!input.trim() || busy}
-            className="px-3 rounded cursor-pointer"
+            className="cursor-pointer flex items-center justify-center"
             style={{
-              background: input.trim() ? "rgba(20,241,149,0.18)" : "rgba(10,10,30,0.94)",
-              color: input.trim() ? "#14F195" : "#555566",
-              border: `1px solid ${input.trim() ? "rgba(20,241,149,0.45)" : "rgba(153,69,255,0.2)"}`,
+              width: 28, height: 28, flexShrink: 0,
+              background: input.trim() ? "rgba(183,233,40,0.18)" : "rgba(10,10,30,0.94)",
+              color: input.trim() ? "#B7E928" : "#555566",
+              borderWidth: 4, borderStyle: "solid", borderColor: "transparent",
+              borderImage: BTN_FRAME, imageRendering: "pixelated",
               fontFamily: '"Press Start 2P", monospace',
               fontSize: 10,
               WebkitTapHighlightColor: "transparent",
@@ -539,19 +558,19 @@ function Chip({ label, active, unread = 0, onClick }: { label: string; active: b
   return (
     <button
       onClick={onClick}
-      className="px-2 py-1 rounded relative"
-      style={{
+      className="px-2 py-1 relative"
+      style={chamferBox(4, {
         flexShrink: 0, whiteSpace: "nowrap", cursor: "pointer", fontSize: 7,
         fontFamily: '"Press Start 2P", monospace',
         background: active ? "rgba(255,215,0,0.14)" : "transparent",
         color: active ? DM_COLOR : "#8a8aa5",
         border: `1px solid ${active ? "rgba(255,215,0,0.5)" : "rgba(153,69,255,0.25)"}`,
-      }}
+      })}
     >
       {label}
       {unread > 0 && (
         <span style={{
-          position: "absolute", top: -3, right: -3, width: 7, height: 7, borderRadius: "50%",
+          position: "absolute", top: 3, right: 3, width: 6, height: 6, borderRadius: "50%",
           background: DM_COLOR,
         }} />
       )}
@@ -575,17 +594,28 @@ function TabButton({
   return (
     <button
       onClick={onClick}
-      className="px-2 py-1 rounded-t transition-colors relative"
+      className="px-2 py-1 transition-colors relative"
       style={{
-        background: active ? "rgba(10,10,30,0.92)" : "rgba(10,10,30,0.5)",
+        background: "rgba(10,10,30,0.5)",
         color: active ? color : "#555566",
-        border: "none",
+        borderWidth: 4, borderStyle: "solid", borderColor: "transparent",
+        borderImage: BTN_FRAME, imageRendering: "pixelated",
         cursor: "pointer",
-        borderBottom: active ? `2px solid ${color}` : "2px solid transparent",
         fontSize: 8,
       }}
     >
-      {label}
+      {active && (
+        <span
+          aria-hidden
+          style={{
+            position: "absolute", inset: 0,
+            borderWidth: 4, borderStyle: "solid", borderColor: "transparent",
+            borderImage: BTN_FRAME_FILL, imageRendering: "pixelated",
+            opacity: 0.3,
+          }}
+        />
+      )}
+      <span style={{ position: "relative" }}>{label}</span>
       {badge !== undefined && badge > 0 && (
         <span
           className="absolute -top-1 -right-1 px-1 rounded-full"

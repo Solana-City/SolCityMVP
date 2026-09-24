@@ -16,11 +16,12 @@
 import { useState } from "react";
 import { LockIcon } from "@/ui/PixelIcons";
 import { track } from "@/game/telemetry/track";
+import { chamferBox } from "@/ui/chamfer";
 
 const PIXEL = '"Press Start 2P", monospace';
 const MAGENTA = "#c026d3";
-const CYAN = "#00D1FF";
-const GREEN = "#14F195";
+const CYAN = "#14F0C6";
+const GREEN = "#B7E928";
 
 type Area = "private" | "er" | "per" | "vrf";
 
@@ -209,32 +210,30 @@ const eyebrow: React.CSSProperties = {
   marginBottom: 8,
 };
 
-const actionCard: React.CSSProperties = {
+const actionCard: React.CSSProperties = chamferBox(10, {
   width: "100%",
   display: "flex",
   flexDirection: "column",
   gap: 6,
   textAlign: "left",
   padding: "12px 14px",
-  borderRadius: 10,
   background: "rgba(192,38,211,0.10)",
   border: `1px solid ${MAGENTA}55`,
   cursor: "pointer",
-};
+});
 
 function topicCard(color: string): React.CSSProperties {
-  return {
+  return chamferBox(10, {
     width: "100%",
     display: "flex",
     flexDirection: "column",
     gap: 5,
     textAlign: "left",
     padding: "11px 14px",
-    borderRadius: 10,
     background: "rgba(255,255,255,0.03)",
     border: `1px solid ${color}33`,
     cursor: "pointer",
-  };
+  });
 }
 
 const pointRow: React.CSSProperties = {
@@ -256,23 +255,21 @@ const pointNumber: React.CSSProperties = {
   justifyContent: "center",
 };
 
-const cityNote: React.CSSProperties = {
+const cityNote: React.CSSProperties = chamferBox(8, {
   marginTop: 14,
   padding: "10px 12px",
-  borderRadius: 8,
   background: "rgba(255,255,255,0.02)",
   border: "1px solid",
-};
+});
 
-const docsLink: React.CSSProperties = {
+const docsLink: React.CSSProperties = chamferBox(8, {
   fontFamily: PIXEL,
   fontSize: 8,
   padding: "10px 0",
-  borderRadius: 8,
   border: "1px solid rgba(153,69,255,0.45)",
   color: "#c084fc",
   textDecoration: "none",
-};
+});
 
 const backButton: React.CSSProperties = {
   fontFamily: PIXEL,

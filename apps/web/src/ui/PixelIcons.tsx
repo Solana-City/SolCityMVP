@@ -122,14 +122,14 @@ export function RankBadge({ rank, size = 18 }: { rank: number; size?: number }) 
 
 /** Quest/checklist state as a pixel box: empty, done (gold), claimed (green check). */
 export function CheckBox({ state, size = 14 }: { state: "todo" | "done" | "claimed"; size?: number }) {
-  const border = state === "claimed" ? "#14F195" : state === "done" ? "#FFD700" : "#555577";
+  const border = state === "claimed" ? "#B7E928" : state === "done" ? "#FFD700" : "#555577";
   return (
     <span style={{
       display: "inline-flex", alignItems: "center", justifyContent: "center", width: size, height: size, flexShrink: 0,
       border: `2px solid ${border}`, background: state === "todo" ? "transparent" : `${border}33`,
     }}>
       {state === "claimed" && (
-        <Bitmap size={size - 4} color="#14F195" rows={[
+        <Bitmap size={size - 4} color="#B7E928" rows={[
           "......#",
           ".....##",
           "#...##.",

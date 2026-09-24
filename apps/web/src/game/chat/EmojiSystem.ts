@@ -12,11 +12,11 @@ export interface EmojiDef {
 }
 
 export const EMOJI_REGISTRY: EmojiDef[] = [
-  { id: "wave", label: "Wave", key: "1", symbol: "gm!", color: "#14F195", artKey: "emoji-wave", uiSymbol: "👋" },
+  { id: "wave", label: "Wave", key: "1", symbol: "gm!", color: "#B7E928", artKey: "emoji-wave", uiSymbol: "👋" },
   { id: "heart", label: "Heart", key: "2", symbol: "<3", color: "#F72585", artKey: "emoji-heart", uiSymbol: "💜" },
   { id: "fire", label: "Fire", key: "3", symbol: "LFG", color: "#FF6B35", artKey: "emoji-fire", uiSymbol: "🔥" },
   { id: "laugh", label: "Laugh", key: "4", symbol: "lol", color: "#FFD700", artKey: "emoji-laugh", uiSymbol: "😆" },
-  { id: "think", label: "Think", key: "5", symbol: "hmm", color: "#00D1FF", artKey: "emoji-think", uiSymbol: "🤔" },
+  { id: "think", label: "Think", key: "5", symbol: "hmm", color: "#14F0C6", artKey: "emoji-think", uiSymbol: "🤔" },
   { id: "gg", label: "GG", key: "6", symbol: "GG", color: "#9945FF", artKey: "emoji-gg", uiSymbol: "🏆" },
 ];
 

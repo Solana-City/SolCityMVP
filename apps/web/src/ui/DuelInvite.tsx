@@ -13,6 +13,7 @@ import { useEffect, useRef, useState } from "react";
 import { PublicKey } from "@solana/web3.js";
 import { watchIncomingDuel, type IncomingDuel } from "@/game/solmechs/pvp/chain/challengeWatch";
 import { DUEL_INVITE_EVENT } from "@/ui/PlayerCard";
+import { chamferBox } from "@/ui/chamfer";
 import { cachedName, onNames, requestNames } from "@/game/names/nameService";
 import { Bust } from "@/game/minigames/sol-mechs/SquadPortraits";
 import { PRESET_BUILDS } from "@/game/solmechs/data/catalog";
@@ -72,9 +73,11 @@ export default function DuelInvite({ wallet }: { wallet: string | null }) {
       left: "50%", transform: "translateX(-50%)",
       bottom: "max(env(safe-area-inset-bottom, 0px), 16px)",
       width: "min(340px, calc(100vw - 24px))",
-      padding: "12px 14px", borderRadius: 14,
+      padding: "12px 14px",
       background: "rgba(10,12,24,0.95)",
-      border: "1px solid rgba(20,241,149,0.45)",
+      borderWidth: 20, borderStyle: "solid", borderColor: "transparent",
+      borderImage: 'url(/assets/branding/ui/frame-panel-test.png) 64 fill / 20px / 0 round',
+      imageRendering: "pixelated",
       boxShadow: "0 10px 40px rgba(0,0,0,0.55)",
       fontFamily: PIX, color: "#d0d0f0",
       display: "flex", alignItems: "center", gap: 10,
@@ -83,26 +86,26 @@ export default function DuelInvite({ wallet }: { wallet: string | null }) {
         <Bust build={PRESET_BUILDS.titan} size={34} />
       </span>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 7, color: "#14F195", marginBottom: 4 }}>DUEL INVITE</div>
+        <div style={{ fontSize: 7, color: "#B7E928", marginBottom: 4 }}>DUEL INVITE</div>
         <div style={{ fontSize: 8, lineHeight: 1.5 }}>{who} wants a 3v3</div>
       </div>
       <button
         onClick={accept}
-        style={{
-          fontFamily: PIX, fontSize: 7, padding: "9px 10px", borderRadius: 8, border: "none",
-          background: "#14F195", color: "#04140c", cursor: "pointer", flexShrink: 0,
-        }}
+        style={chamferBox(8, {
+          fontFamily: PIX, fontSize: 7, padding: "9px 10px", border: "none",
+          background: "#B7E928", color: "#04140c", cursor: "pointer", flexShrink: 0,
+        })}
       >
         FIGHT
       </button>
       <button
         onClick={decline}
         aria-label="Decline"
-        style={{
-          fontFamily: PIX, fontSize: 7, padding: "9px 8px", borderRadius: 8,
+        style={chamferBox(8, {
+          fontFamily: PIX, fontSize: 7, padding: "9px 8px", 
           background: "transparent", border: "1px solid rgba(139,139,167,0.4)",
           color: "#8b8ba7", cursor: "pointer", flexShrink: 0,
-        }}
+        })}
       >
         LATER
       </button>

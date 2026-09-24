@@ -15,7 +15,7 @@ export interface CategoryMeta {
 
 export const CATEGORY_META: Record<MinimapCategory, CategoryMeta> = {
   guide:     { label: "Guide",       hint: "Start here",                    color: "#facc15" },
-  defi:      { label: "Protocols",   hint: "Swap, send, earn, privacy",     color: "#14F195" },
+  defi:      { label: "Protocols",   hint: "Swap, send, earn, privacy",     color: "#B7E928" },
   games:     { label: "Mini-games",  hint: "Play and win rewards",          color: "#FFA94D" },
   community: { label: "Community",   hint: "Projects, links and friends",   color: "#38bdf8" },
   landmark:  { label: "Places",      hint: "Buildings and landmarks",       color: "#c084fc" },

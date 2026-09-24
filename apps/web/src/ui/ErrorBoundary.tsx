@@ -2,6 +2,7 @@
 
 import React from "react";
 import { reloadWithReason } from "./reloadReason";
+import { chamferBox } from "@/ui/chamfer";
 
 interface Props {
   children: React.ReactNode;
@@ -147,13 +148,13 @@ export default class ErrorBoundary extends React.Component<Props, State> {
             {error.message || "An unexpected error occurred."}
           </div>
           {error.stack && (
-            <pre style={{
+            <pre style={chamferBox(6, {
               color: "#8888bb", fontSize: 7, maxWidth: 420, maxHeight: 200,
               overflow: "auto", textAlign: "left", whiteSpace: "pre-wrap",
-              background: "rgba(255,255,255,0.06)", borderRadius: 6,
+              background: "rgba(255,255,255,0.06)", 
               padding: "8px 10px", margin: "8px 0 0", lineHeight: 1.6,
               border: "1px solid rgba(255,255,255,0.08)",
-            }}>
+            })}>
               {error.stack.slice(0, 1200)}
             </pre>
           )}
@@ -161,9 +162,8 @@ export default class ErrorBoundary extends React.Component<Props, State> {
 
         <button
           onClick={this.handleReload}
-          style={{
+          style={chamferBox(10, {
             padding: "12px 28px",
-            borderRadius: 10,
             background: "rgba(153,69,255,0.15)",
             border: "1px solid rgba(153,69,255,0.5)",
             color: "#9945FF",
@@ -171,7 +171,7 @@ export default class ErrorBoundary extends React.Component<Props, State> {
             fontWeight: "bold",
             fontFamily: '"Press Start 2P", monospace',
             cursor: "pointer",
-          }}
+          })}
         >
           Reload game
         </button>

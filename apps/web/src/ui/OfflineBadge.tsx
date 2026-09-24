@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { chamferBox } from "@/ui/chamfer";
 
 /**
  * "Nobody can see you" badge.
@@ -45,13 +46,13 @@ export default function OfflineBadge() {
   if (!hidden) return null;
 
   return (
-    <div style={{
+    <div style={chamferBox(8, {
       position: "absolute", top: "calc(env(safe-area-inset-top, 0px) + 8px)", left: "50%",
       transform: "translateX(-50%)", zIndex: 40, display: "flex", alignItems: "center", gap: 10,
-      padding: "7px 10px", borderRadius: 8, pointerEvents: "auto",
+      padding: "7px 10px", pointerEvents: "auto",
       background: "rgba(18,8,12,0.94)", border: `1px solid ${DANGER}66`,
       boxShadow: "0 4px 16px rgba(0,0,0,0.5)",
-    }}>
+    })}>
       <span style={{
         width: 8, height: 8, borderRadius: "50%", background: DANGER, flexShrink: 0,
         animation: "ob-pulse 1.4s ease-in-out infinite",
@@ -70,10 +71,10 @@ export default function OfflineBadge() {
           (globalThis as any).__solCityGameEvents?.emit("multiplayer:retry");
         }}
         disabled={retrying}
-        style={{
-          fontFamily: PIXEL, fontSize: 7, padding: "6px 8px", borderRadius: 6, cursor: retrying ? "default" : "pointer",
+        style={chamferBox(6, {
+          fontFamily: PIXEL, fontSize: 7, padding: "6px 8px", cursor: retrying ? "default" : "pointer",
           background: retrying ? "#3a2430" : DANGER, color: retrying ? "#b9b9cc" : "#1a0a0e", border: "none",
-        }}
+        })}
       >
         {retrying ? "TRYING..." : "FIX"}
       </button>

@@ -5,6 +5,8 @@ import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import { useCallback, useEffect, useState } from "react";
 import GuestNotice from "./GuestNotice";
 import ConnectingOverlay from "./ConnectingOverlay";
+import { chamferBox } from "@/ui/chamfer";
+import ChamferGlow from "@/ui/ChamferGlow";
 
 export default function ConnectScreen() {
   const { connected } = useWallet();
@@ -102,8 +104,9 @@ export default function ConnectScreen() {
           alignItems: "center",
           gap: 16,
           background: "rgba(6,8,20,0.58)",
-          border: "1px solid rgba(153,69,255,0.28)",
-          borderRadius: 20,
+          borderWidth: 20, borderStyle: "solid", borderColor: "transparent",
+          borderImage: 'url(/assets/branding/ui/frame-panel-test.png) 64 fill / 20px / 0 round',
+          imageRendering: "pixelated",
           padding: "28px 32px 22px",
           backdropFilter: "blur(16px)",
           boxShadow: "0 8px 40px rgba(0,0,0,0.45)",
@@ -131,35 +134,38 @@ export default function ConnectScreen() {
           </div>
         </div>
 
-        <button
-          onClick={openModal}
-          style={{
-            fontFamily: '"Press Start 2P", monospace',
-            fontSize: 10,
-            padding: "18px 52px",
-            background: "rgba(153,69,255,0.9)",
-            color: "#fff",
-            border: "1px solid rgba(200,150,255,0.45)",
-            borderRadius: 50,
-            cursor: "pointer",
-            letterSpacing: 2,
-            width: "100%",
-            boxShadow: "0 0 28px rgba(153,69,255,0.55), 0 4px 16px rgba(0,0,0,0.4)",
-            transition: "background 0.15s, box-shadow 0.15s, transform 0.1s",
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.background = "rgba(153,69,255,1)";
-            e.currentTarget.style.boxShadow = "0 0 42px rgba(153,69,255,0.8), 0 4px 16px rgba(0,0,0,0.4)";
-            e.currentTarget.style.transform = "translateY(-2px)";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.background = "rgba(153,69,255,0.9)";
-            e.currentTarget.style.boxShadow = "0 0 28px rgba(153,69,255,0.55), 0 4px 16px rgba(0,0,0,0.4)";
-            e.currentTarget.style.transform = "translateY(0)";
-          }}
+        <ChamferGlow
+          glow="drop-shadow(0 0 14px rgba(153,69,255,0.55)) drop-shadow(0 4px 8px rgba(0,0,0,0.4))"
+          style={{ width: "100%", transition: "filter 0.15s" }}
+          onMouseEnter={(e) => { e.currentTarget.style.filter = "drop-shadow(0 0 21px rgba(153,69,255,0.8)) drop-shadow(0 4px 8px rgba(0,0,0,0.4))"; }}
+          onMouseLeave={(e) => { e.currentTarget.style.filter = "drop-shadow(0 0 14px rgba(153,69,255,0.55)) drop-shadow(0 4px 8px rgba(0,0,0,0.4))"; }}
         >
-          CONNECT WALLET
-        </button>
+          <button
+            onClick={openModal}
+            style={chamferBox(16, {
+              fontFamily: '"Press Start 2P", monospace',
+              fontSize: 10,
+              padding: "18px 52px",
+              background: "rgba(153,69,255,0.9)",
+              color: "#fff",
+              border: "1px solid rgba(200,150,255,0.45)",
+              cursor: "pointer",
+              letterSpacing: 2,
+              width: "100%",
+              transition: "background 0.15s, transform 0.1s",
+            })}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = "rgba(153,69,255,1)";
+              e.currentTarget.style.transform = "translateY(-2px)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = "rgba(153,69,255,0.9)";
+              e.currentTarget.style.transform = "translateY(0)";
+            }}
+          >
+            CONNECT WALLET
+          </button>
+        </ChamferGlow>
 
         <button
           onClick={() => setGuestNotice(true)}

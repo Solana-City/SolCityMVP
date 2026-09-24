@@ -6,6 +6,7 @@ import { useFlags } from "@/ui/useFlags";
 import { track } from "@/game/telemetry/track";
 import { useNickname } from "@/ui/useNicknames";
 import { OPEN_DM_EVENT } from "@/game/chat/dmEvents";
+import { chamferBox } from "@/ui/chamfer";
 
 /** The city opens Sol Mechs on this, with the player to duel. */
 export const DUEL_INVITE_EVENT = "solcity:solmechs-duel";
@@ -70,8 +71,9 @@ export default function PlayerCard({ gameRef, wallet, displayName, myWallet, onC
         style={{
           width: 280,
           background: "rgba(10,12,24,0.94)",
-          border: "1px solid rgba(153,69,255,0.25)",
-          borderRadius: 16,
+          borderWidth: 20, borderStyle: "solid", borderColor: "transparent",
+          borderImage: 'url(/assets/branding/ui/frame-panel-test.png) 64 fill / 20px / 0 round',
+          imageRendering: "pixelated",
           boxShadow: "0 12px 48px rgba(0,0,0,0.55)",
           fontFamily: '"Press Start 2P", monospace',
           color: "#d0d0f0",
@@ -83,7 +85,7 @@ export default function PlayerCard({ gameRef, wallet, displayName, myWallet, onC
           <span style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 8, color: "#c084fc" }}>
             {name}
           </span>
-          <button onClick={onClose} style={{ background: "none", border: "none", color: "#555", fontSize: 13, cursor: "pointer" }}>
+          <button onClick={onClose} style={{ background: "none", border: "none", color: "#14F0C6", fontSize: 13, cursor: "pointer" }}>
             ×
           </button>
         </div>
@@ -92,20 +94,20 @@ export default function PlayerCard({ gameRef, wallet, displayName, myWallet, onC
         <div style={{ fontSize: 7, color: "#555577", marginBottom: 5 }}>
           WALLET{isSelf ? " (you)" : ""}
         </div>
-        <div style={{
+        <div style={chamferBox(8, {
           display: "flex", alignItems: "center", gap: 8,
-          background: "rgba(255,255,255,0.03)", borderRadius: 8, padding: "8px 10px",
-        }}>
+          background: "rgba(255,255,255,0.03)", padding: "8px 10px",
+        })}>
           <span style={{ fontSize: 9, color: "#9a9ad0", flex: 1, minWidth: 0 }}>{short}</span>
           <button
             onClick={copyWallet}
-            style={{
+            style={chamferBox(6, {
               fontFamily: '"Press Start 2P", monospace', fontSize: 7,
-              color: copied ? "#14F195" : "#c084fc",
+              color: copied ? "#B7E928" : "#c084fc",
               background: "rgba(153,69,255,0.12)",
               border: "1px solid rgba(153,69,255,0.3)",
-              borderRadius: 6, padding: "5px 8px", cursor: "pointer", flexShrink: 0,
-            }}
+              padding: "5px 8px", cursor: "pointer", flexShrink: 0,
+            })}
             title="Copy wallet address"
           >
             {copied ? "Copied" : "Copy"}
@@ -113,7 +115,7 @@ export default function PlayerCard({ gameRef, wallet, displayName, myWallet, onC
         </div>
 
         <div style={{ margin: "12px 0 4px" }}>
-          <Stat label="Score" value={player?.score ?? 0} color="#14F195" />
+          <Stat label="Score" value={player?.score ?? 0} color="#B7E928" />
         </div>
 
         {!isSelf && flags.chat && (
@@ -122,12 +124,12 @@ export default function PlayerCard({ gameRef, wallet, displayName, myWallet, onC
               window.dispatchEvent(new CustomEvent(OPEN_DM_EVENT, { detail: { wallet, name } }));
               onClose();
             }}
-            style={{
-              width: "100%", marginTop: 10, padding: "11px 0", borderRadius: 8,
+            style={chamferBox(8, {
+              width: "100%", marginTop: 10, padding: "11px 0", 
               fontFamily: '"Press Start 2P", monospace', fontSize: 7, letterSpacing: 1,
               color: "#FFD700", background: "rgba(255,215,0,0.1)",
               border: "1px solid rgba(255,215,0,0.45)", cursor: "pointer",
-            }}
+            })}
           >
             MESSAGE
           </button>
@@ -142,12 +144,12 @@ export default function PlayerCard({ gameRef, wallet, displayName, myWallet, onC
               }));
               onClose();
             }}
-            style={{
-              width: "100%", marginTop: 10, padding: "11px 0", borderRadius: 8,
+            style={chamferBox(8, {
+              width: "100%", marginTop: 10, padding: "11px 0", 
               fontFamily: '"Press Start 2P", monospace', fontSize: 7, letterSpacing: 1,
-              color: "#04140c", background: "linear-gradient(135deg, #14F195, #0db876)",
+              color: "#04140c", background: "linear-gradient(135deg, #B7E928, #0db876)",
               border: "none", cursor: "pointer",
-            }}
+            })}
           >
             MECH BATTLE
           </button>
@@ -167,7 +169,7 @@ export default function PlayerCard({ gameRef, wallet, displayName, myWallet, onC
 
 function Stat({ label, value, color }: { label: string; value: number; color: string }) {
   return (
-    <div style={{ background: "rgba(255,255,255,0.03)", borderRadius: 8, padding: "8px 10px" }}>
+    <div style={chamferBox(8, { background: "rgba(255,255,255,0.03)", padding: "8px 10px" })}>
       <div style={{ fontSize: 7, color: "#555577" }}>{label}</div>
       <div style={{ fontSize: 11, color, fontWeight: 600 }}>{value}</div>
     </div>

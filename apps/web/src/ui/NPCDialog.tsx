@@ -4,6 +4,8 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import type { NPCDefinition, NPCAction } from "@/game/config/npcRegistry";
 import NPCPortrait from "./NPCPortrait";
 import { profileManager } from "@/game/config/profileManager";
+import { chamferBox } from "@/ui/chamfer";
+import ChamferGlow from "@/ui/ChamferGlow";
 
 function useIsTouch() {
   const [isTouch, setIsTouch] = useState(false);
@@ -155,32 +157,31 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
   const color       = `#${npc.color.toString(16).padStart(6, "0")}`;
   // Only worth offering while there is still text between here and the action.
   const showSkip    = npc.dialog.length > 1 && !isLastLine;
-  const skipStyle: React.CSSProperties = {
+  const skipStyle: React.CSSProperties = chamferBox(6, {
     background: "transparent",
     border: `1px solid ${color}66`,
     color,
     fontFamily: '"Press Start 2P", monospace',
     fontSize: "7px",
     padding: "5px 8px",
-    borderRadius: 6,
     cursor: "pointer",
     flexShrink: 0,
     whiteSpace: "nowrap",
-  };
+  });
 
   /** Picture cards for the NPC, on the last line once it has typed out. */
   const Highlights = ({ compact }: { compact?: boolean }) =>
     npc.highlights && npc.highlights.length > 0 && isLastLine && doneTyping ? (
       <div style={{ display: "flex", gap: compact ? 6 : 10, margin: compact ? "0 0 10px" : "0 16px 14px", justifyContent: "flex-start" }}>
         {npc.highlights.map((h) => (
-          <div key={h.label} style={{
+          <div key={h.label} style={chamferBox(8, {
             display: "flex", alignItems: "center", gap: 6, padding: compact ? "4px 7px 4px 4px" : "6px 10px 6px 6px",
-            borderRadius: 8, background: `${color}14`, border: `1px solid ${color}44`, minWidth: 0,
-          }}>
-            <span style={{
-              width: compact ? 24 : 30, height: compact ? 24 : 30, flexShrink: 0, borderRadius: 6,
+            background: `${color}14`, border: `1px solid ${color}44`, minWidth: 0,
+          })}>
+            <span style={chamferBox(6, {
+              width: compact ? 24 : 30, height: compact ? 24 : 30, flexShrink: 0, 
               display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.25)", overflow: "hidden",
-            }}>
+            })}>
               {h.sheet ? (
                 <span aria-hidden style={{
                   width: compact ? 24 : 30, height: compact ? 24 : 30, display: "block",
@@ -225,8 +226,8 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
   // avatar. Larger text and touch targets than the previous pill design.
   if (isTouch) {
     return (
-      <div
-        onClick={onBubbleClick}
+      <ChamferGlow
+        glow={`drop-shadow(0 -4px 14px ${color}40)`}
         style={{
           position:     "fixed",
           bottom:       "calc(env(safe-area-inset-bottom, 0px) + 12px)",
@@ -235,16 +236,19 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
           width:        "calc(100vw - 20px)",
           maxWidth:     480,
           zIndex:       30,
+        }}
+      >
+      <div
+        onClick={onBubbleClick}
+        style={chamferBox(14, {
           fontFamily:   '"Press Start 2P", monospace',
           background:   "rgba(8,8,24,0.96)",
           border:       `1px solid ${color}55`,
           borderTop:    `3px solid ${color}`,
-          borderRadius: 14,
           padding:      "12px 14px 14px",
           backdropFilter: "blur(8px)",
           cursor:       isLastLine && doneTyping ? "default" : "pointer",
-          boxShadow:    `0 -4px 28px ${color}20`,
-        }}
+        })}
       >
         {/* Header: portrait + name/role + close */}
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
@@ -273,7 +277,7 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
           <button
             onClick={(e) => { e.stopPropagation(); onClose(); }}
             style={{
-              background: "none", border: "none", color: "#5a5a72",
+              background: "none", border: "none", color: "#14F0C6",
               fontSize: "17px", cursor: "pointer", padding: "0 4px",
               lineHeight: 1, flexShrink: 0, touchAction: "manipulation",
             }}
@@ -305,18 +309,17 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
           {isLastLine && doneTyping ? (
             <button
               onClick={(e) => { e.stopPropagation(); onAction(npc.action); }}
-              style={{
+              style={chamferBox(8, {
                 background:  color,
                 border:      "none",
                 color:       "#000",
                 fontFamily:  '"Press Start 2P", monospace',
                 fontSize: "7px",
                 padding:     "9px 16px",
-                borderRadius: 8,
                 cursor:      "pointer",
                 fontWeight:  "bold",
                 touchAction: "manipulation",
-              }}
+              })}
             >
               {npc.action.label.toUpperCase()}
             </button>
@@ -353,6 +356,7 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
           }
         `}</style>
       </div>
+      </ChamferGlow>
     );
   }
 
@@ -374,18 +378,9 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
           </div>
         )}
 
-        <div
-          className="relative rounded-xl flex-1"
-          onClick={onBubbleClick}
-          style={{
-            background:     "rgba(8,8,24,0.96)",
-            border:         `2px solid ${color}`,
-            backdropFilter: "blur(6px)",
-            cursor:         isLastLine && doneTyping ? "default" : "pointer",
-            boxShadow:      `0 0 36px ${color}20`,
-          }}
-        >
-          {/* Bubble arrow pointing at portrait */}
+        <ChamferGlow className="relative flex-1" glow={`drop-shadow(0 0 16px ${color}40)`}>
+          {/* Bubble arrow pointing at portrait. It sits outside the clipped
+              box below, so the chamfer does not cut it off. */}
           {portraitVisible && (
             <>
               <div className="absolute" style={{
@@ -399,9 +394,20 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
                 borderTop: "10px solid transparent",
                 borderBottom: "10px solid transparent",
                 borderRight: "12px solid rgba(8,8,24,0.96)",
+                zIndex: 1,
               }} aria-hidden />
             </>
           )}
+        <div
+          className="relative"
+          onClick={onBubbleClick}
+          style={chamferBox(12, {
+            background:     "rgba(8,8,24,0.96)",
+            border:         `2px solid ${color}`,
+            backdropFilter: "blur(6px)",
+            cursor:         isLastLine && doneTyping ? "default" : "pointer",
+          })}
+        >
 
           {/* Header */}
           <div style={{ padding: "14px 16px 0" }}>
@@ -420,7 +426,7 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
               <button
                 onClick={(e) => { e.stopPropagation(); onClose(); }}
                 style={{
-                  background: "none", border: "none", color: "#5a5a72",
+                  background: "none", border: "none", color: "#14F0C6",
                   fontSize: "16px", cursor: "pointer", padding: "2px 6px",
                   lineHeight: 1,
                 }}
@@ -480,17 +486,16 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
             {isLastLine && doneTyping && (
               <button
                 onClick={(e) => { e.stopPropagation(); onAction(npc.action); }}
-                style={{
+                style={chamferBox(8, {
                   background:  color,
                   border:      "none",
                   color:       "#000",
                   fontFamily:  '"Press Start 2P", monospace',
                   fontSize: "7px",
                   padding:     "10px 20px",
-                  borderRadius: 8,
                   cursor:      "pointer",
                   fontWeight:  "bold",
-                }}
+                })}
               >
                 {npc.action.label.toUpperCase()}
               </button>
@@ -504,6 +509,7 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
             }
           `}</style>
         </div>
+        </ChamferGlow>
       </div>
     </div>
   );

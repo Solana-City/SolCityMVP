@@ -16,6 +16,7 @@ import {
   type MinimapHost, type MinimapPoint,
 } from "@/game/minimap/MinimapHost";
 import { CATEGORY_META, CATEGORY_ORDER, type MinimapCategory } from "@/game/minimap/categories";
+import { chamferBox, chamferClip } from "@/ui/chamfer";
 
 const PIXEL_FONT = '"Press Start 2P", monospace';
 const PANEL_BG = "rgba(8,10,22,0.72)";
@@ -133,12 +134,12 @@ function drawYou(ctx: CanvasRenderingContext2D, x: number, y: number, r: number,
   const pulse = (t % 1400) / 1400;
   ctx.beginPath();
   ctx.arc(x, y, r + pulse * r * 2.2, 0, Math.PI * 2);
-  ctx.strokeStyle = `rgba(20,241,149,${0.7 * (1 - pulse)})`;
+  ctx.strokeStyle = `rgba(183,233,40,${0.7 * (1 - pulse)})`;
   ctx.lineWidth = 2;
   ctx.stroke();
   ctx.beginPath();
   ctx.arc(x, y, r, 0, Math.PI * 2);
-  ctx.fillStyle = "#14F195";
+  ctx.fillStyle = "#B7E928";
   ctx.fill();
   ctx.lineWidth = 2;
   ctx.strokeStyle = "#ffffff";
@@ -224,7 +225,7 @@ function useCanvasSize(ref: React.RefObject<HTMLElement>) {
 /** Buttons seated on the map's top corners (profile, wardrobe). */
 export interface MapCorners { tl?: React.ReactNode; tr?: React.ReactNode }
 
-export default function Minimap({ compact, corners }: { compact?: "mobile" | "desktop"; corners?: MapCorners }) {
+export default function Minimap({ compact, corners, bare, iconOnly }: { compact?: "mobile" | "desktop"; corners?: MapCorners; bare?: boolean; iconOnly?: boolean }) {
   const host = useMinimapHost();
   const [open, setOpen] = useState(false);
 
@@ -265,7 +266,21 @@ export default function Minimap({ compact, corners }: { compact?: "mobile" | "de
 
   return (
     <>
-      {collapsed ? (
+      {iconOnly ? (
+        <button
+          onClick={() => setOpenAndNotify(true)}
+          aria-label="Open city map"
+          title="City map [M]"
+          style={chamferBox(8, {
+            width: mobile ? 26 : 28, height: mobile ? 26 : 28,
+            border: "1px solid rgba(183,233,40,0.35)", background: "rgba(183,233,40,0.07)",
+            cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+            fontSize: mobile ? 13 : 15, flexShrink: 0,
+          })}
+        >🗺️</button>
+      ) : bare ? (
+        <CompactMap host={host} mobile={mobile} bare onOpen={() => setOpenAndNotify(true)} onCollapse={toggleCollapsed} />
+      ) : collapsed ? (
         <CollapsedMap mobile={mobile} corners={corners} onExpand={toggleCollapsed} onOpen={() => setOpenAndNotify(true)} />
       ) : (
         <CompactMap host={host} mobile={mobile} corners={corners} onOpen={() => setOpenAndNotify(true)} onCollapse={toggleCollapsed} />
@@ -277,8 +292,8 @@ export default function Minimap({ compact, corners }: { compact?: "mobile" | "de
   );
 }
 
-function CompactMap({ host, mobile, corners, onOpen, onCollapse }: {
-  host: MinimapHost; mobile: boolean; corners?: MapCorners; onOpen: () => void; onCollapse: () => void;
+function CompactMap({ host, mobile, corners, bare, onOpen, onCollapse }: {
+  host: MinimapHost; mobile: boolean; corners?: MapCorners; bare?: boolean; onOpen: () => void; onCollapse: () => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const D = mobile ? 108 : 176;
@@ -311,11 +326,8 @@ function CompactMap({ host, mobile, corners, onOpen, onCollapse }: {
       const youAt = toScreen(v, D, D, me.x, me.y);
       ctx.clearRect(0, 0, D, D);
       ctx.save();
-      ctx.beginPath();
-      ctx.arc(R, R, R, 0, Math.PI * 2);
-      ctx.clip();
       drawBase(ctx, host, v, D, D);
-      const inside = (p: { x: number; y: number }, pad: number) => Math.hypot(p.x - R, p.y - R) < R - pad;
+      const inside = (p: { x: number; y: number }, pad: number) => p.x > pad && p.x < D - pad && p.y > pad && p.y < D - pad;
       for (const l of host.landmarks) {
         const p = toScreen(v, D, D, l.x, l.y);
         if (inside(p, 4)) drawMarker(ctx, "landmark", p.x, p.y, mobile ? 2.4 : 3);
@@ -357,40 +369,63 @@ function CompactMap({ host, mobile, corners, onOpen, onCollapse }: {
         title="City map [M]"
         style={{
           position: "absolute", inset: 0, padding: 0, cursor: "pointer",
-          borderRadius: "50%", overflow: "hidden",
-          border: "3px solid rgba(153,69,255,0.55)", background: PANEL_BG,
-          boxShadow: "0 0 0 1px rgba(20,241,149,0.25), 0 6px 24px rgba(0,0,0,0.5)",
+          border: "none", borderRadius: 0, overflow: "hidden",
+          background: "#001D3A",
+          boxShadow: "0 6px 24px rgba(0,0,0,0.5)",
           WebkitTapHighlightColor: "transparent", touchAction: "manipulation",
         }}
       >
-        <canvas ref={canvasRef} style={{ width: "100%", height: "100%", display: "block" }} />
+        <canvas ref={canvasRef} style={{
+          width: "100%", height: "100%", display: "block",
+          clipPath: "polygon(16px 0, calc(100% - 16px) 0, 100% 16px, 100% calc(100% - 16px), calc(100% - 16px) 100%, 16px 100%, 0 calc(100% - 16px), 0 16px)",
+        }} />
       </button>
-      {/* Label on the rim, north. */}
-      <span style={{
-        position: "absolute", left: "50%", top: -2, transform: "translateX(-50%)", pointerEvents: "none",
-        fontFamily: PIXEL_FONT, fontSize: mobile ? 5 : 6, color: "#e2e8f0", whiteSpace: "nowrap",
-        background: "rgba(8,10,22,0.92)", border: PANEL_BORDER, borderRadius: 6, padding: "3px 6px",
-      }}>
-        MAP{mobile ? "" : " [M]"}
-      </span>
-      <button
-        onClick={onCollapse}
-        aria-label="Hide minimap"
-        title="Hide minimap"
-        style={{ ...rimBtn(chip), left: edge, bottom: edge }}
-      >
-        −
-      </button>
+      {/* Frame drawn as a transparent overlay on top of the map, so its
+          rounded corners show the map through them instead of a gap. */}
+      <div aria-hidden="true" style={{
+        position: "absolute", inset: 0, pointerEvents: "none",
+        borderWidth: 18, borderStyle: "solid", borderColor: "transparent",
+        borderImage: 'url(/assets/branding/ui/frame-map-test.png) 18 / 18px / 0 round',
+        imageRendering: "pixelated",
+      }} />
+      {!bare && (
+        <>
+          {/* Label on the rim, north. */}
+          <span style={{
+            position: "absolute", left: "50%", top: -2, transform: "translateX(-50%)", pointerEvents: "none",
+            fontFamily: PIXEL_FONT, fontSize: mobile ? 5 : 6, color: "#e2e8f0", whiteSpace: "nowrap",
+            background: "rgba(8,10,22,0.92)", border: PANEL_BORDER, borderRadius: 6, padding: "3px 6px",
+          }}>
+            MAP{mobile ? "" : " [M]"}
+          </span>
+          <button
+            onClick={onCollapse}
+            aria-label="Hide minimap"
+            title="Hide minimap"
+            style={{ ...rimBtn(chip), left: edge, bottom: edge }}
+          >
+            −
+          </button>
+        </>
+      )}
       <button
         onClick={onOpen}
         aria-label="Open full map"
         title="Full map [M]"
-        style={{ ...rimBtn(chip), right: edge, bottom: edge, fontSize: 13 }}
+        style={{
+          position: "absolute", right: 1, bottom: 1, width: chip, height: chip,
+          padding: 0, border: "none", background: "transparent", cursor: "pointer",
+          WebkitTapHighlightColor: "transparent", touchAction: "manipulation",
+        }}
       >
-        ⤢
+        <img
+          src="/assets/branding/ui/icon-expand.png"
+          width={chip} height={chip} alt="" draggable={false}
+          style={{ imageRendering: "pixelated", display: "block" }}
+        />
       </button>
-      {corners?.tl && <div style={{ position: "absolute", left: cornerEdge, top: cornerEdge }}>{corners.tl}</div>}
-      {corners?.tr && <div style={{ position: "absolute", right: cornerEdge, top: cornerEdge }}>{corners.tr}</div>}
+      {!bare && corners?.tl && <div style={{ position: "absolute", left: cornerEdge, top: cornerEdge }}>{corners.tl}</div>}
+      {!bare && corners?.tr && <div style={{ position: "absolute", right: cornerEdge, top: cornerEdge }}>{corners.tr}</div>}
     </div>
   );
 }
@@ -584,7 +619,7 @@ function FullMap({ host, onClose }: { host: MinimapHost; onClose: () => void }) 
       if (snap.player) {
         const p = toScreen(v, w, h, snap.player.x, snap.player.y);
         drawYou(ctx, p.x, p.y, Math.max(5, r * 0.8), t);
-        drawName(ctx, "YOU", p.x, p.y + r + 4, "#14F195");
+        drawName(ctx, "YOU", p.x, p.y + r + 4, "#B7E928");
       }
       raf = requestAnimationFrame(loop);
     };
@@ -750,13 +785,13 @@ function FullMap({ host, onClose }: { host: MinimapHost; onClose: () => void }) 
             key={cat}
             onClick={() => toggle(cat)}
             aria-pressed={on}
-            style={{
+            style={chamferBox(8, {
               display: "flex", alignItems: "center", gap: 8, flexShrink: 0,
-              padding: narrow ? "6px 9px" : "7px 9px", borderRadius: 8, cursor: "pointer",
+              padding: narrow ? "6px 9px" : "7px 9px", cursor: "pointer",
               background: on ? "rgba(255,255,255,0.06)" : "transparent",
               border: `1px solid ${on ? CATEGORY_META[cat].color + "88" : "rgba(255,255,255,0.1)"}`,
               opacity: on ? 1 : 0.45, textAlign: "left",
-            }}
+            })}
           >
             <Swatch cat={cat} />
             <span style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
@@ -784,12 +819,12 @@ function FullMap({ host, onClose }: { host: MinimapHost; onClose: () => void }) 
             <button
               key={p.id}
               onClick={() => goTo(p)}
-              style={{
+              style={chamferBox(6, {
                 display: "flex", alignItems: "center", gap: 8, width: "100%",
-                padding: "5px 6px", borderRadius: 6, cursor: "pointer", textAlign: "left",
-                background: selected === p.id ? "rgba(20,241,149,0.12)" : "transparent",
+                padding: "5px 6px", cursor: "pointer", textAlign: "left",
+                background: selected === p.id ? "rgba(183,233,40,0.12)" : "transparent",
                 border: "1px solid transparent",
-              }}
+              })}
             >
               {p.portrait ? <Portrait point={p} size={34} /> : <Swatch cat={cat} size={12} />}
               <span style={{ minWidth: 0 }}>
@@ -821,18 +856,21 @@ function FullMap({ host, onClose }: { host: MinimapHost; onClose: () => void }) 
       <div style={{
         width: "min(1180px, 100%)", height: narrow ? "100%" : "min(820px, 100%)",
         display: "flex", flexDirection: "column", overflow: "hidden",
-        background: "rgba(8,10,22,0.95)", border: "1px solid rgba(153,69,255,0.35)",
-        borderRadius: 14, boxShadow: "0 20px 70px rgba(0,0,0,0.6)",
+        background: "rgba(8,10,22,0.95)",
+        borderWidth: 20, borderStyle: "solid", borderColor: "transparent",
+        borderImage: "url(/assets/branding/ui/frame-panel-test.png) 64 fill / 20px / 0 round",
+        imageRendering: "pixelated",
+        boxShadow: "0 20px 70px rgba(0,0,0,0.6)",
       }}>
         {/* Header */}
         <div style={{ display: "flex", alignItems: "center", gap: 10, padding: narrow ? "8px 10px" : "12px 16px", borderBottom: "1px solid rgba(153,69,255,0.18)" }}>
-          <span style={{ fontFamily: PIXEL_FONT, fontSize: narrow ? 9 : 11, color: "#14F195", letterSpacing: 1 }}>SOLANA CITY MAP</span>
+          <span style={{ fontFamily: PIXEL_FONT, fontSize: narrow ? 9 : 11, color: "#B7E928", letterSpacing: 1 }}>SOLANA CITY MAP</span>
           {!narrow && <span style={{ fontSize: 11, color: "#64748b" }}>Drag to move · scroll to zoom · click a marker</span>}
           <div style={{ flex: 1 }} />
           {narrow && (
             <button onClick={() => setListOpen((v) => !v)} style={hdrBtn(listOpen)}>{listOpen ? "MAP" : "LIST"}</button>
           )}
-          <button onClick={onClose} aria-label="Close map" style={{ ...hdrBtn(false), fontSize: 14, padding: "4px 10px", fontFamily: "system-ui" }}>×</button>
+          <button onClick={onClose} aria-label="Close map" style={{ background: "none", border: "none", color: "#14F0C6", fontSize: 16, cursor: "pointer", lineHeight: 1, padding: "0 2px" }}>×</button>
         </div>
 
         {narrow && <div style={{ padding: "8px 10px 0" }}>{legend}</div>}
@@ -846,7 +884,7 @@ function FullMap({ host, onClose }: { host: MinimapHost; onClose: () => void }) 
             </aside>
           )}
 
-          <div ref={wrapRef} style={{ position: "relative", flex: 1, minWidth: 0, margin: narrow ? 8 : 0, borderRadius: narrow ? 10 : 0, overflow: "hidden" }}>
+          <div ref={wrapRef} style={{ position: "relative", flex: 1, minWidth: 0, margin: narrow ? 8 : 0, clipPath: narrow ? chamferClip(10) : "none", overflow: "hidden" }}>
             <canvas
               ref={canvasRef}
               onPointerDown={onPointerDown}
@@ -859,14 +897,14 @@ function FullMap({ host, onClose }: { host: MinimapHost; onClose: () => void }) 
             />
 
             {card && (
-              <div style={{
+              <div style={chamferBox(8, {
                 position: "absolute", pointerEvents: card.point.id === selected && card.point.category !== "players" ? "auto" : "none",
                 left: Math.min(Math.max(card.x + 14, 8), Math.max(8, w - 220)),
                 top: Math.min(Math.max(card.y - 20, 8), Math.max(8, h - 120)),
-                maxWidth: 210, padding: "8px 10px", borderRadius: 8,
+                maxWidth: 210, padding: "8px 10px", 
                 background: "rgba(8,10,22,0.95)", border: `1px solid ${CATEGORY_META[card.point.category].color}88`,
                 boxShadow: "0 8px 24px rgba(0,0,0,0.5)",
-              }}>
+              })}>
                 <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                   {card.point.portrait ? <Portrait point={card.point} size={40} /> : <Swatch cat={card.point.category} size={12} />}
                   <span style={{ fontSize: 13, color: "#f1f5f9", fontWeight: 700 }}>{card.point.name}</span>
@@ -877,10 +915,10 @@ function FullMap({ host, onClose }: { host: MinimapHost; onClose: () => void }) 
                 {card.point.id === selected && card.point.category !== "players" && (
                   <button
                     onClick={() => travel(card.point)}
-                    style={{
-                      marginTop: 8, width: "100%", padding: "8px 0", borderRadius: 6, cursor: "pointer",
-                      background: "#14F195", color: "#04140c", border: "none", fontFamily: PIXEL_FONT, fontSize: 7,
-                    }}
+                    style={chamferBox(6, {
+                      marginTop: 8, width: "100%", padding: "8px 0", cursor: "pointer",
+                      background: "#B7E928", color: "#04140c", border: "none", fontFamily: PIXEL_FONT, fontSize: 7,
+                    })}
                   >
                     FAST TRAVEL
                   </button>
@@ -920,31 +958,31 @@ function Portrait({ point, size }: { point: MinimapPoint; size: number }) {
     ctx.drawImage(point.portrait, 0, 0);
   }, [point]);
   return (
-    <span style={{
-      width: size, height: size, borderRadius: 8, overflow: "hidden", flexShrink: 0,
+    <span style={chamferBox(8, {
+      width: size, height: size, overflow: "hidden", flexShrink: 0,
       background: "#101426", border: `2px solid ${CATEGORY_META[point.category].color}`,
       display: "flex", alignItems: "flex-end", justifyContent: "center", padding: 2, boxSizing: "border-box",
-    }}>
+    })}>
       <canvas ref={ref} style={{ maxWidth: "100%", maxHeight: "100%", display: "block", imageRendering: "pixelated" }} />
     </span>
   );
 }
 
 function hdrBtn(active: boolean): React.CSSProperties {
-  return {
+  return chamferBox(6, {
     fontFamily: PIXEL_FONT, fontSize: 7, color: active ? "#0a0a14" : "#cbd5e1",
-    background: active ? "#14F195" : "rgba(255,255,255,0.06)",
-    border: "1px solid rgba(255,255,255,0.14)", borderRadius: 6,
+    background: active ? "#B7E928" : "rgba(255,255,255,0.06)",
+    border: "1px solid rgba(255,255,255,0.14)", 
     padding: "6px 9px", cursor: "pointer",
-  };
+  });
 }
 
-const ctrlBtn: React.CSSProperties = {
-  width: 34, height: 34, borderRadius: 8, cursor: "pointer",
+const ctrlBtn: React.CSSProperties = chamferBox(8, {
+  width: 34, height: 34, cursor: "pointer",
   background: "rgba(8,10,22,0.9)", border: "1px solid rgba(153,69,255,0.35)",
   color: "#e2e8f0", fontSize: 17, lineHeight: 1,
   display: "flex", alignItems: "center", justifyContent: "center",
-};
+});
 
 function drawName(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, color = "#f1f5f9") {
   ctx.save();

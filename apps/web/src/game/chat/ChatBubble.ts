@@ -21,7 +21,7 @@ export class ChatBubble {
     scene: Phaser.Scene,
     target: Phaser.GameObjects.Container,
     text: string,
-    color: string = "#14F195"
+    color: string = "#B7E928"
   ) {
     const clipped = text.length > BUBBLE_MAX_CHARS ? text.slice(0, BUBBLE_MAX_CHARS) + "…" : text;
     const bubbleText = scene.add.text(0, 0, clipped, {

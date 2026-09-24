@@ -13,6 +13,8 @@
  * check-in, signed with the session key, whether or not the panel is shown.
  */
 import { useCallback, useEffect, useState } from "react";
+import { chamferBox, octagonFrame } from "@/ui/chamfer";
+import ChamferGlow from "@/ui/ChamferGlow";
 import nacl from "tweetnacl";
 import { useWallet } from "@solana/wallet-adapter-react";
 import type { OnChainMultiplayer, OnChainPlayer } from "@/game/multiplayer/OnChainMultiplayer";
@@ -28,7 +30,7 @@ import CityCalendar from "./CityCalendar";
 export { OPEN_CALENDAR_EVENT, STREAK_EVENT };
 
 const PIXEL = '"Press Start 2P", monospace';
-const GREEN = "#14F195";
+const GREEN = "#B7E928";
 const GOLD = "#FFD700";
 const UI = "/assets/ui";
 const SEEN_KEY = "solcity:calendar-seen";
@@ -188,27 +190,23 @@ export default function CalendarPanel({ gameRef }: { gameRef: Phaser.Game | null
           // for screens smaller than anything we design for.
           maxHeight: "96vh", overflowY: "auto",
           background: "linear-gradient(180deg, #14142e 0%, #0b0b1c 100%)",
-          border: "1px solid rgba(153,69,255,0.45)", borderRadius: 12, padding: layout.short ? 8 : 12,
+          borderWidth: 20, borderStyle: "solid", borderColor: "transparent",
+          borderImage: 'url(/assets/branding/ui/frame-panel-test.png) 64 fill / 20px / 0 round',
+          imageRendering: "pixelated",
+          padding: layout.short ? 8 : 12,
           boxShadow: "0 12px 40px rgba(0,0,0,0.6)", fontFamily: PIXEL, color: "#e2e8f0",
         }}
       >
         {/* Header, with today's check-in as the first thing you see */}
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: layout.short ? 6 : 10 }}>
-          <Citizen sheet="Sol.png" size={layout.short ? 22 : 28} />
+          <CalIcon size={layout.short ? 24 : 32} day={today.getUTCDate()} />
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 8, color: GREEN }}>CITY CALENDAR</div>
             <div style={{ fontSize: 6, color: "#64748b", marginTop: 4 }}>
               {today.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", timeZone: "UTC" }).toUpperCase()}
             </div>
           </div>
-          {wallet && streak && streak.current > 0 && (
-            <span style={{
-              fontSize: 6, color: "#0a0a14", background: GOLD, borderRadius: 4, padding: "4px 6px", flexShrink: 0,
-            }}>
-              DAY {streak.current}
-            </span>
-          )}
-          <button onClick={close} aria-label="Close" style={{ background: "none", border: "none", color: "#64748b", fontSize: 18, cursor: "pointer", lineHeight: 1 }}>×</button>
+          <button onClick={close} aria-label="Close" style={{ background: "none", border: "none", color: "#14F0C6", fontSize: 18, cursor: "pointer", lineHeight: 1 }}>×</button>
         </div>
 
         <div style={{
@@ -223,6 +221,7 @@ export default function CalendarPanel({ gameRef }: { gameRef: Phaser.Game | null
 
           {/* ── Then who leads the city, and who is here ── */}
           <div style={{ display: "flex", flexDirection: "column", gap: layout.short ? 6 : 8 }}>
+            {wallet && streak && streak.current > 0 && <StreakCard days={streak.current} short={layout.short} />}
             <Block short={layout.short}>
               <Title icon={`${UI}/ico_achievements.png`}>CITY LEADERS</Title>
               <Leader img="/assets/minigames/kite/kites/kite_stb.png" label="KITE" row={leaders.kite} me={wallet} />
@@ -283,11 +282,46 @@ function useLayout(): { wide: boolean; short: boolean } {
   return layout;
 }
 
+/** A small calendar page showing today's day, for the window header. */
+function CalIcon({ size, day }: { size: number; day: number }) {
+  return (
+    <span style={{
+      width: size, height: size, flexShrink: 0, display: "flex", flexDirection: "column",
+      overflow: "hidden", background: "#f8fafc", border: "2px solid #14F0C6",
+    }}>
+      <span style={{ height: "34%", background: "#9945FF" }} />
+      <span style={{
+        flex: 1, display: "flex", alignItems: "center", justifyContent: "center",
+        fontFamily: PIXEL, fontSize: Math.round(size * 0.3), color: "#0a0a14", lineHeight: 1,
+      }}>
+        {day}
+      </span>
+    </span>
+  );
+}
+
+/** The daily streak, as a lime badge card that is hard to miss. */
+function StreakCard({ days, short }: { days: number; short?: boolean }) {
+  return (
+    <ChamferGlow glow="drop-shadow(0 0 8px rgba(183,233,40,0.55))">
+      <div style={chamferBox(8, {
+        display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10,
+        background: GREEN, color: "#0a0a14", padding: short ? "6px 10px" : "10px 14px",
+        border: "2px solid #eaff9a",
+      })}>
+        <span style={{ fontFamily: PIXEL, fontSize: 8, lineHeight: 1.6 }}>DAY<br />STREAK</span>
+        <span style={{ fontFamily: PIXEL, fontSize: short ? 18 : 26, lineHeight: 1 }}>{days}</span>
+      </div>
+    </ChamferGlow>
+  );
+}
+
 function Block({ children, short }: { children: React.ReactNode; short?: boolean }) {
   return (
     <div style={{
-      background: "#0d0d22", border: "1px solid rgba(255,255,255,0.05)", borderRadius: 8,
-      padding: short ? 6 : 9,
+      ...octagonFrame(1),
+      background: "#0d0d22",
+      padding: short ? 0 : 3,
     }}>
       {children}
     </div>
@@ -343,7 +377,7 @@ function RankRow({ rank, name, score, self }: { rank: number; name: string; scor
   return (
     <div style={{
       display: "flex", alignItems: "center", gap: 6, marginTop: 4, padding: "3px 5px", borderRadius: 4,
-      background: self ? "rgba(20,241,149,0.08)" : "transparent",
+      background: self ? "rgba(183,233,40,0.08)" : "transparent",
     }}>
       <span style={{ fontSize: 6, color: rank <= 3 ? GOLD : "#475569", width: 16 }}>{rank}</span>
       <span style={{

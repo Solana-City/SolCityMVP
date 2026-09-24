@@ -16,9 +16,10 @@
  */
 import { useEffect, useState } from "react";
 import { Citizen, Img } from "./CityGuide";
+import { chamferBox } from "@/ui/chamfer";
 
 const PIXEL = '"Press Start 2P", monospace';
-const GREEN = "#14F195";
+const GREEN = "#B7E928";
 const PURPLE = "#9945FF";
 const DANGER = "#ff5a5a";
 const UI = "/assets/ui";
@@ -77,9 +78,12 @@ export default function ConnectingOverlay({ onEnter, onRetry }: { onEnter: () =>
     }}>
       <div style={{
         width: "min(340px, 100%)", maxHeight: "calc(100dvh - 32px)", overflowY: "auto",
-        padding: 14, borderRadius: 10, textAlign: "center",
+        padding: 14, textAlign: "center",
         background: "linear-gradient(180deg, rgba(15,18,40,0.98) 0%, rgba(8,10,24,0.98) 100%)",
-        border: `1px solid ${failed ? DANGER : PURPLE}59`, boxShadow: "0 8px 24px rgba(0,0,0,0.5)",
+        borderWidth: 20, borderStyle: "solid", borderColor: "transparent",
+        borderImage: 'url(/assets/branding/ui/frame-panel-test.png) 64 fill / 20px / 0 round',
+        imageRendering: "pixelated",
+        boxShadow: failed ? `0 0 0 3px ${DANGER}80, 0 8px 24px rgba(0,0,0,0.5)` : "0 8px 24px rgba(0,0,0,0.5)",
       }}>
         <div style={{ fontFamily: PIXEL, fontSize: 8, color: failed ? DANGER : GREEN, marginBottom: 12 }}>
           {failed ? "COULD NOT CONNECT" : "ENTERING THE CITY"}
@@ -98,13 +102,13 @@ export default function ConnectingOverlay({ onEnter, onRetry }: { onEnter: () =>
         {/* Three steps, the current one lit */}
         <div style={{ display: "flex", gap: 6, justifyContent: "center", marginBottom: 10 }}>
           {STEPS.map((s, n) => (
-            <div key={s} style={{
-              flex: 1, padding: "6px 2px", borderRadius: 6,
+            <div key={s} style={chamferBox(6, {
+              flex: 1, padding: "6px 2px", 
               fontFamily: PIXEL, fontSize: 6, lineHeight: 1.5,
               color: n < step ? "#0a0a14" : n === step ? "#fff" : "#6a6a7d",
               background: n < step ? GREEN : n === step ? "rgba(153,69,255,0.35)" : "rgba(255,255,255,0.05)",
               border: `1px solid ${n === step && !failed ? PURPLE : "transparent"}`,
-            }}>
+            })}>
               {s}
             </div>
           ))}
@@ -122,19 +126,19 @@ export default function ConnectingOverlay({ onEnter, onRetry }: { onEnter: () =>
           <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
             <button
               onClick={onEnter}
-              style={{
-                flex: 1, fontFamily: PIXEL, fontSize: 7, padding: "9px 10px", borderRadius: 6, cursor: "pointer",
+              style={chamferBox(6, {
+                flex: 1, fontFamily: PIXEL, fontSize: 7, padding: "9px 10px", cursor: "pointer",
                 background: "transparent", border: "1px solid #333344", color: "#b9b9cc",
-              }}
+              })}
             >
               ENTER ANYWAY
             </button>
             <button
               onClick={onRetry}
-              style={{
-                flex: 1, fontFamily: PIXEL, fontSize: 7, padding: "9px 10px", borderRadius: 6, cursor: "pointer",
+              style={chamferBox(6, {
+                flex: 1, fontFamily: PIXEL, fontSize: 7, padding: "9px 10px", cursor: "pointer",
                 background: failed ? DANGER : PURPLE, color: "#fff", border: "none",
-              }}
+              })}
             >
               TRY AGAIN
             </button>

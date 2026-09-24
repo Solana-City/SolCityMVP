@@ -7,11 +7,12 @@
 import { useEffect, useState } from "react";
 import { Citizen, Img, Key } from "./CityGuide";
 import { track } from "@/game/telemetry/track";
+import { chamferBox, octagonFrame } from "@/ui/chamfer";
 
 const PIXEL = '"Press Start 2P", monospace';
-const LOCAL = "#14F195";
-const YOU = "#14F195";
-const OTHERS = "#00D1FF";
+const LOCAL = "#B7E928";
+const YOU = "#B7E928";
+const OTHERS = "#14F0C6";
 const DANGER = "#ff5a5a";
 const DM = "#FFD700";
 
@@ -19,11 +20,11 @@ const DM = "#FFD700";
 function Bubble({ text, color }: { text: string; color: string }) {
   return (
     <div style={{ position: "relative", marginBottom: 6 }}>
-      <div style={{
+      <div style={chamferBox(4, {
         background: "#f8fafc", color: "#0a0a14", fontFamily: PIXEL, fontSize: 7,
-        padding: "5px 7px", borderRadius: 6, whiteSpace: "nowrap",
-        boxShadow: `0 0 0 2px ${color}`,
-      }}>
+        padding: "5px 7px", whiteSpace: "nowrap",
+        border: `2px solid ${color}`,
+      })}>
         {text}
       </div>
       <span style={{
@@ -97,10 +98,10 @@ function steps(touch: boolean): Step[] {
       scene: (
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
           {!touch && <Key>ENTER</Key>}
-          <span style={{
-            fontFamily: PIXEL, fontSize: 10, color: LOCAL, padding: "6px 9px", borderRadius: 4,
-            background: "rgba(20,241,149,0.18)", border: "1px solid rgba(20,241,149,0.45)",
-          }}>
+          <span style={chamferBox(4, {
+            fontFamily: PIXEL, fontSize: 10, color: LOCAL, padding: "6px 9px", 
+            background: "rgba(183,233,40,0.18)", border: "1px solid rgba(183,233,40,0.45)",
+          })}>
             ▶
           </span>
           <Citizen sheet="main_char.png" size={60} />
@@ -131,10 +132,10 @@ export default function ChatGuide({ touch, onClose }: { touch: boolean; onClose:
   return (
     <div
       style={{
+        ...octagonFrame(1),
         position: "absolute", left: 0, right: 0, bottom: "calc(100% + 6px)",
         background: "linear-gradient(180deg, rgba(15,18,40,0.98) 0%, rgba(8,10,24,0.98) 100%)",
-        border: "1px solid rgba(153,69,255,0.35)", borderRadius: 8, padding: 10,
-        boxShadow: "0 8px 24px rgba(0,0,0,0.5)",
+        padding: 4,
       }}
     >
       <div style={{ display: "flex", alignItems: "center", marginBottom: 8 }}>
@@ -143,17 +144,17 @@ export default function ChatGuide({ touch, onClose }: { touch: boolean; onClose:
         <button
           onClick={onClose}
           aria-label="Close"
-          style={{ marginLeft: 10, background: "none", border: "none", color: "#888899", cursor: "pointer", fontSize: 16, lineHeight: 1 }}
+          style={{ marginLeft: 10, background: "none", border: "none", color: "#14F0C6", cursor: "pointer", fontSize: 16, lineHeight: 1 }}
         >
           ×
         </button>
       </div>
 
-      <div key={i} className="cg-step" style={{
-        height: touch ? 104 : 118, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center",
-        background: "radial-gradient(circle at 50% 60%, rgba(20,241,149,0.12), rgba(10,10,30,0) 70%), #0d0d22",
-        border: "1px solid rgba(20,241,149,0.18)", overflow: "hidden",
-      }}>
+      <div key={i} className="cg-step" style={chamferBox(8, {
+        height: touch ? 104 : 118, display: "flex", alignItems: "center", justifyContent: "center",
+        background: "radial-gradient(circle at 50% 60%, rgba(183,233,40,0.12), rgba(10,10,30,0) 70%), #0d0d22",
+        border: "1px solid rgba(183,233,40,0.18)", overflow: "hidden",
+      })}>
         {step.scene}
       </div>
 
@@ -167,11 +168,11 @@ export default function ChatGuide({ touch, onClose }: { touch: boolean; onClose:
       <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
         <button
           onClick={() => setI((n) => Math.max(0, n - 1))}
-          style={{
-            background: "transparent", border: "1px solid #333344", color: "#888899", borderRadius: 6,
+          style={chamferBox(6, {
+            background: "transparent", border: "1px solid #333344", color: "#888899", 
             padding: "7px 10px", cursor: "pointer", fontFamily: PIXEL, fontSize: 7,
             visibility: i === 0 ? "hidden" : "visible",
-          }}
+          })}
         >
           BACK
         </button>
@@ -182,10 +183,10 @@ export default function ChatGuide({ touch, onClose }: { touch: boolean; onClose:
         </div>
         <button
           onClick={() => (last ? onClose() : setI((n) => n + 1))}
-          style={{
-            background: LOCAL, color: "#0a0a14", border: "none", borderRadius: 6,
+          style={chamferBox(6, {
+            background: LOCAL, color: "#0a0a14", border: "none", 
             padding: "8px 12px", cursor: "pointer", fontFamily: PIXEL, fontSize: 7,
-          }}
+          })}
         >
           {last ? "GOT IT" : "NEXT"}
         </button>

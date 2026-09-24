@@ -146,10 +146,10 @@ export class ChatManager {
 }
 
 /** Name color of your own messages, so they stand out from everyone else's. */
-export const SELF_COLOR = "#14F195";
+export const SELF_COLOR = "#B7E928";
 
 export const CHANNEL_COLORS: Record<string, string> = {
-  city: "#00D1FF",
+  city: "#14F0C6",
   dm: "#FFD700",
   system: "#9945FF",
 };

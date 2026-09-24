@@ -6,6 +6,7 @@ import { LAMPORTS_PER_SOL } from "@solana/web3.js";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useSeekerDevice } from "@/ui/useSeekerDevice";
 import { progressionBus } from "@/game/progression/progressionBus";
+import { chamferBox } from "@/ui/chamfer";
 
 function useIsTouch() {
   const [isTouch, setIsTouch] = useState(false);
@@ -93,8 +94,8 @@ export default function WalletBar({ onWalletChange, layout = "default" }: Wallet
         {/* Status dot */}
         <span style={{
           width: 7, height: 7, borderRadius: "50%", flexShrink: 0,
-          background: connected ? "#14F195" : "#444",
-          boxShadow: connected ? "0 0 6px #14F19588" : "none",
+          background: connected ? "#B7E928" : "#444",
+          boxShadow: connected ? "0 0 6px #B7E92888" : "none",
         }} />
 
         {/* Wallet info — balance + short address stacked */}
@@ -103,11 +104,11 @@ export default function WalletBar({ onWalletChange, layout = "default" }: Wallet
             <>
               {balance !== null && (
                 <span style={{ fontSize: 8, color: "#e0e0ff", lineHeight: 1 }}>
-                  {balance} <span style={{ color: "#14F195" }}>SOL</span>
+                  {balance} <span style={{ color: "#B7E928" }}>SOL</span>
                 </span>
               )}
               {shortAddr && (
-                <span style={{ fontSize: 7, color: "#00D1FF", letterSpacing: 0.3, opacity: 0.8 }}>
+                <span style={{ fontSize: 7, color: "#14F0C6", letterSpacing: 0.3, opacity: 0.8 }}>
                   {shortAddr}
                   {isAndroid && hasSGT && <span style={{ color: "#FFD700", marginLeft: 4 }}>⬡</span>}
                 </span>
@@ -126,18 +127,17 @@ export default function WalletBar({ onWalletChange, layout = "default" }: Wallet
         {connected ? (
           <button
             onClick={handleClick}
-            style={{
-              background: "rgba(20,241,149,0.1)",
-              color: "#14F195",
-              border: "1px solid rgba(20,241,149,0.3)",
-              borderRadius: 6,
+            style={chamferBox(6, {
+              background: "rgba(183,233,40,0.1)",
+              color: "#B7E928",
+              border: "1px solid rgba(183,233,40,0.3)",
               fontFamily: '"Press Start 2P", monospace',
               fontSize: 7,
               padding: "6px 9px",
               cursor: "pointer",
               whiteSpace: "nowrap",
               flexShrink: 0,
-            }}
+            })}
           >
             ●
           </button>
@@ -190,11 +190,11 @@ export default function WalletBar({ onWalletChange, layout = "default" }: Wallet
             className="inline-flex items-center gap-1.5 text-[10px] px-2 py-1 rounded"
             style={{
               background: "rgba(10,10,30,0.88)",
-              color: "#00D1FF",
-              border: "1px solid rgba(0,209,255,0.2)",
+              color: "#14F0C6",
+              border: "1px solid rgba(20,240,198,0.2)",
             }}
           >
-            <span style={{ width: 6, height: 6, borderRadius: "50%", display: "inline-block", background: "#14F195", flexShrink: 0 }} />
+            <span style={{ width: 6, height: 6, borderRadius: "50%", display: "inline-block", background: "#B7E928", flexShrink: 0 }} />
             {balance !== null ? `${balance} ◎` : shortAddr}
           </span>
         )}
@@ -203,9 +203,9 @@ export default function WalletBar({ onWalletChange, layout = "default" }: Wallet
             onClick={handleClick}
             className="rounded cursor-pointer"
             style={{
-              background: "rgba(20,241,149,0.12)",
-              color: "#14F195",
-              border: "1px solid rgba(20,241,149,0.3)",
+              background: "rgba(183,233,40,0.12)",
+              color: "#B7E928",
+              border: "1px solid rgba(183,233,40,0.3)",
               fontFamily: '"Press Start 2P", monospace',
               fontSize: "7px",
               padding: "8px 10px",
@@ -266,7 +266,7 @@ export default function WalletBar({ onWalletChange, layout = "default" }: Wallet
         className="inline-flex items-center gap-1.5 text-[10px] px-2 py-1 rounded"
         style={{
           background: "rgba(10,10,30,0.88)",
-          color: connected ? "#14F195" : "#8a8aa7",
+          color: connected ? "#B7E928" : "#8a8aa7",
           border: "1px solid rgba(153,69,255,0.18)",
         }}
         title={connected ? "Wallet online" : "Wallet offline"}
@@ -276,7 +276,7 @@ export default function WalletBar({ onWalletChange, layout = "default" }: Wallet
           height: 6,
           borderRadius: "50%",
           display: "inline-block",
-          background: connected ? "#14F195" : "#555566",
+          background: connected ? "#B7E928" : "#555566",
         }} />
         {connected ? "ONCHAIN" : "OFFLINE"}
       </span>
@@ -287,20 +287,20 @@ export default function WalletBar({ onWalletChange, layout = "default" }: Wallet
               className="text-xs px-2 py-1 rounded"
               style={{
                 background: "rgba(10,10,30,0.88)",
-                color: "#14F195",
-                border: "1px solid rgba(20,241,149,0.2)",
+                color: "#B7E928",
+                border: "1px solid rgba(183,233,40,0.2)",
               }}
             >
               {balance} SOL
             </span>
           )}
           <span
-            className="text-xs px-2 py-1 rounded"
-            style={{
+            className="text-xs px-2 py-1"
+            style={chamferBox(4, {
               background: "rgba(10,10,30,0.88)",
-              color: "#00D1FF",
-              border: "1px solid rgba(0,209,255,0.2)",
-            }}
+              color: "#14F0C6",
+              border: "1px solid rgba(20,240,198,0.2)",
+            })}
           >
             {shortAddr}
           </span>
@@ -308,18 +308,18 @@ export default function WalletBar({ onWalletChange, layout = "default" }: Wallet
       )}
       <button
         onClick={handleClick}
-        className="rounded cursor-pointer transition-colors"
-        style={{
-          background: connected ? "rgba(20,241,149,0.12)" : "rgba(153,69,255,0.8)",
-          color: connected ? "#14F195" : "#ffffff",
-          border: connected ? "1px solid rgba(20,241,149,0.3)" : "1px solid rgba(153,69,255,0.5)",
+        className="cursor-pointer transition-colors"
+        style={chamferBox(6, {
+          background: connected ? "rgba(183,233,40,0.12)" : "rgba(153,69,255,0.8)",
+          color: connected ? "#B7E928" : "#ffffff",
+          border: connected ? "1px solid rgba(183,233,40,0.3)" : "1px solid rgba(153,69,255,0.5)",
           fontFamily: '"Press Start 2P", monospace',
           fontSize: "7px",
           padding: "6px 16px",
           minHeight: 44,
           display: "flex",
           alignItems: "center",
-        }}
+        })}
       >
         {connected ? "CONNECTED" : "CONNECT WALLET"}
       </button>

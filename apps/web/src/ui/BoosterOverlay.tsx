@@ -6,6 +6,8 @@ import { rollBooster, PACK_SIZE, type BoosterDrop } from "@/game/config/boosterP
 import { unlockItem } from "@/game/config/wardrobeUnlocks";
 import { progressionBus } from "@/game/progression/progressionBus";
 import { ChromaPreview } from "@/ui/WardrobePanel";
+import { chamferBox } from "@/ui/chamfer";
+import ChamferGlow from "@/ui/ChamferGlow";
 
 /**
  * Booster pack — PREVIEW. Opens a pack of 5 random wardrobe pieces and unlocks
@@ -59,15 +61,16 @@ export default function BoosterOverlay({
     >
       <style>{`
         @keyframes booster-shake { 0%,100%{transform:translateX(0) rotate(0)} 25%{transform:translateX(-4px) rotate(-3deg)} 75%{transform:translateX(4px) rotate(3deg)} }
-        @keyframes booster-glow  { 0%,100%{box-shadow:0 0 24px rgba(153,69,255,0.5)} 50%{box-shadow:0 0 44px rgba(20,241,149,0.7)} }
+        @keyframes booster-glow  { 0%,100%{filter:drop-shadow(0 0 12px rgba(153,69,255,0.6))} 50%{filter:drop-shadow(0 0 22px rgba(183,233,40,0.8))} }
         @keyframes booster-pop   { 0%{transform:scale(0.5) translateY(10px);opacity:0} 60%{transform:scale(1.08)} 100%{transform:scale(1);opacity:1} }
       `}</style>
 
       <div style={{
         width: "min(560px, 94vw)",
         background: "#0b0e1c",
-        border: "1px solid rgba(153,69,255,0.3)",
-        borderRadius: 16,
+        borderWidth: 20, borderStyle: "solid", borderColor: "transparent",
+        borderImage: 'url(/assets/branding/ui/frame-panel-test.png) 64 fill / 20px / 0 round',
+        imageRendering: "pixelated",
         padding: "22px 22px 18px",
         color: "#d0d0f0",
         boxShadow: "0 24px 64px rgba(0,0,0,0.6)",
@@ -94,14 +97,13 @@ export default function BoosterOverlay({
               {drops.map((d, i) => (
                 <div
                   key={`${d.category}:${d.id}`}
-                  style={{
+                  style={chamferBox(10, {
                     display: "flex", flexDirection: "column", alignItems: "center", gap: 5,
                     padding: "10px 4px",
-                    background: d.owned ? "rgba(255,255,255,0.02)" : "rgba(20,241,149,0.08)",
-                    border: `2px solid ${d.owned ? "rgba(255,255,255,0.08)" : "rgba(20,241,149,0.5)"}`,
-                    borderRadius: 10,
+                    background: d.owned ? "rgba(255,255,255,0.02)" : "rgba(183,233,40,0.08)",
+                    border: `2px solid ${d.owned ? "rgba(255,255,255,0.08)" : "rgba(183,233,40,0.5)"}`,
                     animation: `booster-pop 0.4s ${i * 0.09}s ease-out both`,
-                  }}
+                  })}
                 >
                   <ChromaPreview file={d.file} size={52} facingUp={d.category === "back"} />
                   <span style={{ fontSize: 6, color: "#e0d0ff", lineHeight: 1.3, textAlign: "center" }}>{d.name}</span>
@@ -110,36 +112,42 @@ export default function BoosterOverlay({
                   </span>
                   <span style={{
                     fontSize: 5, letterSpacing: 0.5,
-                    color: d.owned ? "#888" : "#14F195",
+                    color: d.owned ? "#888" : "#B7E928",
                   }}>{d.owned ? "OWNED" : "NEW"}</span>
                 </div>
               ))}
             </div>
             <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
               <button onClick={() => { setPhase("idle"); setDrops([]); }} style={btn("ghost")}>OPEN ANOTHER</button>
-              <button onClick={onClose} style={btn("primary")}>DONE</button>
+              <ChamferGlow glow={BTN_GLOW}><button onClick={onClose} style={btn("primary")}>DONE</button></ChamferGlow>
             </div>
           </>
         ) : (
           <>
             <div style={{
               width: 120, height: 120, margin: "6px auto 20px",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              fontSize: 56, borderRadius: 16,
-              background: "linear-gradient(135deg, rgba(153,69,255,0.25), rgba(20,241,149,0.15))",
-              border: "2px solid rgba(153,69,255,0.5)",
               animation: phase === "opening"
                 ? "booster-shake 0.16s linear infinite, booster-glow 0.5s ease-in-out infinite"
                 : "booster-glow 2.2s ease-in-out infinite",
             }}>
-              <img src="/assets/ui/ico_wardrop.png" alt="" draggable={false} style={{ width: 64, height: 64, imageRendering: "pixelated" }} />
+              <div style={chamferBox(16, {
+                width: "100%", height: "100%",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                fontSize: 56,
+                background: "linear-gradient(135deg, rgba(153,69,255,0.25), rgba(183,233,40,0.15))",
+                border: "2px solid rgba(153,69,255,0.5)",
+              })}>
+                <img src="/assets/ui/ico_wardrop.png" alt="" draggable={false} style={{ width: 64, height: 64, imageRendering: "pixelated" }} />
+              </div>
             </div>
             <div style={{ fontSize: 7, color: "#8a8aa7", lineHeight: 1.7, marginBottom: 18 }}>
               {PACK_SIZE} random pieces: hats, backpacks, hair, and more.
             </div>
-            <button onClick={open} disabled={phase === "opening"} style={btn("primary")}>
-              {phase === "opening" ? "OPENING…" : "OPEN PACK"}
-            </button>
+            <ChamferGlow glow={BTN_GLOW} style={{ display: "inline-block" }}>
+              <button onClick={open} disabled={phase === "opening"} style={btn("primary")}>
+                {phase === "opening" ? "OPENING…" : "OPEN PACK"}
+              </button>
+            </ChamferGlow>
           </>
         )}
       </div>
@@ -147,14 +155,16 @@ export default function BoosterOverlay({
   );
 }
 
+const BTN_GLOW = "drop-shadow(0 0 10px rgba(153,69,255,0.45))";
+
 function btn(kind: "primary" | "ghost"): React.CSSProperties {
   const base: React.CSSProperties = {
     fontFamily: '"Press Start 2P", monospace',
     fontSize: 9, letterSpacing: 1, padding: "12px 24px",
-    borderRadius: 8, cursor: "pointer",
+    cursor: "pointer",
   };
-  return kind === "primary"
+  return chamferBox(8, kind === "primary"
     ? { ...base, background: "linear-gradient(135deg, #9945FF, #7a2fd8)", color: "#fff",
-        border: "1px solid rgba(200,150,255,0.5)", boxShadow: "0 0 20px rgba(153,69,255,0.4)" }
-    : { ...base, background: "transparent", color: "#8a8aa7", border: "1px solid rgba(153,69,255,0.3)" };
+        border: "1px solid rgba(200,150,255,0.5)" }
+    : { ...base, background: "transparent", color: "#8a8aa7", border: "1px solid rgba(153,69,255,0.3)" });
 }

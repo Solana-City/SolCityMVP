@@ -26,7 +26,7 @@ export class TradeBubble {
     const text = scene.add.text(0, 0, tradeHeadline(trade), {
       fontFamily: '"Press Start 2P", monospace',
       fontSize: "7px",
-      color: trade.side === "buy" ? "#14F195" : "#FF4D6D",
+      color: trade.side === "buy" ? "#B7E928" : "#FF4D6D",
       resolution: 2,
     }).setOrigin(0, 0.5);
 

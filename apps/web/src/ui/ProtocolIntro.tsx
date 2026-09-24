@@ -11,6 +11,7 @@
  */
 import { useEffect, useState } from "react";
 import { track } from "@/game/telemetry/track";
+import { chamferBox } from "@/ui/chamfer";
 
 const PIXEL = '"Press Start 2P", monospace';
 
@@ -125,11 +126,11 @@ function IntroCards({ spec, onDone }: { spec: IntroSpec; onDone: () => void }) {
       <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
         <button
           onClick={() => setI((n) => Math.max(0, n - 1))}
-          style={{
-            background: "transparent", border: "1px solid #333344", color: "#888899", borderRadius: 8,
+          style={chamferBox(8, {
+            background: "transparent", border: "1px solid #333344", color: "#888899", 
             padding: "9px 12px", cursor: "pointer", fontFamily: PIXEL, fontSize: 7,
             visibility: i === 0 ? "hidden" : "visible",
-          }}
+          })}
         >
           BACK
         </button>
@@ -140,10 +141,10 @@ function IntroCards({ spec, onDone }: { spec: IntroSpec; onDone: () => void }) {
         </div>
         <button
           onClick={() => (last ? onDone() : setI((n) => n + 1))}
-          style={{
-            background: spec.color, color: "#0a0a14", border: "none", borderRadius: 8,
+          style={chamferBox(8, {
+            background: spec.color, color: "#0a0a14", border: "none", 
             padding: "10px 16px", cursor: "pointer", fontFamily: PIXEL, fontSize: 7,
-          }}
+          })}
         >
           {last ? "START" : "NEXT"}
         </button>
@@ -172,11 +173,11 @@ export function ProtocolIntroGate({ spec, children }: { spec: IntroSpec; childre
     <>
       <button
         onClick={() => setOpen(true)}
-        style={{
+        style={chamferBox(6, {
           display: "block", marginLeft: "auto", marginRight: 26, marginBottom: 6,
           background: "transparent", border: `1px solid ${spec.color}66`, color: spec.color,
-          borderRadius: 6, padding: "4px 7px", cursor: "pointer", fontFamily: PIXEL, fontSize: 7,
-        }}
+          padding: "4px 7px", cursor: "pointer", fontFamily: PIXEL, fontSize: 7,
+        })}
       >
         ? HOW IT WORKS
       </button>

@@ -4,9 +4,21 @@ import { useEffect, useState } from "react";
 import {
   getValidZooms, snapZoom, loadZoom, saveZoom, formatViewScale,
 } from "@/game/config/zoomConfig";
+import { chamferBox } from "@/ui/chamfer";
 
 function emitGame(event: string, data?: unknown) {
   (globalThis as any).__solCityGameEvents?.emit(event, data);
+}
+
+const CHAMFER_BORDER_W = 2;
+
+// clip-path alone cuts the corner off a rectangular `border` without leaving
+// a stroke along the new diagonal edge. Faking a chamfered outline instead
+// needs two stacked, independently-clipped layers: an outer one filled with
+// the border color, and an inset inner one (by the border width) filled with
+// the real background — the visible ring between them reads as the outline.
+function chamferClip(corner: number): string {
+  return `polygon(${corner}px 0, calc(100% - ${corner}px) 0, 100% ${corner}px, 100% calc(100% - ${corner}px), calc(100% - ${corner}px) 100%, ${corner}px 100%, 0 calc(100% - ${corner}px), 0 ${corner}px)`;
 }
 
 /** `compact`: just the two buttons, no scale label or frame (for the phone HUD card). */
@@ -40,22 +52,36 @@ export default function ZoomControl({ compact = false }: { compact?: boolean }) 
 
   if (compact) {
     return (
-      <div className="flex items-center" style={{ gap: 3 }}>
-        <ZBtn size={btnSize} disabled={!canDec} onClick={() => change(zooms[idx - 1])}>−</ZBtn>
-        <ZBtn size={btnSize} disabled={!canInc} onClick={() => change(zooms[idx + 1])}>+</ZBtn>
+      <div
+        style={chamferBox(6, {
+          padding: CHAMFER_BORDER_W,
+          background: "#9945FF",
+        })}
+      >
+        <div
+          className="flex items-center"
+          style={chamferBox(6 - CHAMFER_BORDER_W, {
+            gap: 3,
+            padding: "2px 4px",
+            background: "rgba(10,10,30,0.85)",
+          })}
+        >
+          <ZBtn size={btnSize} disabled={!canDec} onClick={() => change(zooms[idx - 1])}>−</ZBtn>
+          <ZBtn size={btnSize} disabled={!canInc} onClick={() => change(zooms[idx + 1])}>+</ZBtn>
+        </div>
       </div>
     );
   }
 
   return (
     <div
-      className="flex items-center gap-1 rounded-lg px-2 py-1.5"
-      style={{
+      className="flex items-center gap-1 px-2 py-1.5"
+      style={chamferBox(8, {
         background: "rgba(10,10,30,0.85)",
         border: "1px solid rgba(153,69,255,0.25)",
         backdropFilter: "blur(4px)",
         fontFamily: "monospace",
-      }}
+      })}
     >
       <ZBtn size={btnSize} disabled={!canDec} onClick={() => change(zooms[idx - 1])}>−</ZBtn>
 
@@ -92,10 +118,9 @@ function ZBtn({
     <button
       onClick={onClick}
       disabled={disabled}
-      style={{
+      style={chamferBox(6, {
         width: size,
         height: size,
-        borderRadius: 6,
         border: "1px solid rgba(153,69,255,0.3)",
         background: disabled ? "transparent" : "rgba(153,69,255,0.12)",
         color: disabled ? "#333344" : "#9945FF",
@@ -108,7 +133,7 @@ function ZBtn({
         padding: 0,
         transition: "background 0.1s",
         WebkitTapHighlightColor: "transparent",
-      }}
+      })}
     >
       {children}
     </button>

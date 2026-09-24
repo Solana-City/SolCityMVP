@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import type { NPCDefinition } from "@/game/config/npcRegistry";
+import { chamferBox } from "@/ui/chamfer";
 
 interface NPCPortraitProps {
   npc: NPCDefinition;
@@ -40,8 +41,8 @@ export default function NPCPortrait({
   if (variant === "avatar") {
     return (
       <div
-        className="rounded-lg overflow-hidden flex-shrink-0"
-        style={{ width: size, height: size, border: `2px solid ${color}` }}
+        className="overflow-hidden flex-shrink-0"
+        style={chamferBox(Math.min(12, size / 6), { width: size, height: size, border: `2px solid ${color}`, })}
       >
         <img
           src={npc.portrait}
@@ -62,13 +63,13 @@ export default function NPCPortrait({
       style={{ width: size, filter: `drop-shadow(0 0 12px ${color}55)` }}
     >
       <div
-        className="rounded-xl overflow-hidden"
-        style={{
+        className="overflow-hidden"
+        style={chamferBox(Math.min(16, size / 6), {
           width: size,
           height: size,
           border: `2px solid ${color}`,
           boxShadow: `inset 0 0 0 1px ${color}33`,
-        }}
+        })}
       >
         <img
           src={npc.portrait}
@@ -82,15 +83,15 @@ export default function NPCPortrait({
 
       {/* Name plate */}
       <div
-        className="mt-2 px-3 py-1 rounded-md w-full text-center"
-        style={{
+        className="mt-2 px-3 py-1 w-full text-center"
+        style={chamferBox(6, {
           background: "rgba(10,10,30,0.95)",
           border: `1px solid ${color}`,
           fontFamily: '"Press Start 2P", monospace',
           fontSize: "7px",
           color,
           letterSpacing: "0.05em",
-        }}
+        })}
       >
         {npc.name}
       </div>

@@ -11,6 +11,7 @@ import { ProtocolIntroGate, type IntroSpec } from "@/ui/ProtocolIntro";
 import CityGuide from "@/ui/CityGuide";
 import MagicBlockHub from "@/ui/MagicBlockHub";
 import StockExchangePanel from "@/ui/StockExchangePanel";
+import { chamferBox } from "@/ui/chamfer";
 
 /** Pratik: how Superteam Earn pays, before the bounty list. */
 const EARN_INTRO: IntroSpec = {
@@ -33,7 +34,7 @@ const EARN_INTRO: IntroSpec = {
 const TRANSFER_INTRO: IntroSpec = {
   id: "transfer",
   title: "HOW SENDING WORKS",
-  color: "#00D1FF",
+  color: "#14F0C6",
   nodes: [
     { sheet: "main_char.png", label: "YOU" },
     { sheet: "send-npc.png", label: "STEVE" },
@@ -50,7 +51,7 @@ const TRANSFER_INTRO: IntroSpec = {
 const SWAP_INTRO: IntroSpec = {
   id: "swap",
   title: "HOW A SWAP WORKS",
-  color: "#14F195",
+  color: "#B7E928",
   nodes: [
     { sheet: "main_char.png", label: "YOU" },
     { sheet: "Jupiter Joe.png", label: "JUPITER" },
@@ -137,7 +138,7 @@ export default function ActionPanel({ action, onClose }: ActionPanelProps) {
           <button
             onClick={onClose}
             className="absolute top-4 right-4 text-lg cursor-pointer"
-            style={{ background: "none", border: "none", color: "#555566" }}
+            style={{ background: "none", border: "none", color: "#14F0C6" }}
           >×</button>
 
           {action.type === "tutor"           && <TutorPanel           onClose={onClose} />}
@@ -162,10 +163,12 @@ export default function ActionPanel({ action, onClose }: ActionPanelProps) {
         onClick={onClose}
       />
       <div
-        className="relative rounded-2xl p-6 w-full max-w-md"
+        className="relative p-6 w-full max-w-md"
         style={{
           background: "rgba(10,10,30,0.97)",
-          border: "1px solid rgba(153,69,255,0.25)",
+          borderWidth: 20, borderStyle: "solid", borderColor: "transparent",
+          borderImage: 'url(/assets/branding/ui/frame-panel-test.png) 64 fill / 20px / 0 round',
+          imageRendering: "pixelated",
           fontFamily: '"Press Start 2P", monospace',
           maxHeight: "90dvh",
           overflowY: "auto",
@@ -174,7 +177,7 @@ export default function ActionPanel({ action, onClose }: ActionPanelProps) {
         <button
           onClick={onClose}
           className="absolute top-4 right-4 text-lg cursor-pointer"
-          style={{ background: "none", border: "none", color: "#555566" }}
+          style={{ background: "none", border: "none", color: "#14F0C6" }}
         >
           ×
         </button>
@@ -292,8 +295,8 @@ function SwapPanel({ onClose }: { onClose: () => void }) {
           TOKEN SWAP
         </h3>
         <div className="text-center py-6">
-          <div style={{ fontSize: 22, color: "#14F195" }}>OK</div>
-          <div style={{ fontFamily: '"Press Start 2P", monospace', fontSize: "8px", color: "#14F195", marginTop: 8 }}>
+          <div style={{ fontSize: 22, color: "#B7E928" }}>OK</div>
+          <div style={{ fontFamily: '"Press Start 2P", monospace', fontSize: "8px", color: "#B7E928", marginTop: 8 }}>
             SWAP COMPLETE
           </div>
           <div style={{ fontSize: "9px", color: "#888899", marginTop: 8 }}>
@@ -301,11 +304,11 @@ function SwapPanel({ onClose }: { onClose: () => void }) {
           </div>
           {result.signature && (
             <a href={`https://solscan.io/tx/${result.signature}`} target="_blank" rel="noopener noreferrer"
-              style={{ display: "block", marginTop: 8, fontSize: "9px", color: "#00D1FF" }}>
+              style={{ display: "block", marginTop: 8, fontSize: "9px", color: "#14F0C6" }}>
               View on Solscan ↗
             </a>
           )}
-          <button onClick={onClose} style={btnStyle("#14F195")} className="w-full mt-4">CLOSE</button>
+          <button onClick={onClose} style={btnStyle("#B7E928")} className="w-full mt-4">CLOSE</button>
         </div>
       </>
     );
@@ -372,11 +375,11 @@ function SwapPanel({ onClose }: { onClose: () => void }) {
           </button>
         ) : (
           <button onClick={handleSwap} disabled={status === "signing" || status === "submitting"}
-            style={btnStyle("#14F195", "#000")} className="flex-1 py-2.5">
+            style={btnStyle("#B7E928", "#000")} className="flex-1 py-2.5">
             {status === "signing" ? "SIGN IN WALLET..." : status === "submitting" ? "SUBMITTING..." : "CONFIRM SWAP"}
           </button>
         )}
-        <button onClick={onClose} style={{ background: "transparent", border: "1px solid #333344", color: "#666677", borderRadius: 8, padding: "0 16px", cursor: "pointer", fontSize: 9 }}>ESC</button>
+        <button onClick={onClose} style={chamferBox(8, { background: "transparent", border: "1px solid #333344", color: "#666677", padding: "0 16px", cursor: "pointer", fontSize: 9 })}>ESC</button>
       </div>
     </>
   );
@@ -427,14 +430,14 @@ function TransferPanel({ onClose }: { onClose: () => void }) {
   if (status === "done" && result?.signature) {
     return (
       <>
-        <h3 style={{ fontFamily: '"Press Start 2P", monospace', fontSize: "8px", color: "#00D1FF", marginBottom: 16 }}>SEND SOL</h3>
+        <h3 style={{ fontFamily: '"Press Start 2P", monospace', fontSize: "8px", color: "#14F0C6", marginBottom: 16 }}>SEND SOL</h3>
         <div className="text-center py-6">
-          <div style={{ fontSize: 22, color: "#14F195" }}>OK</div>
-          <div style={{ fontFamily: '"Press Start 2P", monospace', fontSize: "8px", color: "#14F195", marginTop: 8 }}>TRANSFER SENT</div>
+          <div style={{ fontSize: 22, color: "#B7E928" }}>OK</div>
+          <div style={{ fontFamily: '"Press Start 2P", monospace', fontSize: "8px", color: "#B7E928", marginTop: 8 }}>TRANSFER SENT</div>
           <div style={{ fontSize: "9px", color: "#888899", marginTop: 8 }}>{amount} SOL sent</div>
           <a href={`https://explorer.solana.com/tx/${result.signature}?cluster=devnet`} target="_blank" rel="noopener noreferrer"
-            style={{ display: "block", marginTop: 8, fontSize: "9px", color: "#00D1FF" }}>View on Explorer ↗</a>
-          <button onClick={onClose} style={btnStyle("#00D1FF", "#000")} className="w-full mt-4">CLOSE</button>
+            style={{ display: "block", marginTop: 8, fontSize: "9px", color: "#14F0C6" }}>View on Explorer ↗</a>
+          <button onClick={onClose} style={btnStyle("#14F0C6", "#000")} className="w-full mt-4">CLOSE</button>
         </div>
       </>
     );
@@ -443,7 +446,7 @@ function TransferPanel({ onClose }: { onClose: () => void }) {
   if (status === "error" && result) {
     return (
       <>
-        <h3 style={{ fontFamily: '"Press Start 2P", monospace', fontSize: "8px", color: "#00D1FF", marginBottom: 16 }}>SEND SOL</h3>
+        <h3 style={{ fontFamily: '"Press Start 2P", monospace', fontSize: "8px", color: "#14F0C6", marginBottom: 16 }}>SEND SOL</h3>
         <div className="text-center py-6">
           <div style={{ fontSize: "9px", color: "#ff4444", marginBottom: 12 }}>{result.error}</div>
           <button onClick={() => { setStatus("idle"); setResult(null); }} style={btnStyle("#333344", "#888899")} className="px-4 py-2">Try again</button>
@@ -454,7 +457,7 @@ function TransferPanel({ onClose }: { onClose: () => void }) {
 
   return (
     <>
-      <h3 style={{ fontFamily: '"Press Start 2P", monospace', fontSize: "8px", color: "#00D1FF", marginBottom: 16 }}>SEND SOL</h3>
+      <h3 style={{ fontFamily: '"Press Start 2P", monospace', fontSize: "8px", color: "#14F0C6", marginBottom: 16 }}>SEND SOL</h3>
       <InputBox label="Recipient address">
         <input type="text" value={recipient} onChange={(e) => setRecipient(e.target.value)}
           placeholder="Paste Solana address…"
@@ -469,10 +472,10 @@ function TransferPanel({ onClose }: { onClose: () => void }) {
       </div>
       <div className="flex gap-2">
         <button onClick={handleSend} disabled={!connected || status === "sending" || !recipient || !amount}
-          style={btnStyle(connected ? "#00D1FF" : "#333344", connected ? "#000" : "#666677")} className="flex-1 py-2.5">
+          style={btnStyle(connected ? "#14F0C6" : "#333344", connected ? "#000" : "#666677")} className="flex-1 py-2.5">
           {!connected ? "CONNECT WALLET FIRST" : status === "sending" ? "SENDING…" : "SEND"}
         </button>
-        <button onClick={onClose} style={{ background: "transparent", border: "1px solid #333344", color: "#666677", borderRadius: 8, padding: "0 16px", cursor: "pointer", fontSize: 9 }}>ESC</button>
+        <button onClick={onClose} style={chamferBox(8, { background: "transparent", border: "1px solid #333344", color: "#666677", padding: "0 16px", cursor: "pointer", fontSize: 9 })}>ESC</button>
       </div>
     </>
   );
@@ -489,8 +492,8 @@ type EarnCategory = {
 };
 
 const EARN_CATEGORIES: EarnCategory[] = [
-  { type: "bounty",    label: "Bounties",         sublabel: "Short tasks",            color: "#14F195", viewAllUrl: "https://superteam.fun/earn/all?tab=bounties"    },
-  { type: "project",   label: "Projects",          sublabel: "Longer work",            color: "#00D1FF", viewAllUrl: "https://superteam.fun/earn/all?tab=projects"    },
+  { type: "bounty",    label: "Bounties",         sublabel: "Short tasks",            color: "#B7E928", viewAllUrl: "https://superteam.fun/earn/all?tab=bounties"    },
+  { type: "project",   label: "Projects",          sublabel: "Longer work",            color: "#14F0C6", viewAllUrl: "https://superteam.fun/earn/all?tab=projects"    },
   { type: "grant",     label: "Grants",            sublabel: "Funding to build",       color: "#9945FF", viewAllUrl: "https://superteam.fun/earn/grants"              },
   { type: "hackathon", label: "Hackathons",        sublabel: "Build and compete",      color: "#FFD700", viewAllUrl: "https://superteam.fun/earn/all?tab=hackathons"   },
 ];
@@ -518,16 +521,15 @@ function BountiesPanel({ onClose }: { onClose: () => void }) {
           <div
             key={cat.type}
             onClick={() => setSelected(cat)}
-            style={{
+            style={chamferBox(8, {
               background: "#12122a",
               border: `1px solid ${cat.color}33`,
-              borderRadius: 8,
               padding: 12,
               cursor: "pointer",
               transition: "border-color 0.15s",
-            }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.borderColor = `${cat.color}66`; }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.borderColor = `${cat.color}33`; }}
+            })}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.setProperty("--cbc", `${cat.color}66`); }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.setProperty("--cbc", `${cat.color}33`); }}
           >
             <div style={{ fontSize: "8px", color: cat.color, fontWeight: "bold", marginBottom: 4 }}>
               {cat.label}
@@ -541,7 +543,7 @@ function BountiesPanel({ onClose }: { onClose: () => void }) {
 
       <button
         onClick={onClose}
-        style={{ background: "transparent", border: "1px solid #333344", color: "#666677", borderRadius: 8, padding: "8px 0", cursor: "pointer", fontSize: 9, width: "100%" }}
+        style={chamferBox(8, { background: "transparent", border: "1px solid #333344", color: "#666677", padding: "8px 0", cursor: "pointer", fontSize: 9, width: "100%" })}
       >
         ESC
       </button>
@@ -599,7 +601,7 @@ function EarnListingsStage({
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
         <button
           onClick={onBack}
-          style={{ background: "transparent", border: `1px solid ${category.color}44`, color: category.color, borderRadius: 6, padding: "4px 10px", cursor: "pointer", fontFamily: '"Press Start 2P", monospace', fontSize: "7px" }}
+          style={chamferBox(6, { background: "transparent", border: `1px solid ${category.color}44`, color: category.color, padding: "4px 10px", cursor: "pointer", fontFamily: '"Press Start 2P", monospace', fontSize: "7px" })}
         >
           ← BACK
         </button>
@@ -615,8 +617,8 @@ function EarnListingsStage({
           <div style={{ marginBottom: 14 }}>
             <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 10 }}>
               <StepCard number={1} title="Propose" color="#9945FF" description="Send a short plan for what you will build." />
-              <StepCard number={2} title="Get approved" color="#00D1FF" description="The grant team reviews it, usually in 1 to 3 weeks." />
-              <StepCard number={3} title="Build" color="#14F195" description="Paid in USDC. No equity taken." />
+              <StepCard number={2} title="Get approved" color="#14F0C6" description="The grant team reviews it, usually in 1 to 3 weeks." />
+              <StepCard number={3} title="Build" color="#B7E928" description="Paid in USDC. No equity taken." />
             </div>
             {/* Divider before live listings */}
             <div style={{ fontSize: "7px", color: "#555566", textAlign: "center", marginBottom: 10, letterSpacing: 2 }}>
@@ -660,18 +662,17 @@ function EarnListingsStage({
             href={listing.url}
             target="_blank"
             rel="noopener noreferrer"
-            style={{
+            style={chamferBox(8, {
               display: "block",
               background: "#12122a",
               border: "1px solid rgba(255,255,255,0.04)",
-              borderRadius: 8,
               padding: 12,
               marginBottom: 8,
               textDecoration: "none",
               transition: "border-color 0.15s",
-            }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLAnchorElement).style.borderColor = `${category.color}33`; }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLAnchorElement).style.borderColor = "rgba(255,255,255,0.04)"; }}
+            })}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLAnchorElement).style.setProperty("--cbc", `${category.color}33`); }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLAnchorElement).style.setProperty("--cbc", "rgba(255,255,255,0.04)"); }}
           >
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
               <div style={{ flex: 1, minWidth: 0 }}>
@@ -698,13 +699,13 @@ function EarnListingsStage({
           href={category.viewAllUrl}
           target="_blank"
           rel="noopener noreferrer"
-          style={{ flex: 1, background: `${category.color}18`, color: category.color, border: `1px solid ${category.color}33`, borderRadius: 8, padding: "10px 0", textAlign: "center", fontFamily: '"Press Start 2P", monospace', fontSize: "7px", textDecoration: "none", display: "block" }}
+          style={chamferBox(8, { flex: 1, background: `${category.color}18`, color: category.color, border: `1px solid ${category.color}33`, padding: "10px 0", textAlign: "center", fontFamily: '"Press Start 2P", monospace', fontSize: "7px", textDecoration: "none", display: "block" })}
         >
           SEE ALL {category.label.toUpperCase()} →
         </a>
         <button
           onClick={onClose}
-          style={{ background: "transparent", border: "1px solid #333344", color: "#666677", borderRadius: 8, padding: "0 16px", cursor: "pointer", fontSize: 9 }}
+          style={chamferBox(8, { background: "transparent", border: "1px solid #333344", color: "#666677", padding: "0 16px", cursor: "pointer", fontSize: 9 })}
         >
           ESC
         </button>
@@ -925,7 +926,7 @@ function PrivatePaymentPanel({ onClose }: { onClose: () => void }) {
         <button
           onClick={() => setIntroOpen(true)}
           title="How it works"
-          style={{ background: "transparent", border: `1px solid ${FUCHSIA}66`, color: FUCHSIA, borderRadius: 6, padding: "4px 7px", cursor: "pointer", fontFamily: '"Press Start 2P", monospace', fontSize: 7, marginRight: 22 }}
+          style={chamferBox(6, { background: "transparent", border: `1px solid ${FUCHSIA}66`, color: FUCHSIA, padding: "4px 7px", cursor: "pointer", fontFamily: '"Press Start 2P", monospace', fontSize: 7, marginRight: 22 })}
         >
           ? HOW
         </button>
@@ -933,7 +934,7 @@ function PrivatePaymentPanel({ onClose }: { onClose: () => void }) {
       <ClusterToggle cluster={cluster} onChange={setCluster} />
 
       {/* Private balance */}
-      <div style={{ background: "#0d0d22", border: `1px solid ${FUCHSIA}33`, borderRadius: 8, padding: "10px 14px", marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+      <div style={chamferBox(8, { background: "#0d0d22", border: `1px solid ${FUCHSIA}33`, padding: "10px 14px", marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "center" })}>
         <span style={{ fontSize: 8, color: "#777788" }}>Private balance</span>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <span style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 8, color: FUCHSIA }}>
@@ -970,7 +971,7 @@ function PrivatePaymentPanel({ onClose }: { onClose: () => void }) {
               style={{ background: "transparent", color: "#fff", border: "none", fontSize: 8, fontFamily: "monospace", width: "100%", outline: "none" }}
             />
           </InputBox>
-          <div style={{ background: "#12122a", border: "1px solid rgba(255,255,255,0.04)", borderRadius: 8, padding: 12, marginBottom: 8 }}>
+          <div style={chamferBox(8, { background: "#12122a", border: "1px solid rgba(255,255,255,0.04)", padding: 12, marginBottom: 8 })}>
             <div style={{ fontSize: 8, color: "#555566", marginBottom: 6, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <span>Amount (USDC)</span>
               <button
@@ -996,7 +997,7 @@ function PrivatePaymentPanel({ onClose }: { onClose: () => void }) {
           {balance !== null && balance <= 0 && (
             <button
               onClick={() => { pickedTabRef.current = true; setActiveTab("deposit"); }}
-              style={{ display: "block", width: "100%", background: `${FUCHSIA}18`, border: `1px dashed ${FUCHSIA}`, color: FUCHSIA, borderRadius: 8, padding: "8px 0", marginBottom: 10, cursor: "pointer", fontFamily: '"Press Start 2P", monospace', fontSize: 7 }}
+              style={chamferBox(8, { display: "block", width: "100%", background: `${FUCHSIA}18`, border: `1px dashed ${FUCHSIA}`, color: FUCHSIA, padding: "8px 0", marginBottom: 10, cursor: "pointer", fontFamily: '"Press Start 2P", monospace', fontSize: 7 })}
             >
               EMPTY: DEPOSIT FIRST (STEP 1) ▸
             </button>
@@ -1011,7 +1012,7 @@ function PrivatePaymentPanel({ onClose }: { onClose: () => void }) {
             >
               {status === "transferring" ? "SIGNING…" : "SEND PRIVATELY"}
             </button>
-            <button onClick={onClose} style={{ background: "transparent", border: "1px solid #333344", color: "#666677", borderRadius: 8, padding: "0 14px", cursor: "pointer", fontSize: 9 }}>ESC</button>
+            <button onClick={onClose} style={chamferBox(8, { background: "transparent", border: "1px solid #333344", color: "#666677", padding: "0 14px", cursor: "pointer", fontSize: 9 })}>ESC</button>
           </div>
         </>
       )}
@@ -1038,7 +1039,7 @@ function PrivatePaymentPanel({ onClose }: { onClose: () => void }) {
             >
               {status === "depositing" ? "SIGNING…" : "DEPOSIT"}
             </button>
-            <button onClick={onClose} style={{ background: "transparent", border: "1px solid #333344", color: "#666677", borderRadius: 8, padding: "0 14px", cursor: "pointer", fontSize: 9 }}>ESC</button>
+            <button onClick={onClose} style={chamferBox(8, { background: "transparent", border: "1px solid #333344", color: "#666677", padding: "0 14px", cursor: "pointer", fontSize: 9 })}>ESC</button>
           </div>
         </>
       )}
@@ -1065,7 +1066,7 @@ function PrivatePaymentPanel({ onClose }: { onClose: () => void }) {
             >
               {status === "withdrawing" ? "SIGNING…" : "WITHDRAW"}
             </button>
-            <button onClick={onClose} style={{ background: "transparent", border: "1px solid #333344", color: "#666677", borderRadius: 8, padding: "0 14px", cursor: "pointer", fontSize: 9 }}>ESC</button>
+            <button onClick={onClose} style={chamferBox(8, { background: "transparent", border: "1px solid #333344", color: "#666677", padding: "0 14px", cursor: "pointer", fontSize: 9 })}>ESC</button>
           </div>
         </>
       )}
@@ -1090,7 +1091,7 @@ function ClusterToggle({ cluster, onChange, disabled }: {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
       <span style={{ fontSize: 7, color: "#555566", fontFamily: '"Press Start 2P", monospace', flexShrink: 0 }}>NETWORK</span>
-      <div style={{ display: "flex", gap: 0, background: "#0d0d22", border: "1px solid #1a1a3a", borderRadius: 6, overflow: "hidden", opacity: disabled ? 0.45 : 1 }}>
+      <div style={chamferBox(6, { display: "flex", gap: 0, background: "#0d0d22", border: "1px solid #1a1a3a", overflow: "hidden", opacity: disabled ? 0.45 : 1 })}>
         {(["devnet", "mainnet"] as const).map(c => (
           <button
             key={c}
@@ -1243,7 +1244,7 @@ function PrivateIntro({ onDone }: { onDone: () => void }) {
       <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
         <button
           onClick={() => setI((n) => Math.max(0, n - 1))}
-          style={{ background: "transparent", border: "1px solid #333344", color: "#888899", borderRadius: 8, padding: "9px 12px", cursor: "pointer", fontFamily: '"Press Start 2P", monospace', fontSize: 7, visibility: i === 0 ? "hidden" : "visible" }}
+          style={chamferBox(8, { background: "transparent", border: "1px solid #333344", color: "#888899", padding: "9px 12px", cursor: "pointer", fontFamily: '"Press Start 2P", monospace', fontSize: 7, visibility: i === 0 ? "hidden" : "visible" })}
         >
           BACK
         </button>
@@ -1275,13 +1276,13 @@ function TokenBox({ label, token, onTokenChange, excludeToken, tokens, getLogo, 
 }) {
   const logo = getLogo(token);
   return (
-    <div style={{ background: "#12122a", border: "1px solid rgba(255,255,255,0.04)", borderRadius: 8, padding: 12, marginBottom: 8 }}>
+    <div style={chamferBox(8, { background: "#12122a", border: "1px solid rgba(255,255,255,0.04)", padding: 12, marginBottom: 8 })}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
         <span style={{ fontSize: "8px", color: "#555566" }}>{label}</span>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           {logo && <img src={logo} alt={token} style={{ width: 18, height: 18, borderRadius: "50%" }} />}
           <select value={token} onChange={(e) => onTokenChange(e.target.value)}
-            style={{ background: "#1a1a3a", color: "#9945FF", border: "1px solid rgba(153,69,255,0.2)", borderRadius: 4, padding: "2px 6px", fontSize: "9px", cursor: "pointer", outline: "none" }}>
+            style={chamferBox(4, { background: "#1a1a3a", color: "#9945FF", border: "1px solid rgba(153,69,255,0.2)", padding: "2px 6px", fontSize: "9px", cursor: "pointer", outline: "none" })}>
             {tokens.filter(t => t !== excludeToken).map(t => <option key={t} value={t}>{t}</option>)}
           </select>
         </div>
@@ -1293,7 +1294,7 @@ function TokenBox({ label, token, onTokenChange, excludeToken, tokens, getLogo, 
 
 function InputBox({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div style={{ background: "#12122a", border: "1px solid rgba(255,255,255,0.04)", borderRadius: 8, padding: 12, marginBottom: 8 }}>
+    <div style={chamferBox(8, { background: "#12122a", border: "1px solid rgba(255,255,255,0.04)", padding: 12, marginBottom: 8 })}>
       <div style={{ fontSize: "8px", color: "#555566", marginBottom: 6 }}>{label}</div>
       {children}
     </div>
@@ -1304,7 +1305,7 @@ function StepCard({ number, title, description, color, action }: {
   number: number; title: string; description: string; color: string; action?: React.ReactNode;
 }) {
   return (
-    <div style={{ display: "flex", gap: 12, background: "#12122a", border: "1px solid rgba(255,255,255,0.04)", borderRadius: 8, padding: 12 }}>
+    <div style={chamferBox(8, { display: "flex", gap: 12, background: "#12122a", border: "1px solid rgba(255,255,255,0.04)", padding: 12 })}>
       <div style={{ flexShrink: 0, width: 28, height: 28, borderRadius: "50%", background: `${color}22`, border: `1px solid ${color}44`, color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "9px", fontWeight: "bold" }}>
         {number}
       </div>
@@ -1318,15 +1319,14 @@ function StepCard({ number, title, description, color, action }: {
 }
 
 function btnStyle(bg: string, color = "#fff"): React.CSSProperties {
-  return {
+  return chamferBox(8, {
     background: bg,
     color,
     border: "none",
-    borderRadius: 8,
     cursor: "pointer",
     fontFamily: '"Press Start 2P", monospace',
     fontSize: "7px",
     display: "block",
     textAlign: "center",
-  };
+  });
 }

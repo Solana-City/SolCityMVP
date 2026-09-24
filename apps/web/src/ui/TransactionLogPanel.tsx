@@ -10,6 +10,7 @@ import {
   type TxLayer,
   type TxStatus,
 } from "@/game/telemetry/transactionLog";
+import { chamferBox, octagonFrame } from "@/ui/chamfer";
 
 interface Props {
   isOpen: boolean;
@@ -137,7 +138,7 @@ export default function TransactionLogPanel({ isOpen, onToggle, gameRef, compact
 
   const floatingPanel = isOpen ? (
     <div
-      className="fixed z-30 rounded-xl overflow-hidden flex flex-col"
+      className="fixed z-30 overflow-hidden flex flex-col"
       style={{
         // On a phone the 420px card anchored under the HUD had almost no room
         // left in landscape, so on touch the log is a side sheet down the right
@@ -151,8 +152,8 @@ export default function TransactionLogPanel({ isOpen, onToggle, gameRef, compact
         width: compact ? "min(58%, 380px)" : 420,
         maxWidth: compact ? undefined : "calc(100vw - 32px)",
         height: compact ? undefined : `min(560px, calc(100vh - ${panelTop + 8}px))`,
+        ...octagonFrame(1),
         background: "rgba(10,10,30,0.97)",
-        border: "1px solid rgba(153,69,255,0.35)",
         backdropFilter: "blur(4px)",
         fontFamily: '"Press Start 2P", monospace',
       }}
@@ -198,6 +199,17 @@ export default function TransactionLogPanel({ isOpen, onToggle, gameRef, compact
 
 // ── Subcomponents ───────────────────────────────────────────────────────
 
+const CHAMFER_BORDER_W = 2;
+
+// clip-path alone cuts the corner off a rectangular `border` without leaving
+// a stroke along the new diagonal edge. Faking a chamfered outline instead
+// needs two stacked, independently-clipped layers: an outer one filled with
+// the border color, and an inset inner one (by the border width) filled with
+// the real background — the visible ring between them reads as the outline.
+function chamferClip(corner: number): string {
+  return `polygon(${corner}px 0, calc(100% - ${corner}px) 0, 100% ${corner}px, 100% calc(100% - ${corner}px), calc(100% - ${corner}px) 100%, ${corner}px 100%, 0 calc(100% - ${corner}px), 0 ${corner}px)`;
+}
+
 function ToggleButton({
   isOpen,
   onClick,
@@ -215,31 +227,42 @@ function ToggleButton({
 }) {
   // Border color leans on activity: failing stands out loudest.
   const borderColor =
-    failedCount > 0 ? "#F72585" : pendingCount > 0 ? "#FFD700" : "#14F195";
+    failedCount > 0 ? "#F72585" : pendingCount > 0 ? "#FFD700" : "#B7E928";
 
   return (
-    <button
-      onClick={onClick}
-      title="On-chain activity [T]"
-      className="rounded-lg cursor-pointer transition-colors flex items-center justify-center"
-      style={{
+    <div
+      style={chamferBox(6, {
         height: compact ? 26 : 30,
-        gap: 4,
-        padding: "0 5px",
         width: "100%",
         minWidth: 0,
-        overflow: "hidden",
-        background: isOpen ? "rgba(153,69,255,0.2)" : "rgba(10,10,30,0.85)",
-        border: `1.5px solid ${borderColor}`,
-        color: "#ccccdd",
-        fontFamily: '"Press Start 2P", monospace',
-        fontSize: compact ? "6px" : "7px",
-      }}
+        display: "flex",
+        padding: CHAMFER_BORDER_W,
+        background: borderColor,
+      })}
     >
-      <PulseDot color={borderColor} active={pendingCount > 0} />
-      <span style={{ whiteSpace: "nowrap" }}>ONCHAIN</span>
-      <span style={{ color: borderColor, flexShrink: 0 }}>{entryCount}</span>
-    </button>
+      <button
+        onClick={onClick}
+        title="On-chain activity [T]"
+        className="cursor-pointer transition-colors flex items-center justify-center"
+        style={chamferBox(6 - CHAMFER_BORDER_W, {
+          flex: 1,
+          height: "100%",
+          gap: 4,
+          padding: "0 5px",
+          minWidth: 0,
+          overflow: "hidden",
+          background: isOpen ? borderColor : "rgba(10,10,30,0.85)",
+          border: "none",
+          color: isOpen ? "#0a0a1e" : "#ccccdd",
+          fontFamily: '"Press Start 2P", monospace',
+          fontSize: compact ? "6px" : "7px",
+        })}
+      >
+        <PulseDot color={isOpen ? "#0a0a1e" : borderColor} active={pendingCount > 0} />
+        <span style={{ whiteSpace: "nowrap" }}>ONCHAIN</span>
+        <span style={{ color: isOpen ? "#0a0a1e" : borderColor, flexShrink: 0 }}>{entryCount}</span>
+      </button>
+    </div>
   );
 }
 
@@ -261,7 +284,7 @@ function PulseDot({ color, active }: { color: string; active: boolean }) {
 
 /** Under a rollup's promise, over a second is a base-layer feeling. */
 function speedColor(ms: number): string {
-  if (ms < 400) return "#14F195";
+  if (ms < 400) return "#B7E928";
   if (ms < 1_000) return "#FFD700";
   return "#F72585";
 }
@@ -327,15 +350,14 @@ function Header({
             onClick={onResetSession}
             disabled={resetting}
             className="cursor-pointer"
-            style={{
+            style={chamferBox(4, {
               background: "none",
               border: "1px solid rgba(153,69,255,0.35)",
-              borderRadius: 4,
               padding: "2px 6px",
               color: resetting ? "#555566" : "#9945FF",
               fontSize: 7,
               opacity: resetting ? 0.6 : 1,
-            }}
+            })}
             title="Undelegate the current player PDA and reconnect from scratch. Use this to force a fresh delegate_pda signature if your wallet's PDA is stuck delegated from a past session"
           >
             {resetting ? "resetting…" : "reset session"}
@@ -358,7 +380,7 @@ function Header({
         <button
           onClick={onClose}
           className="cursor-pointer leading-none"
-          style={{ background: "none", border: "none", color: "#555566", fontSize: 14 }}
+          style={{ background: "none", border: "none", color: "#14F0C6", fontSize: 14 }}
           aria-label="Close log"
         >
           ×
@@ -387,7 +409,7 @@ const KIND_OPTIONS: Array<{ value: TxKind | "all"; label: string }> = [
 
 const STATUS_OPTIONS: Array<{ value: TxStatus | "all"; label: string; color: string }> = [
   { value: "all", label: "all", color: "#777788" },
-  { value: "confirmed", label: "confirmed", color: "#14F195" },
+  { value: "confirmed", label: "confirmed", color: "#B7E928" },
   { value: "pending", label: "pending", color: "#FFD700" },
   { value: "failed", label: "failed", color: "#F72585" },
 ];
@@ -461,14 +483,13 @@ function FilterChip({
     <button
       onClick={onClick}
       className="cursor-pointer transition-colors"
-      style={{
+      style={chamferBox(4, {
         padding: "2px 8px",
         fontSize: "8px",
-        borderRadius: 4,
         background: active ? `${color}22` : "transparent",
         border: `1px solid ${active ? color : "rgba(153,69,255,0.2)"}`,
         color: active ? color : "#888899",
-      }}
+      })}
     >
       {children}
     </button>
@@ -501,7 +522,7 @@ function EntryRow({ entry }: { entry: TxEntry }) {
   const isSimulated = entry.signature?.startsWith("sim:");
   const statusColor =
     entry.status === "confirmed"
-      ? "#14F195"
+      ? "#B7E928"
       : entry.status === "pending"
       ? "#FFD700"
       : "#F72585";
@@ -511,7 +532,7 @@ function EntryRow({ entry }: { entry: TxEntry }) {
       : entry.layer === "jupiter"
       ? "#FFD700"
       : entry.layer === "base"
-      ? "#00D1FF"
+      ? "#14F0C6"
       : "#555566";
 
   return (
@@ -590,14 +611,13 @@ function EntryRow({ entry }: { entry: TxEntry }) {
           target="_blank"
           rel="noopener noreferrer"
           className="flex-shrink-0"
-          style={{
+          style={chamferBox(4, {
             fontSize: 9,
             color: layerColor,
             textDecoration: "none",
             padding: "2px 6px",
             border: `1px solid ${layerColor}55`,
-            borderRadius: 4,
-          }}
+          })}
           title="View on explorer"
         >
           ↗

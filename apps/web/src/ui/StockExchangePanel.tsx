@@ -19,10 +19,11 @@ import { getShareTrades, setShareTrades } from "@/game/chat/tradeBroadcast";
 import { ORDER_TTL_MS, deserializeTransaction, fromSmallestUnit, type OrderResponse } from "@/game/solana/jupiterSwap";
 import { transactionLog } from "@/game/telemetry/transactionLog";
 import { profileManager } from "@/game/config/profileManager";
+import { chamferBox } from "@/ui/chamfer";
 
 const PIXEL = '"Press Start 2P", monospace';
 const GOLD = "#FFB547";
-const UP = "#14F195";
+const UP = "#B7E928";
 const DOWN = "#FF4D6D";
 const MUTED = "#8A90A6";
 
@@ -125,12 +126,12 @@ export default function StockExchangePanel({ onClose }: { onClose: () => void })
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <span style={{ fontSize: 9, color: GOLD }}>STOCKLANA</span>
           {IS_DEVNET && (
-            <span style={{ fontSize: 5, padding: "3px 5px", borderRadius: 5, background: "rgba(0,209,255,0.14)", color: "#00D1FF" }}>DEVNET TEST</span>
+            <span style={{ fontSize: 5, padding: "3px 5px", borderRadius: 5, background: "rgba(20,240,198,0.14)", color: "#14F0C6" }}>DEVNET TEST</span>
           )}
         </div>
         <span style={{
           fontSize: 6, padding: "4px 6px", borderRadius: 6,
-          background: clock.wallStreetOpen ? "rgba(20,241,149,0.12)" : "rgba(255,181,71,0.12)",
+          background: clock.wallStreetOpen ? "rgba(183,233,40,0.12)" : "rgba(255,181,71,0.12)",
           color: clock.wallStreetOpen ? UP : GOLD,
         }}>
           {clock.wallStreetOpen ? "NYSE OPEN" : "AFTER HOURS"}
@@ -143,12 +144,12 @@ export default function StockExchangePanel({ onClose }: { onClose: () => void })
       {/* Tabs */}
       <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
         {(["market", "baskets", "mine"] as const).map((t) => (
-          <button key={t} onClick={() => setTab(t)} style={{
-            flex: 1, padding: "8px 0", borderRadius: 8, cursor: "pointer", fontFamily: PIXEL, fontSize: 6,
+          <button key={t} onClick={() => setTab(t)} style={chamferBox(8, {
+            flex: 1, padding: "8px 0", cursor: "pointer", fontFamily: PIXEL, fontSize: 6,
             border: `1px solid ${tab === t ? GOLD : "#2a2f45"}`,
             background: tab === t ? "rgba(255,181,71,0.12)" : "transparent",
             color: tab === t ? GOLD : MUTED,
-          }}>
+          })}>
             {t === "market" ? "MARKET" : t === "baskets" ? "BASKETS" : `MINE${owned.length ? ` (${owned.length})` : ""}`}
           </button>
         ))}
@@ -163,10 +164,10 @@ export default function StockExchangePanel({ onClose }: { onClose: () => void })
             onFocus={() => emitGameEvent("chat:focus", true)}
             onBlur={() => emitGameEvent("chat:focus", false)}
             placeholder={`SEARCH ${STOCKS.length} STOCKS`}
-            style={{
-              width: "100%", boxSizing: "border-box", padding: "9px 10px", borderRadius: 8, marginBottom: 8,
+            style={chamferBox(8, {
+              width: "100%", boxSizing: "border-box", padding: "9px 10px", marginBottom: 8,
               background: "#12162b", border: "1px solid #2a2f45", color: "#fff", fontFamily: PIXEL, fontSize: 7, outline: "none",
-            }}
+            })}
           />
           {/* Sector chips wrap onto a second line so every one stays visible
               (a sideways scroll hid the last ones behind the panel edge). */}
@@ -192,10 +193,10 @@ export default function StockExchangePanel({ onClose }: { onClose: () => void })
             const moves = stocks.map((s) => market.quotes[s.mint]?.change24h).filter((v): v is number => v != null);
             const avg = moves.length ? moves.reduce((a, v) => a + v, 0) / moves.length : null;
             return (
-              <button key={b.id} onClick={() => setSelectedBasket(b)} style={{
-                display: "flex", alignItems: "center", gap: 10, padding: 10, borderRadius: 10, cursor: "pointer",
+              <button key={b.id} onClick={() => setSelectedBasket(b)} style={chamferBox(10, {
+                display: "flex", alignItems: "center", gap: 10, padding: 10, cursor: "pointer",
                 textAlign: "left", background: "#12162b", border: `1px solid ${b.color}44`, minWidth: 0,
-              }}>
+              })}>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontFamily: PIXEL, fontSize: 8, color: "#fff" }}>{b.name.toUpperCase()}</div>
                   <div style={{ fontFamily: PIXEL, fontSize: 5, color: MUTED, marginTop: 4, lineHeight: 1.5 }}>{b.tagline}</div>
@@ -212,7 +213,7 @@ export default function StockExchangePanel({ onClose }: { onClose: () => void })
       )}
 
       {tab === "mine" && (
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", padding: "10px 12px", borderRadius: 10, background: "#12162b", marginBottom: 10 }}>
+        <div style={chamferBox(10, { display: "flex", justifyContent: "space-between", alignItems: "baseline", padding: "10px 12px", background: "#12162b", marginBottom: 10 })}>
           <span style={{ fontSize: 6, color: MUTED }}>PORTFOLIO</span>
           <span style={{ fontSize: 11, color: "#fff" }}>{usd(portfolioUsd)}</span>
         </div>
@@ -236,10 +237,10 @@ export default function StockExchangePanel({ onClose }: { onClose: () => void })
           const b = basis[s.mint];
           const pnl = h && b && b.usd > 0 ? ((value - b.usd) / b.usd) * 100 : null;
           return (
-            <button key={s.mint} onClick={() => setSelected(s)} style={{
-              display: "flex", flexDirection: "column", gap: 6, padding: 10, borderRadius: 10, cursor: "pointer",
+            <button key={s.mint} onClick={() => setSelected(s)} style={chamferBox(10, {
+              display: "flex", flexDirection: "column", gap: 6, padding: 10, cursor: "pointer",
               textAlign: "left", background: "#12162b", border: `1px solid ${s.color}33`, minWidth: 0,
-            }}>
+            })}>
               <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
                 <StockLogo stock={s} size={22} />
                 <div style={{ minWidth: 0 }}>
@@ -384,7 +385,7 @@ function TradeView(props: {
         <div style={{ fontSize: 9, color: "#fff", marginTop: 10 }}>{done.text}</div>
         {done.signature && (
           <a href={stockTxUrl(done.signature)} target="_blank" rel="noopener noreferrer"
-            style={{ display: "block", marginTop: 12, fontSize: 6, color: "#00D1FF" }}>
+            style={{ display: "block", marginTop: 12, fontSize: 6, color: "#14F0C6" }}>
             View on Solscan
           </a>
         )}
@@ -422,7 +423,7 @@ function TradeView(props: {
 
       {/* Solana vs Wall Street */}
       {q?.wallStreetPrice != null && q.premiumPct != null && (
-        <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 10px", borderRadius: 8, background: "#12162b", marginBottom: 10, fontSize: 6 }}>
+        <div style={chamferBox(8, { display: "flex", justifyContent: "space-between", padding: "8px 10px", background: "#12162b", marginBottom: 10, fontSize: 6 })}>
           <span style={{ color: MUTED }}>WALL ST {usd(q.wallStreetPrice)}</span>
           <span style={{ color: Math.abs(q.premiumPct) < 0.5 ? UP : GOLD }}>SOLANA {pct(q.premiumPct)}</span>
         </div>
@@ -438,14 +439,14 @@ function TradeView(props: {
         {(["buy", "sell"] as const).map((s) => (
           <button key={s} onClick={() => { setSide(s); setUsdAmount(null); setSellPct(null); }}
             disabled={s === "sell" && !holding}
-            style={{
-              flex: 1, padding: "10px 0", borderRadius: 8, fontFamily: PIXEL, fontSize: 8,
+            style={chamferBox(8, {
+              flex: 1, padding: "10px 0", fontFamily: PIXEL, fontSize: 8,
               cursor: s === "sell" && !holding ? "not-allowed" : "pointer",
               opacity: s === "sell" && !holding ? 0.35 : 1,
               border: `1px solid ${side === s ? (s === "buy" ? UP : DOWN) : "#2a2f45"}`,
-              background: side === s ? (s === "buy" ? "rgba(20,241,149,0.12)" : "rgba(255,77,109,0.12)") : "transparent",
+              background: side === s ? (s === "buy" ? "rgba(183,233,40,0.12)" : "rgba(255,77,109,0.12)") : "transparent",
               color: side === s ? (s === "buy" ? UP : DOWN) : MUTED,
-            }}>
+            })}>
             {s.toUpperCase()}
           </button>
         ))}
@@ -612,7 +613,7 @@ function BasketView(props: {
         <div style={{ fontSize: 10, color: UP, marginTop: 14 }}>{ok.length === legs.length ? "BASKET BOUGHT" : `${ok.length} OF ${legs.length} BOUGHT`}</div>
         <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 14 }}>
           {legs.map((l) => (
-            <div key={l.stock.mint} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 6, padding: "6px 8px", borderRadius: 6, background: "#12162b" }}>
+            <div key={l.stock.mint} style={chamferBox(6, { display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 6, padding: "6px 8px", background: "#12162b" })}>
               <span style={{ color: "#fff" }}>{l.stock.ticker}</span>
               {l.status === "sent" ? (
                 <a href={stockTxUrl(l.signature ?? "")} target="_blank" rel="noopener noreferrer" style={{ color: UP }}>
@@ -655,7 +656,7 @@ function BasketView(props: {
           const isOpen = open === s.mint;
           const leg = legs?.find((l) => l.stock.mint === s.mint);
           return (
-            <div key={s.mint} style={{ borderRadius: 8, background: "#12162b", border: `1px solid ${isOpen ? s.color + "66" : "transparent"}` }}>
+            <div key={s.mint} style={chamferBox(8, { background: "#12162b", border: `1px solid ${isOpen ? s.color + "66" : "transparent"}` })}>
               <button onClick={() => setOpen(isOpen ? null : s.mint)} style={{
                 display: "flex", alignItems: "center", gap: 8, width: "100%", padding: 8, background: "none", border: "none", cursor: "pointer", textAlign: "left",
               }}>
@@ -761,7 +762,7 @@ function ShareToggle() {
     }}>
       <span style={{
         width: 12, height: 12, borderRadius: 3, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
-        border: `1px solid ${share ? UP : "#3a3f55"}`, background: share ? "rgba(20,241,149,0.15)" : "transparent",
+        border: `1px solid ${share ? UP : "#3a3f55"}`, background: share ? "rgba(183,233,40,0.15)" : "transparent",
       }}>
         {share && <span style={{ width: 6, height: 6, borderRadius: 1, background: UP }} />}
       </span>
@@ -798,17 +799,17 @@ function trimAmount(s: string): string {
 }
 
 function chip(active: boolean): React.CSSProperties {
-  return {
-    flex: 1, padding: "8px 0", borderRadius: 8, cursor: "pointer", fontFamily: PIXEL, fontSize: 7,
+  return chamferBox(8, {
+    flex: 1, padding: "8px 0", cursor: "pointer", fontFamily: PIXEL, fontSize: 7,
     border: `1px solid ${active ? GOLD : "#2a2f45"}`,
     background: active ? "rgba(255,181,71,0.14)" : "transparent",
     color: active ? GOLD : "#c9cde0",
-  };
+  });
 }
 
 function primaryBtn(bg: string): React.CSSProperties {
-  return {
-    width: "100%", padding: "12px 0", borderRadius: 10, border: "none", cursor: "pointer",
+  return chamferBox(10, {
+    width: "100%", padding: "12px 0", border: "none", cursor: "pointer",
     fontFamily: PIXEL, fontSize: 8, background: bg, color: "#0b0f24",
-  };
+  });
 }

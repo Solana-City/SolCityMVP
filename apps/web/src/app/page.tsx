@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import dynamic from "next/dynamic";
 import type { NPCDefinition, NPCAction } from "@/game/config/npcRegistry";
 import type { GameWithSceneReady, SolCityWalletHost } from "@/game/scenes/CityScene";
@@ -50,6 +51,7 @@ const ExpressionWheel     = dynamic(() => import("@/ui/ExpressionWheel"),     { 
 const Minimap             = dynamic(() => import("@/ui/Minimap"),             { ssr: false });
 
 import ErrorBoundary from "@/ui/ErrorBoundary";
+import { chamferBox, avatarFrame, avatarPhoto } from "@/ui/chamfer";
 import { OPEN_DM_EVENT } from "@/game/chat/dmEvents";
 import { OPEN_CALENDAR_EVENT } from "@/game/daily/calendarEvents";
 
@@ -77,6 +79,8 @@ export default function Home() {
   const [wardrobeOpen, setWardrobeOpen] = useState(false);
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
   const [logOpen, setLogOpen] = useState(false);
+  const [mapOpen, setMapOpen] = useState(false);
+  const displayName = useDisplayName();
   const [mobilePanel, setMobilePanel] = useState<"hunt" | null>(null);
   /** Last wallet state actually handed to Phaser; undefined = nothing sent yet. */
   const lastSentWalletRef = useRef<string | null | undefined>(undefined);
@@ -448,56 +452,70 @@ export default function Home() {
               right: "max(env(safe-area-inset-right, 0px), 12px)",
             }}
           >
-            {/* One card: the round minimap with profile and wardrobe on its
-                top corners, then the wallet and ONCHAIN + zoom right under
-                it. Same structure on phone and desktop, just smaller. */}
+            {/* One 9-slice framed card: profile row, wallet row, onchain+zoom
+                row — each row nested in its own thinner frame inside the
+                bold outer one. */}
             <div style={{
-              width: isTouch ? 156 : 232,
-              padding: isTouch ? "10px 6px 6px" : "12px 10px 8px",
+              width: isTouch ? 190 : 300,
+              borderWidth: 20, borderStyle: "solid", borderColor: "transparent",
+              borderImage: OUTER_FRAME,
+              imageRendering: "pixelated",
               display: "flex", flexDirection: "column", gap: isTouch ? 6 : 8,
-              background: "rgba(8,10,22,0.66)",
-              border: "1px solid rgba(153,69,255,0.25)",
-              borderRadius: 16,
-              backdropFilter: "blur(14px)",
-              boxShadow: "0 4px 28px rgba(0,0,0,0.4)",
             }}>
-              <div style={{ display: "flex", justifyContent: "center" }}>
-                  <Minimap
-                    compact={isTouch ? "mobile" : "desktop"}
-                    corners={{
-                      tl: (
-                        <span style={{ display: "block", borderRadius: "50%", background: "rgba(8,10,22,0.95)", boxShadow: "0 2px 10px rgba(0,0,0,0.5)" }}>
-                          <PfpButton gameRef={game} size={isTouch ? 30 : 34} onClick={() => setProfileOpen(true)} />
-                        </span>
-                      ),
-                      tr: (
-                        <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
-                          <span style={{ display: "block", borderRadius: 8, background: "rgba(8,10,22,0.95)", boxShadow: "0 2px 10px rgba(0,0,0,0.5)" }}>
-                            <WardrobeButton size={isTouch ? 30 : 34} onClick={() => setWardrobeOpen(true)} />
-                          </span>
-                          <span style={{ display: "block", borderRadius: 7, background: "rgba(8,10,22,0.95)", boxShadow: "0 2px 10px rgba(0,0,0,0.5)" }}>
-                            <CalendarButton size={isTouch ? 26 : 30} />
-                          </span>
-                        </span>
-                      ),
-                    }}
-                  />
-              </div>
-              <div style={{ padding: isTouch ? "0 2px" : "0 4px" }}>
-                <WalletBar layout="panel" onWalletChange={handleWalletChange} />
-              </div>
-              <div style={{ display: "flex", alignItems: "center", gap: isTouch ? 4 : 6 }}>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <TransactionLogPanel
-                    isOpen={logOpen}
-                    onToggle={() => setLogOpen((v) => !v)}
-                    gameRef={game}
-                    compact={isTouch}
-                  />
+              {/* Profile */}
+              <Framed width={9}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, padding: 4 }}>
+                  <span style={{ display: "block", flexShrink: 0 }}>
+                    <PfpButton gameRef={game} size={isTouch ? 40 : 52} onClick={() => setProfileOpen(true)} />
+                  </span>
+                  <span style={{
+                    flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                    fontFamily: '"Press Start 2P", monospace', fontSize: isTouch ? 8 : 11, color: "#F3F7FC",
+                  }}>{displayName}</span>
+                  <span style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+                    <WardrobeButton size={isTouch ? 26 : 28} onClick={() => setWardrobeOpen(true)} />
+                    <CalendarButton size={isTouch ? 26 : 28} />
+                    <button
+                      onClick={() => setMapOpen((v) => !v)}
+                      aria-expanded={mapOpen}
+                      aria-controls="hud-map-preview"
+                      aria-label={mapOpen ? "Hide minimap" : "Show minimap"}
+                      title="Minimap"
+                      style={chamferBox(8, {
+                        width: isTouch ? 26 : 28, height: isTouch ? 26 : 28,
+                        border: "1px solid rgba(183,233,40,0.35)", background: "rgba(183,233,40,0.07)",
+                        cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+                        fontSize: isTouch ? 13 : 15, flexShrink: 0,
+                      })}
+                    >🗺️</button>
+                  </span>
                 </div>
-                <div style={{ flexShrink: 0 }}>
-                  <ZoomControl compact={isTouch} />
+              </Framed>
+
+              {/* Minimap preview — the small square map, shown on demand;
+                  its own floating ⤢ button opens the full map. */}
+              {mapOpen && (
+                <div id="hud-map-preview" style={{ display: "flex", justifyContent: "center" }}>
+                  <Minimap bare compact={isTouch ? "mobile" : "desktop"} />
                 </div>
+              )}
+
+              {/* Wallet */}
+              <Framed width={9}>
+                <div style={{ padding: "4px 8px" }}>
+                  <WalletBar layout="panel" onWalletChange={handleWalletChange} />
+                </div>
+              </Framed>
+
+              {/* Onchain + zoom — no per-button frame, just the row */}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: isTouch ? 4 : 6, padding: "0 2px" }}>
+                <TransactionLogPanel
+                  isOpen={logOpen}
+                  onToggle={() => setLogOpen((v) => !v)}
+                  gameRef={game}
+                  compact={isTouch}
+                />
+                <ZoomControl compact={isTouch} />
               </div>
             </div>
 
@@ -573,7 +591,7 @@ function MobilePanelToggle({ iconSrc, label, active, onClick }: {
       {active && (
         <span style={{
           position: "absolute", inset: 1, borderRadius: 7,
-          boxShadow: "0 0 0 2px rgba(20,241,149,0.75)",
+          boxShadow: "0 0 0 2px rgba(183,233,40,0.75)",
           pointerEvents: "none",
         }} />
       )}
@@ -610,6 +628,35 @@ function ExpressionToggle() {
       />
     </button>
   );
+}
+
+/** The pixel-frame 9-slice used for the whole HUD card's outer border. */
+const OUTER_FRAME = 'url(/assets/branding/ui/frame-panel-test.png) 64 fill / 20px / 0 round';
+/** The thinner ring used to nest each row inside the outer frame. */
+const innerFrame = (width: number) => `url(/assets/branding/ui/frame-map-test.png) 18 fill / ${width}px / 0 round`;
+
+/** One row of the HUD card, framed with the thinner nested ring. */
+function Framed({ width = 9, style, children }: { width?: number; style?: CSSProperties; children: ReactNode }) {
+  return (
+    <div style={{
+      borderWidth: width, borderStyle: "solid", borderColor: "transparent",
+      borderImage: innerFrame(width),
+      imageRendering: "pixelated",
+      ...style,
+    }}>
+      {children}
+    </div>
+  );
+}
+
+/** The player's own display name, kept in sync with the profile singleton. */
+function useDisplayName(): string {
+  const [name, setName] = useState("Citizen");
+  useEffect(() => {
+    setName(profileManager.get().displayName);
+    profileManager.onChange((p) => setName(p.displayName));
+  }, []);
+  return name;
 }
 
 /**
@@ -672,8 +719,8 @@ function WardrobeButton({ onClick, size = 36 }: { onClick: () => void; size?: nu
         width: size,
         height: size,
         borderRadius: 8,
-        border: "1px solid rgba(20,241,149,0.35)",
-        background: "rgba(20,241,149,0.07)",
+        border: "1px solid rgba(183,233,40,0.35)",
+        background: "rgba(183,233,40,0.07)",
         cursor: "pointer",
         display: "flex",
         alignItems: "center",
@@ -682,8 +729,8 @@ function WardrobeButton({ onClick, size = 36 }: { onClick: () => void; size?: nu
         transition: "background 0.15s",
         flexShrink: 0,
       }}
-      onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(20,241,149,0.18)")}
-      onMouseLeave={(e) => (e.currentTarget.style.background = "rgba(20,241,149,0.07)")}
+      onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(183,233,40,0.18)")}
+      onMouseLeave={(e) => (e.currentTarget.style.background = "rgba(183,233,40,0.07)")}
     >
       <img
         src="/assets/ui/ico_wardrop.png"
@@ -725,25 +772,20 @@ function PfpButton({ gameRef, onClick, size = 40 }: {
   return (
     <button
       onClick={onClick}
-      className="rounded-full cursor-pointer transition-transform hover:scale-105"
+      className="cursor-pointer transition-transform hover:scale-105"
       style={{
-        width: size,
-        height: size,
-        border: "2px solid #9945FF",
-        background: pfp ? "transparent" : "rgba(153,69,255,0.15)",
+        ...avatarFrame(1, size),
+        ...avatarPhoto(pfp),
         padding: 0,
-        overflow: "hidden",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
       }}
       title="Profile [P]"
     >
-      {pfp ? (
-        <img src={pfp} alt="PFP" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-      ) : (
-        <span style={{ color: "#9945FF", fontSize: size >= 40 ? "18px" : "14px", fontWeight: "bold" }}>{initial}</span>
-      )}
+      {!pfp && (
+        <span style={{ color: "#B7E928", fontSize: size >= 48 ? "16px" : "13px", fontWeight: "bold" }}>{initial}</span>
+)}
     </button>
   );
 }

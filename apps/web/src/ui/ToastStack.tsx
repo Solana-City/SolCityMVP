@@ -4,6 +4,8 @@ import { PixelImg, ICON, AchievementIcon } from "@/ui/PixelIcons";
 import { useEffect, useState } from "react";
 import { progressionBus, type ProgressionEvent } from "@/game/progression/progressionBus";
 import { TIER_COLORS, ACHIEVEMENTS } from "@/game/progression/achievementRegistry";
+import { chamferBox } from "@/ui/chamfer";
+import ChamferGlow from "@/ui/ChamferGlow";
 
 /**
  * Feedback toast surface. Three visual languages:
@@ -49,14 +51,14 @@ export default function ToastStack() {
           addToast({
             variant: "score",
             title: `+${event.amount}`,
-            color: "#14F195",
+            color: "#B7E928",
             lifetime: 1800,
           });
           break;
 
         case "achievement-unlocked": {
           const def = ACHIEVEMENTS.find((a) => a.id === event.id);
-          const color = def ? TIER_COLORS[def.tier] : "#14F195";
+          const color = def ? TIER_COLORS[def.tier] : "#B7E928";
           addToast({
             variant: "achievement",
             icon: <AchievementIcon id={event.id} size={40} />,
@@ -85,7 +87,7 @@ export default function ToastStack() {
               variant: "npc-first",
               icon: <PixelImg src={ICON.chat} size={20} />,
               title: `Met ${event.npcName}`,
-              color: "#00D1FF",
+              color: "#14F0C6",
               lifetime: 2500,
             });
           }
@@ -144,16 +146,16 @@ function ScoreToast({ toast }: { toast: Toast }) {
 
 function SmallCard({ toast }: { toast: Toast }) {
   return (
+    <ChamferGlow glow={`drop-shadow(0 0 10px ${toast.color}66) drop-shadow(0 4px 8px rgba(0,0,0,0.4))`}>
     <div
-      className="toast-small rounded-xl px-4 py-3 flex items-center gap-3"
-      style={{
+      className="toast-small px-4 py-3 flex items-center gap-3"
+      style={chamferBox(12, {
         background: "rgba(10,10,30,0.97)",
         border: `2px solid ${toast.color}`,
-        boxShadow: `0 0 20px ${toast.color}44, 0 4px 16px rgba(0,0,0,0.4)`,
         backdropFilter: "blur(4px)",
         minWidth: 260,
         maxWidth: 400,
-      }}
+      })}
     >
       {toast.icon && <div style={{ flexShrink: 0, lineHeight: 0 }}>{toast.icon}</div>}
       <div className="min-w-0">
@@ -183,6 +185,7 @@ function SmallCard({ toast }: { toast: Toast }) {
         }
       `}</style>
     </div>
+    </ChamferGlow>
   );
 }
 
@@ -199,7 +202,7 @@ function AchievementFrame({ toast }: { toast: Toast }) {
       style={{ position: "relative", minWidth: 380, maxWidth: 480 }}
     >
       <div
-        style={{
+        style={chamferBox(3, {
           position: "absolute",
           top: -14,
           left: "50%",
@@ -210,11 +213,10 @@ function AchievementFrame({ toast }: { toast: Toast }) {
           fontSize: "7px",
           letterSpacing: "0.1em",
           padding: "3px 10px",
-          borderRadius: 3,
           whiteSpace: "nowrap",
           boxShadow: "0 2px 8px rgba(0,0,0,0.4)",
           zIndex: 2,
-        }}
+        })}
       >
         ★ ACHIEVEMENT UNLOCKED ★
       </div>

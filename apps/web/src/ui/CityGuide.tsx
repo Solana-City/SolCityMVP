@@ -16,9 +16,11 @@ import { getMinimapHost } from "@/game/minimap/MinimapHost";
 import { Bust } from "@/game/minigames/sol-mechs/SquadPortraits";
 import { PRESET_BUILDS } from "@/game/solmechs/data/catalog";
 import { track } from "@/game/telemetry/track";
+import { chamferBox } from "@/ui/chamfer";
+import ChamferGlow from "@/ui/ChamferGlow";
 
 const PIXEL = '"Press Start 2P", monospace';
-const GREEN = "#14F195";
+const GREEN = "#B7E928";
 const UI = "/assets/ui";
 
 export const GUIDE_SEEN_KEY = "solcity:guide-seen";
@@ -62,14 +64,15 @@ export function Img({ src, h, style }: { src: string; h: number; style?: React.C
 
 export function Key({ children }: { children: React.ReactNode }) {
   return (
-    <span style={{
-      display: "inline-flex", alignItems: "center", justifyContent: "center",
-      minWidth: 24, height: 22, padding: "0 5px", borderRadius: 4,
-      background: "#f8fafc", color: "#0a0a14", fontFamily: PIXEL, fontSize: 8,
-      boxShadow: "0 3px 0 #64748b",
-    }}>
-      {children}
-    </span>
+    <ChamferGlow glow="drop-shadow(0 3px 0 #64748b)" style={{ display: "inline-flex" }}>
+      <span style={chamferBox(4, {
+        display: "inline-flex", alignItems: "center", justifyContent: "center",
+        minWidth: 24, height: 22, padding: "0 5px",
+        background: "#f8fafc", color: "#0a0a14", fontFamily: PIXEL, fontSize: 8,
+      })}>
+        {children}
+      </span>
+    </ChamferGlow>
   );
 }
 
@@ -81,10 +84,10 @@ function Label({ children, color = "#cbd5e1" }: { children: React.ReactNode; col
 function Role({ sheet, img, node, label, color }: { sheet?: string; img?: string; node?: React.ReactNode; label: string; color: string }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-      <div style={{
-        width: 58, height: 58, borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center",
+      <div style={chamferBox(10, {
+        width: 58, height: 58, display: "flex", alignItems: "center", justifyContent: "center",
         background: `${color}1f`, boxShadow: `inset 0 0 0 2px ${color}88`,
-      }}>
+      })}>
         {node ?? (sheet ? <Citizen sheet={sheet} size={52} /> : img ? <Img src={img} h={40} /> : null)}
       </div>
       <Label color={color}>{label}</Label>
@@ -114,7 +117,7 @@ function MapPreview({ size = 92 }: { size?: number }) {
     <div style={{
       width: size, height: size, borderRadius: "50%", overflow: "hidden", flexShrink: 0,
       border: "3px solid rgba(153,69,255,0.7)", background: "#0b3a5c",
-      boxShadow: "0 0 0 1px rgba(20,241,149,0.3)", position: "relative",
+      boxShadow: "0 0 0 1px rgba(183,233,40,0.3)", position: "relative",
     }}>
       {src && <img src={src} alt="" draggable={false} style={{ width: "100%", height: "100%", display: "block" }} />}
       <span style={{
@@ -183,8 +186,8 @@ function useSteps(touch: boolean): Step[] {
       line: "These citizens run real Solana apps. Each one shows you how before you use it.",
       scene: (
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center" }}>
-          <Role sheet="Jupiter Joe.png" label="SWAP" color="#14F195" />
-          <Role sheet="send-npc.png" label="SEND" color="#00D1FF" />
+          <Role sheet="Jupiter Joe.png" label="SWAP" color="#B7E928" />
+          <Role sheet="send-npc.png" label="SEND" color="#14F0C6" />
           <Role sheet="Pratik.png" label="EARN" color="#9945FF" />
           <Role sheet="Magic Man.png" label="PRIVATE" color="#c026d3" />
         </div>
@@ -278,11 +281,11 @@ export default function CityGuide({ onDone }: { onDone: () => void }) {
         </span>
       </div>
 
-      <div key={i} className="sg-step" style={{
-        height: touch ? 118 : 150, borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center",
-        background: "radial-gradient(circle at 50% 60%, rgba(20,241,149,0.12), rgba(10,10,30,0) 70%), #0d0d22",
-        border: "1px solid rgba(20,241,149,0.18)", overflow: "hidden", padding: 8,
-      }}>
+      <div key={i} className="sg-step" style={chamferBox(10, {
+        height: touch ? 118 : 150, display: "flex", alignItems: "center", justifyContent: "center",
+        background: "radial-gradient(circle at 50% 60%, rgba(183,233,40,0.12), rgba(10,10,30,0) 70%), #0d0d22",
+        border: "1px solid rgba(183,233,40,0.18)", overflow: "hidden", padding: 8,
+      })}>
         {step.scene}
       </div>
 
@@ -296,10 +299,10 @@ export default function CityGuide({ onDone }: { onDone: () => void }) {
       {last && !connected && (
         <button
           onClick={() => openWalletModal(true)}
-          style={{
+          style={chamferBox(8, {
             display: "block", width: "100%", marginBottom: 8, background: "rgba(153,69,255,0.85)", color: "#fff",
-            border: "none", borderRadius: 8, padding: "10px 0", cursor: "pointer", fontFamily: PIXEL, fontSize: 7,
-          }}
+            border: "none", padding: "10px 0", cursor: "pointer", fontFamily: PIXEL, fontSize: 7,
+          })}
         >
           CONNECT WALLET
         </button>
@@ -308,11 +311,11 @@ export default function CityGuide({ onDone }: { onDone: () => void }) {
       <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
         <button
           onClick={() => setI((n) => Math.max(0, n - 1))}
-          style={{
-            background: "transparent", border: "1px solid #333344", color: "#888899", borderRadius: 8,
+          style={chamferBox(8, {
+            background: "transparent", border: "1px solid #333344", color: "#888899", 
             padding: "9px 12px", cursor: "pointer", fontFamily: PIXEL, fontSize: 7,
             visibility: i === 0 ? "hidden" : "visible",
-          }}
+          })}
         >
           BACK
         </button>
@@ -323,10 +326,10 @@ export default function CityGuide({ onDone }: { onDone: () => void }) {
         </div>
         <button
           onClick={() => (last ? finish() : setI((n) => n + 1))}
-          style={{
-            background: GREEN, color: "#0a0a14", border: "none", borderRadius: 8,
+          style={chamferBox(8, {
+            background: GREEN, color: "#0a0a14", border: "none", 
             padding: "10px 14px", cursor: "pointer", fontFamily: PIXEL, fontSize: 7,
-          }}
+          })}
         >
           {last ? "EXPLORE" : "NEXT"}
         </button>

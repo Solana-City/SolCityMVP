@@ -88,7 +88,7 @@ export default function RotatePrompt() {
           width: 48,
           height: 3,
           borderRadius: 2,
-          background: "linear-gradient(90deg, #9945FF, #14F195)",
+          background: "linear-gradient(90deg, #9945FF, #B7E928)",
         }}
       />
     </div>

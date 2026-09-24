@@ -16,9 +16,22 @@ import { useNicknames, shortWallet } from "@/ui/useNicknames";
 import { fetchBoard, invalidateBoard, type BoardRow } from "@/game/leaderboards/boards";
 import { track } from "@/game/telemetry/track";
 import { cachedName, requestNames } from "@/game/names/nameService";
+import { chamferBox, octagonFrame } from "@/ui/chamfer";
+import ChamferGlow from "@/ui/ChamferGlow";
 
 // ── Chroma key ────────────────────────────────────────────────────────────────
 const CHROMA_R = 215, CHROMA_G = 123, CHROMA_B = 186, CHROMA_TOL = 30;
+
+const AVATAR_BORDER_W = 2;
+
+// clip-path alone cuts the corner off a rectangular `border` without leaving
+// a stroke along the new diagonal edge. Faking a chamfered outline instead
+// needs two stacked, independently-clipped layers: an outer one filled with
+// the border color, and an inset inner one (by the border width) filled with
+// the real background — the visible ring between them reads as the outline.
+function chamferClip(corner: number): string {
+  return `polygon(${corner}px 0, calc(100% - ${corner}px) 0, 100% ${corner}px, 100% calc(100% - ${corner}px), calc(100% - ${corner}px) 100%, ${corner}px 100%, 0 calc(100% - ${corner}px), 0 ${corner}px)`;
+}
 
 function removeChroma(ctx: CanvasRenderingContext2D, w: number, h: number) {
   const d = ctx.getImageData(0, 0, w, h);
@@ -177,8 +190,9 @@ function LeaderboardModal({ onClose }: { onClose: () => void }) {
       animation: "fadeIn 0.15s ease",
     }} onClick={e => e.target === e.currentTarget && onClose()}>
       <div style={{
-        background: "#0b0e1c", border: "1px solid rgba(153,69,255,0.3)",
-        borderRadius: 16, minWidth: 320, maxWidth: "90vw",
+        ...octagonFrame(1),
+        background: "#0b0e1c",
+        minWidth: 320, maxWidth: "90vw",
         fontFamily: '"Press Start 2P", monospace', color: "#d0d0f0",
         overflow: "hidden",
         animation: "slideUp 0.18s ease",
@@ -192,7 +206,7 @@ function LeaderboardModal({ onClose }: { onClose: () => void }) {
             <span style={{ marginRight: 6, verticalAlign: "middle", display: "inline-block" }}><RankBadge rank={1} size={16} /></span>LEADERBOARD
           </span>
           <button onClick={onClose} style={{
-            background: "none", border: "none", color: "#555", fontSize: 15,
+            background: "none", border: "none", color: "#14F0C6", fontSize: 15,
             cursor: "pointer", lineHeight: 1, padding: "0 2px",
             transition: "color 0.15s",
           }}
@@ -217,7 +231,7 @@ function LeaderboardModal({ onClose }: { onClose: () => void }) {
                 minWidth: 24,
               }}><RankBadge rank={i + 1} size={18} /></span>
               <span style={{ flex: 1, fontSize: 9, color: "#9090cc" }}>{display(e.wallet, e.display)}</span>
-              <span style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 7, color: "#14F195" }}>
+              <span style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 7, color: "#B7E928" }}>
                 {e.count} ★
               </span>
             </div>
@@ -336,12 +350,10 @@ export default function WhereIsNPCCard({ gameRef, wallet }: Props) {
       )}
 
       <div className="hunt-card" style={{
-        background: "rgba(8,10,22,0.58)",
-        border: "1px solid rgba(153,69,255,0.2)",
-        borderRadius: 14,
-        width: isTouch ? 172 : 210,
-        backdropFilter: "blur(16px)",
-        boxShadow: "0 4px 28px rgba(0,0,0,0.4)",
+        borderWidth: 20, borderStyle: "solid", borderColor: "transparent",
+        borderImage: 'url(/assets/branding/ui/frame-panel-test.png) 64 fill / 20px / 0 round',
+        imageRendering: "pixelated",
+        width: isTouch ? 172 : 220,
         fontFamily: '"Press Start 2P", monospace',
         color: "#d0d0f0",
         overflow: "hidden",
@@ -360,13 +372,13 @@ export default function WhereIsNPCCard({ gameRef, wallet }: Props) {
             color: "#c084fc", letterSpacing: 0.5, flex: 1,
             lineHeight: 1.4,
           }}>FIND SOMEONE</span>
-          <button className="hunt-btn" style={{
+          <button className="hunt-btn" style={chamferBox(6, {
             background: "rgba(153,69,255,0.1)", border: "1px solid rgba(153,69,255,0.25)",
-            borderRadius: 6, color: "#9945FF", fontSize: 8,
+            color: "#9945FF", fontSize: 8,
             width: 22, height: 22, cursor: "pointer",
             display: "flex", alignItems: "center", justifyContent: "center",
             flexShrink: 0,
-          }}
+          })}
             onClick={e => { e.stopPropagation(); setShowInfo(v => !v); }}
             title="How to play"
           >?</button>
@@ -379,13 +391,13 @@ export default function WhereIsNPCCard({ gameRef, wallet }: Props) {
           <div style={{ padding: isTouch ? "9px 10px" : "12px 13px", display: "flex", flexDirection: "column", gap: isTouch ? 7 : 10 }}>
             {/* Found banner */}
             {foundMsg && (
-              <div style={{
-                background: "rgba(20,241,149,0.08)", border: "1px solid rgba(20,241,149,0.25)",
-                borderRadius: 8, padding: "7px 10px",
-                fontSize: 8, color: "#14F195",
+              <div style={chamferBox(8, {
+                background: "rgba(183,233,40,0.08)", border: "1px solid rgba(183,233,40,0.25)",
+                padding: "7px 10px",
+                fontSize: 8, color: "#B7E928",
                 textAlign: "center", lineHeight: 1.4,
                 animation: "slideUp 0.2s ease",
-              }}>
+              })}>
                 {foundMsg}
               </div>
             )}
@@ -393,13 +405,16 @@ export default function WhereIsNPCCard({ gameRef, wallet }: Props) {
             {/* Avatar */}
             {targetLoadout ? (
               <div style={{ display: "flex", justifyContent: "center" }}>
-                <div style={{
-                  background: "rgba(153,69,255,0.07)",
-                  border: "1px solid rgba(153,69,255,0.18)",
-                  borderRadius: 10, padding: isTouch ? 6 : 8,
-                  transition: "border-color 0.2s ease",
-                }}>
-                  <MiniAvatar loadout={targetLoadout} size={isTouch ? 60 : 88} />
+                <div style={chamferBox(10, {
+                  padding: AVATAR_BORDER_W,
+                  background: "rgba(153,69,255,0.18)",
+                })}>
+                  <div style={chamferBox(10 - AVATAR_BORDER_W, {
+                    background: "rgba(153,69,255,0.07)",
+                    padding: isTouch ? 6 : 8,
+                  })}>
+                    <MiniAvatar loadout={targetLoadout} size={isTouch ? 60 : 88} />
+                  </div>
                 </div>
               </div>
             ) : (
@@ -432,18 +447,18 @@ export default function WhereIsNPCCard({ gameRef, wallet }: Props) {
             {/* Score + leaderboard */}
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               {wallet ? (
-                <span style={{ fontSize: 9, color: "#14F195", flex: 1 }}>
+                <span style={{ fontSize: 9, color: "#B7E928", flex: 1 }}>
                   ★ {myScore} found
                 </span>
               ) : (
                 <span style={{ fontSize: 8, color: "#3a3a5a", flex: 1 }}>Connect wallet</span>
               )}
-              <button className="hunt-btn" onClick={() => setShowLeaderboard(true)} style={{
+              <button className="hunt-btn" onClick={() => setShowLeaderboard(true)} style={chamferBox(7, {
                 background: "rgba(153,69,255,0.1)",
                 border: "1px solid rgba(153,69,255,0.22)",
-                borderRadius: 7, padding: "5px 10px",
+                padding: "5px 10px",
                 color: "#9945FF", fontSize: 9, cursor: "pointer",
-              }}>
+              })}>
                 <RankBadge rank={1} size={16} />
               </button>
             </div>
@@ -460,12 +475,14 @@ const PIX = '"Press Start 2P", monospace';
 
 function HuntKey({ label }: { label: string }) {
   return (
-    <span style={{
-      display: "inline-flex", alignItems: "center", justifyContent: "center", minWidth: 34, height: 32, padding: "0 6px",
-      borderRadius: 5, background: "#f8fafc", color: "#0a0a14", fontFamily: PIX, fontSize: 11, boxShadow: "0 4px 0 #64748b",
-    }}>
-      {label}
-    </span>
+    <ChamferGlow glow="drop-shadow(0 4px 0 #64748b)" style={{ display: "inline-flex" }}>
+      <span style={chamferBox(5, {
+        display: "inline-flex", alignItems: "center", justifyContent: "center", minWidth: 34, height: 32, padding: "0 6px",
+        background: "#f8fafc", color: "#0a0a14", fontFamily: PIX, fontSize: 11,
+      })}>
+        {label}
+      </span>
+    </ChamferGlow>
   );
 }
 
@@ -482,7 +499,7 @@ function HuntHowTo({ loadout, isTouch, onClose }: { loadout: Loadout | null; isT
       line: "The card shows who to find. Look for them in the city.",
       scene: (
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-          <div style={{ border: "2px solid rgba(153,69,255,0.6)", borderRadius: 10, padding: 4, background: "rgba(153,69,255,0.08)" }}>{target}</div>
+          <div style={chamferBox(10, { border: "2px solid rgba(153,69,255,0.6)", padding: 4, background: "rgba(153,69,255,0.08)" })}>{target}</div>
           <PixelImg src={ICON.hunt} size={40} />
         </div>
       ),
@@ -533,20 +550,21 @@ function HuntHowTo({ loadout, isTouch, onClose }: { loadout: Loadout | null; isT
     >
       <style>{`@keyframes hunt-timer { from { width: 100%; } to { width: 4%; } } .hunt-timer-demo { animation: hunt-timer 3s linear infinite; }`}</style>
       <div style={{
-        width: "min(400px, 100%)", maxHeight: "100%", overflowY: "auto", padding: 16, borderRadius: 14,
-        background: "#0c0f1e", border: "1px solid rgba(153,69,255,0.45)", boxShadow: "0 12px 40px rgba(0,0,0,0.6)", fontFamily: PIX,
+        ...octagonFrame(1),
+        width: "min(400px, 100%)", maxHeight: "100%", overflowY: "auto", padding: 8,
+        background: "#0c0f1e", fontFamily: PIX,
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
           <PixelImg src={ICON.hunt} size={16} />
           <span style={{ color: "#c084fc", fontSize: 8 }}>FIND SOMEONE</span>
           <span style={{ marginLeft: "auto", color: "#555577", fontSize: 7 }}>{i + 1}/{steps.length}</span>
-          <button onClick={onClose} aria-label="Close" style={{ background: "none", border: "none", color: "#666688", fontSize: 16, cursor: "pointer", lineHeight: 1, padding: "0 2px" }}>×</button>
+          <button onClick={onClose} aria-label="Close" style={{ background: "none", border: "none", color: "#14F0C6", fontSize: 16, cursor: "pointer", lineHeight: 1, padding: "0 2px" }}>×</button>
         </div>
-        <div key={i} style={{
-          height: isTouch ? 118 : 140, borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center",
+        <div key={i} style={chamferBox(10, {
+          height: isTouch ? 118 : 140, display: "flex", alignItems: "center", justifyContent: "center",
           background: "radial-gradient(circle at 50% 60%, rgba(153,69,255,0.14), rgba(12,15,30,0) 70%), #10132a",
           border: "1px solid rgba(153,69,255,0.18)", overflow: "hidden",
-        }}>
+        })}>
           {step.scene}
         </div>
         <div style={{ textAlign: "center", color: "#fff", fontSize: 9, margin: "12px 0 6px" }}>{step.title}</div>
@@ -554,7 +572,7 @@ function HuntHowTo({ loadout, isTouch, onClose }: { loadout: Loadout | null; isT
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <button
             onClick={() => setI((n) => Math.max(0, n - 1))}
-            style={{ background: "transparent", border: "1px solid #333355", color: "#8888aa", borderRadius: 8, padding: "9px 12px", cursor: "pointer", fontFamily: PIX, fontSize: 7, visibility: i === 0 ? "hidden" : "visible" }}
+            style={chamferBox(8, { background: "transparent", border: "1px solid #333355", color: "#8888aa", padding: "9px 12px", cursor: "pointer", fontFamily: PIX, fontSize: 7, visibility: i === 0 ? "hidden" : "visible" })}
           >
             BACK
           </button>
@@ -565,7 +583,7 @@ function HuntHowTo({ loadout, isTouch, onClose }: { loadout: Loadout | null; isT
           </div>
           <button
             onClick={next}
-            style={{ background: "#9945FF", color: "#fff", border: "none", borderRadius: 8, padding: "10px 16px", cursor: "pointer", fontFamily: PIX, fontSize: 7 }}
+            style={chamferBox(8, { background: "#9945FF", color: "#fff", border: "none", padding: "10px 16px", cursor: "pointer", fontFamily: PIX, fontSize: 7 })}
           >
             {last ? "GOT IT" : "NEXT"}
           </button>

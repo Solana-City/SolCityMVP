@@ -11,11 +11,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { fetchEarnListings, type EarnListing } from "@/game/solana/superteamEarn";
 import { CITY_EVENTS } from "@/game/daily/calendar";
+import { chamferBox } from "@/ui/chamfer";
 
 const PIXEL = '"Press Start 2P", monospace';
 
 const KIND = {
-  city: { color: "#14F195", label: "CITY" },
+  city: { color: "#B7E928", label: "CITY" },
   hackathon: { color: "#c084fc", label: "HACKATHON" },
   bounty: { color: "#FFD700", label: "BOUNTY" },
 } as const;
@@ -152,9 +153,9 @@ export default function CityCalendar({ cellHeight = 22, showLegend = true, maxRo
               key={day}
               onClick={() => setSelected(day)}
               style={{
-                height: cellHeight, borderRadius: 4, padding: 0, cursor: "pointer",
+                height: cellHeight, padding: 0, cursor: "pointer",
                 display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2,
-                background: isSelected ? "rgba(153,69,255,0.35)" : spans.has(day) ? "rgba(20,241,149,0.1)" : "#0d0d22",
+                background: isSelected ? "rgba(153,69,255,0.35)" : spans.has(day) ? "rgba(183,233,40,0.1)" : "#0d0d22",
                 border: isToday ? "1px solid #fff" : "1px solid rgba(255,255,255,0.05)",
                 opacity: past ? 0.45 : 1,
               }}
@@ -183,7 +184,7 @@ export default function CityCalendar({ cellHeight = 22, showLegend = true, maxRo
       </div>}
 
       {/* The selected day */}
-      <div style={{ borderTop: "1px solid rgba(255,255,255,0.06)", paddingTop: 6, marginTop: 6 }}>
+      <div style={{ borderTop: "2px solid rgba(20,240,198,0.45)", paddingTop: 10, marginTop: 10 }}>
         <div style={{ fontFamily: PIXEL, fontSize: 6, color: "#64748b", marginBottom: 6 }}>
           {selected === today ? "TODAY" : new Date(`${selected}T00:00:00Z`).toLocaleDateString("en-US", {
             weekday: "short", month: "short", day: "numeric", timeZone: "UTC",
@@ -231,11 +232,11 @@ function NavButton({ children, disabled, onClick }: { children: React.ReactNode;
     <button
       onClick={onClick}
       disabled={disabled}
-      style={{
-        width: 22, height: 18, borderRadius: 4, border: "1px solid rgba(255,255,255,0.08)",
+      style={chamferBox(4, {
+        width: 22, height: 18, border: "1px solid rgba(255,255,255,0.08)",
         background: "#0d0d22", color: disabled ? "#334155" : "#cbd5e1", cursor: disabled ? "default" : "pointer",
         fontSize: 14, lineHeight: 1, padding: 0,
-      }}
+      })}
     >
       {children}
     </button>
