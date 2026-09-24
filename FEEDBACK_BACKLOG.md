@@ -1,7 +1,8 @@
 # Playtest feedback backlog
 
 Every open item from player feedback, ranked. Newest rounds: **playtest of
-2026-09-20** and **mentor notes of 2026-09-21** (the Direction section).
+2026-09-20**, **mentor notes of 2026-09-21** (the Direction section) and the
+**mentor session of 2026-09-24** (Round of 2026-09-24).
 Items that shipped are marked DONE until the next cleanup.
 
 Priority means: **P0** hurts everyone right now, **P1** is the next real
@@ -112,6 +113,107 @@ Until R1 to R3 exist and the return rate is measured, these wait even though
 they are good ideas: Kite PvP, kick a ball, player-owned houses, influencer
 parties, trustless ranked settlement, companion pet. Each adds depth to a
 session; none gives a reason to come back tomorrow.
+
+---
+
+## Round of 2026-09-24 (mentor session): mobile, performance, money, go to market
+
+Sorted by what it costs us and what it buys. Everything here was checked
+against the code, so each line says what is actually there today.
+
+### M1. The ACT button opens the wrong NPC — P0, S
+*"Act button fails on Steve (every NPC)"* and *"two events at the same time"*.
+
+Found it: `CityScene` picks the interaction target with
+`npcSprites.find((n) => n.isInRange)`, which is the first NPC in **array
+order**, not the closest one. Where two citizens stand near each other (Steve
+and Sol at the plaza steps) the button opens whichever was registered first,
+so it reads as "ACT fails on Steve", and walking between them can hand two
+different NPCs the same press. Fix: pick the NEAREST in-range NPC.
+
+If "two events at the same time" turns out to be two PANELS opening at once
+(a dialog plus a protocol screen), that is a second bug and needs the repro:
+which NPC, and what was on screen.
+
+### M2. The camera has no smoothing at all — P0, S
+`startFollow(container, true, 1.0, 1.0)`: a lerp of 1.0 means the camera is
+pinned to the player every frame, which is why it feels snappy/jittery on a
+phone. The mentor's "around 200ms of damping" is a lerp near 0.15. One line,
+and the most visible comfort win in this round.
+
+### M3. Mobile frame budget — P1, M (measure first)
+*"Change the frame rate, Android target 45, check frame rate"*.
+
+There is no `fps` config today, so Phaser asks for 60 and the phone burns
+battery trying. A 45 target is plausible, but Phaser only honours it through
+`forceSetTimeOut`, which can make pacing WORSE than free-running rAF. So:
+measure a real phone first (frame time, battery drain over 10 minutes), then
+choose between a 45 target, a 30 target while idle, or leaving it at 60.
+
+### M4. Draw calls and texture merging — P1, M, but NOT what it looks like
+*"Set pass code, send to GPU to render. Merge texture/occlusion calling."*
+
+**Mobile does not use the GPU at all**: `PhaserGame.tsx` forces Canvas2D on
+touch devices on purpose, because WebGL uploaded 16 tilesets + 22 paperdoll
+sheets + 13 NPC sheets to VRAM and the tab was killed. So atlas merging and
+batching, which are WebGL wins, buy nothing on mobile as it stands.
+
+Two honest options, in order:
+1. **Retry WebGL on mobile now.** The reason it died was texture memory, and
+   since then the map work removed 1.8M tile objects and bakes the ground.
+   Worth one measured experiment behind a flag.
+2. If WebGL stays off, the mobile win is fewer `drawImage` calls per frame
+   (more culling, more baking), not atlases.
+
+### M5. Stocklana keeps calling the API off screen — P1, S
+`stockMarket` polls every 15s whenever anything is subscribed and the tab is
+visible, whether or not the exchange is on camera or its panel is open.
+Should pause when the building is culled and nothing is open.
+
+### M6. Memory and battery on mobile — P1, M
+Measure before changing: heap after 10 minutes, battery drain, and where the
+frame time goes. The desktop memory work is done (~400MB steady); nobody has
+measured a phone yet.
+
+### M7. A donation building — P2, M (needs a decision and art)
+Donations to the team, with a leaderboard. Ideas from the session: top donors
+get special actions, the top one becomes a "superhero" of the city, 1/1
+outfits for high-ticket donors, "donate to debuff" someone, sketchy NPCs.
+
+What it needs: a building and a door (art), a transfer to the treasury
+(simple, no program change), a board (the KV boards already exist), and a
+decision on perks. **Note:** the revenue plan so far was exactly three things
+(energy packs, outfit boxes, battle passes). Donations are a fourth, and a
+different kind (no goods delivered), so it is a product decision, not just a
+build.
+
+### M8. Solana School, basics only — P2, M
+The protocol micro-tutorials are the seed. Scope it to basics and talk to
+**Solana Turbine** about educating devs (partner dependency, not code).
+
+### M9. Find Someone: only the target NPC on chain — P2, S (needs clarifying)
+Read as: keep the shared round/target on chain and drop the rest. Today the
+round IS on chain and the scores are in KV. Worth one sentence from the
+mentor before touching it.
+
+### M10. RPC through our backend — P1, M
+Both RPCs proxied server side: the keys stop shipping in the bundle, failover
+and rate limiting become ours, and mainnet costs become measurable. Also the
+prerequisite for a sane mainnet move.
+
+### M11. Move to mainnet — P2, L (plan first)
+Not a switch: a program deploy with a mainnet upgrade authority, real SOL for
+rent and fees, the stock venue stops being a mock, MagicBlock rollup
+availability on mainnet, and a wallet that pays for it. Wants its own written
+plan before any code.
+
+### M12. Go to market — P2, not code
+A GTM timeline, KPIs, and who steps in and when: Solflare/Miracle, Solana
+Gaming, games.gg. A document and a calendar, which the city's own calendar
+can then show.
+
+### M13. A test session with everyone — scheduling
+Worth doing right after M1 and M2 land, since those are what testers feel.
 
 ---
 
