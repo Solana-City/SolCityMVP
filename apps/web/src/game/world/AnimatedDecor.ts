@@ -133,30 +133,30 @@ export const ANIMATED_DECOR: AnimatedDecorDef[] = [
     ySort: true,
   },
   {
-    // MonkeDAO flag on the plaza between the two MonkeDAO buildings
-    // (DecorMonkeDaoFlag, cols 51-54 / rows 24-30). The redrawn pole is
-    // taller than the painted one (183 against 141) but its foot is the same
-    // 25px wide, so the two are aligned by the FOOT: painted foot at world
-    // 1248-1272, bottom row 719.
+    // MonkeDAO flag, moved (2026-09-25) from the strip between the banana
+    // stand and the tower to the open corner EAST of the MonkeDAO tower,
+    // where it has room. The painted flag stood at cols 51-54 / rows 24-30;
+    // this stands with its foot on tile 68, row 29, on the pavement between
+    // the tower's east wall (which ends at col 65) and the grass verge.
+    //
+    // The sheet's pole is not centred in its frame: the foot occupies x 0-24
+    // of 78, so the sprite centre sits 27px right of the pole. tileX 69 plus
+    // offsetX 3 therefore puts the FOOT on tile 68.
     key: "flag-monkedao",
     file: "assets/sprites/decor/flag_monkedao.png",
     frameWidth: 78,
     frameHeight: 183,
     frameCount: 4,
     frameRate: 6,
-    tileX: 53,
+    tileX: 69,
     tileY: 29,
     offsetX: 3,
     scale: 1,
-    // No `blocks`: nothing on the old layer collided, and a pole that starts
-    // blocking the plaza today would be a change nobody asked for.
-    //
-    // No `ySort` either, unlike the other three flags. This pole stands
-    // against the MonkeDAO building, whose own y-sort depth comes from its
-    // base at row 32 (792) and would beat the pole's foot at row 29 (720):
-    // the facade would paint over the cloth. Above-head is also exactly how
-    // the painted layer behaved, so nothing about the plaza changes except
-    // that the flag now moves.
+    // Out in the open now, so it behaves like the other poles: one solid
+    // cell under the foot, and y-sorted rather than always-on-top. Nothing
+    // of the tower reaches this far east, so nothing can paint over it.
+    blocks: true,
+    ySort: true,
   },
 ];
 
