@@ -13,6 +13,23 @@ import { decodeTrade, encodeTrade, tradeLogLine, type TradeSide } from "../chat/
 
 /** Chat-log color for stock trade lines. */
 const TRADE_COLOR = "#FFB547";
+
+/**
+ * Friendly names for the ?at= deep link, so a shared link can read
+ * ?at=stocklana instead of an internal NPC id. Any NPC id also works as is.
+ */
+const NPC_DEEP_LINKS: Record<string, string> = {
+  stocklana: "stocks-broker",
+  stocks: "stocks-broker",
+  jupiter: "swap-npc",
+  swap: "swap-npc",
+  send: "send-npc",
+  earn: "pratik",
+  magicblock: "magic-man",
+  mechs: "mech-handler",
+  kite: "kite-pro",
+  guide: "sol-guide",
+};
 import { NPCSprite } from "../entities/NPCSprite";
 import { NPC_REGISTRY } from "../config/npcRegistry";
 import { PedestrianManager, cullContainer } from "../entities/PedestrianManager";
@@ -483,7 +500,37 @@ export class CityScene extends Phaser.Scene {
     // mid-render, and landing back at the fountain every time is the part the
     // player actually feels. A spot saved in the last half hour is used, as
     // long as nothing solid stands there now (the map may have changed).
-    const resume = readLastPosition();
+    // ...or in front of a named NPC, for a link that drops someone straight
+    // at a building: ?at=stocks-broker (aliases in NPC_DEEP_LINKS). Beats
+    // asking a first-time visitor to find the place on the map.
+    const atParam = new URLSearchParams(window.location.search).get("at")?.toLowerCase() ?? "";
+    const atTarget = atParam
+      ? NPC_REGISTRY.find((n) => n.enabled !== false && n.id === (NPC_DEEP_LINKS[atParam] ?? atParam))
+      : undefined;
+    let facing: Direction | null = null;
+    if (atTarget) {
+      const npcSpot = this.findNpcSpawn(map, atTarget.tileX, atTarget.tileY, tileSize);
+      const col = Math.floor(npcSpot.wx / tileSize);
+      const npcRow = Math.floor(npcSpot.wy / tileSize);
+      // Stand a tile south of the NPC, the first row that is actually free, so
+      // the talk prompt is already up when the scene fades in.
+      for (let row = npcRow + 1; row <= npcRow + 4; row++) {
+        const x = col * tileSize + tileSize / 2;
+        const y = row * tileSize + tileSize / 2;
+        const blocked = this.collisionLayers.some((l) => {
+          const t = l.getTileAt(col, row);
+          return t !== null && t.collides;
+        });
+        if (blocked) continue;
+        spawnX = x + (atTarget.offsetX ?? 0);
+        spawnY = y;
+        facing = "up";
+        break;
+      }
+      console.log(`[CityScene] deep link ?at=${atParam} → ${atTarget.name}`);
+    }
+
+    const resume = !atTarget && readLastPosition();
     if (resume && !this.collisionLayers.some((l) => {
       const t = l.getTileAtWorldXY(resume.x, resume.y);
       return t !== null && t.collides;
@@ -493,6 +540,12 @@ export class CityScene extends Phaser.Scene {
       console.log(`[CityScene] resumed at ${resume.x},${resume.y} (${Math.round((Date.now() - resume.at) / 1000)}s ago)`);
     }
     this.avatar = new AvatarSprite(this, spawnX, spawnY, loadSavedLoadout());
+    if (facing) {
+      // walk() then idle() is how a direction is committed without moving.
+      this.currentDirection = facing;
+      this.avatar.walk(facing);
+      this.avatar.idle();
+    }
 
     const container = this.avatar.getContainer();
     this.physics.world.enable(container);
