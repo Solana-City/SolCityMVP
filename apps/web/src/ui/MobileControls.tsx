@@ -113,10 +113,19 @@ function SpriteButton({
     <button
       onPointerDown={(e) => {
         e.preventDefault();
+        // Hold the pointer until it is released. ACT fires on the press, and
+        // whatever it opens (an NPC panel, a mini-game) appears under the
+        // finger: without capture the release lands on that new panel and
+        // closes it, so the panel blinked open and shut. With capture the
+        // whole gesture belongs to this button.
+        try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* not supported */ }
         setPressed(true);
         onPress();
       }}
-      onPointerUp={() => setPressed(false)}
+      onPointerUp={(e) => {
+        try { e.currentTarget.releasePointerCapture(e.pointerId); } catch { /* already released */ }
+        setPressed(false);
+      }}
       onPointerCancel={() => setPressed(false)}
       style={{
         position: "relative",

@@ -11,6 +11,7 @@ import { ProtocolIntroGate, type IntroSpec } from "@/ui/ProtocolIntro";
 import CityGuide from "@/ui/CityGuide";
 import MagicBlockHub from "@/ui/MagicBlockHub";
 import StockExchangePanel from "@/ui/StockExchangePanel";
+import { backdropClose } from "@/ui/backdrop";
 
 /** Pratik: how Superteam Earn pays, before the bounty list. */
 const EARN_INTRO: IntroSpec = {
@@ -116,7 +117,7 @@ export default function ActionPanel({ action, onClose }: ActionPanelProps) {
         <div
           className="absolute inset-0"
           style={{ background: "rgba(6,10,20,0.55)" }}
-          onClick={onClose}
+          {...backdropClose(onClose)}
         />
         <div
           className="relative w-full rounded-t-2xl"
@@ -159,7 +160,7 @@ export default function ActionPanel({ action, onClose }: ActionPanelProps) {
       <div
         className="absolute inset-0"
         style={{ background: "rgba(6,10,20,0.6)" }}
-        onClick={onClose}
+        {...backdropClose(onClose)}
       />
       <div
         className="relative rounded-2xl p-6 w-full max-w-md"
