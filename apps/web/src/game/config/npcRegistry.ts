@@ -431,9 +431,13 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     name: "Mole",
     role: "Dungeons & Moles",
     // At the mouth of the dungeon south of the beach (BuildDungeousMoles,
-    // cols 42-48 / rows 100-106); row 107 is the open ground in front of it.
+    // cols 42-48 / rows 100-106). Row 106 is the step at the foot of the door,
+    // under the D&M sign and between the two lanterns: the only three walkable
+    // tiles (44, 45, 46) touching the cave. Row 107, where this used to stand,
+    // is the boardwalk BELOW the entrance, which reads as passing by rather
+    // than waiting at the door.
     tileX: 45,
-    tileY: 107,
+    tileY: 106,
     color: 0xc98a3c,
     dialog: [
       "Every dungeon hides a path. Not every path wants to be found.",
