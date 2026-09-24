@@ -41,7 +41,7 @@ import { showEmoji, EmojiDef } from "../chat/EmojiSystem";
 import { soundManager } from "../audio/SoundManager";
 import { publishMinimap } from "../minimap/MinimapHost";
 import { createStockExchange } from "../world/StockExchange";
-import { createAnimatedDecor } from "../world/AnimatedDecor";
+import { createAnimatedDecor, REPLACED_MAP_LAYERS } from "../world/AnimatedDecor";
 import { readLastPosition, saveLastPosition } from "../world/lastPosition";
 import { buildPhysicsLayer, mergeGroundRun } from "../world/mergeLayers";
 import { SparseLayer, SPARSE_MAX_TILES, GROUND_CHUNK_TILES, type CityLayer } from "../world/sparseLayer";
@@ -256,17 +256,13 @@ export class CityScene extends Phaser.Scene {
     // foundation the player spawns on) must NOT inherit this: it y-sorts like
     // a building instead (see Y_SORT_PREFIXES).
     //
-    // DecorSTBrFlag / DecorSolanaFlag / DecorMonkeDaoFlag (2026-09-01): flag
-    // poles — the cloth flies above head height same as the umbrellas/gantries.
-    // NOTE: DecorMonkeDaoFlag's banner (not just its pole) is currently marked
-    // solid in SCBuildMonkeyDAO's own tileset collision — unlike the other two
-    // flags, where only the pole base collides. That's a source-art issue (see
-    // MAP_INTEGRATION.md / ask the map artist), not something this list fixes:
-    // above-head only changes DRAW order, the banner tiles will still block
-    // movement under them until their collision shapes are removed in Tiled.
+    // The three flag layers used to be listed here as above-head decor. They
+    // are gone from the map now: a waving sprite draws each of them (see
+    // world/AnimatedDecor, REPLACED_MAP_LAYERS) and y-sorts off its own pole
+    // foot, so the player walks in front of a flag from the south and behind
+    // it from the north instead of always under it.
     const ABOVE_HEAD_PREFIXES = [
       "DecorBilboard", "DecorPalmBridge", "DecorSTBrUmbrella", "DecorSolanaUmbrella",
-      "DecorSTBrFlag", "DecorSolanaFlag", "DecorMonkeDaoFlag",
     ];
 
     // Create all tile layers in order from the JSON.
@@ -288,6 +284,16 @@ export class CityScene extends Phaser.Scene {
       const layerName = map.layers[i].name;
       const layer = map.createLayer(i, allTilesets);
       if (!layer) continue;
+
+      // Painted art an AnimatedDecor sprite now draws instead. Dropped rather
+      // than hidden: a hidden layer still hands its collision to the merged
+      // volume, and the sprite stamps whatever it needs to block itself.
+      if (REPLACED_MAP_LAYERS.has(layerName.slice(layerName.lastIndexOf("/") + 1))) {
+        layer.destroy();
+        closeGroundRun();
+        continue;
+      }
+
       allLayers.push(layer);
 
       layer.setCollisionFromCollisionGroup();
