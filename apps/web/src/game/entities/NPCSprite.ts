@@ -1,6 +1,6 @@
 import * as Phaser from "phaser";
 import { TILE_SIZE } from "../config/constants";
-import { SpeechBubble } from "../chat/SpeechBubble";
+import { ChatBubble } from "../chat/ChatBubble";
 import { SimpleSprite, NPC_DIRECTION_ROW, PLAYER_DIRECTION_ROW, type Direction } from "./SimpleSprite";
 import type { NPCDefinition } from "../config/npcRegistry";
 import { profileManager } from "../config/profileManager";
@@ -9,6 +9,8 @@ import { progressionBus } from "../progression/progressionBus";
 const INTERACT_RANGE = TILE_SIZE * 1.8;
 /** How long a spoken line owns the bubble before another can replace it. */
 const SAY_COOLDOWN = 3600;
+/** How long the reaction pose is held, just under the line's own life. */
+const ACTION_HOLD_MS = 2500;
 
 // Pixel-art attention balloons come in five palette variants (see
 // assets/ui/attention_*.png). Each NPC uses the variant closest to its
@@ -46,7 +48,7 @@ export class NPCSprite {
   private nameText: Phaser.GameObjects.Text;
   private promptText: Phaser.GameObjects.Text;
   private _isInRange = false;
-  private bubble: SpeechBubble | null = null;
+  private bubble: ChatBubble | null = null;
   private quietUntil = 0;
   private originX: number;
   private originY: number;
@@ -247,7 +249,12 @@ export class NPCSprite {
     if (now < this.quietUntil) return;
     this.quietUntil = now + SAY_COOLDOWN;
     this.bubble?.destroy();
-    this.bubble = new SpeechBubble(this.scene, this.getContainer(), text, -(this.avatar.getVisualHeight() + 14));
+    // Clear of the name label, which sits at visualHeight + 2.
+    this.bubble = new ChatBubble(this.scene, this.getContainer(), text, "#ffffff", {
+      bg: 0xffffff, bgAlpha: 1, outline: false, y: -(this.avatar.getVisualHeight() + 16),
+    });
+    // The sheet that goes with the line: the builder throws an arm out.
+    if (this.def.spriteActionKey) this.avatar.poseFor(this.def.spriteActionKey, ACTION_HOLD_MS);
   }
 
   checkProximity(playerX: number, playerY: number): boolean {

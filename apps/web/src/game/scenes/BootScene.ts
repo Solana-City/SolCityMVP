@@ -3,7 +3,6 @@ import { SimpleSprite } from "../entities/SimpleSprite";
 import { cropTileLayers } from "../world/cropMap";
 import { AvatarSprite } from "../entities/AvatarSprite";
 import { NPC_REGISTRY } from "../config/npcRegistry";
-import { BUBBLE_TEXTURE, BUBBLE_FRAMES } from "../chat/SpeechBubble";
 import { getAllLayerVariants, EXPRESSIONS, SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT } from "../config/paperDoll";
 import { preloadAnimatedDecor } from "../world/AnimatedDecor";
 
@@ -60,7 +59,7 @@ export class BootScene extends Phaser.Scene {
         this.textures.remove(file.key);
       }
       if (file.key === "city-map") {
-        console.error("[BootScene] city.json failed to load");
+        console.error("[BootScene] city.packed.json failed to load — run scripts/pack-tilesets.mjs");
       }
       if (["SCBuildGenericBuild", "SCBuildKeepGreen", "SCBuildMagicBlock"].includes(file.key)) {
         console.warn(`[BootScene] ${file.key}.png missing — add to public/assets/tilesets/`);
@@ -68,20 +67,25 @@ export class BootScene extends Phaser.Scene {
     });
 
     // One map for both platforms now (SCMap01.1 is 135×115 — no mobile crop).
-    this.load.tilemapTiledJSON("city-map", "assets/maps/city.json");
+    //
+    // The PACKED map and sheets, not the artist's export: scripts/
+    // pack-tilesets.mjs rewrites every tileset down to the tiles the map
+    // actually uses, which is 17 MB of RGBA instead of 130 MB. The sheets are
+    // authored at 1800x1800 with a few hundred tiles on them, and a browser
+    // decodes a PNG to width x height x 4 bytes however empty it is — that
+    // gap was the city's single biggest lump of memory. Re-run the script
+    // after every map export; `npm run build` does it for you.
+    this.load.tilemapTiledJSON("city-map", "assets/maps/city.packed.json");
 
     const isMobileTilesets = window.matchMedia("(pointer: coarse)").matches;
     for (const key of (isMobileTilesets ? TILESET_KEYS_MOBILE : TILESET_KEYS)) {
-      this.load.image(key, `assets/tilesets/${key}.png`);
+      this.load.image(key, `assets/tilesets/packed/${key}.png`);
     }
 
     // Pixel-art NPC attention balloons — one per palette variant.
     for (const variant of ["green", "orange", "purple", "red", "yellow"]) {
       this.load.image(`attention-${variant}`, `assets/ui/attention_${variant}.png`);
     }
-
-    // The drawn speech bubble an NPC talks in (see chat/SpeechBubble).
-    this.load.image(BUBBLE_TEXTURE, "assets/ui/bubble.png");
 
     SimpleSprite.load(this, "avatar-player", "assets/sprites/main_char.png", 64, 64);
     // Flags and other props that wave in place (see world/AnimatedDecor).
@@ -91,7 +95,7 @@ export class BootScene extends Phaser.Scene {
     for (const npc of NPC_REGISTRY) {
       // spriteWalkKey is the optional second sheet for NPCs drawn as separate
       // idle and walk cycles (Caramel Dog) — same grid, so it loads the same way.
-      for (const key of [npc.spriteKey, npc.spriteWalkKey]) {
+      for (const key of [npc.spriteKey, npc.spriteWalkKey, npc.spriteActionKey]) {
         if (!key || loadedKeys.has(key)) continue;
         loadedKeys.add(key);
         const filename = key.startsWith("avatar-")
@@ -133,21 +137,19 @@ export class BootScene extends Phaser.Scene {
       }
     }
 
-    // The bubble is used in two pieces: the box is stretched as a nine-slice,
-    // the tail is drawn at native size so it never smears. Frames are added
-    // here because they need the decoded texture.
-    if (this.textures.exists(BUBBLE_TEXTURE)) {
-      const tex = this.textures.get(BUBBLE_TEXTURE);
-      const { box, tail } = BUBBLE_FRAMES;
-      if (!tex.has("bubble-box")) tex.add("bubble-box", 0, box.x, box.y, box.w, box.h);
-      if (!tex.has("bubble-tail")) tex.add("bubble-tail", 0, tail.x, tail.y, tail.w, tail.h);
-    }
-
     // Static animated NPCs (idle-loop sheets, e.g. Kite Pro) ship with the
     // same pink chroma-key background as the paperdoll sheets — key each
     // one out at its own frame size before either path below starts.
-    const animatedNpcSheets = NPC_REGISTRY.filter(
-      (npc) => npc.spriteKey && npc.spriteAnimation && this.textures.exists(npc.spriteKey)
+    const animatedNpcSheets = NPC_REGISTRY.flatMap((npc) =>
+      npc.spriteAnimation
+        ? [npc.spriteKey, npc.spriteActionKey]
+            .filter((key): key is string => !!key && this.textures.exists(key))
+            .map((key) => ({
+              key,
+              frameWidth: npc.spriteAnimation!.frameWidth,
+              frameHeight: npc.spriteAnimation!.frameHeight,
+            }))
+        : []
     );
     // Walk-grid NPC sheets: most ship already keyed out (transparent PNGs),
     // so only the ones still carrying the pink are processed. That way new
@@ -177,10 +179,10 @@ export class BootScene extends Phaser.Scene {
         if (i < npcStart) {
           applyLayerChromaKey(this, variants[i].category, variants[i].variant.textureKey);
         } else if (i < walkStart) {
-          const npc = animatedNpcSheets[i - npcStart];
+          const sheet = animatedNpcSheets[i - npcStart];
           // Flat: NPC art has pink background pockets enclosed by the sprite
           // (e.g. Kite Pro's kite) that a flood fill can't reach.
-          applyChromaKey(this, npc.spriteKey!, npc.spriteAnimation!.frameWidth, npc.spriteAnimation!.frameHeight, false);
+          applyChromaKey(this, sheet.key, sheet.frameWidth, sheet.frameHeight, false);
         } else if (i < exprStart) {
           applyChromaKey(this, walkNpcSheets[i - walkStart], SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT, false);
         } else if (i < total) {
@@ -203,9 +205,9 @@ export class BootScene extends Phaser.Scene {
         applyLayerChromaKey(this, category, variant.textureKey);
       }
     }
-    for (const npc of animatedNpcSheets) {
+    for (const sheet of animatedNpcSheets) {
       // Flat pass (no flood fill) — clears pink pockets enclosed by the NPC art.
-      applyChromaKey(this, npc.spriteKey!, npc.spriteAnimation!.frameWidth, npc.spriteAnimation!.frameHeight, false);
+      applyChromaKey(this, sheet.key, sheet.frameWidth, sheet.frameHeight, false);
     }
     for (const key of walkNpcSheets) {
       applyChromaKey(this, key, SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT, false);

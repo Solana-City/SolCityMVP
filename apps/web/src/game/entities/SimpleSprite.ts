@@ -43,7 +43,11 @@ export class SimpleSprite {
   private container: Phaser.GameObjects.Container;
   /** Mirrored silhouette under the feet — see characterShadow. */
   private shadowSprite: Phaser.GameObjects.Sprite | null = null;
+  private shadowIdleKey: string | null = null;
   private shadowTextureKey: string | null = null;
+  /** Sheet to return to when the current pose expires — see poseFor. */
+  private poseReturnKey: string | null = null;
+  private poseTimer: Phaser.Time.TimerEvent | null = null;
   /** Soft oval under the feet that grounds the character. */
   private contactBlob: Phaser.GameObjects.Ellipse | null = null;
   private currentDirection: Direction = "down";
@@ -182,8 +186,10 @@ export class SimpleSprite {
     const shadow = this.scene.add.sprite(0, shadowY, silhouette.key);
     shadow.setOrigin(0.5, 1.0);
     // Negative Y scale with a bottom origin mirrors the silhouette downward
-    // from the feet; X matches whatever scale the main sprite uses.
-    shadow.setScale(base, -base * SHADOW_SQUASH);
+    // from the feet; X matches whatever scale the main sprite uses, times
+    // whatever the silhouette was shrunk by when it was stored.
+    const shadowScale = base * silhouette.scaleMul;
+    shadow.setScale(shadowScale, -shadowScale * SHADOW_SQUASH);
     shadow.setAlpha(SHADOW_ALPHA);
     // Above the blob, below the body sprite.
     this.container.addAt(shadow, 1);
@@ -192,6 +198,7 @@ export class SimpleSprite {
 
     if (this.idleLoopFrames) {
       shadow.anims.play({ key: `${silhouette.key}-idle-loop`, repeat: -1 });
+      this.shadowIdleKey = `${silhouette.key}-idle-loop`;
     } else {
       shadow.setFrame(this.sprite.frame.name);
     }
@@ -277,6 +284,37 @@ export class SimpleSprite {
     this.syncShadowFrame(row * 4);
   }
 
+  /**
+   * Swap to a one-frame pose sheet (the builder's shove) and hold it, then
+   * go back to the sheet this character was on. Calling it again while a
+   * pose is up just restarts the clock, so a player leaning on the trigger
+   * never snaps the NPC back and forth.
+   */
+  poseFor(textureKey: string, ms: number): void {
+    if (!this.scene.textures.exists(textureKey)) return;
+    const back = this.poseReturnKey ?? this.textureKey;
+    if (back === textureKey) return;
+
+    this.poseTimer?.remove();
+    this.poseReturnKey = back;
+    this.setTexture(textureKey);
+    this.sprite.anims.stop();
+    this.sprite.setFrame(0);
+    this.syncShadowFrame(0);
+
+    this.poseTimer = this.scene.time.delayedCall(ms, () => {
+      this.poseTimer = null;
+      const key = this.poseReturnKey;
+      this.poseReturnKey = null;
+      if (!key) return;
+      this.setTexture(key);
+      if (this.idleLoopFrames) {
+        this.sprite.anims.play({ key: `${key}-idle-loop`, repeat: -1 });
+        this.playShadowIdle();
+      }
+    });
+  }
+
   private syncShadowFrame(frameIndex: number): void {
     if (!this.shadowSprite) return;
     this.shadowSprite.anims.stop();
@@ -298,7 +336,16 @@ export class SimpleSprite {
     this.idle();
   }
 
+  /** Restart the shadow's idle loop after a pose put it on a still frame. */
+  private playShadowIdle(): void {
+    if (this.shadowSprite && this.shadowIdleKey && this.scene.anims.exists(this.shadowIdleKey)) {
+      this.shadowSprite.anims.play({ key: this.shadowIdleKey, repeat: -1 });
+    }
+  }
+
   destroy(): void {
+    this.poseTimer?.remove();
+    this.poseTimer = null;
     // Destroy the sprites BEFORE releasing the shared silhouette texture —
     // release may remove the texture and its animations, which must never
     // happen while a live sprite still plays them.
@@ -315,9 +362,12 @@ export class SimpleSprite {
       // direction, no walk cycle at all.
       const key = `${textureKey}-idle-loop`;
       if (!this.scene.anims.exists(key)) {
+        // A pose sheet (poseFor) has fewer frames than the idle sheet it
+        // replaces, and asking for frames a texture does not have throws.
+        const available = Math.max(1, this.scene.textures.get(textureKey).frameTotal - 1);
         const frames = this.scene.anims.generateFrameNumbers(textureKey, {
           start: 0,
-          end: this.idleLoopFrames - 1,
+          end: Math.min(this.idleLoopFrames, available) - 1,
         });
         if (frames.length > 0) {
           this.scene.anims.create({ key, frames, frameRate: 6, repeat: -1 });

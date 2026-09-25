@@ -1,5 +1,5 @@
 export interface NPCAction {
-  type: "tutor" | "swap" | "transfer" | "bounties" | "link" | "placeholder" | "private-payment" | "minigame" | "stock-exchange" | "peg-risk" | "token-scan";
+  type: "tutor" | "swap" | "transfer" | "bounties" | "link" | "placeholder" | "private-payment" | "minigame" | "stock-exchange" | "peg-risk" | "token-scan" | "private-transfer";
   label: string;
   url?: string;
   miniGameId?: string;
@@ -61,6 +61,12 @@ export interface NPCDefinition {
    */
   spriteWalkKey?: string;
   /**
+   * Optional one-frame sheet held for a moment when this NPC reacts — the
+   * builder throwing an arm out as he pushes you back. Same frame size as
+   * `spriteAnimation`, so it drops straight in over the idle sheet.
+   */
+  spriteActionKey?: string;
+  /**
    * How far this NPC may stray from its spawn tile while wandering, in world
    * pixels. Defaults to 18 (under one tile) — enough to look alive in place.
    *
@@ -76,15 +82,19 @@ export interface NPCDefinition {
    */
   enabled?: boolean;
   /**
-   * Nobody gets close. Inside `radius` world pixels the player is pushed
-   * straight back out at `speed` px/s, whatever they are pressing, and the
-   * NPC says `say` in a drawn bubble over its head (chat/SpeechBubble).
+   * Nobody gets close. Come within `radius` world pixels — near enough to be
+   * almost touching — and the player SLIDES back `push` pixels over `ms`,
+   * decelerating, while the NPC says `say` in a bubble over its head.
+   *
+   * One shove per approach, not a wall: the push starts when the player
+   * arrives and then plays out on its own, so it reads as being shoved
+   * rather than as an invisible barrier pressing against them.
    *
    * An NPC with this never shows the "!" or the talk prompt: there is no
    * conversation to reach, and offering one the player cannot have is worse
    * than offering none.
    */
-  repel?: { radius: number; speed: number; say: string };
+  repel?: { radius: number; push: number; ms: number; say: string };
   /**
    * Optional path to a portrait PNG (served from /public).
    * Recommended: 256x256 px, transparent background, pixel art.
@@ -476,6 +486,29 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     spriteAnimation: { frameWidth: 64, frameHeight: 64, frameCount: 6 },
   },
   {
+    id: "cloak-vitin",
+    name: "Cloak Cat",
+    role: "Cloak",
+    // In front of the free stand between SolSentry and Pegana (BuildStand04,
+    // cols 33-37 / rows 72-76), so the three project stands share one row of
+    // the ST Brasil market. tileY is the row above the one he stands on.
+    tileX: 35,
+    tileY: 76,
+    color: 0x8b7cf6,
+    dialog: [
+      "Hey! I'm here to make privacy great again on Solana, can I count on you to do that?",
+      "Cloak gives you a private balance: shield it once, then pay anyone without your wallet showing up as the sender.",
+      "Shielding and sending are free. Only taking funds back out costs anything.",
+    ],
+    highlights: [
+      { img: "/assets/ui/ico_achievements.png", label: "SHIELD" },
+      { img: "/assets/ui/ico_chat.png", label: "PRIVATE SEND" },
+    ],
+    action: { type: "private-transfer", label: "Send privately" },
+    spriteKey: "Cloak",
+    spriteAnimation: { frameWidth: 64, frameHeight: 64, frameCount: 6 },
+  },
+  {
     id: "builder",
     name: "Builder",
     role: "Under Construction",
@@ -490,8 +523,11 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     // registry stays uniform and the minimap has something to label.
     dialog: ["We are working here!"],
     action: { type: "placeholder", label: "Come back later" },
-    repel: { radius: 56, speed: 170, say: "We are working here!" },
+    // Just over a tile: the bodies are nearly touching before he reacts, so
+    // the shove has something to answer. The slide is ~2.5 tiles.
+    repel: { radius: 28, push: 60, ms: 380, say: "We are working here!" },
     spriteKey: "Builder",
+    spriteActionKey: "Builder_push",
     spriteAnimation: { frameWidth: 64, frameHeight: 64, frameCount: 6 },
   },
 ];
