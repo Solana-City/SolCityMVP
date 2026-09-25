@@ -13,6 +13,7 @@ import MagicBlockHub from "@/ui/MagicBlockHub";
 import StockExchangePanel from "@/ui/StockExchangePanel";
 import { chamferBox } from "@/ui/chamfer";
 import PegRiskPanel from "@/ui/PegRiskPanel";
+import CloakPanel from "@/ui/CloakPanel";
 import TokenScanPanel from "@/ui/TokenScanPanel";
 import { backdropClose } from "@/ui/backdrop";
 import { useViewportBox, overlayBox } from "@/ui/useViewportBox";
@@ -48,6 +49,23 @@ const TRANSFER_INTRO: IntroSpec = {
     { title: "ADDRESS", line: "Paste your friend's wallet address.", edge: 1 },
     { title: "AMOUNT", line: "Choose how much SOL to send.", edge: 0, chip: "SOL" },
     { title: "SEND", line: "Sign and it arrives in seconds. The transfer is public on-chain.", edge: 1, chip: "SOL" },
+  ],
+};
+
+/** Vitin: what a private balance is, before the Cloak panel. */
+const CLOAK_INTRO: IntroSpec = {
+  id: "cloak",
+  title: "HOW PRIVATE SENDING WORKS",
+  color: "#8b7cf6",
+  nodes: [
+    { sheet: "main_char.png", label: "YOU" },
+    { sheet: "Cloak.png", label: "CLOAK", sheetWidth: 384, sheetHeight: 64 },
+    { sheet: "Kuka.png", label: "ANYONE" },
+  ],
+  steps: [
+    { title: "SHIELD", line: "Move SOL into a private balance only you can spend.", edge: 0, chip: "SOL" },
+    { title: "SEND", line: "Pay any address. The chain never sees you as the sender.", edge: 1 },
+    { title: "UNSHIELD", line: "Take it back out to a normal wallet whenever you want.", edge: 0, chip: "SOL" },
   ],
 };
 
@@ -161,6 +179,7 @@ export default function ActionPanel({ action, onClose }: ActionPanelProps) {
           {/* ST Brasil stands: the project's own public API behind the button. */}
           {action.type === "peg-risk"        && <PegRiskPanel   onClose={onClose} />}
           {action.type === "token-scan"      && <TokenScanPanel onClose={onClose} />}
+          {action.type === "private-transfer" && <ProtocolIntroGate spec={CLOAK_INTRO}><CloakPanel onClose={onClose} /></ProtocolIntroGate>}
         </div>
       </div>
     );
@@ -205,6 +224,7 @@ export default function ActionPanel({ action, onClose }: ActionPanelProps) {
           {/* ST Brasil stands: the project's own public API behind the button. */}
           {action.type === "peg-risk"        && <PegRiskPanel   onClose={onClose} />}
           {action.type === "token-scan"      && <TokenScanPanel onClose={onClose} />}
+          {action.type === "private-transfer" && <ProtocolIntroGate spec={CLOAK_INTRO}><CloakPanel onClose={onClose} /></ProtocolIntroGate>}
       </div>
     </div>
   );

@@ -1,5 +1,5 @@
 export interface NPCAction {
-  type: "tutor" | "swap" | "transfer" | "bounties" | "link" | "placeholder" | "private-payment" | "minigame" | "stock-exchange" | "peg-risk" | "token-scan";
+  type: "tutor" | "swap" | "transfer" | "bounties" | "link" | "placeholder" | "private-payment" | "minigame" | "stock-exchange" | "peg-risk" | "token-scan" | "private-transfer";
   label: string;
   url?: string;
   miniGameId?: string;
@@ -479,6 +479,29 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     offsetX: -6,
     action: { type: "link", label: "Enter the dungeon", url: "https://www.dungeonsandmoles.com/" },
     spriteKey: "Mole",
+    spriteAnimation: { frameWidth: 64, frameHeight: 64, frameCount: 6 },
+  },
+  {
+    id: "cloak-vitin",
+    name: "Vitin",
+    role: "Cloak",
+    // In front of the free stand between SolSentry and Pegana (BuildStand04,
+    // cols 33-37 / rows 72-76), so the three project stands share one row of
+    // the ST Brasil market. tileY is the row above the one he stands on.
+    tileX: 35,
+    tileY: 76,
+    color: 0x8b7cf6,
+    dialog: [
+      "Hey! I'm here to make privacy great again on Solana, can I count on you to do that?",
+      "Cloak gives you a private balance: shield it once, then pay anyone without your wallet showing up as the sender.",
+      "Shielding and sending are free. Only taking funds back out costs anything.",
+    ],
+    highlights: [
+      { img: "/assets/ui/ico_achievements.png", label: "SHIELD" },
+      { img: "/assets/ui/ico_chat.png", label: "PRIVATE SEND" },
+    ],
+    action: { type: "private-transfer", label: "Send privately" },
+    spriteKey: "Cloak",
     spriteAnimation: { frameWidth: 64, frameHeight: 64, frameCount: 6 },
   },
   {

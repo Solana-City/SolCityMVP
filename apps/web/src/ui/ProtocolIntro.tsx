@@ -19,6 +19,14 @@ export interface FlowNode {
   /** File in /assets/sprites (a 256x256 sheet of 64px frames). */
   sheet: string;
   label: string;
+  /**
+   * The sheet's real pixel size, when it is not the usual 256x256 walk grid.
+   * The crop below shows frame 0 by drawing the sheet at its natural size, so
+   * one 64px frame is 64 units wide either way: a 384x64 idle strip (the ST
+   * Brasil stand NPCs) needs 384 x 64 here or it is squashed to fit a square.
+   */
+  sheetWidth?: number;
+  sheetHeight?: number;
 }
 
 export interface IntroStep {
@@ -55,7 +63,13 @@ function Flow({ spec, step }: { spec: IntroSpec; step: IntroStep }) {
             <rect x={cx(i) - 30} y={Y - 34} width={60} height={56} rx={10}
               fill={lit ? `${spec.color}22` : "#12122a"} stroke={lit ? spec.color : "#2a2a45"} strokeWidth={lit ? 2 : 1} />
             <svg x={cx(i) - 26} y={Y - 34} width={52} height={56} viewBox="8 2 48 52" overflow="hidden">
-              <image href={`/assets/sprites/${node.sheet}`} width={256} height={256} style={{ imageRendering: "pixelated" }} />
+              <image
+                href={`/assets/sprites/${node.sheet}`}
+                width={node.sheetWidth ?? 256}
+                height={node.sheetHeight ?? 256}
+                preserveAspectRatio="none"
+                style={{ imageRendering: "pixelated" }}
+              />
             </svg>
             <text x={cx(i)} y={Y + 36} textAnchor="middle" fontSize={7} fontFamily={PIXEL}
               fill={lit ? "#f1f5f9" : "#8b8ba7"}>{node.label}</text>
