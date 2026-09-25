@@ -863,14 +863,14 @@ function FullMap({ host, onClose }: { host: MinimapHost; onClose: () => void }) 
         boxShadow: "0 20px 70px rgba(0,0,0,0.6)",
       }}>
         {/* Header */}
-        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: narrow ? "8px 10px" : "12px 16px", borderBottom: "1px solid rgba(153,69,255,0.18)" }}>
-          <span style={{ fontFamily: PIXEL_FONT, fontSize: narrow ? 9 : 11, color: "#B7E928", letterSpacing: 1 }}>SOLANA CITY MAP</span>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: narrow ? "8px 10px" : "12px 20px", borderBottom: "1px solid rgba(153,69,255,0.12)", background: "rgba(153,69,255,0.06)" }}>
+          <span style={{ fontFamily: PIXEL_FONT, fontSize: narrow ? 11 : 14, color: "#B7E928", letterSpacing: 1 }}>SOLANA CITY MAP</span>
           {!narrow && <span style={{ fontSize: 11, color: "#64748b" }}>Drag to move · scroll to zoom · click a marker</span>}
           <div style={{ flex: 1 }} />
           {narrow && (
             <button onClick={() => setListOpen((v) => !v)} style={hdrBtn(listOpen)}>{listOpen ? "MAP" : "LIST"}</button>
           )}
-          <button onClick={onClose} aria-label="Close map" style={{ background: "none", border: "none", color: "#14F0C6", fontSize: 16, cursor: "pointer", lineHeight: 1, padding: "0 2px" }}>×</button>
+          <button onClick={onClose} aria-label="Close map" style={{ background: "none", border: "none", color: "#14F0C6", fontFamily: '"Press Start 2P", monospace', fontSize: 16, cursor: "pointer", lineHeight: 1, padding: "0 2px" }}>×</button>
         </div>
 
         {narrow && <div style={{ padding: "8px 10px 0" }}>{legend}</div>}

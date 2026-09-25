@@ -16,7 +16,7 @@ import { useNicknames, shortWallet } from "@/ui/useNicknames";
 import { fetchBoard, invalidateBoard, type BoardRow } from "@/game/leaderboards/boards";
 import { track } from "@/game/telemetry/track";
 import { cachedName, requestNames } from "@/game/names/nameService";
-import { chamferBox, octagonFrame } from "@/ui/chamfer";
+import { chamferBox, octagonFrame, octagonFrameThin } from "@/ui/chamfer";
 import ChamferGlow from "@/ui/ChamferGlow";
 
 // ── Chroma key ────────────────────────────────────────────────────────────────
@@ -366,19 +366,20 @@ export default function WhereIsNPCCard({ gameRef, wallet }: Props) {
           cursor: "pointer",
           userSelect: "none",
         }} onClick={() => setCollapsed(v => !v)}>
-          <PixelImg src={ICON.hunt} size={16} />
+          <PixelImg src={ICON.hunt} size={26} />
           <span style={{
             fontFamily: '"Press Start 2P", monospace', fontSize: 7,
             color: "#c084fc", letterSpacing: 0.5, flex: 1,
             lineHeight: 1.4,
           }}>FIND SOMEONE</span>
-          <button className="hunt-btn" style={chamferBox(6, {
-            background: "rgba(153,69,255,0.1)", border: "1px solid rgba(153,69,255,0.25)",
-            color: "#9945FF", fontSize: 8,
-            width: 22, height: 22, cursor: "pointer",
-            display: "flex", alignItems: "center", justifyContent: "center",
+          <button className="hunt-btn" style={{
+            ...octagonFrameThin(),
+            background: showInfo ? "rgba(183,233,40,0.25)" : "rgba(10,10,30,0.7)",
+            color: showInfo ? "#B7E928" : "#9a9ab5",
+            fontFamily: "Georgia, serif", fontStyle: "italic", fontWeight: "bold", fontSize: 11,
+            width: 22, height: 22, padding: 0, lineHeight: "12px", cursor: "pointer",
             flexShrink: 0,
-          })}
+          }}
             onClick={e => { e.stopPropagation(); setShowInfo(v => !v); }}
             title="How to play"
           >?</button>
@@ -555,7 +556,7 @@ function HuntHowTo({ loadout, isTouch, onClose }: { loadout: Loadout | null; isT
         background: "#0c0f1e", fontFamily: PIX,
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-          <PixelImg src={ICON.hunt} size={16} />
+          <PixelImg src={ICON.hunt} size={26} />
           <span style={{ color: "#c084fc", fontSize: 8 }}>FIND SOMEONE</span>
           <span style={{ marginLeft: "auto", color: "#555577", fontSize: 7 }}>{i + 1}/{steps.length}</span>
           <button onClick={onClose} aria-label="Close" style={{ background: "none", border: "none", color: "#14F0C6", fontSize: 16, cursor: "pointer", lineHeight: 1, padding: "0 2px" }}>×</button>

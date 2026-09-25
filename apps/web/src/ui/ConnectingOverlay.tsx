@@ -16,7 +16,7 @@
  */
 import { useEffect, useState } from "react";
 import { Citizen, Img } from "./CityGuide";
-import { chamferBox } from "@/ui/chamfer";
+import { chamferBox, octagonFrame } from "@/ui/chamfer";
 
 const PIXEL = '"Press Start 2P", monospace';
 const GREEN = "#B7E928";
@@ -78,12 +78,9 @@ export default function ConnectingOverlay({ onEnter, onRetry }: { onEnter: () =>
     }}>
       <div style={{
         width: "min(340px, 100%)", maxHeight: "calc(100dvh - 32px)", overflowY: "auto",
-        padding: 14, textAlign: "center",
+        padding: 22, textAlign: "center",
         background: "linear-gradient(180deg, rgba(15,18,40,0.98) 0%, rgba(8,10,24,0.98) 100%)",
-        borderWidth: 20, borderStyle: "solid", borderColor: "transparent",
-        borderImage: 'url(/assets/branding/ui/frame-panel-test.png) 64 fill / 20px / 0 round',
-        imageRendering: "pixelated",
-        boxShadow: failed ? `0 0 0 3px ${DANGER}80, 0 8px 24px rgba(0,0,0,0.5)` : "0 8px 24px rgba(0,0,0,0.5)",
+        ...octagonFrame(1),
       }}>
         <div style={{ fontFamily: PIXEL, fontSize: 8, color: failed ? DANGER : GREEN, marginBottom: 12 }}>
           {failed ? "COULD NOT CONNECT" : "ENTERING THE CITY"}

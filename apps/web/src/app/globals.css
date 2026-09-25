@@ -118,3 +118,55 @@ canvas {
     min-height: 52px !important;
   }
 }
+
+
+/* ── Retro scrollbars ─────────────────────────────────────────────────────
+   Square, muted, close to the panel background: a dark track, a slate thumb
+   with a 2px edge, and small stepped arrow buttons. (Firefox has no arrow
+   buttons; it gets the color only, and only where ::-webkit-scrollbar is
+   unsupported, since scrollbar-color would override the styling in Chrome.) */
+*::-webkit-scrollbar { width: 12px; height: 12px; background: #0a0d22; }
+*::-webkit-scrollbar-track { background: #0a0d22; border-left: 2px solid #141a3a; }
+*::-webkit-scrollbar-thumb {
+  background: #232c58; border: 2px solid #3a4a80; border-radius: 0;
+  box-shadow: inset 2px 2px 0 rgba(255,255,255,0.08);
+}
+*::-webkit-scrollbar-thumb:hover { background: #2c376c; border-color: #14F0C6; }
+*::-webkit-scrollbar-corner { background: #0a0d22; }
+*::-webkit-scrollbar-button:single-button {
+  display: block; width: 12px; height: 12px; background-color: #141a3a;
+  background-repeat: no-repeat; background-position: center; image-rendering: pixelated;
+  border: 2px solid #232c58; box-sizing: border-box;
+}
+*::-webkit-scrollbar-button:single-button:hover { background-color: #232c58; }
+*::-webkit-scrollbar-button:single-button:vertical:decrement {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='5' height='3' shape-rendering='crispEdges'%3E%3Cpath fill='%237c8cc8' d='M2 0h1v1H2zM1 1h3v1H1zM0 2h5v1H0z'/%3E%3C/svg%3E");
+}
+*::-webkit-scrollbar-button:single-button:vertical:increment {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='5' height='3' shape-rendering='crispEdges'%3E%3Cpath fill='%237c8cc8' d='M0 0h5v1H0zM1 1h3v1H1zM2 2h1v1H2z'/%3E%3C/svg%3E");
+}
+*::-webkit-scrollbar-button:single-button:horizontal:decrement {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='3' height='5' shape-rendering='crispEdges'%3E%3Cpath fill='%237c8cc8' d='M2 0h1v5H2zM1 1h1v3H1zM0 2h1v1H0z'/%3E%3C/svg%3E");
+}
+*::-webkit-scrollbar-button:single-button:horizontal:increment {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='3' height='5' shape-rendering='crispEdges'%3E%3Cpath fill='%237c8cc8' d='M0 0h1v5H0zM1 1h1v3H1zM2 2h1v1H2z'/%3E%3C/svg%3E");
+}
+@supports not selector(::-webkit-scrollbar) {
+  * { scrollbar-color: #2c376c #0a0d22; scrollbar-width: thin; }
+}
+
+/* ── Pixel range slider: rectangular track, square thumb ─────────────── */
+input[type="range"].pixel-range {
+  -webkit-appearance: none; appearance: none; height: 16px; background: transparent; margin: 0;
+}
+input[type="range"].pixel-range::-webkit-slider-runnable-track {
+  height: 8px; border: 2px solid #3a4a80;
+  background: linear-gradient(90deg, #9945FF var(--p, 50%), #0a0d22 var(--p, 50%));
+}
+input[type="range"].pixel-range::-moz-range-track { height: 8px; border: 2px solid #3a4a80; background: #0a0d22; }
+input[type="range"].pixel-range::-moz-range-progress { height: 8px; background: #9945FF; }
+input[type="range"].pixel-range::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none; width: 14px; height: 14px; margin-top: -5px;
+  background: #c084fc; border: 2px solid #f0e2ff; border-radius: 0;
+}
+input[type="range"].pixel-range::-moz-range-thumb { width: 10px; height: 10px; background: #c084fc; border: 2px solid #f0e2ff; border-radius: 0; }

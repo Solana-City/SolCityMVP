@@ -341,12 +341,13 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
           title="How the chat works"
           className="ml-auto self-center"
           style={{
-            width: 18, height: 18, borderRadius: "50%", flexShrink: 0,
-            background: showGuide ? "rgba(183,233,40,0.18)" : "rgba(10,10,30,0.7)",
+            width: 22, height: 22, flexShrink: 0,
+            background: showGuide ? "rgba(183,233,40,0.25)" : "rgba(10,10,30,0.7)",
             color: showGuide ? "#B7E928" : "#9a9ab5",
-            border: `1px solid ${showGuide ? "rgba(183,233,40,0.5)" : "rgba(153,69,255,0.35)"}`,
+            borderWidth: 4, borderStyle: "solid", borderColor: "transparent",
+            borderImage: BTN_FRAME, imageRendering: "pixelated", clipPath: BTN_CLIP,
             fontFamily: "Georgia, serif", fontStyle: "italic", fontWeight: "bold", fontSize: 11,
-            lineHeight: "16px", padding: 0, cursor: "pointer",
+            lineHeight: "12px", padding: 0, cursor: "pointer",
           }}
         >
           i
@@ -356,7 +357,7 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
           className="self-center"
           style={{ background: "transparent", border: "none", padding: 0, cursor: "pointer", flexShrink: 0 }}
         >
-          <img src={`/assets/ui/icon_${isExpanded ? "down" : "up"}.png`} width={24} height={24} alt="" draggable={false} style={{ imageRendering: "pixelated", display: "block" }} />
+          <img src={`/assets/ui/icon_${isExpanded ? "down" : "up"}.png`} width={22} height={22} alt="" draggable={false} style={{ imageRendering: "pixelated", display: "block" }} />
         </button>
       </div>
 

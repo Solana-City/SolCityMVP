@@ -201,15 +201,15 @@ export default function CalendarPanel({ gameRef }: { gameRef: Phaser.Game | null
         }}
       >
         {/* Header, with today's check-in as the first thing you see */}
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: layout.short ? 6 : 10 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: layout.short ? 6 : 10, padding: layout.short ? "4px 8px" : "8px 12px", background: "rgba(153,69,255,0.06)", borderBottom: "1px solid rgba(153,69,255,0.12)" }}>
           <CalendarDayIcon size={layout.short ? 24 : 40} day={today.getUTCDate()} />
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 8, color: GREEN }}>CITY CALENDAR</div>
-            <div style={{ fontSize: 6, color: "#64748b", marginTop: 4 }}>
+            <div style={{ fontSize: 12, color: GREEN, letterSpacing: 1 }}>CITY CALENDAR</div>
+            <div style={{ fontSize: 7, color: "#64748b", marginTop: 6 }}>
               {today.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", timeZone: "UTC" }).toUpperCase()}
             </div>
           </div>
-          <button onClick={close} aria-label="Close" style={{ background: "none", border: "none", color: "#14F0C6", fontSize: 18, cursor: "pointer", lineHeight: 1 }}>×</button>
+          <button onClick={close} aria-label="Close" style={{ background: "none", border: "none", color: "#14F0C6", fontSize: 16, cursor: "pointer", lineHeight: 1, padding: "0 2px" }}>×</button>
         </div>
 
         <div style={{
@@ -312,8 +312,8 @@ function StreakCard({ days, short }: { days: number; short?: boolean }) {
         background: GREEN, color: "#0a0a14", padding: short ? "6px 10px" : "10px 14px",
         border: "2px solid #eaff9a",
       })}>
-        <span style={{ fontFamily: PIXEL, fontSize: 8, lineHeight: 1.6 }}>DAY<br />STREAK</span>
-        <span style={{ fontFamily: PIXEL, fontSize: short ? 18 : 26, lineHeight: 1 }}>{days}</span>
+        <span style={{ fontFamily: PIXEL, fontSize: short ? 11 : 14, lineHeight: 1, whiteSpace: "nowrap" }}>DAY STREAK</span>
+        <span style={{ fontFamily: PIXEL, fontSize: short ? 22 : 32, lineHeight: 1 }}>{days}</span>
       </div>
     </ChamferGlow>
   );
@@ -333,7 +333,7 @@ function Block({ children, short }: { children: React.ReactNode; short?: boolean
 
 function Title({ icon, children }: { icon: string; children: React.ReactNode }) {
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+    <div style={{ display: "flex", alignItems: "center", gap: 5, background: "rgba(20,240,198,0.14)", padding: "4px 6px", marginBottom: 2 }}>
       <Img src={icon} h={12} />
       <span style={{ fontSize: 6, color: "#94a3b8" }}>{children}</span>
     </div>
@@ -379,7 +379,7 @@ function RankTab({ active, color, onClick, children }: { active: boolean; color:
 function RankRow({ rank, name, score, self }: { rank: number; name: string; score: number; self: boolean }) {
   return (
     <div style={{
-      display: "flex", alignItems: "center", gap: 6, marginTop: 4, padding: "3px 5px", borderRadius: 4,
+      display: "flex", alignItems: "center", gap: 6, marginTop: 4, padding: "3px 5px",
       background: self ? "rgba(183,233,40,0.08)" : "transparent",
     }}>
       <span style={{ fontSize: 6, color: rank <= 3 ? GOLD : "#475569", width: 16 }}>{rank}</span>

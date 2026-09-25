@@ -489,11 +489,7 @@ export default function Home() {
                   <span style={{ display: "block", flexShrink: 0 }}>
                     <PfpButton gameRef={game} size={isTouch ? 40 : 52} onClick={() => setProfileOpen(true)} />
                   </span>
-                  <span style={{
-                    flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                    fontFamily: '"Press Start 2P", monospace', fontSize: isTouch ? 8 : 11, color: "#F3F7FC",
-                  }}>{displayName}</span>
-                  <span style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+                  <span style={{ display: "flex", gap: 4, flexShrink: 0, marginLeft: "auto" }}>
                     <WardrobeButton size={isTouch ? 30 : 34} onClick={() => setWardrobeOpen(true)} />
                     <CalendarButton size={isTouch ? 30 : 34} />
                     <HudIconBtn

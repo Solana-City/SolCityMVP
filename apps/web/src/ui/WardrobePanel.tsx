@@ -365,10 +365,10 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
           background: "rgba(153,69,255,0.06)",
         }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <PixelImg src={ICON.wardrobe} size={18} />
+            <PixelImg src={ICON.wardrobe} size={24} />
             <span style={{
               fontFamily: '"Press Start 2P", monospace',
-              fontSize: 8,
+              fontSize: 12,
               color: "#c084fc",
               letterSpacing: 2,
             }}>WARDROBE</span>
@@ -378,17 +378,17 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
             <button
               onClick={() => setBoosterOpen(true)}
               title="Open a booster pack"
-              style={chamferBox(8, {
+              style={{
+                ...chamferBox(9, { border: "2px solid rgba(153,69,255,0.6)" }),
                 fontFamily: '"Press Start 2P", monospace',
                 fontSize: 7,
                 padding: "7px 14px",
-                background: "rgba(153,69,255,0.14)",
+                backgroundColor: "rgba(153,69,255,0.14)",
                 color: "#c084fc",
-                border: "1px solid rgba(153,69,255,0.4)",
                 cursor: "pointer",
                 letterSpacing: 1,
                 transition: "background 0.15s",
-              })}
+              }}
               onMouseEnter={e => e.currentTarget.style.backgroundColor = "rgba(153,69,255,0.25)"}
               onMouseLeave={e => e.currentTarget.style.backgroundColor = "rgba(153,69,255,0.14)"}
             >
@@ -398,17 +398,17 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
             <button
               onClick={handleRandom}
               title="Random outfit"
-              style={chamferBox(8, {
+              style={{
+                ...chamferBox(9, { border: "2px solid rgba(183,233,40,0.55)" }),
                 fontFamily: '"Press Start 2P", monospace',
                 fontSize: 7,
                 padding: "7px 14px",
-                background: "rgba(183,233,40,0.1)",
+                backgroundColor: "rgba(183,233,40,0.1)",
                 color: "#B7E928",
-                border: "1px solid rgba(183,233,40,0.3)",
                 cursor: "pointer",
                 letterSpacing: 1,
                 transition: "background 0.15s",
-              })}
+              }}
               onMouseEnter={e => e.currentTarget.style.backgroundColor = "rgba(183,233,40,0.2)"}
               onMouseLeave={e => e.currentTarget.style.backgroundColor = "rgba(183,233,40,0.1)"}
             >

@@ -64,11 +64,14 @@ export function chamferBox(corner: number, style: CSSProperties): CSSProperties 
   const edge = Math.ceil(corner + reach);
   const stop = ((corner + reach) / SQRT2).toFixed(2);
   const L = edge + 1;
-  const span = `calc(100% - ${edge * 2}px)`;
+  // Edge strips start at the corner (not after the diagonal) and overlap it, so
+  // no notch is left where the diagonal meets the straight outline.
+  const start = Math.ceil(corner);
+  const span = `calc(100% - ${start * 2}px)`;
   const diag = (angle: number) => `linear-gradient(${angle}deg, ${col} ${stop}px, transparent ${stop}px)`;
 
   const images = [line, line, line, line, diag(135), diag(225), diag(45), diag(315)];
-  const positions = [`${edge}px 0`, `${edge}px 100%`, `0 ${edge}px`, `100% ${edge}px`, "0 0", "100% 0", "0 100%", "100% 100%"];
+  const positions = [`${start}px 0`, `${start}px 100%`, `0 ${start}px`, `100% ${start}px`, "0 0", "100% 0", "0 100%", "100% 100%"];
   const sizes = [`${span} ${w}px`, `${span} ${w}px`, `${w}px ${span}`, `${w}px ${span}`, `${L}px ${L}px`, `${L}px ${L}px`, `${L}px ${L}px`, `${L}px ${L}px`];
   const repeats = images.map(() => "no-repeat");
   const origins = images.map(() => "border-box");
@@ -135,4 +138,13 @@ export function avatarPhoto(src: string | null, fill = "rgba(8,12,32,0.95)"): CS
   return src
     ? { background: `url("${src}") center / cover no-repeat border-box, ${fill}` }
     : { background: fill };
+}
+
+/** The thin (4px) frame4 ring, for cards nested inside a window. Trims its own background to the octagon. */
+export function octagonFrameThin(): CSSProperties {
+  return {
+    boxSizing: "border-box", borderWidth: 4, borderStyle: "solid", borderColor: "transparent",
+    borderImage: "url(/assets/branding/ui/frame-btn.png) 18 fill / 4px / 0 round",
+    imageRendering: "pixelated", clipPath: chamferClip(3.6),
+  };
 }

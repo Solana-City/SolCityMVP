@@ -92,10 +92,9 @@ export default function WalletBar({ onWalletChange, layout = "default" }: Wallet
     return (
       <div style={{ display: "flex", alignItems: "center", gap: 8, fontFamily: '"Press Start 2P", monospace' }}>
         {/* Status dot */}
-        <span style={{
-          width: 7, height: 7, borderRadius: "50%", flexShrink: 0,
-          background: connected ? "#B7E928" : "#444",
-          boxShadow: connected ? "0 0 6px #B7E92888" : "none",
+        <img src="/assets/ui/icon_wallet.png" alt="" draggable={false} width={28} height={28} style={{
+          flexShrink: 0, imageRendering: "pixelated", display: "block",
+          filter: connected ? "drop-shadow(0 0 4px rgba(183,233,40,0.6))" : "grayscale(1) opacity(0.6)",
         }} />
 
         {/* Wallet info — balance + short address stacked */}
@@ -127,19 +126,12 @@ export default function WalletBar({ onWalletChange, layout = "default" }: Wallet
         {connected ? (
           <button
             onClick={handleClick}
-            style={chamferBox(6, {
-              background: "rgba(183,233,40,0.1)",
-              color: "#B7E928",
-              border: "1px solid rgba(183,233,40,0.3)",
-              fontFamily: '"Press Start 2P", monospace',
-              fontSize: 7,
-              padding: "6px 9px",
-              cursor: "pointer",
-              whiteSpace: "nowrap",
-              flexShrink: 0,
-            })}
+            title="Disconnect wallet" aria-label="Disconnect wallet"
+            style={{ background: "none", border: "none", padding: 0, cursor: "pointer", flexShrink: 0, lineHeight: 0 }}
+            onMouseEnter={(e) => { e.currentTarget.style.filter = "brightness(1.25) drop-shadow(0 0 4px rgba(20,240,198,0.7))"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.filter = "none"; }}
           >
-            ●
+            <img src="/assets/ui/icon_logout.png" alt="" draggable={false} width={32} height={32} style={{ imageRendering: "pixelated", display: "block" }} />
           </button>
         ) : (
           /* Same pixel-art CONNECT button used on mobile, scaled down to fit the panel row */

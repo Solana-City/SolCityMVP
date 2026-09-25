@@ -126,7 +126,7 @@ export default function CityCalendar({ cellHeight = 22, showLegend = true, maxRo
   return (
     <div>
       {/* Month header */}
-      <div style={{ display: "flex", alignItems: "center", marginBottom: 6 }}>
+      <div style={{ display: "flex", alignItems: "center", marginBottom: 6, background: "rgba(20,240,198,0.14)", padding: "4px 6px" }}>
         <NavButton disabled={monthOffset <= -1} onClick={() => setMonthOffset((n) => n - 1)}>‹</NavButton>
         <div style={{ flex: 1, textAlign: "center", fontFamily: PIXEL, fontSize: 7, color: "#e2e8f0" }}>{monthLabel}</div>
         <NavButton disabled={monthOffset >= 3} onClick={() => setMonthOffset((n) => n + 1)}>›</NavButton>

@@ -12,7 +12,7 @@ import { DAILY_QUESTS, claimQuest, getQuestProgress, onQuestsChanged } from "@/g
 import { OPEN_CALENDAR_EVENT, STREAK_EVENT, type StreakView } from "@/game/daily/calendarEvents";
 import { soundManager } from "@/game/audio/SoundManager";
 import { dmsOffPref, setDmsOffPref } from "@/game/chat/dmEvents";
-import { chamferBox, octagonFrame, avatarFrame, avatarPhoto } from "@/ui/chamfer";
+import { chamferBox, octagonFrame, avatarFrame, avatarPhoto, octagonFrameThin } from "@/ui/chamfer";
 
 const PIXEL = '"Press Start 2P", monospace';
 const CYAN = "#14F0C6";
@@ -244,10 +244,11 @@ export default function ProfilePanel({ gameRef, isOpen, onClose }: ProfilePanelP
 
 function Card({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
   return (
-    <div style={chamferBox(8, {
-      background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.08)",
+    <div style={{
+      ...octagonFrameThin(),
+      background: "rgba(255,255,255,0.03)",
       padding: 14, ...style,
-    })}>
+    }}>
       {children}
     </div>
   );
@@ -503,7 +504,8 @@ function SettingsTab() {
               // Play a preview tick on release so the level is audible immediately.
               onMouseUp={() => soundManager.play("click")}
               onTouchEnd={() => soundManager.play("click")}
-              style={{ flex: 1, accentColor: PURPLE, cursor: "pointer" }}
+              className="pixel-range"
+              style={{ flex: 1, cursor: "pointer", ["--p" as string]: `${Math.round((muted ? 0 : volume) * 100)}%` }}
             />
             <span style={{ fontSize: 8, color: "#888899", width: 34, textAlign: "right", fontFamily: "monospace" }}>
               {Math.round((muted ? 0 : volume) * 100)}%

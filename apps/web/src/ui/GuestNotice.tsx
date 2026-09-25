@@ -8,7 +8,7 @@
 import { useEffect, useState } from "react";
 import { Citizen, Img } from "./CityGuide";
 import { track } from "@/game/telemetry/track";
-import { chamferBox } from "@/ui/chamfer";
+import { chamferBox, octagonFrame } from "@/ui/chamfer";
 
 const PIXEL = '"Press Start 2P", monospace';
 const PURPLE = "#9945FF";
@@ -98,14 +98,11 @@ export default function GuestNotice({ onConnect, onPlay }: { onConnect: () => vo
       background: "rgba(0,0,10,0.55)", padding: 16,
     }}>
       <div style={{
-        width: "min(340px, 100%)", padding: 12,
+        width: "min(340px, 100%)", padding: 20,
         // A phone held sideways has ~330px of height: never cut the buttons off.
         maxHeight: "calc(100dvh - 32px)", overflowY: "auto",
         background: "linear-gradient(180deg, rgba(15,18,40,0.98) 0%, rgba(8,10,24,0.98) 100%)",
-        borderWidth: 20, borderStyle: "solid", borderColor: "transparent",
-        borderImage: 'url(/assets/branding/ui/frame-panel-test.png) 64 fill / 20px / 0 round',
-        imageRendering: "pixelated",
-        boxShadow: "0 8px 24px rgba(0,0,0,0.5)",
+        ...octagonFrame(1),
       }}>
         <div style={{ display: "flex", alignItems: "center", marginBottom: 8 }}>
           <span style={{ fontFamily: PIXEL, fontSize: 8, color: "#FFD700" }}>GUEST MODE</span>
