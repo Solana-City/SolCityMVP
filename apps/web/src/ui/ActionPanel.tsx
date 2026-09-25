@@ -52,6 +52,40 @@ const TRANSFER_INTRO: IntroSpec = {
   ],
 };
 
+/** Raffx: what a peg is and what Pegana reads, before the peg panel. */
+const PEG_RISK_INTRO: IntroSpec = {
+  id: "peg-risk",
+  title: "HOW A PEG CHECK WORKS",
+  color: "#00c2a8",
+  nodes: [
+    { sheet: "main_char.png", label: "YOU" },
+    { sheet: "Raffx.png", label: "RAFFX", sheetWidth: 384, sheetHeight: 64 },
+    { src: "/assets/ui/attention_red.png", label: "THE READING" },
+  ],
+  steps: [
+    { title: "ASK", line: "Pick a stablecoin or a staked-SOL token from Pegana's watch list.", edge: 0 },
+    { title: "READ", line: "One word back: holding, drifting, or off peg.", edge: 1 },
+    { title: "GAP", line: "Plus how far its price sits from what it is really worth.", edge: 1, chip: "bps" },
+  ],
+};
+
+/** Crash: what a token scan looks at, before the scan panel. */
+const TOKEN_SCAN_INTRO: IntroSpec = {
+  id: "token-scan",
+  title: "HOW A TOKEN SCAN WORKS",
+  color: "#ff5c5c",
+  nodes: [
+    { sheet: "main_char.png", label: "YOU" },
+    { sheet: "Crash.png", label: "CRASH", sheetWidth: 384, sheetHeight: 64 },
+    { src: "/assets/ui/attention_orange.png", label: "THE VERDICT" },
+  ],
+  steps: [
+    { title: "PASTE", line: "Give Crash the address of any token.", edge: 0 },
+    { title: "OPERATOR", line: "SolSentry scores the wallet behind it, not just the contract.", edge: 1 },
+    { title: "VERDICT", line: "Risk level, what was found, and how many rugs that wallet already has.", edge: 1 },
+  ],
+};
+
 /** Vitin: what a private balance is, before the Cloak panel. */
 const CLOAK_INTRO: IntroSpec = {
   id: "cloak",
@@ -177,8 +211,8 @@ export default function ActionPanel({ action, onClose }: ActionPanelProps) {
           )}
           {action.type === "stock-exchange"  && <ProtocolIntroGate spec={STOCK_INTRO}><StockExchangePanel onClose={onClose} /></ProtocolIntroGate>}
           {/* ST Brasil stands: the project's own public API behind the button. */}
-          {action.type === "peg-risk"        && <PegRiskPanel   onClose={onClose} />}
-          {action.type === "token-scan"      && <TokenScanPanel onClose={onClose} />}
+          {action.type === "peg-risk"        && <ProtocolIntroGate spec={PEG_RISK_INTRO}><PegRiskPanel onClose={onClose} /></ProtocolIntroGate>}
+          {action.type === "token-scan"      && <ProtocolIntroGate spec={TOKEN_SCAN_INTRO}><TokenScanPanel onClose={onClose} /></ProtocolIntroGate>}
           {action.type === "private-transfer" && <ProtocolIntroGate spec={CLOAK_INTRO}><CloakPanel onClose={onClose} /></ProtocolIntroGate>}
         </div>
       </div>
@@ -222,8 +256,8 @@ export default function ActionPanel({ action, onClose }: ActionPanelProps) {
           )}
         {action.type === "stock-exchange"  && <ProtocolIntroGate spec={STOCK_INTRO}><StockExchangePanel onClose={onClose} /></ProtocolIntroGate>}
           {/* ST Brasil stands: the project's own public API behind the button. */}
-          {action.type === "peg-risk"        && <PegRiskPanel   onClose={onClose} />}
-          {action.type === "token-scan"      && <TokenScanPanel onClose={onClose} />}
+          {action.type === "peg-risk"        && <ProtocolIntroGate spec={PEG_RISK_INTRO}><PegRiskPanel onClose={onClose} /></ProtocolIntroGate>}
+          {action.type === "token-scan"      && <ProtocolIntroGate spec={TOKEN_SCAN_INTRO}><TokenScanPanel onClose={onClose} /></ProtocolIntroGate>}
           {action.type === "private-transfer" && <ProtocolIntroGate spec={CLOAK_INTRO}><CloakPanel onClose={onClose} /></ProtocolIntroGate>}
       </div>
     </div>

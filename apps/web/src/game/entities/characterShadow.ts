@@ -55,7 +55,7 @@ export function createContactBlob(
  */
 const SILHOUETTE_DOWNSCALE = 2;
 
-const cache = new Map<string, { refs: number; bottomPad: number }>();
+const cache = new Map<string, { refs: number; bottomPad: number; scaleMul: number }>();
 
 function silhouetteKeyFor(textureKeys: string[]): string {
   return `shadow--${textureKeys.join("+")}`;
@@ -93,7 +93,7 @@ export function acquireSilhouetteTexture(
   const entry = cache.get(key);
   if (entry && scene.textures.exists(key)) {
     entry.refs++;
-    return { key, bottomPad: entry.bottomPad, scaleMul: SILHOUETTE_DOWNSCALE };
+    return { key, bottomPad: entry.bottomPad, scaleMul: entry.scaleMul };
   }
 
   const first = scene.textures.get(textureKeys[0]);
@@ -101,7 +101,16 @@ export function acquireSilhouetteTexture(
   if (!src || !src.width) return null;
   // Everything below works in the SMALL canvas; bottomPad is converted back
   // to source rows before it leaves, so both callers keep their maths.
-  const d = SILHOUETTE_DOWNSCALE;
+  //
+  // Only when the FRAME divides exactly. Kite Pro's sheet is 57x97 frames:
+  // halved and rounded that is 29x49, and 456/29 is 7.86 frames per row
+  // instead of 8, so every frame after the first sampled a shifted window and
+  // the shadow drifted sideways with a second silhouette trailing it. The
+  // sheets that hold the memory (64x64 characters, 256x256 paper dolls) all
+  // divide, so the saving stays where it matters and odd art keeps full size.
+  const d = frameWidth % SILHOUETTE_DOWNSCALE === 0 && frameHeight % SILHOUETTE_DOWNSCALE === 0
+    ? SILHOUETTE_DOWNSCALE
+    : 1;
   const w = Math.max(1, Math.round(src.width / d));
   const h = Math.max(1, Math.round(src.height / d));
   const smallFrameW = Math.max(1, Math.round(frameWidth / d));
@@ -160,7 +169,7 @@ export function acquireSilhouetteTexture(
     frameWidth: smallFrameW, frameHeight: smallFrameH,
   });
 
-  cache.set(key, { refs: 1, bottomPad });
+  cache.set(key, { refs: 1, bottomPad, scaleMul: d });
   return { key, bottomPad, scaleMul: d };
 }
 
