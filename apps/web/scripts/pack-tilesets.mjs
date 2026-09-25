@@ -24,7 +24,19 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { PNG } from "pngjs";
+
+// Imported dynamically so a missing dependency cannot fail the BUILD. The
+// packed map and sheets are committed, so skipping the repack ships the last
+// packed copy rather than nothing — which is what happened the first time
+// this ran on the deploy host, where `npm install` inside apps/web had no
+// pngjs and the whole site stopped updating.
+let PNG;
+try {
+  ({ PNG } = await import("pngjs"));
+} catch {
+  console.warn("[pack-tilesets] pngjs not installed — keeping the committed packed map. Run `npm i -D pngjs` in apps/web to repack.");
+  process.exit(0);
+}
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC = path.join(HERE, "..", "public", "assets");
