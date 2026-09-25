@@ -44,6 +44,17 @@ export function createContactBlob(
   return scene.add.ellipse(0, footY, widthPx, widthPx * BLOB_FLATNESS, 0x000000, BLOB_ALPHA);
 }
 
+/**
+ * The silhouette is stored at HALF the source resolution and drawn at twice
+ * the scale, which costs a quarter of the memory for a shape that is a flat
+ * black blob, mirrored, squashed to 45% of its height and drawn at 28% alpha.
+ * One texture per outfit went from 256 KB to 64 KB, and a 96-strong crowd
+ * from 24 MB to 6 MB.
+ *
+ * Set to 1 to go back to full resolution.
+ */
+const SILHOUETTE_DOWNSCALE = 2;
+
 const cache = new Map<string, { refs: number; bottomPad: number }>();
 
 function silhouetteKeyFor(textureKeys: string[]): string {
@@ -52,6 +63,11 @@ function silhouetteKeyFor(textureKeys: string[]): string {
 
 export interface SilhouetteTexture {
   key: string;
+  /**
+   * What to multiply the character's own scale by when drawing this texture,
+   * since it is stored smaller than the sheet it came from.
+   */
+  scaleMul: number;
   /**
    * Empty source rows between the character's lowest inked pixel and the
    * frame bottom. Mirroring doubles this margin into a visible gap between
@@ -77,24 +93,32 @@ export function acquireSilhouetteTexture(
   const entry = cache.get(key);
   if (entry && scene.textures.exists(key)) {
     entry.refs++;
-    return { key, bottomPad: entry.bottomPad };
+    return { key, bottomPad: entry.bottomPad, scaleMul: SILHOUETTE_DOWNSCALE };
   }
 
   const first = scene.textures.get(textureKeys[0]);
   const src = first?.source?.[0];
   if (!src || !src.width) return null;
-  const w = src.width;
-  const h = src.height;
+  // Everything below works in the SMALL canvas; bottomPad is converted back
+  // to source rows before it leaves, so both callers keep their maths.
+  const d = SILHOUETTE_DOWNSCALE;
+  const w = Math.max(1, Math.round(src.width / d));
+  const h = Math.max(1, Math.round(src.height / d));
+  const smallFrameW = Math.max(1, Math.round(frameWidth / d));
+  const smallFrameH = Math.max(1, Math.round(frameHeight / d));
 
   const canvas = document.createElement("canvas");
   canvas.width = w;
   canvas.height = h;
   const ctx = canvas.getContext("2d", { willReadFrequently: true });
   if (!ctx) return null;
+  // Nearest neighbour: a smoothed downscale would give the silhouette a soft
+  // grey fringe, which is exactly what pixel art must not have.
+  ctx.imageSmoothingEnabled = false;
 
   for (const tk of textureKeys) {
     const image = scene.textures.get(tk)?.source?.[0]?.image as CanvasImageSource | undefined;
-    if (image) ctx.drawImage(image, 0, 0);
+    if (image) ctx.drawImage(image, 0, 0, w, h);
   }
   // Flatten every opaque pixel to black while keeping the combined alpha —
   // one fill instead of a per-pixel loop.
@@ -108,21 +132,22 @@ export function acquireSilhouetteTexture(
   let bottomPad = 0;
   try {
     const data = ctx.getImageData(0, 0, w, h).data;
-    const bands = Math.max(1, Math.floor(h / frameHeight));
-    let minPad = frameHeight;
+    const bands = Math.max(1, Math.floor(h / smallFrameH));
+    let minPad = smallFrameH;
     for (let band = 0; band < bands; band++) {
-      const rowStart = band * frameHeight;
+      const rowStart = band * smallFrameH;
       let lastInked = -1;
-      for (let y = frameHeight - 1; y >= 0; y--) {
+      for (let y = smallFrameH - 1; y >= 0; y--) {
         const rowOffset = (rowStart + y) * w * 4;
         for (let x = 0; x < w; x++) {
           if (data[rowOffset + x * 4 + 3] > 10) { lastInked = y; break; }
         }
         if (lastInked >= 0) break;
       }
-      if (lastInked >= 0) minPad = Math.min(minPad, frameHeight - 1 - lastInked);
+      if (lastInked >= 0) minPad = Math.min(minPad, smallFrameH - 1 - lastInked);
     }
-    if (minPad < frameHeight) bottomPad = minPad;
+    // Back into source rows, which is what the callers position against.
+    if (minPad < smallFrameH) bottomPad = minPad * d;
   } catch {
     // Reading pixels can fail on exotic sources — a zero pad only costs a
     // slightly lower shadow, never a crash.
@@ -131,10 +156,12 @@ export function acquireSilhouetteTexture(
   if (scene.textures.exists(key)) scene.textures.remove(key);
   const tex = scene.textures.addCanvas(key, canvas);
   if (!tex) return null;
-  (Phaser.Textures.Parsers as any).SpriteSheet(tex, 0, 0, 0, w, h, { frameWidth, frameHeight });
+  (Phaser.Textures.Parsers as any).SpriteSheet(tex, 0, 0, 0, w, h, {
+    frameWidth: smallFrameW, frameHeight: smallFrameH,
+  });
 
   cache.set(key, { refs: 1, bottomPad });
-  return { key, bottomPad };
+  return { key, bottomPad, scaleMul: d };
 }
 
 /** Drops one reference; frees the texture once no character uses it. */

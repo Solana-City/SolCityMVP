@@ -186,8 +186,10 @@ export class SimpleSprite {
     const shadow = this.scene.add.sprite(0, shadowY, silhouette.key);
     shadow.setOrigin(0.5, 1.0);
     // Negative Y scale with a bottom origin mirrors the silhouette downward
-    // from the feet; X matches whatever scale the main sprite uses.
-    shadow.setScale(base, -base * SHADOW_SQUASH);
+    // from the feet; X matches whatever scale the main sprite uses, times
+    // whatever the silhouette was shrunk by when it was stored.
+    const shadowScale = base * silhouette.scaleMul;
+    shadow.setScale(shadowScale, -shadowScale * SHADOW_SQUASH);
     shadow.setAlpha(SHADOW_ALPHA);
     // Above the blob, below the body sprite.
     this.container.addAt(shadow, 1);

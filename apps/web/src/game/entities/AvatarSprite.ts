@@ -547,8 +547,10 @@ export class AvatarSprite {
     const shadow = this.scene.add.sprite(0, shadowY, silhouette.key);
     shadow.setOrigin(0.5, 1.0);
     // Negative Y scale with a bottom origin mirrors the silhouette downward
-    // from the feet; X matches the 0.5 world scale of the 64px sheets.
-    shadow.setScale(scale, -scale * SHADOW_SQUASH);
+    // from the feet; X matches the 0.5 world scale of the 64px sheets, times
+    // whatever the silhouette was shrunk by when it was stored.
+    const shadowScale = scale * silhouette.scaleMul;
+    shadow.setScale(shadowScale, -shadowScale * SHADOW_SQUASH);
     shadow.setAlpha(SHADOW_ALPHA);
     // Above the blob, below every body layer (blob sits at index 0).
     this.container.addAt(shadow, 1);
