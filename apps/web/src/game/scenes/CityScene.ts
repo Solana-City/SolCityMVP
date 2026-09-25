@@ -1299,6 +1299,12 @@ export class CityScene extends Phaser.Scene {
       // its feet, and the one frame the camera view lags behind.
       const CHARACTER_PAD = 96;
       this.pedestrians?.cull(view, CHARACTER_PAD);
+      // NPCs were the one crowd nobody culled: eighteen containers, each with
+      // a sprite, a shadow, a contact blob, a name label and a prompt label,
+      // all drawn wherever they stood on the map.
+      for (const npc of this.npcSprites) {
+        cullContainer(npc.getContainer(), view, CHARACTER_PAD);
+      }
       for (const avatar of this.remotePlayers.values()) {
         cullContainer(avatar.getContainer(), view, CHARACTER_PAD);
       }

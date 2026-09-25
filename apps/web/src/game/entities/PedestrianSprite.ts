@@ -146,7 +146,9 @@ export class PedestrianSprite {
     this.pauseScale = 0.8 + this.rng() * 0.5;
     this.lastDir = (["up", "down", "left", "right"] as Direction[])[Math.floor(this.rng() * 4)];
 
-    this.avatar = new AvatarSprite(scene, x, y, loadout);
+    // Merged: a pedestrian never changes clothes, so its eight layers are
+    // flattened into one sprite (see entities/mergedBody).
+    this.avatar = new AvatarSprite(scene, x, y, loadout, true);
 
     // Enable physics — body NOT immovable so physics resolves collisions
     const container = this.avatar.getContainer();
