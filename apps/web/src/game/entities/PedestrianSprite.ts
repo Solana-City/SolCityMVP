@@ -146,14 +146,7 @@ export class PedestrianSprite {
     this.pauseScale = 0.8 + this.rng() * 0.5;
     this.lastDir = (["up", "down", "left", "right"] as Direction[])[Math.floor(this.rng() * 4)];
 
-    // Merged only under the Canvas renderer, which is what phones get (see
-    // PhaserGame): there, every layer is its own drawImage and flattening
-    // eight into one is the whole point. WebGL batches the layers anyway, so
-    // on desktop the merge would buy little and cost a texture per outfit.
-    this.avatar = new AvatarSprite(
-      scene, x, y, loadout,
-      scene.game.renderer.type === Phaser.CANVAS,
-    );
+    this.avatar = new AvatarSprite(scene, x, y, loadout);
 
     // Enable physics — body NOT immovable so physics resolves collisions
     const container = this.avatar.getContainer();

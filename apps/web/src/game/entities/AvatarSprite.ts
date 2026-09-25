@@ -6,7 +6,6 @@ import {
   SHADOW_ALPHA,
   SHADOW_SQUASH,
 } from "./characterShadow";
-import { acquireMergedBodyTexture, releaseMergedBodyTexture } from "./mergedBody";
 import {
   Direction,
   DIRECTION_ROW,
@@ -226,9 +225,6 @@ export class AvatarSprite {
   /** Single silhouette sprite mirrored under the feet — see characterShadow. */
   private shadowSprite: Phaser.GameObjects.Sprite | null = null;
   private shadowTextureKey: string | null = null;
-  /** Draw the whole outfit as one sprite from one flattened texture. */
-  private merged = false;
-  private mergedTextureKey: string | null = null;
   /** Soft oval under the feet that grounds the character. */
   private contactBlob: Phaser.GameObjects.Ellipse | null = null;
   private currentDirection: Direction = "down";
@@ -237,22 +233,9 @@ export class AvatarSprite {
   /** Every layer is already playing the walk for currentDirection. */
   private walkSynced = false;
 
-  /**
-   * `merged` flattens the paper-doll stack into ONE sprite (see mergedBody).
-   * Only for characters whose outfit is fixed for their lifetime, which today
-   * means the pedestrian crowd: the player and remote players re-dress at
-   * runtime and keep their layers.
-   */
-  constructor(
-    scene: Phaser.Scene,
-    x: number,
-    y: number,
-    loadout: Loadout = DEFAULT_LOADOUT,
-    merged = false,
-  ) {
+  constructor(scene: Phaser.Scene, x: number, y: number, loadout: Loadout = DEFAULT_LOADOUT) {
     this.scene = scene;
     this.currentLoadout = { ...loadout };
-    this.merged = merged;
     this.container = scene.add.container(x, y);
     this.buildLayers();
   }
@@ -470,19 +453,7 @@ export class AvatarSprite {
       resolved.push({ category, textureKey });
     }
 
-    // Flattened: one sprite carrying every layer, filed under the first
-    // category so the rest of this class keeps working unchanged. Anything
-    // that edits a single layer (setExpression) finds nothing and no-ops,
-    // which is right — a merged character does not change clothes.
-    const stack = resolved.map((r) => r.textureKey);
-    const mergedKey = this.merged
-      ? acquireMergedBodyTexture(this.scene, stack, SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT)
-      : null;
-    this.mergedTextureKey = mergedKey;
-
-    for (const { category, textureKey } of mergedKey
-      ? [{ category: resolved[0].category, textureKey: mergedKey }]
-      : resolved) {
+    for (const { category, textureKey } of resolved) {
       const sprite = this.scene.add.sprite(0, FOOT_Y_LOCAL, textureKey);
       sprite.setOrigin(0.5, 1.0);
 
@@ -577,8 +548,6 @@ export class AvatarSprite {
     }
     releaseSilhouetteTexture(this.scene, this.shadowTextureKey);
     this.shadowTextureKey = null;
-    releaseMergedBodyTexture(this.scene, this.mergedTextureKey);
-    this.mergedTextureKey = null;
   }
 
   private registerAnimations(textureKey: string): void {
