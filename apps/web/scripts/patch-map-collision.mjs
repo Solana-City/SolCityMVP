@@ -19,6 +19,10 @@
  * longer in TARGET_TILESETS; the ground-floor sweep below still catches any
  * gaps in it like any other Build* layer.)
  *
+ * AFTER running this, run scripts/pack-tilesets.mjs: the game loads the
+ * PACKED map, not this one, and the packed copy is only as fresh as the last
+ * pack. (`npm run build` packs for you; a dev server uses what is committed.)
+ *
  * Rather than hand-place walls in CityScene, this script writes the missing
  * collision into the map's embedded tilesets, so the fix flows through
  * everything that already reads tile.collides (player collider, pedestrians,

@@ -59,7 +59,7 @@ export class BootScene extends Phaser.Scene {
         this.textures.remove(file.key);
       }
       if (file.key === "city-map") {
-        console.error("[BootScene] city.json failed to load");
+        console.error("[BootScene] city.packed.json failed to load — run scripts/pack-tilesets.mjs");
       }
       if (["SCBuildGenericBuild", "SCBuildKeepGreen", "SCBuildMagicBlock"].includes(file.key)) {
         console.warn(`[BootScene] ${file.key}.png missing — add to public/assets/tilesets/`);
@@ -67,11 +67,19 @@ export class BootScene extends Phaser.Scene {
     });
 
     // One map for both platforms now (SCMap01.1 is 135×115 — no mobile crop).
-    this.load.tilemapTiledJSON("city-map", "assets/maps/city.json");
+    //
+    // The PACKED map and sheets, not the artist's export: scripts/
+    // pack-tilesets.mjs rewrites every tileset down to the tiles the map
+    // actually uses, which is 17 MB of RGBA instead of 130 MB. The sheets are
+    // authored at 1800x1800 with a few hundred tiles on them, and a browser
+    // decodes a PNG to width x height x 4 bytes however empty it is — that
+    // gap was the city's single biggest lump of memory. Re-run the script
+    // after every map export; `npm run build` does it for you.
+    this.load.tilemapTiledJSON("city-map", "assets/maps/city.packed.json");
 
     const isMobileTilesets = window.matchMedia("(pointer: coarse)").matches;
     for (const key of (isMobileTilesets ? TILESET_KEYS_MOBILE : TILESET_KEYS)) {
-      this.load.image(key, `assets/tilesets/${key}.png`);
+      this.load.image(key, `assets/tilesets/packed/${key}.png`);
     }
 
     // Pixel-art NPC attention balloons — one per palette variant.

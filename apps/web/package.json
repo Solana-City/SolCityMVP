@@ -4,12 +4,13 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "node scripts/pack-tilesets.mjs && next build",
     "start": "next start",
     "lint": "next lint",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit -p ."
+    "typecheck": "tsc --noEmit -p .",
+    "pack:tilesets": "node scripts/pack-tilesets.mjs"
   },
   "dependencies": {
     "@ducanh2912/next-pwa": "^10.2.9",
