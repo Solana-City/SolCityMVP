@@ -61,6 +61,12 @@ export interface NPCDefinition {
    */
   spriteWalkKey?: string;
   /**
+   * Optional one-frame sheet held for a moment when this NPC reacts — the
+   * builder throwing an arm out as he pushes you back. Same frame size as
+   * `spriteAnimation`, so it drops straight in over the idle sheet.
+   */
+  spriteActionKey?: string;
+  /**
    * How far this NPC may stray from its spawn tile while wandering, in world
    * pixels. Defaults to 18 (under one tile) — enough to look alive in place.
    *
@@ -492,6 +498,7 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     action: { type: "placeholder", label: "Come back later" },
     repel: { radius: 56, speed: 170, say: "We are working here!" },
     spriteKey: "Builder",
+    spriteActionKey: "Builder_push",
     spriteAnimation: { frameWidth: 64, frameHeight: 64, frameCount: 6 },
   },
 ];
