@@ -243,8 +243,17 @@ export function createStockExchange(
     scene.load.start();
   }
 
+  // ── The price feed follows the camera too ─────────────────────────────
+  // The screens subscribed for the whole session, and the feed polls every
+  // 15s while anything is subscribed: a player who never goes near the
+  // exchange still paid for 240 price requests an hour, on their data and
+  // their battery. The subscription now comes and goes with the building,
+  // and stockMarket hands a new subscriber the last state immediately and
+  // refetches at once, so the screens are current the moment they return.
+  // The exchange PANEL keeps its own subscription, so opening it anywhere
+  // keeps the feed alive on its own.
   let lastUpdate = -1;
-  cleanups.push(stockMarket.subscribe((state) => {
+  const onMarket = (state: StockMarketState) => {
     if (state.updatedAt === lastUpdate) return;
     lastUpdate = state.updatedAt;
     rebuildTicker(state);
@@ -253,7 +262,23 @@ export function createStockExchange(
       .map((s) => ({ stock: s, change: state.quotes[s.mint].change24h }))
       .sort((a, b) => b.change - a.change);
     paintScreens();
-  }));
+  };
+
+  let unsubscribeMarket: (() => void) | null = null;
+  const followCamera = (): void => {
+    const near = onCamera();
+    if (near && !unsubscribeMarket) unsubscribeMarket = stockMarket.subscribe(onMarket);
+    else if (!near && unsubscribeMarket) { unsubscribeMarket(); unsubscribeMarket = null; }
+  };
+  followCamera();
+  // Checked on a timer rather than per frame: walking in and out of view a few
+  // hundred milliseconds late costs nothing, and the feed is 15s slow anyway.
+  const feedTimer = scene.time.addEvent({ delay: 1000, loop: true, callback: followCamera });
+  cleanups.push(() => {
+    feedTimer.remove();
+    unsubscribeMarket?.();
+    unsubscribeMarket = null;
+  });
 
   cleanups.push(() => { for (const s of surfaces) s.destroy(); });
   return () => { for (const c of cleanups.splice(0)) c(); };
