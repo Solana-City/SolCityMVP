@@ -82,15 +82,19 @@ export interface NPCDefinition {
    */
   enabled?: boolean;
   /**
-   * Nobody gets close. Inside `radius` world pixels the player is pushed
-   * straight back out at `speed` px/s, whatever they are pressing, and the
-   * NPC says `say` in a drawn bubble over its head (chat/SpeechBubble).
+   * Nobody gets close. Come within `radius` world pixels — near enough to be
+   * almost touching — and the player SLIDES back `push` pixels over `ms`,
+   * decelerating, while the NPC says `say` in a bubble over its head.
+   *
+   * One shove per approach, not a wall: the push starts when the player
+   * arrives and then plays out on its own, so it reads as being shoved
+   * rather than as an invisible barrier pressing against them.
    *
    * An NPC with this never shows the "!" or the talk prompt: there is no
    * conversation to reach, and offering one the player cannot have is worse
    * than offering none.
    */
-  repel?: { radius: number; speed: number; say: string };
+  repel?: { radius: number; push: number; ms: number; say: string };
   /**
    * Optional path to a portrait PNG (served from /public).
    * Recommended: 256x256 px, transparent background, pixel art.
@@ -483,7 +487,7 @@ export const NPC_REGISTRY: NPCDefinition[] = [
   },
   {
     id: "cloak-vitin",
-    name: "Vitin",
+    name: "Cloak Cat",
     role: "Cloak",
     // In front of the free stand between SolSentry and Pegana (BuildStand04,
     // cols 33-37 / rows 72-76), so the three project stands share one row of
@@ -519,7 +523,9 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     // registry stays uniform and the minimap has something to label.
     dialog: ["We are working here!"],
     action: { type: "placeholder", label: "Come back later" },
-    repel: { radius: 56, speed: 170, say: "We are working here!" },
+    // Just over a tile: the bodies are nearly touching before he reacts, so
+    // the shove has something to answer. The slide is ~2.5 tiles.
+    repel: { radius: 28, push: 60, ms: 380, say: "We are working here!" },
     spriteKey: "Builder",
     spriteActionKey: "Builder_push",
     spriteAnimation: { frameWidth: 64, frameHeight: 64, frameCount: 6 },

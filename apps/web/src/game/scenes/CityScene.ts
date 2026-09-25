@@ -142,6 +142,8 @@ export class CityScene extends Phaser.Scene {
   private expressionTimer: Phaser.Time.TimerEvent | null = null;
   private chatInputActive = false;
   private npcSprites: NPCSprite[] = [];
+  /** A shove in progress from a repelling NPC — see applyRepel. */
+  private shove: { dx: number; dy: number; v0: number; ms: number; until: number } | null = null;
   private pedestrians!: PedestrianManager;
   private interactionBlocked = false;
   private walletAddress: string | null = null;
@@ -1182,11 +1184,32 @@ export class CityScene extends Phaser.Scene {
   }
 
   /**
-   * NPCs nobody may walk up to (see NPCDefinition.repel). The push is a plain
-   * velocity away from the NPC rather than a teleport, so it reads as being
-   * shoved and never punches the player through a wall.
+   * NPCs nobody may walk up to (see NPCDefinition.repel).
+   *
+   * A shove, not a barrier: arriving within the radius starts a slide of a
+   * set distance that then plays out on its own, decelerating to nothing.
+   * Velocity rather than a teleport, so the player's own collider still stops
+   * them at a wall instead of sliding through it, and input is ignored for
+   * the length of the slide so they cannot walk out of their own shove.
+   *
+   * Returns true while a slide is running, which is the caller's cue to leave
+   * the walk animation alone — feet should not be running during a shove.
    */
-  private applyRepel(): void {
+  private applyRepel(): boolean {
+    const now = this.time.now;
+
+    if (this.shove) {
+      const left = this.shove.until - now;
+      if (left > 0) {
+        // Linear decay to zero: distance travelled is v0 x ms / 2, which is
+        // what `push` was solved for when the shove started.
+        const v = this.shove.v0 * (left / this.shove.ms);
+        this.playerBody.setVelocity(this.shove.dx * v, this.shove.dy * v);
+        return true;
+      }
+      this.shove = null;
+    }
+
     for (const npc of this.npcSprites) {
       const repel = npc.definition.repel;
       if (!repel) continue;
@@ -1195,12 +1218,21 @@ export class CityScene extends Phaser.Scene {
       const dy = this.avatar.y - at.y;
       const dist = Math.hypot(dx, dy);
       if (dist >= repel.radius) continue;
-      // Dead centre (dist 0) has no direction to push along: send them south,
-      // which is where the player came from at every repelling NPC so far.
-      const k = dist > 0.5 ? repel.speed / dist : 0;
-      this.playerBody.setVelocity(k ? dx * k : 0, k ? dy * k : repel.speed);
+
+      // Dead centre has no direction to push along: send them south, which is
+      // where the player came from at every repelling NPC so far.
+      const ux = dist > 0.5 ? dx / dist : 0;
+      const uy = dist > 0.5 ? dy / dist : 1;
+      this.shove = {
+        dx: ux, dy: uy, ms: repel.ms,
+        v0: (2 * repel.push) / (repel.ms / 1000),
+        until: now + repel.ms,
+      };
       npc.say(repel.say);
+      this.playerBody.setVelocity(ux * this.shove.v0, uy * this.shove.v0);
+      return true;
     }
+    return false;
   }
 
   update(): void {
@@ -1248,12 +1280,12 @@ export class CityScene extends Phaser.Scene {
 
     this.playerBody.setVelocity(vx, vy);
 
-    // The builder at the construction site: inside his radius the player is
-    // pushed straight back out, whatever they are holding down, and he says
-    // so. Set AFTER the input velocity on purpose — it overrides it.
-    this.applyRepel();
+    // The builder at the construction site: walk into him and he shoves you
+    // back. Set AFTER the input velocity on purpose — it overrides it, and
+    // it owns the animation too while the slide runs.
+    const shoved = this.applyRepel();
 
-    if (direction) {
+    if (direction && !shoved) {
       this.idleDelay = 0;
       this.avatar.walk(direction);
       this.currentDirection = direction;
