@@ -456,17 +456,18 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     id: "dungeons-moles",
     name: "Mole",
     role: "Dungeons & Moles",
-    // At the mouth of the dungeon south of the beach (BuildDungeousMoles,
-    // cols 42-48 / rows 100-106). Row 106 is the sand at the foot of the door,
-    // under the D&M sign and between the two lanterns: the only three walkable
-    // tiles (44, 45, 46) touching the cave. Row 107 below it is the boardwalk,
-    // which reads as passing by rather than waiting at the door.
+    // At the mouth of the dungeon on its rock islet in the shallows west of the
+    // beach (BuildDungeousMoles, cols 17-23 / rows 81-87; the artist moved the
+    // cave here on 2026-09-26). The door is centred on col 20, under the D&M
+    // sign between the two lanterns. The sand at its foot (row 86) is sealed
+    // as part of the building, so he stands on row 87, the first walkable
+    // row below it (the offsetY lifts him back toward the sand). Col 19 is one
+    // tile left of the door centre so the doorway itself stays clear.
     //
     // tileY is the row ABOVE the one the NPC stands on: findNpcSpawn starts
-    // its scan at tileY + 1. So 105 here puts him on row 106, and 106 put him
-    // on the boardwalk, which is what happened.
-    tileX: 44,
-    tileY: 105,
+    // its scan at tileY + 1. So 86 here puts him on row 87.
+    tileX: 19,
+    tileY: 86,
     offsetY: -8,
     color: 0xc98a3c,
     dialog: [
@@ -489,11 +490,12 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     id: "cloak-vitin",
     name: "Cloak Cat",
     role: "Cloak",
-    // In front of the free stand between SolSentry and Pegana (BuildStand04,
-    // cols 33-37 / rows 72-76), so the three project stands share one row of
-    // the ST Brasil market. tileY is the row above the one he stands on.
+    // In front of his own stand (BuildStandCloack, art cols 32-38 / rows
+    // 60-66, counter solid on cols 33-37). It faces south onto the boardwalk,
+    // so he stands on row 67 at the centre of the counter (col 35). tileY is
+    // the row above the one he stands on.
     tileX: 35,
-    tileY: 76,
+    tileY: 66,
     color: 0x8b7cf6,
     dialog: [
       "Hey! I'm here to make privacy great again on Solana, can I count on you to do that?",
@@ -512,12 +514,13 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     id: "builder",
     name: "Builder",
     role: "Under Construction",
-    // The fenced plot in the south east (cols 91-129 / rows 63-110), the one
+    // The fenced plot in the south east (cols 91-129 / rows 62-110), the one
     // opposite the ST Brasil beach. Every tile of it is solid, so he stands
-    // on the road along its north edge, right in front of the barriers that
-    // start at col 100. tileY is the row above the one he stands on.
-    tileX: 101,
-    tileY: 61,
+    // on the road along its WEST edge (col 90, against the fence), at the
+    // spot the artist marked on 2026-09-26 (row 75, about two tiles south of
+    // the big tree's trunk). tileY is the row above the one he stands on.
+    tileX: 90,
+    tileY: 74,
     color: 0xffb547,
     // Never read: `repel` means the talk prompt never appears. Kept so the
     // registry stays uniform and the minimap has something to label.

@@ -251,7 +251,7 @@ export class NPCSprite {
     this.bubble?.destroy();
     // Clear of the name label, which sits at visualHeight + 2.
     this.bubble = new ChatBubble(this.scene, this.getContainer(), text, "#ffffff", {
-      bg: 0xffffff, bgAlpha: 1, outline: false, y: -(this.avatar.getVisualHeight() + 16),
+      bg: 0xffffff, bgAlpha: 1, outline: false, y: -(this.avatar.getVisualHeight() + 16), overlay: true,
     });
     // The sheet that goes with the line: the builder throws an arm out.
     if (this.def.spriteActionKey) this.avatar.poseFor(this.def.spriteActionKey, ACTION_HOLD_MS);

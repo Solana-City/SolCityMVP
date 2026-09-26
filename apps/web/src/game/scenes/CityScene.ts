@@ -238,6 +238,10 @@ export class CityScene extends Phaser.Scene {
     // the thousands — so the building always paints over them.
     const Y_SORT_NO_COLLISION_PREFIXES = ["DecorSign"];
 
+    // Y-sorted layers that must never fade when they cover the player: they
+    // keep their depth, but stay out of `overheadLayers` (the fade list).
+    const NO_FADE_PREFIXES = ["VegetationEmptyPlot", "DecorSign"];
+
     // Layers that always draw above the player: the SolanaCity gantry banners
     // the player walks under, the planter palms flanking the central bridge
     // whose fronds hang over the walkway, and the beach parasols the player
@@ -358,7 +362,7 @@ export class CityScene extends Phaser.Scene {
           const maxBottomY = layer.tileToWorldY(baseTileY)! + map.tileHeight;
           layer.setDepth(maxBottomY);
           // Y-sorted layers can render above the player → candidate for fade.
-          this.overheadLayers.push(layer);
+          if (!NO_FADE_PREFIXES.some(p => leafName.startsWith(p))) this.overheadLayers.push(layer);
         } else {
           // Building / fountain / large structure → always behind the player.
           layer.setDepth(i);
@@ -380,7 +384,7 @@ export class CityScene extends Phaser.Scene {
           if (bottom > maxBottomY) maxBottomY = bottom;
         });
         layer.setDepth(maxBottomY);
-        this.overheadLayers.push(layer);
+        if (!NO_FADE_PREFIXES.some(p => leafName.startsWith(p))) this.overheadLayers.push(layer);
       } else {
         // Ground / background layer → always below the player.
         layer.setDepth(i);
