@@ -27,7 +27,7 @@ const LEGACY_ZOOM_KEY = "solcity:zoom";
  * in halves. The old ladder was five even steps from 0.5 to 2.5, which meant
  * one single option below 1x and three above it.
  */
-const VIEW_SCALES = [0.4, 0.5, 0.625, 0.75, 1.0, 1.5, 2.0];
+const VIEW_SCALES = [0.3, 0.4, 0.5, 0.625, 0.75, 1.0, 1.5, 2.0];
 
 /**
  * DPR the canvas backing store is rendered at. PhaserGame publishes the
@@ -67,13 +67,12 @@ export function computeRenderDpr(): number {
  * every screen getting a different set of options.
  */
 /**
- * Widest useful view, in tiles across. The city is 135 tiles wide, so a step
- * that fits 200 of them on a big monitor is showing the void past the edges
- * and drawing everything in between to do it. A step that wide is dropped on
- * the screens where it lands there, which is why a 1920px desktop gets fewer
- * steps than a laptop: its 1x already shows 80 tiles.
+ * Widest useful view, in tiles across. The city is 135 wide and 115 tall, so
+ * 145 is the whole thing with a margin — wide enough to take a picture of
+ * the city, and short of the point where a step is mostly the void past the
+ * edges with everything in between still being drawn.
  */
-const MAX_TILES_ACROSS = 110;
+const MAX_TILES_ACROSS = 145;
 const TILE_PX = 24;
 
 export function getValidZooms(): number[] {
