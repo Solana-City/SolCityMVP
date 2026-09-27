@@ -436,7 +436,7 @@ export default function Home() {
                 left: "max(env(safe-area-inset-left, 0px), 12px)",
                 display: "flex", flexDirection: "column", gap: 6,
               }}>
-                <MobilePanelToggle iconSrc="/assets/ui/ico_achievements.png" label="Find someone" active={mobilePanel === "hunt"} onClick={() => toggleMobilePanel("hunt")} />
+                <MobilePanelToggle iconSrc="/assets/ui/icon_quests2.png" label="Find someone" active={mobilePanel === "hunt"} onClick={() => toggleMobilePanel("hunt")} />
                 <MobilePanelToggle iconSrc="/assets/ui/ico_chat.png" label="Chat" active={chatOpen} onClick={toggleMobileChat} dot={unreadDms > 0} />
                 <ExpressionToggle />
               </div>

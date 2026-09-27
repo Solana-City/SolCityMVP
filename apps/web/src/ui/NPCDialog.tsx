@@ -6,6 +6,7 @@ import NPCPortrait from "./NPCPortrait";
 import { profileManager } from "@/game/config/profileManager";
 import { chamferBox } from "@/ui/chamfer";
 import ChamferGlow from "@/ui/ChamferGlow";
+import { CloseButton } from "@/ui/PixelIcons";
 
 function useIsTouch() {
   const [isTouch, setIsTouch] = useState(false);
@@ -169,31 +170,19 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
     whiteSpace: "nowrap",
   });
 
-  /** Picture cards for the NPC, on the last line once it has typed out. */
+  /** Illustrative info, on the last line once it has typed out. No frame or
+   *  button-shaped chip around these: they aren't clickable, and boxing them
+   *  in the same chamfered octagon as a real button reads as one. */
   const Highlights = ({ compact }: { compact?: boolean }) =>
     npc.highlights && npc.highlights.length > 0 && isLastLine && doneTyping ? (
-      <div style={{ display: "flex", gap: compact ? 6 : 10, margin: compact ? "0 0 10px" : "0 16px 14px", justifyContent: "flex-start" }}>
+      <div style={{
+        display: "flex", gap: compact ? 12 : 16, flexWrap: "wrap",
+        margin: compact ? "0 0 10px" : "0 16px 14px", justifyContent: "flex-start",
+      }}>
         {npc.highlights.map((h) => (
-          <div key={h.label} style={chamferBox(8, {
-            display: "flex", alignItems: "center", gap: 6, padding: compact ? "4px 7px 4px 4px" : "6px 10px 6px 6px",
-            background: `${color}14`, border: `1px solid ${color}44`, minWidth: 0,
-          })}>
-            <span style={chamferBox(6, {
-              width: compact ? 24 : 30, height: compact ? 24 : 30, flexShrink: 0, 
-              display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.25)", overflow: "hidden",
-            })}>
-              {h.sheet ? (
-                <span aria-hidden style={{
-                  width: compact ? 24 : 30, height: compact ? 24 : 30, display: "block",
-                  backgroundImage: `url("/assets/sprites/${h.sheet}")`,
-                  backgroundSize: `${(compact ? 24 : 30) * 4.4}px`, backgroundPosition: `${-(compact ? 24 : 30) * 0.2}px ${-(compact ? 24 : 30) * 0.06}px`,
-                  imageRendering: "pixelated",
-                }} />
-              ) : (
-                <img src={h.img} alt="" draggable={false} style={{ maxWidth: "88%", maxHeight: "88%", imageRendering: "pixelated" }} />
-              )}
-            </span>
-            <span style={{ fontFamily: '"Press Start 2P", monospace', fontSize: compact ? 6 : 7, color: "#d0d0e8", whiteSpace: "nowrap" }}>
+          <div key={h.label} style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
+            <span aria-hidden style={{ width: 6, height: 6, flexShrink: 0, background: color }} />
+            <span style={{ fontFamily: '"Press Start 2P", monospace', fontSize: compact ? 6 : 7, color: "#8a8aa7", whiteSpace: "nowrap" }}>
               {h.label}
             </span>
           </div>
@@ -210,7 +199,6 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
           style={{
             width:        i === lineIndex ? 8 : 6,
             height:       i === lineIndex ? 8 : 6,
-            borderRadius: "50%",
             background:   i === lineIndex ? color
                         : i < lineIndex   ? `${color}66`
                                           : "#2a2a3a",
@@ -274,17 +262,7 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
             </div>
             <div style={{ fontSize: "8px", color: "#5a5a72" }}>{npc.role}</div>
           </div>
-          <button
-            onClick={(e) => { e.stopPropagation(); onClose(); }}
-            style={{
-              background: "none", border: "none", color: "#14F0C6",
-              fontSize: "17px", cursor: "pointer", padding: "0 4px",
-              lineHeight: 1, flexShrink: 0, touchAction: "manipulation",
-            }}
-            aria-label="Close dialog"
-          >
-            ×
-          </button>
+          <CloseButton onClick={(e) => { e.stopPropagation(); onClose(); }} label="Close dialog" color={color} size={18} style={{ touchAction: "manipulation" }} />
         </div>
 
         {/* Dialog text */}
@@ -423,17 +401,7 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
                 </div>
                 <div style={{ fontSize: "8px", color: "#5a5a72" }}>{npc.role}</div>
               </div>
-              <button
-                onClick={(e) => { e.stopPropagation(); onClose(); }}
-                style={{
-                  background: "none", border: "none", color: "#14F0C6",
-                  fontSize: "16px", cursor: "pointer", padding: "2px 6px",
-                  lineHeight: 1,
-                }}
-                aria-label="Close dialog"
-              >
-                ×
-              </button>
+              <CloseButton onClick={(e) => { e.stopPropagation(); onClose(); }} label="Close dialog" color={color} size={18} />
             </div>
           </div>
 

@@ -36,6 +36,7 @@ import { addStats } from "@/game/solmechs/data/types";
 import { createUnit, calculateDamage } from "@/game/solmechs/engine/BattleEngine";
 import { squadPositionLabel } from "@/game/solmechs/data/team";
 import { C, T, SP, R, MONO, W, PANEL_HEIGHT, DISPLAY, frame } from "./theme";
+import { CloseButton } from "@/ui/PixelIcons";
 
 const UI = "/assets/minigames/sol-mechs/ui";
 const PIXELATED: React.CSSProperties = { imageRendering: "pixelated" };
@@ -250,7 +251,7 @@ export default function Workshop({ onClose, teamContext }: WorkshopProps) {
           <h2 style={sx.title}>WORKSHOP</h2>
           {teamContext && <span style={sx.teamTag}>{teamContext.label}</span>}
           <div style={{ flex: 1 }} />
-          <button onClick={onClose} style={sx.close} aria-label="Close">×</button>
+          <CloseButton onClick={onClose} size={22} />
         </header>
         {teamContext && (() => {
           // Checked live, per equipped part, so a clash is named the moment it
@@ -584,10 +585,6 @@ const sx: Record<string, React.CSSProperties> = {
   },
   teamHint: { fontSize: 12, color: C.faint, margin: "-6px 0 0", lineHeight: 1.5 },
   title: { margin: 0, fontSize: 16, color: C.teal, letterSpacing: 4, fontWeight: 800, fontFamily: DISPLAY },
-  close: {
-    background: "none", border: "none", color: C.dim, fontSize: 22,
-    cursor: "pointer", lineHeight: 1, padding: 0,
-  },
   body: {
     display: "grid",
     /**

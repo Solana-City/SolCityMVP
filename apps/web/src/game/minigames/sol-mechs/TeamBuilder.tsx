@@ -28,6 +28,7 @@ import type { MechBuild, ModuleSlot } from "@/game/solmechs/data/types";
 import { loadHangar, setTeam } from "@/game/solmechs/hangar";
 import Workshop from "./Workshop";
 import { C, T, SP, R, MONO, W, PANEL_HEIGHT, DISPLAY, frame } from "./theme";
+import { CloseButton } from "@/ui/PixelIcons";
 
 
 const SLOTS: ModuleSlot[] = ["matrix", "rightArm", "leftArm", "lowerBody"];
@@ -112,7 +113,7 @@ export default function TeamBuilder({ onDeploy, onClose, deployLabel = "DEPLOY S
           />
         <h2 style={sx.title}>SQUAD</h2>
           <div style={{ flex: 1 }} />
-          <button onClick={onClose} style={sx.close} aria-label="Close">×</button>
+          <CloseButton onClick={onClose} size={22} />
         </header>
 
         {/* Three rules, one line each. The old paragraph packed substitution
@@ -305,7 +306,6 @@ const sx: Record<string, React.CSSProperties> = {
   },
   header: { display: "flex", alignItems: "center", gap: 10, flexShrink: 0 },
   title: { margin: 0, fontSize: 16, color: C.teal, letterSpacing: 4, fontWeight: 800, fontFamily: DISPLAY },
-  close: { background: "none", border: "none", color: C.dim, fontSize: 22, cursor: "pointer", lineHeight: 1, padding: 0 },
   rules: {
     display: "grid", gap: 8, flexShrink: 0,
     gridTemplateColumns: "repeat(auto-fit, minmax(min(200px, 100%), 1fr))",

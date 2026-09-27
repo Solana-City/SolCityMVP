@@ -20,6 +20,7 @@ import { C, T, SP, R, MONO, PIXELATED, backdrop, panel, eyebrow, labelPlate, act
 
 import { SpriteButton } from "./SpriteButton";
 import { useFlags } from "@/ui/useFlags";
+import { CloseButton } from "@/ui/PixelIcons";
 
 const UI = "/assets/minigames/sol-mechs/ui";
 
@@ -48,7 +49,7 @@ export default function MainMenu({ onChoose, onClose, wins, losses }: MainMenuPr
   return (
     <div style={backdrop} onPointerDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div style={{ ...panel(W.narrow), padding: `${SP.xl}px ${SP.xl}px ${SP.lg}px`, overflowY: "auto", overflowX: "hidden" }}>
-        <button onClick={onClose} style={sx.close} aria-label="Close">×</button>
+        <CloseButton onClick={onClose} size={28} style={{ position: "absolute", top: 12, right: 16 }} />
 
         <header style={sx.hero}>
           <img
@@ -132,10 +133,6 @@ function MenuRow({ label, desc, onClick, disabled, badge }: {
 }
 
 const sx: Record<string, React.CSSProperties> = {
-  close: {
-    position: "absolute", top: 12, right: 16, background: "none", border: "none",
-    color: C.dim, fontSize: 30, cursor: "pointer", lineHeight: 1, padding: 4,
-  },
   /**
    * Kept compact deliberately: this panel opens over the city, where the
    * viewport is already shorter than a full page, and the previous spacing

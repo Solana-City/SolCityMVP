@@ -22,7 +22,17 @@ export interface BubbleStyle {
   outline?: boolean;
   /** Height above the target's origin. Defaults to just over the head. */
   y?: number;
+  /**
+   * Draw above every map layer instead of inside the target's container. A
+   * container child sorts with its parent, at the target's own depth, so a
+   * fence post or awning y-sorted in front of the speaker paints over the
+   * line. The bubble then follows the target from the scene each frame.
+   */
+  overlay?: boolean;
 }
+
+/** Above the tallest map layer (FOREGROUND_DEPTH in CityScene is 10000). */
+const OVERLAY_DEPTH = 20000;
 
 /**
  * A temporary text bubble that appears above a game object.
@@ -31,6 +41,8 @@ export interface BubbleStyle {
 export class ChatBubble {
   private container: Phaser.GameObjects.Container;
   private destroyTimer: Phaser.Time.TimerEvent;
+  private follow?: () => void;
+  private scene: Phaser.Scene;
 
   constructor(
     scene: Phaser.Scene,
@@ -39,6 +51,7 @@ export class ChatBubble {
     color: string = "#B7E928",
     style: BubbleStyle = {},
   ) {
+    this.scene = scene;
     const clipped = text.length > BUBBLE_MAX_CHARS ? text.slice(0, BUBBLE_MAX_CHARS) + "…" : text;
     const bubbleText = scene.add.text(0, 0, clipped, {
       fontSize: `${BUBBLE_FONT_SIZE}px`,
@@ -79,8 +92,16 @@ export class ChatBubble {
 
     bubbleText.setPosition(0, -BUBBLE_PADDING);
 
-    this.container = scene.add.container(0, style.y ?? BUBBLE_Y, [bg, bubbleText]);
-    target.add(this.container);
+    const offsetY = style.y ?? BUBBLE_Y;
+    this.container = scene.add.container(0, offsetY, [bg, bubbleText]);
+    if (style.overlay) {
+      this.container.setDepth(OVERLAY_DEPTH);
+      this.follow = () => this.container.setPosition(target.x, target.y + offsetY);
+      this.follow();
+      scene.events.on(Phaser.Scenes.Events.POST_UPDATE, this.follow);
+    } else {
+      target.add(this.container);
+    }
 
     // Fade out and destroy
     scene.tweens.add({
@@ -96,6 +117,8 @@ export class ChatBubble {
   }
 
   destroy(): void {
+    if (this.follow) this.scene.events.off(Phaser.Scenes.Events.POST_UPDATE, this.follow);
+    this.follow = undefined;
     this.destroyTimer?.destroy();
     this.container?.destroy();
   }

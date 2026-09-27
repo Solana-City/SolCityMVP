@@ -10,6 +10,7 @@
  */
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import type { MiniGameComponentProps } from "../types";
+import { CloseButton } from "@/ui/PixelIcons";
 import {
   LAYER_ORDER,
   DIRECTION_ROW,
@@ -281,13 +282,7 @@ export default function HairSpecialist({ onResult, onClose }: MiniGameComponentP
           alignItems: "center",
         }}
       >
-        <button
-          onClick={onClose}
-          aria-label="Close"
-          style={{ position: "absolute", top: 4, right: 4, color: "#9AA4B2", fontSize: 14, fontFamily: FONT, padding: 8 }}
-        >
-          X
-        </button>
+        <CloseButton onClick={onClose} size={20} style={{ position: "absolute", top: 4, right: 4 }} />
         <div style={{ color: ACCENT, fontSize: 12, marginBottom: 6 }}>HAIR SPECIALIST</div>
         <div style={{ color: "#9AA4B2", fontSize: 8, marginBottom: 8, minHeight: 10 }}>
           {r ? landed!.hair.variant.name : touch ? "Tap when a hair is on your head!" : "Press E when a hair is on your head!"}

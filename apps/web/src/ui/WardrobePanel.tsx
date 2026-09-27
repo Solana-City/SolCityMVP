@@ -1,6 +1,6 @@
 "use client";
 
-import { PixelImg, ICON, LockIcon } from "@/ui/PixelIcons";
+import { PixelImg, ICON, LockIcon, CloseButton } from "@/ui/PixelIcons";
 import { useState, useCallback, useEffect, useRef } from "react";
 import {
   LAYER_ORDER,
@@ -369,7 +369,7 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
             <span style={{
               fontFamily: '"Press Start 2P", monospace',
               fontSize: 12,
-              color: "#c084fc",
+              color: "#B7E928",
               letterSpacing: 2,
             }}>WARDROBE</span>
           </div>
@@ -414,10 +414,7 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
             >
               RANDOM
             </button>
-            <button onClick={onClose} style={{
-              background: "none", border: "none", color: "#14F0C6",
-              fontSize: 16, cursor: "pointer", lineHeight: 1, padding: "0 2px",
-            }}>×</button>
+            <CloseButton onClick={onClose} />
           </div>
         </div>
 

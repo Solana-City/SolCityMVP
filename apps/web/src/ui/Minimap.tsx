@@ -17,6 +17,7 @@ import {
 } from "@/game/minimap/MinimapHost";
 import { CATEGORY_META, CATEGORY_ORDER, type MinimapCategory } from "@/game/minimap/categories";
 import { chamferBox, chamferClip } from "@/ui/chamfer";
+import { PixelImg, CloseButton } from "@/ui/PixelIcons";
 
 const PIXEL_FONT = '"Press Start 2P", monospace';
 const PANEL_BG = "rgba(8,10,22,0.72)";
@@ -799,7 +800,7 @@ function FullMap({ host, onClose }: { host: MinimapHost; onClose: () => void }) 
                 {CATEGORY_META[cat].label.toUpperCase()} <span style={{ color: "#64748b" }}>{counts[cat]}</span>
               </span>
               {!narrow && (
-                <span style={{ fontSize: 10, color: "#8b93a7", marginTop: 3 }}>{CATEGORY_META[cat].hint}</span>
+                <span style={{ fontFamily: PIXEL_FONT, fontSize: 6, color: "#8b93a7", marginTop: 3 }}>{CATEGORY_META[cat].hint}</span>
               )}
             </span>
           </button>
@@ -828,8 +829,8 @@ function FullMap({ host, onClose }: { host: MinimapHost; onClose: () => void }) 
             >
               {p.portrait ? <Portrait point={p} size={34} /> : <Swatch cat={cat} size={12} />}
               <span style={{ minWidth: 0 }}>
-                <span style={{ display: "block", fontSize: 12, color: "#e2e8f0", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.name}</span>
-                {p.role && <span style={{ display: "block", fontSize: 10, color: "#8b93a7" }}>{p.role}</span>}
+                <span style={{ display: "block", fontFamily: PIXEL_FONT, fontSize: 8, color: "#e2e8f0", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.name}</span>
+                {p.role && <span style={{ display: "block", fontFamily: PIXEL_FONT, fontSize: 6, color: "#8b93a7" }}>{p.role}</span>}
               </span>
             </button>
           ))}
@@ -864,13 +865,14 @@ function FullMap({ host, onClose }: { host: MinimapHost; onClose: () => void }) 
       }}>
         {/* Header */}
         <div style={{ display: "flex", alignItems: "center", gap: 10, padding: narrow ? "8px 10px" : "12px 20px", borderBottom: "1px solid rgba(153,69,255,0.12)", background: "rgba(153,69,255,0.06)" }}>
+          <PixelImg src="/assets/ui/icon2_map.png" size={narrow ? 18 : 22} />
           <span style={{ fontFamily: PIXEL_FONT, fontSize: narrow ? 11 : 14, color: "#B7E928", letterSpacing: 1 }}>SOLANA CITY MAP</span>
-          {!narrow && <span style={{ fontSize: 11, color: "#64748b" }}>Drag to move · scroll to zoom · click a marker</span>}
+          {!narrow && <span style={{ fontFamily: PIXEL_FONT, fontSize: 7, color: "#64748b" }}>Drag to move · scroll to zoom · click a marker</span>}
           <div style={{ flex: 1 }} />
           {narrow && (
             <button onClick={() => setListOpen((v) => !v)} style={hdrBtn(listOpen)}>{listOpen ? "MAP" : "LIST"}</button>
           )}
-          <button onClick={onClose} aria-label="Close map" style={{ background: "none", border: "none", color: "#14F0C6", fontFamily: '"Press Start 2P", monospace', fontSize: 16, cursor: "pointer", lineHeight: 1, padding: "0 2px" }}>×</button>
+          <CloseButton onClick={onClose} label="Close map" />
         </div>
 
         {narrow && <div style={{ padding: "8px 10px 0" }}>{legend}</div>}
@@ -907,9 +909,9 @@ function FullMap({ host, onClose }: { host: MinimapHost; onClose: () => void }) 
               })}>
                 <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                   {card.point.portrait ? <Portrait point={card.point} size={40} /> : <Swatch cat={card.point.category} size={12} />}
-                  <span style={{ fontSize: 13, color: "#f1f5f9", fontWeight: 700 }}>{card.point.name}</span>
+                  <span style={{ fontFamily: PIXEL_FONT, fontSize: 8, color: "#f1f5f9" }}>{card.point.name}</span>
                 </div>
-                <div style={{ fontSize: 11, color: "#8b93a7", marginTop: 3 }}>
+                <div style={{ fontFamily: PIXEL_FONT, fontSize: 6, color: "#8b93a7", marginTop: 5 }}>
                   {card.point.role ? `${card.point.role} · ` : ""}{CATEGORY_META[card.point.category].label}
                 </div>
                 {card.point.id === selected && card.point.category !== "players" && (

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { CloseButton } from "@/ui/PixelIcons";
 import {
   transactionLog,
   getExplorerUrl,
@@ -377,14 +378,7 @@ function Header({
         >
           clear
         </button>
-        <button
-          onClick={onClose}
-          className="cursor-pointer leading-none"
-          style={{ background: "none", border: "none", color: "#14F0C6", fontSize: 14 }}
-          aria-label="Close log"
-        >
-          ×
-        </button>
+        <CloseButton onClick={onClose} size={18} label="Close log" />
       </div>
     </div>
   );

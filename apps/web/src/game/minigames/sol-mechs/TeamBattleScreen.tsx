@@ -31,6 +31,7 @@ import {
 } from "./moveInfo";
 import { SQUAD_CLOCK, formatClock } from "@/game/solmechs/data/clock";
 import { C, T, SP, R, W, PANEL_HEIGHT, actionButton, frame, DISPLAY } from "./theme";
+import { CloseButton } from "@/ui/PixelIcons";
 
 /**
  * Narrows the team log to the events BattleRenderer understands. Switches and
@@ -484,7 +485,7 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, opponent, onFi
           {phone && <span style={sx.roundChipInline}>ROUND {state.round}</span>}
           <div style={{ flex: 1 }} />
           <SquadPortraits side={state.p2} label="RIVAL" align="right" size={phone ? 26 : undefined} />
-          <button onClick={onClose} style={sx.close} aria-label="Close">×</button>
+          <CloseButton onClick={onClose} size={24} />
         </header>
 
         {/* Same arrangement as the 1v1: the arena is the backdrop and the two
@@ -889,7 +890,6 @@ const sx: Record<string, React.CSSProperties> = {
   },
   header: { display: "flex", alignItems: "center", gap: SP.md, flexShrink: 0 },
   title: { margin: 0, fontSize: 16, color: C.teal, letterSpacing: 4, fontWeight: 800 },
-  close: { background: "none", border: "none", color: C.dim, fontSize: 24, cursor: "pointer", lineHeight: 1, padding: 0 },
   /**
    * Centres the stage and gives it the height left over by the footer.
    */

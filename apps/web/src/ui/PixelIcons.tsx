@@ -12,14 +12,58 @@
 const UI = "/assets/ui";
 
 export const ICON = {
-  trophy: `${UI}/icon_trophy.png`,
+  trophy: `${UI}/icon2_trophy.png`,
   tasks: `${UI}/ico_tasks.png`,
-  hunt: `${UI}/ico_achievements.png`,
-  wardrobe: `${UI}/ico_wardrop.png`,
+  hunt: `${UI}/icon_quests2.png`,
+  wardrobe: `${UI}/icon_wardrob1.png`,
   chat: `${UI}/ico_chat.png`,
   emote: `${UI}/ico_emoji.png`,
   star: `${UI}/attention_yellow.png`,
+  close: `${UI}/icon_close.png`,
 } as const;
+
+/** The UI's default accent, for anything not inside an NPC's own colored window. */
+export const UI_ACCENT = "#14ebc1";
+
+/**
+ * A white/gray-on-transparent icon, tinted via a CSS luminance mask: white
+ * paints fully opaque, gray shading paints partially, transparent stays
+ * empty — same shape, any color, no per-color art files.
+ */
+export function maskIcon(icon: string, color: string, size: number): React.CSSProperties {
+  return {
+    display: "block", width: size, height: size, background: color,
+    WebkitMaskImage: `url(${icon})`, maskImage: `url(${icon})`,
+    WebkitMaskMode: "luminance", maskMode: "luminance",
+    WebkitMaskSize: "100% 100%", maskSize: "100% 100%",
+    WebkitMaskRepeat: "no-repeat", maskRepeat: "no-repeat",
+  } as React.CSSProperties;
+}
+
+/**
+ * The one close ("×") button, everywhere a panel or dialog can be dismissed.
+ * Pass `color` inside an NPC dialog to match its category; everywhere else
+ * it defaults to the UI's own accent color.
+ */
+export function CloseButton({
+  onClick, size = 22, label = "Close", color = UI_ACCENT, style,
+}: {
+  onClick: (e: React.MouseEvent<HTMLButtonElement>) => void;
+  size?: number;
+  label?: string;
+  color?: string;
+  style?: React.CSSProperties;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      aria-label={label}
+      style={{ background: "none", border: "none", padding: 0, cursor: "pointer", lineHeight: 0, flexShrink: 0, display: "block", ...style }}
+    >
+      <span aria-hidden style={maskIcon(ICON.close, color, size)} />
+    </button>
+  );
+}
 
 export function PixelImg({ src, size, style, alt = "" }: { src: string; size: number; style?: React.CSSProperties; alt?: string }) {
   return (

@@ -1,6 +1,6 @@
 "use client";
 
-import { AchievementIcon, LockIcon, SpeakerIcon, PixelImg, ICON } from "@/ui/PixelIcons";
+import { AchievementIcon, LockIcon, SpeakerIcon, PixelImg, ICON, CloseButton } from "@/ui/PixelIcons";
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
@@ -112,20 +112,15 @@ export default function ProfilePanel({ gameRef, isOpen, onClose }: ProfilePanelP
           WebkitOverflowScrolling: "touch",
         }}
       >
-        <button
+        <CloseButton
           onClick={onClose}
-          className="absolute cursor-pointer"
+          size={26}
           style={{
-            top: 10, right: 12,
-            background: "none", border: "none", color: CYAN, fontSize: 22, lineHeight: 1,
-            minWidth: 36, minHeight: 36,
-            display: "flex", alignItems: "center", justifyContent: "center",
+            position: "absolute", top: 10, right: 12,
+            minWidth: 36, minHeight: 36, display: "flex", alignItems: "center", justifyContent: "center",
             WebkitTapHighlightColor: "transparent",
           }}
-          aria-label="Close"
-        >
-          ×
-        </button>
+        />
 
         {/* Header: avatar + name, wallet */}
         <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap", paddingRight: 40 }}>

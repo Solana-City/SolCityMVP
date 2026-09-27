@@ -1,3 +1,5 @@
+import { npcCategory, CATEGORY_META } from "../minimap/categories";
+
 export interface NPCAction {
   type: "tutor" | "swap" | "transfer" | "bounties" | "link" | "placeholder" | "private-payment" | "minigame" | "stock-exchange" | "peg-risk" | "token-scan" | "private-transfer";
   label: string;
@@ -42,6 +44,11 @@ export interface NPCDefinition {
    * not line up with a tile centre. Defaults to 0.
    */
   offsetY?: number;
+  /**
+   * Always the color of this NPC's category in the map legend (see
+   * npcCategory/CATEGORY_META in categories.ts) — set below by NPC_REGISTRY's
+   * mapping step, never authored per-entry, so it can't drift from the map.
+   */
   color: number;
   dialog: string[];
   action: NPCAction;
@@ -136,7 +143,9 @@ export interface NPCDefinition {
   };
 }
 
-export const NPC_REGISTRY: NPCDefinition[] = [
+type NPCSeed = Omit<NPCDefinition, "color">;
+
+const NPC_SEEDS: NPCSeed[] = [
   {
     id: "sol-guide",
     name: "Sol",
@@ -145,7 +154,6 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     // (where Steve Sends used to stand).
     tileX: 78,
     tileY: 43,
-    color: 0x14f195,
     dialog: [
       "Hi, I'm Sol, your city guide!",
       "Want a quick tour of how everything works?",
@@ -161,7 +169,6 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     // on the green plot east of the Superteam Earn tent.
     tileX: 110,
     tileY: 43,
-    color: 0xff6b35,
     dialog: [
       "Irasshaimase! Welcome to my cart.",
       "Customers are hungry. Build their sushi sets in order, before time runs out!",
@@ -177,7 +184,6 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     // stands, where there is vertical room for the kite.
     tileX: 40,
     tileY: 79,
-    color: 0x00b4d8,
     dialog: [
       "Hey! Want to take a kite up and see who else is flying right now?",
       "Stay airborne to rack up points. The further out you let your line, the faster you score.",
@@ -201,7 +207,6 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     // cols 91-101 / rows 17-32).
     tileX: 96,
     tileY: 32,
-    color: 0x14f195,
     dialog: [
       "Want a different token? I can swap it for you.",
       "Pick what you have and what you want. Jupiter finds the best price.",
@@ -217,7 +222,6 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     // rows 47-59); findNpcSpawn steps down to the first walkable row.
     tileX: 78,
     tileY: 59,
-    color: 0x00d1ff,
     dialog: [
       "Need to send SOL to a friend?",
       "Paste their address, pick the amount, and it arrives in seconds.",
@@ -232,7 +236,6 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     // In front of the Superteam Earn tent (BuildSTEarn, cols 89-95 / rows 38-44).
     tileX: 92,
     tileY: 44,
-    color: 0x9945ff,
     dialog: [
       "Want to get paid to build on Solana?",
       "Pick a bounty and do your best work. If the sponsor picks yours, you win USDC.",
@@ -248,7 +251,6 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     // rows 52-55).
     tileX: 91,
     tileY: 55,
-    color: 0xc026d3,
     dialog: [
       "I keep the engine running. MagicBlock is what this whole city is built on.",
       "Every step you take is a transaction on a rollup, landing in milliseconds.",
@@ -265,7 +267,6 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     // rows 47-58); findNpcSpawn steps down to the first walkable row.
     tileX: 59,
     tileY: 57,
-    color: 0xff5468,
     dialog: [
       "Hey, I'm the Mech Builder. Welcome to the Sol Mechs hangar!",
       "Build a squad of three mechs, mix parts across chassis and take them into 3v3 battles.",
@@ -286,7 +287,6 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     // stalls in place.
     tileX: 41,
     tileY: 85,
-    color: 0xd2833c,
     dialog: [
       "Woof!",
       "The caramel dog wags its tail and trots down the beach.",
@@ -309,7 +309,6 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     tileX: 78,
     tileY: 22,
     offsetX: 12,
-    color: 0xffb547,
     dialog: [
       "Welcome to Stocklana!",
       "Buy real stocks as Solana tokens, from $1. Wall Street closes, Solana never does.",
@@ -326,7 +325,6 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     // the carpet in front of the doors.
     tileX: 108,
     tileY: 20,
-    color: 0xe30a17,
     dialog: [
       "Merhaba! I'm the Hair Specialist, visiting from Superteam Turkey.",
       "Hairstyles fly by fast. Tap at the right moment to land one on your head!",
@@ -343,7 +341,6 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     // lamp post and the welcome sign.
     tileX: 56,
     tileY: 87,
-    color: 0xffd700,
     dialog: [
       "Hi, I'm Kuka, lead of Superteam Brazil!",
       "Brazil won 2 prizes at the Cypherpunk Hackathon. At the next one, we're going for even more!",
@@ -365,7 +362,6 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     // (BuildIndies, base rows 40-45 around cols 59-68).
     tileX: 62,
     tileY: 45,
-    color: 0x7c3aed,
     dialog: [
       "Hi, I'm BK from Indies on Solana!",
       "We help indie devs build games on Solana. Season 2 sign-ups are open!",
@@ -386,7 +382,6 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     // base cols 47-51 / rows 29-31).
     tileX: 49,
     tileY: 31,
-    color: 0xffd700,
     dialog: [
       "Hey bro! I'm Mr. Bananas, and I'm bananas about MonkeDAO.",
       "Members help each other grow. Come join the community!",
@@ -416,7 +411,6 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     // / rows 71-76), two tiles clear of Kite Pro at 40/79.
     tileX: 43,
     tileY: 77,
-    color: 0x00c2a8,
     dialog: [
       "I am Raffx. Pegana watches the peg on 69 stablecoins and LSTs.",
       "A coin holds its peg only while somebody is checking. We check in real time.",
@@ -438,7 +432,6 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     // 26-32 / rows 70-76).
     tileX: 29,
     tileY: 77,
-    color: 0xff5c5c,
     dialog: [
       "Pass me the address. I read the operator behind the token, not just the token.",
       "SolSentry calls the risk before the rug, and every call stays auditable.",
@@ -456,19 +449,19 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     id: "dungeons-moles",
     name: "Mole",
     role: "Dungeons & Moles",
-    // At the mouth of the dungeon south of the beach (BuildDungeousMoles,
-    // cols 42-48 / rows 100-106). Row 106 is the sand at the foot of the door,
-    // under the D&M sign and between the two lanterns: the only three walkable
-    // tiles (44, 45, 46) touching the cave. Row 107 below it is the boardwalk,
-    // which reads as passing by rather than waiting at the door.
+    // At the mouth of the dungeon on its rock islet in the shallows west of the
+    // beach (BuildDungeousMoles, cols 17-23 / rows 81-87; the artist moved the
+    // cave here on 2026-09-26). The door is centred on col 20, under the D&M
+    // sign between the two lanterns. The sand at its foot (row 86) is sealed
+    // as part of the building, so he stands on row 87, the first walkable
+    // row below it (the offsetY lifts him back toward the sand). Col 19 is one
+    // tile left of the door centre so the doorway itself stays clear.
     //
     // tileY is the row ABOVE the one the NPC stands on: findNpcSpawn starts
-    // its scan at tileY + 1. So 105 here puts him on row 106, and 106 put him
-    // on the boardwalk, which is what happened.
-    tileX: 44,
-    tileY: 105,
+    // its scan at tileY + 1. So 86 here puts him on row 87.
+    tileX: 19,
+    tileY: 86,
     offsetY: -8,
-    color: 0xc98a3c,
     dialog: [
       "Every dungeon hides a path. Not every path wants to be found.",
       "The map does not exist yet. Take the first step and it appears.",
@@ -489,12 +482,12 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     id: "cloak-vitin",
     name: "Cloak Cat",
     role: "Cloak",
-    // In front of the free stand between SolSentry and Pegana (BuildStand04,
-    // cols 33-37 / rows 72-76), so the three project stands share one row of
-    // the ST Brasil market. tileY is the row above the one he stands on.
+    // In front of his own stand (BuildStandCloack, art cols 32-38 / rows
+    // 60-66, counter solid on cols 33-37). It faces south onto the boardwalk,
+    // so he stands on row 67 at the centre of the counter (col 35). tileY is
+    // the row above the one he stands on.
     tileX: 35,
-    tileY: 76,
-    color: 0x8b7cf6,
+    tileY: 66,
     dialog: [
       "Hey! I'm here to make privacy great again on Solana, can I count on you to do that?",
       "Cloak gives you a private balance: shield it once, then pay anyone without your wallet showing up as the sender.",
@@ -512,13 +505,13 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     id: "builder",
     name: "Builder",
     role: "Under Construction",
-    // The fenced plot in the south east (cols 91-129 / rows 63-110), the one
+    // The fenced plot in the south east (cols 91-129 / rows 62-110), the one
     // opposite the ST Brasil beach. Every tile of it is solid, so he stands
-    // on the road along its north edge, right in front of the barriers that
-    // start at col 100. tileY is the row above the one he stands on.
-    tileX: 101,
-    tileY: 61,
-    color: 0xffb547,
+    // on the road along its WEST edge (col 90, against the fence), at the
+    // spot the artist marked on 2026-09-26 (row 75, about two tiles south of
+    // the big tree's trunk). tileY is the row above the one he stands on.
+    tileX: 90,
+    tileY: 74,
     // Never read: `repel` means the talk prompt never appears. Kept so the
     // registry stays uniform and the minimap has something to label.
     dialog: ["We are working here!"],
@@ -531,3 +524,12 @@ export const NPC_REGISTRY: NPCDefinition[] = [
     spriteAnimation: { frameWidth: 64, frameHeight: 64, frameCount: 6 },
   },
 ];
+
+function categoryColor(npc: NPCSeed): number {
+  return parseInt(CATEGORY_META[npcCategory(npc)].color.slice(1), 16);
+}
+
+export const NPC_REGISTRY: NPCDefinition[] = NPC_SEEDS.map((npc) => ({
+  ...npc,
+  color: categoryColor(npc),
+}));

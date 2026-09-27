@@ -14,7 +14,7 @@
  */
 import { useCallback, useEffect, useState } from "react";
 import { chamferBox, octagonFrame } from "@/ui/chamfer";
-import { CalendarDayIcon } from "@/ui/PixelIcons";
+import { PixelImg, CloseButton } from "@/ui/PixelIcons";
 import ChamferGlow from "@/ui/ChamferGlow";
 import nacl from "tweetnacl";
 import { useWallet } from "@solana/wallet-adapter-react";
@@ -202,14 +202,14 @@ export default function CalendarPanel({ gameRef }: { gameRef: Phaser.Game | null
       >
         {/* Header, with today's check-in as the first thing you see */}
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: layout.short ? 6 : 10, padding: layout.short ? "4px 8px" : "8px 12px", background: "rgba(153,69,255,0.06)", borderBottom: "1px solid rgba(153,69,255,0.12)" }}>
-          <CalendarDayIcon size={layout.short ? 24 : 40} day={today.getUTCDate()} />
+          <PixelImg src="/assets/ui/icon_calendar1.png" size={layout.short ? 24 : 40} />
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 12, color: GREEN, letterSpacing: 1 }}>CITY CALENDAR</div>
             <div style={{ fontSize: 7, color: "#64748b", marginTop: 6 }}>
               {today.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", timeZone: "UTC" }).toUpperCase()}
             </div>
           </div>
-          <button onClick={close} aria-label="Close" style={{ background: "none", border: "none", color: "#14F0C6", fontSize: 16, cursor: "pointer", lineHeight: 1, padding: "0 2px" }}>×</button>
+          <CloseButton onClick={close} />
         </div>
 
         <div style={{

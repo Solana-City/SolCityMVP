@@ -92,7 +92,7 @@ export default function WalletBar({ onWalletChange, layout = "default" }: Wallet
     return (
       <div style={{ display: "flex", alignItems: "center", gap: 8, fontFamily: '"Press Start 2P", monospace' }}>
         {/* Status dot */}
-        <img src="/assets/ui/icon_wallet.png" alt="" draggable={false} width={28} height={28} style={{
+        <img src={connected ? "/assets/ui/icon_wallet1.png" : "/assets/ui/icon_wallet.png"} alt="" draggable={false} width={28} height={28} style={{
           flexShrink: 0, imageRendering: "pixelated", display: "block",
           filter: connected ? "drop-shadow(0 0 4px rgba(183,233,40,0.6))" : "grayscale(1) opacity(0.6)",
         }} />
@@ -131,7 +131,7 @@ export default function WalletBar({ onWalletChange, layout = "default" }: Wallet
             onMouseEnter={(e) => { e.currentTarget.style.filter = "brightness(1.25) drop-shadow(0 0 4px rgba(20,240,198,0.7))"; }}
             onMouseLeave={(e) => { e.currentTarget.style.filter = "none"; }}
           >
-            <img src="/assets/ui/icon_logout.png" alt="" draggable={false} width={32} height={32} style={{ imageRendering: "pixelated", display: "block" }} />
+            <img src="/assets/ui/icon_disconnect.png" alt="" draggable={false} width={32} height={32} style={{ imageRendering: "pixelated", display: "block" }} />
           </button>
         ) : (
           /* Same pixel-art CONNECT button used on mobile, scaled down to fit the panel row */

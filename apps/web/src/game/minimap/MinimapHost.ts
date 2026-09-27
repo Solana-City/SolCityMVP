@@ -140,7 +140,7 @@ export function publishMinimap(
     const home = n.getSpawn();
     return {
       id: n.def.id, name: n.def.name, role: n.def.role,
-      category: npcCategory(n.def.action), x: home.x, y: home.y,
+      category: npcCategory(n.def), x: home.x, y: home.y,
       ...portraitFields(npcPortrait(scene, n.textureKey)),
     };
   });

@@ -24,8 +24,23 @@ export const CATEGORY_META: Record<MinimapCategory, CategoryMeta> = {
 
 export const CATEGORY_ORDER: MinimapCategory[] = ["guide", "defi", "games", "community", "landmark", "players"];
 
-export function npcCategory(action: NPCAction): MinimapCategory {
-  switch (action.type) {
+/**
+ * Per-NPC category overrides, keyed by NPCDefinition.id — for an NPC whose
+ * category on the map legend should differ from what its action.type would
+ * otherwise imply (e.g. a "link"-type NPC that reads as a mini-game, not a
+ * community link). Set by the artist; not derived from anything else.
+ */
+const CATEGORY_OVERRIDES: Partial<Record<string, MinimapCategory>> = {
+  "solsentry-crash": "defi",
+  "cloak-vitin": "defi",
+  "pegana-raffx": "defi",
+  "dungeons-moles": "games",
+};
+
+export function npcCategory(npc: { id: string; action: NPCAction }): MinimapCategory {
+  const override = CATEGORY_OVERRIDES[npc.id];
+  if (override) return override;
+  switch (npc.action.type) {
     case "tutor": return "guide";
     case "swap":
     case "transfer":

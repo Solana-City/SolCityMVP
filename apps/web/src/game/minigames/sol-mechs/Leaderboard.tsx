@@ -14,6 +14,7 @@ import type { LadderEntryAccount } from "@/game/solmechs/pvp/chain/mechProgram";
 import { ELIGIBILITY } from "@/game/solmechs/season/config";
 import { cachedName, onNames, requestNames } from "@/game/names/nameService";
 import { C, T, SP, R, MONO, DISPLAY, PIXELATED, backdrop, panel, eyebrow, button, W } from "./theme";
+import { CloseButton } from "@/ui/PixelIcons";
 
 const UI = "/assets/minigames/sol-mechs/ui";
 
@@ -59,7 +60,7 @@ export default function Leaderboard({ client, me, onClose }: LeaderboardProps) {
             onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
           />
           <div style={eyebrow}>Season standings</div>
-          <button onClick={onClose} style={sx.close} aria-label="Close">×</button>
+          <CloseButton onClick={onClose} size={22} style={{ marginLeft: "auto" }} />
         </header>
 
         {error && <div style={{ ...sx.empty, color: C.bad }}>{error}</div>}
@@ -116,10 +117,6 @@ export default function Leaderboard({ client, me, onClose }: LeaderboardProps) {
 
 const sx: Record<string, React.CSSProperties> = {
   head: { display: "flex", alignItems: "center", gap: SP.sm, marginBottom: SP.md },
-  close: {
-    marginLeft: "auto", background: "none", border: "none", color: C.faint,
-    fontSize: 22, lineHeight: 1, cursor: "pointer",
-  },
   table: { display: "flex", flexDirection: "column", gap: 2 },
   row: {
     display: "grid",

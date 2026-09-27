@@ -59,6 +59,7 @@ import TeamBuilder from "./TeamBuilder";
 import TeamBattleScreen from "./TeamBattleScreen";
 import { validateTeam, type TeamBuild } from "@/game/solmechs/data/team";
 import { LIMB_SLOTS, type MechId, type ModuleSlot, type MechBuild, type MoveDefinition } from "@/game/solmechs/data/types";
+import { CloseButton } from "@/ui/PixelIcons";
 
 type Phase =
   | "menu" | "hangar" | "squad" | "team-battle" | "battle" | "result"
@@ -1168,10 +1169,7 @@ function Shell({ children, onClose, onBack, title, subtitle = "", fit = false, w
             onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
           />
           <span style={{ ...eyebrow, marginRight: "auto" }}>{subtitle}</span>
-          <button onClick={onClose} aria-label="Close" style={{
-            background: "none", border: "none", color: C.dim,
-            fontSize: 30, cursor: "pointer", lineHeight: 1, padding: 4,
-          }}>&times;</button>
+          <CloseButton onClick={onClose} size={28} />
         </div>
 
         <div style={{

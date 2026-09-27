@@ -8,6 +8,7 @@ import { useEffect, useState } from "react";
 import { Citizen, Img, Key } from "./CityGuide";
 import { track } from "@/game/telemetry/track";
 import { chamferBox, octagonFrame } from "@/ui/chamfer";
+import { CloseButton } from "@/ui/PixelIcons";
 
 const PIXEL = '"Press Start 2P", monospace';
 const LOCAL = "#B7E928";
@@ -141,13 +142,7 @@ export default function ChatGuide({ touch, onClose }: { touch: boolean; onClose:
       <div style={{ display: "flex", alignItems: "center", marginBottom: 8 }}>
         <span style={{ fontFamily: PIXEL, fontSize: 8, color: LOCAL }}>CHAT</span>
         <span style={{ marginLeft: "auto", fontFamily: PIXEL, fontSize: 7, color: "#555566" }}>{i + 1}/{list.length}</span>
-        <button
-          onClick={onClose}
-          aria-label="Close"
-          style={{ marginLeft: 10, background: "none", border: "none", color: "#14F0C6", cursor: "pointer", fontSize: 16, lineHeight: 1 }}
-        >
-          ×
-        </button>
+        <CloseButton onClick={onClose} style={{ marginLeft: 10 }} />
       </div>
 
       <div key={i} className="cg-step" style={chamferBox(8, {

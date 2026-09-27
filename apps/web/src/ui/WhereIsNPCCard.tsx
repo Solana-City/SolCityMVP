@@ -1,6 +1,6 @@
 "use client";
 
-import { PixelImg, ICON, RankBadge } from "@/ui/PixelIcons";
+import { PixelImg, ICON, RankBadge, CloseButton } from "@/ui/PixelIcons";
 import { useState, useEffect, useRef, useCallback } from "react";
 import {
   getRoundIndex, getCitizenMsRemaining, CITIZEN_MS, recordFind, getMyScore,
@@ -202,17 +202,13 @@ function LeaderboardModal({ onClose }: { onClose: () => void }) {
           borderBottom: "1px solid rgba(153,69,255,0.1)",
           display: "flex", alignItems: "center", justifyContent: "space-between",
         }}>
-          <span style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 8, color: "#c084fc", letterSpacing: 0.5 }}>
-            <span style={{ marginRight: 6, verticalAlign: "middle", display: "inline-block" }}><RankBadge rank={1} size={16} /></span>LEADERBOARD
-          </span>
-          <button onClick={onClose} style={{
-            background: "none", border: "none", color: "#14F0C6", fontSize: 15,
-            cursor: "pointer", lineHeight: 1, padding: "0 2px",
-            transition: "color 0.15s",
-          }}
-            onMouseEnter={e => (e.currentTarget.style.color = "#aaa")}
-            onMouseLeave={e => (e.currentTarget.style.color = "#555")}
-          >×</button>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <PixelImg src="/assets/ui/icon_leaderboard1.png" size={24} />
+            <span style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 12, color: "#B7E928", letterSpacing: 2 }}>
+              LEADERBOARD
+            </span>
+          </div>
+          <CloseButton onClick={onClose} size={20} />
         </div>
         <div style={{ padding: "8px 20px 18px" }}>
           {entries.length === 0 ? (
@@ -369,7 +365,7 @@ export default function WhereIsNPCCard({ gameRef, wallet }: Props) {
           <PixelImg src={ICON.hunt} size={26} />
           <span style={{
             fontFamily: '"Press Start 2P", monospace', fontSize: 7,
-            color: "#c084fc", letterSpacing: 0.5, flex: 1,
+            color: "#B7E928", letterSpacing: 0.5, flex: 1,
             lineHeight: 1.4,
           }}>FIND SOMEONE</span>
           <button className="hunt-btn" style={{
@@ -454,19 +450,38 @@ export default function WhereIsNPCCard({ gameRef, wallet }: Props) {
               ) : (
                 <span style={{ fontSize: 8, color: "#3a3a5a", flex: 1 }}>Connect wallet</span>
               )}
-              <button className="hunt-btn" onClick={() => setShowLeaderboard(true)} style={chamferBox(7, {
-                background: "rgba(153,69,255,0.1)",
-                border: "1px solid rgba(153,69,255,0.22)",
-                padding: "5px 10px",
-                color: "#9945FF", fontSize: 9, cursor: "pointer",
-              })}>
-                <RankBadge rank={1} size={16} />
-              </button>
+              <LeaderboardButton onClick={() => setShowLeaderboard(true)} />
             </div>
           </div>
         )}
       </div>
     </>
+  );
+}
+
+/**
+ * Opens the leaderboard, styled like the HUD icon buttons (Wardrobe,
+ * Calendar, Map in page.tsx: a bare image with a hover glow, no separate
+ * background/border chrome) rather than the chamfer-box button it used to
+ * be — just smaller, since this one sits inside a card instead of the HUD.
+ */
+function LeaderboardButton({ onClick }: { onClick: () => void }) {
+  const [hover, setHover] = useState(false);
+  return (
+    <button
+      onClick={onClick} title="Leaderboard" aria-label="Leaderboard"
+      onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
+      style={{
+        width: 22, height: 22, padding: 0, border: "none", background: "none",
+        cursor: "pointer", flexShrink: 0, display: "block",
+        filter: hover ? "brightness(1.25) drop-shadow(0 0 4px rgba(20,240,198,0.7))" : "none",
+        transform: hover ? "translateY(-1px)" : "none",
+        transition: "filter 0.12s, transform 0.12s",
+      }}
+    >
+      <img src="/assets/ui/icon_leaderboard.png" alt="" draggable={false}
+        style={{ width: "100%", height: "100%", imageRendering: "pixelated", display: "block" }} />
+    </button>
   );
 }
 
@@ -557,9 +572,9 @@ function HuntHowTo({ loadout, isTouch, onClose }: { loadout: Loadout | null; isT
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
           <PixelImg src={ICON.hunt} size={26} />
-          <span style={{ color: "#c084fc", fontSize: 8 }}>FIND SOMEONE</span>
+          <span style={{ color: "#B7E928", fontSize: 8 }}>FIND SOMEONE</span>
           <span style={{ marginLeft: "auto", color: "#555577", fontSize: 7 }}>{i + 1}/{steps.length}</span>
-          <button onClick={onClose} aria-label="Close" style={{ background: "none", border: "none", color: "#14F0C6", fontSize: 16, cursor: "pointer", lineHeight: 1, padding: "0 2px" }}>×</button>
+          <CloseButton onClick={onClose} />
         </div>
         <div key={i} style={chamferBox(10, {
           height: isTouch ? 118 : 140, display: "flex", alignItems: "center", justifyContent: "center",

@@ -11,7 +11,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { checkName, claimName } from "@/game/names/nameService";
-import { LockIcon } from "@/ui/PixelIcons";
+import { LockIcon, CloseButton } from "@/ui/PixelIcons";
 import { chamferBox } from "@/ui/chamfer";
 
 const PIX = '"Press Start 2P", monospace';
@@ -89,7 +89,7 @@ export default function NicknameModal({ wallet, current, forced, onDone }: {
         <div style={{ display: "flex", alignItems: "center", marginBottom: 12 }}>
           <span style={{ color: "#B7E928", fontSize: 9 }}>{current ? "CHANGE NICKNAME" : "CHOOSE YOUR NICKNAME"}</span>
           {!forced && (
-            <button onClick={() => onDone(null)} aria-label="Close" style={{ marginLeft: "auto", background: "none", border: "none", color: "#14F0C6", fontSize: 16, cursor: "pointer", lineHeight: 1 }}>×</button>
+            <CloseButton onClick={() => onDone(null)} style={{ marginLeft: "auto" }} />
           )}
         </div>
 

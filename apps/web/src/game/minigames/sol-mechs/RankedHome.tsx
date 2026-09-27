@@ -15,6 +15,7 @@ import {
 import { ENERGY, LAMPORTS_PER_SOL } from "@/game/solmechs/season/config";
 import { C, T, SP, R, MONO, DISPLAY, PIXELATED, backdrop, panel, eyebrow, button, W } from "./theme";
 import { SpriteButton } from "./SpriteButton";
+import { CloseButton } from "@/ui/PixelIcons";
 
 const UI = "/assets/minigames/sol-mechs/ui";
 const MAX_ENERGY = 10;
@@ -75,7 +76,7 @@ export default function RankedHome({ client, unavailable, onQueue, onLeaderboard
   return (
     <div style={backdrop} onPointerDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div style={{ ...panel(W.narrow), padding: `${SP.lg}px ${SP.xl}px ${SP.lg}px`, overflowY: "auto" }}>
-        <button onClick={onClose} style={sx.close} aria-label="Close">×</button>
+        <CloseButton onClick={onClose} size={22} style={{ position: "absolute", top: SP.sm, right: SP.md }} />
 
         <header style={sx.hero}>
           <img
@@ -183,11 +184,6 @@ function formatDays(seconds: number): string {
 }
 
 const sx: Record<string, React.CSSProperties> = {
-  close: {
-    position: "absolute", top: SP.sm, right: SP.md,
-    background: "none", border: "none", color: C.faint,
-    fontSize: 22, lineHeight: 1, cursor: "pointer",
-  },
   hero: { display: "flex", alignItems: "center", gap: SP.lg, marginBottom: SP.lg },
   rating: {
     fontFamily: DISPLAY, fontSize: T.display, color: C.text,

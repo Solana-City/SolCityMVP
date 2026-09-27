@@ -12,6 +12,7 @@ import CityGuide from "@/ui/CityGuide";
 import MagicBlockHub from "@/ui/MagicBlockHub";
 import StockExchangePanel from "@/ui/StockExchangePanel";
 import { chamferBox } from "@/ui/chamfer";
+import { CloseButton } from "@/ui/PixelIcons";
 import PegRiskPanel from "@/ui/PegRiskPanel";
 import CloakPanel from "@/ui/CloakPanel";
 import TokenScanPanel from "@/ui/TokenScanPanel";
@@ -196,11 +197,7 @@ export default function ActionPanel({ action, onClose }: ActionPanelProps) {
         >
           {/* Drag handle */}
           <div style={{ width: 40, height: 4, borderRadius: 2, background: "rgba(153,69,255,0.35)", margin: "0 auto 16px" }} />
-          <button
-            onClick={onClose}
-            className="absolute top-4 right-4 text-lg cursor-pointer"
-            style={{ background: "none", border: "none", color: "#14F0C6" }}
-          >×</button>
+          <CloseButton onClick={onClose} style={{ position: "absolute", top: 16, right: 16 }} />
 
           {action.type === "tutor"           && <TutorPanel           onClose={onClose} />}
           {action.type === "swap"            && <ProtocolIntroGate spec={SWAP_INTRO}><SwapPanel onClose={onClose} /></ProtocolIntroGate>}

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import type { MiniGameComponentProps, FoodCartContext } from "../types";
+import { ICON, UI_ACCENT, maskIcon } from "@/ui/PixelIcons";
 
 // ─── CSS animations ───────────────────────────────────────────────────────────
 
@@ -781,10 +782,10 @@ function CompactBoard({
           aria-label="Close"
           style={{
             width: 30, height: 30, borderRadius: 8, background: "transparent",
-            border: "1px solid rgba(255,255,255,0.15)", color: "#8888aa", fontSize: 16, lineHeight: 1, touchAction: "manipulation",
+            border: "1px solid rgba(255,255,255,0.15)", display: "flex", alignItems: "center", justifyContent: "center", touchAction: "manipulation",
           }}
         >
-          ×
+          <span aria-hidden style={maskIcon(ICON.close, UI_ACCENT, 22)} />
         </button>
       </div>
       <div style={{ height: 4, background: "rgba(255,255,255,0.05)", flexShrink: 0 }}>
