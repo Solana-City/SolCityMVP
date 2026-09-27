@@ -173,7 +173,7 @@ So it is a choice, not a bug to fix twice:
 The first keeps the look; the second gives the mentor's "more options in
 between". Worth deciding before anyone writes code.
 
-#### P1d. Pink squares in the dialogue portraits
+#### P1d. Pink squares in the dialogue portraits — DONE 2026-09-27
 *"Pink background in the previews, when the character is used as an icon in
 the dialogue."*
 
@@ -185,8 +185,14 @@ instead, so whatever pink is still in the FILE shows up. Checked every sheet:
 are fine, while `BK` (70% pink), `Raffx` (69%), `Crash` (65%), `Cloak` (64%)
 and `Kite Pro` (54%) still carry it.
 
-Small and mechanical: key the pink out of those files once, committed. The
-runtime keying then has nothing left to do and every DOM preview is clean.
+Fixed by keying the files themselves: scripts/key-sprite-sheets.mjs applies
+the same rules BootScene does (flood fill for paperdoll skin, where the key
+colour can equal a pink skin tone; flat everywhere else, which also clears
+pockets the art encloses). 67 sheets, including the whole paperdoll, which
+would have shown the same pink anywhere the DOM previews an outfit. The
+runtime pass now skips a sheet whose corner is already transparent, so boot
+does ~67 fewer canvas passes and new art still gets keyed if it arrives
+pink.
 
 #### P1e. Kite Clash breaks sometimes
 *"Check kite game breaking sometimes."* No repro yet: which screen, what was
