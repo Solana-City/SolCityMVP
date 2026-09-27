@@ -1,26 +1,47 @@
 /**
  * Camera zoom management, shared by CityScene, ZoomControl and pinch zoom.
  *
- * Sprites render at world scale 0.5, so one source pixel covers
- * 0.5 x cameraZoom canvas pixels. Crisp pixel art requires that to be a
- * whole number of DEVICE pixels. The canvas backing store is rendered at
- * devicePixelRatio resolution (capped at 2 — see PhaserGame), so any EVEN
- * camera zoom is pixel-perfect — which yields several crisp steps.
+ * ONE rule decides everything here: a source pixel has to land on a whole
+ * number of DEVICE pixels, or pixel art cracks — some rows of the sprite get
+ * two screen pixels and their neighbours get one, which is the tearing the
+ * 2026-09-27 playtest reported on several machines.
  *
- * "View scale" is what the user perceives: the size of one source pixel in
- * CSS pixels, i.e. zoom / (2 * dpr). We persist the view scale rather than
- * the raw camera zoom so a stored value keeps its meaning across screens
- * with different pixel densities.
+ * The chain from a sprite to the glass:
+ *
+ *   source px --x0.5 (sprite scale) --x zoom (camera)--> backing-store px
+ *   backing-store px --x (realDpr / renderDpr)--> device px
+ *
+ * so one source pixel covers `0.5 x zoom x realDpr / renderDpr` device
+ * pixels, and THAT is what must be a whole number. The old version assumed
+ * the backing store always matched the screen, so "any even zoom" was called
+ * crisp — true on a dpr 1 or 2 screen, false on Windows at 125% or 150% (dpr
+ * 1.25 / 1.5, where the desktop path forced a 2x store) and false on a dpr 3
+ * phone (capped to 2). Those are exactly the machines that cracked.
+ *
+ * What the steps mean now: step N draws one source pixel as N x N device
+ * pixels. How much CITY that shows depends on the window, which is why the
+ * same label showed different amounts of the map on different screens — a
+ * 2560px monitor sees twice what a 1280px laptop does at the same step, and
+ * always will. The labels stay in CSS pixels (`viewScale`) because that is
+ * what the eye reads, but only whole-device-pixel steps are offered.
  */
 
 const VIEW_SCALE_KEY = "solcity:view-scale";
 /** Pre-DPR-aware storage key — held the raw camera zoom at an implied dpr of 1. */
 const LEGACY_ZOOM_KEY = "solcity:zoom";
 
-// Bias the range toward zooming OUT (seeing more of the city) rather than
-// magnification: floor at half scale, cap at 2.5x.
-const MIN_VIEW_SCALE = 0.45;
-const MAX_VIEW_SCALE = 2.55;
+/**
+ * How big one source pixel may look, in CSS pixels. Below the floor the city
+ * is unreadable; above the ceiling you are looking at four buildings.
+ */
+const MIN_VIEW_SCALE = 0.3;
+const MAX_VIEW_SCALE = 2.2;
+
+/** The screen's real ratio, clamped to what any device actually reports. */
+function realDpr(): number {
+  if (typeof window === "undefined") return 1;
+  return Math.min(Math.max(window.devicePixelRatio || 1, 1), 4);
+}
 
 /**
  * DPR the canvas backing store is rendered at. PhaserGame publishes the
@@ -34,30 +55,42 @@ export function getRenderDpr(): number {
 }
 
 export function computeRenderDpr(): number {
-  // Capped at 2 everywhere: on mobile the Canvas2D renderer redraws every
-  // backing-store pixel each frame, so the cap bounds the fill cost at 4x
-  // CSS resolution (phones at dpr 3 get a slight CSS upscale instead).
-  // A dpr-2 backing store is what allows the crisp 0.5x zoom-out level.
-  const raw = Math.min(Math.max(window.devicePixelRatio || 1, 1), 2);
-  // Desktop renders via WebGL, where a 2x backing store is cheap. Give it at
-  // least dpr 2 so it gets the SAME crisp zoom-out range as mobile: a non-retina
-  // desktop is dpr 1, whose only even (pixel-perfect) camera zooms yield view
-  // scales 1.0x/2.0x — i.e. no zoom-out at all — while mobile (dpr 2) reaches
-  // 0.5x. Forcing dpr 2 unlocks 0.5x..2.5x on desktop too; the default (~1.0x)
-  // is unchanged. Mobile (Canvas2D) keeps its real dpr to bound fill cost.
-  const isTouch = typeof window !== "undefined"
-    && window.matchMedia("(pointer: coarse)").matches;
-  return isTouch ? raw : Math.max(raw, 2);
+  const dpr = realDpr();
+  // Each backing-store pixel covers `k` device pixels. k is 1 whenever the
+  // store can match the screen, and 2 on a dpr 3 phone, where a full-res
+  // store would cost nine times the fill of a 1x one on the Canvas2D
+  // renderer mobile uses. Keeping k a WHOLE number is what keeps the crisp
+  // steps crisp: a fractional cap (the old "min(dpr, 2)", giving 1.5 on a
+  // dpr 3 screen) has no zoom at all that lands on whole device pixels.
+  const k = Math.ceil(dpr / 2);
+  return dpr / k;
 }
 
-/** Even camera zooms whose view scale falls in a sane range, ascending. */
+/** Device pixels covered by one source pixel at this camera zoom. */
+export function devicePixelsPerSourcePixel(zoom: number): number {
+  return 0.5 * zoom * (realDpr() / getRenderDpr());
+}
+
+/** Backing-store pixels per device pixel — 1 or 2, see computeRenderDpr. */
+function storeRatio(): number {
+  return Math.max(1, Math.round(realDpr() / getRenderDpr()));
+}
+
+/**
+ * The camera zooms that draw a source pixel as a whole number of device
+ * pixels, ascending, filtered to sizes a player can read.
+ */
 export function getValidZooms(): number[] {
-  const dpr = getRenderDpr();
+  const dpr = realDpr();
+  const k = storeRatio();
   const zooms: number[] = [];
-  for (let z = 2; z / (2 * dpr) <= MAX_VIEW_SCALE; z += 2) {
-    if (z / (2 * dpr) >= MIN_VIEW_SCALE) zooms.push(z);
+  for (let devicePx = 1; devicePx <= 8; devicePx++) {
+    const css = devicePx / dpr;
+    if (css < MIN_VIEW_SCALE || css > MAX_VIEW_SCALE) continue;
+    zooms.push((2 * devicePx) / k);
   }
-  return zooms.length > 0 ? zooms : [2, 4];
+  // A screen that fits nothing in the range still needs one working zoom.
+  return zooms.length > 0 ? zooms : [2 / k];
 }
 
 export function snapZoom(zoom: number): number {
@@ -67,22 +100,22 @@ export function snapZoom(zoom: number): number {
 }
 
 /**
- * View scale a first-time player starts at. Player feedback asked for a wider
- * default view so the buildings and NPCs around you are visible; 0.5x is the
- * one crisp step below the old 1x. Players who picked a zoom keep theirs.
+ * View scale a first-time player starts at, in CSS pixels per source pixel.
+ * Player feedback asked for a wide default so the buildings and NPCs around
+ * you are visible; the nearest crisp step to it is what they get.
  */
 const DEFAULT_VIEW_SCALE = 0.5;
 
 /** The valid zoom whose view scale is closest to DEFAULT_VIEW_SCALE. */
 export function getDefaultZoom(): number {
-  const dpr = getRenderDpr();
-  const off = (z: number) => Math.abs(z / (2 * dpr) - DEFAULT_VIEW_SCALE);
+  const off = (z: number) => Math.abs(viewScale(z) - DEFAULT_VIEW_SCALE);
   // <= so ties resolve to the larger (more zoomed-in) candidate.
   return getValidZooms().reduce((best, z) => (off(z) <= off(best) ? z : best));
 }
 
+/** CSS pixels per source pixel: the size the eye actually reads. */
 export function viewScale(zoom: number): number {
-  return zoom / (2 * getRenderDpr());
+  return devicePixelsPerSourcePixel(zoom) / realDpr();
 }
 
 /** "1x", "1.5x", "2.4x" — at most one decimal, trailing zero trimmed. */

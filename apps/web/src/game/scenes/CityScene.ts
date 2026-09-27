@@ -54,7 +54,7 @@ import { startMemStats } from "../telemetry/memStats";
 
 // Pixel-perfect zoom values and snapping live in config/zoomConfig.ts —
 // shared with ZoomControl and the pinch-zoom hook.
-import { loadZoom, snapZoom, viewScale } from "../config/zoomConfig";
+import { loadZoom, snapZoom, devicePixelsPerSourcePixel } from "../config/zoomConfig";
 
 /**
  * Set on the Phaser.Game once CityScene.create() has registered its listeners.
@@ -1404,19 +1404,19 @@ export class CityScene extends Phaser.Scene {
   }
 
   /**
-   * Picks crisp vs smooth canvas scaling for the current zoom. Device pixels
-   * per source pixel = viewScale × the REAL device dpr; below 1 the art is shown
-   * sub-pixel (a standard-DPI desktop zoomed out past 1×, where the forced 2×
-   * backing store downsamples sub-integer), and nearest-neighbor drops pixels —
-   * the "broken" zoom-out. Use smooth scaling only there; at ≥1 device-px per
-   * source-px keep crisp nearest, so the default look is unchanged and mobile
-   * (real dpr 2, where 0.5× lands on whole pixels) stays crisp too.
+   * Crisp or smooth canvas scaling for the current zoom.
+   *
+   * Every zoom the game offers now draws a source pixel as a WHOLE number of
+   * device pixels (see zoomConfig), so this should always choose crisp. It
+   * stays as a guard for the one case that can still arrive: a zoom restored
+   * from storage, or pushed by a pinch, that lands under one device pixel per
+   * source pixel — nearest-neighbour there drops rows of pixels outright,
+   * where smoothing merely softens them.
    */
   private applyZoomSmoothing(zoom: number): void {
     const canvas = this.game.canvas as HTMLCanvasElement | null;
     if (!canvas) return;
-    const realDpr = window.devicePixelRatio || 1;
-    canvas.style.imageRendering = viewScale(zoom) * realDpr < 1 ? "auto" : "pixelated";
+    canvas.style.imageRendering = devicePixelsPerSourcePixel(zoom) < 1 ? "auto" : "pixelated";
   }
 
   // ── "Where Is NPC?" hunt ──────────────────────────

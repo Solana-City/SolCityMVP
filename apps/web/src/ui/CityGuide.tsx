@@ -9,6 +9,7 @@
  * copy. Opens by itself the first time a player enters the city
  * (GUIDE_SEEN_KEY) and any time from Sol at the fountain.
  */
+import { crispSize } from "./crispPixels";
 import { useEffect, useState } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
@@ -46,7 +47,10 @@ export function Citizen({ sheet, size = 64, style }: { sheet: string; size?: num
       style={{
         width: size, height: size, flexShrink: 0,
         backgroundImage: `url("/assets/sprites/${sheet}")`,
-        backgroundSize: `${size * 4}px ${size * 4}px`, backgroundPosition: "0 0",
+        // Whole device pixels per source pixel, or the frame tears on a
+        // fractional-ratio screen. See ui/crispPixels.
+        backgroundSize: `${crispSize(64, size) * 4}px ${crispSize(64, size) * 4}px`,
+        backgroundPosition: "0 0",
         imageRendering: "pixelated", ...style,
       }}
     />

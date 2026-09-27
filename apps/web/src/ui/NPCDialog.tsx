@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect, useRef } from "react";
+import { crispSize } from "./crispPixels";
 import type { NPCDefinition, NPCAction } from "@/game/config/npcRegistry";
 import NPCPortrait from "./NPCPortrait";
 import { profileManager } from "@/game/config/profileManager";
@@ -186,7 +187,9 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
                 <span aria-hidden style={{
                   width: compact ? 24 : 30, height: compact ? 24 : 30, display: "block",
                   backgroundImage: `url("/assets/sprites/${h.sheet}")`,
-                  backgroundSize: `${(compact ? 24 : 30) * 4.4}px`, backgroundPosition: `${-(compact ? 24 : 30) * 0.2}px ${-(compact ? 24 : 30) * 0.06}px`,
+                  // Snapped to whole device pixels — see ui/crispPixels.
+                  backgroundSize: `${crispSize(64, (compact ? 24 : 30) * 1.1) * 4}px`,
+                  backgroundPosition: `${-crispSize(64, (compact ? 24 : 30) * 1.1) * 0.18}px ${-crispSize(64, (compact ? 24 : 30) * 1.1) * 0.055}px`,
                   imageRendering: "pixelated",
                 }} />
               ) : (

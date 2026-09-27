@@ -206,17 +206,22 @@ export class NPCSprite {
     }).setOrigin(0.5, 0.5).setVisible(false);
     container.add(this.promptText);
 
-    // ── Touch hit zone ───────────────────────────────────────────────────────
-    // Transparent rectangle covering the NPC sprite + name area.
-    // On touch devices, tapping the NPC while in range triggers interaction.
-    if (isTouch) {
+    // ── Hit zone ─────────────────────────────────────────────────────────────
+    // Transparent rectangle over the NPC sprite and its name. Clicking or
+    // tapping it while in range starts the conversation, the same thing E
+    // does — players tried this on desktop and nothing happened, because the
+    // zone used to be built only for touch. A repelling NPC has no
+    // conversation to start, so it gets no zone and no hand cursor.
+    if (!def.repel) {
       // Same proportions the old fixed 48x72 @ y=-24 used for a standard
       // NPC (visualHeight 32): y = -0.75×height, height = 2.25×height.
       const hitZone = scene.add.rectangle(0, -visualHeight * 0.75, 48, visualHeight * 2.25, 0x000000, 0);
-      hitZone.setInteractive({ useHandCursor: false });
+      // The hand only means anything where there is a cursor.
+      hitZone.setInteractive({ useHandCursor: !isTouch });
       hitZone.on("pointerdown", () => {
         if (this._isInRange) {
-          // Emit touch:interact so CityScene applies its interactionBlocked guard
+          // Through touch:interact either way, so CityScene applies the same
+          // interactionBlocked guard it applies to the ACT button and to E.
           scene.game.events.emit("touch:interact");
         }
       });
