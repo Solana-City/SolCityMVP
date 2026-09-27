@@ -55,6 +55,7 @@ import { chamferBox, avatarFrame, avatarPhoto } from "@/ui/chamfer";
 import { OPEN_DM_EVENT } from "@/game/chat/dmEvents";
 import { OPEN_CALENDAR_EVENT } from "@/game/daily/calendarEvents";
 import { DM_UNREAD_EVENT, SEND_TOKENS_EVENT } from "@/game/chat/dmEvents";
+import { useCrispPixelArt } from "@/ui/useCrispPixelArt";
 
 function useIsTouch() {
   const [isTouch, setIsTouch] = useState(false);
@@ -70,6 +71,9 @@ function useIsTouch() {
 
 export default function Home() {
   const [game, setGame] = useState<Phaser.Game | null>(null);
+  // Every pixel-art image in the HUD, kept on whole device pixels. The art is
+  // 64x64 and panels ask for it at 20, 22, 24 — see useCrispPixelArt.
+  useCrispPixelArt();
   const isTouch = useIsTouch();
   const [activeNPC, setActiveNPC] = useState<NPCDefinition | null>(null);
   const [activeAction, setActiveAction] = useState<NPCAction | null>(null);
