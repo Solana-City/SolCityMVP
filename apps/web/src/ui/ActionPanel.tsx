@@ -12,18 +12,21 @@ import CityGuide from "@/ui/CityGuide";
 import MagicBlockHub from "@/ui/MagicBlockHub";
 import StockExchangePanel from "@/ui/StockExchangePanel";
 import { chamferBox } from "@/ui/chamfer";
-import { CloseButton } from "@/ui/PixelIcons";
+import { CloseButton, PanelTitleBar, ProtocolLogo } from "@/ui/PixelIcons";
+import { CATEGORY_META } from "@/game/minimap/categories";
 import PegRiskPanel from "@/ui/PegRiskPanel";
 import CloakPanel from "@/ui/CloakPanel";
 import TokenScanPanel from "@/ui/TokenScanPanel";
 import { backdropClose } from "@/ui/backdrop";
 import { useViewportBox, overlayBox } from "@/ui/useViewportBox";
 
+/** Every protocol NPC's app window uses the map legend's "Protocols" color. */
+const PROTOCOLS_COLOR = CATEGORY_META.defi.color;
+
 /** Pratik: how Superteam Earn pays, before the bounty list. */
 const EARN_INTRO: IntroSpec = {
   id: "earn",
   title: "HOW EARN WORKS",
-  color: "#9945FF",
   nodes: [
     { sheet: "main_char.png", label: "YOU" },
     { sheet: "Pratik.png", label: "SPONSOR" },
@@ -40,7 +43,6 @@ const EARN_INTRO: IntroSpec = {
 const TRANSFER_INTRO: IntroSpec = {
   id: "transfer",
   title: "HOW SENDING WORKS",
-  color: "#14F0C6",
   nodes: [
     { sheet: "main_char.png", label: "YOU" },
     { sheet: "send-npc.png", label: "STEVE" },
@@ -57,7 +59,6 @@ const TRANSFER_INTRO: IntroSpec = {
 const PEG_RISK_INTRO: IntroSpec = {
   id: "peg-risk",
   title: "HOW A PEG CHECK WORKS",
-  color: "#00c2a8",
   nodes: [
     { sheet: "main_char.png", label: "YOU" },
     { sheet: "Raffx.png", label: "RAFFX", sheetWidth: 384, sheetHeight: 64 },
@@ -74,7 +75,6 @@ const PEG_RISK_INTRO: IntroSpec = {
 const TOKEN_SCAN_INTRO: IntroSpec = {
   id: "token-scan",
   title: "HOW A TOKEN SCAN WORKS",
-  color: "#ff5c5c",
   nodes: [
     { sheet: "main_char.png", label: "YOU" },
     { sheet: "Crash.png", label: "CRASH", sheetWidth: 384, sheetHeight: 64 },
@@ -91,7 +91,6 @@ const TOKEN_SCAN_INTRO: IntroSpec = {
 const CLOAK_INTRO: IntroSpec = {
   id: "cloak",
   title: "HOW PRIVATE SENDING WORKS",
-  color: "#8b7cf6",
   nodes: [
     { sheet: "main_char.png", label: "YOU" },
     { sheet: "Cloak.png", label: "CLOAK", sheetWidth: 384, sheetHeight: 64 },
@@ -108,7 +107,6 @@ const CLOAK_INTRO: IntroSpec = {
 const SWAP_INTRO: IntroSpec = {
   id: "swap",
   title: "HOW A SWAP WORKS",
-  color: "#B7E928",
   nodes: [
     { sheet: "main_char.png", label: "YOU" },
     { sheet: "Jupiter Joe.png", label: "JUPITER" },
@@ -125,7 +123,6 @@ const SWAP_INTRO: IntroSpec = {
 const STOCK_INTRO: IntroSpec = {
   id: "stock-exchange",
   title: "HOW STOCKS WORK",
-  color: "#FFB547",
   nodes: [
     { sheet: "main_char.png", label: "YOU" },
     { sheet: "Jupiter Joe.png", label: "JUPITER" },
@@ -197,14 +194,14 @@ export default function ActionPanel({ action, onClose }: ActionPanelProps) {
         >
           {/* Drag handle */}
           <div style={{ width: 40, height: 4, borderRadius: 2, background: "rgba(153,69,255,0.35)", margin: "0 auto 16px" }} />
-          <CloseButton onClick={onClose} style={{ position: "absolute", top: 16, right: 16 }} />
+          {action.type === "tutor" && <CloseButton onClick={onClose} style={{ position: "absolute", top: 16, right: 16 }} />}
 
           {action.type === "tutor"           && <TutorPanel           onClose={onClose} />}
           {action.type === "swap"            && <ProtocolIntroGate spec={SWAP_INTRO}><SwapPanel onClose={onClose} /></ProtocolIntroGate>}
           {action.type === "transfer"        && <ProtocolIntroGate spec={TRANSFER_INTRO}><TransferPanel onClose={onClose} to={action.recipient} toName={action.recipientName} /></ProtocolIntroGate>}
           {action.type === "bounties"        && <ProtocolIntroGate spec={EARN_INTRO}><BountiesPanel onClose={onClose} /></ProtocolIntroGate>}
           {action.type === "private-payment" && (
-            <MagicBlockHub><PrivatePaymentPanel onClose={onClose} /></MagicBlockHub>
+            <MagicBlockHub onClose={onClose}><PrivatePaymentPanel onClose={onClose} /></MagicBlockHub>
           )}
           {action.type === "stock-exchange"  && <ProtocolIntroGate spec={STOCK_INTRO}><StockExchangePanel onClose={onClose} /></ProtocolIntroGate>}
           {/* ST Brasil stands: the project's own public API behind the button. */}
@@ -236,20 +233,14 @@ export default function ActionPanel({ action, onClose }: ActionPanelProps) {
           overflowY: "auto",
         }}
       >
-        <button
-          onClick={onClose}
-          className="absolute top-4 right-4 text-lg cursor-pointer"
-          style={{ background: "none", border: "none", color: "#14F0C6" }}
-        >
-          ×
-        </button>
+        {action.type === "tutor" && <CloseButton onClick={onClose} style={{ position: "absolute", top: 16, right: 16 }} />}
 
         {action.type === "tutor"           && <TutorPanel           onClose={onClose} />}
         {action.type === "swap"            && <ProtocolIntroGate spec={SWAP_INTRO}><SwapPanel onClose={onClose} /></ProtocolIntroGate>}
         {action.type === "transfer"        && <ProtocolIntroGate spec={TRANSFER_INTRO}><TransferPanel onClose={onClose} to={action.recipient} toName={action.recipientName} /></ProtocolIntroGate>}
         {action.type === "bounties"        && <ProtocolIntroGate spec={EARN_INTRO}><BountiesPanel onClose={onClose} /></ProtocolIntroGate>}
         {action.type === "private-payment" && (
-            <MagicBlockHub><PrivatePaymentPanel onClose={onClose} /></MagicBlockHub>
+            <MagicBlockHub onClose={onClose}><PrivatePaymentPanel onClose={onClose} /></MagicBlockHub>
           )}
         {action.type === "stock-exchange"  && <ProtocolIntroGate spec={STOCK_INTRO}><StockExchangePanel onClose={onClose} /></ProtocolIntroGate>}
           {/* ST Brasil stands: the project's own public API behind the button. */}
@@ -357,9 +348,7 @@ function SwapPanel({ onClose }: { onClose: () => void }) {
   if (status === "done" && result) {
     return (
       <>
-        <h3 style={{ fontFamily: '"Press Start 2P", monospace', fontSize: "8px", color: "#FFD700", marginBottom: 16 }}>
-          TOKEN SWAP
-        </h3>
+        <PanelTitleBar title="TOKEN SWAP" onClose={onClose} color={PROTOCOLS_COLOR} logo={<ProtocolLogo sheet="Jupiter Joe.png" />} />
         <div className="text-center py-6">
           <div style={{ fontSize: 22, color: "#B7E928" }}>OK</div>
           <div style={{ fontFamily: '"Press Start 2P", monospace', fontSize: "8px", color: "#B7E928", marginTop: 8 }}>
@@ -383,9 +372,7 @@ function SwapPanel({ onClose }: { onClose: () => void }) {
   if (status === "error" && result) {
     return (
       <>
-        <h3 style={{ fontFamily: '"Press Start 2P", monospace', fontSize: "8px", color: "#FFD700", marginBottom: 16 }}>
-          TOKEN SWAP
-        </h3>
+        <PanelTitleBar title="TOKEN SWAP" onClose={onClose} color={PROTOCOLS_COLOR} logo={<ProtocolLogo sheet="Jupiter Joe.png" />} />
         <div className="text-center py-6">
           <div style={{ fontSize: "9px", color: "#ff4444", marginBottom: 12 }}>{result.error}</div>
           <button onClick={() => { setStatus("idle"); setResult(null); setQuote(null); }}
@@ -397,9 +384,7 @@ function SwapPanel({ onClose }: { onClose: () => void }) {
 
   return (
     <>
-      <h3 style={{ fontFamily: '"Press Start 2P", monospace', fontSize: "8px", color: "#FFD700", marginBottom: 16 }}>
-        TOKEN SWAP
-      </h3>
+      <PanelTitleBar title="TOKEN SWAP" onClose={onClose} color={PROTOCOLS_COLOR} logo={<ProtocolLogo sheet="Jupiter Joe.png" />} />
 
       {/* ⚠️ mainnet note */}
       <div style={{ fontSize: "7px", color: "#555566", marginBottom: 12, textAlign: "center" }}>
@@ -497,7 +482,7 @@ function TransferPanel({ onClose, to, toName }: { onClose: () => void; to?: stri
   if (status === "done" && result?.signature) {
     return (
       <>
-        <h3 style={{ fontFamily: '"Press Start 2P", monospace', fontSize: "8px", color: "#14F0C6", marginBottom: 16 }}>SEND SOL</h3>
+        <PanelTitleBar title="SEND SOL" onClose={onClose} color={PROTOCOLS_COLOR} logo={<ProtocolLogo sheet="send-npc.png" />} />
         <div className="text-center py-6">
           <div style={{ fontSize: 22, color: "#B7E928" }}>OK</div>
           <div style={{ fontFamily: '"Press Start 2P", monospace', fontSize: "8px", color: "#B7E928", marginTop: 8 }}>TRANSFER SENT</div>
@@ -513,7 +498,7 @@ function TransferPanel({ onClose, to, toName }: { onClose: () => void; to?: stri
   if (status === "error" && result) {
     return (
       <>
-        <h3 style={{ fontFamily: '"Press Start 2P", monospace', fontSize: "8px", color: "#14F0C6", marginBottom: 16 }}>SEND SOL</h3>
+        <PanelTitleBar title="SEND SOL" onClose={onClose} color={PROTOCOLS_COLOR} logo={<ProtocolLogo sheet="send-npc.png" />} />
         <div className="text-center py-6">
           <div style={{ fontSize: "9px", color: "#ff4444", marginBottom: 12 }}>{result.error}</div>
           <button onClick={() => { setStatus("idle"); setResult(null); }} style={btnStyle("#333344", "#888899")} className="px-4 py-2">Try again</button>
@@ -524,7 +509,7 @@ function TransferPanel({ onClose, to, toName }: { onClose: () => void; to?: stri
 
   return (
     <>
-      <h3 style={{ fontFamily: '"Press Start 2P", monospace', fontSize: "8px", color: "#14F0C6", marginBottom: 16 }}>SEND SOL</h3>
+      <PanelTitleBar title="SEND SOL" onClose={onClose} color={PROTOCOLS_COLOR} logo={<ProtocolLogo sheet="send-npc.png" />} />
       <InputBox label={toName ? `Recipient (${toName})` : "Recipient address"}>
         <input type="text" value={recipient} onChange={(e) => setRecipient(e.target.value)}
           placeholder="Paste Solana address…"
@@ -575,9 +560,7 @@ function BountiesPanel({ onClose }: { onClose: () => void }) {
 
   return (
     <>
-      <h3 style={{ fontFamily: '"Press Start 2P", monospace', fontSize: "8px", color: "#9945FF", marginBottom: 10 }}>
-        SUPERTEAM EARN
-      </h3>
+      <PanelTitleBar title="SUPERTEAM EARN" onClose={onClose} color={PROTOCOLS_COLOR} logo={<ProtocolLogo sheet="Pratik.png" />} style={{ marginBottom: 10 }} />
 
       <p style={{ fontSize: "8px", color: "#b9b9cc", margin: "0 0 14px", lineHeight: 1.6 }}>
         Pick a category. Only selected work gets paid, in USDC.

@@ -10,8 +10,10 @@
  */
 import { useEffect, useMemo, useState } from "react";
 import type { PegAsset } from "@/app/api/peg-risk/route";
+import { PanelTitleBar, ProtocolLogo, SiteLinkButton } from "@/ui/PixelIcons";
+import { CATEGORY_META } from "@/game/minimap/categories";
 
-const TEAL = "#00c2a8";
+const PROTOCOLS_COLOR = CATEGORY_META.defi.color;
 
 /** Pegana's five states, plus UNKNOWN for a cold or broken anchor. */
 const STATE_COLOR: Record<string, string> = {
@@ -100,8 +102,8 @@ export default function PegRiskPanel({ onClose }: { onClose: () => void }) {
   return (
     <div style={{ fontFamily: '"Press Start 2P", monospace' }}>
       <div style={{ marginBottom: 12 }}>
-        <h3 style={{ fontSize: 9, color: TEAL, margin: 0 }}>PEG RISK</h3>
-        <div style={{ fontSize: 7, color: "#555566", marginTop: 5 }}>Pegana, live on mainnet</div>
+        <PanelTitleBar title="PEGANA" onClose={onClose} color={PROTOCOLS_COLOR} logo={<ProtocolLogo sheet="Raffx.png" sheetWidth={384} sheetHeight={64} />} style={{ marginBottom: 5 }} />
+        <div style={{ fontSize: 7, color: "#555566" }}>Peg risk, live on mainnet</div>
       </div>
 
       {picked ? (
@@ -155,29 +157,8 @@ export default function PegRiskPanel({ onClose }: { onClose: () => void }) {
         </>
       )}
 
-      <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
-        <a
-          href="https://pegana.xyz/"
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{
-            flex: 1, textAlign: "center", padding: "12px 0", borderRadius: 8,
-            fontSize: 7, color: TEAL, background: "rgba(0,194,168,0.1)",
-            border: "1px solid rgba(0,194,168,0.4)", textDecoration: "none",
-          }}
-        >
-          PEGANA.XYZ
-        </a>
-        <button
-          onClick={onClose}
-          style={{
-            flex: 1, padding: "12px 0", borderRadius: 8, fontFamily: "inherit",
-            fontSize: 7, color: "#8888aa", background: "#12122a",
-            border: "1px solid rgba(255,255,255,0.06)", cursor: "pointer",
-          }}
-        >
-          CLOSE
-        </button>
+      <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 14 }}>
+        <SiteLinkButton href="https://pegana.xyz/" label="PEGANA.XYZ" />
       </div>
     </div>
   );

@@ -10,8 +10,11 @@
  */
 import { useState } from "react";
 import type { TokenScan } from "@/app/api/token-scan/route";
+import { PanelTitleBar, ProtocolLogo, SiteLinkButton } from "@/ui/PixelIcons";
+import { CATEGORY_META } from "@/game/minimap/categories";
 
 const RED = "#ff5c5c";
+const PROTOCOLS_COLOR = CATEGORY_META.defi.color;
 
 const LEVEL_COLOR: Record<string, string> = {
   CRITICAL: "#ff2d55",
@@ -50,8 +53,8 @@ export default function TokenScanPanel({ onClose }: { onClose: () => void }) {
   return (
     <div style={{ fontFamily: '"Press Start 2P", monospace' }}>
       <div style={{ marginBottom: 12 }}>
-        <h3 style={{ fontSize: 9, color: RED, margin: 0 }}>TOKEN SCAN</h3>
-        <div style={{ fontSize: 7, color: "#555566", marginTop: 5 }}>SolSentry, free read</div>
+        <PanelTitleBar title="SOLSENTRY" onClose={onClose} color={PROTOCOLS_COLOR} logo={<ProtocolLogo sheet="Crash.png" sheetWidth={384} sheetHeight={64} />} style={{ marginBottom: 5 }} />
+        <div style={{ fontSize: 7, color: "#555566" }}>Token risk, free read</div>
       </div>
 
       <div style={{ background: "#12122a", border: "1px solid rgba(255,255,255,0.04)", borderRadius: 8, padding: 12, marginBottom: 8 }}>
@@ -86,29 +89,8 @@ export default function TokenScanPanel({ onClose }: { onClose: () => void }) {
 
       {scan && <Verdict scan={scan} />}
 
-      <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
-        <a
-          href="https://solsentry.app"
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{
-            flex: 1, textAlign: "center", padding: "12px 0", borderRadius: 8,
-            fontSize: 7, color: RED, background: "rgba(255,92,92,0.1)",
-            border: "1px solid rgba(255,92,92,0.4)", textDecoration: "none",
-          }}
-        >
-          SOLSENTRY.APP
-        </a>
-        <button
-          onClick={onClose}
-          style={{
-            flex: 1, padding: "12px 0", borderRadius: 8, fontFamily: "inherit",
-            fontSize: 7, color: "#8888aa", background: "#12122a",
-            border: "1px solid rgba(255,255,255,0.06)", cursor: "pointer",
-          }}
-        >
-          CLOSE
-        </button>
+      <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 14 }}>
+        <SiteLinkButton href="https://solsentry.app" label="SOLSENTRY.APP" />
       </div>
     </div>
   );

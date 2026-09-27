@@ -14,7 +14,8 @@
  * this is the sign that points at it.
  */
 import { useState } from "react";
-import { LockIcon } from "@/ui/PixelIcons";
+import { PanelTitleBar, ProtocolLogo } from "@/ui/PixelIcons";
+import { CATEGORY_META } from "@/game/minimap/categories";
 import { track } from "@/game/telemetry/track";
 import { chamferBox } from "@/ui/chamfer";
 
@@ -22,6 +23,7 @@ const PIXEL = '"Press Start 2P", monospace';
 const MAGENTA = "#c026d3";
 const CYAN = "#14F0C6";
 const GREEN = "#B7E928";
+const PROTOCOLS_COLOR = CATEGORY_META.defi.color;
 
 type Area = "private" | "er" | "per" | "vrf";
 
@@ -87,9 +89,10 @@ const QUICKSTART = "https://docs.magicblock.gg/pages/ephemeral-rollups-ers/how-t
 export interface MagicBlockHubProps {
   /** The real private-transfer flow, rendered when the player picks it. */
   children: React.ReactNode;
+  onClose: () => void;
 }
 
-export default function MagicBlockHub({ children }: MagicBlockHubProps) {
+export default function MagicBlockHub({ children, onClose }: MagicBlockHubProps) {
   const [area, setArea] = useState<Area | null>(null);
 
   if (area === "private") {
@@ -114,10 +117,7 @@ export default function MagicBlockHub({ children }: MagicBlockHubProps) {
   return (
     <>
       <header style={{ marginBottom: 14 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <LockIcon size={14} color={MAGENTA} />
-          <h3 style={{ fontFamily: PIXEL, fontSize: 10, color: MAGENTA, margin: 0 }}>MAGIC MAN</h3>
-        </div>
+        <PanelTitleBar title="MAGIC MAN" onClose={onClose} color={PROTOCOLS_COLOR} logo={<ProtocolLogo sheet="Magic Man.png" />} style={{ marginBottom: 0 }} />
         <p style={{ fontSize: 9, color: "#8a8aa7", margin: "8px 0 0", lineHeight: 1.7 }}>
           MagicBlock runs this city. Move money privately, or see how it works.
         </p>

@@ -12,8 +12,11 @@
  */
 import { useState } from "react";
 import { CLOAK_APP, CLOAK_DOCS, CLOAK_FEES, CLOAK_LIVE, withdrawFee } from "@/lib/cloak/privateSend";
+import { PanelTitleBar, ProtocolLogo, SiteLinkButton } from "@/ui/PixelIcons";
+import { CATEGORY_META } from "@/game/minimap/categories";
 
 const VIOLET = "#8b7cf6";
+const PROTOCOLS_COLOR = CATEGORY_META.defi.color;
 const LAMPORTS = 1_000_000_000;
 
 const FLOW = [
@@ -33,8 +36,8 @@ export default function CloakPanel({ onClose }: { onClose: () => void }) {
   return (
     <div style={{ fontFamily: '"Press Start 2P", monospace' }}>
       <div style={{ marginBottom: 12 }}>
-        <h3 style={{ fontSize: 9, color: VIOLET, margin: 0 }}>PRIVATE TRANSFERS</h3>
-        <div style={{ fontSize: 7, color: "#555566", marginTop: 5 }}>Cloak, live on mainnet</div>
+        <PanelTitleBar title="CLOAK" onClose={onClose} color={PROTOCOLS_COLOR} logo={<ProtocolLogo sheet="Cloak.png" sheetWidth={384} sheetHeight={64} />} style={{ marginBottom: 5 }} />
+        <div style={{ fontSize: 7, color: "#555566" }}>Private transfers, live on mainnet</div>
       </div>
 
       {/* The flow, as three cards rather than a paragraph. */}
@@ -97,42 +100,21 @@ export default function CloakPanel({ onClose }: { onClose: () => void }) {
         </div>
       </div>
 
-      <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
-        <a
-          href={CLOAK_APP}
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{
-            flex: 1, textAlign: "center", padding: "12px 0", borderRadius: 8,
-            fontSize: 7, color: "#fff", background: VIOLET,
-            border: "none", textDecoration: "none",
-          }}
-        >
-          OPEN CLOAK
-        </a>
+      <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 14 }}>
         <a
           href={CLOAK_DOCS}
           target="_blank"
           rel="noopener noreferrer"
           style={{
-            flex: 1, textAlign: "center", padding: "12px 0", borderRadius: 8,
+            textAlign: "center", padding: "12px 16px", borderRadius: 8,
             fontSize: 7, color: VIOLET, background: "rgba(139,124,246,0.1)",
             border: `1px solid ${VIOLET}66`, textDecoration: "none",
           }}
         >
-          HOW IT WORKS
+          CLOAK DOCS
         </a>
+        <SiteLinkButton href={CLOAK_APP} label="OPEN CLOAK" />
       </div>
-      <button
-        onClick={onClose}
-        style={{
-          width: "100%", marginTop: 8, padding: "11px 0", borderRadius: 8, fontFamily: "inherit",
-          fontSize: 7, color: "#8888aa", background: "#12122a",
-          border: "1px solid rgba(255,255,255,0.06)", cursor: "pointer",
-        }}
-      >
-        CLOSE
-      </button>
     </div>
   );
 }

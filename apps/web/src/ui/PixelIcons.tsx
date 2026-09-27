@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { crispSize } from "./crispPixels";
+import { chamferBox } from "@/ui/chamfer";
 
 /**
  * Pixel-art icons for HUD panels, from sprites already in the build.
@@ -67,6 +68,122 @@ export function CloseButton({
     >
       <span aria-hidden style={maskIcon(ICON.close, color, size)} />
     </button>
+  );
+}
+
+/**
+ * A protocol NPC's own sprite, frame 0, as a small square "logo" next to a
+ * panel's title — the same sheet the NPC walks around in, not a separate
+ * icon file. Most character sheets are a 256x256 grid of 64px frames
+ * (default); the ST Brasil stand NPCs (Raffx, Crash, Cloak) are a single
+ * 384x64 row of 6 — pass their real sheetWidth/sheetHeight so the crop
+ * lands on frame 0 instead of stretching across the wrong grid.
+ */
+export function ProtocolLogo({
+  sheet, size = 24, sheetWidth = 256, sheetHeight = 256,
+}: {
+  sheet: string;
+  size?: number;
+  sheetWidth?: number;
+  sheetHeight?: number;
+}) {
+  const cols = sheetWidth / FRAME_PX;
+  const rows = sheetHeight / FRAME_PX;
+  return (
+    <span
+      aria-hidden
+      style={{
+        display: "block", width: size, height: size, flexShrink: 0, overflow: "hidden",
+        backgroundImage: `url("/assets/sprites/${sheet}")`,
+        backgroundSize: `${size * cols}px ${size * rows}px`,
+        backgroundPosition: "0 0",
+        imageRendering: "pixelated",
+      }}
+    />
+  );
+}
+
+/**
+ * Header row for a protocol's application window: logo + title on the left,
+ * the close button on the right — same layout as the Wardrobe/Leaderboard
+ * panel titles, so every "app" an NPC opens reads as part of one system.
+ */
+export function PanelTitleBar({
+  title, onClose, color = UI_ACCENT, logo, extra, style,
+}: {
+  title: string;
+  onClose: () => void;
+  color?: string;
+  logo?: React.ReactNode;
+  /** Extra content between the title and the close button, e.g. a status chip. */
+  extra?: React.ReactNode;
+  style?: React.CSSProperties;
+}) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 14, ...style }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+        {logo}
+        <span style={{
+          fontFamily: '"Press Start 2P", monospace', fontSize: 12, color, letterSpacing: 2,
+          whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+        }}>
+          {title}
+        </span>
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+        {extra}
+        <CloseButton onClick={onClose} color={color} />
+      </div>
+    </div>
+  );
+}
+
+/** A box breaking out of its top-right corner with an arrow — opens elsewhere. */
+export function ExternalLinkIcon({ size = 10, color = "currentColor" }: { size?: number; color?: string }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" shapeRendering="crispEdges"
+      style={{ display: "block", flexShrink: 0 }}>
+      <path d="M6.5 3H3.5a1 1 0 0 0-1 1v8.5a1 1 0 0 0 1 1H12a1 1 0 0 0 1-1V9.5"
+        stroke={color} strokeWidth="1.4" />
+      <path d="M9 2.5h4.5V7M13.3 2.7 7.5 8.5" stroke={color} strokeWidth="1.4" strokeLinecap="square" />
+    </svg>
+  );
+}
+
+/**
+ * The pill that sends a player off to a protocol's own site: the UI accent
+ * color, a light chamfer, a hover glow, and the external-link glyph so it
+ * never reads as "close" or an in-app action.
+ */
+export function SiteLinkButton({
+  href, label, color = UI_ACCENT, style,
+}: {
+  href: string;
+  label: string;
+  color?: string;
+  style?: React.CSSProperties;
+}) {
+  const [hover, setHover] = useState(false);
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={chamferBox(6, {
+        display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7,
+        padding: "10px 16px", fontFamily: '"Press Start 2P", monospace', fontSize: 7,
+        color, background: hover ? `${color}26` : `${color}14`,
+        border: `1px solid ${color}${hover ? "aa" : "66"}`,
+        textDecoration: "none", cursor: "pointer", whiteSpace: "nowrap",
+        transition: "background 0.15s, border-color 0.15s",
+        ...style,
+      })}
+    >
+      {label}
+      <ExternalLinkIcon size={9} color={color} />
+    </a>
   );
 }
 

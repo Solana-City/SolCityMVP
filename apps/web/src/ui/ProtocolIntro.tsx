@@ -11,9 +11,14 @@
  */
 import { useEffect, useState } from "react";
 import { track } from "@/game/telemetry/track";
-import { chamferBox } from "@/ui/chamfer";
+import { chamferBox, octagonFrame } from "@/ui/chamfer";
+import { UI_ACCENT } from "@/ui/PixelIcons";
 
 const PIXEL = '"Press Start 2P", monospace';
+/** Matches ChatGuide/Profile's NEXT-style action button, so every "next
+ *  step" control in the game reads the same regardless of which tutorial
+ *  it's in. */
+const LIME = "#B7E928";
 
 export interface FlowNode {
   /** File in /assets/sprites (a 256x256 sheet of 64px frames). */
@@ -47,7 +52,6 @@ export interface IntroStep {
 export interface IntroSpec {
   id: string;
   title: string;
-  color: string;
   nodes: FlowNode[];
   steps: IntroStep[];
 }
@@ -65,9 +69,9 @@ function Flow({ spec, step }: { spec: IntroSpec; step: IntroStep }) {
       {spec.nodes.map((node, i) => {
         const lit = i === step.edge || i === step.edge + 1;
         return (
-          <g key={node.label}>
+          <g key={i}>
             <rect x={cx(i) - 30} y={Y - 34} width={60} height={56} rx={10}
-              fill={lit ? `${spec.color}22` : "#12122a"} stroke={lit ? spec.color : "#2a2a45"} strokeWidth={lit ? 2 : 1} />
+              fill={lit ? `${LIME}22` : "#12122a"} stroke={lit ? LIME : "#2a2a45"} strokeWidth={lit ? 2 : 1} />
             {node.src ? (
               <image href={node.src} x={cx(i) - 20} y={Y - 26} width={40} height={40}
                 preserveAspectRatio="xMidYMid meet" style={{ imageRendering: "pixelated" }} />
@@ -94,11 +98,11 @@ function Flow({ spec, step }: { spec: IntroSpec; step: IntroStep }) {
         const path = `M ${x1} ${Y - 6} L ${x2} ${Y - 6}`;
         return (
           <g key={`e${i}`}>
-            <path d={path} stroke={on ? spec.color : "#3a3a55"} strokeWidth={on ? 3 : 2}
+            <path d={path} stroke={on ? LIME : "#3a3a55"} strokeWidth={on ? 3 : 2}
               strokeDasharray={on ? "6 4" : undefined} fill="none">
               {on && <animate attributeName="stroke-dashoffset" from="20" to="0" dur="0.8s" repeatCount="indefinite" />}
             </path>
-            <path d={`M ${x2} ${Y - 11} L ${x2 + 7} ${Y - 6} L ${x2} ${Y - 1} z`} fill={on ? spec.color : "#3a3a55"} />
+            <path d={`M ${x2} ${Y - 11} L ${x2 + 7} ${Y - 6} L ${x2} ${Y - 1} z`} fill={on ? LIME : "#3a3a55"} />
             {on && step.chip && (
               <g>
                 <animateMotion dur="1.6s" repeatCount="indefinite" path={`M ${x1 - 4} 0 L ${x2 - 10} 0`} />
@@ -133,11 +137,24 @@ function IntroCards({ spec, onDone }: { spec: IntroSpec; onDone: () => void }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [last, onDone]);
 
+  // A self-contained floating card over everything, not more content inside
+  // the app panel's own frame — a second frame right behind this one read as
+  // a mistake. Pointer events pass through the empty margin around the card,
+  // so a click there still reaches the app panel's own backdrop and closes
+  // it exactly as before.
   return (
-    <>
+    <div style={{
+      position: "fixed", inset: 0, zIndex: 50, pointerEvents: "none",
+      display: "flex", alignItems: "center", justifyContent: "center", padding: 16,
+    }}>
+    <div style={{
+      ...octagonFrame(1),
+      width: "min(420px, 100%)", pointerEvents: "auto",
+      background: "#0A0C1C", padding: "14px 16px 16px",
+    }}>
       <div style={{ display: "flex", alignItems: "center", marginBottom: 10 }}>
-        <h3 style={{ fontFamily: PIXEL, fontSize: 8, color: spec.color, margin: 0 }}>{spec.title}</h3>
-        <span style={{ marginLeft: "auto", marginRight: 26, fontSize: 7, color: "#555566" }}>
+        <h3 style={{ fontFamily: PIXEL, fontSize: 8, color: LIME, margin: 0 }}>{spec.title}</h3>
+        <span style={{ marginLeft: "auto", fontSize: 7, color: "#555566" }}>
           {i + 1}/{spec.steps.length}
         </span>
       </div>
@@ -152,7 +169,7 @@ function IntroCards({ spec, onDone }: { spec: IntroSpec; onDone: () => void }) {
         <button
           onClick={() => setI((n) => Math.max(0, n - 1))}
           style={chamferBox(8, {
-            background: "transparent", border: "1px solid #333344", color: "#888899", 
+            background: "transparent", border: "1px solid #333344", color: "#888899",
             padding: "9px 12px", cursor: "pointer", fontFamily: PIXEL, fontSize: 7,
             visibility: i === 0 ? "hidden" : "visible",
           })}
@@ -161,20 +178,21 @@ function IntroCards({ spec, onDone }: { spec: IntroSpec; onDone: () => void }) {
         </button>
         <div style={{ flex: 1, display: "flex", justifyContent: "center", gap: 5 }}>
           {spec.steps.map((s, n) => (
-            <span key={s.title} style={{ width: n === i ? 16 : 6, height: 6, borderRadius: 3, background: n === i ? spec.color : "#333344", transition: "width .2s" }} />
+            <span key={s.title} style={{ width: n === i ? 16 : 6, height: 6, borderRadius: 3, background: n === i ? LIME : "#333344", transition: "width .2s" }} />
           ))}
         </div>
         <button
           onClick={() => (last ? onDone() : setI((n) => n + 1))}
           style={chamferBox(8, {
-            background: spec.color, color: "#0a0a14", border: "none", 
+            background: LIME, color: "#0a0a14", border: "none",
             padding: "10px 16px", cursor: "pointer", fontFamily: PIXEL, fontSize: 7,
           })}
         >
           {last ? "START" : "NEXT"}
         </button>
       </div>
-    </>
+    </div>
+    </div>
   );
 }
 
@@ -199,8 +217,8 @@ export function ProtocolIntroGate({ spec, children }: { spec: IntroSpec; childre
       <button
         onClick={() => setOpen(true)}
         style={chamferBox(6, {
-          display: "block", marginLeft: "auto", marginRight: 26, marginBottom: 6,
-          background: "transparent", border: `1px solid ${spec.color}66`, color: spec.color,
+          display: "block", marginLeft: "auto", marginBottom: 6,
+          background: "transparent", border: `1px solid ${UI_ACCENT}66`, color: UI_ACCENT,
           padding: "4px 7px", cursor: "pointer", fontFamily: PIXEL, fontSize: 7,
         })}
       >

@@ -20,8 +20,11 @@ import { ORDER_TTL_MS, deserializeTransaction, fromSmallestUnit, type OrderRespo
 import { transactionLog } from "@/game/telemetry/transactionLog";
 import { profileManager } from "@/game/config/profileManager";
 import { chamferBox } from "@/ui/chamfer";
+import { PanelTitleBar, ProtocolLogo } from "@/ui/PixelIcons";
+import { CATEGORY_META } from "@/game/minimap/categories";
 
 const PIXEL = '"Press Start 2P", monospace';
+const PROTOCOLS_COLOR = CATEGORY_META.defi.color;
 const GOLD = "#FFB547";
 const UP = "#B7E928";
 const DOWN = "#FF4D6D";
@@ -154,21 +157,25 @@ export default function StockExchangePanel({ onClose }: { onClose: () => void })
   return (
     <div style={{ fontFamily: PIXEL }}>
       {/* Header */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10, paddingRight: 24 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <span style={{ fontSize: 9, color: GOLD }}>STOCKLANA</span>
-          {IS_DEVNET && (
-            <span style={{ fontSize: 5, padding: "3px 5px", borderRadius: 5, background: "rgba(20,240,198,0.14)", color: "#14F0C6" }}>DEVNET TEST</span>
-          )}
-        </div>
-        <span style={{
-          fontSize: 6, padding: "4px 6px", borderRadius: 6,
-          background: clock.wallStreetOpen ? "rgba(183,233,40,0.12)" : "rgba(255,181,71,0.12)",
-          color: clock.wallStreetOpen ? UP : GOLD,
-        }}>
-          {clock.wallStreetOpen ? "NYSE OPEN" : "AFTER HOURS"}
-        </span>
-      </div>
+      <PanelTitleBar
+        title="STOCKLANA"
+        onClose={onClose}
+        color={PROTOCOLS_COLOR}
+        logo={<ProtocolLogo sheet="Stocks Broker.png" />}
+        style={{ marginBottom: 10 }}
+        extra={
+          <span style={{
+            fontSize: 6, padding: "4px 6px", borderRadius: 6, whiteSpace: "nowrap",
+            background: clock.wallStreetOpen ? "rgba(183,233,40,0.12)" : "rgba(255,181,71,0.12)",
+            color: clock.wallStreetOpen ? UP : GOLD,
+          }}>
+            {clock.wallStreetOpen ? "NYSE OPEN" : "AFTER HOURS"}
+          </span>
+        }
+      />
+      {IS_DEVNET && (
+        <span style={{ fontSize: 5, padding: "3px 5px", borderRadius: 5, background: "rgba(20,240,198,0.14)", color: "#14F0C6" }}>DEVNET TEST</span>
+      )}
       <div style={{ fontSize: 6, color: MUTED, marginBottom: 12, lineHeight: 1.6 }}>
         Real stocks as Solana tokens. Trade 24/7.
       </div>
@@ -299,9 +306,8 @@ export default function StockExchangePanel({ onClose }: { onClose: () => void })
         })}
       </div>
 
-      <div style={{ display: "flex", justifyContent: "space-between", marginTop: 12, fontSize: 5, color: "#555a70", lineHeight: 1.6 }}>
-        <span>{IS_DEVNET ? "Devnet test tokens. No real value." : "Mainnet via Jupiter. Not for US persons."}</span>
-        <button onClick={onClose} style={{ background: "none", border: "none", color: MUTED, fontFamily: PIXEL, fontSize: 6, cursor: "pointer" }}>ESC</button>
+      <div style={{ marginTop: 12, fontSize: 5, color: "#555a70", lineHeight: 1.6 }}>
+        {IS_DEVNET ? "Devnet test tokens. No real value." : "Mainnet via Jupiter. Not for US persons."}
       </div>
     </div>
   );
