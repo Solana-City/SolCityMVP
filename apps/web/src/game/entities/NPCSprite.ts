@@ -219,11 +219,12 @@ export class NPCSprite {
       // The hand only means anything where there is a cursor.
       hitZone.setInteractive({ useHandCursor: !isTouch });
       hitZone.on("pointerdown", () => {
-        if (this._isInRange) {
-          // Through touch:interact either way, so CityScene applies the same
-          // interactionBlocked guard it applies to the ACT button and to E.
-          scene.game.events.emit("touch:interact");
-        }
+        // Names the NPC that was clicked. The old path emitted the generic
+        // touch:interact, which opens whichever NPC is NEAREST and in range:
+        // click one of two NPCs standing together and the other one answered,
+        // and click anyone you were not already standing next to and nothing
+        // happened at all, which is what "clicking does nothing" was.
+        scene.game.events.emit("npc:click", def.id);
       });
       container.add(hitZone);
     }

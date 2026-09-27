@@ -17,10 +17,17 @@ const VIEW_SCALE_KEY = "solcity:view-scale";
 /** Pre-DPR-aware storage key — held the raw camera zoom at an implied dpr of 1. */
 const LEGACY_ZOOM_KEY = "solcity:zoom";
 
-// Bias the range toward zooming OUT (seeing more of the city) rather than
-// magnification: floor at half scale, cap at 2.5x.
-const MIN_VIEW_SCALE = 0.45;
-const MAX_VIEW_SCALE = 2.55;
+/**
+ * The ladder, written as what the player sees: CSS pixels per source pixel.
+ * Small numbers show more city.
+ *
+ * Deliberately lopsided. Playtesters kept asking for room between "the whole
+ * neighbourhood at once" and "a few buildings", and never once asked to get
+ * closer than 2x — so the wide half is in quarter steps and the near half is
+ * in halves. The old ladder was five even steps from 0.5 to 2.5, which meant
+ * one single option below 1x and three above it.
+ */
+const VIEW_SCALES = [0.4, 0.5, 0.625, 0.75, 1.0, 1.5, 2.0];
 
 /**
  * DPR the canvas backing store is rendered at. PhaserGame publishes the
@@ -50,14 +57,33 @@ export function computeRenderDpr(): number {
   return isTouch ? raw : Math.max(raw, 2);
 }
 
-/** Even camera zooms whose view scale falls in a sane range, ascending. */
+/**
+ * The ladder as camera zooms, ascending.
+ *
+ * A step is crisp when it lands a source pixel on a whole number of device
+ * pixels; the ones that do not are rendered smooth instead of torn (see
+ * CityScene.applyZoomSmoothing). Which steps are which depends on the screen,
+ * so the ladder is the same everywhere and the rendering adapts, rather than
+ * every screen getting a different set of options.
+ */
+/**
+ * Widest useful view, in tiles across. The city is 135 tiles wide, so a step
+ * that fits 200 of them on a big monitor is showing the void past the edges
+ * and drawing everything in between to do it. A step that wide is dropped on
+ * the screens where it lands there, which is why a 1920px desktop gets fewer
+ * steps than a laptop: its 1x already shows 80 tiles.
+ */
+const MAX_TILES_ACROSS = 110;
+const TILE_PX = 24;
+
 export function getValidZooms(): number[] {
   const dpr = getRenderDpr();
-  const zooms: number[] = [];
-  for (let z = 2; z / (2 * dpr) <= MAX_VIEW_SCALE; z += 2) {
-    if (z / (2 * dpr) >= MIN_VIEW_SCALE) zooms.push(z);
-  }
-  return zooms.length > 0 ? zooms : [2, 4];
+  const cssWidth = typeof window === "undefined" ? 0 : window.innerWidth;
+  const zooms = VIEW_SCALES
+    .filter((v) => !cssWidth || cssWidth / v / TILE_PX <= MAX_TILES_ACROSS)
+    .map((v) => v * 2 * dpr);
+  // Never leave the control with nothing to offer.
+  return zooms.length > 0 ? zooms : [VIEW_SCALES[VIEW_SCALES.length - 1] * 2 * dpr];
 }
 
 export function snapZoom(zoom: number): number {
@@ -73,6 +99,12 @@ export function snapZoom(zoom: number): number {
  */
 const DEFAULT_VIEW_SCALE = 0.5;
 
+/** True when this step lands on whole device pixels and renders crisp. */
+export function isCrisp(zoom: number): boolean {
+  const px = viewScale(zoom) * (typeof window === "undefined" ? 1 : window.devicePixelRatio || 1);
+  return px >= 1 && Math.abs(px - Math.round(px)) < 0.01;
+}
+
 /** The valid zoom whose view scale is closest to DEFAULT_VIEW_SCALE. */
 export function getDefaultZoom(): number {
   const dpr = getRenderDpr();
@@ -85,10 +117,15 @@ export function viewScale(zoom: number): number {
   return zoom / (2 * getRenderDpr());
 }
 
-/** "1x", "1.5x", "2.4x" — at most one decimal, trailing zero trimmed. */
+/**
+ * "0.75x", "1x", "1.5x". Two decimals below 1x, because that is where the
+ * steps are now close together and rounding them to one decimal turned 0.625
+ * and 0.75 into the same label.
+ */
 export function formatViewScale(zoom: number): string {
-  const v = Math.round(viewScale(zoom) * 10) / 10;
-  return `${v}×`;
+  const v = viewScale(zoom);
+  const rounded = v < 1 ? Math.round(v * 100) / 100 : Math.round(v * 10) / 10;
+  return `${rounded}×`;
 }
 
 export function loadZoom(): number {

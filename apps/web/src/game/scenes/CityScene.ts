@@ -1102,6 +1102,20 @@ export class CityScene extends Phaser.Scene {
     this.input.keyboard?.on("keydown-E", tryInteract);
     this.input.keyboard?.on("keydown-SPACE", tryInteract);
 
+    // Clicking or tapping an NPC talks to THAT one. No range test: if a
+    // player can see a citizen and points at them, the answer to "can I talk
+    // to you" is yes — walking into range first is a rule the city never
+    // explained and nobody enjoyed discovering.
+    this.onGameEvent("npc:click", (id: string) => {
+      if (this.chatInputActive || this.interactionBlocked) return;
+      const npc = this.npcSprites.find((n) => n.def.id === id);
+      if (!npc) return;
+      this.interactionBlocked = true;
+      npc.faceToward(this.avatar.x, this.avatar.y);
+      track("npc", npc.def.id, { label: npc.def.name });
+      this.game.events.emit("npc:interact", npc.def);
+    });
+
     // Record on-chain when the player completes a swap/transfer/bounty.
     // ActionPanel emits these events after a successful transaction.
     this.onGameEvent("game:swap",     () => this.network?.recordAction("swap"));
