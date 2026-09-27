@@ -206,19 +206,25 @@ export class NPCSprite {
     }).setOrigin(0.5, 0.5).setVisible(false);
     container.add(this.promptText);
 
-    // ── Touch hit zone ───────────────────────────────────────────────────────
-    // Transparent rectangle covering the NPC sprite + name area.
-    // On touch devices, tapping the NPC while in range triggers interaction.
-    if (isTouch) {
+    // ── Hit zone ─────────────────────────────────────────────────────────────
+    // Transparent rectangle over the NPC sprite and its name. Clicking or
+    // tapping it while in range starts the conversation, the same thing E
+    // does — players tried this on desktop and nothing happened, because the
+    // zone used to be built only for touch. A repelling NPC has no
+    // conversation to start, so it gets no zone and no hand cursor.
+    if (!def.repel) {
       // Same proportions the old fixed 48x72 @ y=-24 used for a standard
       // NPC (visualHeight 32): y = -0.75×height, height = 2.25×height.
       const hitZone = scene.add.rectangle(0, -visualHeight * 0.75, 48, visualHeight * 2.25, 0x000000, 0);
-      hitZone.setInteractive({ useHandCursor: false });
+      // The hand only means anything where there is a cursor.
+      hitZone.setInteractive({ useHandCursor: !isTouch });
       hitZone.on("pointerdown", () => {
-        if (this._isInRange) {
-          // Emit touch:interact so CityScene applies its interactionBlocked guard
-          scene.game.events.emit("touch:interact");
-        }
+        // Names the NPC that was clicked. The old path emitted the generic
+        // touch:interact, which opens whichever NPC is NEAREST and in range:
+        // click one of two NPCs standing together and the other one answered,
+        // and click anyone you were not already standing next to and nothing
+        // happened at all, which is what "clicking does nothing" was.
+        scene.game.events.emit("npc:click", def.id);
       });
       container.add(hitZone);
     }
@@ -251,7 +257,7 @@ export class NPCSprite {
     this.bubble?.destroy();
     // Clear of the name label, which sits at visualHeight + 2.
     this.bubble = new ChatBubble(this.scene, this.getContainer(), text, "#ffffff", {
-      bg: 0xffffff, bgAlpha: 1, outline: false, y: -(this.avatar.getVisualHeight() + 16),
+      bg: 0xffffff, bgAlpha: 1, outline: false, y: -(this.avatar.getVisualHeight() + 16), overlay: true,
     });
     // The sheet that goes with the line: the builder throws an arm out.
     if (this.def.spriteActionKey) this.avatar.poseFor(this.def.spriteActionKey, ACTION_HOLD_MS);

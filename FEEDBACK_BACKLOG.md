@@ -1,9 +1,14 @@
 # Playtest feedback backlog
 
 Every open item from player feedback, ranked. Newest rounds: **playtest of
-2026-09-20**, **mentor notes of 2026-09-21** (the Direction section) and the
-**mentor session of 2026-09-24** (Round of 2026-09-24).
+2026-09-20**, **mentor notes of 2026-09-21** (the Direction section), the
+**mentor session of 2026-09-24** (Round of 2026-09-24) and the **playtest of
+2026-09-27** (Round of 2026-09-27).
 Items that shipped are marked DONE until the next cleanup.
+
+Nothing is thrown away here. An idea nobody plans to build still gets written
+down, in the Ideas bank at the bottom, because the same idea arriving twice
+from two different playtests is itself a signal.
 
 Priority means: **P0** hurts everyone right now, **P1** is the next real
 improvement, **P2** is wanted but can wait, **P3** is an idea we like.
@@ -113,6 +118,200 @@ Until R1 to R3 exist and the return rate is measured, these wait even though
 they are good ideas: Kite PvP, kick a ball, player-owned houses, influencer
 parties, trustless ranked settlement, companion pet. Each adds depth to a
 session; none gives a reason to come back tomorrow.
+
+---
+
+## Round of 2026-09-27 (playtest): the game on other people's screens
+
+Every line below was checked against the code, so each says what is actually
+there rather than what it might be.
+
+### P0 — people could not play, or could not trust their eyes
+
+#### P1a. iPad and tablets: unplayable
+*"In iPad/tablet the game doesn't work. Can't control. The control pads are
+not in a reachable place."*
+
+The controls appear correctly (`MobileControls` shows on `pointer: coarse`,
+which a tablet reports), but the layout was drawn for a phone: the stick and
+the buttons sit in the far bottom corners, which on a 1024x1366 screen is
+nowhere near either thumb. Needs a tablet layout — pads anchored to where
+hands actually hold the device, not to the corners of the glass.
+
+#### P1b. The same zoom shows a different city on every screen
+*"Zoom looks different in different devices. In one PC 0.5x shows more of the
+city than other ones. Zoom also looks very different on mobile: even 0.5x
+can't see that far."*
+
+Both are the same root cause, and it is by design in `zoomConfig`: the zoom
+steps are a PIXEL SIZE ("view scale": how big one game pixel is in CSS
+pixels), not a field of view. At 0.5x every device draws the same size
+pixels, so how much city fits depends only on how wide the window is: a
+2560px monitor sees twice the city of a 1280px laptop, and a 390px phone
+sees a sixth of it.
+
+The fix is to make the steps mean "how much city you see" and let the pixel
+size follow. That collides head on with the next item, so the two have to be
+decided together.
+
+#### P1c. Pixels crack
+*"Fix pixel size proportion. It is cracking."* and *"Zoom doesn't need to be
+that zoomed in, but more options in between."*
+
+Only EVEN camera zooms land one game pixel on a whole number of device
+pixels; anything else samples pixel art off the grid, which is the cracking.
+That is why the steps are coarse (0.5x, 1.0x, 1.5x with nothing between) —
+the in-between steps are exactly the ones that crack.
+
+So it is a choice, not a bug to fix twice:
+- **Keep crisp, add steps by resolution**: change the backing-store scale per
+  step instead of the camera zoom. More steps, all crisp, costs fill rate at
+  the wide end.
+- **Free zoom, one blur**: render the world at an integer scale into a
+  texture and scale that texture smoothly. Any zoom, uniformly soft rather
+  than cracked.
+The first keeps the look; the second gives the mentor's "more options in
+between". Worth deciding before anyone writes code.
+
+#### P1d. Pink squares in the dialogue portraits — DONE 2026-09-27
+*"Pink background in the previews, when the character is used as an icon in
+the dialogue."*
+
+Found it. The game keys the pink (215,123,186) out at LOAD time, inside
+Phaser. Every preview drawn by the DOM — the dialogue highlight cards, the
+tutorial flow nodes, the city guide, the pixel icons — loads the raw PNG
+instead, so whatever pink is still in the FILE shows up. Checked every sheet:
+`Kuka`, `Sol`, `Mr. Bananas` and `main_char` were exported transparent and
+are fine, while `BK` (70% pink), `Raffx` (69%), `Crash` (65%), `Cloak` (64%)
+and `Kite Pro` (54%) still carry it.
+
+Fixed by keying the files themselves: scripts/key-sprite-sheets.mjs applies
+the same rules BootScene does (flood fill for paperdoll skin, where the key
+colour can equal a pink skin tone; flat everywhere else, which also clears
+pockets the art encloses). 67 sheets, including the whole paperdoll, which
+would have shown the same pink anywhere the DOM previews an outfit. The
+runtime pass now skips a sheet whose corner is already transparent, so boot
+does ~67 fewer canvas passes and new art still gets keyed if it arrives
+pink.
+
+#### P1e. Kite Clash breaks sometimes
+*"Check kite game breaking sometimes."* No repro yet: which screen, what was
+on it, and whether it was a round already running. Worth catching once with
+the console open, since nothing in the code obviously explains it.
+
+### P1 — the next real improvements
+
+#### P2a. Clicking a character should talk to them
+*"Click on the character/NPC to trigger interaction as well, not just
+E/space."*
+
+The hit zone that does this exists already — `NPCSprite` builds it only when
+`scene.sys.game.device.input.touch` is true, so desktop never gets one.
+Removing that condition is most of the work; the rest is making the cursor
+change over an NPC so it reads as clickable.
+
+#### P2b. Nobody knows the hotkeys
+*"One hotkey to hide the UI. Scroll to zoom on desktop. Explain the hotkeys
+somewhere — reactions have hotkeys but no one uses them because they don't
+know."*
+
+Three things in one: the keys that exist are undiscoverable, scroll-to-zoom
+is missing, and hide-UI does not exist. A single key list (on the pause or
+profile panel, and printed once on first load) plus the two new bindings.
+
+#### P2c. The NPC dialogue icons look like buttons
+*"When interacting with an NPC, remove the frames of the icons. It appears to
+be buttons and people try to click."*
+
+The highlight cards have a border and a filled background, which is button
+grammar. They are captions. Drop the frame, keep the picture and the word.
+
+#### P2d. Cloak should open on the action, not the home page
+*"Go directly to the interaction 'shield' when clicking the link."*
+
+Today the panel links to cloak.ag. Needs their deep link for the shield flow
+(ask Victor for the URL) so the player lands where the action is.
+
+#### P2e. Sol Mechs: rules, and the workshop
+*"Game rules for Sol Mechs: tutorial and how to strategize."* and *"Change
+the workshop. Stats: instead of bars, icons (click to see what they
+mean/do)."*
+
+There is a rules screen, but nothing that teaches STRATEGY — what a matrix
+buff is for, why legs matter now, when to substitute. And the workshop shows
+stats as bars, which say "bigger is better" and nothing else. Icons that
+explain themselves on click would say what the stat DOES.
+
+#### P2f. The minimap should say what is around you
+*"Minimap showing what is around."* It shows the city and the landmarks;
+what it does not show is what is near you right now — an NPC two streets
+over, a player, a stand worth visiting. Distinct from "Fix map", which was
+listed separately and needs one sentence from the room about what was wrong.
+
+#### P2g. Achievements in tiers, and one for Find Someone
+*"Levels of achievements: Social Butterfly, speak to 1/5/10/20."*, *"An
+achievement for Find Someone."*, *"As many achievements as possible — they
+give dopamine."*
+
+The achievements list exists and is flat: each one fires once. Tiers are the
+same data with thresholds, and Find Someone already tracks scores, so it is
+mostly wiring rather than new systems.
+
+#### P2h. Water that moves
+*"Visual feedbacks: water moving on the beach and also under the bridge."*
+
+Already speced: the brief for the artist is in SPRITE_REQUESTS.md (four
+frames per tile, declared as Tiled tile animations, map untouched), and the
+engine side is ~2-3 hours — read the animations, keep the frames through the
+tileset packer, repaint the animated cells inside the baked ground about 8
+times a second so the per-frame cost stays at zero.
+
+### P2 — wanted, needs a decision or art first
+
+#### P3a. Interiors, starting with the Solana City building
+*"Make the interior of Solana City as a test for interiors. Inside, the
+builders of each season get together and show their projects."*
+
+The first interior is the expensive one: a second scene, doors that mean
+something, and a rule for what happens to multiplayer inside. If it lands,
+"the season's builders showing their projects" is a reason to go in, which
+most interiors in most games never have.
+
+#### P3b. Packs need more weight in the wardrobe
+*"Wardrobe: give more prominence to packs."* The outfit boxes are the
+revenue item hiding behind the free clothes.
+
+#### P3c. An NFT marketplace inside the city
+*"A marketplace for NFTs inside the city (dedicated building AND a button in
+the wardrobe). Outfits and mechs negotiable between players; we take a fee
+from the sales."*
+
+This is a product decision before it is a build: it needs outfits and mechs
+to be real assets a player owns and can transfer, which is a program change
+(and the redeploy is already waiting). The fee is the first revenue line
+that does not depend on us selling anything, which is worth its own
+conversation.
+
+#### P3d. Billboards and ads
+*"Extra monetisation: digital billboards in the city, ads on them, click to
+open."*
+
+The city already has billboard art (`DecorBilboard`). What it does not have
+is an inventory, a price, a filter for what may be advertised, and someone to
+sell it. Cheap to build, needs a policy before it exists.
+
+### P3 — ideas bank (kept on purpose, not planned)
+
+- **Vehicles and speed**: a skateboard, a scooter, a motorbike to sell; a
+  helicopter; a rocket. Listed by the room as "future additions, not a
+  priority at all" — but movement speed is the one thing every player feels
+  every second, so a cheap version (a speed item) may be worth more than the
+  vehicles.
+- **Animations in buildings without extra layers**: *"Figure out the best way
+  to put small animations in buildings without a separate layer. Maybe
+  directly via the tilemap software."* Same answer as the water: Tiled tile
+  animations, repainted inside the bake. Whoever asks next should be pointed
+  at SPRITE_REQUESTS.md.
 
 ---
 

@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 
 const JOYSTICK_RADIUS = 34; // px — max thumb travel from center
+const PAD_PX = 100;   // the pad's art size at phone scale
+const THUMB_PX = 44;  // the cross that rides on it
 
 // Pixel-art control sprites (public/assets/ui). Rendered at 1x or 1.5x of
 // their native size so device-pixel scaling stays close to integer.
@@ -15,7 +17,7 @@ function emitGame(event: string, data?: unknown) {
 
 // ── Joystick ────────────────────────────────────────────────────────────────
 
-function Joystick() {
+function Joystick({ scale = 1 }: { scale?: number }) {
   const outerRef = useRef<HTMLDivElement>(null);
   const thumbRef = useRef<HTMLImageElement>(null);
   const pointerId = useRef<number | null>(null);
@@ -40,13 +42,16 @@ function Joystick() {
     const dx = e.clientX - origin.current.x;
     const dy = e.clientY - origin.current.y;
     const dist = Math.sqrt(dx * dx + dy * dy);
-    const clamped = Math.min(dist, JOYSTICK_RADIUS);
+    const clamped = Math.min(dist, JOYSTICK_RADIUS * scale);
     const angle = Math.atan2(dy, dx);
     const tx = Math.cos(angle) * clamped;
     const ty = Math.sin(angle) * clamped;
 
     if (thumbRef.current) thumbRef.current.style.transform = `translate(${tx}px,${ty}px)`;
-    emitGame("touch:joystick", { dx: tx / JOYSTICK_RADIUS, dy: ty / JOYSTICK_RADIUS });
+    // Normalised by the SCALED radius, or a tablet's bigger pad would report
+    // more than full speed at the edge of its travel.
+    const travel = JOYSTICK_RADIUS * scale;
+    emitGame("touch:joystick", { dx: tx / travel, dy: ty / travel });
   }
 
   return (
@@ -58,8 +63,8 @@ function Joystick() {
       onPointerCancel={release}
       style={{
         position: "relative",
-        width: 100,
-        height: 100,
+        width: PAD_PX * scale,
+        height: PAD_PX * scale,
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
@@ -71,8 +76,8 @@ function Joystick() {
       {/* Pad base — stays put while the cross thumb moves (same center). */}
       <img
         src={`${UI}/controller_bg.png`}
-        width={100}
-        height={100}
+        width={PAD_PX * scale}
+        height={PAD_PX * scale}
         alt=""
         draggable={false}
         style={{ ...PIXELATED, position: "absolute", inset: 0, opacity: 0.9 }}
@@ -80,8 +85,8 @@ function Joystick() {
       <img
         ref={thumbRef}
         src={`${UI}/controller.png`}
-        width={44}
-        height={44}
+        width={THUMB_PX * scale}
+        height={THUMB_PX * scale}
         alt="Joystick"
         draggable={false}
         style={{ ...PIXELATED, pointerEvents: "none", willChange: "transform" }}
@@ -171,8 +176,18 @@ function SpriteButton({
 
 export default function MobileControls() {
   const [isTouch, setIsTouch] = useState(false);
+  // A tablet is a touch screen whose SHORT side is big. The pads were placed
+  // for a phone, in the far corners at 20px, which on a 1024x1366 iPad is
+  // nowhere near either thumb — the 2026-09-27 playtest could not play on one.
+  // Hands hold a tablet inboard and higher up, so the controls follow.
+  const [tablet, setTablet] = useState(false);
 
   useEffect(() => {
+    const sizeMq = window.matchMedia("(min-width: 700px) and (min-height: 700px)");
+    setTablet(sizeMq.matches);
+    const onSize = (e: MediaQueryListEvent) => setTablet(e.matches);
+    sizeMq.addEventListener("change", onSize);
+
     const mq = window.matchMedia("(pointer: coarse)");
     setIsTouch(mq.matches);
     const onChange = (e: MediaQueryListEvent) => setIsTouch(e.matches);
@@ -193,14 +208,23 @@ export default function MobileControls() {
       <div
         className="fixed z-30 bottom-0 left-0 right-0 flex justify-between items-end pointer-events-none"
         style={{
-          paddingLeft: "max(env(safe-area-inset-left, 0px), 20px)",
-          paddingRight: "max(env(safe-area-inset-right, 0px), 20px)",
-          paddingBottom: "max(env(safe-area-inset-bottom, 0px), 20px)",
+          // Phone: hard against the corners, which is where thumbs are on a
+          // device held in two hands. Tablet: pulled inboard and up, in
+          // percentages so it follows the screen instead of a fixed guess.
+          paddingLeft: tablet
+            ? "max(env(safe-area-inset-left, 0px), 7vw)"
+            : "max(env(safe-area-inset-left, 0px), 20px)",
+          paddingRight: tablet
+            ? "max(env(safe-area-inset-right, 0px), 7vw)"
+            : "max(env(safe-area-inset-right, 0px), 20px)",
+          paddingBottom: tablet
+            ? "max(env(safe-area-inset-bottom, 0px), 9vh)"
+            : "max(env(safe-area-inset-bottom, 0px), 20px)",
         }}
       >
         {/* Left — joystick */}
         <div className="pointer-events-auto">
-          <Joystick />
+          <Joystick scale={tablet ? 1.3 : 1} />
         </div>
 
         {/* Right — ACT: interacts with NPCs and advances open dialogs */}
@@ -208,7 +232,7 @@ export default function MobileControls() {
           <SpriteButton
             bg={`${UI}/btn_act_bg.png`}
             icon={`${UI}/btn_act.png`}
-            size={87}
+            size={tablet ? 113 : 87}
             alt="ACT"
             onPress={handleInteract}
           />

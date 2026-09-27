@@ -1,5 +1,8 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
+import { crispSize } from "./crispPixels";
+
 /**
  * Pixel-art icons for HUD panels, from sprites already in the build.
  *
@@ -10,6 +13,8 @@
  */
 
 const UI = "/assets/ui";
+/** One walk-grid frame; every character sheet is 4x4 of these. */
+const FRAME_PX = 64;
 
 export const ICON = {
   trophy: `${UI}/icon2_trophy.png`,
@@ -66,24 +71,40 @@ export function CloseButton({
 }
 
 export function PixelImg({ src, size, style, alt = "" }: { src: string; size: number; style?: React.CSSProperties; alt?: string }) {
+  // Snapped to whole device pixels once the file's real size is known, or the
+  // icon tears on any screen that is not a whole ratio (Windows at 125%).
+  const ref = useRef<HTMLImageElement>(null);
+  const [height, setHeight] = useState(size);
+  useEffect(() => {
+    const img = ref.current;
+    if (!img) return;
+    const snap = () => { if (img.naturalHeight) setHeight(crispSize(img.naturalHeight, size)); };
+    if (img.complete) snap();
+    else { img.addEventListener("load", snap, { once: true }); return () => img.removeEventListener("load", snap); }
+  }, [src, size]);
+
   return (
     <img
+      ref={ref}
       src={src} alt={alt} draggable={false}
-      style={{ height: size, width: "auto", display: "inline-block", verticalAlign: "middle", imageRendering: "pixelated", flexShrink: 0, ...style }}
+      style={{ height, width: "auto", display: "inline-block", verticalAlign: "middle", imageRendering: "pixelated", flexShrink: 0, ...style }}
     />
   );
 }
 
 /** A 256x256 character sheet's standing frame (frame 0), cropped to a square. */
 export function CitizenIcon({ sheet, size }: { sheet: string; size: number }) {
+  // The art inside is a 64px frame drawn at 1.1x the box; snap THAT to whole
+  // device pixels and derive the rest from it, so the crop stays put.
+  const frame = crispSize(FRAME_PX, size * 1.1);
   return (
     <span
       aria-hidden
       style={{
         display: "inline-block", width: size, height: size, flexShrink: 0,
         backgroundImage: `url("/assets/sprites/${sheet}")`,
-        backgroundSize: `${size * 4.4}px ${size * 4.4}px`,
-        backgroundPosition: `${-size * 0.2}px ${-size * 0.06}px`,
+        backgroundSize: `${frame * 4}px ${frame * 4}px`,
+        backgroundPosition: `${-frame * 0.18}px ${-frame * 0.055}px`,
         imageRendering: "pixelated",
       }}
     />

@@ -104,6 +104,79 @@ discussed. If it lands, legs need an attack VFX like the arm ones.
 
 ---
 
+## Animated water at the shoreline (how to make it cheap)
+
+The foam line on the beach can move, and it can cost the game almost nothing
+— but only if it is authored as ANIMATED TILES, not as a sprite per tile.
+
+The difference is not small. As sprites, every foam tile on screen is another
+thing drawn 60 times a second: 60 to 200 extra draws per frame, on phones
+that already draw everything on the CPU. As animated tiles, the engine repaints
+them inside the baked ground a few times a second and the frame itself draws
+nothing extra at all.
+
+### What to do
+
+1. **Work in the sheet the map already uses**: `ScTileBeach.png`
+   (1024x1024, 24x24 tiles, 42 per row). It has 1764 slots and the map uses
+   60, so there is room for every frame in the same file.
+2. **Draw 3 extra frames for each tile you want to move**, in any free slots
+   of that same sheet. Four frames in total is plenty for water.
+3. **Declare the loop in Tiled**, on the tile that is ALREADY painted on the
+   map: right-click the tile in the tileset panel, Tile Animation Editor, drop
+   the four frames in, 120-160 ms each. The loop must be seamless (frame 4
+   flows back into frame 1).
+4. **Do not repaint the map.** The map keeps using the base tile; the
+   animation rides on it. Nothing about the map changes, so nothing breaks.
+5. **Do not animate the flat fills** — the open water and the open sand are
+   four tiles covering most of the beach, and moving them would animate the
+   whole sea. Only the EDGE: foam, wet sand, the corners where water meets
+   land.
+6. **Keep the palette and the grid**: same colours as the static tile, frames
+   aligned to the 24x24 grid, no margin or spacing, transparent background
+   (the beach sheet uses real transparency, not the pink key that character
+   sheets use).
+
+### Where to start: the 16 tiles that cover 73% of the shoreline
+
+The beach edge is 56 different tiles across 875 cells, and they are not used
+evenly. These sixteen carry three quarters of it — animating just these
+already makes the whole coast move. Row and column are positions in
+`ScTileBeach.png` (row 0 is the top row, column 0 the left one).
+
+| # | row, col | cells | running total |
+| - | -------- | ----- | ------------- |
+| 1 | 1, 5 | 124 | 14% |
+| 2 | 22, 22 | 108 | 26% |
+| 3 | 1, 1 | 52 | 32% |
+| 4 | 8, 4 | 52 | 38% |
+| 5 | 25, 26 | 50 | 44% |
+| 6 | 25, 22 | 46 | 49% |
+| 7 | 2, 2 | 40 | 53% |
+| 8 | 1, 3 | 29 | 57% |
+| 9 | 6, 3 | 27 | 60% |
+| 10 | 2, 1 | 19 | 62% |
+| 11 | 3, 5 | 19 | 64% |
+| 12 | 4, 3 | 17 | 66% |
+| 13 | 5, 3 | 17 | 68% |
+| 14 | 22, 26 | 16 | 70% |
+| 15 | 3, 4 | 16 | 72% |
+| 16 | 5, 2 | 15 | 73% |
+
+### One thing that makes it cheaper still
+
+If a foam frame can include the sand or water UNDER it — an opaque tile
+rather than transparent foam over a separate ground tile — the engine
+repaints one tile per cell instead of the whole stack. Transparent frames
+work too, so this is a preference, not a requirement.
+
+### Budget
+
+Sixteen tiles at four frames is 64 tiles of art, about 150 KB in memory. Even
+all 56 edge tiles animated would be 224 tiles, half a megabyte, against the
+16.7 MB the whole city's tilesets cost today. The art is not the expensive
+part — how it is wired is, which is why it has to be tile animations.
+
 ## Recently added to the game, for context
 
 - **City**: nicknames everywhere; one city chat with links blocked; direct

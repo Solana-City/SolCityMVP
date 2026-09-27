@@ -1102,6 +1102,20 @@ export class CityScene extends Phaser.Scene {
     this.input.keyboard?.on("keydown-E", tryInteract);
     this.input.keyboard?.on("keydown-SPACE", tryInteract);
 
+    // Clicking or tapping an NPC talks to THAT one. No range test: if a
+    // player can see a citizen and points at them, the answer to "can I talk
+    // to you" is yes — walking into range first is a rule the city never
+    // explained and nobody enjoyed discovering.
+    this.onGameEvent("npc:click", (id: string) => {
+      if (this.chatInputActive || this.interactionBlocked) return;
+      const npc = this.npcSprites.find((n) => n.def.id === id);
+      if (!npc) return;
+      this.interactionBlocked = true;
+      npc.faceToward(this.avatar.x, this.avatar.y);
+      track("npc", npc.def.id, { label: npc.def.name });
+      this.game.events.emit("npc:interact", npc.def);
+    });
+
     // Record on-chain when the player completes a swap/transfer/bounty.
     // ActionPanel emits these events after a successful transaction.
     this.onGameEvent("game:swap",     () => this.network?.recordAction("swap"));
@@ -1404,19 +1418,28 @@ export class CityScene extends Phaser.Scene {
   }
 
   /**
-   * Picks crisp vs smooth canvas scaling for the current zoom. Device pixels
-   * per source pixel = viewScale × the REAL device dpr; below 1 the art is shown
-   * sub-pixel (a standard-DPI desktop zoomed out past 1×, where the forced 2×
-   * backing store downsamples sub-integer), and nearest-neighbor drops pixels —
-   * the "broken" zoom-out. Use smooth scaling only there; at ≥1 device-px per
-   * source-px keep crisp nearest, so the default look is unchanged and mobile
-   * (real dpr 2, where 0.5× lands on whole pixels) stays crisp too.
+   * Crisp or smooth canvas scaling for the current zoom.
+   *
+   * A source pixel covers `viewScale x realDpr` DEVICE pixels. Nearest
+   * neighbour is right only when that is a WHOLE number; at 1.25 or 1.5 it
+   * gives some rows of the sprite two screen pixels and their neighbours
+   * one, which is the tearing the 2026-09-27 playtest reported. Smoothing
+   * there spreads the difference evenly instead: slightly soft, never torn.
+   *
+   * This used to smooth only BELOW one device pixel, so it covered the
+   * zoomed-out end on a standard-density desktop and nothing else — while a
+   * screen at Windows 125% has no whole-number step at all, and a dpr 3
+   * phone tears at half of its steps. Nothing else changes: same zoom
+   * ladder, same labels, same backing store, nothing moves when you press
+   * the button.
    */
   private applyZoomSmoothing(zoom: number): void {
     const canvas = this.game.canvas as HTMLCanvasElement | null;
     if (!canvas) return;
     const realDpr = window.devicePixelRatio || 1;
-    canvas.style.imageRendering = viewScale(zoom) * realDpr < 1 ? "auto" : "pixelated";
+    const devicePxPerSourcePx = viewScale(zoom) * realDpr;
+    const whole = Math.abs(devicePxPerSourcePx - Math.round(devicePxPerSourcePx)) < 0.01;
+    canvas.style.imageRendering = whole && devicePxPerSourcePx >= 1 ? "pixelated" : "auto";
   }
 
   // ── "Where Is NPC?" hunt ──────────────────────────

@@ -137,13 +137,16 @@ export class BootScene extends Phaser.Scene {
       }
     }
 
-    // Static animated NPCs (idle-loop sheets, e.g. Kite Pro) ship with the
-    // same pink chroma-key background as the paperdoll sheets — key each
-    // one out at its own frame size before either path below starts.
+    // Sheets that still carry the pink background get keyed out here. Most no
+    // longer do: scripts/key-sprite-sheets.mjs cleared the files, since the
+    // DOM previews (dialogue cards, tutorial nodes, icons) load the raw PNG
+    // and showed the pink the runtime was hiding. The guard stays because new
+    // art arrives keyed-in, and it now skips the work for everything else.
     const animatedNpcSheets = NPC_REGISTRY.flatMap((npc) =>
       npc.spriteAnimation
         ? [npc.spriteKey, npc.spriteActionKey]
-            .filter((key): key is string => !!key && this.textures.exists(key))
+            .filter((key): key is string =>
+              !!key && this.textures.exists(key) && hasChromaBackground(this, key))
             .map((key) => ({
               key,
               frameWidth: npc.spriteAnimation!.frameWidth,
@@ -151,24 +154,24 @@ export class BootScene extends Phaser.Scene {
             }))
         : []
     );
-    // Walk-grid NPC sheets: most ship already keyed out (transparent PNGs),
-    // so only the ones still carrying the pink are processed. That way new
-    // art works whether or not the artist exported it with transparency.
+    // Walk-grid NPC sheets: the same guard, which is where this pattern
+    // started — it is now what every group below does.
     const walkNpcSheets = NPC_REGISTRY
       .flatMap((npc) => (npc.spriteAnimation ? [] : [npc.spriteKey, npc.spriteWalkKey]))
       .filter((k): k is string => !!k && this.textures.exists(k) && hasChromaBackground(this, k));
 
-    // Expression face sheets carry the same pink background too.
+    // Expression face sheets, same story.
     const exprKeys = EXPRESSIONS
       .map((e) => e.textureKey)
-      .filter((k) => this.textures.exists(k));
+      .filter((k) => this.textures.exists(k) && hasChromaBackground(this, k));
 
     if (isMobile) {
       // Process chroma key one sprite per requestAnimationFrame so we
       // never block the main thread for more than ~30ms at a time
       // (~21 sheets ≈ 0.35s total before CityScene starts).
       const variants = getAllLayerVariants().filter(
-        ({ variant }) => this.textures.exists(variant.textureKey)
+        ({ variant }) =>
+          this.textures.exists(variant.textureKey) && hasChromaBackground(this, variant.textureKey)
       );
       const npcStart = variants.length;
       const walkStart = npcStart + animatedNpcSheets.length;
@@ -201,7 +204,7 @@ export class BootScene extends Phaser.Scene {
     // Apply chroma key to all paper doll layers — removes the pink background
     // (rgb 215,123,186) so layers composite transparently over each other.
     for (const { category, variant } of getAllLayerVariants()) {
-      if (this.textures.exists(variant.textureKey)) {
+      if (this.textures.exists(variant.textureKey) && hasChromaBackground(this, variant.textureKey)) {
         applyLayerChromaKey(this, category, variant.textureKey);
       }
     }

@@ -58,7 +58,12 @@ const TILESET_DIR = path.join(WEB, "public/assets/tilesets");
  * script's own work — which is why the pass below can clear and re-derive them
  * on each run instead of only ever adding.
  */
-const TARGET_TILESETS = ["SCBuildSTBrStands"];
+// SCBuildSTBrStands left this list on 2026-09-26: the artist now authors the
+// stands' collision in Tiled (15 tiles per stall, the Cloack stand included).
+// This pass CLEARS `tiles[]` of every tileset listed here and re-derives it by
+// opacity, so an authored tileset left in the list has its shapes silently
+// replaced by a solid silhouette. Only list a tileset with NO authored collision.
+const TARGET_TILESETS = [];
 
 /**
  * How many rows at the TOP of each of these structures are canopy the player
@@ -204,12 +209,39 @@ const REGION_FIXES = [
       [78, 39], [79, 39],
     ],
   },
+  {
+    // The strip of shallow water between the shoreline barrier (row 94) and
+    // the horizontal deck (rows 96-97) is inside the artist's ring around the
+    // pier but is water, not planks: a player on the vertical pier could step
+    // off it and wade along the north side of the deck.
+    name: "pier water strip",
+    solid: { c0: 32, c1: 37, r0: 95, r1: 95 },
+    walkable: [],
+  },
 ];
 
 const GID_MASK = 0x1fffffff; // strip Tiled's flip/rotate flags
 
 const dry = process.argv.includes("--dry");
 const map = JSON.parse(fs.readFileSync(MAP, "utf8"));
+
+/**
+ * Authored tile collision that is a mistake, cleared here until the artist
+ * removes it in Tiled (after which this is a no-op).
+ *
+ * ScTileBeach #802 is the top plank row of the pier deck and is used nowhere
+ * but the Pier layer. It carries a full-cell shape, so the top row of the deck
+ * was solid and only the bottom row could be walked (2026-09-26). The flag pole
+ * stays solid through its own tile, DecorSolanaFlag's #523.
+ */
+const CLEARED_TILE_COLLISION = [{ tileset: "ScTileBeach", ids: [802] }];
+for (const { tileset, ids } of CLEARED_TILE_COLLISION) {
+  const ts = map.tilesets.find((t) => t.name === tileset);
+  if (!ts) continue;
+  for (const t of ts.tiles ?? []) {
+    if (ids.includes(t.id) && t.objectgroup) delete t.objectgroup;
+  }
+}
 
 /**
  * Tiled nests layers inside `group` layers; walk the whole tree.
