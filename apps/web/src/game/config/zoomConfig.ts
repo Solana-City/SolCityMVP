@@ -1,47 +1,26 @@
 /**
  * Camera zoom management, shared by CityScene, ZoomControl and pinch zoom.
  *
- * ONE rule decides everything here: a source pixel has to land on a whole
- * number of DEVICE pixels, or pixel art cracks — some rows of the sprite get
- * two screen pixels and their neighbours get one, which is the tearing the
- * 2026-09-27 playtest reported on several machines.
+ * Sprites render at world scale 0.5, so one source pixel covers
+ * 0.5 x cameraZoom canvas pixels. Crisp pixel art requires that to be a
+ * whole number of DEVICE pixels. The canvas backing store is rendered at
+ * devicePixelRatio resolution (capped at 2 — see PhaserGame), so any EVEN
+ * camera zoom is pixel-perfect — which yields several crisp steps.
  *
- * The chain from a sprite to the glass:
- *
- *   source px --x0.5 (sprite scale) --x zoom (camera)--> backing-store px
- *   backing-store px --x (realDpr / renderDpr)--> device px
- *
- * so one source pixel covers `0.5 x zoom x realDpr / renderDpr` device
- * pixels, and THAT is what must be a whole number. The old version assumed
- * the backing store always matched the screen, so "any even zoom" was called
- * crisp — true on a dpr 1 or 2 screen, false on Windows at 125% or 150% (dpr
- * 1.25 / 1.5, where the desktop path forced a 2x store) and false on a dpr 3
- * phone (capped to 2). Those are exactly the machines that cracked.
- *
- * What the steps mean now: step N draws one source pixel as N x N device
- * pixels. How much CITY that shows depends on the window, which is why the
- * same label showed different amounts of the map on different screens — a
- * 2560px monitor sees twice what a 1280px laptop does at the same step, and
- * always will. The labels stay in CSS pixels (`viewScale`) because that is
- * what the eye reads, but only whole-device-pixel steps are offered.
+ * "View scale" is what the user perceives: the size of one source pixel in
+ * CSS pixels, i.e. zoom / (2 * dpr). We persist the view scale rather than
+ * the raw camera zoom so a stored value keeps its meaning across screens
+ * with different pixel densities.
  */
 
 const VIEW_SCALE_KEY = "solcity:view-scale";
 /** Pre-DPR-aware storage key — held the raw camera zoom at an implied dpr of 1. */
 const LEGACY_ZOOM_KEY = "solcity:zoom";
 
-/**
- * How big one source pixel may look, in CSS pixels. Below the floor the city
- * is unreadable; above the ceiling you are looking at four buildings.
- */
-const MIN_VIEW_SCALE = 0.3;
-const MAX_VIEW_SCALE = 2.2;
-
-/** The screen's real ratio, clamped to what any device actually reports. */
-function realDpr(): number {
-  if (typeof window === "undefined") return 1;
-  return Math.min(Math.max(window.devicePixelRatio || 1, 1), 4);
-}
+// Bias the range toward zooming OUT (seeing more of the city) rather than
+// magnification: floor at half scale, cap at 2.5x.
+const MIN_VIEW_SCALE = 0.45;
+const MAX_VIEW_SCALE = 2.55;
 
 /**
  * DPR the canvas backing store is rendered at. PhaserGame publishes the
@@ -55,166 +34,55 @@ export function getRenderDpr(): number {
 }
 
 export function computeRenderDpr(): number {
-  const dpr = realDpr();
-  // Each backing-store pixel covers `k` device pixels. k is 1 whenever the
-  // store can match the screen, and 2 on a dpr 3 phone, where a full-res
-  // store would cost nine times the fill of a 1x one on the Canvas2D
-  // renderer mobile uses. Keeping k a WHOLE number is what keeps the crisp
-  // steps crisp: a fractional cap (the old "min(dpr, 2)", giving 1.5 on a
-  // dpr 3 screen) has no zoom at all that lands on whole device pixels.
-  const k = Math.ceil(dpr / 2);
-  return dpr / k;
+  // Capped at 2 everywhere: on mobile the Canvas2D renderer redraws every
+  // backing-store pixel each frame, so the cap bounds the fill cost at 4x
+  // CSS resolution (phones at dpr 3 get a slight CSS upscale instead).
+  // A dpr-2 backing store is what allows the crisp 0.5x zoom-out level.
+  const raw = Math.min(Math.max(window.devicePixelRatio || 1, 1), 2);
+  // Desktop renders via WebGL, where a 2x backing store is cheap. Give it at
+  // least dpr 2 so it gets the SAME crisp zoom-out range as mobile: a non-retina
+  // desktop is dpr 1, whose only even (pixel-perfect) camera zooms yield view
+  // scales 1.0x/2.0x — i.e. no zoom-out at all — while mobile (dpr 2) reaches
+  // 0.5x. Forcing dpr 2 unlocks 0.5x..2.5x on desktop too; the default (~1.0x)
+  // is unchanged. Mobile (Canvas2D) keeps its real dpr to bound fill cost.
+  const isTouch = typeof window !== "undefined"
+    && window.matchMedia("(pointer: coarse)").matches;
+  return isTouch ? raw : Math.max(raw, 2);
 }
 
-/**
- * Device pixels covered by one source pixel at this camera zoom.
- *
- * Read from the STEP rather than from whatever store is live, so the answer
- * is the same before and after the canvas has been resized for that step.
- */
-export function devicePixelsPerSourcePixel(zoom: number): number {
-  const store = zoom > 0 ? storeOf(zoom) : getRenderDpr();
-  return 0.5 * zoom * (realDpr() / store);
-}
-
-/** The store a zoom is meant to render at, without recursing through steps. */
-function storeOf(zoom: number): number {
-  const base = realDpr() / Math.ceil(realDpr() / 2);
-  const k = Math.ceil(realDpr() / 2);
-  // A crisp step solves zoom = 2 x devicePx / k, a soft one 4 x devicePx / k.
-  const asCrisp = (zoom * k) / 2;
-  return Number.isInteger(asCrisp) ? base : base * 2;
-}
-
-/** Backing-store pixels the BASE (crisp) setup packs per device pixel. */
-function baseStoreRatio(): number {
-  return Math.ceil(realDpr() / 2);
-}
-
-/** The base store: what a crisp step renders at. */
-function baseStore(): number {
-  return realDpr() / baseStoreRatio();
-}
-
-/**
- * One step of the zoom control.
- *
- * `devicePx` is what the player is really choosing: how many device pixels
- * one source pixel covers, and therefore how much city fits on the screen.
- * Whole numbers land on the pixel grid and render crisp. HALF numbers cannot
- * — there is no way to draw half a pixel — so they are rendered by doubling
- * the backing store (`store`), drawing them crisp THERE, and letting the
- * browser downscale the canvas by exactly 2 with smoothing. The result is
- * uniformly soft instead of torn, which is the honest way to offer a step
- * between "one device pixel" and "two".
- *
- * They exist because 1x and 2x on a plain 1080p monitor is an 80-tile view
- * and a 40-tile view with nothing between them, and "more options in between"
- * was the request. They cost four times the fill, so touch screens — which
- * draw on the CPU and already get six crisp steps from their higher dpr —
- * do not get them.
- */
-export interface ZoomStep {
-  /** Camera zoom to set. */
-  zoom: number;
-  /** Backing-store scale this step needs (see PhaserGame / CityScene). */
-  store: number;
-  /** Device pixels per source pixel: 1, 1.5, 2, ... */
-  devicePx: number;
-  /** True when it lands on the pixel grid; false for the soft half steps. */
-  crisp: boolean;
-}
-
-function supportsHalfSteps(): boolean {
-  if (typeof window === "undefined") return false;
-  // Canvas2D on phones redraws every backing pixel on the CPU each frame, so
-  // quadrupling the store there is not a trade worth offering.
-  if (window.matchMedia("(pointer: coarse)").matches) return false;
-  // And a retina desktop would end up rendering at 4x CSS — sixteen times the
-  // pixels of a 1x store — for steps it does not need: its dpr already gives
-  // it four crisp ones. Only the low-density screens, where crisp leaves a
-  // 2x gap between steps, are worth the supersample.
-  return baseStore() < 2;
-}
-
-export function getZoomSteps(): ZoomStep[] {
-  const dpr = realDpr();
-  const k = baseStoreRatio();
-  const store = baseStore();
-  const half = supportsHalfSteps();
-  const steps: ZoomStep[] = [];
-
-  for (let n = 2; n <= 16; n++) {
-    const devicePx = n / 2;                 // 1, 1.5, 2, 2.5, ...
-    const crisp = Number.isInteger(devicePx);
-    if (!crisp && !half) continue;
-    const css = devicePx / dpr;
-    if (css < MIN_VIEW_SCALE || css > MAX_VIEW_SCALE) continue;
-    steps.push(crisp
-      // Crisp: the base store, 0.5 x zoom x k device px per source px.
-      ? { zoom: (2 * devicePx) / k, store, devicePx, crisp }
-      // Soft: double store, so a source pixel covers 2 x devicePx store
-      // pixels — a whole number, since devicePx is a half — and the browser
-      // halves it back down.
-      : { zoom: (4 * devicePx) / k, store: store * 2, devicePx, crisp });
-  }
-
-  if (steps.length === 0) {
-    steps.push({ zoom: 2 / k, store, devicePx: 1, crisp: true });
-  }
-  return steps;
-}
-
-/** Camera zooms only, ascending — what the control and the pinch walk. */
+/** Even camera zooms whose view scale falls in a sane range, ascending. */
 export function getValidZooms(): number[] {
-  return getZoomSteps().map((s) => s.zoom);
-}
-
-/** The step a camera zoom belongs to, nearest match. */
-export function stepFor(zoom: number): ZoomStep {
-  return getZoomSteps().reduce((best, s) =>
-    Math.abs(s.zoom - zoom) < Math.abs(best.zoom - zoom) ? s : best
-  );
-}
-
-/** The backing-store scale a zoom needs. Changing zoom may resize the canvas. */
-export function storeFor(zoom: number): number {
-  return stepFor(zoom).store;
+  const dpr = getRenderDpr();
+  const zooms: number[] = [];
+  for (let z = 2; z / (2 * dpr) <= MAX_VIEW_SCALE; z += 2) {
+    if (z / (2 * dpr) >= MIN_VIEW_SCALE) zooms.push(z);
+  }
+  return zooms.length > 0 ? zooms : [2, 4];
 }
 
 export function snapZoom(zoom: number): number {
-  return stepFor(zoom).zoom;
-}
-
-/** How many tiles fit across the viewport at this zoom — what the eye judges. */
-export function tilesAcross(zoom: number, cssWidth: number, tilePx = 24): number {
-  const px = devicePixelsPerSourcePixel(zoom);
-  if (px <= 0) return 0;
-  return Math.round((cssWidth * realDpr()) / px / tilePx);
+  return getValidZooms().reduce((best, v) =>
+    Math.abs(v - zoom) < Math.abs(best - zoom) ? v : best
+  );
 }
 
 /**
- * View scale a first-time player starts at, in CSS pixels per source pixel.
- * Player feedback asked for a wide default so the buildings and NPCs around
- * you are visible; the nearest crisp step to it is what they get.
+ * View scale a first-time player starts at. Player feedback asked for a wider
+ * default view so the buildings and NPCs around you are visible; 0.5x is the
+ * one crisp step below the old 1x. Players who picked a zoom keep theirs.
  */
 const DEFAULT_VIEW_SCALE = 0.5;
 
-/**
- * The step closest to DEFAULT_VIEW_SCALE, crisp ones preferred — a player who
- * never touches the control should never be handed the soft rendering.
- */
+/** The valid zoom whose view scale is closest to DEFAULT_VIEW_SCALE. */
 export function getDefaultZoom(): number {
-  const steps = getZoomSteps();
-  const crisp = steps.filter((s) => s.crisp);
-  const pool = crisp.length > 0 ? crisp : steps;
-  const off = (s: ZoomStep) => Math.abs(s.devicePx / realDpr() - DEFAULT_VIEW_SCALE);
-  return pool.reduce((best, s) => (off(s) <= off(best) ? s : best)).zoom;
+  const dpr = getRenderDpr();
+  const off = (z: number) => Math.abs(z / (2 * dpr) - DEFAULT_VIEW_SCALE);
+  // <= so ties resolve to the larger (more zoomed-in) candidate.
+  return getValidZooms().reduce((best, z) => (off(z) <= off(best) ? z : best));
 }
 
-/** CSS pixels per source pixel: the size the eye actually reads. */
 export function viewScale(zoom: number): number {
-  return devicePixelsPerSourcePixel(zoom) / realDpr();
+  return zoom / (2 * getRenderDpr());
 }
 
 /** "1x", "1.5x", "2.4x" — at most one decimal, trailing zero trimmed. */

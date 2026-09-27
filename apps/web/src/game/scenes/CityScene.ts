@@ -54,9 +54,7 @@ import { startMemStats } from "../telemetry/memStats";
 
 // Pixel-perfect zoom values and snapping live in config/zoomConfig.ts —
 // shared with ZoomControl and the pinch-zoom hook.
-import {
-  loadZoom, snapZoom, devicePixelsPerSourcePixel, storeFor, getRenderDpr,
-} from "../config/zoomConfig";
+import { loadZoom, snapZoom, viewScale } from "../config/zoomConfig";
 
 /**
  * Set on the Phaser.Game once CityScene.create() has registered its listeners.
@@ -655,9 +653,7 @@ export class CityScene extends Phaser.Scene {
     // Start ON the player: a fresh camera sits at 0,0 and would otherwise
     // glide across the map on the first frames.
     this.cameras.main.centerOn(container.x, container.y);
-    const startZoom = loadZoom();
-    this.applyRenderStore(startZoom);
-    this.cameras.main.setZoom(startZoom);
+    this.cameras.main.setZoom(loadZoom());
     this.applyZoomSmoothing(loadZoom());
     this.cameras.main.setBackgroundColor(0x061a2c);
     this.cameras.main.roundPixels = true;
@@ -1063,11 +1059,9 @@ export class CityScene extends Phaser.Scene {
       this.interactionBlocked = false;
     });
 
-    // Camera zoom from the UI control — always snap to a step the screen can
-    // actually draw, and give that step the backing store it asks for.
+    // Camera zoom from UI control — always snap to a pixel-perfect value
     this.onGameEvent("camera:zoom", (zoom: number) => {
       const z = snapZoom(zoom);
-      this.applyRenderStore(z);
       this.cameras.main.setZoom(z);
       this.applyZoomSmoothing(z);
     });
@@ -1410,46 +1404,19 @@ export class CityScene extends Phaser.Scene {
   }
 
   /**
-   * Crisp or smooth canvas scaling for the current zoom.
-   *
-   * Every zoom the game offers now draws a source pixel as a WHOLE number of
-   * device pixels (see zoomConfig), so this should always choose crisp. It
-   * stays as a guard for the one case that can still arrive: a zoom restored
-   * from storage, or pushed by a pinch, that lands under one device pixel per
-   * source pixel — nearest-neighbour there drops rows of pixels outright,
-   * where smoothing merely softens them.
+   * Picks crisp vs smooth canvas scaling for the current zoom. Device pixels
+   * per source pixel = viewScale × the REAL device dpr; below 1 the art is shown
+   * sub-pixel (a standard-DPI desktop zoomed out past 1×, where the forced 2×
+   * backing store downsamples sub-integer), and nearest-neighbor drops pixels —
+   * the "broken" zoom-out. Use smooth scaling only there; at ≥1 device-px per
+   * source-px keep crisp nearest, so the default look is unchanged and mobile
+   * (real dpr 2, where 0.5× lands on whole pixels) stays crisp too.
    */
   private applyZoomSmoothing(zoom: number): void {
     const canvas = this.game.canvas as HTMLCanvasElement | null;
     if (!canvas) return;
-    // Whole device pixels per source pixel → nearest neighbour, which is the
-    // whole point of the crisp steps. A soft half step is drawn at double
-    // resolution and handed to the browser to halve: smoothing there is what
-    // turns it into an even softness instead of dropped rows.
-    const px = devicePixelsPerSourcePixel(zoom);
-    canvas.style.imageRendering = Number.isInteger(px) && px >= 1 ? "pixelated" : "auto";
-  }
-
-  /**
-   * Resizes the canvas backing store when a zoom step asks for a different
-   * resolution than the one currently rendered (see zoomConfig: the soft
-   * half steps render at double and are downscaled by the browser).
-   */
-  private applyRenderStore(zoom: number): void {
-    const want = storeFor(zoom);
-    const have = getRenderDpr();
-    if (Math.abs(want - have) < 0.001) return;
-
-    const canvas = this.game.canvas as HTMLCanvasElement | null;
-    const parent = canvas?.parentElement;
-    if (!parent) return;
-
-    (globalThis as { __solCityRenderDpr?: number }).__solCityRenderDpr = want;
-    this.scale.setZoom(1 / want);
-    this.scale.resize(
-      Math.round(parent.clientWidth * want),
-      Math.round(parent.clientHeight * want),
-    );
+    const realDpr = window.devicePixelRatio || 1;
+    canvas.style.imageRendering = viewScale(zoom) * realDpr < 1 ? "auto" : "pixelated";
   }
 
   // ── "Where Is NPC?" hunt ──────────────────────────

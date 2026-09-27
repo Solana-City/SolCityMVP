@@ -104,18 +104,11 @@ export default function PhaserGame({ onGameReady }: PhaserGameProps) {
     // ResizeObserver tracks every container size change (window resize,
     // device rotation, mobile URL bar collapse) — more reliable than the
     // window resize event on mobile browsers.
-    // Read fresh every time: a zoom step can change the backing-store scale
-    // (see zoomConfig's soft half steps), and a resize must use the CURRENT
-    // one or the canvas would snap back to the boot-time resolution.
-    const currentStore = () =>
-      (globalThis as { __solCityRenderDpr?: number }).__solCityRenderDpr ?? dpr;
-
     const observer = new ResizeObserver(() => {
       if (!gameRef.current) return;
-      const d = currentStore();
       gameRef.current.scale.resize(
-        Math.round(container.clientWidth * d),
-        Math.round(container.clientHeight * d)
+        Math.round(container.clientWidth * dpr),
+        Math.round(container.clientHeight * dpr)
       );
     });
 
