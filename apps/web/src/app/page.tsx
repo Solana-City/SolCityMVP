@@ -56,6 +56,8 @@ import { OPEN_DM_EVENT } from "@/game/chat/dmEvents";
 import { OPEN_CALENDAR_EVENT } from "@/game/daily/calendarEvents";
 import { DM_UNREAD_EVENT, SEND_TOKENS_EVENT } from "@/game/chat/dmEvents";
 import { useCrispPixelArt } from "@/ui/useCrispPixelArt";
+import { useWheelZoom } from "@/ui/useWheelZoom";
+import KeysCard, { useKeysCard } from "@/ui/KeysCard";
 
 function useIsTouch() {
   const [isTouch, setIsTouch] = useState(false);
@@ -75,6 +77,11 @@ export default function Home() {
   // 64x64 and panels ask for it at 20, 22, 24 — see useCrispPixelArt.
   useCrispPixelArt();
   const isTouch = useIsTouch();
+  // Desktop input that nobody had: the wheel zooms the city, H takes the
+  // interface off for a screenshot, and K (or ?) shows what the keys are.
+  useWheelZoom(!isTouch);
+  const [keysOpen, setKeysOpen] = useKeysCard(!isTouch);
+  const [hudHidden, setHudHidden] = useState(false);
   const [activeNPC, setActiveNPC] = useState<NPCDefinition | null>(null);
   const [activeAction, setActiveAction] = useState<NPCAction | null>(null);
   const [activeMiniGame, setActiveMiniGame] = useState<{ id: string; context: MiniGameContext } | null>(null);
@@ -302,11 +309,11 @@ export default function Home() {
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === "p" || e.key === "P") {
-        const active = document.activeElement;
-        if (active && (active.tagName === "INPUT" || active.tagName === "TEXTAREA")) return;
-        setProfileOpen((v) => !v);
-      }
+      const active = document.activeElement;
+      if (active && (active.tagName === "INPUT" || active.tagName === "TEXTAREA")) return;
+      if (e.key === "p" || e.key === "P") setProfileOpen((v) => !v);
+      // Everything but the city, for a screenshot. Same key puts it back.
+      if (e.key === "h" || e.key === "H") setHudHidden((v) => !v);
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
@@ -419,6 +426,11 @@ export default function Home() {
         <main className="w-screen app-viewport relative">
           <PhaserGame onGameReady={(g) => { setGame(g); startSession(); }} />
 
+          {/* `display: contents` — the wrapper adds no layout of its own, so
+              every panel below still positions exactly as it did, and H takes
+              the whole interface off the screen in one move. */}
+          <div style={{ display: hudHidden ? "none" : "contents" }}>
+
           {/* Left-side panel stack — hunt card + daily quests */}
           {!isTouch ? (
             <div style={{
@@ -530,10 +542,27 @@ export default function Home() {
                   compact={isTouch}
                 />
                 <ZoomControl compact={isTouch} />
+                {!isTouch && (
+                  <button
+                    onClick={() => setKeysOpen(true)}
+                    title="Keys (K)"
+                    aria-label="Keyboard shortcuts"
+                    style={{
+                      width: 22, height: 22, flexShrink: 0, cursor: "pointer",
+                      background: "rgba(10,10,30,0.85)", color: "#9945FF",
+                      border: "1px solid rgba(153,69,255,0.25)", borderRadius: 4,
+                      fontFamily: "monospace", fontSize: 11, lineHeight: 1, padding: 0,
+                    }}
+                  >?</button>
+                )}
               </div>
             </div>
 
           </div>
+
+          </div>
+
+          <KeysCard open={keysOpen} onClose={() => setKeysOpen(false)} />
 
           <DuelInvite wallet={walletAddress} />
           <OfflineBadge />
