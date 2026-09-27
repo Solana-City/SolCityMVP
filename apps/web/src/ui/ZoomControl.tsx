@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import {
-  getValidZooms, snapZoom, loadZoom, saveZoom, formatViewScale,
+  getValidZooms, snapZoom, loadZoom, saveZoom, tilesAcross,
 } from "@/game/config/zoomConfig";
 import { chamferBox } from "@/ui/chamfer";
 
@@ -25,14 +25,22 @@ function chamferClip(corner: number): string {
 export default function ZoomControl({ compact = false }: { compact?: boolean }) {
   const [zoom, setZoom] = useState<number | null>(null);
   const [isTouch, setIsTouch] = useState(false);
+  // The label counts tiles on screen, so it has to follow the window.
+  const [viewWidth, setViewWidth] = useState(0);
 
   useEffect(() => {
     setZoom(loadZoom());
     setIsTouch(window.matchMedia("(pointer: coarse)").matches);
+    setViewWidth(window.innerWidth);
     // Sync display when pinch gesture changes zoom (pinch snaps to nearest valid)
     const handler = (e: Event) => setZoom(snapZoom((e as CustomEvent<number>).detail));
+    const onResize = () => setViewWidth(window.innerWidth);
     window.addEventListener("solcity:zoom", handler);
-    return () => window.removeEventListener("solcity:zoom", handler);
+    window.addEventListener("resize", onResize);
+    return () => {
+      window.removeEventListener("solcity:zoom", handler);
+      window.removeEventListener("resize", onResize);
+    };
   }, []);
 
   if (zoom === null) return null;
@@ -42,6 +50,11 @@ export default function ZoomControl({ compact = false }: { compact?: boolean }) 
   const canDec = idx > 0;
   const canInc = idx >= 0 && idx < zooms.length - 1;
   const btnSize = compact ? 24 : isTouch ? 26 : 22;
+  // How much CITY is on screen, not how big a pixel is. The old label was a
+  // pixel size, so the same "0.5x" showed a different amount of the map on
+  // every screen and players compared them and found it broken. This number
+  // is the thing they were actually comparing.
+  const label = viewWidth ? `${tilesAcross(zoom, viewWidth)}▭` : "";
 
   function change(next: number) {
     setZoom(next);
@@ -95,7 +108,7 @@ export default function ZoomControl({ compact = false }: { compact?: boolean }) 
           userSelect: "none",
         }}
       >
-        {formatViewScale(zoom)}
+        {label}
       </span>
 
       <ZBtn size={btnSize} disabled={!canInc} onClick={() => change(zooms[idx + 1])}>+</ZBtn>
