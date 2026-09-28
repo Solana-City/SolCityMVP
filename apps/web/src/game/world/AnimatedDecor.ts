@@ -89,24 +89,25 @@ export const ANIMATED_DECOR: AnimatedDecorDef[] = [
     ySort: true,
   },
   {
-    // Superteam Vietnam flag beside the coffee shop plot, on the west corner
-    // of the open ground between the Superteam Earn tent (solid to col 100)
-    // and the food cart block (solid from col 106). The cloth flies east
-    // across the plot, toward the Vietnamese Barista two tiles away at col
-    // 103, and nothing of either neighbour reaches into those columns.
+    // Superteam Vietnam flag on the EAST side of BuildSTVN (cols 101-107,
+    // rows 38-44; solid body from row 41), one column clear of its east
+    // wall so the pole stands on open street, not the shop's own footprint.
+    // tileY 41 is the shop's own roof/body seam, so the pole rises from
+    // there and the cloth flies out above the roofline, same idiom as the
+    // Turkey pole beside Remedi.
     //
     // Same sheet geometry as the Turkey pole (78x183, 4 frames, drawn at 2x,
     // so scale 0.5). The foot occupies source x 0-24 of the 78, which puts it
-    // 13px left of the sprite centre: tileX 101 plus offsetX 13 therefore
-    // stands the FOOT on tile 101, the cell `blocks` stamps.
+    // 13px left of the sprite centre: tileX 108 plus offsetX 13 therefore
+    // stands the FOOT on tile 108, the cell `blocks` stamps.
     key: "flag-st-vietnam",
     file: "assets/sprites/decor/flag_st_vietnam.png",
     frameWidth: 78,
     frameHeight: 183,
     frameCount: 4,
     frameRate: 6,
-    tileX: 101,
-    tileY: 45,
+    tileX: 108,
+    tileY: 41,
     offsetX: 13,
     scale: 0.5,
     blocks: true,

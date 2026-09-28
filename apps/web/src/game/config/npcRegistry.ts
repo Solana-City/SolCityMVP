@@ -168,10 +168,10 @@ const NPC_SEEDS: NPCSeed[] = [
     id: "sushi-man",
     name: "Sushi Man",
     role: "Food Cart",
-    // In front of the food cart (GameAssetFoodCar, cols 109-112 / rows 40-43),
-    // on the green plot east of the Superteam Earn tent.
-    tileX: 110,
-    tileY: 43,
+    // In front of the food cart (GameAssetFoodCar, cols 42-45 / rows 16-19),
+    // now that the artist relocated the cart art off the ST Earn plot.
+    tileX: 43,
+    tileY: 19,
     dialog: [
       "Irasshaimase! Welcome to my cart.",
       "Customers are hungry. Build their sushi sets in order, before time runs out!",
