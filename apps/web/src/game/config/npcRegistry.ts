@@ -1,11 +1,14 @@
 import { npcCategory, CATEGORY_META } from "../minimap/categories";
+import type { BuffId } from "../buffs/playerBuffs";
 
 export interface NPCAction {
-  type: "tutor" | "swap" | "transfer" | "bounties" | "link" | "placeholder" | "private-payment" | "minigame" | "stock-exchange" | "peg-risk" | "token-scan" | "private-transfer";
+  type: "tutor" | "swap" | "transfer" | "bounties" | "link" | "placeholder" | "private-payment" | "minigame" | "stock-exchange" | "peg-risk" | "token-scan" | "private-transfer" | "speed-buff";
   label: string;
   url?: string;
   miniGameId?: string;
   orderType?: "sushi";
+  /** Which timed buff a "speed-buff" action hands the player. */
+  buffId?: BuffId;
   /** Prefilled recipient, when a transfer is opened from a player's card. */
   recipient?: string;
   /** That player's name, to show instead of the raw address. */
@@ -175,6 +178,30 @@ const NPC_SEEDS: NPCSeed[] = [
     ],
     action: { type: "minigame", label: "Start cooking!", miniGameId: "food-cart", orderType: "sushi" },
     spriteKey: "Sushi Man",
+  },
+  {
+    id: "vietnamese-barista",
+    name: "Vietnamese Barista",
+    role: "Superteam Vietnam",
+    // The open plot between the Superteam Earn tent (solid to col 100) and the
+    // greenhouse block the food cart sits against (solid from col 106), so he
+    // stands on the same row as Pratik and the Sushi Man, halfway between the
+    // two. Cols 101-105 north of him are clear for the coffee shop art.
+    tileX: 103,
+    tileY: 44,
+    dialog: [
+      "Xin chao! Welcome to the coffee shop, brought over by Superteam Vietnam.",
+      "One cup of this and you will not walk the city. You will fly through it.",
+    ],
+    highlights: [
+      { label: "+40% SPEED" },
+      { label: "3 MINUTES" },
+    ],
+    action: { type: "speed-buff", label: "Try vietnamese coffee", buffId: "vietnamese-coffee" },
+    // No spriteKey yet, so he wears the default avatar sheet: the barista's
+    // own art is not drawn. Drop "Vietnamese Barista.png" (the usual 4x4 grid
+    // of 64x64 frames) into public/assets/sprites and add
+    // `spriteKey: "Vietnamese Barista"` here, and nothing else changes.
   },
   {
     id: "kite-pro",

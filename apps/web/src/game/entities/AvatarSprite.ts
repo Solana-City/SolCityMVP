@@ -217,6 +217,8 @@ function getHairTextureFor(
  */
 /** Gap in world px between the top of the outfit and the bottom of a name tag. */
 const LABEL_GAP = 1.5;
+/** Height the name tag takes above its own seat line, badges stack on top. */
+const NAME_HEIGHT = 8;
 
 export class AvatarSprite {
   private scene: Phaser.Scene;
@@ -274,6 +276,8 @@ export class AvatarSprite {
 
   /** Name tags that ride just above the head and follow outfit changes. */
   private labels: Phaser.GameObjects.Text[] = [];
+  /** Buff icons that ride above the name tags (see attachBadge). */
+  private badges: Phaser.GameObjects.Image[] = [];
   private static inkTopCache = new Map<string, number>();
 
   /**
@@ -283,7 +287,28 @@ export class AvatarSprite {
    */
   attachLabel(label: Phaser.GameObjects.Text): void {
     this.labels.push(label);
-    label.setY(this.headTopY() - LABEL_GAP);
+    this.seatOverhead();
+  }
+
+  /**
+   * A small icon that sits above the name tag rather than beside it: the
+   * coffee cup while the speed buff runs. Give it origin (0.5, 1), like the
+   * labels, so it grows upward from the line it is seated on.
+   */
+  attachBadge(badge: Phaser.GameObjects.Image): void {
+    this.badges.push(badge);
+    this.seatOverhead();
+  }
+
+  /**
+   * Re-seats the name tags on the outfit and the badges on top of them. The
+   * name is a 5px font: NAME_HEIGHT is that plus its stroke and a pixel of
+   * air, which is cheaper and steadier than measuring a Text every frame.
+   */
+  private seatOverhead(): void {
+    const y = this.headTopY() - LABEL_GAP;
+    for (const label of this.labels ?? []) if (label.active) label.setY(y);
+    for (const badge of this.badges ?? []) if (badge.active) badge.setY(y - NAME_HEIGHT);
   }
 
   /** Local y of the top of the outfit's ink, in container space. */
@@ -472,10 +497,7 @@ export class AvatarSprite {
     this.buildShadow();
 
     // Outfit changed: re-seat any name tags above the new silhouette.
-    if (this.labels) {
-      const y = this.headTopY() - LABEL_GAP;
-      for (const l of this.labels) if (l.active) l.setY(y);
-    }
+    this.seatOverhead();
 
     // Set initial idle frame
     const row = DIRECTION_ROW[this.currentDirection];

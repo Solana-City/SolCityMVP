@@ -10,6 +10,8 @@ import { containsLink, maskLinks } from "../chat/linkFilter";
 import { ChatBubble } from "../chat/ChatBubble";
 import { TradeBubble } from "../chat/TradeBubble";
 import { decodeTrade, encodeTrade, tradeLogLine, type TradeSide } from "../chat/tradeBroadcast";
+import { isBuffActive, onBuffsChanged, speedMultiplier } from "../buffs/playerBuffs";
+import { ensureCoffeeTexture } from "../buffs/coffeeIcon";
 
 /** Chat-log color for stock trade lines. */
 const TRADE_COLOR = "#FFB547";
@@ -610,6 +612,17 @@ export class CityScene extends Phaser.Scene {
     }).setOrigin(0.5, 1);
     container.add(youLabel);
     this.avatar.attachLabel(youLabel);
+
+    // Buff badge: the coffee cup rides over the name while the Vietnamese
+    // Barista's buff runs. One buff exists, so one badge; when there is a
+    // second, this becomes a row read off activeBuffs().
+    const buffBadge = this.add.image(0, -44, ensureCoffeeTexture(this))
+      .setOrigin(0.5, 1)
+      .setVisible(isBuffActive("vietnamese-coffee"));
+    container.add(buffBadge);
+    this.avatar.attachBadge(buffBadge);
+    const offBuffs = onBuffsChanged(() => buffBadge.setVisible(isBuffActive("vietnamese-coffee")));
+    this.events.once("shutdown", offBuffs);
     const showOwnName = () => {
       const n = this.walletAddress ? cachedName(this.walletAddress) : null;
       youLabel.setText(n ?? "YOU");
@@ -1274,11 +1287,17 @@ export class CityScene extends Phaser.Scene {
     let direction: Direction | null = null;
     let vx = 0, vy = 0;
 
+    // Timed buffs scale the whole walk, keyboard and joystick alike, so the
+    // analog ramp keeps its feel. Capped well under the 1.5x the remote
+    // interpolator allows itself, so a buffed player still reads as walking
+    // on everyone else's screen rather than as a rubber-banding teleport.
+    const speed = PLAYER_SPEED * speedMultiplier();
+
     // Keyboard (digital)
-    if (kbLeft)       { vx = -PLAYER_SPEED; direction = "left"; }
-    else if (kbRight) { vx =  PLAYER_SPEED; direction = "right"; }
-    if (kbUp)         { vy = -PLAYER_SPEED; direction = direction ?? "up"; }
-    else if (kbDown)  { vy =  PLAYER_SPEED; direction = direction ?? "down"; }
+    if (kbLeft)       { vx = -speed; direction = "left"; }
+    else if (kbRight) { vx =  speed; direction = "right"; }
+    if (kbUp)         { vy = -speed; direction = direction ?? "up"; }
+    else if (kbDown)  { vy =  speed; direction = direction ?? "down"; }
     if (vx !== 0 && vy !== 0) {
       vx *= 0.7071;
       vy *= 0.7071;
@@ -1287,8 +1306,8 @@ export class CityScene extends Phaser.Scene {
     // Touch joystick (analog) — overrides keyboard when active
     const touchActive = Math.abs(this.touchDx) > 0.1 || Math.abs(this.touchDy) > 0.1;
     if (touchActive) {
-      vx = this.touchDx * PLAYER_SPEED;
-      vy = this.touchDy * PLAYER_SPEED;
+      vx = this.touchDx * speed;
+      vy = this.touchDy * speed;
       if (Math.abs(this.touchDx) >= Math.abs(this.touchDy)) {
         direction = this.touchDx < 0 ? "left" : "right";
       } else {

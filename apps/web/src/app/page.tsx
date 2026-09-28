@@ -44,6 +44,7 @@ const AudioBridge         = dynamic(() => import("@/ui/AudioBridge"),         { 
 const NicknameModal       = dynamic(() => import("@/ui/NicknameModal"),       { ssr: false });
 const DuelInvite          = dynamic(() => import("@/ui/DuelInvite"),          { ssr: false });
 const CalendarPanel       = dynamic(() => import("@/ui/CalendarPanel"),       { ssr: false });
+const BuffBar             = dynamic(() => import("@/ui/BuffBar"),             { ssr: false });
 
 /** Sol Mechs duel invites: sent from a player card, answered from the city. */
 const DUEL_INVITE_EVENT = "solcity:solmechs-duel";
@@ -58,6 +59,7 @@ import { DM_UNREAD_EVENT, SEND_TOKENS_EVENT } from "@/game/chat/dmEvents";
 import { useCrispPixelArt } from "@/ui/useCrispPixelArt";
 import { useWheelZoom } from "@/ui/useWheelZoom";
 import KeysCard, { useKeysCard } from "@/ui/KeysCard";
+import { grantBuff } from "@/game/buffs/playerBuffs";
 
 function useIsTouch() {
   const [isTouch, setIsTouch] = useState(false);
@@ -249,6 +251,13 @@ export default function Home() {
     }
     if (action.type === "link") {
       if (action.url) window.open(action.url, "_blank", "noopener,noreferrer");
+      game?.events.emit("npc:close");
+      return;
+    }
+    // A timed buff has no panel: the chip in the HUD and the badge over the
+    // player's head are the whole result, so close and let them feel it.
+    if (action.type === "speed-buff") {
+      if (action.buffId) grantBuff(action.buffId);
       game?.events.emit("npc:close");
       return;
     }
@@ -557,6 +566,9 @@ export default function Home() {
                 )}
               </div>
             </div>
+
+            {/* Timed buffs (the Vietnamese coffee) — nothing while none run. */}
+            <BuffBar />
 
           </div>
 
