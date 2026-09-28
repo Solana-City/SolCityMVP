@@ -198,10 +198,7 @@ const NPC_SEEDS: NPCSeed[] = [
       { label: "3 MINUTES" },
     ],
     action: { type: "speed-buff", label: "Try vietnamese coffee", buffId: "vietnamese-coffee" },
-    // No spriteKey yet, so he wears the default avatar sheet: the barista's
-    // own art is not drawn. Drop "Vietnamese Barista.png" (the usual 4x4 grid
-    // of 64x64 frames) into public/assets/sprites and add
-    // `spriteKey: "Vietnamese Barista"` here, and nothing else changes.
+    spriteKey: "Vietnamese Barista",
   },
   {
     id: "kite-pro",
