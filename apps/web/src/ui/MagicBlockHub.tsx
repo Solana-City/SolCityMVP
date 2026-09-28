@@ -14,7 +14,7 @@
  * this is the sign that points at it.
  */
 import { useState } from "react";
-import { PanelTitleBar, ProtocolLogo } from "@/ui/PixelIcons";
+import { PanelTitleBar, ProtocolLogo, ExternalLinkIcon } from "@/ui/PixelIcons";
 import { CATEGORY_META } from "@/game/minimap/categories";
 import { track } from "@/game/telemetry/track";
 import { chamferBox } from "@/ui/chamfer";
@@ -151,9 +151,10 @@ export default function MagicBlockHub({ children, onClose }: MagicBlockHubProps)
         target="_blank"
         rel="noopener noreferrer"
         onClick={() => track("tutorial", "magicblock-quickstart", { success: true, label: "docs" })}
-        style={{ ...docsLink, marginTop: 14, display: "block", textAlign: "center" }}
+        style={{ ...docsLink, marginTop: 14, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}
       >
         DEVELOPER QUICKSTART
+        <ExternalLinkIcon size={9} color={docsLink.color as string} />
       </a>
     </>
   );
@@ -186,9 +187,10 @@ function TopicView({ topic }: { topic: Topic }) {
         target="_blank"
         rel="noopener noreferrer"
         onClick={() => track("tutorial", `magicblock-${topic.id}`, { success: true, label: "docs" })}
-        style={{ ...docsLink, borderColor: `${topic.color}66`, color: topic.color, marginTop: 14, display: "block", textAlign: "center" }}
+        style={{ ...docsLink, borderColor: `${topic.color}66`, color: topic.color, marginTop: 14, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}
       >
         READ THE DOCS
+        <ExternalLinkIcon size={9} color={topic.color} />
       </a>
     </>
   );

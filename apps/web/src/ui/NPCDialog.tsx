@@ -6,7 +6,7 @@ import NPCPortrait from "./NPCPortrait";
 import { profileManager } from "@/game/config/profileManager";
 import { chamferBox } from "@/ui/chamfer";
 import ChamferGlow from "@/ui/ChamferGlow";
-import { CloseButton } from "@/ui/PixelIcons";
+import { CloseButton, ExternalLinkIcon } from "@/ui/PixelIcons";
 
 function useIsTouch() {
   const [isTouch, setIsTouch] = useState(false);
@@ -297,9 +297,11 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
                 cursor:      "pointer",
                 fontWeight:  "bold",
                 touchAction: "manipulation",
+                display: "flex", alignItems: "center", gap: 6,
               })}
             >
               {npc.action.label.toUpperCase()}
+              {npc.action.type === "link" && <ExternalLinkIcon size={8} color="#000" />}
             </button>
           ) : (
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -463,9 +465,11 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
                   padding:     "10px 20px",
                   cursor:      "pointer",
                   fontWeight:  "bold",
+                  display: "flex", alignItems: "center", gap: 6,
                 })}
               >
                 {npc.action.label.toUpperCase()}
+                {npc.action.type === "link" && <ExternalLinkIcon size={8} color="#000" />}
               </button>
             )}
           </div>

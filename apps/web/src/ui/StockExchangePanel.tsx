@@ -20,7 +20,7 @@ import { ORDER_TTL_MS, deserializeTransaction, fromSmallestUnit, type OrderRespo
 import { transactionLog } from "@/game/telemetry/transactionLog";
 import { profileManager } from "@/game/config/profileManager";
 import { chamferBox } from "@/ui/chamfer";
-import { PanelTitleBar, ProtocolLogo } from "@/ui/PixelIcons";
+import { PanelTitleBar, ProtocolLogo, ExternalLinkIcon } from "@/ui/PixelIcons";
 import { CATEGORY_META } from "@/game/minimap/categories";
 
 const PIXEL = '"Press Start 2P", monospace';
@@ -429,8 +429,8 @@ function TradeView(props: {
         <div style={{ fontSize: 9, color: "#fff", marginTop: 10 }}>{done.text}</div>
         {done.signature && (
           <a href={stockTxUrl(done.signature)} target="_blank" rel="noopener noreferrer"
-            style={{ display: "block", marginTop: 12, fontSize: 6, color: "#14F0C6" }}>
-            View on Solscan
+            style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 5, marginTop: 12, fontSize: 6, color: "#14F0C6" }}>
+            View on Solscan <ExternalLinkIcon size={7} color="#14F0C6" />
           </a>
         )}
         <button onClick={onBack} style={{ ...primaryBtn(GOLD), marginTop: 16 }}>BACK TO MARKET</button>
@@ -667,8 +667,8 @@ function BasketView(props: {
             <div key={l.stock.mint} style={chamferBox(6, { display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 6, padding: "6px 8px", background: "#12162b" })}>
               <span style={{ color: "#fff" }}>{l.stock.ticker}</span>
               {l.status === "sent" ? (
-                <a href={stockTxUrl(l.signature ?? "")} target="_blank" rel="noopener noreferrer" style={{ color: UP }}>
-                  +{trimAmount(fromSmallestUnit(l.out ?? "0", l.stock.decimals))}
+                <a href={stockTxUrl(l.signature ?? "")} target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 3, color: UP }}>
+                  +{trimAmount(fromSmallestUnit(l.out ?? "0", l.stock.decimals))} <ExternalLinkIcon size={6} color={UP} />
                 </a>
               ) : (
                 <span style={{ color: DOWN }}>FAILED</span>

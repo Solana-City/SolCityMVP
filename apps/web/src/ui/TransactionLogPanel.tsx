@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { CloseButton } from "@/ui/PixelIcons";
+import { CloseButton, ExternalLinkIcon } from "@/ui/PixelIcons";
 import {
   transactionLog,
   getExplorerUrl,
@@ -614,7 +614,7 @@ function EntryRow({ entry }: { entry: TxEntry }) {
           })}
           title="View on explorer"
         >
-          ↗
+          <ExternalLinkIcon size={9} color={layerColor} />
         </a>
       )}
     </div>

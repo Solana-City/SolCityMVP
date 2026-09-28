@@ -10,7 +10,7 @@
  */
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import type { MiniGameComponentProps } from "../types";
-import { CloseButton } from "@/ui/PixelIcons";
+import { CloseButton, ExternalLinkIcon } from "@/ui/PixelIcons";
 import {
   LAYER_ORDER,
   DIRECTION_ROW,
@@ -383,7 +383,9 @@ export default function HairSpecialist({ onResult, onClose }: MiniGameComponentP
                 Exclusive discounts for ST Members worldwide + checkout on Solana.
               </p>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <button onClick={openRemedi} style={btn(ACCENT, touch)}>VISIT REMEDI</button>
+                <button onClick={openRemedi} style={{ ...btn(ACCENT, touch), display: "flex", alignItems: "center", gap: 6 }}>
+                  VISIT REMEDI <ExternalLinkIcon size={9} color="#fff" />
+                </button>
                 <button onClick={() => setPitch(false)} style={btn("#2a3350", touch)}>KEEP PLAYING</button>
               </div>
             </div>

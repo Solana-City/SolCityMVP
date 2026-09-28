@@ -101,18 +101,7 @@ export default function CloakPanel({ onClose }: { onClose: () => void }) {
       </div>
 
       <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 14 }}>
-        <a
-          href={CLOAK_DOCS}
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{
-            textAlign: "center", padding: "12px 16px", borderRadius: 8,
-            fontSize: 7, color: VIOLET, background: "rgba(139,124,246,0.1)",
-            border: `1px solid ${VIOLET}66`, textDecoration: "none",
-          }}
-        >
-          CLOAK DOCS
-        </a>
+        <SiteLinkButton href={CLOAK_DOCS} label="CLOAK DOCS" color={VIOLET} />
         <SiteLinkButton href={CLOAK_APP} label="OPEN CLOAK" />
       </div>
     </div>

@@ -12,6 +12,7 @@ import { useEffect, useMemo, useState } from "react";
 import { fetchEarnListings, type EarnListing } from "@/game/solana/superteamEarn";
 import { CITY_EVENTS } from "@/game/daily/calendar";
 import { chamferBox } from "@/ui/chamfer";
+import { ExternalLinkIcon } from "@/ui/PixelIcons";
 
 const PIXEL = '"Press Start 2P", monospace';
 
@@ -212,8 +213,9 @@ function Row({ entry, showDate }: { entry: Entry; showDate?: boolean }) {
     <div style={{ display: "flex", alignItems: "flex-start", gap: 7, margin: "4px 0" }}>
       <span style={{ width: 6, height: 6, borderRadius: "50%", background: KIND[entry.kind].color, marginTop: 2, flexShrink: 0 }} />
       <div style={{ minWidth: 0, flex: 1 }}>
-        <div style={{ fontFamily: PIXEL, fontSize: 7, color: "#e2e8f0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          {entry.title}
+        <div style={{ display: "flex", alignItems: "center", gap: 5, fontFamily: PIXEL, fontSize: 7, color: "#e2e8f0" }}>
+          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{entry.title}</span>
+          {entry.url && <ExternalLinkIcon size={7} color="#64748b" />}
         </div>
         <div style={{ fontFamily: PIXEL, fontSize: 6, color: "#64748b", marginTop: 3 }}>
           {showDate && `${new Date(`${entry.day}T00:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" }).toUpperCase()} · `}

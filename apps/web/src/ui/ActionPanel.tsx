@@ -12,7 +12,7 @@ import CityGuide from "@/ui/CityGuide";
 import MagicBlockHub from "@/ui/MagicBlockHub";
 import StockExchangePanel from "@/ui/StockExchangePanel";
 import { chamferBox } from "@/ui/chamfer";
-import { CloseButton, PanelTitleBar, ProtocolLogo } from "@/ui/PixelIcons";
+import { CloseButton, PanelTitleBar, ProtocolLogo, ExternalLinkIcon } from "@/ui/PixelIcons";
 import { CATEGORY_META } from "@/game/minimap/categories";
 import PegRiskPanel from "@/ui/PegRiskPanel";
 import CloakPanel from "@/ui/CloakPanel";
@@ -359,8 +359,8 @@ function SwapPanel({ onClose }: { onClose: () => void }) {
           </div>
           {result.signature && (
             <a href={`https://solscan.io/tx/${result.signature}`} target="_blank" rel="noopener noreferrer"
-              style={{ display: "block", marginTop: 8, fontSize: "9px", color: "#14F0C6" }}>
-              View on Solscan ↗
+              style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 5, marginTop: 8, fontSize: "9px", color: "#14F0C6" }}>
+              View on Solscan <ExternalLinkIcon size={9} color="#14F0C6" />
             </a>
           )}
           <button onClick={onClose} style={btnStyle("#B7E928")} className="w-full mt-4">CLOSE</button>
@@ -488,7 +488,9 @@ function TransferPanel({ onClose, to, toName }: { onClose: () => void; to?: stri
           <div style={{ fontFamily: '"Press Start 2P", monospace', fontSize: "8px", color: "#B7E928", marginTop: 8 }}>TRANSFER SENT</div>
           <div style={{ fontSize: "9px", color: "#888899", marginTop: 8 }}>{amount} SOL sent</div>
           <a href={`https://explorer.solana.com/tx/${result.signature}?cluster=devnet`} target="_blank" rel="noopener noreferrer"
-            style={{ display: "block", marginTop: 8, fontSize: "9px", color: "#14F0C6" }}>View on Explorer ↗</a>
+            style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 5, marginTop: 8, fontSize: "9px", color: "#14F0C6" }}>
+            View on Explorer <ExternalLinkIcon size={9} color="#14F0C6" />
+          </a>
           <button onClick={onClose} style={btnStyle("#14F0C6", "#000")} className="w-full mt-4">CLOSE</button>
         </div>
       </>
@@ -698,9 +700,9 @@ function EarnListingsStage({
               href={category.viewAllUrl}
               target="_blank"
               rel="noopener noreferrer"
-              style={{ fontSize: "8px", color: category.color, textDecoration: "none" }}
+              style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: "8px", color: category.color, textDecoration: "none" }}
             >
-              Browse all {category.label.toLowerCase()} →
+              Browse all {category.label.toLowerCase()} <ExternalLinkIcon size={8} color={category.color} />
             </a>
           </div>
         )}
@@ -726,8 +728,9 @@ function EarnListingsStage({
           >
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ color: "#ccccdd", fontSize: "9px", marginBottom: 3, lineHeight: 1.5 }}>
-                  {listing.title}
+                <div style={{ display: "flex", alignItems: "center", gap: 5, color: "#ccccdd", fontSize: "9px", marginBottom: 3, lineHeight: 1.5 }}>
+                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{listing.title}</span>
+                  <ExternalLinkIcon size={8} color="#555566" />
                 </div>
                 <div style={{ fontSize: "8px", color: "#555566" }}>{listing.sponsorName}</div>
               </div>
@@ -749,9 +752,9 @@ function EarnListingsStage({
           href={category.viewAllUrl}
           target="_blank"
           rel="noopener noreferrer"
-          style={chamferBox(8, { flex: 1, background: `${category.color}18`, color: category.color, border: `1px solid ${category.color}33`, padding: "10px 0", textAlign: "center", fontFamily: '"Press Start 2P", monospace', fontSize: "7px", textDecoration: "none", display: "block" })}
+          style={chamferBox(8, { flex: 1, background: `${category.color}18`, color: category.color, border: `1px solid ${category.color}33`, padding: "10px 0", textAlign: "center", fontFamily: '"Press Start 2P", monospace', fontSize: "7px", textDecoration: "none", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 })}
         >
-          SEE ALL {category.label.toUpperCase()} →
+          SEE ALL {category.label.toUpperCase()} <ExternalLinkIcon size={8} color={category.color} />
         </a>
         <button
           onClick={onClose}
