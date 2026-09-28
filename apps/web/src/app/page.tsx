@@ -496,8 +496,12 @@ export default function Home() {
             style={{
               top: "max(env(safe-area-inset-top, 0px), 12px)",
               right: "max(env(safe-area-inset-right, 0px), 12px)",
+              display: "flex", alignItems: "flex-start", gap: 6,
             }}
           >
+            {/* Timed buffs (the Vietnamese coffee) — nothing while none run. */}
+            <BuffBar />
+            <div>
             {/* One 9-slice framed card: profile row, wallet row, onchain+zoom
                 row — each row nested in its own thinner frame inside the
                 bold outer one. */}
@@ -567,9 +571,7 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Timed buffs (the Vietnamese coffee) — nothing while none run. */}
-            <BuffBar />
-
+            </div>
           </div>
 
           </div>

@@ -98,7 +98,7 @@ const BROADCAST_CHANNEL = "sol-city-v1";
 // BroadcastChannel message types
 type BCMsg =
   | { t: "join";  w: string; x: number; y: number; d: number; m: boolean; name?: string; score?: number; l?: Loadout }
-  | { t: "pos";   w: string; x: number; y: number; d: number; m: boolean }
+  | { t: "pos";   w: string; x: number; y: number; d: number; m: boolean; b?: boolean }
   | { t: "chat";  w: string; text: string }
   | { t: "look";  w: string; l: Loadout }
   | { t: "expr";  w: string; e: string }
@@ -117,8 +117,13 @@ const POS_THROTTLE_MS = 200;
 const DIR_MASK = 0b0011;
 const DIR_WALKING = 0b0100;
 const DIR_HAS_WALK_FLAG = 0b1000;
-const packDirection = (dir: number, walking: boolean): number =>
-  (dir & DIR_MASK) | (walking ? DIR_WALKING : 0) | DIR_HAS_WALK_FLAG;
+// A third spare bit: this sender is carrying a speed buff. Receivers draw the
+// badge over their head, so a player who is suddenly quicker reads as buffed
+// rather than as a desynced avatar. Older clients mask it off with DIR_MASK.
+const DIR_SPEED_BUFF = 0b1_0000;
+const packDirection = (dir: number, walking: boolean, buffed: boolean): number =>
+  (dir & DIR_MASK) | (walking ? DIR_WALKING : 0) | DIR_HAS_WALK_FLAG
+  | (buffed ? DIR_SPEED_BUFF : 0);
 // Floor for the leading-edge sends (turns and stops). Short enough that a
 // corner reads as instant, long enough that it can't become a tx firehose.
 const POS_EVENT_MIN_MS = 150;
@@ -143,6 +148,8 @@ export interface OnChainPlayer {
    * from position changes, is known.
    */
   walkFlag?: boolean;
+  /** This player is carrying a speed buff (see DIR_SPEED_BUFF). */
+  speedBuff?: boolean;
   lastUpdate: number;
   displayName?: string;
   score?: number;
@@ -209,7 +216,7 @@ export class OnChainMultiplayer {
 
   // Throttling
   private lastPosSent = 0;
-  private lastPos = { x: 0, y: 0, direction: 0, isWalking: false };
+  private lastPos = { x: 0, y: 0, direction: 0, isWalking: false, buffed: false };
   /** When the last position write was handed to the network (heartbeat clock). */
   private lastChainSendAt = 0;
   private moveFailStreak = 0;
@@ -512,7 +519,7 @@ export class OnChainMultiplayer {
 
   // ── Send input ────────────────────────────────────────────────────────
 
-  sendInput(x: number, y: number, direction: string, isWalking: boolean): void {
+  sendInput(x: number, y: number, direction: string, isWalking: boolean, buffed = false): void {
     const roundX = Math.round(x);
     const roundY = Math.round(y);
     const dirNum = ({ down: 0, left: 1, right: 2, up: 3 } as Record<string, number>)[direction] ?? 0;
@@ -522,7 +529,8 @@ export class OnChainMultiplayer {
       roundX === this.lastPos.x &&
       roundY === this.lastPos.y &&
       dirNum === this.lastPos.direction &&
-      isWalking === this.lastPos.isWalking
+      isWalking === this.lastPos.isWalking &&
+      buffed === this.lastPos.buffed
     ) return;
 
     // Two throttles, not one. A walk in a straight line only needs a sample
@@ -534,7 +542,8 @@ export class OnChainMultiplayer {
     // floored only by POS_EVENT_MIN_MS so a key-mash can't flood the rollup.
     const now = Date.now();
     const isEvent =
-      dirNum !== this.lastPos.direction || isWalking !== this.lastPos.isWalking;
+      dirNum !== this.lastPos.direction || isWalking !== this.lastPos.isWalking
+      || buffed !== this.lastPos.buffed;
     // A stop goes out at once: every millisecond it waits is distance the
     // other screens' prediction carries the avatar past the real spot.
     const stopped = !isWalking && this.lastPos.isWalking;
@@ -542,7 +551,7 @@ export class OnChainMultiplayer {
     if (now - this.lastPosSent < minGap) return;
     this.lastPosSent = now;
 
-    this.lastPos = { x: roundX, y: roundY, direction: dirNum, isWalking };
+    this.lastPos = { x: roundX, y: roundY, direction: dirNum, isWalking, buffed };
 
     // Not connected — log sim entry so the activity log stays active without a wallet
     if (!this._connected || !this.wallet) {
@@ -555,7 +564,7 @@ export class OnChainMultiplayer {
     const local = this.knownPlayers.get(walletStr);
     if (local) {
       local.x = roundX; local.y = roundY;
-      local.direction = dirNum; local.isWalking = isWalking;
+      local.direction = dirNum; local.isWalking = isWalking; local.speedBuff = buffed;
       local.lastUpdate = now;
     }
 
@@ -563,12 +572,12 @@ export class OnChainMultiplayer {
     this.bc?.postMessage({
       t: "pos", w: walletStr,
       x: roundX, y: roundY,
-      d: dirNum, m: isWalking,
+      d: dirNum, m: isWalking, b: buffed,
     } satisfies BCMsg);
 
     // Layer 2: on-chain position update
     if (isProgramDeployed()) {
-      this.pushPosition(x, y, packDirection(dirNum, isWalking));
+      this.pushPosition(x, y, packDirection(dirNum, isWalking, buffed));
     } else {
       transactionLog.recordMove({ signature: "sim:move", status: "confirmed" });
     }
@@ -627,7 +636,7 @@ export class OnChainMultiplayer {
     if (!this._connected || !this.wallet || !isProgramDeployed()) return;
     if (this.lastPos.x < 0) return; // no position written yet this session
     if (Date.now() - this.lastChainSendAt < HEARTBEAT_MS) return;
-    this.pushPosition(this.lastPos.x, this.lastPos.y, packDirection(this.lastPos.direction, this.lastPos.isWalking));
+    this.pushPosition(this.lastPos.x, this.lastPos.y, packDirection(this.lastPos.direction, this.lastPos.isWalking, this.lastPos.buffed));
   }
 
   sendChat(text: string): void {
@@ -1071,7 +1080,7 @@ export class OnChainMultiplayer {
           } satisfies BCMsg);
           break;
         case "pos":
-          this.handlePlayerMove(msg.w, msg.x, msg.y, msg.d, msg.m);
+          this.handlePlayerMove(msg.w, msg.x, msg.y, msg.d, msg.m, undefined, undefined, undefined, msg.b);
           break;
         case "look":
           this.handleLook(msg.w, msg.l);
@@ -1349,7 +1358,7 @@ export class OnChainMultiplayer {
     //    is no longer used. (subscribeCrossNetworkChat intentionally not called.)
 
     // 7. Force a presence broadcast on next sendInput tick
-    this.lastPos = { x: -1, y: -1, direction: -1, isWalking: false };
+    this.lastPos = { x: -1, y: -1, direction: -1, isWalking: false, buffed: false };
 
     // 8. Seed our loadout onto the ER PlayerState so players already in the city
     //    render our real outfit from their next poll (the field persists, so no
@@ -1800,6 +1809,7 @@ export class OnChainMultiplayer {
       const walkFlag = (rawDirection & DIR_HAS_WALK_FLAG) !== 0
         ? (rawDirection & DIR_WALKING) !== 0
         : undefined;
+      const speedBuff = (rawDirection & DIR_SPEED_BUFF) !== 0;
 
       // Skip outfit_id, score, swap_count, transfer_count, bounty_count
       offset += 1 + 4 + 2 + 2 + 2;
@@ -1896,13 +1906,14 @@ export class OnChainMultiplayer {
       const wasKnown = existing !== undefined;
       const moved = existing !== undefined && (x !== existing.x || y !== existing.y);
       const isWalking = walkFlag ?? moved;
-      if (existing && !moved && existing.direction === direction && existing.walkFlag === walkFlag) {
+      if (existing && !moved && existing.direction === direction && existing.walkFlag === walkFlag
+          && (existing.speedBuff ?? false) === speedBuff) {
         // The same state again — every write now arrives twice (websocket
         // push, then the poll). Passing it on as a "move" told the scene the
         // player had stopped, and their legs froze until the next sample.
         existing.lastUpdate = Date.now();
       } else {
-        this.handlePlayerMove(walletStr, x, y, direction, isWalking, displayName, undefined, walkFlag);
+        this.handlePlayerMove(walletStr, x, y, direction, isWalking, displayName, undefined, walkFlag, speedBuff);
         if (slot !== undefined) this.noteRead(fromPush);
       }
       const updated = this.knownPlayers.get(walletStr);
@@ -2225,7 +2236,7 @@ export class OnChainMultiplayer {
 
   private handlePlayerMove(
     wallet: string, x: number, y: number, d: number, m: boolean,
-    name?: string, score?: number, walkFlag?: boolean,
+    name?: string, score?: number, walkFlag?: boolean, speedBuff?: boolean,
   ): void {
     // Always use Date.now() for lastUpdate so polling keeps players visible
     // even when on-chain writes are temporarily failing (e.g. delegated PDAs).
@@ -2235,7 +2246,7 @@ export class OnChainMultiplayer {
     let player = this.knownPlayers.get(wallet);
     if (!player) {
       const pend = this.pendingLoadouts.get(wallet);
-      player = { wallet, x, y, direction: d, isWalking: m, walkFlag, lastUpdate, displayName: name, score, loadout: pend };
+      player = { wallet, x, y, direction: d, isWalking: m, walkFlag, speedBuff, lastUpdate, displayName: name, score, loadout: pend };
       this.knownPlayers.set(wallet, player);
       this.pendingLoadouts.delete(wallet);
       for (const cb of this.addCallbacks) cb(wallet, player);
@@ -2244,6 +2255,7 @@ export class OnChainMultiplayer {
       return;
     }
     player.x = x; player.y = y; player.direction = d; player.isWalking = m; player.walkFlag = walkFlag;
+    if (speedBuff !== undefined) player.speedBuff = speedBuff;
     player.lastUpdate = lastUpdate;
     if (name) player.displayName = name;
     if (score !== undefined) player.score = score;

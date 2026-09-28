@@ -32,14 +32,15 @@ says what it replaces.
 | **Hair Specialist** (Superteam Turkey) | dressed from the wardrobe (red mohawk, white tee) | optional own sheet; Turkey red `#E30A17` accent |
 | **8-10 ST Brasil builders** | 3 delivered and in the city (Raffx / Pegana, Crash / SolSentry, Mole / Dungeons & Moles), the rest not drawn yet | one sheet each, same format as the three delivered: one row of 6 frames at 64x64, idle in place, pink `215,123,186` background. Meeting all of them earns the Brazil shirt, so the list closes only when every builder is in |
 
-Two more pieces go with the barista, both drawn in code today:
+One more piece goes with the barista:
 
-- **Coffee cup icon**, 12x12 (or a multiple), transparent. Replaces the pixel
-  matrix in `apps/web/src/game/buffs/coffeeIcon.ts`, which draws the badge over
-  the player's head and the icon in the HUD buff chip.
 - **Coffee shop building** for Tiled, on the open plot at cols 101-105 /
   rows 40-44, between the Superteam Earn tent and the food cart. The barista
-  already stands on row 45, in front of it.
+  stands on row 45 in front of it, and the Superteam Vietnam flag has its foot
+  on tile 101 of the same row.
+
+The coffee icons and the Vietnam flag are in (`assets/ui/buff_coffee.png`,
+`assets/ui/buff_coffee_frame.png`, `assets/sprites/decor/flag_st_vietnam.png`).
 
 ## 2. Outfits: a Solana set
 

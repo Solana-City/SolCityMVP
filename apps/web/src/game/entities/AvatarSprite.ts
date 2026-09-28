@@ -301,6 +301,21 @@ export class AvatarSprite {
   }
 
   /**
+   * Top of the topmost badge currently showing, in container space, or null
+   * when none is. A chat bubble uses it to clear the badge instead of sitting
+   * over it: the line stays legible and the buff stays readable.
+   */
+  badgeTopY(): number | null {
+    let top: number | null = null;
+    for (const badge of this.badges ?? []) {
+      if (!badge.visible || !badge.active) continue;
+      const y = badge.y - badge.displayHeight;
+      if (top === null || y < top) top = y;
+    }
+    return top;
+  }
+
+  /**
    * Re-seats the name tags on the outfit and the badges on top of them. The
    * name is a 5px font: NAME_HEIGHT is that plus its stroke and a pixel of
    * air, which is cheaper and steadier than measuring a Text every frame.

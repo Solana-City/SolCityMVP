@@ -4,14 +4,13 @@ import { useEffect, useState } from "react";
 import { activeBuffs, formatBuffTime, onBuffsChanged, type ActiveBuff } from "@/game/buffs/playerBuffs";
 
 /**
- * The timed-buff chips under the HUD card: one small framed square per buff,
- * carrying its icon and the time it has left. Nothing is drawn while no buff
- * is up, so the HUD is unchanged for a player who has not picked one up.
+ * The timed-buff chips beside the HUD card: the buff's own framed icon with
+ * the time it has left under it. Nothing is drawn while no buff is up, so the
+ * HUD is unchanged for a player who has not picked one up.
  */
 
-/** The thin nested ring the rest of the HUD rows use. */
-const BUFF_FRAME = "url(/assets/branding/ui/frame-map-test.png) 18 fill / 8px / 0 round";
-
+/** The icons are 2x drawings, so 32 CSS px is a whole-pixel render. */
+const ICON_SIZE = 32;
 /** How often the label is redrawn while a buff runs. */
 const TICK_MS = 250;
 
@@ -44,29 +43,25 @@ export default function BuffBar() {
   if (buffs.length === 0) return null;
 
   return (
-    <div style={{ display: "flex", justifyContent: "flex-end", gap: 4, marginTop: 4 }}>
+    <div style={{ display: "flex", alignItems: "flex-start", gap: 4 }}>
       {buffs.map((buff) => (
         <div
           key={buff.def.id}
           title={buff.def.label}
-          style={{
-            borderWidth: 8, borderStyle: "solid", borderColor: "transparent",
-            borderImage: BUFF_FRAME,
-            imageRendering: "pixelated",
-            display: "flex", alignItems: "center", gap: 5,
-          }}
+          style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}
         >
           <img
             src={buff.def.iconUrl}
-            alt=""
-            width={16}
-            height={16}
+            alt={buff.def.label}
+            width={ICON_SIZE}
+            height={ICON_SIZE}
             style={{ display: "block", imageRendering: "pixelated" }}
           />
           {/* Fixed width so the chip does not twitch as "3m" becomes "60s". */}
           <span style={{
-            fontFamily: '"Press Start 2P", monospace', fontSize: 9, lineHeight: 1,
-            color: "#f3e6c8", width: 30, textAlign: "center",
+            fontFamily: '"Press Start 2P", monospace', fontSize: 8, lineHeight: 1,
+            color: "#f3e6c8", width: ICON_SIZE, textAlign: "center",
+            textShadow: "0 1px 0 #0a0a1e, 1px 0 0 #0a0a1e, -1px 0 0 #0a0a1e, 0 -1px 0 #0a0a1e",
           }}>
             {formatBuffTime(buff.remainingMs)}
           </span>

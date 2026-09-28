@@ -9,11 +9,10 @@
  * the other exists. Expiries go to localStorage so a reload mid-buff does not
  * quietly take the time back.
  *
- * Local to this player. Other people in the city do not see the buff yet: that
- * would need a bit in the on-chain direction byte, which is a separate change.
+ * The buff itself is local, but the fact that it is up rides out to everyone
+ * else on a spare bit of the on-chain direction byte (see OnChainMultiplayer):
+ * a player who is suddenly quicker should look quicker for a reason.
  */
-import { COFFEE_ICON_URL, COFFEE_TEXTURE_KEY } from "./coffeeIcon";
-
 export type BuffId = "vietnamese-coffee";
 
 export interface BuffDefinition {
@@ -23,10 +22,12 @@ export interface BuffDefinition {
   durationMs: number;
   /** Multiplies the player's walking speed for as long as the buff is up. */
   speedMultiplier: number;
-  /** HUD icon. A data URL today, a file path once the art lands. */
+  /** The framed icon for the HUD chip, served from /public. */
   iconUrl: string;
   /** Phaser texture key for the badge over the player's head. */
   textureKey: string;
+  /** Where BootScene loads that badge from, relative to /public. */
+  texturePath: string;
 }
 
 export const BUFFS: Record<BuffId, BuffDefinition> = {
@@ -35,8 +36,11 @@ export const BUFFS: Record<BuffId, BuffDefinition> = {
     label: "COFFEE",
     durationMs: 3 * 60_000,
     speedMultiplier: 1.4,
-    iconUrl: COFFEE_ICON_URL,
-    textureKey: COFFEE_TEXTURE_KEY,
+    // Two drawings of the same cup: the framed one for the HUD chip, the bare
+    // one for the badge that rides over a player's head.
+    iconUrl: "/assets/ui/buff_coffee_frame.png",
+    textureKey: "buff-coffee",
+    texturePath: "assets/ui/buff_coffee.png",
   },
 };
 

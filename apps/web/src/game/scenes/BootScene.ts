@@ -5,6 +5,7 @@ import { AvatarSprite } from "../entities/AvatarSprite";
 import { NPC_REGISTRY } from "../config/npcRegistry";
 import { getAllLayerVariants, EXPRESSIONS, SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT } from "../config/paperDoll";
 import { preloadAnimatedDecor } from "../world/AnimatedDecor";
+import { BUFFS } from "../buffs/playerBuffs";
 
 // Background color used in the spriter's sheets — treated as transparent.
 const CHROMA_R = 215;
@@ -85,6 +86,11 @@ export class BootScene extends Phaser.Scene {
     // Pixel-art NPC attention balloons — one per palette variant.
     for (const variant of ["green", "orange", "purple", "red", "yellow"]) {
       this.load.image(`attention-${variant}`, `assets/ui/attention_${variant}.png`);
+    }
+
+    // Buff badges — the icon that rides over the head of anyone carrying one.
+    for (const buff of Object.values(BUFFS)) {
+      this.load.image(buff.textureKey, buff.texturePath);
     }
 
     SimpleSprite.load(this, "avatar-player", "assets/sprites/main_char.png", 64, 64);

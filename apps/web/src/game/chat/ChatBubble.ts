@@ -5,7 +5,8 @@ const BUBBLE_PADDING = 6;
 const BUBBLE_FONT_SIZE = 8;
 const BUBBLE_MAX_WIDTH = 150;
 const BUBBLE_MAX_CHARS = 140;   // guard against spam blowing the bubble up
-const BUBBLE_Y = -44;           // pointer tip sits just above the head/name label
+/** Pointer tip sits just above the head/name label, when nothing else is there. */
+export const BUBBLE_Y = -44;
 const BUBBLE_BG = 0xe6e6ee;     // light gray
 const BUBBLE_BG_ALPHA = 0.5;    // translucent so it doesn't block the scene behind it
 

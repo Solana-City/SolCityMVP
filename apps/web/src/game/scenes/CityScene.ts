@@ -7,11 +7,10 @@ import { loadSavedLoadout, DEFAULT_LOADOUT, type Loadout } from "../config/paper
 import { OnChainMultiplayer, OnChainPlayer } from "../multiplayer/OnChainMultiplayer";
 import { ChatManager, getChannelColor, SELF_COLOR } from "../chat/ChatManager";
 import { containsLink, maskLinks } from "../chat/linkFilter";
-import { ChatBubble } from "../chat/ChatBubble";
+import { ChatBubble, BUBBLE_Y } from "../chat/ChatBubble";
 import { TradeBubble } from "../chat/TradeBubble";
 import { decodeTrade, encodeTrade, tradeLogLine, type TradeSide } from "../chat/tradeBroadcast";
-import { isBuffActive, onBuffsChanged, speedMultiplier } from "../buffs/playerBuffs";
-import { ensureCoffeeTexture } from "../buffs/coffeeIcon";
+import { BUFFS, isBuffActive, onBuffsChanged, speedMultiplier } from "../buffs/playerBuffs";
 
 /** Chat-log color for stock trade lines. */
 const TRADE_COLOR = "#FFB547";
@@ -123,6 +122,8 @@ export class CityScene extends Phaser.Scene {
   private remoteDust = new Map<string, { lastX: number; lastY: number; lastDustAt: number }>();
   private nameLabels = new Map<string, Phaser.GameObjects.Text>();
   private activeBubbles = new Map<string, ChatBubble>();
+  /** Buff badge per remote wallet, so an arriving flag can toggle it. */
+  private remoteBuffBadges = new Map<string, Phaser.GameObjects.Image>();
   // Debounce "entered the city" — wallet reconnects clear knownPlayers and
   // re-discover the same players, which would spam the chat on every reconnect.
   private recentJoins = new Map<string, number>();
@@ -616,13 +617,11 @@ export class CityScene extends Phaser.Scene {
     // Buff badge: the coffee cup rides over the name while the Vietnamese
     // Barista's buff runs. One buff exists, so one badge; when there is a
     // second, this becomes a row read off activeBuffs().
-    const buffBadge = this.add.image(0, -44, ensureCoffeeTexture(this))
-      .setOrigin(0.5, 1)
-      .setVisible(isBuffActive("vietnamese-coffee"));
-    container.add(buffBadge);
-    this.avatar.attachBadge(buffBadge);
-    const offBuffs = onBuffsChanged(() => buffBadge.setVisible(isBuffActive("vietnamese-coffee")));
-    this.events.once("shutdown", offBuffs);
+    const buffBadge = this.attachBuffBadge(this.avatar, isBuffActive("vietnamese-coffee"));
+    if (buffBadge) {
+      const offBuffs = onBuffsChanged(() => buffBadge.setVisible(isBuffActive("vietnamese-coffee")));
+      this.events.once("shutdown", offBuffs);
+    }
     const showOwnName = () => {
       const n = this.walletAddress ? cachedName(this.walletAddress) : null;
       youLabel.setText(n ?? "YOU");
@@ -731,7 +730,7 @@ export class CityScene extends Phaser.Scene {
         color
       );
 
-      this.showBubble(this.avatar.getContainer(), text, color);
+      this.showBubble(this.avatar, text, color);
 
       if (this.network?.connected) {
         this.network.sendChat(text);
@@ -760,7 +759,7 @@ export class CityScene extends Phaser.Scene {
       this.chat.addMessage("city", shown, shown, text, color);
       // Float the message over the sender's avatar, if they're in view.
       const avatar = wallet ? this.remotePlayers.get(wallet) : undefined;
-      if (avatar) this.showBubble(avatar.getContainer(), text, color);
+      if (avatar) this.showBubble(avatar, text, color);
     });
 
     // Our own stock trade (Stocks Broker panel). Always shown over our head;
@@ -1405,7 +1404,8 @@ export class CityScene extends Phaser.Scene {
       this.avatar.x,
       this.avatar.y,
       this.currentDirection,
-      direction !== null
+      direction !== null,
+      isBuffActive("vietnamese-coffee"),
     );
 
     // Pedestrian depth sorting
@@ -1576,6 +1576,10 @@ export class CityScene extends Phaser.Scene {
     avatar.attachLabel(label);
     this.nameLabels.set(wallet, label);
 
+    // Their buff badge, from the bit they packed into the direction byte.
+    const badge = this.attachBuffBadge(avatar, player.speedBuff === true);
+    if (badge) this.remoteBuffBadges.set(wallet, badge);
+
     // Clickable hit zone — opens this player's profile card in React.
     const container = avatar.getContainer();
     container.setData("wallet", wallet);
@@ -1611,6 +1615,9 @@ export class CityScene extends Phaser.Scene {
       this.nameLabels.delete(wallet);
     }
 
+    this.remoteBuffBadges.get(wallet)?.destroy();
+    this.remoteBuffBadges.delete(wallet);
+
     const bubble = this.activeBubbles.get(wallet);
     if (bubble) {
       bubble.destroy();
@@ -1629,6 +1636,10 @@ export class CityScene extends Phaser.Scene {
   private updateRemotePlayer(wallet: string, player: OnChainPlayer): void {
     const avatar = this.remotePlayers.get(wallet);
     if (!avatar) return;
+
+    // Their buff badge. Only the senders that set the bit ever clear it, so a
+    // client that predates it simply never shows one rather than flickering.
+    this.remoteBuffBadges.get(wallet)?.setVisible(player.speedBuff === true);
 
     const container = avatar.getContainer();
     const dx = player.x - container.x;
@@ -1832,11 +1843,34 @@ export class CityScene extends Phaser.Scene {
   }
 
   private showBubble(
-    target: Phaser.GameObjects.Container,
+    avatar: AvatarSprite,
     text: string,
     color: string
   ): void {
-    new ChatBubble(this, target, text, color);
+    // Clear the buff badge when one is showing, so the line reads over the
+    // cup instead of through it (the bubble fill is translucent).
+    const badgeTop = avatar.badgeTopY();
+    const y = badgeTop === null ? undefined : Math.min(BUBBLE_Y, badgeTop - 2);
+    new ChatBubble(this, avatar.getContainer(), text, color, y === undefined ? {} : { y });
+  }
+
+  /**
+   * The coffee cup that rides over a buffed player's head, local or remote.
+   * Returns null when the art is not loaded, which is the only reason it
+   * would be missing.
+   */
+  private attachBuffBadge(avatar: AvatarSprite, visible: boolean): Phaser.GameObjects.Image | null {
+    const { textureKey } = BUFFS["vietnamese-coffee"];
+    if (!this.textures.exists(textureKey)) return null;
+    // The sheet is a 2x drawing, so a quarter scale lands it back on whole
+    // screen pixels at the city's 2x camera zoom.
+    const badge = this.add.image(0, BUBBLE_Y, textureKey)
+      .setOrigin(0.5, 1)
+      .setScale(0.25)
+      .setVisible(visible);
+    avatar.getContainer().add(badge);
+    avatar.attachBadge(badge);
+    return badge;
   }
 
   /**

@@ -88,6 +88,30 @@ export const ANIMATED_DECOR: AnimatedDecorDef[] = [
     blocks: true,
     ySort: true,
   },
+  {
+    // Superteam Vietnam flag beside the coffee shop plot, on the west corner
+    // of the open ground between the Superteam Earn tent (solid to col 100)
+    // and the food cart block (solid from col 106). The cloth flies east
+    // across the plot, toward the Vietnamese Barista two tiles away at col
+    // 103, and nothing of either neighbour reaches into those columns.
+    //
+    // Same sheet geometry as the Turkey pole (78x183, 4 frames, drawn at 2x,
+    // so scale 0.5). The foot occupies source x 0-24 of the 78, which puts it
+    // 13px left of the sprite centre: tileX 101 plus offsetX 13 therefore
+    // stands the FOOT on tile 101, the cell `blocks` stamps.
+    key: "flag-st-vietnam",
+    file: "assets/sprites/decor/flag_st_vietnam.png",
+    frameWidth: 78,
+    frameHeight: 183,
+    frameCount: 4,
+    frameRate: 6,
+    tileX: 101,
+    tileY: 45,
+    offsetX: 13,
+    scale: 0.5,
+    blocks: true,
+    ySort: true,
+  },
   // ── The city's three painted flags, now waving ───────────────────
   //
   // These replace tile layers rather than adding to the map, so each one is
