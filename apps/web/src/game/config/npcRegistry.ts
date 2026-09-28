@@ -191,10 +191,10 @@ const NPC_SEEDS: NPCSeed[] = [
     tileY: 44,
     dialog: [
       "Xin chao! Welcome to the coffee shop, brought over by Superteam Vietnam.",
-      "One cup of this and you will not walk the city. You will fly through it.",
+      "One cup of our famous coffee and you will not walk around the city. You will fly through it.",
     ],
     highlights: [
-      { label: "+40% SPEED" },
+      { label: "+70% SPEED" },
       { label: "3 MINUTES" },
     ],
     action: { type: "speed-buff", label: "Try vietnamese coffee", buffId: "vietnamese-coffee" },

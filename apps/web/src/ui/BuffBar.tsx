@@ -9,8 +9,8 @@ import { activeBuffs, formatBuffTime, onBuffsChanged, type ActiveBuff } from "@/
  * HUD is unchanged for a player who has not picked one up.
  */
 
-/** The icons are 2x drawings, so 32 CSS px is a whole-pixel render. */
-const ICON_SIZE = 32;
+/** 1.5x the icon's own 32px, matching the badge over the player's head. */
+const ICON_SIZE = 48;
 /** How often the label is redrawn while a buff runs. */
 const TICK_MS = 250;
 
@@ -59,7 +59,7 @@ export default function BuffBar() {
           />
           {/* Fixed width so the chip does not twitch as "3m" becomes "60s". */}
           <span style={{
-            fontFamily: '"Press Start 2P", monospace', fontSize: 8, lineHeight: 1,
+            fontFamily: '"Press Start 2P", monospace', fontSize: 9, lineHeight: 1,
             color: "#f3e6c8", width: ICON_SIZE, textAlign: "center",
             textShadow: "0 1px 0 #0a0a1e, 1px 0 0 #0a0a1e, -1px 0 0 #0a0a1e, 0 -1px 0 #0a0a1e",
           }}>

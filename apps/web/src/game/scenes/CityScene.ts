@@ -10,7 +10,7 @@ import { containsLink, maskLinks } from "../chat/linkFilter";
 import { ChatBubble, BUBBLE_Y } from "../chat/ChatBubble";
 import { TradeBubble } from "../chat/TradeBubble";
 import { decodeTrade, encodeTrade, tradeLogLine, type TradeSide } from "../chat/tradeBroadcast";
-import { BUFFS, isBuffActive, onBuffsChanged, speedMultiplier } from "../buffs/playerBuffs";
+import { BUFFS, MAX_SPEED_MULTIPLIER, isBuffActive, onBuffsChanged, speedMultiplier } from "../buffs/playerBuffs";
 
 /** Chat-log color for stock trade lines. */
 const TRADE_COLOR = "#FFB547";
@@ -1287,9 +1287,9 @@ export class CityScene extends Phaser.Scene {
     let vx = 0, vy = 0;
 
     // Timed buffs scale the whole walk, keyboard and joystick alike, so the
-    // analog ramp keeps its feel. Capped well under the 1.5x the remote
-    // interpolator allows itself, so a buffed player still reads as walking
-    // on everyone else's screen rather than as a rubber-banding teleport.
+    // analog ramp keeps its feel. Everyone else's interpolator widens its own
+    // clamp for a buffed sender (see updateRemotePlayer), so the extra speed
+    // reads as walking faster rather than as a rubber-banding teleport.
     const speed = PLAYER_SPEED * speedMultiplier();
 
     // Keyboard (digital)
@@ -1689,7 +1689,10 @@ export class CityScene extends Phaser.Scene {
       let nvx = (player.x - prevTarget.x) / dtS;
       let nvy = (player.y - prevTarget.y) / dtS;
       const sp = Math.hypot(nvx, nvy);
-      const cap = PLAYER_SPEED * 1.5;
+      // 1.5x is the jitter headroom over a normal walk. A buffed sender is
+      // genuinely covering more ground per sample, so the same headroom is
+      // measured from their speed, not ours.
+      const cap = PLAYER_SPEED * (player.speedBuff ? MAX_SPEED_MULTIPLIER : 1) * 1.5;
       if (sp > cap) { nvx *= cap / sp; nvy *= cap / sp; }
       vx = prevTarget.walking === false ? nvx : (vx + nvx) / 2;
       vy = prevTarget.walking === false ? nvy : (vy + nvy) / 2;
@@ -1862,11 +1865,12 @@ export class CityScene extends Phaser.Scene {
   private attachBuffBadge(avatar: AvatarSprite, visible: boolean): Phaser.GameObjects.Image | null {
     const { textureKey } = BUFFS["vietnamese-coffee"];
     if (!this.textures.exists(textureKey)) return null;
-    // The sheet is a 2x drawing, so a quarter scale lands it back on whole
-    // screen pixels at the city's 2x camera zoom.
+    // 0.375 of a 2x drawing is 1.5x its own pixels at the city's 2x camera
+    // zoom: a regular 2-1-2-1 alternation rather than a clean doubling, which
+    // is the price of a size between the two whole-pixel ones.
     const badge = this.add.image(0, BUBBLE_Y, textureKey)
       .setOrigin(0.5, 1)
-      .setScale(0.25)
+      .setScale(0.375)
       .setVisible(visible);
     avatar.getContainer().add(badge);
     avatar.attachBadge(badge);

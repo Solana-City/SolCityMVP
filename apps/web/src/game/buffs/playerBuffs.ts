@@ -35,7 +35,7 @@ export const BUFFS: Record<BuffId, BuffDefinition> = {
     id: "vietnamese-coffee",
     label: "COFFEE",
     durationMs: 3 * 60_000,
-    speedMultiplier: 1.4,
+    speedMultiplier: 1.7,
     // Two drawings of the same cup: the framed one for the HUD chip, the bare
     // one for the badge that rides over a player's head.
     iconUrl: "/assets/ui/buff_coffee_frame.png",
@@ -43,6 +43,16 @@ export const BUFFS: Record<BuffId, BuffDefinition> = {
     texturePath: "assets/ui/buff_coffee.png",
   },
 };
+
+/**
+ * The fastest any buff can make a player, for the remote interpolator: it
+ * clamps the speed it estimates from two samples, and a clamp set for an
+ * unbuffed walk would read a buffed one as an impossible jump and hold the
+ * avatar back until it had to sprint to catch up.
+ */
+export const MAX_SPEED_MULTIPLIER = Math.max(
+  ...Object.values(BUFFS).map((b) => b.speedMultiplier),
+);
 
 export interface ActiveBuff {
   def: BuffDefinition;

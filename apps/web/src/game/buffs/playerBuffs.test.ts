@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BUFFS, formatBuffTime } from "./playerBuffs";
+import { BUFFS, MAX_SPEED_MULTIPLIER, formatBuffTime } from "./playerBuffs";
 
 describe("the buff clock", () => {
   it("counts the first two minutes in minutes and the last one in seconds", () => {
@@ -19,15 +19,18 @@ describe("the buff clock", () => {
 });
 
 describe("the Vietnamese coffee", () => {
-  it("runs three minutes at forty percent more speed", () => {
+  it("runs three minutes at seventy percent more speed", () => {
     const coffee = BUFFS["vietnamese-coffee"];
     expect(coffee.durationMs).toBe(180_000);
-    expect(coffee.speedMultiplier).toBeCloseTo(1.4);
+    expect(coffee.speedMultiplier).toBeCloseTo(1.7);
   });
 
-  it("stays under the 1.5x the remote interpolator will draw as walking", () => {
+  it("is covered by the clamp the remote interpolator widens for it", () => {
     for (const buff of Object.values(BUFFS)) {
-      expect(buff.speedMultiplier).toBeLessThan(1.5);
+      expect(buff.speedMultiplier).toBeLessThanOrEqual(MAX_SPEED_MULTIPLIER);
     }
+    // The clamp is that multiplier plus the same 50% jitter headroom an
+    // unbuffed walk gets, so the fastest buff still has room over it.
+    expect(MAX_SPEED_MULTIPLIER * 1.5).toBeGreaterThan(MAX_SPEED_MULTIPLIER);
   });
 });
