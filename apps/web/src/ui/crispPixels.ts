@@ -39,6 +39,25 @@ export function crispSize(sourcePx: number, desiredCss: number): number {
   return (sourcePx * snapped) / dpr;
 }
 
+/**
+ * Like `crispSize`, but never SMALLER than what was asked for.
+ *
+ * For a box that crops a sheet — a portrait showing frame 0 of a 4x4 walk
+ * grid — rounding the frame down leaves the bottom of the box past the end of
+ * that frame, and what shows through is the top of the frame below it. That
+ * is the second head players saw under the character on the connect screen,
+ * on any machine whose ratio made the rounding go down (Windows at 125%).
+ */
+export function crispSizeAtLeast(sourcePx: number, minCss: number): number {
+  const dpr = devicePixelRatioSafe();
+  if (sourcePx <= 0 || minCss <= 0) return minCss;
+  const ratio = (minCss * dpr) / sourcePx;
+  const snapped = ratio >= 1
+    ? Math.ceil(ratio)
+    : 1 / Math.max(1, Math.floor(1 / ratio));
+  return (sourcePx * snapped) / dpr;
+}
+
 /** True while the screen would resample pixel art at a fraction. */
 export function wouldCrack(sourcePx: number, cssSize: number): boolean {
   const dpr = devicePixelRatioSafe();

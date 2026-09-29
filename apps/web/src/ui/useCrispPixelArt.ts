@@ -1,78 +1,83 @@
 "use client";
 
 /**
- * Keeps every pixel-art image in the interface on whole device pixels.
+ * Decides, per element, whether the interface's pixel art is drawn crisp or
+ * smooth. It changes NOTHING else — no sizes, no positions.
  *
- * The HUD art is 64x64 and the panels ask for it at 20, 22, 24 CSS pixels —
- * ratios of 0.31, 0.34, 0.375. None of those divide a source pixel evenly, so
- * nearest-neighbour scaling drops some rows of the sprite and doubles others,
- * on EVERY screen, not only the fractional-DPI ones. That is the distortion
- * the 2026-09-27 playtest kept seeing in the interface after the canvas
- * itself was fixed.
+ * Nearest-neighbour scaling ("pixelated") is only correct when a source pixel
+ * covers a whole number of device pixels. At 1.25 or 1.5 device pixels per
+ * source pixel it gives some rows of a sprite two screen pixels and their
+ * neighbours one, which is the tearing players reported in the HUD. Smoothing
+ * spreads that unevenness instead: slightly soft, never chewed.
  *
- * Sizing each call site by hand would fix it once and rot immediately: the
- * HUD gains icons weekly, and every new one would have to remember the rule.
- * So this normalises them where they are: it finds images the stylesheet
- * marks as pixel art, reads the size the layout gave them, and nudges each to
- * the nearest size at which its source pixels land whole — at most a pixel of
- * movement, in exchange for the art being drawn as drawn.
+ * An earlier version tried to fix the SIZES instead, snapping each icon to
+ * the nearest size that lands whole. That was the wrong lever twice over: it
+ * made the layout depend on the screen's pixel ratio (a few pixels of growth
+ * pushed the zoom control's + button out of its row on a 125% display, while
+ * the same build looked fine on a colleague's 100% one), and it could not
+ * touch the pieces that are not <img> at all — the profile picture is a CSS
+ * background, and it kept tearing.
  *
- * Call once, from the client root.
+ * What is crisp on which screen is therefore a property of the SCREEN:
+ *   - a whole ratio (1, 2, 3): pixel art can be crisp, and only an <img>
+ *     whose displayed size is not a whole multiple or fraction of its file
+ *     needs smoothing;
+ *   - a fractional ratio (1.25, 1.5, 1.75): nothing in the DOM can land on
+ *     whole device pixels short of sizing every element in fractions of a
+ *     CSS pixel, so everything pixel-art is smoothed.
+ *
+ * Making the HUD crisp on those screens is a design change, not a runtime
+ * one: the art is 32x32 and the panels ask for 20, 22, 24 and 26 CSS pixels.
+ * See SPRITE_REQUESTS.md.
  */
 import { useEffect } from "react";
-import { crispSize, devicePixelRatioSafe } from "./crispPixels";
+import { devicePixelRatioSafe } from "./crispPixels";
 
-/** What we last set on an element, to avoid reacting to our own change. */
-const applied = new WeakMap<HTMLImageElement, number>();
+/** Elements that declare pixel art: every image, plus inline-styled boxes. */
+const SELECTOR = 'img, [style*="pixelated"], [style*="crisp-edges"]';
 
-function isPixelArt(img: HTMLImageElement): boolean {
-  const rendering = getComputedStyle(img).imageRendering;
+function isPixelArt(el: HTMLElement): boolean {
+  const rendering = getComputedStyle(el).imageRendering;
   return rendering === "pixelated" || rendering === "crisp-edges";
 }
 
-/**
- * How far an icon may be nudged to land on the grid. Beyond this the layout
- * would visibly shift, which is worse than the problem: a 22px icon whose
- * nearest crisp sizes are 16 and 32 does not want to be either.
- */
-const MAX_NUDGE = 0.15;
-
-function snap(img: HTMLImageElement): void {
-  if (!img.naturalWidth || !img.naturalHeight) return;
-  if (!isPixelArt(img)) return;
-
+/** True when this image's displayed size lands its pixels whole. */
+function imageLandsWhole(img: HTMLImageElement, dpr: number): boolean {
+  if (!img.naturalWidth) return true; // not loaded yet: decide on the next sweep
   const width = img.clientWidth;
-  if (!width) return;
-  if (applied.get(img) === width) return;
-
-  const target = crispSize(img.naturalWidth, width);
-  if (Math.abs(target - width) < 0.01) { applied.set(img, width); return; }
-
-  if (Math.abs(target - width) / width <= MAX_NUDGE) {
-    // Close enough to move: height follows the same ratio, so a non-square
-    // source keeps its shape.
-    const ratio = img.naturalHeight / img.naturalWidth;
-    img.style.width = `${target}px`;
-    img.style.height = `${target * ratio}px`;
-    applied.set(img, target);
-    return;
-  }
-
-  // Too far to move without shifting the layout. Stop pretending the art is
-  // on the grid and let the browser resample it properly: an evenly soft icon
-  // reads as intended, where nearest neighbour at 0.69 of a pixel eats whole
-  // rows of it. Same trade the canvas makes at its in-between zoom steps.
-  img.style.imageRendering = "auto";
-  applied.set(img, width);
+  if (!width) return true;
+  const ratio = (width * dpr) / img.naturalWidth;
+  const nearest = ratio >= 1 ? Math.round(ratio) : 1 / Math.max(1, Math.round(1 / ratio));
+  return Math.abs(ratio - nearest) < 0.01;
 }
 
 export function useCrispPixelArt(): void {
   useEffect(() => {
     let frame = 0;
+
     const sweep = () => {
       frame = 0;
-      for (const img of Array.from(document.images)) snap(img);
+      const dpr = devicePixelRatioSafe();
+      const wholeScreen = Math.abs(dpr - Math.round(dpr)) < 0.01;
+
+      for (const node of Array.from(document.querySelectorAll<HTMLElement>(SELECTOR))) {
+        // Restore first, or an element can never go back to crisp after the
+        // window moves to a screen with a different ratio.
+        if (node.dataset.pixelSmoothed === "1") {
+          node.style.imageRendering = "";
+          delete node.dataset.pixelSmoothed;
+        }
+        if (!isPixelArt(node)) continue;
+
+        const smooth = !wholeScreen
+          || (node instanceof HTMLImageElement && !imageLandsWhole(node, dpr));
+        if (!smooth) continue;
+
+        node.style.imageRendering = "auto";
+        node.dataset.pixelSmoothed = "1";
+      }
     };
+
     const schedule = () => {
       if (frame) return;
       frame = requestAnimationFrame(sweep);
@@ -80,29 +85,19 @@ export function useCrispPixelArt(): void {
 
     schedule();
 
-    // New panels, new icons, and images that finish loading after their panel
-    // rendered all arrive as mutations.
+    // New panels, icons that finish loading after their panel rendered, and
+    // anything React swaps in.
     const observer = new MutationObserver(schedule);
     observer.observe(document.body, { childList: true, subtree: true });
 
     // Moving a window between screens changes the ratio under our feet.
-    const onResize = () => {
-      // The snapped sizes were computed for the old ratio; drop them so the
-      // sweep recomputes rather than seeing its own numbers and stopping.
-      for (const img of Array.from(document.images)) applied.delete(img);
-      schedule();
-    };
-    window.addEventListener("resize", onResize);
-    const media = window.matchMedia(`(resolution: ${devicePixelRatioSafe()}dppx)`);
-    media.addEventListener("change", onResize);
-
+    window.addEventListener("resize", schedule);
     document.addEventListener("load", schedule, true);
 
     return () => {
       if (frame) cancelAnimationFrame(frame);
       observer.disconnect();
-      window.removeEventListener("resize", onResize);
-      media.removeEventListener("change", onResize);
+      window.removeEventListener("resize", schedule);
       document.removeEventListener("load", schedule, true);
     };
   }, []);

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect, useRef } from "react";
-import type { NPCDefinition, NPCAction } from "@/game/config/npcRegistry";
+import type { NPCDefinition, NPCAction, NPCDialogLine } from "@/game/config/npcRegistry";
 import NPCPortrait from "./NPCPortrait";
 import { profileManager } from "@/game/config/profileManager";
 import { chamferBox } from "@/ui/chamfer";
@@ -29,6 +29,20 @@ interface NPCDialogProps {
   onAction: (action: NPCAction) => void;
 }
 
+/**
+ * The page as one string, accent included: the typewriter types through it in
+ * one pass, and the renderer splits the revealed part at `accentAt` below.
+ */
+function pageText(line: NPCDialogLine | undefined): string {
+  if (line === undefined) return "";
+  return typeof line === "string" ? line : `${line.text}\n${line.accent}`;
+}
+
+/** Where the accent sentence starts in that string, or -1 when there is none. */
+function accentAt(line: NPCDialogLine | undefined): number {
+  return line === undefined || typeof line === "string" ? -1 : line.text.length + 1;
+}
+
 export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
   const [lineIndex, setLineIndex]         = useState(0);
   const [portraitVisible, setPortraitVisible] = useState(false);
@@ -49,7 +63,7 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
   // Typewriter animation — re-runs whenever line changes
   useEffect(() => {
     if (!npc) return;
-    const text = npc.dialog[lineIndex] ?? "";
+    const text = pageText(npc.dialog[lineIndex]);
     if (timerRef.current) clearInterval(timerRef.current);
     if (instantRef.current) {
       instantRef.current = false;
@@ -82,7 +96,7 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
     if (isTyping) {
       if (timerRef.current) clearInterval(timerRef.current);
       timerRef.current = null;
-      setDisplayText(npc.dialog[lineIndex] ?? "");
+      setDisplayText(pageText(npc.dialog[lineIndex]));
       setIsTyping(false);
       return;
     }
@@ -101,7 +115,7 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
     if (timerRef.current) clearInterval(timerRef.current);
     timerRef.current = null;
     if (lineIndex === last) {
-      setDisplayText(npc.dialog[last] ?? "");
+      setDisplayText(pageText(npc.dialog[last]));
       setIsTyping(false);
       return;
     }
@@ -190,6 +204,26 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
       </div>
     ) : null;
 
+  /**
+   * The text as typed so far, with the closing sentence in the NPC's colour
+   * once the typewriter reaches it. "pre-line" is what makes the writer's own
+   * line breaks land where they wrote them.
+   */
+  const Spoken = () => {
+    const split = accentAt(npc.dialog[lineIndex]);
+    const cursor = isTyping ? (
+      <span style={{ opacity: 0.5, animation: "cursorBlink 0.7s step-end infinite" }}>▌</span>
+    ) : null;
+    if (split < 0) return <>{displayText}{cursor}</>;
+    return (
+      <>
+        {displayText.slice(0, split)}
+        <span style={{ color, fontWeight: 700 }}>{displayText.slice(split)}</span>
+        {cursor}
+      </>
+    );
+  };
+
   /** Dot row showing progress through dialog lines */
   const Dots = () => (
     <div style={{ display: "flex", gap: 5, alignItems: "center" }}>
@@ -272,11 +306,9 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
           margin:     "0 0 12px",
           lineHeight: 1.65,
           minHeight:  "3.3em",
+          whiteSpace: "pre-line",
         }}>
-          {displayText}
-          {isTyping && (
-            <span style={{ opacity: 0.5, animation: "cursorBlink 0.7s step-end infinite" }}>▌</span>
-          )}
+          <Spoken />
         </p>
 
         <Highlights compact />
@@ -418,11 +450,9 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
             minHeight:  "3.4em",
             margin:     0,
             padding:    "0 16px 14px",
+            whiteSpace: "pre-line",
           }}>
-            {displayText}
-            {isTyping && (
-              <span style={{ opacity: 0.5, animation: "cursorBlink 0.7s step-end infinite" }}>▌</span>
-            )}
+            <Spoken />
           </p>
 
           <Highlights />

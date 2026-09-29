@@ -93,6 +93,47 @@ fn vrf_callback_identity() -> Pubkey {
     Pubkey::find_program_address(&[VRF_IDENTITY_SEED, crate::ID.as_ref()], &VRF_PROGRAM_ID).0
 }
 
+// ── The beach football ─────────────────────────────────────────────────────
+//
+// One account for the ball on the ST Brasil sand, delegated to the rollup so
+// a kick is a free, sub-second write everybody reads off the same poll.
+//
+// Only the KICK is stored, never the roll: position, the speed it left at,
+// and when. Every client runs the same fixed-step physics from that snapshot
+// (apps/web/src/game/world/BeachBall.ts), so a ball that rolls for two
+// seconds costs one write instead of a hundred.
+//
+// A singleton, like the hunt. A second ball would need another seed and
+// another deploy, which is the same bargain HUNT_SEED already takes.
+pub const BALL_SEED: &[u8] = b"ball";
+
+/// How far a player may be from the ball and still kick it, in world pixels,
+/// SQUARED.
+///
+/// Deliberately loose. A player's on-chain position is rewritten every 200ms,
+/// so at a walk it is routinely a tile and a half behind where they really
+/// are, and further under a speed buff. This is here to stop a modified
+/// client putting the ball on the other side of the city, not to referee the
+/// tackle — a check tight enough to be "accurate" would throw out real kicks
+/// all day.
+pub const BALL_REACH_SQ: i64 = 96 * 96;
+
+/// The fastest a kick may leave, px/s. The game kicks at 190.
+pub const BALL_MAX_SPEED: i16 = 400;
+
+/// The ST Brasil beach, as a bounding box in world pixels (tiles 5..68 by
+/// 56..104 of a 24px grid).
+///
+/// The real boundary is the painted sand, which the client carries as a tile
+/// mask built from the map at load — far too much detail for a program to
+/// hold, and it would have to be re-deployed every time the artist moved the
+/// shoreline. So the chain keeps the ball in the right QUARTER of the city
+/// and the clients agree on the exact edge between them.
+pub const BALL_MIN_X: u32 = 5 * 24;
+pub const BALL_MAX_X: u32 = 68 * 24;
+pub const BALL_MIN_Y: u32 = 56 * 24;
+pub const BALL_MAX_Y: u32 = 104 * 24;
+
 /// MagicBlock delegation program on devnet.
 pub const DELEGATION_PROGRAM_ID: Pubkey =
     pubkey!("DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh");
@@ -119,6 +160,8 @@ pub enum SolCityError {
     InvalidQuestItem,
     #[msg("Callback not signed by the VRF program identity")]
     InvalidVrfIdentity,
+    #[msg("Too far from the ball to kick it")]
+    BallOutOfReach,
 }
 
 /// Truncates a string to at most `max` BYTES on a char boundary, so a
@@ -536,6 +579,196 @@ pub mod sol_city {
         Ok(())
     }
 
+    // ── The beach football ─────────────────────────────────────────────────
+    //
+    // initialize_ball: once, ever, after deploy. Then delegate_ball, once,
+    // ever, and from there the ball lives on the rollup and every kick is a
+    // session-signed write with no popup and no fee.
+
+    /// Creates the ball and puts it on the sand. Call once, ever, after deploy.
+    pub fn initialize_ball(ctx: Context<InitializeBall>, x: u32, y: u32) -> Result<()> {
+        let ball = &mut ctx.accounts.ball;
+        ball.x = x.clamp(BALL_MIN_X, BALL_MAX_X);
+        ball.y = y.clamp(BALL_MIN_Y, BALL_MAX_Y);
+        ball.vx = 0;
+        ball.vy = 0;
+        ball.kicker = Pubkey::default();
+        ball.kicked_at = Clock::get()?.unix_timestamp;
+        ball.seq = 0;
+        Ok(())
+    }
+
+    /// Kicks the ball: stores where it was, how fast it left, and when.
+    ///
+    /// The kicker's own player account comes along, which proves two things
+    /// with one read: the signer really is a session key somebody authorized,
+    /// and that somebody is standing next to the ball. Without it any session
+    /// key in the city could put the ball anywhere.
+    ///
+    /// Session-signed, so no wallet popup, and on the rollup, so no fee.
+    pub fn kick_ball_session(
+        ctx: Context<KickBallSession>,
+        x: u32,
+        y: u32,
+        vx: i16,
+        vy: i16,
+    ) -> Result<()> {
+        // Everything read off `ctx.accounts` up front, so the mutable borrow
+        // of `ball` below is the only borrow alive by the time it is taken.
+        let px = ctx.accounts.player.x as i64;
+        let py = ctx.accounts.player.y as i64;
+        let kicker = ctx.accounts.session_authority.key();
+        let now = Clock::get()?.unix_timestamp;
+
+        // Measured against the position the kick CLAIMS, not against where the
+        // ball was last stored: the ball has been rolling since that snapshot,
+        // and the client that caught up with it is the one telling us where it
+        // got to.
+        let dx = px - x as i64;
+        let dy = py - y as i64;
+        require!(dx * dx + dy * dy <= BALL_REACH_SQ, SolCityError::BallOutOfReach);
+
+        let ball = &mut ctx.accounts.ball;
+        ball.x = x.clamp(BALL_MIN_X, BALL_MAX_X);
+        ball.y = y.clamp(BALL_MIN_Y, BALL_MAX_Y);
+        ball.vx = vx.clamp(-BALL_MAX_SPEED, BALL_MAX_SPEED);
+        ball.vy = vy.clamp(-BALL_MAX_SPEED, BALL_MAX_SPEED);
+        ball.kicker = kicker;
+        ball.kicked_at = now;
+        // Wrapping, not saturating: this counts kicks, and a ball that has
+        // been kicked four billion times should keep going, not freeze on
+        // u32::MAX and stop looking like a new kick to anybody.
+        ball.seq = ball.seq.wrapping_add(1);
+        Ok(())
+    }
+
+    /// Delegates the ball to the MagicBlock Ephemeral Rollup. Once, ever,
+    /// right after initialize_ball.
+    ///
+    /// The same six steps `delegate` runs for a player PDA, against a PDA
+    /// with one seed and no owner. It is written out rather than shared with
+    /// `delegate` on purpose: nothing in this repo can build an SBF binary
+    /// (see REDEPLOY_CHECKLIST), Playground is the only compiler, and pulling
+    /// a generic helper out of the one delegation path that has already
+    /// shipped would put it at risk to save a screen of code.
+    ///
+    /// Nothing ever undelegates it. The ball is a fixture of the city, not a
+    /// session: it belongs on the rollup for as long as the rollup is there.
+    pub fn delegate_ball(ctx: Context<DelegateBall>) -> Result<()> {
+        let ball_key = ctx.accounts.ball.key();
+        let ball_bump = ctx.bumps.ball;
+
+        // Signer seeds for the ball PDA (WITH bump, for invoke_signed)
+        let ball_signer_seeds: &[&[u8]] = &[BALL_SEED, &[ball_bump]];
+
+        let (_, buffer_bump) = Pubkey::find_program_address(
+            &[BUFFER_SEED, ball_key.as_ref()],
+            &crate::ID,
+        );
+        let buffer_signer_seeds: &[&[u8]] = &[
+            BUFFER_SEED,
+            ball_key.as_ref(),
+            &[buffer_bump],
+        ];
+
+        let data_len = ctx.accounts.ball.data_len();
+        let rent = SolanaRent::get()?;
+
+        // ── 1. Create the buffer PDA ───────────────────────────────────────
+        invoke_signed(
+            &system_instruction::create_account(
+                ctx.accounts.payer.key,
+                ctx.accounts.delegate_buffer.key,
+                rent.minimum_balance(data_len),
+                data_len as u64,
+                &crate::ID,
+            ),
+            &[
+                ctx.accounts.payer.to_account_info(),
+                ctx.accounts.delegate_buffer.to_account_info(),
+                ctx.accounts.system_program.to_account_info(),
+            ],
+            &[buffer_signer_seeds],
+        )?;
+
+        // ── 2. Copy ball data → buffer ─────────────────────────────────────
+        {
+            let ball_data = ctx.accounts.ball.data.borrow();
+            let mut buffer_data = ctx.accounts.delegate_buffer.data.borrow_mut();
+            buffer_data.copy_from_slice(&ball_data);
+        }
+
+        // ── 3. Zero the ball PDA data ──────────────────────────────────────
+        {
+            let mut ball_data = ctx.accounts.ball.data.borrow_mut();
+            sol_memset(&mut ball_data, 0, data_len);
+        }
+
+        // ── 4. Reassign ball PDA → delegation program ──────────────────────
+        ctx.accounts.ball.assign(&anchor_lang::solana_program::system_program::id());
+        invoke_signed(
+            &system_instruction::assign(
+                ctx.accounts.ball.key,
+                &DELEGATION_PROGRAM_ID,
+            ),
+            &[
+                ctx.accounts.ball.to_account_info(),
+                ctx.accounts.system_program.to_account_info(),
+            ],
+            &[ball_signer_seeds],
+        )?;
+
+        // ── 5. CPI → delegation program ────────────────────────────────────
+        // Same layout as `delegate`, with ONE seed instead of two.
+        let seeds_vec: [Vec<u8>; 1] = [BALL_SEED.to_vec()];
+        let mut ix_data: Vec<u8> = Vec::with_capacity(64);
+        ix_data.extend_from_slice(&[0u8; 8]);                               // discriminator
+        ix_data.extend_from_slice(&3_000u32.to_le_bytes());                 // commit_frequency_ms
+        ix_data.extend_from_slice(&(seeds_vec.len() as u32).to_le_bytes()); // seeds.len()
+        for seed in &seeds_vec {
+            ix_data.extend_from_slice(&(seed.len() as u32).to_le_bytes());
+            ix_data.extend_from_slice(seed);
+        }
+        ix_data.push(0u8);                                                   // None validator
+
+        let delegate_ix = SolInstruction {
+            program_id: DELEGATION_PROGRAM_ID,
+            accounts: vec![
+                SolAccountMeta::new(*ctx.accounts.payer.key, true),
+                SolAccountMeta::new(*ctx.accounts.ball.key, true),
+                SolAccountMeta::new_readonly(crate::ID, false),
+                SolAccountMeta::new(*ctx.accounts.delegate_buffer.key, false),
+                SolAccountMeta::new(*ctx.accounts.delegation_record.key, false),
+                SolAccountMeta::new(*ctx.accounts.delegation_metadata.key, false),
+                SolAccountMeta::new_readonly(*ctx.accounts.system_program.key, false),
+            ],
+            data: ix_data,
+        };
+
+        invoke_signed(
+            &delegate_ix,
+            &[
+                ctx.accounts.payer.to_account_info(),
+                ctx.accounts.ball.to_account_info(),
+                ctx.accounts.owner_program.to_account_info(),
+                ctx.accounts.delegate_buffer.to_account_info(),
+                ctx.accounts.delegation_record.to_account_info(),
+                ctx.accounts.delegation_metadata.to_account_info(),
+                ctx.accounts.system_program.to_account_info(),
+            ],
+            &[ball_signer_seeds],
+        )?;
+
+        // ── 6. Close buffer PDA (return rent to payer) ─────────────────────
+        {
+            let buffer_lamports = ctx.accounts.delegate_buffer.lamports();
+            **ctx.accounts.delegate_buffer.try_borrow_mut_lamports()? -= buffer_lamports;
+            **ctx.accounts.payer.try_borrow_mut_lamports()? += buffer_lamports;
+        }
+
+        Ok(())
+    }
+
     // ── Outfit booster (VRF) ───────────────────────────────────────────────
     //
     // open_booster: wallet pays BOOSTER_PRICE_LAMPORTS to the treasury and
@@ -797,6 +1030,87 @@ pub struct ExpireRound<'info> {
     pub hunt: Account<'info, HuntState>,
     /// Any session key may crank an expired round forward.
     pub cranker: Signer<'info>,
+}
+
+#[derive(Accounts)]
+pub struct InitializeBall<'info> {
+    #[account(
+        init,
+        payer = payer,
+        space = 8 + BallState::INIT_SPACE,
+        seeds = [BALL_SEED],
+        bump,
+    )]
+    pub ball: Account<'info, BallState>,
+    #[account(mut)]
+    pub payer: Signer<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct KickBallSession<'info> {
+    #[account(mut, seeds = [BALL_SEED], bump)]
+    pub ball: Account<'info, BallState>,
+    /// The kicker's own player account. Read-only, and read for two reasons:
+    /// the session-key constraint proves the signer is somebody's authorized
+    /// key, and `player.x`/`player.y` prove that somebody is at the ball.
+    #[account(
+        seeds = [PLAYER_SEED, player.authority.as_ref()],
+        bump,
+        constraint = player.session_authority == Some(session_authority.key())
+            @ SolCityError::InvalidSessionKey,
+    )]
+    pub player: Account<'info, PlayerState>,
+    /// Session key — seamless, no wallet popup.
+    pub session_authority: Signer<'info>,
+}
+
+#[derive(Accounts)]
+pub struct DelegateBall<'info> {
+    #[account(mut)]
+    pub payer: Signer<'info>,
+    /// CHECK: PDA verified via seeds; zeroed and reassigned in the instruction body
+    #[account(mut, seeds = [BALL_SEED], bump)]
+    pub ball: UncheckedAccount<'info>,
+    /// CHECK: our own program ID, used by the delegation CPI to verify PDA ownership
+    pub owner_program: UncheckedAccount<'info>,
+    /// CHECK: delegate buffer PDA — seeds ["buffer", ball.key()], owned by this program
+    #[account(mut)]
+    pub delegate_buffer: UncheckedAccount<'info>,
+    /// CHECK: delegation record PDA — ["delegation", ball.key()], owned by delegation program
+    #[account(mut)]
+    pub delegation_record: UncheckedAccount<'info>,
+    /// CHECK: delegation metadata PDA — ["delegation-metadata", ball.key()], owned by delegation program
+    #[account(mut)]
+    pub delegation_metadata: UncheckedAccount<'info>,
+    /// CHECK: MagicBlock delegation program
+    pub delegation_program: UncheckedAccount<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+/// The beach football: the last KICK, never the roll.
+///
+/// Every client replays the same physics from this snapshot, so the account
+/// only changes when somebody touches the ball — a roll costs nothing.
+#[account]
+#[derive(InitSpace)]
+pub struct BallState {
+    /// Where the ball was when it was last kicked, in world pixels.
+    pub x: u32,
+    pub y: u32,
+    /// How fast it left, px/s. Signed: a ball goes in every direction.
+    pub vx: i16,
+    pub vy: i16,
+    /// Session key of whoever kicked it last.
+    pub kicker: Pubkey,
+    /// When, by the CHAIN's clock — which is the point of this account. It is
+    /// the one clock every device agrees on, so a client can measure how old
+    /// a kick is instead of guessing a constant for the trip, and two clients
+    /// can order two kicks the same way.
+    pub kicked_at: i64,
+    /// Bumped on every kick. `kicked_at` is whole seconds and a dribble puts
+    /// three kicks inside one of them, so this is what tells two apart.
+    pub seq: u32,
 }
 
 #[account]

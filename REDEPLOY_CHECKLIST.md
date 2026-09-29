@@ -16,6 +16,7 @@ here. One deploy ships:
 | 5 | Outfit boxes: `open_booster` + `callback_open_booster` (MagicBlock VRF) | in lib.rs |
 | 5 | `claim_free_outfit` (quest / NPC reward items, free, once per wallet) | in lib.rs |
 | 5 | Wardrobe enforcement: `player_v3` + `unlocked` snapshot + `sync_unlocks` + enforcing `update_look_session` | in lib.rs |
+| 6 | Beach football: `BallState` PDA + `initialize_ball` / `kick_ball_session` / `delegate_ball` (added 2026-09-30) | in lib.rs |
 | 1 | HuntScore PDA | **deferred** (the KV leaderboard covers the player-facing part) |
 | 3 | `delegate_hunt` | **skipped** |
 | 4 | On-chain display names | **dropped** (the off-chain nickname registry replaced them) |
@@ -68,6 +69,12 @@ Sections for items 1, 3 and 4 below are kept for reference only.
    above heads, never a chosen name. Need (a) `set_display_name_session` to change
    the name post-init and propagate it via the ER, and (b) a `NameClaim` registry
    PDA so a name is owned first-come (a second wallet can't take it).
+
+6. **The beach football gets its own account.** The ball currently rides the
+   KICKER's `last_message` chat field as a `§ball:` tag — it works, and the
+   latency is hidden by client-side prediction (`world/BeachBall.ts`), but it
+   is a message pretending to be a world object. See Item 6 for what a real
+   account buys.
 
 5. **Sol Mechs season ladder.** A ranked PvP ladder with an on-chain
    matchmaking queue, per-season Elo, energy and a prize pool. Does NOT belong
@@ -265,6 +272,57 @@ pub struct SetDisplayNameSession<'info> {
 (none of the recommended items above do — Item 4 reuses the existing `display_name`
 field, so no seed bump either).
 
+### Item 6 — Beach football `BallState` (APPLIED in lib.rs, 2026-09-30)
+
+`BALL_SEED = b"ball"`, one singleton account, delegated to the ER forever.
+Stores the last KICK and never the roll — position, the speed it left at,
+`kicked_at` (chain clock), `seq` — because every client replays the same
+fixed-step physics from that snapshot (`world/BeachBall.ts`). A two-second
+roll is one write.
+
+**What it buys over the `§ball:` chat tag that ships today:**
+- **One account everyone subscribes to at session start.** Today a kick lands
+  on the KICKER's player PDA, so you only hear it if you have already
+  discovered that player and their subscription is up.
+- **`kicked_at` written by the program.** The client currently sends no
+  timestamp at all (two phones do not agree on the time) and compensates with
+  a hardcoded `REMOTE_LAG_MS = 400`. A chain-written stamp replaces the guess
+  with a measurement, and lets two clients order two kicks identically.
+- **No contention with the position stream.** A kick currently queues behind
+  the position writes hitting the same PDA every 200ms.
+- **A real check on who may kick.** `kick_ball_session` takes the kicker's
+  player account and requires them to be within `BALL_REACH_SQ` (96px, loose
+  on purpose — an on-chain position is up to 200ms stale) of where the kick
+  claims the ball was. Today a modified client can put the ball anywhere.
+- **The ball exists without players.** Today its position is the last tag
+  stuck on somebody's PDA, which ages out with the 2-minute idle filter.
+
+**What it does NOT buy: latency.** Same rollup, same block time, same push.
+The responsiveness came from prediction, not from this.
+
+**THE ONE THING TO VERIFY FIRST.** `kick_ball_session` touches TWO delegated
+accounts — the ball and the kicker's player PDA. That only works if MagicBlock
+put them on the same ER validator. Both delegate with no validator preference
+(`None`), and devnet is effectively a single validator, so it should hold — but
+check it before anything else. **Fallback if it does not:** drop `player` from
+`KickBallSession` and keep only `session_authority`. The proximity check goes
+with it, and the ball is back to trusting the client (bounded by the beach
+box), which is exactly where it is today. One struct field and four lines.
+
+**Post-deploy, once each, in order:**
+1. `initialize_ball(x, y)` — the resting spot, tile (46, 81) = `1116, 1956`.
+2. `delegate_ball` — any funded wallet pays. Never undelegated: the ball is a
+   fixture, not a session.
+
+Both are one-off admin calls with no UI, same as `initialize_hunt`. The
+`BALL_MIN/MAX_X/Y` box (tiles 5..68 x 56..104) is a backstop only; the real
+boundary is the painted-sand tile mask the client builds from the map, which
+is far too much detail for a program and would need a redeploy every time the
+artist moved the shoreline.
+
+**Known limit:** singleton, like the hunt. A second ball needs another seed and
+another deploy.
+
 ---
 
 ## CLIENT changes (post-deploy — apply ONLY after the new program is live)
@@ -300,7 +358,23 @@ free-outfit wiring stays behind `NEXT_PUBLIC_BOOSTER_ONCHAIN` until verified.
    STB_cap, STB_shirt, Brazilian_shirt, Jetpack and Cap_Sol (7-day streak;
    moved out of the booster pool on 2026-09-21, before the pool indices were
    ever deployed, so nothing shifts).
-5. **Verify layouts** before pushing: `npx tsc --noEmit` + `simulateTransaction`
+5. **Beach football** (`world/BeachBall.ts` + `multiplayer/OnChainMultiplayer.ts`):
+   - `deriveBallPDA()` (seed `["ball"]`) in `program.ts`, and a `BallState`
+     decoder: `x u32, y u32, vx i16, vy i16, kicker Pubkey, kicked_at i64,
+     seq u32`.
+   - `sendBallKick` → `kick_ball_session(x, y, vx, vy)` on the ER instead of
+     `send_chat_session` with a `§ball:` tag. Accounts: `ball` (w),
+     `player` (ro), `session_authority` (signer).
+   - Subscribe to the ball PDA on the ER at session start, and add it to the
+     500ms poll as the fallback. Drop the `§ball:`/`_ballTag` branch in
+     `decodeAndUpdatePlayer` and the `BALL_TAG` encode/decode.
+   - Replace `REMOTE_LAG_MS` with the real thing: `Date.now() - kicked_at*1000`
+     (minus the learned clock skew the transport already tracks), clamped to
+     something sane. Keep the eased correction as is — with prediction doing
+     the work, this is about accuracy, not feel.
+   - `seq` replaces the per-sender sequence number already on the wire; the
+     dedupe becomes "seq changed".
+6. **Verify layouts** before pushing: `npx tsc --noEmit` + `simulateTransaction`
    of every new ix against the deployed program.
 
 ---
@@ -317,6 +391,12 @@ free-outfit wiring stays behind `NEXT_PUBLIC_BOOSTER_ONCHAIN` until verified.
       items revealed on both devices; 0.025 SOL landed in the treasury; the
       purchase shows in the dev panel Money section.
 - [ ] `claim_free_outfit` twice with the same index → no error, one bit.
+- [ ] **Ball, before the client work:** `simulateTransaction` a
+      `kick_ball_session` on the ER touching BOTH the ball and a delegated
+      player PDA. If it fails on account locations, take the Item 6 fallback.
+- [ ] Ball: a kick from a player standing on it succeeds; the same kick with
+      coordinates across the map is rejected (`BallOutOfReach`).
+- [ ] Ball: `seq` advances on every kick, including three inside one second.
 - [ ] Full cross-device multiplayer still green (compare to Parabéns 2.0).
 
 ---

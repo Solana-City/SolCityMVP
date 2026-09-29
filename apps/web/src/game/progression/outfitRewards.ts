@@ -10,7 +10,8 @@ import { unlockItem } from "@/game/config/wardrobeUnlocks";
  * The Superteam Brasil set, all earned in the ST Brasil zone:
  *   cap            win a round of Kite Clash against Kite Pro
  *   shirt          talk to Kuka
- *   Brazil shirt   meet the whole ST Brasil crew: Kuka, Kite Pro, Caramel Dog
+ *   Brazil shirt   meet the whole ST Brasil crew: Kuka, Kite Pro, the Caramel
+ *                  Dog, and every builder standing at a stand
  *
  * And the Solana cap, for coming back 7 days in a row, plus the Trader
  * Shades for buying or selling a first stock at Stocklana.
@@ -39,18 +40,23 @@ const KUKA_ID = "kuka";
 const KITE_CLASH_ID = "kite-clash";
 
 /**
- * The ST Brasil crew, met for the Brazil shirt. The dog only wanders about
- * seven tiles of the ST Brasil beach, so finding it is part of the fun rather
- * than a chase. Filtered against the registry so a disabled NPC can never make
- * the reward unreachable.
+ * The ST Brasil crew, met for the Brazil shirt: the three who were always on
+ * the beach, plus every builder standing at a stand. The dog only wanders
+ * about seven tiles of the ST Brasil beach, so finding it is part of the fun
+ * rather than a chase. Filtered against the registry so a disabled NPC can
+ * never make the reward unreachable.
+ *
+ * The builders used to stay out of this list until all 8-10 of them were in
+ * the city, so nobody was sent hunting for stands that did not exist. Guarana
+ * now stands in the middle of the boardwalk telling players the stands around
+ * him pay a gift, so the four that ARE in have to count (2026-09-30). Add each
+ * new builder here as it lands, and keep the Brazilian_shirt unlockHint in
+ * paperDoll.ts saying the same thing this list does.
  */
-// Planned: 8-10 builder NPCs in the ST Brasil area. The first three are in
-// (pegana-raffx, solsentry-crash, dungeons-moles) but stay OUT of this list on
-// purpose: the shirt only becomes "talk to every builder" once ALL of them are
-// in the city, so nobody is sent hunting for stands that do not exist yet.
-// When the last one lands: add every builder id here and update the
-// Brazilian_shirt unlockHint in paperDoll.ts.
-const STBR_CREW = ["kuka", "kite-pro", "caramel-dog"];
+const STBR_CREW = [
+  "kuka", "kite-pro", "caramel-dog",
+  "pegana-raffx", "solsentry-crash", "dungeons-moles", "cloak-vitin",
+];
 
 function requiredNpcIds(): string[] {
   const enabled = new Set(NPC_REGISTRY.filter((npc) => npc.enabled !== false).map((npc) => npc.id));

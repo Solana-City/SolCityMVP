@@ -2,7 +2,7 @@ import { npcCategory, CATEGORY_META } from "../minimap/categories";
 import type { BuffId } from "../buffs/playerBuffs";
 
 export interface NPCAction {
-  type: "tutor" | "swap" | "transfer" | "bounties" | "link" | "placeholder" | "private-payment" | "minigame" | "stock-exchange" | "peg-risk" | "token-scan" | "private-transfer" | "speed-buff";
+  type: "tutor" | "swap" | "transfer" | "bounties" | "link" | "placeholder" | "private-payment" | "minigame" | "stock-exchange" | "peg-risk" | "token-scan" | "private-transfer" | "speed-buff" | "pet";
   label: string;
   url?: string;
   miniGameId?: string;
@@ -23,6 +23,19 @@ export interface NPCHighlight {
   sheet?: string;
   label: string;
 }
+
+/**
+ * One page of an NPC's dialog.
+ *
+ * A plain string is the whole page. "
+" inside it breaks the line where the
+ * writer wants it rather than where the box happens to run out, which is the
+ * difference between a line of speech and a paragraph.
+ *
+ * The object form closes the page with one sentence drawn in the NPC's own
+ * colour, on its own line: the thing the player is meant to walk away with.
+ */
+export type NPCDialogLine = string | { text: string; accent: string };
 
 export interface NPCDefinition {
   id: string;
@@ -53,7 +66,7 @@ export interface NPCDefinition {
    * mapping step, never authored per-entry, so it can't drift from the map.
    */
   color: number;
-  dialog: string[];
+  dialog: NPCDialogLine[];
   action: NPCAction;
   /**
    * Phaser texture key for this NPC's sprite.
@@ -315,7 +328,10 @@ const NPC_SEEDS: NPCSeed[] = [
       "Woof!",
       "The caramel dog wags its tail and trots down the beach.",
     ],
-    action: { type: "placeholder", label: "Pet the dog" },
+    // "pet" never opens a dialog: the petting square plays the moment the
+    // player reaches the dog, because a dog that answers in sentences is a
+    // worse dog. See PetOverlay.
+    action: { type: "pet", label: "Pet the dog" },
     spriteKey: "avatar-caramel-dog",
     spriteWalkKey: "avatar-caramel-dog-walk",
     // ~7 tiles. Keeps it roaming the open sand of the ST Brasil beach without
@@ -417,6 +433,34 @@ const NPC_SEEDS: NPCSeed[] = [
     ],
     action: { type: "link", label: "Visit MonkeDAO", url: "https://monkedao.io/" },
     spriteKey: "Mr. Bananas",
+  },
+  {
+    id: "guarana",
+    name: "Guaraná",
+    role: "Superteam Brasil Mascot",
+    // The middle of the ST Brasil boardwalk, in the open band (rows 67-71)
+    // between the Cloak stand to the north and the SolSentry and Pegana
+    // stands to the south, with Kite Pro further down the beach. Every stand
+    // he talks about is genuinely around him from here.
+    tileX: 40,
+    tileY: 69,
+    dialog: [
+      "Hey! I am Guaraná, the ST Brazil mascot.",
+      {
+        text: "Do you see all this stands around me?\nThey are real Brazilian projects on Solana.",
+        accent: "Talk to all of them to get a special gift!",
+      },
+    ],
+    highlights: [
+      { label: "SUPERTEAM BRASIL" },
+      { label: "MEET THE BUILDERS" },
+    ],
+    action: { type: "placeholder", label: "See you around!" },
+    spriteKey: "Guarana",
+    // Idle loop like Kite Pro: one row of 4 frames at 64x64, always facing
+    // south, never wanders. The file drops the accent so the URL stays plain
+    // ASCII; the name above is what players read.
+    spriteAnimation: { frameWidth: 64, frameHeight: 64, frameCount: 4 },
   },
   // ── ST Brasil builder stands ──────────────────────────────────────
   //

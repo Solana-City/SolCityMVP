@@ -1,0 +1,123 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import { PET_FRAMES, PET_FRAME_MS, PET_LOOPS, petSheetUrl } from "@/game/pet/petAssets";
+
+/**
+ * The petting square: the Caramel Dog has nothing to say, so meeting it plays
+ * the animation instead of opening a dialog. It loops a few times and closes
+ * itself.
+ *
+ * Drawn on a canvas rather than as a stepped CSS background because the frame
+ * width is read off the image: the sheet is one row of PET_FRAMES frames at
+ * whatever size the artist drew, and nothing here has to be told which.
+ */
+
+/** The framed square's inner size. The art is scaled to fit by whole pixels. */
+const BOX = 288;
+
+export default function PetOverlay({ onClose }: { onClose: () => void }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    let timer: number | null = null;
+    let cancelled = false;
+
+    const image = new Image();
+    image.src = petSheetUrl();
+
+    image.onerror = () => {
+      // No art, no animation. Closing beats holding an empty square open.
+      if (!cancelled) setFailed(true);
+    };
+
+    image.onload = () => {
+      if (cancelled) return;
+      const fw = Math.floor(image.naturalWidth / PET_FRAMES);
+      const fh = image.naturalHeight;
+      if (fw < 1 || fh < 1) { setFailed(true); return; }
+
+      // Whole-pixel scaling only, so the pixel art never lands between pixels.
+      const scale = Math.max(1, Math.floor(BOX / Math.max(fw, fh)));
+      canvas.width = fw * scale;
+      canvas.height = fh * scale;
+      ctx.imageSmoothingEnabled = false;
+
+      let step = 0;
+      const total = PET_FRAMES * PET_LOOPS;
+
+      const draw = () => {
+        const frame = step % PET_FRAMES;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(
+          image,
+          frame * fw, 0, fw, fh,
+          0, 0, canvas.width, canvas.height,
+        );
+      };
+
+      draw();
+      timer = window.setInterval(() => {
+        step++;
+        if (step >= total) {
+          if (timer !== null) window.clearInterval(timer);
+          timer = null;
+          onClose();
+          return;
+        }
+        draw();
+      }, PET_FRAME_MS);
+    };
+
+    return () => {
+      cancelled = true;
+      if (timer !== null) window.clearInterval(timer);
+      image.onload = null;
+      image.onerror = null;
+    };
+  }, [onClose]);
+
+  // A sheet that will not load closes on the next tick rather than mid-render.
+  useEffect(() => {
+    if (!failed) return;
+    const id = window.setTimeout(onClose, 0);
+    return () => window.clearTimeout(id);
+  }, [failed, onClose]);
+
+  if (failed) return null;
+
+  return (
+    <div
+      style={{
+        position: "fixed", inset: 0, zIndex: 60,
+        display: "flex", alignItems: "center", justifyContent: "center",
+        background: "rgba(6,6,18,0.55)",
+      }}
+      // A stuck sheet should never trap the player in here.
+      onClick={onClose}
+    >
+      <div style={{
+        borderWidth: 20, borderStyle: "solid", borderColor: "transparent",
+        borderImage: 'url(/assets/branding/ui/frame-panel-test.png) 64 fill / 20px / 0 round',
+        imageRendering: "pixelated",
+      }}>
+        {/* Square box, art centred in it whatever shape the frames are. */}
+        <div style={{
+          width: BOX, height: BOX, maxWidth: "70vw", maxHeight: "70vw",
+          display: "flex", alignItems: "center", justifyContent: "center",
+        }}>
+          <canvas
+            ref={canvasRef}
+            style={{ imageRendering: "pixelated", maxWidth: "100%", maxHeight: "100%" }}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}

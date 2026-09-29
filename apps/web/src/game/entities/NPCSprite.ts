@@ -5,6 +5,7 @@ import { SimpleSprite, NPC_DIRECTION_ROW, PLAYER_DIRECTION_ROW, type Direction }
 import type { NPCDefinition } from "../config/npcRegistry";
 import { profileManager } from "../config/profileManager";
 import { progressionBus } from "../progression/progressionBus";
+import { hoverCursor } from "../config/cursors";
 
 const INTERACT_RANGE = TILE_SIZE * 1.8;
 /** How long a spoken line owns the bubble before another can replace it. */
@@ -211,13 +212,14 @@ export class NPCSprite {
     // tapping it while in range starts the conversation, the same thing E
     // does — players tried this on desktop and nothing happened, because the
     // zone used to be built only for touch. A repelling NPC has no
-    // conversation to start, so it gets no zone and no hand cursor.
+    // conversation to start, so it gets no zone and no hover cursor.
     if (!def.repel) {
       // Same proportions the old fixed 48x72 @ y=-24 used for a standard
       // NPC (visualHeight 32): y = -0.75×height, height = 2.25×height.
       const hitZone = scene.add.rectangle(0, -visualHeight * 0.75, 48, visualHeight * 2.25, 0x000000, 0);
-      // The hand only means anything where there is a cursor.
-      hitZone.setInteractive({ useHandCursor: !isTouch });
+      // The city's own arrow, not the browser's hand — and only where there
+      // is a pointer at all to draw it with (see game/config/cursors.ts).
+      hitZone.setInteractive({ cursor: isTouch ? undefined : hoverCursor() });
       hitZone.on("pointerdown", () => {
         // Names the NPC that was clicked. The old path emitted the generic
         // touch:interact, which opens whichever NPC is NEAREST and in range:
