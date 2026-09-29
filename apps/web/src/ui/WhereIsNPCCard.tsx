@@ -383,10 +383,16 @@ export default function WhereIsNPCCard({ gameRef, wallet }: Props) {
             >?</button>
             <button
               onClick={e => { e.stopPropagation(); setCollapsed(v => !v); }}
-              style={{ background: "transparent", border: "none", padding: 0, cursor: "pointer", flexShrink: 0 }}
+              style={{
+                backgroundImage: "url(/assets/ui/icon_frame_btn.png)", backgroundSize: "100% 100%",
+                imageRendering: "pixelated", border: "none",
+                width: 22, height: 22, padding: 0, cursor: "pointer",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                flexShrink: 0,
+              }}
               title={collapsed ? "Expand" : "Collapse"}
             >
-              <PixelImg src={`/assets/ui/icon_${collapsed ? "up" : "down"}.png`} size={22} />
+              <PixelImg src="/assets/ui/icon_down1.png" size={12} style={{ transform: collapsed ? "rotate(180deg)" : undefined }} />
             </button>
           </span>
         </div>
