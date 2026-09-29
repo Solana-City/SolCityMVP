@@ -87,7 +87,7 @@ export default function ZoomControl({ compact = false }: { compact?: boolean }) 
     >
       <ZBtn size={btnSize} color={CYAN} disabled={!canDec} onClick={() => change(zooms[idx - 1])}>−</ZBtn>
 
-      <PixelImg src="/assets/ui/icon_search.png" size={btnSize} style={{ margin: "0 2px" }} />
+      <PixelImg src="/assets/ui/icon_zoom2.png" size={btnSize} style={{ margin: "0 2px", flexShrink: 0 }} />
 
       <ZBtn size={btnSize} color={CYAN} disabled={!canInc} onClick={() => change(zooms[idx + 1])}>+</ZBtn>
     </div>
@@ -124,6 +124,7 @@ function ZBtn({
         alignItems: "center",
         justifyContent: "center",
         padding: 0,
+        flexShrink: 0,
         transition: "background 0.1s",
         WebkitTapHighlightColor: "transparent",
       })}
