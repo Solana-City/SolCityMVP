@@ -2,7 +2,7 @@ import { npcCategory, CATEGORY_META } from "../minimap/categories";
 import type { BuffId } from "../buffs/playerBuffs";
 
 export interface NPCAction {
-  type: "tutor" | "swap" | "transfer" | "bounties" | "link" | "placeholder" | "private-payment" | "minigame" | "stock-exchange" | "peg-risk" | "token-scan" | "private-transfer" | "speed-buff";
+  type: "tutor" | "swap" | "transfer" | "bounties" | "link" | "placeholder" | "private-payment" | "minigame" | "stock-exchange" | "peg-risk" | "token-scan" | "private-transfer" | "speed-buff" | "pet";
   label: string;
   url?: string;
   miniGameId?: string;
@@ -315,7 +315,10 @@ const NPC_SEEDS: NPCSeed[] = [
       "Woof!",
       "The caramel dog wags its tail and trots down the beach.",
     ],
-    action: { type: "placeholder", label: "Pet the dog" },
+    // "pet" never opens a dialog: the petting square plays the moment the
+    // player reaches the dog, because a dog that answers in sentences is a
+    // worse dog. See PetOverlay.
+    action: { type: "pet", label: "Pet the dog" },
     spriteKey: "avatar-caramel-dog",
     spriteWalkKey: "avatar-caramel-dog-walk",
     // ~7 tiles. Keeps it roaming the open sand of the ST Brasil beach without

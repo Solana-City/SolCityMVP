@@ -45,6 +45,7 @@ const NicknameModal       = dynamic(() => import("@/ui/NicknameModal"),       { 
 const DuelInvite          = dynamic(() => import("@/ui/DuelInvite"),          { ssr: false });
 const CalendarPanel       = dynamic(() => import("@/ui/CalendarPanel"),       { ssr: false });
 const BuffBar             = dynamic(() => import("@/ui/BuffBar"),             { ssr: false });
+const PetOverlay          = dynamic(() => import("@/ui/PetOverlay"),          { ssr: false });
 
 /** Sol Mechs duel invites: sent from a player card, answered from the city. */
 const DUEL_INVITE_EVENT = "solcity:solmechs-duel";
@@ -178,7 +179,19 @@ export default function Home() {
 
   useEffect(() => {
     if (!game) return;
-    const handler = (npc: NPCDefinition) => setActiveNPC(npc);
+    const handler = (npc: NPCDefinition) => {
+      // The Caramel Dog has no dialog to open: petting IS the interaction, so
+      // it plays straight away. The visit still has to be recorded here, since
+      // that normally happens when NPCDialog opens, and the dog counts toward
+      // the Brazil Shirt.
+      if (npc.action.type === "pet") {
+        profileManager.visitNPC(npc.id, npc.name);
+        track("protocol-open", npc.id, { label: npc.name });
+        setPetting(true);
+        return;
+      }
+      setActiveNPC(npc);
+    };
     game.events.on("npc:interact", handler);
     return () => { game.events.off("npc:interact", handler); };
   }, [game]);
@@ -226,6 +239,13 @@ export default function Home() {
     window.addEventListener(OPEN_DM_EVENT, open);
     return () => window.removeEventListener(OPEN_DM_EVENT, open);
   }, []);
+
+  /** The Caramel Dog's petting square is open. */
+  const [petting, setPetting] = useState(false);
+  const handlePettingClose = useCallback(() => {
+    setPetting(false);
+    game?.events.emit("npc:close");
+  }, [game]);
 
   const handleDialogClose = useCallback(() => {
     setActiveNPC(null);
@@ -587,6 +607,7 @@ export default function Home() {
             <NicknameModal wallet={walletAddress} current={nickname.current} forced={nickname.forced} onDone={closeNickname} />
           )}
           <ActionPanel action={activeAction} onClose={handleActionClose} />
+          {petting && <PetOverlay onClose={handlePettingClose} />}
           <ProfilePanel gameRef={game} isOpen={profileOpen} onClose={() => setProfileOpen(false)} />
           {wardrobeOpen && (
             <WardrobePanel gameRef={game} onClose={() => setWardrobeOpen(false)} />
