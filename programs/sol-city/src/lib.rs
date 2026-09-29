@@ -613,13 +613,19 @@ pub mod sol_city {
         vx: i16,
         vy: i16,
     ) -> Result<()> {
-        let player = &ctx.accounts.player;
-        // Against the position the kick CLAIMS, not against where the ball
-        // was last stored: the ball has been rolling since that snapshot, and
-        // the client that caught up with it is the one telling us where it
+        // Everything read off `ctx.accounts` up front, so the mutable borrow
+        // of `ball` below is the only borrow alive by the time it is taken.
+        let px = ctx.accounts.player.x as i64;
+        let py = ctx.accounts.player.y as i64;
+        let kicker = ctx.accounts.session_authority.key();
+        let now = Clock::get()?.unix_timestamp;
+
+        // Measured against the position the kick CLAIMS, not against where the
+        // ball was last stored: the ball has been rolling since that snapshot,
+        // and the client that caught up with it is the one telling us where it
         // got to.
-        let dx = player.x as i64 - x as i64;
-        let dy = player.y as i64 - y as i64;
+        let dx = px - x as i64;
+        let dy = py - y as i64;
         require!(dx * dx + dy * dy <= BALL_REACH_SQ, SolCityError::BallOutOfReach);
 
         let ball = &mut ctx.accounts.ball;
@@ -627,8 +633,8 @@ pub mod sol_city {
         ball.y = y.clamp(BALL_MIN_Y, BALL_MAX_Y);
         ball.vx = vx.clamp(-BALL_MAX_SPEED, BALL_MAX_SPEED);
         ball.vy = vy.clamp(-BALL_MAX_SPEED, BALL_MAX_SPEED);
-        ball.kicker = ctx.accounts.session_authority.key();
-        ball.kicked_at = Clock::get()?.unix_timestamp;
+        ball.kicker = kicker;
+        ball.kicked_at = now;
         // Wrapping, not saturating: this counts kicks, and a ball that has
         // been kicked four billion times should keep going, not freeze on
         // u32::MAX and stop looking like a new kick to anybody.
@@ -1024,6 +1030,87 @@ pub struct ExpireRound<'info> {
     pub hunt: Account<'info, HuntState>,
     /// Any session key may crank an expired round forward.
     pub cranker: Signer<'info>,
+}
+
+#[derive(Accounts)]
+pub struct InitializeBall<'info> {
+    #[account(
+        init,
+        payer = payer,
+        space = 8 + BallState::INIT_SPACE,
+        seeds = [BALL_SEED],
+        bump,
+    )]
+    pub ball: Account<'info, BallState>,
+    #[account(mut)]
+    pub payer: Signer<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct KickBallSession<'info> {
+    #[account(mut, seeds = [BALL_SEED], bump)]
+    pub ball: Account<'info, BallState>,
+    /// The kicker's own player account. Read-only, and read for two reasons:
+    /// the session-key constraint proves the signer is somebody's authorized
+    /// key, and `player.x`/`player.y` prove that somebody is at the ball.
+    #[account(
+        seeds = [PLAYER_SEED, player.authority.as_ref()],
+        bump,
+        constraint = player.session_authority == Some(session_authority.key())
+            @ SolCityError::InvalidSessionKey,
+    )]
+    pub player: Account<'info, PlayerState>,
+    /// Session key — seamless, no wallet popup.
+    pub session_authority: Signer<'info>,
+}
+
+#[derive(Accounts)]
+pub struct DelegateBall<'info> {
+    #[account(mut)]
+    pub payer: Signer<'info>,
+    /// CHECK: PDA verified via seeds; zeroed and reassigned in the instruction body
+    #[account(mut, seeds = [BALL_SEED], bump)]
+    pub ball: UncheckedAccount<'info>,
+    /// CHECK: our own program ID, used by the delegation CPI to verify PDA ownership
+    pub owner_program: UncheckedAccount<'info>,
+    /// CHECK: delegate buffer PDA — seeds ["buffer", ball.key()], owned by this program
+    #[account(mut)]
+    pub delegate_buffer: UncheckedAccount<'info>,
+    /// CHECK: delegation record PDA — ["delegation", ball.key()], owned by delegation program
+    #[account(mut)]
+    pub delegation_record: UncheckedAccount<'info>,
+    /// CHECK: delegation metadata PDA — ["delegation-metadata", ball.key()], owned by delegation program
+    #[account(mut)]
+    pub delegation_metadata: UncheckedAccount<'info>,
+    /// CHECK: MagicBlock delegation program
+    pub delegation_program: UncheckedAccount<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+/// The beach football: the last KICK, never the roll.
+///
+/// Every client replays the same physics from this snapshot, so the account
+/// only changes when somebody touches the ball — a roll costs nothing.
+#[account]
+#[derive(InitSpace)]
+pub struct BallState {
+    /// Where the ball was when it was last kicked, in world pixels.
+    pub x: u32,
+    pub y: u32,
+    /// How fast it left, px/s. Signed: a ball goes in every direction.
+    pub vx: i16,
+    pub vy: i16,
+    /// Session key of whoever kicked it last.
+    pub kicker: Pubkey,
+    /// When, by the CHAIN's clock — which is the point of this account. It is
+    /// the one clock every device agrees on, so a client can measure how old
+    /// a kick is instead of guessing a constant for the trip, and two clients
+    /// can order two kicks the same way.
+    pub kicked_at: i64,
+    /// Bumped on every kick. `kicked_at` is whole seconds and a dribble puts
+    /// three kicks inside one of them, so this is what tells two apart.
+    pub seq: u32,
 }
 
 #[account]
