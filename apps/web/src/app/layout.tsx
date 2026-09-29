@@ -34,6 +34,13 @@ export default function RootLayout({
   return (
     <html lang="en">
       <head>
+        {/* The hover and pressed arrows (see the cursor block in globals.css).
+            Fetched up front because a cursor image is only requested at the
+            moment it is first needed, and that request is a visible blink of
+            the system arrow the first time you touch a button. Under a
+            kilobyte between them, and `media` keeps them off phones. */}
+        <link rel="preload" as="image" href="/assets/ui/cursor_hover.png" media="(pointer: fine)" />
+        <link rel="preload" as="image" href="/assets/ui/cursor_press.png" media="(pointer: fine)" />
         <link rel="apple-touch-icon" sizes="192x192" href="/icons/icon-192.png?v=2" />
         <link rel="apple-touch-icon" sizes="512x512" href="/icons/icon-512.png?v=2" />
         <meta name="apple-mobile-web-app-capable" content="yes" />

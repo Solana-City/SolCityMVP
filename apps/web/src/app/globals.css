@@ -170,3 +170,75 @@ input[type="range"].pixel-range::-webkit-slider-thumb {
   background: #c084fc; border: 2px solid #f0e2ff; border-radius: 0;
 }
 input[type="range"].pixel-range::-moz-range-thumb { width: 10px; height: 10px; background: #c084fc; border: 2px solid #f0e2ff; border-radius: 0; }
+
+/* ── Custom cursor, desktop only ──────────────────────────────────────────
+   Three states of the same pixel arrow, from /assets/ui/cursor_*.png: lime
+   at rest, dark over anything clickable, white while the button is held.
+
+   The pressed art is drawn three pixels down and to the right of the other
+   two, so its hotspot is `3 3` and not `0 0`. That is what makes the arrow
+   recoil on a click while the point it is actually clicking stays exactly
+   where it was.
+
+   Touch devices never reach any of this — there is no pointer to draw.
+
+   Each state is declared TWICE. The first declaration is the plain 35x35
+   image; the second adds a 2x copy for high-density screens, and a browser
+   with no image-set() support inside `cursor` drops it and keeps the first.
+   A custom property would not survive that fallback — an unsupported var()
+   resolves to inherit rather than to the previous declaration — so the two
+   are written out in full.
+
+   These are not blanket `*` rules on purpose: while the pointer is over an
+   NPC or another player, Phaser writes the hover cursor onto the canvas as
+   an inline style (see game/config/cursors.ts), and the canvas has to be
+   able to speak for itself.                                                */
+@media (pointer: fine) {
+  html {
+    cursor: url("/assets/ui/cursor_default.png") 0 0, default;
+    cursor: image-set(
+      url("/assets/ui/cursor_default.png") 1x,
+      url("/assets/ui/cursor_default@2x.png") 2x) 0 0, default;
+  }
+
+  /* Everything that says it can be clicked. `!important` because the UI sets
+     `cursor: pointer` in INLINE styles all over the app, and an inline style
+     beats any ordinary rule — an author !important is the one thing above it.
+     The two attribute selectors catch exactly those inline styles, in both
+     the spacing React emits and the one a hand-written style would. */
+  a[href], button, summary, select, label[for],
+  [role="button"], [role="tab"], [role="link"], [role="option"],
+  input[type="button"], input[type="submit"], input[type="reset"],
+  input[type="checkbox"], input[type="radio"], input[type="range"],
+  [style*="cursor: pointer"], [style*="cursor:pointer"] {
+    cursor: url("/assets/ui/cursor_hover.png") 0 0, pointer !important;
+    cursor: image-set(
+      url("/assets/ui/cursor_hover.png") 1x,
+      url("/assets/ui/cursor_hover@2x.png") 2x) 0 0, pointer !important;
+  }
+
+  /* Held down anywhere on the page, the game canvas included: `:active`
+     applies to the element being pressed AND to every ancestor of it. */
+  html:active, html:active * {
+    cursor: url("/assets/ui/cursor_press.png") 3 3, pointer !important;
+    cursor: image-set(
+      url("/assets/ui/cursor_press.png") 1x,
+      url("/assets/ui/cursor_press@2x.png") 2x) 3 3, pointer !important;
+  }
+
+  /* Text entry keeps the system I-beam: there is no pixel art for one, and
+     the beam is the only cursor that shows where the caret will land. Placed
+     AFTER the rules above deliberately — same specificity as `html:active *`,
+     so source order is what decides it, and dragging out a selection should
+     not turn into the pressed arrow. */
+  input[type="text"], input[type="search"], input[type="email"],
+  input[type="number"], input[type="password"], input[type="url"],
+  input:not([type]), textarea, [contenteditable="true"] {
+    cursor: text !important;
+  }
+
+  /* Nothing to click here. Last, for the same source-order reason. */
+  html :disabled, html [aria-disabled="true"] {
+    cursor: not-allowed !important;
+  }
+}

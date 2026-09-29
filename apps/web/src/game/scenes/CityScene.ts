@@ -57,6 +57,7 @@ import { startMemStats } from "../telemetry/memStats";
 // Pixel-perfect zoom values and snapping live in config/zoomConfig.ts —
 // shared with ZoomControl and the pinch-zoom hook.
 import { loadZoom, snapZoom, viewScale } from "../config/zoomConfig";
+import { hoverCursor } from "../config/cursors";
 
 /**
  * Set on the Phaser.Game once CityScene.create() has registered its listeners.
@@ -1652,7 +1653,9 @@ export class CityScene extends Phaser.Scene {
     const container = avatar.getContainer();
     container.setData("wallet", wallet);
     const hitZone = this.add.rectangle(0, -24, 48, 72, 0x000000, 0);
-    hitZone.setInteractive({ useHandCursor: true });
+    hitZone.setInteractive({
+      cursor: this.sys.game.device.input.touch ? undefined : hoverCursor(),
+    });
     hitZone.on("pointerdown", () => {
       this.game.events.emit("player:cardOpen", { wallet, displayName: cachedName(wallet) ?? displayName });
     });
