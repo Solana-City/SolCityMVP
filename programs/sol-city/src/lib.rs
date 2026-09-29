@@ -93,6 +93,47 @@ fn vrf_callback_identity() -> Pubkey {
     Pubkey::find_program_address(&[VRF_IDENTITY_SEED, crate::ID.as_ref()], &VRF_PROGRAM_ID).0
 }
 
+// ── The beach football ─────────────────────────────────────────────────────
+//
+// One account for the ball on the ST Brasil sand, delegated to the rollup so
+// a kick is a free, sub-second write everybody reads off the same poll.
+//
+// Only the KICK is stored, never the roll: position, the speed it left at,
+// and when. Every client runs the same fixed-step physics from that snapshot
+// (apps/web/src/game/world/BeachBall.ts), so a ball that rolls for two
+// seconds costs one write instead of a hundred.
+//
+// A singleton, like the hunt. A second ball would need another seed and
+// another deploy, which is the same bargain HUNT_SEED already takes.
+pub const BALL_SEED: &[u8] = b"ball";
+
+/// How far a player may be from the ball and still kick it, in world pixels,
+/// SQUARED.
+///
+/// Deliberately loose. A player's on-chain position is rewritten every 200ms,
+/// so at a walk it is routinely a tile and a half behind where they really
+/// are, and further under a speed buff. This is here to stop a modified
+/// client putting the ball on the other side of the city, not to referee the
+/// tackle — a check tight enough to be "accurate" would throw out real kicks
+/// all day.
+pub const BALL_REACH_SQ: i64 = 96 * 96;
+
+/// The fastest a kick may leave, px/s. The game kicks at 190.
+pub const BALL_MAX_SPEED: i16 = 400;
+
+/// The ST Brasil beach, as a bounding box in world pixels (tiles 5..68 by
+/// 56..104 of a 24px grid).
+///
+/// The real boundary is the painted sand, which the client carries as a tile
+/// mask built from the map at load — far too much detail for a program to
+/// hold, and it would have to be re-deployed every time the artist moved the
+/// shoreline. So the chain keeps the ball in the right QUARTER of the city
+/// and the clients agree on the exact edge between them.
+pub const BALL_MIN_X: u32 = 5 * 24;
+pub const BALL_MAX_X: u32 = 68 * 24;
+pub const BALL_MIN_Y: u32 = 56 * 24;
+pub const BALL_MAX_Y: u32 = 104 * 24;
+
 /// MagicBlock delegation program on devnet.
 pub const DELEGATION_PROGRAM_ID: Pubkey =
     pubkey!("DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh");
@@ -119,6 +160,8 @@ pub enum SolCityError {
     InvalidQuestItem,
     #[msg("Callback not signed by the VRF program identity")]
     InvalidVrfIdentity,
+    #[msg("Too far from the ball to kick it")]
+    BallOutOfReach,
 }
 
 /// Truncates a string to at most `max` BYTES on a char boundary, so a
@@ -533,6 +576,190 @@ pub mod sol_city {
         hunt.round = hunt.round.wrapping_add(1);
         hunt.found_at = now;
         hunt.deadline = now + CITIZEN_DURATION_SECS;
+        Ok(())
+    }
+
+    // ── The beach football ─────────────────────────────────────────────────
+    //
+    // initialize_ball: once, ever, after deploy. Then delegate_ball, once,
+    // ever, and from there the ball lives on the rollup and every kick is a
+    // session-signed write with no popup and no fee.
+
+    /// Creates the ball and puts it on the sand. Call once, ever, after deploy.
+    pub fn initialize_ball(ctx: Context<InitializeBall>, x: u32, y: u32) -> Result<()> {
+        let ball = &mut ctx.accounts.ball;
+        ball.x = x.clamp(BALL_MIN_X, BALL_MAX_X);
+        ball.y = y.clamp(BALL_MIN_Y, BALL_MAX_Y);
+        ball.vx = 0;
+        ball.vy = 0;
+        ball.kicker = Pubkey::default();
+        ball.kicked_at = Clock::get()?.unix_timestamp;
+        ball.seq = 0;
+        Ok(())
+    }
+
+    /// Kicks the ball: stores where it was, how fast it left, and when.
+    ///
+    /// The kicker's own player account comes along, which proves two things
+    /// with one read: the signer really is a session key somebody authorized,
+    /// and that somebody is standing next to the ball. Without it any session
+    /// key in the city could put the ball anywhere.
+    ///
+    /// Session-signed, so no wallet popup, and on the rollup, so no fee.
+    pub fn kick_ball_session(
+        ctx: Context<KickBallSession>,
+        x: u32,
+        y: u32,
+        vx: i16,
+        vy: i16,
+    ) -> Result<()> {
+        let player = &ctx.accounts.player;
+        // Against the position the kick CLAIMS, not against where the ball
+        // was last stored: the ball has been rolling since that snapshot, and
+        // the client that caught up with it is the one telling us where it
+        // got to.
+        let dx = player.x as i64 - x as i64;
+        let dy = player.y as i64 - y as i64;
+        require!(dx * dx + dy * dy <= BALL_REACH_SQ, SolCityError::BallOutOfReach);
+
+        let ball = &mut ctx.accounts.ball;
+        ball.x = x.clamp(BALL_MIN_X, BALL_MAX_X);
+        ball.y = y.clamp(BALL_MIN_Y, BALL_MAX_Y);
+        ball.vx = vx.clamp(-BALL_MAX_SPEED, BALL_MAX_SPEED);
+        ball.vy = vy.clamp(-BALL_MAX_SPEED, BALL_MAX_SPEED);
+        ball.kicker = ctx.accounts.session_authority.key();
+        ball.kicked_at = Clock::get()?.unix_timestamp;
+        // Wrapping, not saturating: this counts kicks, and a ball that has
+        // been kicked four billion times should keep going, not freeze on
+        // u32::MAX and stop looking like a new kick to anybody.
+        ball.seq = ball.seq.wrapping_add(1);
+        Ok(())
+    }
+
+    /// Delegates the ball to the MagicBlock Ephemeral Rollup. Once, ever,
+    /// right after initialize_ball.
+    ///
+    /// The same six steps `delegate` runs for a player PDA, against a PDA
+    /// with one seed and no owner. It is written out rather than shared with
+    /// `delegate` on purpose: nothing in this repo can build an SBF binary
+    /// (see REDEPLOY_CHECKLIST), Playground is the only compiler, and pulling
+    /// a generic helper out of the one delegation path that has already
+    /// shipped would put it at risk to save a screen of code.
+    ///
+    /// Nothing ever undelegates it. The ball is a fixture of the city, not a
+    /// session: it belongs on the rollup for as long as the rollup is there.
+    pub fn delegate_ball(ctx: Context<DelegateBall>) -> Result<()> {
+        let ball_key = ctx.accounts.ball.key();
+        let ball_bump = ctx.bumps.ball;
+
+        // Signer seeds for the ball PDA (WITH bump, for invoke_signed)
+        let ball_signer_seeds: &[&[u8]] = &[BALL_SEED, &[ball_bump]];
+
+        let (_, buffer_bump) = Pubkey::find_program_address(
+            &[BUFFER_SEED, ball_key.as_ref()],
+            &crate::ID,
+        );
+        let buffer_signer_seeds: &[&[u8]] = &[
+            BUFFER_SEED,
+            ball_key.as_ref(),
+            &[buffer_bump],
+        ];
+
+        let data_len = ctx.accounts.ball.data_len();
+        let rent = SolanaRent::get()?;
+
+        // ── 1. Create the buffer PDA ───────────────────────────────────────
+        invoke_signed(
+            &system_instruction::create_account(
+                ctx.accounts.payer.key,
+                ctx.accounts.delegate_buffer.key,
+                rent.minimum_balance(data_len),
+                data_len as u64,
+                &crate::ID,
+            ),
+            &[
+                ctx.accounts.payer.to_account_info(),
+                ctx.accounts.delegate_buffer.to_account_info(),
+                ctx.accounts.system_program.to_account_info(),
+            ],
+            &[buffer_signer_seeds],
+        )?;
+
+        // ── 2. Copy ball data → buffer ─────────────────────────────────────
+        {
+            let ball_data = ctx.accounts.ball.data.borrow();
+            let mut buffer_data = ctx.accounts.delegate_buffer.data.borrow_mut();
+            buffer_data.copy_from_slice(&ball_data);
+        }
+
+        // ── 3. Zero the ball PDA data ──────────────────────────────────────
+        {
+            let mut ball_data = ctx.accounts.ball.data.borrow_mut();
+            sol_memset(&mut ball_data, 0, data_len);
+        }
+
+        // ── 4. Reassign ball PDA → delegation program ──────────────────────
+        ctx.accounts.ball.assign(&anchor_lang::solana_program::system_program::id());
+        invoke_signed(
+            &system_instruction::assign(
+                ctx.accounts.ball.key,
+                &DELEGATION_PROGRAM_ID,
+            ),
+            &[
+                ctx.accounts.ball.to_account_info(),
+                ctx.accounts.system_program.to_account_info(),
+            ],
+            &[ball_signer_seeds],
+        )?;
+
+        // ── 5. CPI → delegation program ────────────────────────────────────
+        // Same layout as `delegate`, with ONE seed instead of two.
+        let seeds_vec: [Vec<u8>; 1] = [BALL_SEED.to_vec()];
+        let mut ix_data: Vec<u8> = Vec::with_capacity(64);
+        ix_data.extend_from_slice(&[0u8; 8]);                               // discriminator
+        ix_data.extend_from_slice(&3_000u32.to_le_bytes());                 // commit_frequency_ms
+        ix_data.extend_from_slice(&(seeds_vec.len() as u32).to_le_bytes()); // seeds.len()
+        for seed in &seeds_vec {
+            ix_data.extend_from_slice(&(seed.len() as u32).to_le_bytes());
+            ix_data.extend_from_slice(seed);
+        }
+        ix_data.push(0u8);                                                   // None validator
+
+        let delegate_ix = SolInstruction {
+            program_id: DELEGATION_PROGRAM_ID,
+            accounts: vec![
+                SolAccountMeta::new(*ctx.accounts.payer.key, true),
+                SolAccountMeta::new(*ctx.accounts.ball.key, true),
+                SolAccountMeta::new_readonly(crate::ID, false),
+                SolAccountMeta::new(*ctx.accounts.delegate_buffer.key, false),
+                SolAccountMeta::new(*ctx.accounts.delegation_record.key, false),
+                SolAccountMeta::new(*ctx.accounts.delegation_metadata.key, false),
+                SolAccountMeta::new_readonly(*ctx.accounts.system_program.key, false),
+            ],
+            data: ix_data,
+        };
+
+        invoke_signed(
+            &delegate_ix,
+            &[
+                ctx.accounts.payer.to_account_info(),
+                ctx.accounts.ball.to_account_info(),
+                ctx.accounts.owner_program.to_account_info(),
+                ctx.accounts.delegate_buffer.to_account_info(),
+                ctx.accounts.delegation_record.to_account_info(),
+                ctx.accounts.delegation_metadata.to_account_info(),
+                ctx.accounts.system_program.to_account_info(),
+            ],
+            &[ball_signer_seeds],
+        )?;
+
+        // ── 6. Close buffer PDA (return rent to payer) ─────────────────────
+        {
+            let buffer_lamports = ctx.accounts.delegate_buffer.lamports();
+            **ctx.accounts.delegate_buffer.try_borrow_mut_lamports()? -= buffer_lamports;
+            **ctx.accounts.payer.try_borrow_mut_lamports()? += buffer_lamports;
+        }
+
         Ok(())
     }
 

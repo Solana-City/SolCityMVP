@@ -138,7 +138,7 @@ export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
     { id: "STB_shirt", name: "Superteam Brasil Shirt", textureKey: "pd-tshirt-STB_shirt",
       file: "tshirt/STB_shirt.png", unlockVia: "quest", unlockHint: "Talk to Kuka" },
     { id: "Brazilian_shirt", name: "Brazil Shirt", textureKey: "pd-tshirt-Brazilian_shirt",
-      file: "tshirt/Brazilian_shirt.png", unlockVia: "quest", unlockHint: "Meet Kuka, Kite Pro and the Caramel Dog" },
+      file: "tshirt/Brazilian_shirt.png", unlockVia: "quest", unlockHint: "Meet Kuka, Kite Pro, the Caramel Dog and every builder at a stand" },
   ],
   accessory: [
     { id: "Golden_ring", name: "Golden Ring", textureKey: "pd-accessory-Golden_ring", file: "accessory/Golden_ring.png" },
