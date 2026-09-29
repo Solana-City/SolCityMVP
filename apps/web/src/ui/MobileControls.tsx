@@ -75,7 +75,7 @@ function Joystick({ scale = 1 }: { scale?: number }) {
     >
       {/* Pad base — stays put while the cross thumb moves (same center). */}
       <img
-        src={`${UI}/controller_bg.png`}
+        src={`${UI}/controller_bg2.png`}
         width={PAD_PX * scale}
         height={PAD_PX * scale}
         alt=""
@@ -84,7 +84,7 @@ function Joystick({ scale = 1 }: { scale?: number }) {
       />
       <img
         ref={thumbRef}
-        src={`${UI}/controller.png`}
+        src={`${UI}/controller2.png`}
         width={THUMB_PX * scale}
         height={THUMB_PX * scale}
         alt="Joystick"
@@ -230,8 +230,8 @@ export default function MobileControls() {
         {/* Right — ACT: interacts with NPCs and advances open dialogs */}
         <div className="pointer-events-auto">
           <SpriteButton
-            bg={`${UI}/btn_act_bg.png`}
-            icon={`${UI}/btn_act.png`}
+            bg={`${UI}/btn_act_bg2.png`}
+            icon={`${UI}/btn_act2.png`}
             size={tablet ? 113 : 87}
             alt="ACT"
             onPress={handleInteract}
