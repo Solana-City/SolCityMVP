@@ -368,29 +368,26 @@ export default function WhereIsNPCCard({ gameRef, wallet }: Props) {
             color: "#B7E928", letterSpacing: 0.5, flex: 1,
             lineHeight: 1.4,
           }}>FIND SOMEONE</span>
-          <button className="hunt-btn" style={{
-            ...octagonFrameThin(),
-            background: showInfo ? "rgba(183,233,40,0.25)" : "rgba(10,10,30,0.7)",
-            color: showInfo ? "#B7E928" : "#9a9ab5",
-            fontFamily: "Georgia, serif", fontStyle: "italic", fontWeight: "bold", fontSize: 11,
-            width: 22, height: 22, padding: 0, lineHeight: "12px", cursor: "pointer",
-            flexShrink: 0,
-          }}
-            onClick={e => { e.stopPropagation(); setShowInfo(v => !v); }}
-            title="How to play"
-          >?</button>
-          <button className="hunt-btn hunt-collapse" style={{
-            ...octagonFrameThin(),
-            background: "rgba(10,10,30,0.7)", color: "#9a9ab5",
-            width: 22, height: 22, padding: 0, cursor: "pointer",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            flexShrink: 0,
-          }}
-            onClick={e => { e.stopPropagation(); setCollapsed(v => !v); }}
-            title={collapsed ? "Expand" : "Collapse"}
-          >
-            <PixelImg src={`/assets/ui/icon_${collapsed ? "up" : "down"}.png`} size={14} />
-          </button>
+          <span style={{ display: "flex", alignItems: "center", gap: 2, flexShrink: 0 }}>
+            <button className="hunt-btn" style={{
+              ...octagonFrameThin(),
+              background: showInfo ? "rgba(183,233,40,0.25)" : "rgba(10,10,30,0.7)",
+              color: showInfo ? "#B7E928" : "#9a9ab5",
+              fontFamily: "Georgia, serif", fontStyle: "italic", fontWeight: "bold", fontSize: 11,
+              width: 22, height: 22, padding: 0, lineHeight: "12px", cursor: "pointer",
+              flexShrink: 0,
+            }}
+              onClick={e => { e.stopPropagation(); setShowInfo(v => !v); }}
+              title="How to play"
+            >?</button>
+            <button
+              onClick={e => { e.stopPropagation(); setCollapsed(v => !v); }}
+              style={{ background: "transparent", border: "none", padding: 0, cursor: "pointer", flexShrink: 0 }}
+              title={collapsed ? "Expand" : "Collapse"}
+            >
+              <PixelImg src={`/assets/ui/icon_${collapsed ? "up" : "down"}.png`} size={22} />
+            </button>
+          </span>
         </div>
 
         {!collapsed && (
