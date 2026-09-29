@@ -13,21 +13,33 @@ const BASE = "/assets/pet";
 /**
  * Paper-doll base skin id -> its own sheet. Only the sheets that exist are
  * listed, so nothing ever asks the network for art that has not been drawn:
- * everything else falls back to DEFAULT_SHEET below.
+ * everything else falls back to DEFAULT_SHEET below, which is why every base
+ * currently pets the dog with the same hand.
  *
- * As each one lands, add a line here. No other code changes.
+ * The filenames follow the Kite Clash hands, spelling and all, so the spriter
+ * exports both sets the same way. As each one lands, add its line here and
+ * nothing else changes:
  *
- *   Light | Feyan | Laovai | Pinki | Radio | Brown | Dark_brown
+ *   Light      dog_human_sheet.png
+ *   Feyan      dog_feyan_sheet.png
+ *   Laovai     dog_laovai_sheet.png
+ *   Pinki      dog_pinky_sheet.png
+ *   Radio      dog_radio_sheet.png
+ *   Brown      dog_brown_sheet.png
+ *   Dark_brown dog_dark_brown_sheet.png
  */
-const SHEET_BY_SKIN: Record<string, string> = {};
+const SHEET_BY_SKIN: Record<string, string> = {
+  Pinki: "dog_pinky_sheet.png",
+};
 
-/** The one sheet everybody gets until the per-skin art lands. */
-const DEFAULT_SHEET = "pet_caramel_dog.png";
+/** The one sheet everybody else gets until their own art lands. */
+const DEFAULT_SHEET = "dog_pinky_sheet.png";
 
 /**
  * Frames in a sheet, laid out left to right in a single row. The frame WIDTH
  * is not declared: it is the image's own width divided by this, so the artist
- * can ship whatever size the drawing needs.
+ * can ship whatever size the drawing needs. The first sheet is 452x113, four
+ * square 113px frames.
  */
 export const PET_FRAMES = 4;
 
