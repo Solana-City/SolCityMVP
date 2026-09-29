@@ -555,19 +555,6 @@ export default function Home() {
                   compact={isTouch}
                 />
                 <ZoomControl compact={isTouch} />
-                {!isTouch && (
-                  <button
-                    onClick={() => setKeysOpen(true)}
-                    title="Keys (K)"
-                    aria-label="Keyboard shortcuts"
-                    style={{
-                      width: 22, height: 22, flexShrink: 0, cursor: "pointer",
-                      background: "rgba(10,10,30,0.85)", color: "#9945FF",
-                      border: "1px solid rgba(153,69,255,0.25)", borderRadius: 4,
-                      fontFamily: "monospace", fontSize: 11, lineHeight: 1, padding: 0,
-                    }}
-                  >?</button>
-                )}
               </div>
             </div>
 

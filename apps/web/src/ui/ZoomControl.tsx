@@ -2,15 +2,17 @@
 
 import { useEffect, useState } from "react";
 import {
-  getValidZooms, snapZoom, loadZoom, saveZoom, formatViewScale,
+  getValidZooms, snapZoom, loadZoom, saveZoom,
 } from "@/game/config/zoomConfig";
 import { chamferBox } from "@/ui/chamfer";
+import { PixelImg } from "@/ui/PixelIcons";
 
 function emitGame(event: string, data?: unknown) {
   (globalThis as any).__solCityGameEvents?.emit(event, data);
 }
 
 const CHAMFER_BORDER_W = 2;
+const CYAN = "#14F0C6";
 
 // clip-path alone cuts the corner off a rectangular `border` without leaving
 // a stroke along the new diagonal edge. Faking a chamfered outline instead
@@ -78,27 +80,16 @@ export default function ZoomControl({ compact = false }: { compact?: boolean }) 
       className="flex items-center gap-1 px-2 py-1.5"
       style={chamferBox(8, {
         background: "rgba(10,10,30,0.85)",
-        border: "1px solid rgba(153,69,255,0.25)",
+        border: `1px solid ${CYAN}40`,
         backdropFilter: "blur(4px)",
         fontFamily: "monospace",
       })}
     >
-      <ZBtn size={btnSize} disabled={!canDec} onClick={() => change(zooms[idx - 1])}>−</ZBtn>
+      <ZBtn size={btnSize} color={CYAN} disabled={!canDec} onClick={() => change(zooms[idx - 1])}>−</ZBtn>
 
-      <span
-        style={{
-          fontFamily: "monospace",
-          fontSize: "10px",
-          color: "#9945FF",
-          minWidth: 36,
-          textAlign: "center",
-          userSelect: "none",
-        }}
-      >
-        {formatViewScale(zoom)}
-      </span>
+      <PixelImg src="/assets/ui/icon_zoom2.png" size={btnSize} style={{ margin: "0 2px", flexShrink: 0 }} />
 
-      <ZBtn size={btnSize} disabled={!canInc} onClick={() => change(zooms[idx + 1])}>+</ZBtn>
+      <ZBtn size={btnSize} color={CYAN} disabled={!canInc} onClick={() => change(zooms[idx + 1])}>+</ZBtn>
     </div>
   );
 }
@@ -108,11 +99,13 @@ function ZBtn({
   onClick,
   disabled,
   size,
+  color = "#9945FF",
 }: {
   children: string;
   onClick: () => void;
   disabled: boolean;
   size: number;
+  color?: string;
 }) {
   return (
     <button
@@ -121,9 +114,9 @@ function ZBtn({
       style={chamferBox(6, {
         width: size,
         height: size,
-        border: "1px solid rgba(153,69,255,0.3)",
-        background: disabled ? "transparent" : "rgba(153,69,255,0.12)",
-        color: disabled ? "#333344" : "#9945FF",
+        border: `1px solid ${color}4D`,
+        background: disabled ? "transparent" : `${color}1F`,
+        color: disabled ? "#333344" : color,
         fontSize: "11px",
         lineHeight: 1,
         cursor: disabled ? "default" : "pointer",
@@ -131,6 +124,7 @@ function ZBtn({
         alignItems: "center",
         justifyContent: "center",
         padding: 0,
+        flexShrink: 0,
         transition: "background 0.1s",
         WebkitTapHighlightColor: "transparent",
       })}

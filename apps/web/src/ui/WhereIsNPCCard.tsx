@@ -16,7 +16,7 @@ import { useNicknames, shortWallet } from "@/ui/useNicknames";
 import { fetchBoard, invalidateBoard, type BoardRow } from "@/game/leaderboards/boards";
 import { track } from "@/game/telemetry/track";
 import { cachedName, requestNames } from "@/game/names/nameService";
-import { chamferBox, octagonFrame, octagonFrameThin } from "@/ui/chamfer";
+import { chamferBox, octagonFrame } from "@/ui/chamfer";
 import ChamferGlow from "@/ui/ChamferGlow";
 
 // ── Chroma key ────────────────────────────────────────────────────────────────
@@ -349,7 +349,7 @@ export default function WhereIsNPCCard({ gameRef, wallet }: Props) {
         borderWidth: 20, borderStyle: "solid", borderColor: "transparent",
         borderImage: 'url(/assets/branding/ui/frame-panel-test.png) 64 fill / 20px / 0 round',
         imageRendering: "pixelated",
-        width: isTouch ? 172 : 220,
+        width: isTouch ? 176 : 224,
         fontFamily: '"Press Start 2P", monospace',
         color: "#d0d0f0",
         overflow: "hidden",
@@ -368,24 +368,37 @@ export default function WhereIsNPCCard({ gameRef, wallet }: Props) {
             color: "#B7E928", letterSpacing: 0.5, flex: 1,
             lineHeight: 1.4,
           }}>FIND SOMEONE</span>
-          <button className="hunt-btn" style={{
-            ...octagonFrameThin(),
-            background: showInfo ? "rgba(183,233,40,0.25)" : "rgba(10,10,30,0.7)",
-            color: showInfo ? "#B7E928" : "#9a9ab5",
-            fontFamily: "Georgia, serif", fontStyle: "italic", fontWeight: "bold", fontSize: 11,
-            width: 22, height: 22, padding: 0, lineHeight: "12px", cursor: "pointer",
-            flexShrink: 0,
-          }}
-            onClick={e => { e.stopPropagation(); setShowInfo(v => !v); }}
-            title="How to play"
-          >?</button>
-          <span className="hunt-collapse" style={{ color: "#444466", fontSize: 8, marginLeft: 2 }}>
-            <PixelImg src={`/assets/ui/icon_${collapsed ? "up" : "down"}.png`} size={14} />
+          <span style={{ display: "flex", alignItems: "center", gap: 2, flexShrink: 0 }}>
+            <button className="hunt-btn" style={{
+              backgroundImage: "url(/assets/ui/icon_frame_btn.png)", backgroundSize: "100% 100%",
+              imageRendering: "pixelated", border: "none",
+              color: showInfo ? "#B7E928" : "#9a9ab5",
+              fontFamily: "Georgia, serif", fontStyle: "italic", fontWeight: "bold", fontSize: 11,
+              width: 22, height: 22, padding: 0, lineHeight: "12px", cursor: "pointer",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              flexShrink: 0,
+            }}
+              onClick={e => { e.stopPropagation(); setShowInfo(v => !v); }}
+              title="How to play"
+            >?</button>
+            <button
+              onClick={e => { e.stopPropagation(); setCollapsed(v => !v); }}
+              style={{
+                backgroundImage: "url(/assets/ui/icon_frame_btn.png)", backgroundSize: "100% 100%",
+                imageRendering: "pixelated", border: "none",
+                width: 22, height: 22, padding: 0, cursor: "pointer",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                flexShrink: 0,
+              }}
+              title={collapsed ? "Expand" : "Collapse"}
+            >
+              <PixelImg src="/assets/ui/icon_down1.png" size={12} style={{ transform: collapsed ? "rotate(180deg)" : undefined }} />
+            </button>
           </span>
         </div>
 
         {!collapsed && (
-          <div style={{ padding: isTouch ? "9px 10px" : "12px 13px", display: "flex", flexDirection: "column", gap: isTouch ? 7 : 10 }}>
+          <div style={{ padding: isTouch ? "9px 10px" : "23.5px 13px", display: "flex", flexDirection: "column", gap: isTouch ? 7 : 10 }}>
             {/* Found banner */}
             {foundMsg && (
               <div style={chamferBox(8, {
@@ -594,7 +607,7 @@ function HuntHowTo({ loadout, isTouch, onClose }: { loadout: Loadout | null; isT
           </button>
           <div style={{ flex: 1, display: "flex", justifyContent: "center", gap: 5 }}>
             {steps.map((st, n) => (
-              <span key={st.title} style={{ width: n === i ? 16 : 6, height: 6, borderRadius: 3, background: n === i ? "#9945FF" : "#333355", transition: "width .2s" }} />
+              <span key={st.title} style={{ width: n === i ? 16 : 6, height: 6, background: n === i ? "#9945FF" : "#333355", transition: "width .2s" }} />
             ))}
           </div>
           <button

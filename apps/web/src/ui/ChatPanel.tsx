@@ -342,12 +342,12 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
           className="ml-auto self-center"
           style={{
             width: 22, height: 22, flexShrink: 0,
-            background: showGuide ? "rgba(183,233,40,0.25)" : "rgba(10,10,30,0.7)",
+            backgroundImage: "url(/assets/ui/icon_frame_btn.png)", backgroundSize: "100% 100%",
+            imageRendering: "pixelated", border: "none",
             color: showGuide ? "#B7E928" : "#9a9ab5",
-            borderWidth: 4, borderStyle: "solid", borderColor: "transparent",
-            borderImage: BTN_FRAME, imageRendering: "pixelated", clipPath: BTN_CLIP,
             fontFamily: "Georgia, serif", fontStyle: "italic", fontWeight: "bold", fontSize: 11,
             lineHeight: "12px", padding: 0, cursor: "pointer",
+            display: "flex", alignItems: "center", justifyContent: "center",
           }}
         >
           i
@@ -355,9 +355,16 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
         <button
           onClick={() => setIsExpanded(!isExpanded)}
           className="self-center"
-          style={{ background: "transparent", border: "none", padding: 0, cursor: "pointer", flexShrink: 0 }}
+          style={{
+            backgroundImage: "url(/assets/ui/icon_frame_btn.png)", backgroundSize: "100% 100%",
+            imageRendering: "pixelated", border: "none",
+            width: 22, height: 22, padding: 0, cursor: "pointer",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            flexShrink: 0,
+          }}
         >
-          <img src={`/assets/ui/icon_${isExpanded ? "down" : "up"}.png`} width={22} height={22} alt="" draggable={false} style={{ imageRendering: "pixelated", display: "block" }} />
+          <img src="/assets/ui/icon_down1.png" width={12} height={12} alt="" draggable={false}
+            style={{ imageRendering: "pixelated", display: "block", transform: isExpanded ? undefined : "rotate(180deg)" }} />
         </button>
       </div>
 

@@ -126,7 +126,7 @@ export default function GuestNotice({ onConnect, onPlay }: { onConnect: () => vo
 
         <div style={{ display: "flex", justifyContent: "center", gap: 4, marginBottom: 10 }}>
           {STEPS.map((s, n) => (
-            <span key={s.title} style={{ width: n === i ? 14 : 5, height: 5, borderRadius: 3, background: n === i ? GREEN : n < i ? "#3f6f5c" : "#333344", transition: "width .2s" }} />
+            <span key={s.title} style={{ width: n === i ? 14 : 5, height: 5, background: n === i ? GREEN : n < i ? "#3f6f5c" : "#333344", transition: "width .2s" }} />
           ))}
         </div>
 

@@ -779,7 +779,7 @@ function HowToPlayCard({ isTouch, onStart }: { isTouch: boolean; onStart: (compl
           <div style={{ flex: 1, display: "flex", justifyContent: "center", gap: 6 }}>
             {steps.map((_, n) => (
               <span key={n} style={{
-                width: n === i ? 16 : 6, height: 6, borderRadius: 3, transition: "width .2s",
+                width: n === i ? 16 : 6, height: 6, transition: "width .2s",
                 background: n === i ? accent : n < i ? "#64748b" : "#334155",
               }} />
             ))}

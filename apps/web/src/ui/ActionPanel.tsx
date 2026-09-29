@@ -11,7 +11,7 @@ import { ProtocolIntroGate, type IntroSpec } from "@/ui/ProtocolIntro";
 import CityGuide from "@/ui/CityGuide";
 import MagicBlockHub from "@/ui/MagicBlockHub";
 import StockExchangePanel from "@/ui/StockExchangePanel";
-import { chamferBox } from "@/ui/chamfer";
+import { chamferBox, chamferRectPoints } from "@/ui/chamfer";
 import { CloseButton, PanelTitleBar, ProtocolLogo, ExternalLinkIcon } from "@/ui/PixelIcons";
 import { CATEGORY_META } from "@/game/minimap/categories";
 import PegRiskPanel from "@/ui/PegRiskPanel";
@@ -430,7 +430,6 @@ function SwapPanel({ onClose }: { onClose: () => void }) {
             {status === "signing" ? "SIGN IN WALLET..." : status === "submitting" ? "SUBMITTING..." : "CONFIRM SWAP"}
           </button>
         )}
-        <button onClick={onClose} style={chamferBox(8, { background: "transparent", border: "1px solid #333344", color: "#666677", padding: "0 16px", cursor: "pointer", fontSize: 9 })}>ESC</button>
       </div>
     </>
   );
@@ -529,7 +528,6 @@ function TransferPanel({ onClose, to, toName }: { onClose: () => void; to?: stri
           style={btnStyle(connected ? "#14F0C6" : "#333344", connected ? "#000" : "#666677")} className="flex-1 py-2.5">
           {!connected ? "CONNECT WALLET FIRST" : status === "sending" ? "SENDING…" : "SEND"}
         </button>
-        <button onClick={onClose} style={chamferBox(8, { background: "transparent", border: "1px solid #333344", color: "#666677", padding: "0 16px", cursor: "pointer", fontSize: 9 })}>ESC</button>
       </div>
     </>
   );
@@ -592,13 +590,6 @@ function BountiesPanel({ onClose }: { onClose: () => void }) {
           </div>
         ))}
       </div>
-
-      <button
-        onClick={onClose}
-        style={chamferBox(8, { background: "transparent", border: "1px solid #333344", color: "#666677", padding: "8px 0", cursor: "pointer", fontSize: 9, width: "100%" })}
-      >
-        ESC
-      </button>
     </>
   );
 }
@@ -756,12 +747,6 @@ function EarnListingsStage({
         >
           SEE ALL {category.label.toUpperCase()} <ExternalLinkIcon size={8} color={category.color} />
         </a>
-        <button
-          onClick={onClose}
-          style={chamferBox(8, { background: "transparent", border: "1px solid #333344", color: "#666677", padding: "0 16px", cursor: "pointer", fontSize: 9 })}
-        >
-          ESC
-        </button>
       </div>
     </>
   );
@@ -1065,7 +1050,6 @@ function PrivatePaymentPanel({ onClose }: { onClose: () => void }) {
             >
               {status === "transferring" ? "SIGNING…" : "SEND PRIVATELY"}
             </button>
-            <button onClick={onClose} style={chamferBox(8, { background: "transparent", border: "1px solid #333344", color: "#666677", padding: "0 14px", cursor: "pointer", fontSize: 9 })}>ESC</button>
           </div>
         </>
       )}
@@ -1092,7 +1076,6 @@ function PrivatePaymentPanel({ onClose }: { onClose: () => void }) {
             >
               {status === "depositing" ? "SIGNING…" : "DEPOSIT"}
             </button>
-            <button onClick={onClose} style={chamferBox(8, { background: "transparent", border: "1px solid #333344", color: "#666677", padding: "0 14px", cursor: "pointer", fontSize: 9 })}>ESC</button>
           </div>
         </>
       )}
@@ -1119,7 +1102,6 @@ function PrivatePaymentPanel({ onClose }: { onClose: () => void }) {
             >
               {status === "withdrawing" ? "SIGNING…" : "WITHDRAW"}
             </button>
-            <button onClick={onClose} style={chamferBox(8, { background: "transparent", border: "1px solid #333344", color: "#666677", padding: "0 14px", cursor: "pointer", fontSize: 9 })}>ESC</button>
           </div>
         </>
       )}
@@ -1206,7 +1188,7 @@ function PrivateFlow({ active, onPick, big }: {
   // facing the camera): you, Magic Man for the private account, a citizen.
   const node = (x: number, label: string, sheet: string, glow: boolean) => (
     <g>
-      <rect x={x - 30} y={34} width={60} height={56} rx={10}
+      <polygon points={chamferRectPoints(x - 30, 34, 60, 56, 8)}
         fill={glow ? "#2a0f33" : "#12122a"} stroke={glow ? F : "#2a2a45"} strokeWidth={glow ? 2 : 1} />
       <svg x={x - 26} y={34} width={52} height={56} viewBox="8 2 48 52" overflow="hidden">
         <image href={`/assets/sprites/${sheet}`} width={256} height={256} style={{ imageRendering: "pixelated" }} />
@@ -1303,7 +1285,7 @@ function PrivateIntro({ onDone }: { onDone: () => void }) {
         </button>
         <div style={{ flex: 1, display: "flex", justifyContent: "center", gap: 5 }}>
           {PRIVATE_STEPS.map((s, n) => (
-            <span key={s.id} style={{ width: n === i ? 16 : 6, height: 6, borderRadius: 3, background: n === i ? F : "#333344", transition: "width .2s" }} />
+            <span key={s.id} style={{ width: n === i ? 16 : 6, height: 6, background: n === i ? F : "#333344", transition: "width .2s" }} />
           ))}
         </div>
         <button onClick={() => (last ? onDone() : setI((n) => n + 1))} style={btnStyle(F, "#fff")} className="px-4 py-2.5">
