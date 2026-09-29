@@ -1105,7 +1105,7 @@ function HowToPlay({ onDone }: { onDone: () => void }) {
           </button>
           <div style={{ flex: 1, display: "flex", justifyContent: "center", gap: 5 }}>
             {steps.map((s, n) => (
-              <span key={s.title} style={{ width: n === i ? 16 : 6, height: 6, borderRadius: 3, background: n === i ? "#FF6B35" : "#333344", transition: "width .2s" }} />
+              <span key={s.title} style={{ width: n === i ? 16 : 6, height: 6, background: n === i ? "#FF6B35" : "#333344", transition: "width .2s" }} />
             ))}
           </div>
           <button

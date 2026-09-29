@@ -173,7 +173,7 @@ export default function ChatGuide({ touch, onClose }: { touch: boolean; onClose:
         </button>
         <div style={{ flex: 1, display: "flex", justifyContent: "center", gap: 4 }}>
           {list.map((s, n) => (
-            <span key={s.title} style={{ width: n === i ? 14 : 5, height: 5, borderRadius: 3, background: n === i ? LOCAL : n < i ? "#3f6f5c" : "#333344", transition: "width .2s" }} />
+            <span key={s.title} style={{ width: n === i ? 14 : 5, height: 5, background: n === i ? LOCAL : n < i ? "#3f6f5c" : "#333344", transition: "width .2s" }} />
           ))}
         </div>
         <button

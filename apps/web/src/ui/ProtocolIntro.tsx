@@ -11,7 +11,7 @@
  */
 import { useEffect, useState } from "react";
 import { track } from "@/game/telemetry/track";
-import { chamferBox, octagonFrame } from "@/ui/chamfer";
+import { chamferBox, octagonFrame, chamferRectPoints } from "@/ui/chamfer";
 import { UI_ACCENT } from "@/ui/PixelIcons";
 
 const PIXEL = '"Press Start 2P", monospace';
@@ -70,7 +70,7 @@ function Flow({ spec, step }: { spec: IntroSpec; step: IntroStep }) {
         const lit = i === step.edge || i === step.edge + 1;
         return (
           <g key={i}>
-            <rect x={cx(i) - 30} y={Y - 34} width={60} height={56} rx={10}
+            <polygon points={chamferRectPoints(cx(i) - 30, Y - 34, 60, 56, 8)}
               fill={lit ? `${LIME}22` : "#12122a"} stroke={lit ? LIME : "#2a2a45"} strokeWidth={lit ? 2 : 1} />
             {node.src ? (
               <image href={node.src} x={cx(i) - 20} y={Y - 26} width={40} height={40}
@@ -178,7 +178,7 @@ function IntroCards({ spec, onDone }: { spec: IntroSpec; onDone: () => void }) {
         </button>
         <div style={{ flex: 1, display: "flex", justifyContent: "center", gap: 5 }}>
           {spec.steps.map((s, n) => (
-            <span key={s.title} style={{ width: n === i ? 16 : 6, height: 6, borderRadius: 3, background: n === i ? LIME : "#333344", transition: "width .2s" }} />
+            <span key={s.title} style={{ width: n === i ? 16 : 6, height: 6, background: n === i ? LIME : "#333344", transition: "width .2s" }} />
           ))}
         </div>
         <button

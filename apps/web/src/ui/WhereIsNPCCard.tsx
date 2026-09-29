@@ -379,9 +379,18 @@ export default function WhereIsNPCCard({ gameRef, wallet }: Props) {
             onClick={e => { e.stopPropagation(); setShowInfo(v => !v); }}
             title="How to play"
           >?</button>
-          <span className="hunt-collapse" style={{ color: "#444466", fontSize: 8, marginLeft: 2 }}>
+          <button className="hunt-btn hunt-collapse" style={{
+            ...octagonFrameThin(),
+            background: "rgba(10,10,30,0.7)", color: "#9a9ab5",
+            width: 22, height: 22, padding: 0, cursor: "pointer",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            flexShrink: 0,
+          }}
+            onClick={e => { e.stopPropagation(); setCollapsed(v => !v); }}
+            title={collapsed ? "Expand" : "Collapse"}
+          >
             <PixelImg src={`/assets/ui/icon_${collapsed ? "up" : "down"}.png`} size={14} />
-          </span>
+          </button>
         </div>
 
         {!collapsed && (
@@ -594,7 +603,7 @@ function HuntHowTo({ loadout, isTouch, onClose }: { loadout: Loadout | null; isT
           </button>
           <div style={{ flex: 1, display: "flex", justifyContent: "center", gap: 5 }}>
             {steps.map((st, n) => (
-              <span key={st.title} style={{ width: n === i ? 16 : 6, height: 6, borderRadius: 3, background: n === i ? "#9945FF" : "#333355", transition: "width .2s" }} />
+              <span key={st.title} style={{ width: n === i ? 16 : 6, height: 6, background: n === i ? "#9945FF" : "#333355", transition: "width .2s" }} />
             ))}
           </div>
           <button

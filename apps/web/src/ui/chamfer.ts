@@ -8,6 +8,14 @@ export function chamferClip(corner: number): string {
   return `polygon(${corner}px 0, calc(100% - ${corner}px) 0, 100% ${corner}px, 100% calc(100% - ${corner}px), calc(100% - ${corner}px) 100%, ${corner}px 100%, 0 calc(100% - ${corner}px), 0 ${corner}px)`;
 }
 
+/** Same cut, as an SVG `points` string for a `<polygon>` — an `<svg>` `<rect rx>` has no chamfer equivalent. */
+export function chamferRectPoints(x: number, y: number, w: number, h: number, c: number): string {
+  return [
+    [x + c, y], [x + w - c, y], [x + w, y + c], [x + w, y + h - c],
+    [x + w - c, y + h], [x + c, y + h], [x, y + h - c], [x, y + c],
+  ].map(([px, py]) => `${px},${py}`).join(" ");
+}
+
 const SQRT2 = Math.SQRT2;
 
 function parseBorder(border: unknown): { w: number; c: string } | null {
