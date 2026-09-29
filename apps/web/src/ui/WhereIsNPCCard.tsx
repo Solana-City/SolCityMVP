@@ -347,7 +347,7 @@ export default function WhereIsNPCCard({ gameRef, wallet }: Props) {
 
       <div className="hunt-card" style={{
         borderWidth: 20, borderStyle: "solid", borderColor: "transparent",
-        borderImage: 'url(/assets/branding/ui/frame-panel-11.png) 26 fill / 26px / 0 round',
+        borderImage: 'url(/assets/branding/ui/frame-panel-test.png) 64 fill / 20px / 0 round',
         imageRendering: "pixelated",
         width: isTouch ? 172 : 220,
         fontFamily: '"Press Start 2P", monospace',
