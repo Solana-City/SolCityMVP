@@ -9,7 +9,6 @@
  * copy. Opens by itself the first time a player enters the city
  * (GUIDE_SEEN_KEY) and any time from Sol at the fountain.
  */
-import { crispSize } from "./crispPixels";
 import { useEffect, useState } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
@@ -45,12 +44,14 @@ export function Citizen({ sheet, size = 64, style }: { sheet: string; size?: num
     <div
       aria-hidden
       style={{
-        // The BOX follows the frame, not the other way round: a box bigger
-        // than the snapped frame shows the top of the frame below it, which
-        // is a second character's head under this one. See ui/crispPixels.
-        width: crispSize(64, size), height: crispSize(64, size), flexShrink: 0,
+        // Box and frame are the SAME size, so the crop is exactly frame 0 and
+        // can never leak the top of the frame below it — the second head
+        // players saw under the character on the connect screen. No snapping:
+        // a layout must not change with the screen's pixel ratio (see
+        // useCrispPixelArt, which decides crisp vs smooth and no sizes).
+        width: size, height: size, flexShrink: 0,
         backgroundImage: `url("/assets/sprites/${sheet}")`,
-        backgroundSize: `${crispSize(64, size) * 4}px ${crispSize(64, size) * 4}px`,
+        backgroundSize: `${size * 4}px ${size * 4}px`,
         backgroundPosition: "0 0",
         imageRendering: "pixelated", ...style,
       }}

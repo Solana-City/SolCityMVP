@@ -419,6 +419,11 @@ export class CityScene extends Phaser.Scene {
     const onBeach = buildBeachMask(
       allLayers.filter((l): l is Phaser.Tilemaps.TilemapLayer => l instanceof Phaser.Tilemaps.TilemapLayer),
       map,
+      // Collision, so the mask can flood fill AROUND the stands instead of
+      // through them. `this.collisionLayers` already holds every collidable
+      // source layer by this point in create(); the merge below only folds
+      // them into one.
+      (wx, wy) => this.isSolidAt(wx, wy),
     );
 
     // ── Consolidation pass ────────────────────────────────────────────

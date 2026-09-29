@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { crispSize, crispSizeAtLeast } from "./crispPixels";
+import { useState } from "react";
+
 import { chamferBox } from "@/ui/chamfer";
 
 /**
@@ -188,23 +188,15 @@ export function SiteLinkButton({
 }
 
 export function PixelImg({ src, size, style, alt = "" }: { src: string; size: number; style?: React.CSSProperties; alt?: string }) {
-  // Snapped to whole device pixels once the file's real size is known, or the
-  // icon tears on any screen that is not a whole ratio (Windows at 125%).
-  const ref = useRef<HTMLImageElement>(null);
-  const [height, setHeight] = useState(size);
-  useEffect(() => {
-    const img = ref.current;
-    if (!img) return;
-    const snap = () => { if (img.naturalHeight) setHeight(crispSize(img.naturalHeight, size)); };
-    if (img.complete) snap();
-    else { img.addEventListener("load", snap, { once: true }); return () => img.removeEventListener("load", snap); }
-  }, [src, size]);
-
+  // The size the layout asked for, always. An earlier version snapped it to
+  // the pixel grid once the file loaded, which grew icons by a few pixels on
+  // a 125% screen and pushed the zoom control's + button out of its row. A
+  // layout must never depend on the screen's ratio; whether the art is drawn
+  // crisp or smooth is useCrispPixelArt's job, and that one changes no sizes.
   return (
     <img
-      ref={ref}
       src={src} alt={alt} draggable={false}
-      style={{ height, width: "auto", display: "inline-block", verticalAlign: "middle", imageRendering: "pixelated", flexShrink: 0, ...style }}
+      style={{ height: size, width: "auto", display: "inline-block", verticalAlign: "middle", imageRendering: "pixelated", flexShrink: 0, ...style }}
     />
   );
 }
@@ -215,7 +207,8 @@ export function CitizenIcon({ sheet, size }: { sheet: string; size: number }) {
   // device pixels and derive the rest from it, so the crop stays put.
   // At LEAST 1.1x the box: a smaller frame would let the row below it (the
   // character's back) show under the chin.
-  const frame = crispSizeAtLeast(FRAME_PX, size * 1.1);
+  // Plain arithmetic: the crop stays put whatever the screen's ratio is.
+  const frame = size * 1.1;
   return (
     <span
       aria-hidden

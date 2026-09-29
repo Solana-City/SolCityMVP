@@ -150,6 +150,17 @@ const DECAY_PER_STEP = Math.pow(FRICTION, STEP_S);
 const STOP_SPEED = 8;
 /** How much speed survives a bounce off a person. */
 const BOUNCE = 0.7;
+/**
+ * How much survives a bounce off something solid — a stand, a rock, a post.
+ *
+ * It has to BOUNCE rather than stop, and that is not decoration. The only way
+ * to kick is to walk into the ball, so the ball only ever goes the way the
+ * player is already going: a ball resting against a wall could be pushed
+ * along the wall but never pulled off it, because pulling it off means
+ * standing on the far side of the wall. Walls that give the ball back are
+ * what makes a ball against one playable at all.
+ */
+const WALL_BOUNCE = 0.55;
 /** Never replay more than this much of a roll at once (a tab that was asleep). */
 const MAX_CATCHUP_MS = 4_000;
 /**
@@ -205,7 +216,20 @@ export interface BallBody {
 const BEACH_LAYERS: ReadonlySet<string> = new Set(["SandSea", "SidewalkCopacabana"]);
 
 /**
- * Bakes those layers into one bitmask of tiles, for the `onBeach` probe.
+ * Bakes those layers into one bitmask of tiles: the PITCH, which is the sand
+ * the ball can actually reach.
+ *
+ * Painted sand alone is not the pitch. The artist paints sand UNDER the beach
+ * stands, so every stand has a room of sand inside it, and the map has a
+ * handful of other sealed pockets between the rocks. A mask of "what the sand
+ * layer covers" let the ball end up in one of those and never come out —
+ * seven sealed pockets, a bit over five thousand of them square pixels.
+ *
+ * So the mask is flood filled from the ball's own resting spot, tile to tile,
+ * over sand that is not solid. Anything the ball could not roll to from home
+ * is not the pitch, and the sealed rooms drop out by construction rather than
+ * by anybody listing them. (Measured after: one connected region, nothing
+ * stranded.)
  *
  * Read from the created layers, BEFORE the scene merges the flat ground into
  * combined layers and bakes it into textures — after that pass, the sand no
@@ -216,22 +240,24 @@ const BEACH_LAYERS: ReadonlySet<string> = new Set(["SandSea", "SidewalkCopacaban
 export function buildBeachMask(
   layers: Phaser.Tilemaps.TilemapLayer[],
   map: Phaser.Tilemaps.Tilemap,
+  /** True when world pixel (x,y) is inside something solid. */
+  solid: (wx: number, wy: number) => boolean,
 ): (wx: number, wy: number) => boolean {
   const w = map.width;
   const h = map.height;
-  const mask = new Uint8Array(w * h);
+  const sand = new Uint8Array(w * h);
   let painted = 0;
   for (const l of layers) {
     const name = l.layer.name;
     if (!BEACH_LAYERS.has(name.slice(name.lastIndexOf("/") + 1))) continue;
     for (let ty = 0; ty < h; ty++) {
       for (let tx = 0; tx < w; tx++) {
-        if (mask[ty * w + tx]) continue;
+        if (sand[ty * w + tx]) continue;
         // World coordinates, not layer-local: BootScene crops every layer to
         // what it paints, so a layer's own grid starts at an offset.
         const tile = l.getTileAtWorldXY(
           tx * TILE_SIZE + TILE_SIZE / 2, ty * TILE_SIZE + TILE_SIZE / 2);
-        if (tile && tile.index > 0) { mask[ty * w + tx] = 1; painted++; }
+        if (tile && tile.index > 0) { sand[ty * w + tx] = 1; painted++; }
       }
     }
   }
@@ -241,12 +267,51 @@ export function buildBeachMask(
     console.warn("[BeachBall] no beach layers found; falling back to the outer box");
     return () => true;
   }
-  console.log(`[BeachBall] beach is ${painted.toLocaleString()} tiles`);
+
+  const open = (tx: number, ty: number): boolean =>
+    tx >= 0 && ty >= 0 && tx < w && ty < h
+    && sand[ty * w + tx] === 1
+    && !solid(tx * TILE_SIZE + TILE_SIZE / 2, ty * TILE_SIZE + TILE_SIZE / 2);
+
+  const pitch = new Uint8Array(w * h);
+  const homeTx = Math.floor(HOME.x / TILE_SIZE);
+  const homeTy = Math.floor(HOME.y / TILE_SIZE);
+  let reachable = 0;
+  if (open(homeTx, homeTy)) {
+    // Explicit queue rather than recursion: a thousand tiles of beach would
+    // be a thousand frames deep.
+    const queue: number[] = [homeTy * w + homeTx];
+    pitch[homeTy * w + homeTx] = 1;
+    reachable = 1;
+    while (queue.length > 0) {
+      const at = queue.pop()!;
+      const tx = at % w;
+      const ty = (at - tx) / w;
+      const neighbours = [[tx + 1, ty], [tx - 1, ty], [tx, ty + 1], [tx, ty - 1]];
+      for (const [nx, ny] of neighbours) {
+        const i = ny * w + nx;
+        if (pitch[i] || !open(nx, ny)) continue;
+        pitch[i] = 1;
+        reachable++;
+        queue.push(i);
+      }
+    }
+  }
+  if (reachable === 0) {
+    console.warn("[BeachBall] the resting spot is not on open sand; falling back to the painted sand");
+    return (wx, wy) => {
+      const tx = Math.floor(wx / TILE_SIZE);
+      const ty = Math.floor(wy / TILE_SIZE);
+      if (tx < 0 || ty < 0 || tx >= w || ty >= h) return false;
+      return sand[ty * w + tx] === 1;
+    };
+  }
+  console.log(`[BeachBall] pitch is ${reachable.toLocaleString()} of ${painted.toLocaleString()} painted sand tiles`);
   return (wx, wy) => {
     const tx = Math.floor(wx / TILE_SIZE);
     const ty = Math.floor(wy / TILE_SIZE);
     if (tx < 0 || ty < 0 || tx >= w || ty >= h) return false;
-    return mask[ty * w + tx] === 1;
+    return pitch[ty * w + tx] === 1;
   };
 }
 
@@ -448,16 +513,25 @@ export class BeachBall {
     this.vx *= DECAY_PER_STEP;
     this.vy *= DECAY_PER_STEP;
 
-    // One axis at a time, so a ball that meets a rock head on stops against it
-    // and a ball that clips its corner keeps sliding along the face. A blocked
-    // axis simply does not move — a step is at most six pixels, so "stopped at
-    // the edge of the sand" and "stopped a step short of it" look the same,
-    // and neither can push the ball inside the rock it just hit.
+    // One axis at a time, so a ball that meets a rock head on comes straight
+    // back off it and a ball that clips its corner keeps sliding along the
+    // face.
+    //
+    // Solid is checked BEFORE the edge of the sand, because the two mean
+    // different things. Something solid gives the ball back. The sand simply
+    // running out — into the road, into the sea — stops it on the line, which
+    // is what was asked for and what keeps the ball on the beach. A blocked
+    // axis never moves, and a step is at most six pixels, so "stopped at the
+    // edge" and "stopped a step short of it" look the same.
     const nx = this.x + this.vx * STEP_S;
-    if (this.blocked(nx, this.y)) this.vx = 0; else this.x = nx;
+    if (this.hitsWall(nx, this.y)) this.vx = -this.vx * WALL_BOUNCE;
+    else if (this.offPitch(nx, this.y)) this.vx = 0;
+    else this.x = nx;
 
     const ny = this.y + this.vy * STEP_S;
-    if (this.blocked(this.x, ny)) this.vy = 0; else this.y = ny;
+    if (this.hitsWall(this.x, ny)) this.vy = -this.vy * WALL_BOUNCE;
+    else if (this.offPitch(this.x, ny)) this.vy = 0;
+    else this.y = ny;
 
     for (const body of bodies) this.bounceOff(body);
 
@@ -467,22 +541,37 @@ export class BeachBall {
     }
   }
 
-  /** Off the sand, or inside something solid. */
-  private blocked(x: number, y: number): boolean {
+  /**
+   * Past the edge of the pitch: the backstop box, or off the sand the ball is
+   * allowed on. This is the one the ball STOPS at.
+   *
+   * Tested at the rim, not just the middle, so the whole ball stays on the
+   * sand and comes to rest a hair inside the painted edge instead of hanging
+   * half of itself over the coast road.
+   */
+  private offPitch(x: number, y: number): boolean {
     if (x - RADIUS < ZONE.left || x + RADIUS > ZONE.right) return true;
     if (y - RADIUS < ZONE.top || y + RADIUS > ZONE.bottom) return true;
-    // Tested at the rim, not just the middle: the whole ball has to be on the
-    // sand, so it comes to rest a hair inside the painted edge instead of
-    // hanging half of itself over the coast road.
-    if (!this.onBeach(x, y)
+    return !this.onBeach(x, y)
       || !this.onBeach(x - RADIUS, y) || !this.onBeach(x + RADIUS, y)
-      || !this.onBeach(x, y - RADIUS) || !this.onBeach(x, y + RADIUS)) return true;
-    // Walls, the same four points: a ball whose middle is still on sand but
-    // whose side is in the wall has already hit it.
+      || !this.onBeach(x, y - RADIUS) || !this.onBeach(x, y + RADIUS);
+  }
+
+  /**
+   * Something solid: a stand, a rock, a lamp post, the sea wall. This is the
+   * one the ball COMES OFF. Four points around the rim, because a ball whose
+   * middle is still on sand but whose side is in the wall has already hit it.
+   */
+  private hitsWall(x: number, y: number): boolean {
     return this.solid(x - RADIUS, y)
         || this.solid(x + RADIUS, y)
         || this.solid(x, y - RADIUS)
         || this.solid(x, y + RADIUS);
+  }
+
+  /** Somewhere the ball may not be at all, for placing it rather than moving it. */
+  private blocked(x: number, y: number): boolean {
+    return this.offPitch(x, y) || this.hitsWall(x, y);
   }
 
   private limitX(x: number): number {
@@ -506,8 +595,13 @@ export class BeachBall {
    * for the rest of the session. That can happen if the map is re-exported
    * under its resting spot, or if a snapshot from a client with a different
    * map lands it in one. Rings outward a tile at a time and takes the first
-   * free spot; if the whole neighbourhood is solid, it stays where it is and
-   * waits for the next kick, which carries its own position.
+   * free spot. The pitch is one connected region by construction (see
+   * buildBeachMask), so any spot this finds is a spot the ball could have
+   * rolled to — it cannot drop the ball inside a beach stand.
+   *
+   * If the whole neighbourhood is somehow closed, the ball goes home rather
+   * than staying somewhere it can never move from again. Home is on the
+   * pitch by definition, and every client puts it in the same place.
    */
   private settle(): void {
     if (!this.blocked(this.x, this.y)) return;
@@ -520,7 +614,11 @@ export class BeachBall {
         if (!this.blocked(x, y)) { this.x = x; this.y = y; return; }
       }
     }
-    console.warn("[BeachBall] no clear sand near the resting spot");
+    console.warn("[BeachBall] no clear sand near the resting spot; sending it home");
+    this.x = HOME.x;
+    this.y = HOME.y;
+    this.vx = 0;
+    this.vy = 0;
   }
 
   /** People are round walls: the ball comes off them rather than through. */
