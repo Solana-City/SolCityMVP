@@ -24,6 +24,19 @@ export interface NPCHighlight {
   label: string;
 }
 
+/**
+ * One page of an NPC's dialog.
+ *
+ * A plain string is the whole page. "
+" inside it breaks the line where the
+ * writer wants it rather than where the box happens to run out, which is the
+ * difference between a line of speech and a paragraph.
+ *
+ * The object form closes the page with one sentence drawn in the NPC's own
+ * colour, on its own line: the thing the player is meant to walk away with.
+ */
+export type NPCDialogLine = string | { text: string; accent: string };
+
 export interface NPCDefinition {
   id: string;
   /**
@@ -53,7 +66,7 @@ export interface NPCDefinition {
    * mapping step, never authored per-entry, so it can't drift from the map.
    */
   color: number;
-  dialog: string[];
+  dialog: NPCDialogLine[];
   action: NPCAction;
   /**
    * Phaser texture key for this NPC's sprite.
@@ -433,7 +446,10 @@ const NPC_SEEDS: NPCSeed[] = [
     tileY: 69,
     dialog: [
       "Hey! I am Guaraná, the ST Brazil mascot.",
-      "Do you see all this stands around me? They are real Brazilian projects on Solana. Talk to all of them to get a special gift!",
+      {
+        text: "Do you see all this stands around me?\nThey are real Brazilian projects on Solana.",
+        accent: "Talk to all of them to get a special gift!",
+      },
     ],
     highlights: [
       { label: "SUPERTEAM BRASIL" },
