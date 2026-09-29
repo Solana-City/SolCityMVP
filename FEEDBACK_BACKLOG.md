@@ -128,7 +128,7 @@ there rather than what it might be.
 
 ### P0 — people could not play, or could not trust their eyes
 
-#### P1a. iPad and tablets: unplayable
+#### P1a. iPad and tablets: unplayable — DONE 2026-09-28
 *"In iPad/tablet the game doesn't work. Can't control. The control pads are
 not in a reachable place."*
 
@@ -138,7 +138,7 @@ the buttons sit in the far bottom corners, which on a 1024x1366 screen is
 nowhere near either thumb. Needs a tablet layout — pads anchored to where
 hands actually hold the device, not to the corners of the glass.
 
-#### P1b. The same zoom shows a different city on every screen
+#### P1b. Zoom: steps, range and what a step means — PART DONE 2026-09-28
 *"Zoom looks different in different devices. In one PC 0.5x shows more of the
 city than other ones. Zoom also looks very different on mobile: even 0.5x
 can't see that far."*
@@ -150,11 +150,15 @@ pixels, so how much city fits depends only on how wide the window is: a
 2560px monitor sees twice the city of a 1280px laptop, and a 390px phone
 sees a sixth of it.
 
-The fix is to make the steps mean "how much city you see" and let the pixel
-size follow. That collides head on with the next item, so the two have to be
-decided together.
+Where it landed, after two attempts that were reverted (a crisp-only ladder
+lost the wide end; steps that resized the canvas made the screen lurch):
+the ladder is now eight steps leaning wide — 0.3, 0.4, 0.5, 0.625, 0.75, 1,
+1.5, 2 — capped per screen at 145 tiles across, so the widest step is the
+whole city with a margin. Scroll zooms on desktop. What no model can fix, and
+what was half the report, is that a bigger window shows more city at the same
+step; the steps can be matched between two machines by their tile counts.
 
-#### P1c. Pixels crack
+#### P1c. Pixels crack — DONE 2026-09-28 (canvas and interface)
 *"Fix pixel size proportion. It is cracking."* and *"Zoom doesn't need to be
 that zoomed in, but more options in between."*
 
@@ -163,15 +167,17 @@ pixels; anything else samples pixel art off the grid, which is the cracking.
 That is why the steps are coarse (0.5x, 1.0x, 1.5x with nothing between) —
 the in-between steps are exactly the ones that crack.
 
-So it is a choice, not a bug to fix twice:
-- **Keep crisp, add steps by resolution**: change the backing-store scale per
-  step instead of the camera zoom. More steps, all crisp, costs fill rate at
-  the wide end.
-- **Free zoom, one blur**: render the world at an integer scale into a
-  texture and scale that texture smoothly. Any zoom, uniformly soft rather
-  than cracked.
-The first keeps the look; the second gives the mentor's "more options in
-between". Worth deciding before anyone writes code.
+Fixed on both sides. The canvas switches to smooth scaling whenever a source
+pixel would not land on a whole device pixel, so a step is either crisp or
+evenly soft, never torn — one rule, no change to the ladder, nothing moves.
+
+The interface turned out to have its own, worse version: the HUD icons ship
+as 64x64 PNGs whose art is really 32x32, and the panels ask for them at 20,
+22, 24 and 26 CSS pixels. 36 files are back on their real grid
+(scripts/shrink-blown-up-art.mjs, lossless, a quarter of the memory), and
+ui/useCrispPixelArt nudges what it can and smooths what it cannot. What
+remains is a design call for the artists: with 32px art the crisp sizes are
+16 and 32, so the HUD should either move to those or ship icons drawn at 22.
 
 #### P1d. Pink squares in the dialogue portraits — DONE 2026-09-27
 *"Pink background in the previews, when the character is used as an icon in
@@ -201,23 +207,25 @@ the console open, since nothing in the code obviously explains it.
 
 ### P1 — the next real improvements
 
-#### P2a. Clicking a character should talk to them
+#### P2a. Clicking a character should talk to them — DONE 2026-09-28
 *"Click on the character/NPC to trigger interaction as well, not just
 E/space."*
 
-The hit zone that does this exists already — `NPCSprite` builds it only when
-`scene.sys.game.device.input.touch` is true, so desktop never gets one.
-Removing that condition is most of the work; the rest is making the cursor
-change over an NPC so it reads as clickable.
+Two bugs, not one. The hit zone was built only for touch, AND it emitted the
+generic interact event, which opens whichever NPC is nearest and in range —
+so clicking one of two NPCs standing together answered with the other. It
+names its own NPC now, works everywhere, and has no range test: seeing a
+citizen is enough.
 
-#### P2b. Nobody knows the hotkeys
+#### P2b. Nobody knows the hotkeys — DONE 2026-09-28
 *"One hotkey to hide the UI. Scroll to zoom on desktop. Explain the hotkeys
 somewhere — reactions have hotkeys but no one uses them because they don't
 know."*
 
-Three things in one: the keys that exist are undiscoverable, scroll-to-zoom
-is missing, and hide-UI does not exist. A single key list (on the pause or
-profile panel, and printed once on first load) plus the two new bindings.
+All three shipped: the wheel zooms on desktop, H hides the whole interface
+for a screenshot, and there is a card listing every key — a ? button beside
+the zoom control, K or ? opens it, and a player's first desktop session opens
+it once by itself.
 
 #### P2c. The NPC dialogue icons look like buttons
 *"When interacting with an NPC, remove the frames of the icons. It appears to
@@ -257,7 +265,7 @@ The achievements list exists and is flat: each one fires once. Tiers are the
 same data with thresholds, and Find Someone already tracks scores, so it is
 mostly wiring rather than new systems.
 
-#### P2h. Water that moves
+#### P2h. Water that moves — BRIEFED 2026-09-26, engine side open
 *"Visual feedbacks: water moving on the beach and also under the bridge."*
 
 Already speced: the brief for the artist is in SPRITE_REQUESTS.md (four
@@ -349,7 +357,7 @@ battery trying. A 45 target is plausible, but Phaser only honours it through
 measure a real phone first (frame time, battery drain over 10 minutes), then
 choose between a 45 target, a 30 target while idle, or leaving it at 60.
 
-### M4. Draw calls and texture merging — P1, M, but NOT what it looks like
+### M4. Draw calls and texture merging — MOSTLY DONE 2026-09-25/26
 *"Set pass code, send to GPU to render. Merge texture/occlusion calling."*
 
 **Mobile does not use the GPU at all**: `PhaserGame.tsx` forces Canvas2D on
@@ -364,7 +372,7 @@ Two honest options, in order:
 2. If WebGL stays off, the mobile win is fewer `drawImage` calls per frame
    (more culling, more baking), not atlases.
 
-### M5. Stocklana keeps calling the API off screen — P1, S
+### M5. Stocklana keeps calling the API off screen — DONE 2026-09-26
 `stockMarket` polls every 15s whenever anything is subscribed and the tab is
 visible, whether or not the exchange is on camera or its panel is open.
 Should pause when the building is culled and nothing is open.
