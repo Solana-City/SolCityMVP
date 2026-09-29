@@ -418,6 +418,31 @@ const NPC_SEEDS: NPCSeed[] = [
     action: { type: "link", label: "Visit MonkeDAO", url: "https://monkedao.io/" },
     spriteKey: "Mr. Bananas",
   },
+  {
+    id: "guarana",
+    name: "Guaraná",
+    role: "Superteam Brasil Mascot",
+    // The middle of the ST Brasil boardwalk, in the open band (rows 67-71)
+    // between the Cloak stand to the north and the SolSentry and Pegana
+    // stands to the south, with Kite Pro further down the beach. Every stand
+    // he talks about is genuinely around him from here.
+    tileX: 40,
+    tileY: 69,
+    dialog: [
+      "Hey! I am Guaraná, the ST Brazil mascot.",
+      "Do you see all this stands around me? They are real Brazilian projects on Solana. Talk to all of them to get a special gift!",
+    ],
+    highlights: [
+      { label: "SUPERTEAM BRASIL" },
+      { label: "MEET THE BUILDERS" },
+    ],
+    action: { type: "placeholder", label: "See you around!" },
+    spriteKey: "Guarana",
+    // Idle loop like Kite Pro: one row of 4 frames at 64x64, always facing
+    // south, never wanders. The file drops the accent so the URL stays plain
+    // ASCII; the name above is what players read.
+    spriteAnimation: { frameWidth: 64, frameHeight: 64, frameCount: 4 },
+  },
   // ── ST Brasil builder stands ──────────────────────────────────────
   //
   // Projects that applied through the Superteam Brasil form and were
