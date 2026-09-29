@@ -392,7 +392,7 @@ export default function WhereIsNPCCard({ gameRef, wallet }: Props) {
         </div>
 
         {!collapsed && (
-          <div style={{ padding: isTouch ? "9px 10px" : "12px 13px", display: "flex", flexDirection: "column", gap: isTouch ? 7 : 10 }}>
+          <div style={{ padding: isTouch ? "9px 10px" : "23.5px 13px", display: "flex", flexDirection: "column", gap: isTouch ? 7 : 10 }}>
             {/* Found banner */}
             {foundMsg && (
               <div style={chamferBox(8, {
