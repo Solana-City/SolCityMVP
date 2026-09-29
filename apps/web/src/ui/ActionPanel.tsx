@@ -430,7 +430,6 @@ function SwapPanel({ onClose }: { onClose: () => void }) {
             {status === "signing" ? "SIGN IN WALLET..." : status === "submitting" ? "SUBMITTING..." : "CONFIRM SWAP"}
           </button>
         )}
-        <button onClick={onClose} style={chamferBox(8, { background: "transparent", border: "1px solid #333344", color: "#666677", padding: "0 16px", cursor: "pointer", fontSize: 9 })}>ESC</button>
       </div>
     </>
   );
@@ -529,7 +528,6 @@ function TransferPanel({ onClose, to, toName }: { onClose: () => void; to?: stri
           style={btnStyle(connected ? "#14F0C6" : "#333344", connected ? "#000" : "#666677")} className="flex-1 py-2.5">
           {!connected ? "CONNECT WALLET FIRST" : status === "sending" ? "SENDING…" : "SEND"}
         </button>
-        <button onClick={onClose} style={chamferBox(8, { background: "transparent", border: "1px solid #333344", color: "#666677", padding: "0 16px", cursor: "pointer", fontSize: 9 })}>ESC</button>
       </div>
     </>
   );
@@ -592,13 +590,6 @@ function BountiesPanel({ onClose }: { onClose: () => void }) {
           </div>
         ))}
       </div>
-
-      <button
-        onClick={onClose}
-        style={chamferBox(8, { background: "transparent", border: "1px solid #333344", color: "#666677", padding: "8px 0", cursor: "pointer", fontSize: 9, width: "100%" })}
-      >
-        ESC
-      </button>
     </>
   );
 }
@@ -756,12 +747,6 @@ function EarnListingsStage({
         >
           SEE ALL {category.label.toUpperCase()} <ExternalLinkIcon size={8} color={category.color} />
         </a>
-        <button
-          onClick={onClose}
-          style={chamferBox(8, { background: "transparent", border: "1px solid #333344", color: "#666677", padding: "0 16px", cursor: "pointer", fontSize: 9 })}
-        >
-          ESC
-        </button>
       </div>
     </>
   );
@@ -1065,7 +1050,6 @@ function PrivatePaymentPanel({ onClose }: { onClose: () => void }) {
             >
               {status === "transferring" ? "SIGNING…" : "SEND PRIVATELY"}
             </button>
-            <button onClick={onClose} style={chamferBox(8, { background: "transparent", border: "1px solid #333344", color: "#666677", padding: "0 14px", cursor: "pointer", fontSize: 9 })}>ESC</button>
           </div>
         </>
       )}
@@ -1092,7 +1076,6 @@ function PrivatePaymentPanel({ onClose }: { onClose: () => void }) {
             >
               {status === "depositing" ? "SIGNING…" : "DEPOSIT"}
             </button>
-            <button onClick={onClose} style={chamferBox(8, { background: "transparent", border: "1px solid #333344", color: "#666677", padding: "0 14px", cursor: "pointer", fontSize: 9 })}>ESC</button>
           </div>
         </>
       )}
@@ -1119,7 +1102,6 @@ function PrivatePaymentPanel({ onClose }: { onClose: () => void }) {
             >
               {status === "withdrawing" ? "SIGNING…" : "WITHDRAW"}
             </button>
-            <button onClick={onClose} style={chamferBox(8, { background: "transparent", border: "1px solid #333344", color: "#666677", padding: "0 14px", cursor: "pointer", fontSize: 9 })}>ESC</button>
           </div>
         </>
       )}
