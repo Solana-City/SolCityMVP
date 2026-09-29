@@ -465,7 +465,7 @@ export default function Home() {
                 left: "max(env(safe-area-inset-left, 0px), 12px)",
                 display: "flex", flexDirection: "column", gap: 6,
               }}>
-                <MobilePanelToggle iconSrc="/assets/ui/icon_quests2.png" label="Find someone" active={mobilePanel === "hunt"} onClick={() => toggleMobilePanel("hunt")} />
+                <MobilePanelToggle iconSrc="/assets/ui/icon_quests.png" label="Find someone" active={mobilePanel === "hunt"} onClick={() => toggleMobilePanel("hunt")} />
                 <MobilePanelToggle iconSrc="/assets/ui/ico_chat.png" label="Chat" active={chatOpen} onClick={toggleMobileChat} dot={unreadDms > 0} />
                 <ExpressionToggle />
               </div>
@@ -479,10 +479,10 @@ export default function Home() {
                     style={{
                       position: "absolute",
                       top: "max(env(safe-area-inset-top, 0px), 12px)",
-                      // To the right of the icon rail (rail left + 36px width
+                      // To the right of the icon rail (rail left + 44px width
                       // + gap), including on notched phones where the rail
                       // itself is pushed in by the safe-area inset.
-                      left: "calc(max(env(safe-area-inset-left, 0px), 12px) + 46px)",
+                      left: "calc(max(env(safe-area-inset-left, 0px), 12px) + 50px)",
                       maxHeight: "calc(100dvh - 24px)", overflowY: "auto",
                     }}
                     onClick={e => e.stopPropagation()}
@@ -669,7 +669,7 @@ function MobilePanelToggle({ iconSrc, label, active, onClick, dot }: {
       title={label}
       style={{
         position: "relative",
-        width: 36, height: 36, padding: 0,
+        width: 44, height: 44, padding: 0,
         background: "transparent", border: "none",
         cursor: "pointer", flexShrink: 0,
         display: "flex", alignItems: "center", justifyContent: "center",
@@ -679,7 +679,7 @@ function MobilePanelToggle({ iconSrc, label, active, onClick, dot }: {
     >
       <img
         src={iconSrc}
-        width={24} height={24} alt={label} draggable={false}
+        width={32} height={32} alt={label} draggable={false}
         style={{ imageRendering: "pixelated", position: "relative" }}
       />
       {active && (
@@ -710,7 +710,7 @@ function ExpressionToggle() {
       title="Expressions"
       style={{
         position: "relative",
-        width: 36, height: 36, padding: 0,
+        width: 44, height: 44, padding: 0,
         background: "transparent", border: "none",
         cursor: "pointer", flexShrink: 0,
         display: "flex", alignItems: "center", justifyContent: "center",
@@ -719,7 +719,7 @@ function ExpressionToggle() {
     >
       <img
         src="/assets/ui/ico_emoji.png"
-        width={24} height={24} alt="Expressions" draggable={false}
+        width={32} height={32} alt="Expressions" draggable={false}
         style={{ imageRendering: "pixelated", position: "relative" }}
       />
     </button>

@@ -232,7 +232,7 @@ export default function MobileControls() {
           <SpriteButton
             bg={`${UI}/btn_act_bg2.png`}
             icon={`${UI}/btn_act2.png`}
-            size={tablet ? 113 : 87}
+            size={tablet ? 113 : 72}
             alt="ACT"
             onPress={handleInteract}
           />

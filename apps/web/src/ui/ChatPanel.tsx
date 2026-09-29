@@ -297,7 +297,8 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
       ref={rootRef}
       className="fixed z-20"
       style={{
-        left: "max(env(safe-area-inset-left, 0px), 16px)",
+        left: isTouch ? "50%" : "max(env(safe-area-inset-left, 0px), 16px)",
+        transform: isTouch ? "translateX(-50%)" : undefined,
         bottom: isTouch
           ? typing
             // Typing: sit just above the keys. The 156px gap exists to clear
@@ -305,7 +306,9 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
             ? `${keyboard.inset + 8}px`
             : "calc(env(safe-area-inset-bottom, 0px) + 156px)"
           : "16px",
-        width: isTouch ? "min(280px, calc(100vw - 180px))" : "360px",
+        // Centered above the thumb controls, so it can be wider than the old
+        // rail-anchored panel without creeping toward either one.
+        width: isTouch ? "min(320px, calc(100vw - 32px))" : "360px",
         fontFamily: '"Press Start 2P", monospace',
         borderWidth: 20,
         borderStyle: "solid",
@@ -322,12 +325,14 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
           label={getChannelLabel("city", dmChannels)}
           color={getChannelColor("city")}
           active={!dmMode}
+          compact={isTouch}
           onClick={() => { setDmMode(false); setNotice(null); switchChannel("city"); }}
         />
         <TabButton
-          label="Direct Message"
+          label="DM"
           color={DM_COLOR}
           active={dmMode}
+          compact={isTouch}
           badge={dmUnread > 0 ? dmUnread : undefined}
           onClick={() => {
             if (dmMode) return;
@@ -522,6 +527,11 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
           className="flex-1 px-2 outline-none"
           style={{
             height: 32,
+            // A bare flex item's min-width is its content's natural width,
+            // not 0 — a text input's is wide enough that on a narrow phone
+            // this row never fit, and it (with the send button after it)
+            // spilled out past the frame instead of shrinking into it.
+            minWidth: 0,
             background: "rgba(10,10,30,0.94)",
             color: "#d9d9ec",
             borderWidth: 4, borderStyle: "solid", borderColor: "transparent",
@@ -584,25 +594,27 @@ function TabButton({
   color,
   active,
   badge,
+  compact,
   onClick,
 }: {
   label: string;
   color: string;
   active: boolean;
   badge?: number;
+  compact?: boolean;
   onClick: () => void;
 }) {
   return (
     <button
       onClick={onClick}
-      className="px-2 py-1 transition-colors relative"
+      className={compact ? "px-1.5 py-0.5 transition-colors relative" : "px-2 py-1 transition-colors relative"}
       style={{
         background: "rgba(10,10,30,0.5)",
         color: active ? color : "#555566",
-        borderWidth: 4, borderStyle: "solid", borderColor: "transparent",
+        borderWidth: compact ? 3 : 4, borderStyle: "solid", borderColor: "transparent",
         borderImage: BTN_FRAME, imageRendering: "pixelated", clipPath: BTN_CLIP,
         cursor: "pointer",
-        fontSize: 8,
+        fontSize: compact ? 7 : 8,
       }}
     >
       {active && (
