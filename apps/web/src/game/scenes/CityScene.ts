@@ -43,7 +43,7 @@ import { soundManager } from "../audio/SoundManager";
 import { publishMinimap } from "../minimap/MinimapHost";
 import { createStockExchange } from "../world/StockExchange";
 import { createAnimatedDecor, REPLACED_MAP_LAYERS } from "../world/AnimatedDecor";
-import { BeachBall, type BallKick } from "../world/BeachBall";
+import { BeachBall, buildBeachMask, type BallKick } from "../world/BeachBall";
 import { readLastPosition, saveLastPosition } from "../world/lastPosition";
 import { buildPhysicsLayer, mergeGroundRun } from "../world/mergeLayers";
 import { SparseLayer, SPARSE_MAX_TILES, GROUND_CHUNK_TILES, type CityLayer } from "../world/sparseLayer";
@@ -404,6 +404,15 @@ export class CityScene extends Phaser.Scene {
     }
     closeGroundRun();
 
+    // Where the beach football may go, read off the painted sand while the
+    // sand is still a layer of its own — the consolidation pass below folds
+    // flat ground into merged layers and then bakes it, after which nothing
+    // can be asked about by name. See world/BeachBall.
+    const onBeach = buildBeachMask(
+      allLayers.filter((l): l is Phaser.Tilemaps.TilemapLayer => l instanceof Phaser.Tilemaps.TilemapLayer),
+      map,
+    );
+
     // ── Consolidation pass ────────────────────────────────────────────
     // Only flat ground and collision are touched here; every layer that fades
     // or y-sorts is left exactly as authored, so a palm still goes
@@ -522,6 +531,7 @@ export class CityScene extends Phaser.Scene {
     this.beachBall = new BeachBall(
       this,
       (wx, wy) => this.isSolidAt(wx, wy),
+      onBeach,
       (kick) => {
         // Every kick this client makes, however it was made: one sound, one
         // broadcast. Walking into the ball counts, so the feedback is the
@@ -1124,11 +1134,12 @@ export class CityScene extends Phaser.Scene {
 
     // Cross-device kick of the beach football: another player kicked it, so
     // replay their roll from the snapshot they sent (see world/BeachBall).
-    this.onGameEvent("ball:kick", (kick: BallKick) => {
-      this.beachBall?.applyRemoteKick(kick);
-      // Only when the ball is on screen: a kick on the beach should not thud
-      // in the ear of someone standing at the fountain.
-      if (this.cameras.main.worldView.contains(kick.x, kick.y)) soundManager.play("kick");
+    this.onGameEvent("ball:kick", ({ kick, stale, staleAt }: { kick: BallKick; stale: boolean; staleAt?: number }) => {
+      this.beachBall?.applyRemoteKick(kick, stale, staleAt ?? 0);
+      // Only a kick as it happens, and only when the ball is on screen: a
+      // touch on the beach should not thud in the ear of someone standing at
+      // the fountain, and the city's last remembered touch has no sound.
+      if (!stale && this.cameras.main.worldView.contains(kick.x, kick.y)) soundManager.play("kick");
     });
 
     // E / Space for NPC interaction (desktop only — mobile uses the ACT button)

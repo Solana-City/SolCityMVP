@@ -37,21 +37,54 @@ export interface BallKick {
   y: number;
   vx: number;
   vy: number;
-  /** Epoch ms the kick happened, by the kicker's clock. */
-  t: number;
+  /**
+   * Bumped on every kick by the client that sent it. It is NOT a clock and
+   * means nothing across players: it exists so a receiver can tell two kicks
+   * apart, because the on-chain field they arrive in is stamped in whole
+   * seconds and a dribble puts three kicks inside one of them.
+   */
+  seq: number;
 }
 
 /**
- * Where the ball may go, in tiles: the ST Brasil sand from the grass edge in
- * the north, across the Copacabana promenade, down to the rocks in the south,
- * and out to where the sand meets the sea on both sides. Kicked at the edge
- * it stops on the line rather than sailing into the water.
+ * The kick rides the city's chat field on the ER, tagged, exactly like a
+ * Stocklana trade (see chat/tradeBroadcast) — that is the one channel that is
+ * actually live cross-device today, read off the same 500ms player poll.
  *
- * The sea and the rocks INSIDE that box are not this rectangle's problem —
+ * Deliberately NO timestamp on the wire. Two phones do not agree on the time,
+ * and a kick replayed from a clock that is a minute out lands the ball a
+ * minute's worth of friction away from where the kicker sees it. The roll is
+ * started from the RECEIVER's clock instead, one assumed hop late — and since
+ * where the ball finally stops is decided by the snapshot rather than by the
+ * timing, everybody ends up agreeing on the resting place either way.
+ */
+export const BALL_TAG = "§ball:";
+
+export function encodeBallKick(kick: BallKick): string {
+  return BALL_TAG + [kick.x, kick.y, kick.vx, kick.vy, kick.seq].map(Math.round).join(":");
+}
+
+/** Parses a chat line; null when it isn't a (valid) ball tag. */
+export function decodeBallKick(text: string): BallKick | null {
+  if (!text.startsWith(BALL_TAG)) return null;
+  const parts = text.slice(BALL_TAG.length).split(":").map(Number);
+  if (parts.length !== 5 || !parts.every(Number.isFinite)) return null;
+  const [x, y, vx, vy, seq] = parts;
+  return { x, y, vx, vy, seq };
+}
+
+/**
+ * The outer box the ball can never leave, in tiles. It is a backstop, not the
+ * boundary: the real edge is the painted sand itself, which the scene hands
+ * over as `onBeach` (every tile of the SandSea and Copacabana promenade
+ * layers). A rectangle alone let the ball roll out onto the coast road at the
+ * north-west corner, where the sand stops well short of the box.
+ *
+ * The sea and the rocks INSIDE the sand are not this box's problem either —
  * they are solid tiles, and the ball stops on them the same way the player
  * does (see the `solid` probe the scene passes in).
  */
-const ZONE_TILES = { left: 20, top: 58, right: 65, bottom: 93 };
+const ZONE_TILES = { left: 5, top: 56, right: 67, bottom: 103 };
 
 const ZONE = {
   left:   ZONE_TILES.left * TILE_SIZE,
@@ -68,14 +101,21 @@ const ZONE = {
  */
 const HOME = { x: 46 * TILE_SIZE + TILE_SIZE / 2, y: 81 * TILE_SIZE + TILE_SIZE / 2 };
 
-/** Ball art: 19x19 per frame, 4 of them, drawn at world resolution. */
+/** Ball art: 19x19 per frame, 4 of them. */
 const TEXTURE_KEY = "beach-ball";
 const TEXTURE_FILE = "assets/sprites/decor/ball_soccer.png";
 const FRAME_SIZE = 19;
 const FRAME_COUNT = 4;
+/**
+ * Drawn at the same scale as every character sheet in the city (0.5), which
+ * is what keeps a source pixel a whole number of screen pixels at the zooms
+ * the ladder offers — see config/zoomConfig. Half the size it shipped at:
+ * a football beside a person, rather than a beach ball.
+ */
+const SCALE = 0.5;
 
 /** Half the ball, in world pixels — what walls and people are measured against. */
-const RADIUS = 8;
+const RADIUS = 5;
 /** How close a person's centre has to be for the ball to touch them. */
 const BODY_RADIUS = 7;
 
@@ -95,6 +135,14 @@ const STOP_SPEED = 8;
 const BOUNCE = 0.7;
 /** Never replay more than this much of a roll at once (a tab that was asleep). */
 const MAX_CATCHUP_MS = 4_000;
+/**
+ * How far into the roll a kick from someone else is assumed to already be
+ * when it reaches us: one hop to the rollup and one poll back. A constant,
+ * not a measurement, because the alternative is trusting the sender's clock
+ * — and getting that wrong by a minute is far worse than getting this wrong
+ * by a fraction of a second, which only shifts where the roll is picked up.
+ */
+const REMOTE_LAG_MS = 400;
 
 /** A kick from standing next to it: E, SPACE, or the ACT button. */
 const KICK_SPEED = 330;
@@ -120,6 +168,61 @@ export interface BallBody {
   y: number;
 }
 
+/**
+ * The layers that paint the ST Brasil beach: the sand itself and the
+ * Copacabana promenade that runs along it. Whatever they cover IS the pitch,
+ * so the ball's boundary follows the artist's brush rather than a rectangle
+ * somebody measured off a screenshot — which is what let it roll onto the
+ * coast road where the sand stops early.
+ */
+const BEACH_LAYERS: ReadonlySet<string> = new Set(["SandSea", "SidewalkCopacabana"]);
+
+/**
+ * Bakes those layers into one bitmask of tiles, for the `onBeach` probe.
+ *
+ * Read from the created layers, BEFORE the scene merges the flat ground into
+ * combined layers and bakes it into textures — after that pass, the sand no
+ * longer exists as a layer anyone can ask about by name. Every client builds
+ * this from the same map file, so every client agrees on where the ball may
+ * go, which the shared simulation depends on.
+ */
+export function buildBeachMask(
+  layers: Phaser.Tilemaps.TilemapLayer[],
+  map: Phaser.Tilemaps.Tilemap,
+): (wx: number, wy: number) => boolean {
+  const w = map.width;
+  const h = map.height;
+  const mask = new Uint8Array(w * h);
+  let painted = 0;
+  for (const l of layers) {
+    const name = l.layer.name;
+    if (!BEACH_LAYERS.has(name.slice(name.lastIndexOf("/") + 1))) continue;
+    for (let ty = 0; ty < h; ty++) {
+      for (let tx = 0; tx < w; tx++) {
+        if (mask[ty * w + tx]) continue;
+        // World coordinates, not layer-local: BootScene crops every layer to
+        // what it paints, so a layer's own grid starts at an offset.
+        const tile = l.getTileAtWorldXY(
+          tx * TILE_SIZE + TILE_SIZE / 2, ty * TILE_SIZE + TILE_SIZE / 2);
+        if (tile && tile.index > 0) { mask[ty * w + tx] = 1; painted++; }
+      }
+    }
+  }
+  if (painted === 0) {
+    // No sand found — a renamed layer, or a map export without it. Better a
+    // ball loose on the backstop rectangle than a ball that cannot move.
+    console.warn("[BeachBall] no beach layers found; falling back to the outer box");
+    return () => true;
+  }
+  console.log(`[BeachBall] beach is ${painted.toLocaleString()} tiles`);
+  return (wx, wy) => {
+    const tx = Math.floor(wx / TILE_SIZE);
+    const ty = Math.floor(wy / TILE_SIZE);
+    if (tx < 0 || ty < 0 || tx >= w || ty >= h) return false;
+    return mask[ty * w + tx] === 1;
+  };
+}
+
 /** Call from BootScene.preload. */
 export function preloadBeachBall(scene: Phaser.Scene): void {
   scene.load.spritesheet(TEXTURE_KEY, TEXTURE_FILE, {
@@ -143,11 +246,19 @@ export class BeachBall {
   private rolling = false;
   private lastKickAt = 0;
   private lastTrailAt = 0;
+  /** Bumped on each kick we send, so receivers can tell two apart (see BallKick). */
+  private seq = 0;
+  /** A kick has been played as it happened, so the ball is no longer "as loaded". */
+  private seenLiveKick = false;
+  /** Chain seconds of the best remembered touch adopted so far (see applyRemoteKick). */
+  private bestStaleAt = 0;
 
   constructor(
     private readonly scene: Phaser.Scene,
     /** True when world pixel (x,y) is inside something solid. */
     private readonly solid: (wx: number, wy: number) => boolean,
+    /** True when world pixel (x,y) is on the ST Brasil sand or its promenade. */
+    private readonly onBeach: (wx: number, wy: number) => boolean,
     /** Called for every kick THIS client made, to broadcast to the city. */
     private readonly onKick: (kick: BallKick) => void,
   ) {
@@ -160,7 +271,7 @@ export class BeachBall {
       });
     }
     this.settle();
-    this.sprite = scene.add.sprite(this.x, this.y, TEXTURE_KEY, 0).setOrigin(0.5, 0.5);
+    this.sprite = scene.add.sprite(this.x, this.y, TEXTURE_KEY, 0).setOrigin(0.5, 0.5).setScale(SCALE);
     this.trail = this.createTrail();
     this.draw();
   }
@@ -203,11 +314,32 @@ export class BeachBall {
     this.draw();
   }
 
-  /** A kick from another player: adopt it whole, then catch up to now. */
-  applyRemoteKick(kick: BallKick): void {
+  /**
+   * A kick from another player: adopt it whole, then catch up to now.
+   *
+   * `stale` is a kick read off a PDA on first sight rather than as it
+   * happened — the last touch the city remembers, which may be minutes old.
+   * It is taken only while this client has seen no kick at all, which is what
+   * puts a player who just walked in on the same ball as everybody else
+   * instead of on the one that has not moved since the page loaded.
+   */
+  applyRemoteKick(kick: BallKick, stale = false, staleAt = 0): void {
+    if (stale) {
+      // A touch that actually happened always beats a remembered one.
+      if (this.seenLiveKick) return;
+      // Several players can each be carrying their own last touch. They are
+      // ordered by the chain's own seconds, which is the one clock every
+      // device agrees on, so the newest remembered touch wins.
+      if (staleAt <= this.bestStaleAt) return;
+      this.bestStaleAt = staleAt;
+    } else {
+      this.seenLiveKick = true;
+    }
     const now = Date.now();
-    // A clock that runs ahead of ours would otherwise rewind the simulation.
-    this.simAt = Math.min(kick.t, now);
+    // Started a hop into the roll, on OUR clock — see BALL_TAG on why the
+    // sender's clock is not on the wire. A stale kick is replayed in full, so
+    // the ball lands where that touch left it and simply is not seen moving.
+    this.simAt = now - (stale ? MAX_CATCHUP_MS : REMOTE_LAG_MS);
     this.x = kick.x;
     this.y = kick.y;
     this.vx = kick.vx;
@@ -272,12 +404,18 @@ export class BeachBall {
     }
   }
 
-  /** Outside the beach, or inside something solid. */
+  /** Off the sand, or inside something solid. */
   private blocked(x: number, y: number): boolean {
     if (x - RADIUS < ZONE.left || x + RADIUS > ZONE.right) return true;
     if (y - RADIUS < ZONE.top || y + RADIUS > ZONE.bottom) return true;
-    // Four points around the rim rather than the centre: a ball whose middle
-    // is still on sand but whose side is in the wall has already hit it.
+    // Tested at the rim, not just the middle: the whole ball has to be on the
+    // sand, so it comes to rest a hair inside the painted edge instead of
+    // hanging half of itself over the coast road.
+    if (!this.onBeach(x, y)
+      || !this.onBeach(x - RADIUS, y) || !this.onBeach(x + RADIUS, y)
+      || !this.onBeach(x, y - RADIUS) || !this.onBeach(x, y + RADIUS)) return true;
+    // Walls, the same four points: a ball whose middle is still on sand but
+    // whose side is in the wall has already hit it.
     return this.solid(x - RADIUS, y)
         || this.solid(x + RADIUS, y)
         || this.solid(x, y - RADIUS)
@@ -382,7 +520,9 @@ export class BeachBall {
     this.y = Math.round(this.y);
     this.vx = Math.round(this.vx);
     this.vy = Math.round(this.vy);
-    this.onKick({ x: this.x, y: this.y, vx: this.vx, vy: this.vy, t: now });
+    this.seenLiveKick = true;
+    this.seq = (this.seq + 1) % 1000;
+    this.onKick({ x: this.x, y: this.y, vx: this.vx, vy: this.vy, seq: this.seq });
     return true;
   }
 
@@ -432,7 +572,7 @@ export class BeachBall {
       lifespan: 360,
       speed: { min: 2, max: 10 },
       angle: { min: 0, max: 360 },
-      scale: { start: 0.55, end: 0 },
+      scale: { start: 0.4, end: 0 },
       alpha: { start: 0.45, end: 0 },
       frequency: -1,
       emitting: false,

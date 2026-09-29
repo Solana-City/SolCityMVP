@@ -5,7 +5,7 @@ import {
   Transaction,
   TransactionInstruction,
 } from "@solana/web3.js";
-import type { BallKick } from "../world/BeachBall";
+import { BALL_TAG, decodeBallKick, encodeBallKick, type BallKick } from "../world/BeachBall";
 
 // Solana Memo program — same address on mainnet and devnet
 const MEMO_PROGRAM_ID = new PublicKey("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr");
@@ -16,10 +16,6 @@ const MEMO_PROGRAM_ID = new PublicKey("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfc
 const CHAT_PREFIX = "solcity-chat:";
 const LOOK_PREFIX = "solcity-look:"; // solcity-look:<wallet>:<k=v|k=v...>
 const EXPR_PREFIX = "solcity-expr:"; // solcity-expr:<wallet>:<textureKey>
-// The beach football. Only the KICK travels: where the ball was, how fast it
-// left and when, so every client replays the same roll from it (world/BeachBall).
-// solcity-ball:<wallet>:<x>:<y>:<vx>:<vy>:<epochMs>
-const BALL_PREFIX = "solcity-ball:";
 
 // Loadout is encoded pipe/eq (NO quotes) — matches the on-chain PlayerState
 // `loadout` String, capped at #[max_len(120)]. Category KEYS are abbreviated to
@@ -765,18 +761,6 @@ export class OnChainMultiplayer {
               continue;
             }
 
-            // The beach football: "solcity-ball:<wallet>:<x>:<y>:<vx>:<vy>:<t>"
-            if (raw.startsWith(BALL_PREFIX)) {
-              const parts = raw.slice(BALL_PREFIX.length).split(":");
-              if (parts.length !== 6) continue;
-              if (parts[0] === this.wallet?.toBase58()) continue; // our own kick
-              const [x, y, vx, vy, t] = parts.slice(1).map(Number);
-              if (![x, y, vx, vy, t].every(Number.isFinite)) continue;
-              const bus = (globalThis as any).__solCityGameEvents;
-              bus?.emit("ball:kick", { x, y, vx, vy, t });
-              continue;
-            }
-
             if (!raw.startsWith(CHAT_PREFIX)) continue;
 
             // Format: "solcity-chat:<wallet>:<displayName>:<message>"
@@ -1071,10 +1055,12 @@ export class OnChainMultiplayer {
    * Broadcast a kick of the beach football so every other client replays the
    * same roll (see world/BeachBall for why only the kick travels).
    *
-   * A memo, like the outfit and the expression: the ball has no account, so
-   * there is nothing on the ER to write it to, and adding one would mean a
-   * program redeploy for a football. One transaction per touch, and the ball
-   * rolls for free on every screen afterwards.
+   * It rides our own PlayerState chat field on the ER, tagged, the same way a
+   * Stocklana trade does: that is the channel that is actually live
+   * cross-device, read off the 500ms player poll and the websocket push. The
+   * base-layer Memo channel this used at first is retired — nothing has
+   * subscribed to it since chat moved onto the rollup, so those kicks were
+   * written to devnet and heard by nobody.
    *
    * Fire and forget. A kick that fails to land is a kick other people did not
    * see; the next one carries an absolute snapshot and puts them right again,
@@ -1085,14 +1071,10 @@ export class OnChainMultiplayer {
     if (!walletStr) return;
     this.bc?.postMessage({ t: "ball", w: walletStr, k: kick } satisfies BCMsg); // same-tab
     if (!isProgramDeployed()) return;
-    const body = [kick.x, kick.y, kick.vx, kick.vy, kick.t].map(Math.round).join(":");
-    const entry = transactionLog.record({ kind: "ball", layer: "base", label: "Ball kick", status: "pending" });
-    this.sendMemo(`${BALL_PREFIX}${walletStr}:${body}`)
-      .then((sig) => transactionLog.markConfirmed(entry.id, sig))
-      .catch((e: any) => {
-        transactionLog.markFailed(entry.id, e?.message ?? "ball kick memo failed");
-        console.warn("[Multiplayer] ball kick memo failed:", e?.message);
-      });
+    const sk = this.sessionKeys.getSessionPublicKey();
+    this.sendSessionIx(buildSendChatSessionIx(this.wallet!, sk, encodeBallKick(kick)), {
+      kind: "ball", label: "Ball kick",
+    });
   }
 
   // ── Layer 1: BroadcastChannel ─────────────────────────────────────────
@@ -1135,8 +1117,9 @@ export class OnChainMultiplayer {
           this.handleExpr(msg.w, msg.e);
           break;
         case "ball":
-          // Straight to the scene, like a memo kick — same event, no latency.
-          (globalThis as any).__solCityGameEvents?.emit("ball:kick", msg.k);
+          // Straight to the scene, same event as the rollup path but with no
+          // hop to wait for: another tab of this browser, already here.
+          (globalThis as any).__solCityGameEvents?.emit("ball:kick", { kick: msg.k, stale: false });
           break;
         case "leave":
           this.handlePlayerLeave(msg.w);
@@ -1977,19 +1960,42 @@ export class OnChainMultiplayer {
           for (const cb of this.changeCallbacks) cb(walletStr, updated);
         }
 
+        // A kick of the beach football rides the chat field, tagged (see
+        // world/BeachBall). It is deduped by the PAYLOAD, not by message_at:
+        // that stamp is in whole SECONDS and a dribble puts three kicks inside
+        // one of them, so a timestamp gate would silently eat two of every
+        // three touches. The sequence number in the tag makes even an
+        // identical kick a different string.
+        const ballTag = lastMessage && lastMessage.startsWith(BALL_TAG) ? lastMessage : null;
+        const bus = (globalThis as any).__solCityGameEvents;
+
         // Expression + chat — fired only on a genuine change, never replayed on
         // first sight (so joining doesn't replay someone's stale expression/msg).
         if (!wasKnown) {
           (updated as any)._exprAt = expressionAt;
           (updated as any)._msgAt = messageAt;
+          // The ball is the exception. The last touch the city remembers is
+          // the only record of where the ball actually IS, so a player walking
+          // in takes it rather than starting on a ball nobody else can see.
+          // BeachBall ignores it once any live kick has arrived.
+          if (ballTag) {
+            const kick = decodeBallKick(ballTag);
+            if (kick) bus?.emit("ball:kick", { kick, stale: true, staleAt: messageAt });
+          }
         } else {
+          // Expression is its own field and its own stamp, so it is read
+          // whatever the message field happens to be carrying.
           if (expression && expressionAt > ((updated as any)._exprAt ?? 0)) {
             (updated as any)._exprAt = expressionAt;
             for (const cb of this.exprCallbacks) cb(walletStr, expression);
           }
-          if (lastMessage && messageAt > ((updated as any)._msgAt ?? 0)) {
+          if (ballTag) {
+            if (ballTag !== (updated as any)._ballTag) {
+              const kick = decodeBallKick(ballTag);
+              if (kick) bus?.emit("ball:kick", { kick, stale: false });
+            }
+          } else if (lastMessage && messageAt > ((updated as any)._msgAt ?? 0)) {
             (updated as any)._msgAt = messageAt;
-            const bus = (globalThis as any).__solCityGameEvents;
             bus?.emit("chat:network", {
               wallet: walletStr,
               name: updated.displayName ?? walletStr.slice(0, 8),
@@ -1997,6 +2003,9 @@ export class OnChainMultiplayer {
             });
           }
         }
+        // Remembered either way, so kicking, then talking, then repeating the
+        // very same kick still reads as a new one.
+        (updated as any)._ballTag = ballTag;
       }
     } catch {
       // Corrupt or unrecognized account — skip silently
@@ -2124,14 +2133,14 @@ export class OnChainMultiplayer {
    */
   private async sendSessionIx(
     ix: TransactionInstruction,
-    log?: { kind: "outfit" | "chat" | "expression"; label: string },
+    log?: { kind: "outfit" | "chat" | "expression" | "ball"; label: string },
   ): Promise<void> {
     if (!this.wallet || !isProgramDeployed()) return;
     const sessionKey = this.sessionKeys.getSessionPublicKey();
     const conn = this.useEphemeral ? this.ephemeralConnection : this.baseConnection;
     const layer = this.useEphemeral ? "ephemeral" : "base";
     // Surface these ER writes in the ONCHAIN LOG too — each under its own kind
-    // (outfit / expression / chat) so they're independently filterable.
+    // (outfit / expression / chat / ball) so they're independently filterable.
     const entry = log
       ? transactionLog.record({ kind: log.kind, layer, label: log.label, status: "pending" })
       : null;
