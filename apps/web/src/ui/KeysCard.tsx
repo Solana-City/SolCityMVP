@@ -27,11 +27,33 @@ const ROWS: Row[] = [
   { keys: ["K"], what: "This list" },
 ];
 
+// The touch equivalents — no keyboard, so nothing here is a "key": these are
+// the on-screen controls instead. H (hide interface) and K (this list) have
+// no touch counterpart and are dropped rather than forced onto a row.
+const MOBILE_ROWS: Row[] = [
+  { keys: ["Joystick"], what: "Walk (bottom left)" },
+  { keys: ["ACT"], what: "Talk to whoever is next to you, or advance the chat" },
+  { keys: ["Tap"], what: "Talk to any citizen you can see" },
+  { keys: ["Emoji"], what: "React: gm, heart, fire, lol, hmm, GG (top left rail)" },
+  { keys: ["Chat"], what: "Open chat, top left rail" },
+  { keys: ["Avatar"], what: "Your profile (top right)" },
+  { keys: ["Pinch"], what: "Zoom in and out" },
+];
+
 /** The rows alone, reused by the modal below and by the Profile panel's own Keys tab. */
 export function KeysRows() {
+  const [isTouch, setIsTouch] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(pointer: coarse)");
+    setIsTouch(mq.matches);
+    const onChange = (e: MediaQueryListEvent) => setIsTouch(e.matches);
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
+  const rows = isTouch ? MOBILE_ROWS : ROWS;
   return (
     <>
-      {ROWS.map((row) => (
+      {rows.map((row) => (
         <div key={row.what} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
           <span style={{ display: "flex", gap: 4, flexShrink: 0, width: 116 }}>
             {row.keys.map((k) => (

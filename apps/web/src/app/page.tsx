@@ -94,6 +94,10 @@ export default function Home() {
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
   const [logOpen, setLogOpen] = useState(false);
   const [mapOpen, setMapOpen] = useState(true);
+  // Mobile only: the wallet/onchain block starts tucked away behind the
+  // arrow next to the map icon — the panel above it is already four icons
+  // wide on a phone screen, and most sessions never touch the wallet.
+  const [walletSectionOpen, setWalletSectionOpen] = useState(false);
   const displayName = useDisplayName();
   const [mobilePanel, setMobilePanel] = useState<"hunt" | null>(null);
   /** Last wallet state actually handed to Phaser; undefined = nothing sent yet. */
@@ -502,62 +506,111 @@ export default function Home() {
             {/* Timed buffs (the Vietnamese coffee) — nothing while none run. */}
             <BuffBar />
             <div>
-            {/* One 9-slice framed card: profile row, wallet row, onchain+zoom
-                row — each row nested in its own thinner frame inside the
-                bold outer one. */}
-            <div style={{
-              width: isTouch ? 190 : 300,
-              borderWidth: 20, borderStyle: "solid", borderColor: "transparent",
-              borderImage: OUTER_FRAME,
-              imageRendering: "pixelated",
-              display: "flex", flexDirection: "column", gap: isTouch ? 6 : 8,
-            }}>
-              {/* Profile */}
-              <Framed width={9}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, padding: 4 }}>
-                  <span style={{ display: "block", flexShrink: 0 }}>
-                    <PfpButton gameRef={game} size={isTouch ? 40 : 52} onClick={() => setProfileOpen(true)} />
-                  </span>
-                  <span style={{ display: "flex", gap: 4, flexShrink: 0, marginLeft: "auto" }}>
-                    <WardrobeButton size={isTouch ? 30 : 34} onClick={() => setWardrobeOpen(true)} />
-                    <CalendarButton size={isTouch ? 30 : 34} />
-                    <HudIconBtn
-                      size={isTouch ? 30 : 34} src="/assets/ui/icon_map.png"
-                      onClick={() => setMapOpen((v) => !v)}
-                      title="Minimap" aria-expanded={mapOpen} aria-controls="hud-map-preview"
-                      aria-label={mapOpen ? "Hide minimap" : "Show minimap"}
+            {isTouch ? (
+              /* Mobile: no card chrome behind this row — every one of these
+                 icons already draws its own frame from its own art (see
+                 icon_wardrob.png etc.), so the row floats free instead of
+                 sitting inside a second box. The wallet and onchain log
+                 start tucked away behind the arrow: a phone screen is
+                 already four icons wide here, and most sessions never
+                 touch the wallet. */
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                  <PfpButton gameRef={game} size={40} onClick={() => setProfileOpen(true)} />
+                  <WardrobeButton size={30} onClick={() => setWardrobeOpen(true)} />
+                  <CalendarButton size={30} />
+                  <HudIconBtn
+                    size={30} src="/assets/ui/icon_map.png"
+                    onClick={() => setMapOpen((v) => !v)}
+                    title="Minimap" aria-expanded={mapOpen} aria-controls="hud-map-preview"
+                    aria-label={mapOpen ? "Hide minimap" : "Show minimap"}
+                  />
+                  <button
+                    onClick={() => setWalletSectionOpen((v) => !v)}
+                    title="Wallet" aria-expanded={walletSectionOpen}
+                    aria-label={walletSectionOpen ? "Hide wallet" : "Show wallet"}
+                    style={{ background: "none", border: "none", padding: 0, cursor: "pointer", flexShrink: 0, display: "block" }}
+                  >
+                    <img
+                      src="/assets/ui/icon_down.png" width={30} height={30} alt="" draggable={false}
+                      style={{ imageRendering: "pixelated", display: "block", transform: walletSectionOpen ? "rotate(180deg)" : undefined }}
                     />
-                  </span>
+                  </button>
                 </div>
-              </Framed>
 
-              {/* Minimap preview — the small square map, shown on demand;
-                  its own floating ⤢ button opens the full map. */}
-              {mapOpen && (
-                <div id="hud-map-preview" style={{ display: "flex", justifyContent: "center" }}>
-                  <Minimap bare compact={isTouch ? "mobile" : "desktop"} />
-                </div>
-              )}
+                {mapOpen && (
+                  <div id="hud-map-preview">
+                    <Minimap bare compact="mobile" />
+                  </div>
+                )}
 
-              {/* Wallet */}
-              <Framed width={9}>
-                <div style={{ padding: "4px 8px" }}>
-                  <WalletBar layout="panel" onWalletChange={handleWalletChange} />
-                </div>
-              </Framed>
-
-              {/* Onchain + zoom — no per-button frame, just the row */}
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: isTouch ? 4 : 6, padding: "0 2px" }}>
-                <TransactionLogPanel
-                  isOpen={logOpen}
-                  onToggle={() => setLogOpen((v) => !v)}
-                  gameRef={game}
-                  compact={isTouch}
-                />
-                <ZoomControl compact={isTouch} />
+                {walletSectionOpen && (
+                  <>
+                    <Framed width={9}>
+                      <div style={{ padding: "4px 8px" }}>
+                        <WalletBar layout="panel" onWalletChange={handleWalletChange} />
+                      </div>
+                    </Framed>
+                    <TransactionLogPanel
+                      isOpen={logOpen}
+                      onToggle={() => setLogOpen((v) => !v)}
+                      gameRef={game}
+                      compact
+                    />
+                  </>
+                )}
               </div>
-            </div>
+            ) : (
+              /* Desktop: one 9-slice framed card: profile row, wallet row,
+                 onchain+zoom row — each row nested in its own thinner frame
+                 inside the bold outer one. */
+              <div style={{
+                width: 300,
+                borderWidth: 20, borderStyle: "solid", borderColor: "transparent",
+                borderImage: OUTER_FRAME,
+                imageRendering: "pixelated",
+                display: "flex", flexDirection: "column", gap: 8,
+              }}>
+                <Framed width={9}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, padding: 4 }}>
+                    <span style={{ display: "block", flexShrink: 0 }}>
+                      <PfpButton gameRef={game} size={52} onClick={() => setProfileOpen(true)} />
+                    </span>
+                    <span style={{ display: "flex", gap: 4, flexShrink: 0, marginLeft: "auto" }}>
+                      <WardrobeButton size={34} onClick={() => setWardrobeOpen(true)} />
+                      <CalendarButton size={34} />
+                      <HudIconBtn
+                        size={34} src="/assets/ui/icon_map.png"
+                        onClick={() => setMapOpen((v) => !v)}
+                        title="Minimap" aria-expanded={mapOpen} aria-controls="hud-map-preview"
+                        aria-label={mapOpen ? "Hide minimap" : "Show minimap"}
+                      />
+                    </span>
+                  </div>
+                </Framed>
 
+                {mapOpen && (
+                  <div id="hud-map-preview" style={{ display: "flex", justifyContent: "center" }}>
+                    <Minimap bare compact="desktop" />
+                  </div>
+                )}
+
+                <Framed width={9}>
+                  <div style={{ padding: "4px 8px" }}>
+                    <WalletBar layout="panel" onWalletChange={handleWalletChange} />
+                  </div>
+                </Framed>
+
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6, padding: "0 2px" }}>
+                  <TransactionLogPanel
+                    isOpen={logOpen}
+                    onToggle={() => setLogOpen((v) => !v)}
+                    gameRef={game}
+                  />
+                  <ZoomControl />
+                </div>
+              </div>
+            )}
             </div>
           </div>
 
@@ -625,18 +678,13 @@ function MobilePanelToggle({ iconSrc, label, active, onClick, dot }: {
       }}
     >
       <img
-        src="/assets/ui/bg_ico.png"
-        width={36} height={36} alt="" draggable={false}
-        style={{ imageRendering: "pixelated", position: "absolute", inset: 0 }}
-      />
-      <img
         src={iconSrc}
         width={24} height={24} alt={label} draggable={false}
         style={{ imageRendering: "pixelated", position: "relative" }}
       />
       {active && (
         <span style={{
-          position: "absolute", inset: 1, borderRadius: 7,
+          position: "absolute", inset: 6, borderRadius: 7,
           boxShadow: "0 0 0 2px rgba(183,233,40,0.75)",
           pointerEvents: "none",
         }} />
@@ -669,11 +717,6 @@ function ExpressionToggle() {
         WebkitTapHighlightColor: "transparent",
       }}
     >
-      <img
-        src="/assets/ui/bg_ico.png"
-        width={36} height={36} alt="" draggable={false}
-        style={{ imageRendering: "pixelated", position: "absolute", inset: 0 }}
-      />
       <img
         src="/assets/ui/ico_emoji.png"
         width={24} height={24} alt="Expressions" draggable={false}
