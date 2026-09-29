@@ -13,6 +13,7 @@ import { OPEN_CALENDAR_EVENT, STREAK_EVENT, type StreakView } from "@/game/daily
 import { soundManager } from "@/game/audio/SoundManager";
 import { dmsOffPref, setDmsOffPref } from "@/game/chat/dmEvents";
 import { chamferBox, octagonFrame, avatarFrame, avatarPhoto, octagonFrameThin } from "@/ui/chamfer";
+import { KeysRows } from "@/ui/KeysCard";
 
 const PIXEL = '"Press Start 2P", monospace';
 const CYAN = "#14F0C6";
@@ -20,8 +21,8 @@ const GREEN = "#B7E928";
 const PURPLE = "#9945FF";
 const MUTED = "#7f88a8";
 
-type PanelTab = "profile" | "achievements" | "settings";
-const TABS: PanelTab[] = ["profile", "achievements", "settings"];
+type PanelTab = "profile" | "achievements" | "keys" | "settings";
+const TABS: PanelTab[] = ["profile", "achievements", "keys", "settings"];
 import { useViewportBox, overlayBox } from "@/ui/useViewportBox";
 
 interface ProfilePanelProps {
@@ -217,6 +218,7 @@ export default function ProfilePanel({ gameRef, isOpen, onClose }: ProfilePanelP
             <ProfileTab profile={profile} wallet={wallet} onConnect={() => openWalletModal(true)} />
           )}
           {panelTab === "achievements" && <AchievementsTab profile={profile} />}
+          {panelTab === "keys" && <KeysTab />}
           {panelTab === "settings" && <SettingsTab />}
         </div>
 
@@ -453,6 +455,16 @@ function AchievementsTab({ profile }: { profile: PlayerProfile }) {
         })}
       </div>
     </div>
+  );
+}
+
+// ── Keys tab ─────────────────────────────────────────────────────────────────
+
+function KeysTab() {
+  return (
+    <Card>
+      <KeysRows />
+    </Card>
   );
 }
 

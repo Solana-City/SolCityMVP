@@ -5,9 +5,9 @@
  *
  * Every one of these already worked; nothing in the city ever said so. The
  * 2026-09-27 playtest put it plainly: "reactions have hotkeys but no one uses
- * them because they don't know the hotkeys". So the list exists, it has a
- * button next to the zoom control, K and ? open it, and the first desktop
- * session opens it once by itself.
+ * them because they don't know the hotkeys". So the list exists, it also
+ * lives in a Profile tab (see KeysRows), K and ? open this floating card, and
+ * the first desktop session opens it once by itself.
  */
 import { useEffect, useState } from "react";
 
@@ -26,6 +26,31 @@ const ROWS: Row[] = [
   { keys: ["Scroll"], what: "Zoom in and out" },
   { keys: ["K"], what: "This list" },
 ];
+
+/** The rows alone, reused by the modal below and by the Profile panel's own Keys tab. */
+export function KeysRows() {
+  return (
+    <>
+      {ROWS.map((row) => (
+        <div key={row.what} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+          <span style={{ display: "flex", gap: 4, flexShrink: 0, width: 116 }}>
+            {row.keys.map((k) => (
+              <kbd
+                key={k}
+                style={{
+                  fontFamily: "inherit", fontSize: 7, color: "#ccccdd",
+                  background: "#12122a", border: "1px solid rgba(255,255,255,0.12)",
+                  borderRadius: 4, padding: "5px 6px", minWidth: 10, textAlign: "center",
+                }}
+              >{k}</kbd>
+            ))}
+          </span>
+          <span style={{ fontSize: 7, color: "#8888aa", lineHeight: 1.7 }}>{row.what}</span>
+        </div>
+      ))}
+    </>
+  );
+}
 
 export default function KeysCard({ open, onClose }: { open: boolean; onClose: () => void }) {
   useEffect(() => {
@@ -66,23 +91,7 @@ export default function KeysCard({ open, onClose }: { open: boolean; onClose: ()
           >×</button>
         </div>
 
-        {ROWS.map((row) => (
-          <div key={row.what} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
-            <span style={{ display: "flex", gap: 4, flexShrink: 0, width: 116 }}>
-              {row.keys.map((k) => (
-                <kbd
-                  key={k}
-                  style={{
-                    fontFamily: "inherit", fontSize: 7, color: "#ccccdd",
-                    background: "#12122a", border: "1px solid rgba(255,255,255,0.12)",
-                    borderRadius: 4, padding: "5px 6px", minWidth: 10, textAlign: "center",
-                  }}
-                >{k}</kbd>
-              ))}
-            </span>
-            <span style={{ fontSize: 7, color: "#8888aa", lineHeight: 1.7 }}>{row.what}</span>
-          </div>
-        ))}
+        <KeysRows />
       </div>
     </div>
   );
