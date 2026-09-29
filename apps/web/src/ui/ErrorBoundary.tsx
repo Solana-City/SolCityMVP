@@ -14,6 +14,9 @@ interface State {
 }
 
 /** Messages for non-fatal errors that must never take down the whole game. */
+/** Set once a wallet render error has already cost this session a reload. */
+const WALLET_RELOAD_KEY = "solcity:wallet-error-reloaded";
+
 function isWalletError(msg: string): boolean {
   const lower = msg.toLowerCase();
   return (
@@ -105,12 +108,24 @@ export default class ErrorBoundary extends React.Component<Props, State> {
     // Wallet / EVM errors caught by getDerivedStateFromError: show a softer
     // message that auto-reloads instead of blocking the game.
     if (error && isWalletError(error.message ?? "")) {
-      console.warn("[ErrorBoundary] wallet render error — auto-reloading:", error.message);
-      // Reload after a brief delay so the user sees something happened
-      setTimeout(() => {
-        try { reloadWithReason("wallet error during render", error.message); } catch {}
-      }, 1500);
-      return null; // blank screen for 1.5s then reload
+      // Once per session. A wallet or RPC fault that repeats would otherwise
+      // reload the page every time it fired, which reads as the city
+      // disconnecting over and over and hides the actual error. The second
+      // time, the error screen is the honest answer.
+      let alreadyReloaded = false;
+      try {
+        alreadyReloaded = sessionStorage.getItem(WALLET_RELOAD_KEY) === "1";
+        sessionStorage.setItem(WALLET_RELOAD_KEY, "1");
+      } catch { /* storage blocked: treat as a first time */ }
+
+      if (!alreadyReloaded) {
+        console.warn("[ErrorBoundary] wallet render error — auto-reloading:", error.message);
+        setTimeout(() => {
+          try { reloadWithReason("wallet error during render", error.message); } catch {}
+        }, 1500);
+        return null; // blank screen for 1.5s then reload
+      }
+      console.warn("[ErrorBoundary] wallet render error again — not reloading:", error.message);
     }
 
     if (!error) return this.props.children;

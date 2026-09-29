@@ -42,5 +42,11 @@ export function reportPreviousReload(): void {
       ` | ${Math.round((Date.now() - at) / 1000)}s ago`,
     );
     track("session", "auto-reload", { label: detail ? `${reason}: ${detail.slice(0, 80)}` : reason });
+    // And on screen, because the people who hit this are playing, not reading
+    // a console: an unexplained blink back to the login screen was reported
+    // as "random disconnections" for days. SWUpdater renders it.
+    try {
+      window.dispatchEvent(new CustomEvent("solcity:reload-reason", { detail: { reason, detail } }));
+    } catch { /* no window: nothing to tell */ }
   } catch { /* malformed — ignore */ }
 }
