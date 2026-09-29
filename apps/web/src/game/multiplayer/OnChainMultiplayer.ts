@@ -1184,6 +1184,12 @@ export class OnChainMultiplayer {
   // publishes that state so the UI can say it out loud and offer a retry.
 
   private setOnline(v: boolean): void {
+    // Published as a VALUE as well as an event. The event only fires on a
+    // change, so anything that mounts late — or remounts, which is what the
+    // connect screen did after a wallet flap — could wait forever for news
+    // that had already been announced. That was the "back to the login
+    // screen and it never comes back" report.
+    try { (globalThis as any).__solCityOnline = v; } catch {}
     if (this.onlineFlag === v) return;
     this.onlineFlag = v;
     try { (globalThis as any).__solCityGameEvents?.emit("multiplayer:online", v); } catch {}

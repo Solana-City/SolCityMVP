@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { crispSize } from "./crispPixels";
+import { crispSize, crispSizeAtLeast } from "./crispPixels";
 import { chamferBox } from "@/ui/chamfer";
 
 /**
@@ -213,7 +213,9 @@ export function PixelImg({ src, size, style, alt = "" }: { src: string; size: nu
 export function CitizenIcon({ sheet, size }: { sheet: string; size: number }) {
   // The art inside is a 64px frame drawn at 1.1x the box; snap THAT to whole
   // device pixels and derive the rest from it, so the crop stays put.
-  const frame = crispSize(FRAME_PX, size * 1.1);
+  // At LEAST 1.1x the box: a smaller frame would let the row below it (the
+  // character's back) show under the chin.
+  const frame = crispSizeAtLeast(FRAME_PX, size * 1.1);
   return (
     <span
       aria-hidden

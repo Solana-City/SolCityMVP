@@ -2,14 +2,20 @@
 
 import { useWallet } from "@solana/wallet-adapter-react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import GuestNotice from "./GuestNotice";
 import ConnectingOverlay from "./ConnectingOverlay";
+import { WALLET_LOGOUT_EVENT, WALLET_FLAP_GRACE_MS } from "./walletSession";
 import { chamferBox } from "@/ui/chamfer";
 import ChamferGlow from "@/ui/ChamferGlow";
 
 export default function ConnectScreen() {
   const { connected } = useWallet();
+  /** Sticky: in the city until the wallet is really gone, or a real logout. */
+  const [inCity, setInCity] = useState(false);
+  const flapTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** A wallet has to have connected before losing it means anything. */
+  const everConnected = useRef(false);
   const { setVisible } = useWalletModal();
   const openModal = useCallback(() => setVisible(true), [setVisible]);
   const [dismissed, setDismissed] = useState(false);
@@ -17,11 +23,49 @@ export default function ConnectScreen() {
   /** The on-chain session is up (or the player chose to go in without it). */
   const [sessionReady, setSessionReady] = useState(false);
 
-  // Reset "continue as guest" dismissal whenever the wallet disconnects so
-  // clicking the disconnect button always returns the user to this screen.
+  // A wallet adapter reports `connected: false` for reasons that are not a
+  // logout: the extension reloading, the tab being backgrounded on a phone,
+  // an auto-connect race on focus. The city itself already knows this and
+  // waits 1.2s before tearing a session down (CityScene, "wallet:flap"), but
+  // this screen used to react on the spot — covering the game with the login
+  // screen for a blink, which is what players were reporting.
+  //
+  // So it waits too, and longer than the game does. A real logout does not
+  // wait: the disconnect button says so out loud.
   useEffect(() => {
-    if (!connected) { setDismissed(false); setSessionReady(false); }
+    if (connected) {
+      everConnected.current = true;
+      if (flapTimer.current) { clearTimeout(flapTimer.current); flapTimer.current = null; }
+      return;
+    }
+    // A wallet that was never connected has not been LOST: a guest sits here
+    // with connected === false forever, and starting the timer for them would
+    // throw them back to the login screen four seconds after they chose to
+    // skip it.
+    if (!everConnected.current) return;
+    flapTimer.current = setTimeout(() => {
+      flapTimer.current = null;
+      setDismissed(false);
+      setSessionReady(false);
+      setInCity(false);
+    }, WALLET_FLAP_GRACE_MS);
+    return () => {
+      if (flapTimer.current) { clearTimeout(flapTimer.current); flapTimer.current = null; }
+    };
   }, [connected]);
+
+  // The disconnect button, which is a decision rather than a glitch.
+  useEffect(() => {
+    const onLogout = () => {
+      everConnected.current = false;
+      if (flapTimer.current) { clearTimeout(flapTimer.current); flapTimer.current = null; }
+      setDismissed(false);
+      setSessionReady(false);
+      setInCity(false);
+    };
+    window.addEventListener(WALLET_LOGOUT_EVENT, onLogout);
+    return () => window.removeEventListener(WALLET_LOGOUT_EVENT, onLogout);
+  }, []);
 
   // A connected wallet is not a working session: creating the player,
   // authorizing the session key and delegating to the rollup each take a
@@ -34,6 +78,9 @@ export default function ConnectScreen() {
         | { on: Function; off: Function } | undefined;
       if (!bus) return false;
       const onReady = (online: boolean) => { if (online) setSessionReady(true); };
+      // Already online before this screen (re)mounted? The event fired while
+      // nobody was listening, so read the value instead of waiting for it.
+      if ((globalThis as { __solCityOnline?: boolean }).__solCityOnline) setSessionReady(true);
       // "ready" is the end of the handshake; "online" also fires when a retry
       // from the overlay succeeds, or when the first position write lands.
       bus.on("multiplayer:ready", onReady);
@@ -53,7 +100,16 @@ export default function ConnectScreen() {
 
   // Tell the page the player is in the city (connected or guest), so the
   // first-time city guide can open over the map instead of this screen.
-  const entered = (connected && sessionReady) || dismissed;
+  //
+  // Sticky: once somebody is in the city they stay in it until the wallet is
+  // really gone (the grace above) or they log out. Recomputing this from
+  // `connected` every render is what let a one-frame flap throw them out.
+  const enteringNow = (connected && sessionReady) || dismissed;
+  useEffect(() => {
+    if (enteringNow) setInCity(true);
+  }, [enteringNow]);
+
+  const entered = inCity || enteringNow;
   useEffect(() => {
     if (entered) window.dispatchEvent(new Event("solcity:entered-city"));
   }, [entered]);

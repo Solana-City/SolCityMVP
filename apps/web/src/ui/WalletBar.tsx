@@ -4,6 +4,7 @@ import { useWallet, useConnection } from "@solana/wallet-adapter-react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import { LAMPORTS_PER_SOL } from "@solana/web3.js";
 import { useState, useEffect, useCallback, useRef } from "react";
+import { WALLET_LOGOUT_EVENT } from "./walletSession";
 import { useSeekerDevice } from "@/ui/useSeekerDevice";
 import { progressionBus } from "@/game/progression/progressionBus";
 import { chamferBox } from "@/ui/chamfer";
@@ -81,6 +82,9 @@ export default function WalletBar({ onWalletChange, layout = "default" }: Wallet
 
   const handleClick = useCallback(() => {
     if (connected) {
+      // Says "this one is deliberate", so the connect screen can come back
+      // immediately instead of sitting through the flap grace (walletSession).
+      window.dispatchEvent(new Event(WALLET_LOGOUT_EVENT));
       disconnect();
     } else {
       setVisible(true);

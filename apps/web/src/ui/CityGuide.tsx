@@ -45,10 +45,11 @@ export function Citizen({ sheet, size = 64, style }: { sheet: string; size?: num
     <div
       aria-hidden
       style={{
-        width: size, height: size, flexShrink: 0,
+        // The BOX follows the frame, not the other way round: a box bigger
+        // than the snapped frame shows the top of the frame below it, which
+        // is a second character's head under this one. See ui/crispPixels.
+        width: crispSize(64, size), height: crispSize(64, size), flexShrink: 0,
         backgroundImage: `url("/assets/sprites/${sheet}")`,
-        // Whole device pixels per source pixel, or the frame tears on a
-        // fractional-ratio screen. See ui/crispPixels.
         backgroundSize: `${crispSize(64, size) * 4}px ${crispSize(64, size) * 4}px`,
         backgroundPosition: "0 0",
         imageRendering: "pixelated", ...style,
