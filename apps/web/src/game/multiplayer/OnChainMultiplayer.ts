@@ -5,6 +5,7 @@ import {
   Transaction,
   TransactionInstruction,
 } from "@solana/web3.js";
+import type { BallKick } from "../world/BeachBall";
 
 // Solana Memo program — same address on mainnet and devnet
 const MEMO_PROGRAM_ID = new PublicKey("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr");
@@ -15,6 +16,10 @@ const MEMO_PROGRAM_ID = new PublicKey("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfc
 const CHAT_PREFIX = "solcity-chat:";
 const LOOK_PREFIX = "solcity-look:"; // solcity-look:<wallet>:<k=v|k=v...>
 const EXPR_PREFIX = "solcity-expr:"; // solcity-expr:<wallet>:<textureKey>
+// The beach football. Only the KICK travels: where the ball was, how fast it
+// left and when, so every client replays the same roll from it (world/BeachBall).
+// solcity-ball:<wallet>:<x>:<y>:<vx>:<vy>:<epochMs>
+const BALL_PREFIX = "solcity-ball:";
 
 // Loadout is encoded pipe/eq (NO quotes) — matches the on-chain PlayerState
 // `loadout` String, capped at #[max_len(120)]. Category KEYS are abbreviated to
@@ -102,6 +107,7 @@ type BCMsg =
   | { t: "chat";  w: string; text: string }
   | { t: "look";  w: string; l: Loadout }
   | { t: "expr";  w: string; e: string }
+  | { t: "ball";  w: string; k: BallKick }
   | { t: "leave"; w: string };
 
 // Throttle position broadcasts. Every other screen can only be as current as
@@ -759,6 +765,18 @@ export class OnChainMultiplayer {
               continue;
             }
 
+            // The beach football: "solcity-ball:<wallet>:<x>:<y>:<vx>:<vy>:<t>"
+            if (raw.startsWith(BALL_PREFIX)) {
+              const parts = raw.slice(BALL_PREFIX.length).split(":");
+              if (parts.length !== 6) continue;
+              if (parts[0] === this.wallet?.toBase58()) continue; // our own kick
+              const [x, y, vx, vy, t] = parts.slice(1).map(Number);
+              if (![x, y, vx, vy, t].every(Number.isFinite)) continue;
+              const bus = (globalThis as any).__solCityGameEvents;
+              bus?.emit("ball:kick", { x, y, vx, vy, t });
+              continue;
+            }
+
             if (!raw.startsWith(CHAT_PREFIX)) continue;
 
             // Format: "solcity-chat:<wallet>:<displayName>:<message>"
@@ -1049,6 +1067,34 @@ export class OnChainMultiplayer {
     }
   }
 
+  /**
+   * Broadcast a kick of the beach football so every other client replays the
+   * same roll (see world/BeachBall for why only the kick travels).
+   *
+   * A memo, like the outfit and the expression: the ball has no account, so
+   * there is nothing on the ER to write it to, and adding one would mean a
+   * program redeploy for a football. One transaction per touch, and the ball
+   * rolls for free on every screen afterwards.
+   *
+   * Fire and forget. A kick that fails to land is a kick other people did not
+   * see; the next one carries an absolute snapshot and puts them right again,
+   * so there is nothing here worth retrying or telling the player about.
+   */
+  sendBallKick(kick: BallKick): void {
+    const walletStr = this.wallet?.toBase58();
+    if (!walletStr) return;
+    this.bc?.postMessage({ t: "ball", w: walletStr, k: kick } satisfies BCMsg); // same-tab
+    if (!isProgramDeployed()) return;
+    const body = [kick.x, kick.y, kick.vx, kick.vy, kick.t].map(Math.round).join(":");
+    const entry = transactionLog.record({ kind: "ball", layer: "base", label: "Ball kick", status: "pending" });
+    this.sendMemo(`${BALL_PREFIX}${walletStr}:${body}`)
+      .then((sig) => transactionLog.markConfirmed(entry.id, sig))
+      .catch((e: any) => {
+        transactionLog.markFailed(entry.id, e?.message ?? "ball kick memo failed");
+        console.warn("[Multiplayer] ball kick memo failed:", e?.message);
+      });
+  }
+
   // ── Layer 1: BroadcastChannel ─────────────────────────────────────────
 
   private startBroadcastChannel(walletStr: string, displayName?: string): void {
@@ -1087,6 +1133,10 @@ export class OnChainMultiplayer {
           break;
         case "expr":
           this.handleExpr(msg.w, msg.e);
+          break;
+        case "ball":
+          // Straight to the scene, like a memo kick — same event, no latency.
+          (globalThis as any).__solCityGameEvents?.emit("ball:kick", msg.k);
           break;
         case "leave":
           this.handlePlayerLeave(msg.w);
