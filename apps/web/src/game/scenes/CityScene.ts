@@ -43,6 +43,7 @@ import { soundManager } from "../audio/SoundManager";
 import { publishMinimap } from "../minimap/MinimapHost";
 import { createStockExchange } from "../world/StockExchange";
 import { createAnimatedDecor, REPLACED_MAP_LAYERS } from "../world/AnimatedDecor";
+import { BeachBall, buildBeachMask, type BallKick } from "../world/BeachBall";
 import { readLastPosition, saveLastPosition } from "../world/lastPosition";
 import { buildPhysicsLayer, mergeGroundRun } from "../world/mergeLayers";
 import { SparseLayer, SPARSE_MAX_TILES, GROUND_CHUNK_TILES, type CityLayer } from "../world/sparseLayer";
@@ -148,6 +149,8 @@ export class CityScene extends Phaser.Scene {
   /** A shove in progress from a repelling NPC — see applyRepel. */
   private shove: { dx: number; dy: number; v0: number; ms: number; until: number } | null = null;
   private pedestrians!: PedestrianManager;
+  /** The football on the ST Brasil sand — null until the beach is built. */
+  private beachBall: BeachBall | null = null;
   private interactionBlocked = false;
   private walletAddress: string | null = null;
   /** Wallet whose session handshake is in flight — see the connect guard. */
@@ -401,6 +404,15 @@ export class CityScene extends Phaser.Scene {
     }
     closeGroundRun();
 
+    // Where the beach football may go, read off the painted sand while the
+    // sand is still a layer of its own — the consolidation pass below folds
+    // flat ground into merged layers and then bakes it, after which nothing
+    // can be asked about by name. See world/BeachBall.
+    const onBeach = buildBeachMask(
+      allLayers.filter((l): l is Phaser.Tilemaps.TilemapLayer => l instanceof Phaser.Tilemaps.TilemapLayer),
+      map,
+    );
+
     // ── Consolidation pass ────────────────────────────────────────────
     // Only flat ground and collision are touched here; every layer that fades
     // or y-sorts is left exactly as authored, so a palm still goes
@@ -510,6 +522,25 @@ export class CityScene extends Phaser.Scene {
     // not tiles, since Phaser does not play Tiled's tile animations.
     const destroyDecor = createAnimatedDecor(this, FOREGROUND_DEPTH, this.collisionLayers[0]);
     this.events.once("shutdown", destroyDecor);
+
+    // The football on the ST Brasil beach. It runs its own simulation rather
+    // than an arcade body: every client has to integrate the same roll from
+    // the same kick, and Phaser's physics step follows the local frame rate.
+    // `this.network` is built further down create(), so the kick goes out
+    // through a lambda that reads it when a kick actually happens.
+    this.beachBall = new BeachBall(
+      this,
+      (wx, wy) => this.isSolidAt(wx, wy),
+      onBeach,
+      (kick) => {
+        // Every kick this client makes, however it was made: one sound, one
+        // broadcast. Walking into the ball counts, so the feedback is the
+        // same whether the player pressed ACT or just ran at it.
+        soundManager.play("kick");
+        this.network?.sendBallKick(kick);
+      },
+    );
+    this.events.once("shutdown", () => { this.beachBall?.destroy(); this.beachBall = null; });
 
     // Spawn on the central fountain's walkway (col 78, row 38) — the two-tile
     // flight of steps climbing from the south path up to the sculpture...
@@ -1096,7 +1127,19 @@ export class CityScene extends Phaser.Scene {
         nearby.faceToward(this.avatar.x, this.avatar.y);
         track("npc", nearby.def.id, { label: nearby.def.name });
         this.game.events.emit("npc:interact", nearby.def);
+        return;
       }
+      this.tryBallKick();
+    });
+
+    // Cross-device kick of the beach football: another player kicked it, so
+    // replay their roll from the snapshot they sent (see world/BeachBall).
+    this.onGameEvent("ball:kick", ({ kick, stale, staleAt }: { kick: BallKick; stale: boolean; staleAt?: number }) => {
+      this.beachBall?.applyRemoteKick(kick, stale, staleAt ?? 0);
+      // Only a kick as it happens, and only when the ball is on screen: a
+      // touch on the beach should not thud in the ear of someone standing at
+      // the fountain, and the city's last remembered touch has no sound.
+      if (!stale && this.cameras.main.worldView.contains(kick.x, kick.y)) soundManager.play("kick");
     });
 
     // E / Space for NPC interaction (desktop only — mobile uses the ACT button)
@@ -1109,7 +1152,11 @@ export class CityScene extends Phaser.Scene {
         nearby.faceToward(this.avatar.x, this.avatar.y);
         track("npc", nearby.def.id, { label: nearby.def.name });
         this.game.events.emit("npc:interact", nearby.def);
+        return;
       }
+      // Nobody to talk to: the same key kicks the football if it is underfoot.
+      // Talking wins on purpose — an NPC standing by the ball is still an NPC.
+      this.tryBallKick();
     };
     this.input.keyboard?.on("keydown-E", tryInteract);
     this.input.keyboard?.on("keydown-SPACE", tryInteract);
@@ -1273,6 +1320,13 @@ export class CityScene extends Phaser.Scene {
       for (const npc of this.npcSprites) {
         npc.checkProximity(this.avatar.x, this.avatar.y);
       }
+      // The ball keeps rolling on everyone else's screen while a panel is
+      // open, so it keeps rolling here too — with no local player passed, so
+      // a player reading a dialogue cannot kick it by standing on it.
+      if (this.beachBall) {
+        const ball = this.beachBall.position;
+        this.beachBall.update(null, this.ballColliders(ball.x, ball.y));
+      }
       return;
     }
 
@@ -1407,6 +1461,20 @@ export class CityScene extends Phaser.Scene {
       direction !== null,
       isBuffActive("vietnamese-coffee"),
     );
+
+    // The beach football. Given the player's own velocity so walking into it
+    // moves it, and everyone standing nearby so it comes off them instead of
+    // through them. Its roll is its own fixed-step simulation, not an arcade
+    // body — see world/BeachBall.
+    if (this.beachBall) {
+      const ball = this.beachBall.position;
+      const colliders = this.ballColliders(ball.x, ball.y);
+      colliders.push({ x: this.avatar.x, y: this.avatar.y });
+      this.beachBall.update(
+        { x: this.avatar.x, y: this.avatar.y, vx: this.playerBody.velocity.x, vy: this.playerBody.velocity.y },
+        colliders,
+      );
+    }
 
     // Pedestrian depth sorting
     this.pedestrians.updateDepths();
@@ -1796,6 +1864,38 @@ export class CityScene extends Phaser.Scene {
   }
 
   /** True when a character's feet at (wx, wy) would stand on a solid tile. */
+  /**
+   * ACT / E / SPACE next to the beach football sends it the way the player is
+   * facing. Returns true when it connected, so the caller knows the key was
+   * spent. A miss is silent: the player was pressing ACT for something else.
+   */
+  private tryBallKick(): boolean {
+    if (!this.beachBall) return false;
+    // The sound and the broadcast ride the kick callback, so they fire for a
+    // kick made by walking into it too.
+    return this.beachBall.kick(this.avatar.x, this.avatar.y, this.currentDirection);
+  }
+
+  /**
+   * Everyone the ball can bounce off, near enough for it to matter: the local
+   * player, everyone the chain says is here, and the NPCs standing on the
+   * sand. The wandering crowd is left out on purpose — see world/BeachBall.
+   */
+  private ballColliders(bx: number, by: number): Array<{ x: number; y: number }> {
+    const REACH = TILE_SIZE * 3;
+    const near: Array<{ x: number; y: number }> = [];
+    for (const avatar of this.remotePlayers.values()) {
+      if (Math.abs(avatar.x - bx) < REACH && Math.abs(avatar.y - by) < REACH) {
+        near.push({ x: avatar.x, y: avatar.y });
+      }
+    }
+    for (const npc of this.npcSprites) {
+      const at = npc.getPosition();
+      if (Math.abs(at.x - bx) < REACH && Math.abs(at.y - by) < REACH) near.push(at);
+    }
+    return near;
+  }
+
   private isSolidAt(wx: number, wy: number): boolean {
     return this.collisionLayers.some((layer) => {
       const tile = layer.getTileAtWorldXY(wx, wy);

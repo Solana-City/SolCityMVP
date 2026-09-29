@@ -22,6 +22,7 @@ export type Sfx =
   | "outfit"     // outfit selection — dry, slightly varied
   | "dialog"     // NPC dialog opens
   | "emote"      // player emote / chat emoji
+  | "kick"       // boot meeting the beach football
   | "chime"      // discrete on-chain tx confirmed (swap / transfer / bounty)
   | "reward"     // score / outfit unlock
   | "achievement"// achievement unlocked (bigger than reward)
@@ -216,6 +217,14 @@ class SoundManager {
       case "emote":
         this.sweep({ from: 320, to: 640, dur: 0.16, type: "sine", gain: 0.22 });
         break;
+      case "kick": {
+        // Boot on leather: a thud with a little random pitch so a dribble
+        // does not sound like the same sample four times in a row.
+        const j = (Math.random() - 0.5) * 2; // -1..1
+        this.noiseBurst({ dur: 0.035, gain: 0.10, freq: 240 + j * 40, q: 1.1 });
+        this.sweep({ from: 200 + j * 20, to: 90, dur: 0.09, type: "triangle", gain: 0.16 });
+        break;
+      }
       case "chime":
         // Two-note pleasant confirm — Solana-y ascending fifth.
         this.tone({ freq: 660, dur: 0.09, type: "triangle", gain: 0.22 });

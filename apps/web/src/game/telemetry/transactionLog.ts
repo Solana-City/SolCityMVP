@@ -32,6 +32,7 @@ export type TxKind =
   | "outfit"     // update_look_session (wardrobe)
   | "expression" // set_expression_session
   | "chat"       // send_chat_session
+  | "ball"       // a kick of the beach football (memo)
   | "hunt"       // Find Someone: claim_find + the finder's +1
   | "minigame"   // record_mini_game_session
   | "system";    // non-tx internal event (e.g. "session started")

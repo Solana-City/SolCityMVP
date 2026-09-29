@@ -227,6 +227,8 @@ export class AvatarSprite {
   /** Single silhouette sprite mirrored under the feet — see characterShadow. */
   private shadowSprite: Phaser.GameObjects.Sprite | null = null;
   private shadowTextureKey: string | null = null;
+  /** One silhouette for the whole crowd — see the constructor. */
+  private sharedShadow = false;
   /** Soft oval under the feet that grounds the character. */
   private contactBlob: Phaser.GameObjects.Ellipse | null = null;
   private currentDirection: Direction = "down";
@@ -235,9 +237,25 @@ export class AvatarSprite {
   /** Every layer is already playing the walk for currentDirection. */
   private walkSynced = false;
 
-  constructor(scene: Phaser.Scene, x: number, y: number, loadout: Loadout = DEFAULT_LOADOUT) {
+  /**
+   * `sharedShadow` draws this character's silhouette from ONE texture shared
+   * by everyone who asks for it, instead of one composited from their own
+   * clothes. For the crowd: their shadow is a black shape at 28% alpha,
+   * mirrored and squashed to 45% of its height, and nobody has ever read a
+   * hat in it — while a per-outfit silhouette costs a 64 KB texture and a
+   * canvas composite for every distinct outfit in the city (6 MB across a
+   * desktop crowd of 96). The player and remote players keep their own.
+   */
+  constructor(
+    scene: Phaser.Scene,
+    x: number,
+    y: number,
+    loadout: Loadout = DEFAULT_LOADOUT,
+    sharedShadow = false,
+  ) {
     this.scene = scene;
     this.currentLoadout = { ...loadout };
+    this.sharedShadow = sharedShadow;
     this.container = scene.add.container(x, y);
     this.buildLayers();
   }
@@ -527,7 +545,13 @@ export class AvatarSprite {
    * the feet, squashed, translucent, animated with the same walk cycle.
    */
   private buildShadow(): void {
-    const layerKeys = [...this.layerSprites.values()].map((s) => s.texture.key);
+    // The shared silhouette is cast from the default BODY alone: same 4x4
+    // grid, so it animates with the walk cycle exactly as a tailored one
+    // does, and every pedestrian in the city reuses the one texture.
+    const layerKeys = this.sharedShadow
+      ? [getVariant("skin", DEFAULT_LOADOUT.skin)?.textureKey].filter((k): k is string => !!k)
+      : [...this.layerSprites.values()].map((s) => s.texture.key);
+    if (layerKeys.length === 0) return;
     const silhouette = acquireSilhouetteTexture(
       this.scene, layerKeys, SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT,
     );

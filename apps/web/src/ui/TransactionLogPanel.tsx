@@ -390,6 +390,7 @@ const KIND_OPTIONS: Array<{ value: TxKind | "all"; label: string }> = [
   { value: "outfit", label: "wardrobe" },
   { value: "expression", label: "expression" },
   { value: "chat", label: "chat" },
+  { value: "ball", label: "ball" },
   { value: "hunt", label: "hunt" },
   { value: "minigame", label: "minigame" },
   { value: "swap", label: "swap" },
