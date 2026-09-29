@@ -10,26 +10,43 @@
  * and expressions (see OnChainMultiplayer.sendBallKick), so this needed no
  * program change and no new account.
  *
+ * A kick is not WAITED for, though, or the ball would sit still for as long
+ * as the rollup takes to answer. The only way to kick is to walk into the
+ * ball, which means a kick is CAUSED by something every client can already
+ * see: a body arriving at the ball. So each client starts the roll itself,
+ * the instant a player it is drawing touches the ball, whoever that player
+ * is — and the kick that comes back over the chain is a correction, not the
+ * starting gun. Predict, then reconcile, the way the remote avatars already
+ * walk toward a predicted point rather than being tweened between samples.
+ *
+ * The correction is eased in rather than applied: the simulation jumps to the
+ * authoritative snapshot, and the SPRITE keeps an offset that decays over
+ * about a sixth of a second, so a prediction that was slightly off slides
+ * into line instead of popping. A prediction that was right has no offset to
+ * decay and nothing shows at all.
+ *
  * What that buys and what it costs:
  *   • Everyone sees the same roll, because the step, the friction and the
  *     stopping rule below are the only things that decide where it ends up.
- *   • A kick lands on other screens a beat late, so a receiver fast-forwards
- *     the simulation by however long the message took to arrive — the ball
- *     appears mid-roll where it should already be, not back at the kick.
  *   • Bounces off people are computed against each client's own view of where
  *     everyone is standing, which is never exactly the same. Screens drift a
  *     little between kicks; the next kick is an absolute snapshot, so every
  *     kick puts the city back in agreement.
+ *   • A predicted kick that never actually happened (the kicker's own client
+ *     was inside its cooldown, say) leaves this screen wrong until the next
+ *     real kick. Same contract: the next snapshot settles it.
  *
  * The wandering crowd (PedestrianManager) is deliberately NOT a collider. Each
  * browser walks its own citizens along its own random paths, so bouncing off
  * them would send the ball somewhere different on every screen and nothing
- * short of the next kick would ever reconcile it. Players and NPCs stand where
- * the chain and the registry say, so those are the bodies the ball hits.
+ * short of the next kick would ever reconcile it. Players and NPCs are in the
+ * same place everywhere — the chain says where a player is, and an NPC's
+ * wander is a function of the wall clock (see NPCSprite.targetForStep) — so
+ * those are the bodies the ball hits. Only PLAYERS may kick it: an NPC
+ * drifting into the ball would start a roll nobody else agreed to.
  */
 import * as Phaser from "phaser";
 import { TILE_SIZE } from "../config/constants";
-import type { Direction } from "../entities/SimpleSprite";
 
 /** The one moment a kick has to carry for everyone to replay the roll. */
 export interface BallKick {
@@ -144,28 +161,38 @@ const MAX_CATCHUP_MS = 4_000;
  */
 const REMOTE_LAG_MS = 400;
 
-/** A kick from standing next to it: E, SPACE, or the ACT button. */
-const KICK_SPEED = 330;
-/** A kick from simply walking into it. */
+/** A kick, which is to say walking into it. */
 const NUDGE_SPEED = 190;
 /** A walking player only picks the ball up again once it has slowed to this. */
 const NUDGE_MAX_BALL_SPEED = 70;
-/** Shortest gap between two kicks by the same player — one dribble touch. */
+/** Shortest gap between two kicks — one dribble touch. */
 const KICK_COOLDOWN_MS = 350;
-/** How near the player has to stand for the ACT kick to reach. */
-const REACH = TILE_SIZE * 1.1;
+/** Under this a body counts as standing still and cannot kick anything. */
+const MIN_KICK_SPEED = 10;
 
-const DIR_VECTORS: Record<Direction, { x: number; y: number }> = {
-  up:    { x: 0, y: -1 },
-  down:  { x: 0, y: 1 },
-  left:  { x: -1, y: 0 },
-  right: { x: 1, y: 0 },
-};
+/**
+ * How long the sprite has to slide back into line after a correction, and the
+ * per-step decay that gets it there (0.74^10 ≈ 0.05, so it is over in about a
+ * sixth of a second).
+ */
+const OFFSET_DECAY_PER_STEP = 0.74;
+/** Below this the offset is spent; above it a correction is not worth easing. */
+const OFFSET_MIN_PX = 0.3;
+const OFFSET_MAX_PX = 64;
+/** A kick nothing here saw coming, so it is worth a sound. */
+const SURPRISE_MS = 600;
 
 /** Anything the ball can bounce off: a player's or an NPC's feet. */
 export interface BallBody {
   x: number;
   y: number;
+  /** How fast it is travelling, px/s. Absent or still = it cannot kick. */
+  vx?: number;
+  vy?: number;
+  /** A PLAYER, so it may start a roll. NPCs are walls, never kickers. */
+  kicks?: boolean;
+  /** The player THIS browser drives, whose kicks go out to the city. */
+  local?: boolean;
 }
 
 /**
@@ -250,6 +277,14 @@ export class BeachBall {
   private seq = 0;
   /** A kick has been played as it happened, so the ball is no longer "as loaded". */
   private seenLiveKick = false;
+  /**
+   * How far the SPRITE still is from the simulation, and shrinking. Set when a
+   * correction lands, so the drawn ball slides into its corrected place over a
+   * few frames rather than jumping there. Cosmetic only: nothing about the
+   * shared simulation reads it, so it cannot pull two screens apart.
+   */
+  private offX = 0;
+  private offY = 0;
   /** Chain seconds of the best remembered touch adopted so far (see applyRemoteKick). */
   private bestStaleAt = 0;
 
@@ -259,8 +294,13 @@ export class BeachBall {
     private readonly solid: (wx: number, wy: number) => boolean,
     /** True when world pixel (x,y) is on the ST Brasil sand or its promenade. */
     private readonly onBeach: (wx: number, wy: number) => boolean,
-    /** Called for every kick THIS client made, to broadcast to the city. */
-    private readonly onKick: (kick: BallKick) => void,
+    /**
+     * Called for every kick this client STARTED, predicted ones included.
+     * `mine` says whether it was the local player who kicked, which is the
+     * only case the city needs to hear about — a predicted kick is another
+     * player's, and their own client is already broadcasting it.
+     */
+    private readonly onKick: (kick: BallKick, mine: boolean) => void,
   ) {
     if (!scene.anims.exists(`${TEXTURE_KEY}-roll`)) {
       scene.anims.create({
@@ -276,42 +316,40 @@ export class BeachBall {
     this.draw();
   }
 
-  /** Where the ball is right now, for the scene's proximity prompt. */
+  /** Where the ball is right now, for the scene to find bodies near it. */
   get position(): { x: number; y: number } {
     return { x: this.x, y: this.y };
   }
 
-  /** The player is close enough to kick it where they stand. */
-  isInReach(px: number, py: number): boolean {
-    return Math.hypot(px - this.x, py - this.y) <= REACH + RADIUS;
-  }
-
   /**
-   * The deliberate kick: E, SPACE or ACT. Sends the ball the way the player is
-   * facing, which is what a player who lined the shot up expects — a kick
-   * aimed by the line from their feet to the ball turns a step to the side
-   * into a shot backwards.
+   * Advances the ball, bounces it off everybody, and lets anybody who can
+   * kick, kick.
    *
-   * Returns true when it connected, so the scene knows the key was used.
+   * Every player in `bodies` may start a roll, not just the local one. A kick
+   * is caused by a body arriving at the ball, and that arrival is on screen
+   * here at the same time it is on the kicker's screen — so waiting for the
+   * chain to say so would only add the round trip back. The local player's
+   * kick goes out to the city; everyone else's is a prediction that the real
+   * kick will confirm or correct a moment later.
    */
-  kick(px: number, py: number, facing: Direction): boolean {
-    if (!this.isInReach(px, py)) return false;
-    const dir = DIR_VECTORS[facing];
-    return this.startKick(dir.x * KICK_SPEED, dir.y * KICK_SPEED);
-  }
-
-  /**
-   * Advances the ball and lets the local player dribble it.
-   *
-   * `local` is the player this browser controls — the only body allowed to
-   * START a kick, because every other client is broadcasting its own. Everyone
-   * in `bodies` can still be bounced off.
-   */
-  update(local: { x: number; y: number; vx: number; vy: number } | null, bodies: BallBody[]): void {
+  update(bodies: BallBody[]): void {
     const now = Date.now();
     this.stepTo(now, bodies);
-    if (local) this.tryNudge(local, now);
+    // The local player first: their input is real where everyone else's is
+    // inferred, so if two bodies reach the ball on the same frame the one
+    // holding the keyboard is the one that gets the touch.
+    for (const body of bodies) if (body.local) this.tryNudge(body, now);
+    for (const body of bodies) if (body.kicks && !body.local) this.tryNudge(body, now);
     this.draw();
+  }
+
+  /**
+   * Where the ball is DRAWN: the simulation plus whatever a recent correction
+   * is still easing off. Physics and proximity use the simulation itself
+   * (`this.x`/`this.y`), which is the part every client agrees on.
+   */
+  private shown(): { x: number; y: number } {
+    return { x: this.x + this.offX, y: this.y + this.offY };
   }
 
   /**
@@ -323,19 +361,26 @@ export class BeachBall {
    * puts a player who just walked in on the same ball as everybody else
    * instead of on the one that has not moved since the page loaded.
    */
-  applyRemoteKick(kick: BallKick, stale = false, staleAt = 0): void {
+  applyRemoteKick(kick: BallKick, stale = false, staleAt = 0): boolean {
     if (stale) {
       // A touch that actually happened always beats a remembered one.
-      if (this.seenLiveKick) return;
+      if (this.seenLiveKick) return false;
       // Several players can each be carrying their own last touch. They are
       // ordered by the chain's own seconds, which is the one clock every
       // device agrees on, so the newest remembered touch wins.
-      if (staleAt <= this.bestStaleAt) return;
+      if (staleAt <= this.bestStaleAt) return false;
       this.bestStaleAt = staleAt;
     } else {
       this.seenLiveKick = true;
     }
     const now = Date.now();
+    // Nothing here saw this coming, so the scene should make a noise about it.
+    // A kick this client predicted is not a surprise: it already thudded when
+    // the kicker's foot arrived, and a second thud now would be an echo.
+    const surprising = !stale && now - this.lastKickAt > SURPRISE_MS;
+    // Where the ball is DRAWN right now, kept so the correction below can be
+    // eased in from it instead of teleporting the sprite.
+    const from = this.shown();
     // Started a hop into the roll, on OUR clock — see BALL_TAG on why the
     // sender's clock is not on the wire. A stale kick is replayed in full, so
     // the ball lands where that touch left it and simply is not seen moving.
@@ -348,7 +393,17 @@ export class BeachBall {
     this.clampIntoZone();
     this.settle();
     this.stepTo(now, []);
+    // Hand the sprite the gap it has to close. A correction bigger than a
+    // couple of tiles is not a nudge that was slightly off, it is a different
+    // ball — joining a session, or a prediction that never happened — and
+    // sliding the length of the beach would look far worse than a cut.
+    const dx = from.x - this.x;
+    const dy = from.y - this.y;
+    const eased = Math.hypot(dx, dy) <= OFFSET_MAX_PX;
+    this.offX = eased ? dx : 0;
+    this.offY = eased ? dy : 0;
     this.draw();
+    return surprising;
   }
 
   destroy(): void {
@@ -374,6 +429,14 @@ export class BeachBall {
     let left = budget;
     while (left >= STEP_MS) {
       this.step(bodies);
+      // Alongside the simulation, never inside it: the offset is what the
+      // sprite is lagging by, and it has to shrink in real time whether the
+      // ball is rolling or has already stopped.
+      if (this.offX !== 0 || this.offY !== 0) {
+        this.offX *= OFFSET_DECAY_PER_STEP;
+        this.offY *= OFFSET_DECAY_PER_STEP;
+        if (Math.hypot(this.offX, this.offY) < OFFSET_MIN_PX) { this.offX = 0; this.offY = 0; }
+      }
       left -= STEP_MS;
     }
     this.carryMs = left;
@@ -492,21 +555,32 @@ export class BeachBall {
   // ── Kicking ───────────────────────────────────────────────────────────
 
   /**
-   * Walking into the ball moves it, so a player who never reads a key list
-   * still finds the game. It only catches a ball that has slowed down, which
-   * is also what spaces a dribble out into touches instead of a shove.
+   * A body walking into the ball moves it. Walking into it is the ONLY way to
+   * kick, which is what makes the kick predictable on every screen: there is
+   * no button press to guess at, just a body arriving somewhere everybody can
+   * already see it arrive.
+   *
+   * It only catches a ball that has slowed down, which is also what spaces a
+   * dribble out into touches instead of one long shove.
    */
-  private tryNudge(local: { x: number; y: number; vx: number; vy: number }, now: number): void {
-    const playerSpeed = Math.hypot(local.vx, local.vy);
-    if (playerSpeed < 10) return;
+  private tryNudge(body: BallBody, now: number): void {
+    const speed = Math.hypot(body.vx ?? 0, body.vy ?? 0);
+    if (speed < MIN_KICK_SPEED) return;
     if (Math.hypot(this.vx, this.vy) > NUDGE_MAX_BALL_SPEED) return;
-    if (Math.hypot(local.x - this.x, local.y - this.y) > RADIUS + BODY_RADIUS) return;
+    if (Math.hypot(body.x - this.x, body.y - this.y) > RADIUS + BODY_RADIUS) return;
     if (now - this.lastKickAt < KICK_COOLDOWN_MS) return;
-    this.startKick((local.vx / playerSpeed) * NUDGE_SPEED, (local.vy / playerSpeed) * NUDGE_SPEED);
+    this.startKick(
+      ((body.vx ?? 0) / speed) * NUDGE_SPEED,
+      ((body.vy ?? 0) / speed) * NUDGE_SPEED,
+      body.local === true,
+    );
   }
 
-  /** Sets the ball going and tells the city, from a cooldown both share. */
-  private startKick(vx: number, vy: number): boolean {
+  /**
+   * Sets the ball going and tells the scene, from a cooldown every body
+   * shares — one touch at a time, whoever it belongs to.
+   */
+  private startKick(vx: number, vy: number, mine: boolean): boolean {
     const now = Date.now();
     if (now - this.lastKickAt < KICK_COOLDOWN_MS) return false;
     this.lastKickAt = now;
@@ -522,7 +596,7 @@ export class BeachBall {
     this.vy = Math.round(this.vy);
     this.seenLiveKick = true;
     this.seq = (this.seq + 1) % 1000;
-    this.onKick({ x: this.x, y: this.y, vx: this.vx, vy: this.vy, seq: this.seq });
+    this.onKick({ x: this.x, y: this.y, vx: this.vx, vy: this.vy, seq: this.seq }, mine);
     return true;
   }
 
@@ -532,10 +606,13 @@ export class BeachBall {
     const speed = Math.hypot(this.vx, this.vy);
     const moving = speed > 0;
 
-    this.sprite.setPosition(Math.round(this.x), Math.round(this.y));
+    // Drawn at the simulation plus whatever a recent correction is still
+    // easing off, so the sprite slides into line instead of popping there.
+    const at = this.shown();
+    this.sprite.setPosition(Math.round(at.x), Math.round(at.y));
     // Y-sorted off the sand it sits on, like every other standing object, so a
     // player walks in front of it from the south and behind it from the north.
-    this.sprite.setDepth(this.y + RADIUS);
+    this.sprite.setDepth(at.y + RADIUS);
 
     if (moving && !this.rolling) {
       this.sprite.anims.play(`${TEXTURE_KEY}-roll`);
@@ -589,8 +666,9 @@ export class BeachBall {
     const now = this.scene.time.now;
     if (now - this.lastTrailAt < 30) return;
     this.lastTrailAt = now;
-    const bx = this.x - (this.vx / speed) * RADIUS;
-    const by = this.y - (this.vy / speed) * RADIUS + 2;
+    const at = this.shown();
+    const bx = at.x - (this.vx / speed) * RADIUS;
+    const by = at.y - (this.vy / speed) * RADIUS + 2;
     this.trail.setDepth(this.sprite.depth - 1);
     this.trail.emitParticleAt(bx, by, 1);
   }
