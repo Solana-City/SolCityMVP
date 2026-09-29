@@ -16,7 +16,7 @@ import { useNicknames, shortWallet } from "@/ui/useNicknames";
 import { fetchBoard, invalidateBoard, type BoardRow } from "@/game/leaderboards/boards";
 import { track } from "@/game/telemetry/track";
 import { cachedName, requestNames } from "@/game/names/nameService";
-import { chamferBox, octagonFrame, octagonFrameThin } from "@/ui/chamfer";
+import { chamferBox, octagonFrame } from "@/ui/chamfer";
 import ChamferGlow from "@/ui/ChamferGlow";
 
 // ── Chroma key ────────────────────────────────────────────────────────────────
@@ -370,11 +370,12 @@ export default function WhereIsNPCCard({ gameRef, wallet }: Props) {
           }}>FIND SOMEONE</span>
           <span style={{ display: "flex", alignItems: "center", gap: 2, flexShrink: 0 }}>
             <button className="hunt-btn" style={{
-              ...octagonFrameThin(),
-              background: showInfo ? "rgba(183,233,40,0.25)" : "rgba(10,10,30,0.7)",
+              backgroundImage: "url(/assets/ui/icon_frame_btn.png)", backgroundSize: "100% 100%",
+              imageRendering: "pixelated", border: "none",
               color: showInfo ? "#B7E928" : "#9a9ab5",
               fontFamily: "Georgia, serif", fontStyle: "italic", fontWeight: "bold", fontSize: 11,
               width: 22, height: 22, padding: 0, lineHeight: "12px", cursor: "pointer",
+              display: "flex", alignItems: "center", justifyContent: "center",
               flexShrink: 0,
             }}
               onClick={e => { e.stopPropagation(); setShowInfo(v => !v); }}

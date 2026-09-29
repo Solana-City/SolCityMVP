@@ -342,12 +342,12 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
           className="ml-auto self-center"
           style={{
             width: 22, height: 22, flexShrink: 0,
-            background: showGuide ? "rgba(183,233,40,0.25)" : "rgba(10,10,30,0.7)",
+            backgroundImage: "url(/assets/ui/icon_frame_btn.png)", backgroundSize: "100% 100%",
+            imageRendering: "pixelated", border: "none",
             color: showGuide ? "#B7E928" : "#9a9ab5",
-            borderWidth: 4, borderStyle: "solid", borderColor: "transparent",
-            borderImage: BTN_FRAME, imageRendering: "pixelated", clipPath: BTN_CLIP,
             fontFamily: "Georgia, serif", fontStyle: "italic", fontWeight: "bold", fontSize: 11,
             lineHeight: "12px", padding: 0, cursor: "pointer",
+            display: "flex", alignItems: "center", justifyContent: "center",
           }}
         >
           i
