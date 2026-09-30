@@ -8,6 +8,7 @@ import { progressionBus } from "@/game/progression/progressionBus";
 import { ChromaPreview } from "@/ui/WardrobePanel";
 import { chamferBox } from "@/ui/chamfer";
 import ChamferGlow from "@/ui/ChamferGlow";
+import { useButtonFeel, feelStyle, type ButtonFeel } from "@/ui/useButtonFeel";
 
 /**
  * Booster pack — PREVIEW. Opens a pack of 5 random wardrobe pieces and unlocks
@@ -24,6 +25,9 @@ export default function BoosterOverlay({
 }) {
   const [phase, setPhase] = useState<"idle" | "opening" | "revealed">("idle");
   const [drops, setDrops] = useState<BoosterDrop[]>([]);
+  const anotherFeel = useButtonFeel();
+  const doneFeel = useButtonFeel();
+  const openFeel = useButtonFeel();
 
   const open = useCallback(() => {
     if (!wallet) return;
@@ -118,8 +122,8 @@ export default function BoosterOverlay({
               ))}
             </div>
             <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
-              <button onClick={() => { setPhase("idle"); setDrops([]); }} style={btn("ghost")}>OPEN ANOTHER</button>
-              <ChamferGlow glow={BTN_GLOW}><button onClick={onClose} style={btn("primary")}>DONE</button></ChamferGlow>
+              <button onClick={() => { setPhase("idle"); setDrops([]); }} {...anotherFeel.handlers} style={btn("ghost", anotherFeel)}>OPEN ANOTHER</button>
+              <ChamferGlow glow={BTN_GLOW}><button onClick={onClose} {...doneFeel.handlers} style={btn("primary", doneFeel)}>DONE</button></ChamferGlow>
             </div>
           </>
         ) : (
@@ -144,7 +148,7 @@ export default function BoosterOverlay({
               {PACK_SIZE} random pieces: hats, backpacks, hair, and more.
             </div>
             <ChamferGlow glow={BTN_GLOW} style={{ display: "inline-block" }}>
-              <button onClick={open} disabled={phase === "opening"} style={btn("primary")}>
+              <button onClick={open} disabled={phase === "opening"} {...openFeel.handlers} style={btn("primary", phase === "opening" ? undefined : openFeel)}>
                 {phase === "opening" ? "OPENING…" : "OPEN PACK"}
               </button>
             </ChamferGlow>
@@ -157,7 +161,7 @@ export default function BoosterOverlay({
 
 const BTN_GLOW = "drop-shadow(0 0 10px rgba(153,69,255,0.45))";
 
-function btn(kind: "primary" | "ghost"): React.CSSProperties {
+function btn(kind: "primary" | "ghost", feel?: Pick<ButtonFeel, "hover" | "pressed">): React.CSSProperties {
   const base: React.CSSProperties = {
     fontFamily: '"Press Start 2P", monospace',
     fontSize: 9, letterSpacing: 1, padding: "12px 24px",
@@ -165,6 +169,6 @@ function btn(kind: "primary" | "ghost"): React.CSSProperties {
   };
   return chamferBox(8, kind === "primary"
     ? { ...base, background: "linear-gradient(135deg, #9945FF, #7a2fd8)", color: "#fff",
-        border: "1px solid rgba(200,150,255,0.5)" }
-    : { ...base, background: "transparent", color: "#8a8aa7", border: "1px solid rgba(153,69,255,0.3)" });
+        border: "1px solid rgba(200,150,255,0.5)", ...(feel ? feelStyle(feel) : null) }
+    : { ...base, background: "transparent", color: "#8a8aa7", border: "1px solid rgba(153,69,255,0.3)", ...(feel ? feelStyle(feel) : null) });
 }

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { chamferBox } from "@/ui/chamfer";
+import { useButtonFeel, feelStyle } from "@/ui/useButtonFeel";
 
 /**
  * "Nobody can see you" badge.
@@ -43,6 +44,8 @@ export default function OfflineBadge() {
     return () => off?.();
   }, []);
 
+  const fixFeel = useButtonFeel();
+
   if (!hidden) return null;
 
   return (
@@ -71,9 +74,11 @@ export default function OfflineBadge() {
           (globalThis as any).__solCityGameEvents?.emit("multiplayer:retry");
         }}
         disabled={retrying}
+        {...fixFeel.handlers}
         style={chamferBox(6, {
           fontFamily: PIXEL, fontSize: 7, padding: "6px 8px", cursor: retrying ? "default" : "pointer",
           background: retrying ? "#3a2430" : DANGER, color: retrying ? "#b9b9cc" : "#1a0a0e", border: "none",
+          ...(retrying ? null : feelStyle(fixFeel)),
         })}
       >
         {retrying ? "TRYING..." : "FIX"}

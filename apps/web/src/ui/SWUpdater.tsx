@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { reloadWithReason } from "./reloadReason";
 import { chamferBox } from "@/ui/chamfer";
+import { useButtonFeel, feelStyle } from "@/ui/useButtonFeel";
 
 /**
  * Service-worker updates that do not interrupt anybody.
@@ -96,6 +97,8 @@ export default function SWUpdater() {
     };
   }, [apply]);
 
+  const updateFeel = useButtonFeel();
+
   if (!waiting && !reloadNote) return null;
 
   return (
@@ -117,10 +120,12 @@ export default function SWUpdater() {
       {waiting && (
         <button
           onClick={() => apply(waiting)}
+          {...updateFeel.handlers}
           style={chamferBox(6, {
             padding: "9px 14px", background: "rgba(183,233,40,0.14)",
             color: "#B7E928", border: "1px solid rgba(183,233,40,0.5)",
             fontFamily: "inherit", fontSize: 7, cursor: "pointer", pointerEvents: "auto",
+            ...feelStyle(updateFeel),
           })}
         >
           NEW VERSION READY · UPDATE

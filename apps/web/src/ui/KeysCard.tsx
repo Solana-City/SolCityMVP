@@ -10,6 +10,7 @@
  * the first desktop session opens it once by itself.
  */
 import { useEffect, useState } from "react";
+import { useButtonFeel, feelStyle } from "@/ui/useButtonFeel";
 
 const SEEN_KEY = "solcity:keys-seen";
 
@@ -81,6 +82,7 @@ export default function KeysCard({ open, onClose }: { open: boolean; onClose: ()
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
+  const closeFeel = useButtonFeel();
 
   if (!open) return null;
 
@@ -105,9 +107,11 @@ export default function KeysCard({ open, onClose }: { open: boolean; onClose: ()
           <h3 style={{ fontSize: 10, color: "#B7E928", margin: 0 }}>KEYS</h3>
           <button
             onClick={onClose}
+            {...closeFeel.handlers}
             style={{
               marginLeft: "auto", background: "none", border: "none", color: "#555566",
               cursor: "pointer", fontSize: 14, lineHeight: 1, padding: 0,
+              ...feelStyle(closeFeel),
             }}
             aria-label="Close"
           >×</button>
