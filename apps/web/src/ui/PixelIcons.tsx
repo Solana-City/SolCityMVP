@@ -279,6 +279,35 @@ export function SpeakerIcon({ size = 16, muted, color = "#cbd5e1" }: { size?: nu
   );
 }
 
+/** Music note, for the BGM row in Settings; muted is the note with an x. */
+export function MusicIcon({ size = 16, muted, color = "#cbd5e1" }: { size?: number; muted: boolean; color?: string }) {
+  return (
+    <Bitmap size={size} color={color} rows={muted ? [
+      "..........",
+      "..####....",
+      "..#..#....",
+      "..#..#.#.#",
+      "..#.....#.",
+      "..#....#.#",
+      "###.......",
+      "###.......",
+      "..........",
+      "..........",
+    ] : [
+      "..........",
+      "..#######.",
+      "..##....#.",
+      "..#.....#.",
+      "..#.....#.",
+      "..#.....#.",
+      "###...###.",
+      "###...###.",
+      "..........",
+      "..........",
+    ]} />
+  );
+}
+
 /** Podium rank: gold/silver/bronze pixel medal with the number, plain number after 3. */
 export function RankBadge({ rank, size = 18 }: { rank: number; size?: number }) {
   const colors = ["#FFD700", "#C0C7D1", "#CD7F32"];

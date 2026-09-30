@@ -1,6 +1,6 @@
 "use client";
 
-import { AchievementIcon, LockIcon, SpeakerIcon, PixelImg, ICON, CloseButton } from "@/ui/PixelIcons";
+import { AchievementIcon, LockIcon, SpeakerIcon, MusicIcon, PixelImg, ICON, CloseButton } from "@/ui/PixelIcons";
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
@@ -11,6 +11,7 @@ import { fetchBoard } from "@/game/leaderboards/boards";
 import { DAILY_QUESTS, claimQuest, getQuestProgress, onQuestsChanged } from "@/game/quests/QuestManager";
 import { OPEN_CALENDAR_EVENT, STREAK_EVENT, type StreakView } from "@/game/daily/calendarEvents";
 import { soundManager } from "@/game/audio/SoundManager";
+import { musicManager } from "@/game/audio/MusicManager";
 import { dmsOffPref, setDmsOffPref } from "@/game/chat/dmEvents";
 import { chamferBox, octagonFrame, avatarFrame, avatarPhoto, octagonFrameThin } from "@/ui/chamfer";
 import { KeysRows } from "@/ui/KeysCard";
@@ -470,14 +471,74 @@ function KeysTab() {
 
 // ── Settings tab ────────────────────────────────────────────────────────────
 
+/**
+ * One volume line: an icon that doubles as the mute toggle, a slider, a
+ * readout. Effects and music are independent (different managers, different
+ * saved keys), so the row takes them as props rather than reaching for one.
+ */
+function VolumeRow({ label, icon, volume, muted, onVolume, onToggleMute, preview }: {
+  label: string;
+  icon: (muted: boolean, color: string) => React.ReactNode;
+  volume: number;
+  muted: boolean;
+  onVolume: (v: number) => void;
+  onToggleMute: () => void;
+  preview?: () => void;
+}) {
+  const pct = Math.round((muted ? 0 : volume) * 100);
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-3">
+        <span style={{ fontSize: 8, color: "#aaaacc" }}>{label}</span>
+        <button
+          onClick={onToggleMute}
+          title={muted ? "Unmute" : "Mute"}
+          style={{ background: "none", border: "none", cursor: "pointer", lineHeight: 0, padding: 0 }}
+        >
+          {icon(muted, muted ? "#666677" : "#c084fc")}
+        </button>
+      </div>
+      <div className="flex items-center gap-2">
+        <input
+          type="range"
+          min={0}
+          max={100}
+          value={pct}
+          onChange={(e) => onVolume(parseInt(e.target.value, 10) / 100)}
+          // Play a preview tick on release so the level is audible immediately.
+          onMouseUp={preview}
+          onTouchEnd={preview}
+          className="pixel-range"
+          style={{ flex: 1, cursor: "pointer", ["--p" as string]: `${pct}%` }}
+        />
+        <span style={{ fontSize: 8, color: "#888899", width: 34, textAlign: "right", fontFamily: "monospace" }}>
+          {pct}%
+        </span>
+      </div>
+    </div>
+  );
+}
+
 function SettingsTab() {
   const [volume, setVolume] = useState(0);
   const [muted, setMuted] = useState(false);
+  const [musicVolume, setMusicVolume] = useState(0);
+  const [musicMuted, setMusicMuted] = useState(false);
+  const [track, setTrack] = useState<string | null>(null);
   const [dmsOff, setDmsOff] = useState(false);
   useEffect(() => {
     setVolume(soundManager.getVolume());
     setMuted(soundManager.isMuted());
+    setMusicVolume(musicManager.getVolume());
+    setMusicMuted(musicManager.isMuted());
     setDmsOff(dmsOffPref());
+    // The rotation moves on its own, so follow it instead of snapshotting.
+    const sync = () => {
+      setMusicMuted(musicManager.isMuted());
+      setTrack(musicManager.nowPlaying()?.title ?? null);
+    };
+    sync();
+    return musicManager.subscribe(sync);
   }, []);
 
   const onVolume = (v: number) => {
@@ -486,40 +547,40 @@ function SettingsTab() {
     setMuted(soundManager.isMuted()); // setVolume clears mute when raised off 0
   };
 
+  const onMusicVolume = (v: number) => {
+    setMusicVolume(v);
+    musicManager.setVolume(v);
+    setMusicMuted(musicManager.isMuted());
+  };
+
   return (
     <div className="grid grid-cols-1 md:grid-cols-2" style={{ gap: 14, alignItems: "start" }}>
       <div>
         <div style={{ fontSize: 9, color: "#cbd5e1", marginBottom: 10 }}>SOUND</div>
         <Card>
-          <div className="flex items-center justify-between mb-3">
-            <span style={{ fontSize: 8, color: "#aaaacc" }}>Effects volume</span>
-            <button
-              onClick={() => { const m = soundManager.toggleMuted(); setMuted(m); }}
-              title={muted ? "Unmute" : "Mute"}
-              style={{ background: "none", border: "none", cursor: "pointer", lineHeight: 0, padding: 0 }}
-            >
-              <SpeakerIcon size={18} muted={muted} color={muted ? "#666677" : "#c084fc"} />
-            </button>
+          <VolumeRow
+            label="Effects"
+            icon={(m, c) => <SpeakerIcon size={18} muted={m} color={c} />}
+            volume={volume}
+            muted={muted}
+            onVolume={onVolume}
+            onToggleMute={() => { const m = soundManager.toggleMuted(); setMuted(m); }}
+            preview={() => soundManager.play("click")}
+          />
+          <div style={{ height: 1, background: "rgba(255,255,255,0.07)", margin: "14px 0" }} />
+          <VolumeRow
+            label="Music"
+            icon={(m, c) => <MusicIcon size={18} muted={m} color={c} />}
+            volume={musicVolume}
+            muted={musicMuted}
+            onVolume={onMusicVolume}
+            onToggleMute={() => { const m = musicManager.toggleMuted(); setMusicMuted(m); }}
+          />
+          <div style={{ color: track ? "#7c6fb0" : "#5f6788", lineHeight: 1.6, fontSize: 7, marginTop: 10, minHeight: 11 }}>
+            {track ?? "Music off"}
           </div>
-          <div className="flex items-center gap-2">
-            <input
-              type="range"
-              min={0}
-              max={100}
-              value={Math.round((muted ? 0 : volume) * 100)}
-              onChange={(e) => onVolume(parseInt(e.target.value, 10) / 100)}
-              // Play a preview tick on release so the level is audible immediately.
-              onMouseUp={() => soundManager.play("click")}
-              onTouchEnd={() => soundManager.play("click")}
-              className="pixel-range"
-              style={{ flex: 1, cursor: "pointer", ["--p" as string]: `${Math.round((muted ? 0 : volume) * 100)}%` }}
-            />
-            <span style={{ fontSize: 8, color: "#888899", width: 34, textAlign: "right", fontFamily: "monospace" }}>
-              {Math.round((muted ? 0 : volume) * 100)}%
-            </span>
-          </div>
-          <div style={{ color: "#5f6788", lineHeight: 1.6, fontSize: 7, marginTop: 12 }}>
-            All in-game effects: clicks, chimes, footsteps. Saved on this device.
+          <div style={{ color: "#5f6788", lineHeight: 1.6, fontSize: 7, marginTop: 10 }}>
+            Saved on this device.
           </div>
         </Card>
       </div>
