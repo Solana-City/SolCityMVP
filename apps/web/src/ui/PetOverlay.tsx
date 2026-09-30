@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { PET_FRAMES, PET_FRAME_MS, PET_LOOPS, petSheetUrl } from "@/game/pet/petAssets";
+import { octagonFrameThin } from "@/ui/chamfer";
 
 /**
  * The petting square: the Caramel Dog has nothing to say, so meeting it plays
@@ -43,8 +44,13 @@ export default function PetOverlay({ onClose }: { onClose: () => void }) {
       const fh = image.naturalHeight;
       if (fw < 1 || fh < 1) { setFailed(true); return; }
 
-      // Whole-pixel scaling only, so the pixel art never lands between pixels.
-      const scale = Math.max(1, Math.floor(BOX / Math.max(fw, fh)));
+      // Rounded UP, not down: a sheet whose frame doesn't divide BOX evenly
+      // (113px frames into a 288px box, here) left a visible gap of bare
+      // frame around it at the floor scale. Ceiling it instead draws past
+      // BOX, and the canvas's own CSS max-width/height (below) scales that
+      // back down to fill the box edge to edge — a much smaller, one-off
+      // softening than the gap it replaces.
+      const scale = Math.max(1, Math.ceil(BOX / Math.max(fw, fh)));
       canvas.width = fw * scale;
       canvas.height = fh * scale;
       ctx.imageSmoothingEnabled = false;
@@ -102,11 +108,7 @@ export default function PetOverlay({ onClose }: { onClose: () => void }) {
       // A stuck sheet should never trap the player in here.
       onClick={onClose}
     >
-      <div style={{
-        borderWidth: 20, borderStyle: "solid", borderColor: "transparent",
-        borderImage: 'url(/assets/branding/ui/frame-panel-test.png) 64 fill / 20px / 0 round',
-        imageRendering: "pixelated",
-      }}>
+      <div style={octagonFrameThin()}>
         {/* Square box, art centred in it whatever shape the frames are. */}
         <div style={{
           width: BOX, height: BOX, maxWidth: "70vw", maxHeight: "70vw",
