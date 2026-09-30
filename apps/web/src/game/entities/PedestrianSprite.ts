@@ -472,12 +472,45 @@ export class PedestrianSprite {
   nudge(dx: number, dy: number): void {
     const now = this.scene.time.now;
     if (now - this.nudgeCooldown < 400) return;
-    this.nudgeCooldown = now;
 
     const container = this.avatar.getContainer();
     if (!container?.scene || !container.body) return;
     const body = container.body as Phaser.Physics.Arcade.Body;
-    body.reset(container.x + dx, container.y + dy);
+
+    // `body.reset` is a TELEPORT: it writes the position straight in, and no
+    // collider gets a say. A whole tile of it, aimed by whichever way the
+    // player happened to walk in, is what put citizens on the rocks and out
+    // in the sea — bump one standing at the shoreline and it lands in the
+    // water, where nothing pushes it back out and it goes on strolling.
+    //
+    // So the shove is tested first, and it gives up rather than lands
+    // somewhere solid: the full tile, then half of it, then nothing. Standing
+    // its ground is a fine outcome — the point of the nudge is that walking
+    // into somebody moves them, not that it always moves them a whole tile.
+    for (const scale of [1, 0.5]) {
+      const nx = container.x + dx * scale;
+      const ny = container.y + dy * scale;
+      if (this.isClear(nx, ny)) {
+        this.nudgeCooldown = now;
+        body.reset(nx, ny);
+        return;
+      }
+    }
+  }
+
+  /**
+   * Room for this citizen to stand at (wx, wy): the four corners of the body,
+   * not its centre. A centre-only test clears a spot whose far side is inside
+   * a rock, which is the shove ending half-buried in it.
+   */
+  private isClear(wx: number, wy: number): boolean {
+    const hw = TILE_SIZE * 0.25;
+    const top = TILE_SIZE * 0.2;
+    const bottom = TILE_SIZE * 0.1;
+    return !this.ctx.isBlocked(wx - hw, wy - top)
+        && !this.ctx.isBlocked(wx + hw, wy - top)
+        && !this.ctx.isBlocked(wx - hw, wy + bottom)
+        && !this.ctx.isBlocked(wx + hw, wy + bottom);
   }
 
   updateDepth() { this.avatar.updateDepth(); }
