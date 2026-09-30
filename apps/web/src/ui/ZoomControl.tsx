@@ -79,6 +79,11 @@ export default function ZoomControl({ compact = false }: { compact?: boolean }) 
     <div
       className="flex items-center gap-1 px-2 py-1.5"
       style={chamferBox(8, {
+        // Never shrunk by its sibling (the onchain log button, which grows
+        // with the digit count): the buttons inside already refuse to
+        // shrink, so squeezing this container just clipped "+" behind its
+        // own chamfer corner instead of actually making anything smaller.
+        flexShrink: 0,
         background: "rgba(10,10,30,0.85)",
         border: `1px solid ${CYAN}40`,
         backdropFilter: "blur(4px)",
