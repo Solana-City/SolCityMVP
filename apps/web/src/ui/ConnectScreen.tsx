@@ -5,6 +5,7 @@ import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import GuestNotice from "./GuestNotice";
 import ConnectingOverlay from "./ConnectingOverlay";
+import HeroSprite from "./HeroSprite";
 import { WALLET_LOGOUT_EVENT, WALLET_FLAP_GRACE_MS } from "./walletSession";
 import { chamferBox } from "@/ui/chamfer";
 import ChamferGlow from "@/ui/ChamferGlow";
@@ -137,6 +138,7 @@ export default function ConnectScreen() {
         .sc-root { display: flex; flex-direction: row-reverse; }
         .sc-side { width: min(600px, 36vw); min-width: 340px; flex-shrink: 0; overflow-y: auto; }
         .sc-hero { flex: 1; min-width: 0; background: url(/assets/branding/city-hero.webp) center / cover no-repeat; image-rendering: pixelated; }
+        .sc-hero > * { pointer-events: none; }
         @media (max-width: 820px) {
           .sc-root { flex-direction: column-reverse; }
           .sc-side { width: 100%; min-width: 0; flex: 1; }
@@ -230,7 +232,7 @@ export default function ConnectScreen() {
         </div>
       </div>
 
-      <div className="sc-hero" />
+      <HeroSprite className="sc-hero" />
 
       <button
         onClick={() => setMusicMuted(musicManager.toggleMuted())}
