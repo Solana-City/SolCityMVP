@@ -820,23 +820,29 @@ function WardrobeButton({ onClick, size = 36 }: { onClick: () => void; size?: nu
   return <HudIconBtn size={size} src="/assets/ui/icon_wardrob.png" title="Wardrobe" onClick={onClick} />;
 }
 
-/** One HUD-rail icon button: the sprite carries its own frame; hover brightens and lifts it. */
+/** One HUD-rail icon button: the sprite carries its own frame; hover brightens and lifts it, a press sinks it back down. */
 function HudIconBtn({ size, src, onClick, title, overlay, dot, ...aria }: {
   size: number; src: string; onClick: () => void; title: string;
   overlay?: ReactNode; dot?: boolean;
   "aria-label"?: string; "aria-expanded"?: boolean; "aria-controls"?: string;
 }) {
   const [hover, setHover] = useState(false);
+  const [pressed, setPressed] = useState(false);
   return (
     <button
       onClick={onClick} title={title} {...aria}
-      onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => { setHover(false); setPressed(false); }}
+      onPointerDown={() => setPressed(true)}
+      onPointerUp={() => setPressed(false)}
       style={{
         position: "relative", width: size, height: size, padding: 0, border: "none", background: "none",
         cursor: "pointer", flexShrink: 0, display: "block",
-        filter: hover ? "brightness(1.25) drop-shadow(0 0 4px rgba(20,240,198,0.7))" : "none",
-        transform: hover ? "translateY(-1px)" : "none",
-        transition: "filter 0.12s, transform 0.12s",
+        filter: pressed
+          ? "brightness(1.1)"
+          : hover ? "brightness(1.25) drop-shadow(0 0 4px rgba(20,240,198,0.7))" : "none",
+        transform: pressed ? "scale(0.92)" : hover ? "translateY(-1px)" : "none",
+        transition: "filter 0.12s, transform 0.08s",
       }}
     >
       <img src={src} alt="" draggable={false}
@@ -882,7 +888,7 @@ function PfpButton({ gameRef, onClick, size = 40 }: {
   return (
     <button
       onClick={onClick}
-      className="cursor-pointer transition-transform hover:scale-105"
+      className="cursor-pointer transition-transform hover:scale-105 active:scale-95"
       style={{
         ...avatarFrame(1, size),
         ...avatarPhoto(pfp),

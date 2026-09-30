@@ -112,15 +112,21 @@ function ZBtn({
   size: number;
   color?: string;
 }) {
+  const [hover, setHover] = useState(false);
+  const [pressed, setPressed] = useState(false);
   return (
     <button
       onClick={onClick}
       disabled={disabled}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => { setHover(false); setPressed(false); }}
+      onPointerDown={() => setPressed(true)}
+      onPointerUp={() => setPressed(false)}
       style={chamferBox(6, {
         width: size,
         height: size,
-        border: `1px solid ${color}4D`,
-        background: disabled ? "transparent" : `${color}1F`,
+        border: `1px solid ${color}${disabled ? "4D" : hover ? "b3" : "4D"}`,
+        background: disabled ? "transparent" : pressed ? `${color}3d` : hover ? `${color}33` : `${color}1F`,
         color: disabled ? "#333344" : color,
         fontSize: "11px",
         lineHeight: 1,
@@ -130,7 +136,8 @@ function ZBtn({
         justifyContent: "center",
         padding: 0,
         flexShrink: 0,
-        transition: "background 0.1s",
+        transform: pressed && !disabled ? "scale(0.88)" : "none",
+        transition: "background 0.1s, border-color 0.1s, transform 0.08s",
         WebkitTapHighlightColor: "transparent",
       })}
     >

@@ -229,6 +229,14 @@ function ToggleButton({
   // Border color leans on activity: failing stands out loudest.
   const borderColor =
     failedCount > 0 ? "#F72585" : pendingCount > 0 ? "#FFD700" : "#B7E928";
+  const [hover, setHover] = useState(false);
+  const [pressed, setPressed] = useState(false);
+
+  // Closed: dark fill nudging toward the border color on hover. Open: already
+  // the full border color, so hover/press only darken it a touch instead of
+  // fighting the "this is the active state" fill.
+  const closedBg = pressed ? `${borderColor}40` : hover ? `${borderColor}22` : "rgba(10,10,30,0.85)";
+  const openBg = pressed ? `${borderColor}cc` : borderColor;
 
   return (
     <div
@@ -244,6 +252,10 @@ function ToggleButton({
       <button
         onClick={onClick}
         title="On-chain activity [T]"
+        onMouseEnter={() => setHover(true)}
+        onMouseLeave={() => { setHover(false); setPressed(false); }}
+        onPointerDown={() => setPressed(true)}
+        onPointerUp={() => setPressed(false)}
         className="cursor-pointer transition-colors flex items-center justify-center"
         style={chamferBox(6 - CHAMFER_BORDER_W, {
           flex: 1,
@@ -252,11 +264,13 @@ function ToggleButton({
           padding: "0 5px",
           minWidth: 0,
           overflow: "hidden",
-          background: isOpen ? borderColor : "rgba(10,10,30,0.85)",
+          background: isOpen ? openBg : closedBg,
           border: "none",
           color: isOpen ? "#0a0a1e" : "#ccccdd",
           fontFamily: '"Press Start 2P", monospace',
           fontSize: compact ? "6px" : "7px",
+          transform: pressed ? "scale(0.96)" : "none",
+          transition: "background 0.12s, transform 0.08s",
         })}
       >
         <PulseDot color={isOpen ? "#0a0a1e" : borderColor} active={pendingCount > 0} />
