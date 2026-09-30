@@ -43,8 +43,13 @@ export const TRACKS: BgmTrack[] = [
 
 const MUTE_KEY = "solcity:musicMuted";
 const VOLUME_KEY = "solcity:musicVolume";
-/** Music sits under the SFX so a chime still cuts through. */
-const DEFAULT_VOLUME = 0.4;
+/**
+ * Deliberately quiet: music is the backdrop, not the event. It has to sit
+ * under the SFX so a chime still cuts through, and a first visit should never
+ * be the kind that makes someone reach for the tab's mute. The slider raises
+ * it for anyone who wants more.
+ */
+const DEFAULT_VOLUME = 0.22;
 
 /** Seconds of fade at each end of a track. */
 const FADE_OUT = 3;
