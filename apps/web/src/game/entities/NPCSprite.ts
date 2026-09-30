@@ -5,6 +5,7 @@ import { SimpleSprite, NPC_DIRECTION_ROW, PLAYER_DIRECTION_ROW, type Direction }
 import type { NPCDefinition } from "../config/npcRegistry";
 import { profileManager } from "../config/profileManager";
 import { progressionBus } from "../progression/progressionBus";
+import { npcCategory } from "../minimap/categories";
 import { hoverCursor } from "../config/cursors";
 
 const INTERACT_RANGE = TILE_SIZE * 1.8;
@@ -13,36 +14,40 @@ const SAY_COOLDOWN = 3600;
 /** How long the reaction pose is held, just under the line's own life. */
 const ACTION_HOLD_MS = 2500;
 
-// Pixel-art attention balloons come in five palette variants (see
-// assets/ui/attention_*.png). Each NPC uses the variant closest to its
-// registry color, measured by RGB distance to these representative values.
-const ATTENTION_RGB: Record<string, [number, number, number]> = {
-  green:  [63, 190, 96],
-  orange: [240, 138, 48],
-  purple: [153, 69, 255],
-  red:    [229, 72, 82],
-  yellow: [245, 197, 66],
-};
+/**
+ * The exclamation over an NPC's head: one animated sheet per map category,
+ * drawn in that category's own legend colour (assets/ui/attention_*.png).
+ *
+ * Keyed by CATEGORY rather than by colour. An NPC's `color` is already its
+ * category's legend colour and nothing else (see npcRegistry's categoryColor),
+ * so the old nearest-RGB search over a palette of five invented reference
+ * colours was measuring the distance from a colour to itself, the long way
+ * round, and would quietly pick the wrong sheet the day a legend colour moved.
+ *
+ * These four are every category `npcCategory` can return; `landmark` and
+ * `players` exist in the legend but never belong to an NPC.
+ */
+export const ATTENTION_CATEGORIES = ["guide", "defi", "games", "community"] as const;
 
-function attentionVariantFor(color: number): string {
-  const r = (color >> 16) & 0xff;
-  const g = (color >> 8) & 0xff;
-  const b = color & 0xff;
-  let best = "yellow";
-  let bestDist = Infinity;
-  for (const [name, [vr, vg, vb]] of Object.entries(ATTENTION_RGB)) {
-    const d = (r - vr) ** 2 + (g - vg) ** 2 + (b - vb) ** 2;
-    if (d < bestDist) { bestDist = d; best = name; }
-  }
-  return best;
-}
+/** One row of 14 frames: the mark bobbing up and back down. */
+export const ATTENTION_FRAME_W = 24;
+export const ATTENTION_FRAME_H = 102;
+export const ATTENTION_FRAMES = 14;
+/** The loop runs a touch over a second, which reads as idle rather than urgent. */
+export const ATTENTION_FRAME_RATE = 12;
+/**
+ * Source pixels to world pixels. A sixth is the only reduction that lands both
+ * dimensions on whole numbers (24x102 -> 4x17), so the mark keeps its shape
+ * and its pixels stay square at every zoom on the ladder.
+ */
+const ATTENTION_SCALE = 1 / 6;
 
 export class NPCSprite {
   private scene: Phaser.Scene;
   private avatar: SimpleSprite;
   private exclamation: Phaser.GameObjects.Container;
   /** Pixel-art balloon sprite (preferred) — null when the texture is missing. */
-  private exclamationImg: Phaser.GameObjects.Image | null = null;
+  private exclamationImg: Phaser.GameObjects.Sprite | null = null;
   /** Primitive fallback pieces — only created when the sprite isn't available. */
   private exclamationBg: Phaser.GameObjects.Arc | null = null;
   private exclamationText: Phaser.GameObjects.Text | null = null;
@@ -151,13 +156,23 @@ export class NPCSprite {
     }).setOrigin(0.5, 1);
     container.add(this.nameText);
 
-    // ── Exclamation bubble ───────────────────────────────────────────────────
-    const balloonKey = `attention-${attentionVariantFor(def.color)}`;
+    // ── Exclamation ──────────────────────────────────────────────────────────
+    const balloonKey = `attention-${npcCategory(def)}`;
     if (scene.textures.exists(balloonKey)) {
-      this.exclamationImg = scene.add.image(0, 0, balloonKey);
-      // 64x64 source rendered at 12px world — a smaller badge that sits close
-      // above the name without looming over the character.
-      this.exclamationImg.setDisplaySize(12, 12);
+      const animKey = `${balloonKey}-bob`;
+      if (!scene.anims.exists(animKey)) {
+        scene.anims.create({
+          key: animKey,
+          frames: scene.anims.generateFrameNumbers(balloonKey, { start: 0, end: ATTENTION_FRAMES - 1 }),
+          frameRate: ATTENTION_FRAME_RATE,
+          repeat: -1,
+        });
+      }
+      this.exclamationImg = scene.add.sprite(0, 0, balloonKey).setScale(ATTENTION_SCALE);
+      // Every NPC in the city starts on a different frame. In step they read
+      // as one blinking row of marks rather than a street of separate people.
+      this.exclamationImg.anims.play(animKey);
+      this.exclamationImg.anims.setProgress(((def.tileX * 7 + def.tileY * 13) % ATTENTION_FRAMES) / ATTENTION_FRAMES);
       this.exclamation = scene.add.container(0, exclamationY, [this.exclamationImg]);
     } else {
       // Fallback: primitive circle + "!" (texture failed to load), scaled to
@@ -172,14 +187,18 @@ export class NPCSprite {
     }
     container.add(this.exclamation);
 
-    scene.tweens.add({
-      targets: this.exclamation,
-      y: exclamationY - 5,
-      duration: 900,
-      yoyo: true,
-      repeat: -1,
-      ease: "Sine.easeInOut",
-    });
+    // The drawn mark bobs on its own, so only the primitive fallback needs a
+    // tween to move it. Both together was two bobs fighting each other.
+    if (!this.exclamationImg) {
+      scene.tweens.add({
+        targets: this.exclamation,
+        y: exclamationY - 5,
+        duration: 900,
+        yoyo: true,
+        repeat: -1,
+        ease: "Sine.easeInOut",
+      });
+    }
 
     // Apply initial visited state
     this.applyVisitedState(profileManager.get().visitedNPCs.includes(def.id));

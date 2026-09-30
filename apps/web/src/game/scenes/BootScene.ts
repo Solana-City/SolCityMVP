@@ -6,6 +6,7 @@ import { NPC_REGISTRY } from "../config/npcRegistry";
 import { getAllLayerVariants, EXPRESSIONS, SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT } from "../config/paperDoll";
 import { preloadAnimatedDecor } from "../world/AnimatedDecor";
 import { preloadBeachBall } from "../world/BeachBall";
+import { ATTENTION_CATEGORIES, ATTENTION_FRAME_W, ATTENTION_FRAME_H } from "../entities/NPCSprite";
 import { BUFFS } from "../buffs/playerBuffs";
 
 // Background color used in the spriter's sheets — treated as transparent.
@@ -85,9 +86,19 @@ export class BootScene extends Phaser.Scene {
       this.load.image(key, `assets/tilesets/packed/${key}.png`);
     }
 
-    // Pixel-art NPC attention balloons — one per palette variant.
-    for (const variant of ["green", "orange", "purple", "red", "yellow"]) {
-      this.load.image(`attention-${variant}`, `assets/ui/attention_${variant}.png`);
+    // The exclamation bobbing over an NPC's head: one animated sheet per map
+    // category, in that category's own legend colour (see entities/NPCSprite).
+    //
+    // The attention_green/orange/purple/red/yellow balloons these replaced are
+    // still in assets/ui and still wanted: a dozen DOM panels load them by path
+    // as plain icons (ActionPanel, CityGuide, ConnectingOverlay and the rest).
+    // They are simply no longer a Phaser texture.
+    for (const category of ATTENTION_CATEGORIES) {
+      this.load.spritesheet(
+        `attention-${category}`,
+        `assets/ui/attention_${category}.png`,
+        { frameWidth: ATTENTION_FRAME_W, frameHeight: ATTENTION_FRAME_H },
+      );
     }
 
     // Buff badges — the icon that rides over the head of anyone carrying one.
