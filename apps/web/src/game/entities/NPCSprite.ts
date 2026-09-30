@@ -41,6 +41,15 @@ export const ATTENTION_FRAME_RATE = 12;
  * and its pixels stay square at every zoom on the ladder.
  */
 const ATTENTION_SCALE = 1 / 6;
+/**
+ * How visible the mark stays over an NPC the player has already talked to.
+ *
+ * It still has to say "there is a person here, you can come back" — at 0.35 it
+ * said almost nothing, and an NPC you had met once read as scenery. Two thirds
+ * carries across the sand and still sits a clear step below the full-strength
+ * mark on somebody new, which is the whole point of dimming it.
+ */
+const ATTENTION_ALPHA_VISITED = 0.65;
 
 export class NPCSprite {
   private scene: Phaser.Scene;
@@ -547,8 +556,8 @@ export class NPCSprite {
 
   private applyVisitedState(visited: boolean): void {
     if (this.exclamationImg) {
-      // Sprite balloon: fade out once visited — color variants stay intact.
-      this.exclamationImg.setAlpha(visited ? 0.35 : 1);
+      // Dimmed once visited, never hidden — the colour is untouched.
+      this.exclamationImg.setAlpha(visited ? ATTENTION_ALPHA_VISITED : 1);
       return;
     }
     if (!this.exclamationBg || !this.exclamationText) return;
