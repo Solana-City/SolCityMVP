@@ -404,6 +404,53 @@ sell it. Cheap to build, needs a policy before it exists.
 
 ---
 
+## Outfit packs, rarities and seasons (user, 2026-10-01)
+
+The wardrobe's single pack became **three packs, four rarities and a season**
+(`game/config/packs.ts`, `BoosterOverlay`, tests in `packs.test.ts`). What
+shipped is the SHAPE; the numbers are placeholders and the program knows none
+of it yet. This is the revenue line, so the order below is the order it pays.
+
+### PK1. The program does not speak packs — P0, blocks the money
+The deployed program knows one pack, a flat pool, no rarity, no season.
+Nothing here can take a single lamport until that changes, and it has to land
+in the SAME redeploy as everything else (`REDEPLOY_CHECKLIST.md`). The six
+additions are written out in `BOOSTER_SPEC.md`, "BEFORE THE REDEPLOY":
+pack id on the instruction, price on chain, a rarity per pool index (as
+contiguous ranges, which is cheap but fixes the pool order), weights in basis
+points, a season number, and the same fallback ladder the client uses.
+
+### PK2. Pack art, three animated sheets — waiting on the artist
+Brief in `SPRITE_REQUESTS.md`: one row, 6 frames of 64x64, 8 fps idle loop,
+one per pack. Until they land each card falls back to the wardrobe icon in the
+pack's colour, so nothing is blocked and nothing looks broken.
+
+### PK3. The numbers — needs the room, not code
+Pack names (STREET / CITY / PRIME are placeholders), prices (0.025 / 0.05 /
+0.1 SOL, and the outfit-box price was already an open question), the odds per
+rarity, and the rarity of each item (a provisional table: Crown and Ninja
+legendary, a handful rare, the rest common). Each is one line to change.
+
+### PK4. How a season is expressed on chain — decided 2026-10-01, see below
+One collection, a `Season` trait on the metadata, and the drop table on the
+program per season. Written up in the answer to the user's question of
+2026-10-01; the program side is part of PK1.
+
+### PK5. Where packs live — decided 2026-10-01: the sol-city program
+Not a separate program like Sol Mechs. Reasons in the same answer: the
+unlocks, the treasury and the player PDA are already there, and a second
+program would need its own upgrade authority, its own redeploy and a
+cross-program read of the wardrobe to be useful.
+
+### Found while building it — FIXED 2026-10-01
+The draw refused to hand out a single hat: it skipped anything `isFreeItem`
+calls free, and `TEST_UNLOCK_ALL_HATS` (a testing switch that is ON in the
+live build) makes every hat free — most of the pool, the Crown included. The
+draw now asks what is free in the shipped game rather than what a test flag
+says today. Re-locking the hats is still on the housekeeping list.
+
+---
+
 ## Round of 2026-09-24 (mentor session): mobile, performance, money, go to market
 
 Sorted by what it costs us and what it buys. Everything here was checked

@@ -99,8 +99,9 @@ the answer, and `rollPack` exists only so the preview plays.
 ### Season trait, on the item as well as the pack
 A wardrobe item carries `season` (`LayerVariant.season`, absent = 1). The chain
 needs the same, because the season is what makes a collection time-limited:
-see the note in `FEEDBACK_BACKLOG.md` (R2b) for the decision on whether the
-season lives on the metadata of a single collection or on separate ones.
+see "Outfit packs, rarities and seasons" in `FEEDBACK_BACKLOG.md` (PK4) for
+the decision: ONE collection, a `Season` trait on the metadata, and the drop
+table per season on the program.
 
 ---
 
