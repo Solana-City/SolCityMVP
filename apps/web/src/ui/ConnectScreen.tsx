@@ -2,7 +2,7 @@
 
 import { useWallet } from "@solana/wallet-adapter-react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import GuestNotice from "./GuestNotice";
 import ConnectingOverlay from "./ConnectingOverlay";
 import HeroSprite from "./HeroSprite";
@@ -11,6 +11,14 @@ import { chamferBox } from "@/ui/chamfer";
 import ChamferGlow from "@/ui/ChamferGlow";
 import { MusicIcon } from "@/ui/PixelIcons";
 import { musicManager } from "@/game/audio/MusicManager";
+
+/**
+ * useLayoutEffect measures, so it has to run before the browser paints or the
+ * panel shows unscaled for a frame. React logs a warning for it during the
+ * server render, where there is nothing to measure, so the server gets the
+ * effect that does nothing there.
+ */
+const useMeasureEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
 
 export default function ConnectScreen() {
   const { connected } = useWallet();
@@ -33,6 +41,59 @@ export default function ConnectScreen() {
     const sync = () => setMusicMuted(musicManager.isMuted());
     sync();
     return musicManager.subscribe(sync);
+  }, []);
+
+  /** The panel, and the content inside it that shrinks to fit the panel. */
+  const sideRef = useRef<HTMLDivElement>(null);
+  const fitRef = useRef<HTMLDivElement>(null);
+
+  // Everything on this screen has to be reachable without scrolling: it is a
+  // login screen, and a player who cannot see CONNECT WALLET has no way in.
+  // Sizing it off the viewport WIDTH alone, which is what the clamps below
+  // do, says nothing about how tall the device is — a short window, a phone
+  // in landscape, the Seeker webshell with its chrome, and the content ran
+  // past the bottom and put a scrollbar there.
+  //
+  // So the panel is measured against its own content and the whole column is
+  // scaled down by whatever it takes to fit. It never scales UP: a screen
+  // with room to spare looks exactly as it did.
+  useMeasureEffect(() => {
+    const side = sideRef.current;
+    const fit = fitRef.current;
+    if (!side || !fit) return;
+
+    const measure = () => {
+      const available = side.clientHeight;
+      if (available <= 0) return;
+      // Scaling down widens the column too, which reflows the text and can
+      // change what it needs, so this measures again at the size it just
+      // picked. Each pass may only shrink, so it settles instead of hunting.
+      let scale = 1;
+      for (let pass = 0; pass < 3; pass++) {
+        fit.style.setProperty("--sc-fit", String(scale));
+        fit.style.height = "auto";                       // natural, not the panel's
+        const needed = fit.getBoundingClientRect().height / scale;
+        fit.style.height = "";
+        if (needed <= 0) return;
+        const next = Math.min(scale, available / needed);
+        const settled = next > scale - 0.002;
+        scale = next;
+        if (settled) break;
+      }
+      fit.style.setProperty("--sc-fit", String(scale));
+    };
+
+    measure();
+    // Press Start 2P arrives after the first paint and every line on this
+    // screen is set in it, so the first measurement is of the fallback font.
+    const fontTimeout = new Promise<void>((resolve) => setTimeout(resolve, 1000));
+    Promise.race([document.fonts.load('10px "Press Start 2P"').then(() => undefined), fontTimeout])
+      .then(measure)
+      .catch(() => undefined);
+
+    const observer = new ResizeObserver(measure);
+    observer.observe(side);
+    return () => observer.disconnect();
   }, []);
 
   // A wallet adapter reports `connected: false` for reasons that are not a
@@ -136,7 +197,17 @@ export default function ConnectScreen() {
     <div className="sc-root" style={{ position: "fixed", inset: 0, zIndex: 100, overflow: "hidden", background: "#07152E" }}>
       <style>{`
         .sc-root { display: flex; flex-direction: row-reverse; }
-        .sc-side { width: min(600px, 36vw); min-width: 340px; flex-shrink: 0; overflow-y: auto; }
+        .sc-side { width: min(600px, 36vw); min-width: 340px; flex-shrink: 0; position: relative; overflow: hidden auto; }
+        /* Laid out at 1/scale and drawn back down to size, so the content
+           keeps its own proportions and the type keeps its own sizes — the
+           panel just ends up with more room than the device gave it. */
+        .sc-side-fit {
+          position: absolute; top: 0; left: 0;
+          width: calc(100% / var(--sc-fit, 1));
+          height: calc(100% / var(--sc-fit, 1));
+          transform-origin: 0 0;
+          transform: scale(var(--sc-fit, 1));
+        }
         .sc-hero { flex: 1; min-width: 0; background: url(/assets/branding/city-hero.webp) center / cover no-repeat; image-rendering: pixelated; }
         .sc-hero > * { pointer-events: none; }
         @media (max-width: 820px) {
@@ -146,89 +217,91 @@ export default function ConnectScreen() {
         }
       `}</style>
 
-      <div className="sc-side" style={{
-        background: "#07152E", fontFamily: PX,
-        padding: "clamp(20px, 5vh, 56px) clamp(20px, 3.2vw, 56px)",
-        display: "flex", flexDirection: "column", justifyContent: "space-between", gap: 24,
-        boxSizing: "border-box",
-      }}>
-        <div>
-          <img src="/assets/branding/logo.png" alt="SolanaCity" draggable={false}
-            style={{ display: "block", width: "clamp(200px, 24vw, 380px)", maxWidth: "100%", height: "auto", imageRendering: "pixelated" }} />
-          <div style={{ marginTop: 10, fontSize: "clamp(6px, 0.72vw, 10px)", letterSpacing: 2, color: "#8FA6E6" }}>
-            BUILD · PLAY · OWN · TOGETHER
+      <div className="sc-side" ref={sideRef} style={{ background: "#07152E" }}>
+        <div className="sc-side-fit" ref={fitRef} style={{
+          fontFamily: PX,
+          padding: "clamp(20px, 5vh, 56px) clamp(20px, 3.2vw, 56px)",
+          display: "flex", flexDirection: "column", justifyContent: "space-between", gap: 24,
+          boxSizing: "border-box",
+        }}>
+          <div>
+            <img src="/assets/branding/logo.png" alt="SolanaCity" draggable={false}
+              style={{ display: "block", width: "clamp(200px, 24vw, 380px)", maxWidth: "100%", height: "auto", imageRendering: "pixelated" }} />
+            <div style={{ marginTop: 10, fontSize: "clamp(6px, 0.72vw, 10px)", letterSpacing: 2, color: "#8FA6E6" }}>
+              BUILD · PLAY · OWN · TOGETHER
+            </div>
           </div>
-        </div>
 
-        <div>
-          <div style={{ fontSize: "clamp(6px, 0.72vw, 10px)", letterSpacing: 2, color: "#14F0C6", marginBottom: 20 }}>
-            YOUR NEXT ADVENTURE
+          <div>
+            <div style={{ fontSize: "clamp(6px, 0.72vw, 10px)", letterSpacing: 2, color: "#14F0C6", marginBottom: 20 }}>
+              YOUR NEXT ADVENTURE
+            </div>
+            <div style={{ fontSize: "clamp(16px, 2.1vw, 30px)", lineHeight: 1.15, color: "#fff", textShadow: "3px 3px 0 rgba(0,0,0,0.35)" }}>
+              Welcome to<br />SolanaCity
+            </div>
+            <div style={{ marginTop: 22, fontSize: "clamp(6px, 0.72vw, 10px)", lineHeight: 1.9, color: "#8FA6E6" }}>
+              Explore the city. Meet your people.<br />Make yourself at home.
+            </div>
           </div>
-          <div style={{ fontSize: "clamp(16px, 2.1vw, 30px)", lineHeight: 1.15, color: "#fff", textShadow: "3px 3px 0 rgba(0,0,0,0.35)" }}>
-            Welcome to<br />SolanaCity
-          </div>
-          <div style={{ marginTop: 22, fontSize: "clamp(6px, 0.72vw, 10px)", lineHeight: 1.9, color: "#8FA6E6" }}>
-            Explore the city. Meet your people.<br />Make yourself at home.
-          </div>
-        </div>
 
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          <ChamferGlow
-            glow="drop-shadow(0 0 12px rgba(183,233,40,0.35))"
-            style={{ width: "100%", transition: "filter 0.15s" }}
-            onMouseEnter={(e) => { e.currentTarget.style.filter = "drop-shadow(0 0 18px rgba(183,233,40,0.7))"; }}
-            onMouseLeave={(e) => { e.currentTarget.style.filter = "drop-shadow(0 0 12px rgba(183,233,40,0.35))"; }}
-          >
-            <button
-              onClick={openModal}
-              style={chamferBox(10, {
-                width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 16,
-                fontFamily: PX, fontSize: "clamp(9px, 1vw, 14px)", letterSpacing: 1,
-                padding: "clamp(16px, 2.4vh, 24px) 24px",
-                background: "#B7E928", color: "#0a1a14", border: "none", cursor: "pointer",
-                transition: "transform 0.1s",
-              })}
-              onMouseEnter={(e) => { e.currentTarget.style.transform = "translateY(-2px)"; }}
-              onMouseLeave={(e) => { e.currentTarget.style.transform = "translateY(0)"; }}
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            <ChamferGlow
+              glow="drop-shadow(0 0 12px rgba(183,233,40,0.35))"
+              style={{ width: "100%", transition: "filter 0.15s" }}
+              onMouseEnter={(e) => { e.currentTarget.style.filter = "drop-shadow(0 0 18px rgba(183,233,40,0.7))"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.filter = "drop-shadow(0 0 12px rgba(183,233,40,0.35))"; }}
             >
-              <img src="/assets/ui/icon_wallet2.png" alt="" draggable={false}
-                style={{ height: "clamp(22px, 2.6vw, 34px)", width: "auto", imageRendering: "pixelated", display: "block" }} />
-              CONNECT WALLET
+              <button
+                onClick={openModal}
+                style={chamferBox(10, {
+                  width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 16,
+                  fontFamily: PX, fontSize: "clamp(9px, 1vw, 14px)", letterSpacing: 1,
+                  padding: "clamp(16px, 2.4vh, 24px) 24px",
+                  background: "#B7E928", color: "#0a1a14", border: "none", cursor: "pointer",
+                  transition: "transform 0.1s",
+                })}
+                onMouseEnter={(e) => { e.currentTarget.style.transform = "translateY(-2px)"; }}
+                onMouseLeave={(e) => { e.currentTarget.style.transform = "translateY(0)"; }}
+              >
+                <img src="/assets/ui/icon_wallet2.png" alt="" draggable={false}
+                  style={{ height: "clamp(22px, 2.6vw, 34px)", width: "auto", imageRendering: "pixelated", display: "block" }} />
+                CONNECT WALLET
+              </button>
+            </ChamferGlow>
+
+            <div style={{ display: "flex", alignItems: "center", gap: 16, color: "#5F7BB8", fontSize: 10 }}>
+              <span style={{ flex: 1, height: 1, background: "rgba(143,166,230,0.35)" }} />OR
+              <span style={{ flex: 1, height: 1, background: "rgba(143,166,230,0.35)" }} />
+            </div>
+
+            <button
+              onClick={() => setGuestNotice(true)}
+              style={chamferBox(10, {
+                width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 14,
+                fontFamily: PX, fontSize: "clamp(8px, 0.9vw, 12px)", letterSpacing: 1,
+                padding: "clamp(14px, 2.2vh, 22px) 24px",
+                background: "transparent", color: "#fff", border: "2px solid #14F0C6", cursor: "pointer",
+                transition: "background-color 0.15s",
+              })}
+              onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = "rgba(20,240,198,0.12)"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = "transparent"; }}
+            >
+              CONTINUE AS GUEST
+              <svg width="18" height="14" viewBox="0 0 9 7" shapeRendering="crispEdges" fill="#14F0C6">
+                <path d="M0 3h7v1H0zM5 1h1v1H5zM6 2h1v1H6zM6 4h1v1H6zM5 5h1v1H5zM7 3h1v1H7z" />
+              </svg>
             </button>
-          </ChamferGlow>
 
-          <div style={{ display: "flex", alignItems: "center", gap: 16, color: "#5F7BB8", fontSize: 10 }}>
-            <span style={{ flex: 1, height: 1, background: "rgba(143,166,230,0.35)" }} />OR
-            <span style={{ flex: 1, height: 1, background: "rgba(143,166,230,0.35)" }} />
+            <div style={{ textAlign: "center", fontSize: "clamp(6px, 0.62vw, 9px)", lineHeight: 1.8, color: "#6F88C8" }}>
+              Start exploring. Connect your wallet later.
+            </div>
           </div>
 
-          <button
-            onClick={() => setGuestNotice(true)}
-            style={chamferBox(10, {
-              width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 14,
-              fontFamily: PX, fontSize: "clamp(8px, 0.9vw, 12px)", letterSpacing: 1,
-              padding: "clamp(14px, 2.2vh, 22px) 24px",
-              background: "transparent", color: "#fff", border: "2px solid #14F0C6", cursor: "pointer",
-              transition: "background-color 0.15s",
-            })}
-            onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = "rgba(20,240,198,0.12)"; }}
-            onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = "transparent"; }}
-          >
-            CONTINUE AS GUEST
-            <svg width="18" height="14" viewBox="0 0 9 7" shapeRendering="crispEdges" fill="#14F0C6">
-              <path d="M0 3h7v1H0zM5 1h1v1H5zM6 2h1v1H6zM6 4h1v1H6zM5 5h1v1H5zM7 3h1v1H7z" />
-            </svg>
-          </button>
-
-          <div style={{ textAlign: "center", fontSize: "clamp(6px, 0.62vw, 9px)", lineHeight: 1.8, color: "#6F88C8" }}>
-            Start exploring. Connect your wallet later.
+          <div style={{ display: "flex", alignItems: "center", gap: 14, fontSize: "clamp(6px, 0.62vw, 9px)" }}>
+            <span style={chamferBox(6, { border: "2px solid #FFD700", color: "#FFD700", padding: "8px 14px", letterSpacing: 1 })}>DEVNET</span>
+            <span style={{ width: 1, height: 22, background: "rgba(143,166,230,0.35)" }} />
+            <span style={{ color: "#6F88C8" }}>A Solana social RPG</span>
           </div>
-        </div>
-
-        <div style={{ display: "flex", alignItems: "center", gap: 14, fontSize: "clamp(6px, 0.62vw, 9px)" }}>
-          <span style={chamferBox(6, { border: "2px solid #FFD700", color: "#FFD700", padding: "8px 14px", letterSpacing: 1 })}>DEVNET</span>
-          <span style={{ width: 1, height: 22, background: "rgba(143,166,230,0.35)" }} />
-          <span style={{ color: "#6F88C8" }}>A Solana social RPG</span>
         </div>
       </div>
 
