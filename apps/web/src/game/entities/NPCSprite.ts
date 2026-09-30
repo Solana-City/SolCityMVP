@@ -402,9 +402,39 @@ export class NPCSprite {
       //
       // Splitting into legs also stops the diagonal drift that happened
       // whenever consecutive steps picked different axes.
+      //
+      // Each leg is also CLAMPED to the last free point along it. The two
+      // tests above only ask about the destination and the corner, and a
+      // tween walks a straight line between two points without consulting
+      // anything — so a leg whose ends are both clear sails straight over
+      // whatever sits in the middle. That is the Caramel Dog climbing the
+      // beach chairs: its corner and its destination are sand, and the chairs
+      // are in between.
+      //
+      // Sampling is a pure function of the two endpoints, so every client
+      // clamps to the same place and the crowd stays identical everywhere,
+      // which the beach football depends on (NPCs are colliders it bounces
+      // off: see world/BeachBall).
       const legs: Array<{ x: number; y: number; dir: Direction }> = [];
-      if (Math.abs(dx) >= 1) legs.push({ x, y: container.y, dir: dx >= 0 ? "right" : "left" });
-      if (Math.abs(dy) >= 1) legs.push({ x, y, dir: dy >= 0 ? "down" : "up" });
+      if (Math.abs(dx) >= 1) {
+        const stopX = this.clearAlong(container.x, container.y, x, container.y);
+        if (Math.abs(stopX - container.x) >= 1) {
+          legs.push({ x: stopX, y: container.y, dir: dx >= 0 ? "right" : "left" });
+        }
+      }
+      const legStartX = legs.length > 0 ? legs[0].x : container.x;
+      if (Math.abs(dy) >= 1) {
+        const stopY = this.clearAlong(legStartX, container.y, legStartX, y);
+        if (Math.abs(stopY - container.y) >= 1) {
+          legs.push({ x: legStartX, y: stopY, dir: dy >= 0 ? "down" : "up" });
+        }
+      }
+      if (legs.length === 0) {
+        this.setSheet(this.def.spriteKey);
+        this.avatar.face(dir);
+        scheduleNext();
+        return;
+      }
 
       // Long walks travel faster rather than overrunning the step. At the base
       // speed a full-leash move takes far longer than one 4s step, so the next
@@ -462,6 +492,30 @@ export class NPCSprite {
     if (!key || !this.def.spriteWalkKey) return;
     if (!this.scene.textures.exists(key)) return;
     this.avatar.setTexture(key);
+  }
+
+  /**
+   * How far along the straight line from (x0,y0) to (x1,y1) this NPC can walk
+   * before something solid is in the way. Returns the moving axis' last free
+   * value, which is x1/y1 when the whole line is clear.
+   *
+   * Sampled every third of a tile: fine enough that a one-tile obstacle can
+   * never be stepped over, coarse enough to stay cheap on a timer that fires
+   * for every NPC in the city.
+   */
+  private clearAlong(x0: number, y0: number, x1: number, y1: number): number {
+    const horizontal = x0 !== x1;
+    const from = horizontal ? x0 : y0;
+    const to = horizontal ? x1 : y1;
+    const span = to - from;
+    const steps = Math.max(1, Math.ceil(Math.abs(span) / (TILE_SIZE / 3)));
+    let last = from;
+    for (let i = 1; i <= steps; i++) {
+      const at = from + (span * i) / steps;
+      if (this.isTileBlocked(horizontal ? at : x0, horizontal ? y0 : at)) break;
+      last = at;
+    }
+    return last;
   }
 
   private isTileBlocked(x: number, y: number): boolean {
