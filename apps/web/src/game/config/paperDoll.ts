@@ -210,6 +210,28 @@ export interface Expression {
   textureKey: string;
   /** Path relative to public/assets/sprites/paperdoll/. */
   file: string;
+  /** Optional overhead animation, played alongside the face swap. */
+  fx?: ExpressionFxDef;
+}
+
+/**
+ * The overhead burst that sells an expression from across the street. A face
+ * swap is 8 pixels wide on a 64px sprite: at the city's camera it reads from
+ * a step away and nowhere else, which is the note testers kept giving. The
+ * fx is a separate sheet drawn above the head, so distance costs it nothing.
+ *
+ * Sheets are a single row of `frameWidth`x`frameHeight` cells under
+ * public/assets/sprites/fx/expressions/, shipped already keyed (no pink).
+ */
+export interface ExpressionFxDef {
+  /** Phaser texture key for the fx sheet. */
+  textureKey: string;
+  /** Path relative to public/assets/sprites/fx/expressions/. */
+  file: string;
+  frameWidth: number;
+  frameHeight: number;
+  /** Frames per second for one pass of the sheet. */
+  frameRate: number;
 }
 
 export const EXPRESSIONS: Expression[] = [
@@ -218,7 +240,8 @@ export const EXPRESSIONS: Expression[] = [
   { id: "angry", name: "Angry", uiSymbol: "😠", textureKey: "pd-expr-Angry", file: "expressions/Angry.png" },
   { id: "cry",   name: "Cry",   uiSymbol: "😢", textureKey: "pd-expr-Cry",   file: "expressions/Cry.png" },
   { id: "lol",   name: "LOL",   uiSymbol: "😂", textureKey: "pd-expr-LOL",   file: "expressions/LOL.png" },
-  { id: "love",  name: "Love",  uiSymbol: "😍", textureKey: "pd-expr-Love",  file: "expressions/Love.png" },
+  { id: "love",  name: "Love",  uiSymbol: "😍", textureKey: "pd-expr-Love",  file: "expressions/Love.png",
+    fx: { textureKey: "expr-fx-Love", file: "Love.png", frameWidth: 32, frameHeight: 32, frameRate: 10 } },
   { id: "shy",   name: "Shy",   uiSymbol: "😳", textureKey: "pd-expr-Shy",   file: "expressions/Shy.png" },
   { id: "stars", name: "Stars", uiSymbol: "🤩", textureKey: "pd-expr-Stars", file: "expressions/Stars.png" },
 ];

@@ -3,7 +3,8 @@ import { PublicKey } from "@solana/web3.js";
 import { PLAYER_SPEED, TILE_SIZE } from "../config/constants";
 import { Direction } from "../entities/SimpleSprite";
 import { AvatarSprite } from "../entities/AvatarSprite";
-import { loadSavedLoadout, DEFAULT_LOADOUT, type Loadout } from "../config/paperDoll";
+import { playExpressionFx, EXPRESSION_DURATION_MS } from "../entities/ExpressionFx";
+import { loadSavedLoadout, DEFAULT_LOADOUT, EXPRESSIONS, type Loadout, type Expression } from "../config/paperDoll";
 import { OnChainMultiplayer, OnChainPlayer } from "../multiplayer/OnChainMultiplayer";
 import { ChatManager, getChannelColor, SELF_COLOR } from "../chat/ChatManager";
 import { containsLink, maskLinks } from "../chat/linkFilter";
@@ -840,13 +841,14 @@ export class CityScene extends Phaser.Scene {
 
     // Facial expression trigger from the React expressions picker. Swaps the
     // player's own face for a few seconds, then auto-reverts. Local only.
-    this.onGameEvent("expression:trigger", (expr: { textureKey: string }) => {
+    this.onGameEvent("expression:trigger", (expr: Expression) => {
       track("expression", expr.textureKey.replace(/^pd-expr-/, "").toLowerCase());
       this.avatar.setExpression(expr.textureKey);
+      playExpressionFx(this, this.avatar, expr);
       soundManager.play("emote");
       this.network.sendExpression(expr.textureKey); // let others see the reaction
       this.expressionTimer?.remove(false);
-      this.expressionTimer = this.time.delayedCall(3500, () => {
+      this.expressionTimer = this.time.delayedCall(EXPRESSION_DURATION_MS, () => {
         this.avatar.setExpression(null);
         this.expressionTimer = null;
       });
@@ -1949,14 +1951,20 @@ export class CityScene extends Phaser.Scene {
     if (!this.isSolidAt(c.x, ny)) { c.y = ny; }
   }
 
-  /** Plays a remote player's facial expression, auto-reverting after 3.5s. */
+  /**
+   * Plays a remote player's facial expression, auto-reverting after 3.5s.
+   * Only a texture key travels over the wire, so the overhead burst is looked
+   * up from the registry here — everyone sees the same reaction.
+   */
   private applyRemoteExpression(wallet: string, textureKey: string): void {
     const avatar = this.remotePlayers.get(wallet);
     if (!avatar) return;
     avatar.setExpression(textureKey);
+    const expr = EXPRESSIONS.find((e) => e.textureKey === textureKey);
+    if (expr) playExpressionFx(this, avatar, expr);
     soundManager.play("emote");
     this.remoteExprTimers.get(wallet)?.remove(false);
-    this.remoteExprTimers.set(wallet, this.time.delayedCall(3500, () => {
+    this.remoteExprTimers.set(wallet, this.time.delayedCall(EXPRESSION_DURATION_MS, () => {
       avatar.setExpression(null);
       this.remoteExprTimers.delete(wallet);
     }));

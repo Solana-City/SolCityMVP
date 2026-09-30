@@ -334,6 +334,23 @@ export class AvatarSprite {
   }
 
   /**
+   * Top of everything riding over this character — the outfit's ink, the name
+   * tag and any buff badge — in container space. An overhead effect seats its
+   * bottom here so it clears the whole stack instead of drawing through the
+   * name (see ExpressionFx).
+   */
+  overheadTopY(): number {
+    let top = this.headTopY();
+    for (const label of this.labels ?? []) {
+      if (!label.visible || !label.active) continue;
+      top = Math.min(top, label.y - NAME_HEIGHT);
+    }
+    const badgeTop = this.badgeTopY();
+    if (badgeTop !== null) top = Math.min(top, badgeTop);
+    return top;
+  }
+
+  /**
    * Re-seats the name tags on the outfit and the badges on top of them. The
    * name is a 5px font: NAME_HEIGHT is that plus its stroke and a pixel of
    * air, which is cheaper and steadier than measuring a Text every frame.

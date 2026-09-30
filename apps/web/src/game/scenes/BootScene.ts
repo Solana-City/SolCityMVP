@@ -129,6 +129,14 @@ export class BootScene extends Phaser.Scene {
     // Expression face sheets — same paper-doll format, own texture keys.
     for (const expr of EXPRESSIONS) {
       AvatarSprite.loadSpriteSheet(this, expr.textureKey, `assets/sprites/paperdoll/${expr.file}`);
+      // The overhead burst that goes with it (entities/ExpressionFx): its own
+      // grid, and it ships keyed, so it skips the chroma pass in create().
+      if (expr.fx) {
+        this.load.spritesheet(expr.fx.textureKey, `assets/sprites/fx/expressions/${expr.fx.file}`, {
+          frameWidth: expr.fx.frameWidth,
+          frameHeight: expr.fx.frameHeight,
+        });
+      }
     }
   }
 
