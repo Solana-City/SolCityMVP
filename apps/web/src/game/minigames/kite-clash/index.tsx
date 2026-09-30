@@ -6,6 +6,7 @@ import { KiteClashEngine, type EngineSnapshot } from "./KiteClashEngine";
 import type { MiniGameComponentProps } from "../types";
 import { fetchBoard, invalidateBoard, type BoardResult } from "@/game/leaderboards/boards";
 import type { MiniGameBaseContext } from "../types";
+import { useLeaveStake } from "../leaveGuard";
 
 const isTouchDevice = () =>
   typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches;
@@ -190,6 +191,12 @@ export default function KiteClashGame({ context, onResult, onClose }: MiniGameCo
     window.addEventListener("keydown", onEsc);
     return () => window.removeEventListener("keydown", onEsc);
   }, [onClose, howToOpen, closeHowTo]);
+
+  // Escape is one key away from a run in progress, and the score only counts
+  // when the run ends. See game/minigames/leaveGuard.
+  useLeaveStake(
+    snapshot?.phase === "playing" ? "Your score for this run is lost if you leave before it ends." : null,
+  );
 
   const windFrame = Math.max(
     1,

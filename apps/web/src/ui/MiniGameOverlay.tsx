@@ -1,9 +1,11 @@
 "use client";
 
-import React, { Suspense } from "react";
+import React, { Suspense, useCallback, useEffect } from "react";
 // Importing from the index triggers all registerMiniGame side-effects
 import { getEntry } from "@/game/minigames";
 import type { MiniGameContext, MiniGameResult } from "@/game/minigames";
+import { requestLeave, resetLeaveGuard } from "@/game/minigames/leaveGuard";
+import LeaveGameConfirm from "@/ui/LeaveGameConfirm";
 
 // Module-level cache so React.lazy is called once per id — avoids Suspense re-triggering
 const _lazyCache = new Map<string, React.LazyExoticComponent<React.ComponentType<any>>>();
@@ -32,6 +34,14 @@ export default function MiniGameOverlay({
 }: MiniGameOverlayProps) {
   const GameComponent = getLazyComponent(id);
 
+  // Every way out of a game comes through here, so this is where it is worth
+  // asking. A game with nothing at stake — a menu, a finished match — leaves
+  // immediately; one in the middle of a round asks first (see leaveGuard).
+  const askThenClose = useCallback(() => requestLeave(onClose), [onClose]);
+
+  // A stake belongs to a round, never to the next game the player opens.
+  useEffect(() => resetLeaveGuard, [id]);
+
   if (!GameComponent) {
     console.error(`[MiniGameOverlay] No mini-game registered with id "${id}"`);
     return null;
@@ -51,7 +61,8 @@ export default function MiniGameOverlay({
       }
     >
       {/* context cast: each component declares its own typed C — safe because manifest+launcher agree on shape */}
-      <GameComponent context={context as any} onResult={onResult} onClose={onClose} />
+      <GameComponent context={context as any} onResult={onResult} onClose={askThenClose} />
+      <LeaveGameConfirm />
     </Suspense>
   );
 }

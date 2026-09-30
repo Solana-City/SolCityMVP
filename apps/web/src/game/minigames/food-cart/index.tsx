@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import type { MiniGameComponentProps, FoodCartContext } from "../types";
 import { ICON, UI_ACCENT, maskIcon } from "@/ui/PixelIcons";
+import { useLeaveStake } from "../leaveGuard";
 
 // ─── CSS animations ───────────────────────────────────────────────────────────
 
@@ -184,6 +185,15 @@ export default function FoodCartGame({
   const currentStep   = currentOrder?.step ?? 0;
   const nextIngId     = currentRecipe?.steps[currentStep] as IngId | undefined;
   const urgent        = timeLeft <= 10 && phase === "playing";
+
+  // What a stray Escape would cost: the orders still to come. The pause
+  // between two orders counts too — the round is not over there, it is about
+  // to hand out the next recipe.
+  useLeaveStake(
+    phase === "playing" || phase === "order_complete"
+      ? "You lose this round of orders if you leave before it is done."
+      : null,
+  );
   const timerPct      = (timeLeft / totalSeconds) * 100;
 
   // Inject styles once

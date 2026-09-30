@@ -60,6 +60,7 @@ import TeamBattleScreen from "./TeamBattleScreen";
 import { validateTeam, type TeamBuild } from "@/game/solmechs/data/team";
 import { LIMB_SLOTS, type MechId, type ModuleSlot, type MechBuild, type MoveDefinition } from "@/game/solmechs/data/types";
 import { CloseButton } from "@/ui/PixelIcons";
+import { useLeaveStake, requestLeave } from "../leaveGuard";
 
 type Phase =
   | "menu" | "hangar" | "squad" | "team-battle" | "battle" | "result"
@@ -206,6 +207,8 @@ export default function SolMechsBattle({ context, onResult, onClose }: MiniGameC
   const [battle, setBattle] = useState<BattleState | null>(null);
   const [log, setLog] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
+  /** True once the fight on screen has been decided — see the leave guard. */
+  const [battleOver, setBattleOver] = useState(false);
   /** True while the renderer is mid-sequence; blocks input and the AI. */
   const [animating, setAnimating] = useState(false);
   const [pendingMove, setPendingMove] = useState<{ slot: ModuleSlot; moveIndex: number } | null>(null);
@@ -482,6 +485,34 @@ export default function SolMechsBattle({ context, onResult, onClose }: MiniGameC
     return () => { renderer.destroy(); rendererRef.current = null; };
   }, [phase]);
 
+  /**
+   * What leaving would cost right now.
+   *
+   * Escape closes Sol Mechs from anywhere, and the X is in the corner of the
+   * battle screen too, so both were one accident away from throwing away a
+   * fight in progress. Declared here, asked by the overlay that hosts the
+   * game (see game/minigames/leaveGuard); menus, the hangar, the rules and a
+   * match that has already been decided still close in one press.
+   *
+   * "ranked-battle" is also the phase the matchmaking screen runs in, so a
+   * battle is only really on once there is an opponent to fight.
+   */
+  const inBattle =
+    (phase === "battle" && battle?.status.kind === "active")
+    || phase === "team-battle"
+    || phase === "pvp-battle"
+    || (phase === "ranked-battle" && !!enemyTeam && !!squadOpponent);
+  // A squad battle keeps its phase after the last mech falls — the result
+  // card is shown over the arena — so the end of the fight is its own flag.
+  useEffect(() => { setBattleOver(false); }, [phase]);
+  useLeaveStake(
+    !inBattle || battleOver
+      ? null
+      : phase === "ranked-battle"
+        ? "You lose this ranked match, and the energy it cost, if you leave now."
+        : "You lose this battle if you leave before it ends.",
+  );
+
   // ==================== MAIN MENU ====================
   if (phase === "menu") {
     const h = loadHangar();
@@ -529,8 +560,9 @@ export default function SolMechsBattle({ context, onResult, onClose }: MiniGameC
         playerTeam={playerTeam}
         enemyTeam={rivalTeam}
         opponent={squadOpponent}
-        onClose={() => setPhase("menu")}
+        onClose={() => requestLeave(() => setPhase("menu"))}
         onFinished={(playerWon, s) => {
+          setBattleOver(true);
           recordResult(playerWon);
           void onResult({
             success: playerWon,
@@ -664,8 +696,9 @@ export default function SolMechsBattle({ context, onResult, onClose }: MiniGameC
         playerTeam={playerTeam}
         enemyTeam={enemyTeam}
         opponent={squadOpponent}
-        onClose={() => setPhase("ranked-result")}
+        onClose={() => requestLeave(() => setPhase("ranked-result"))}
         onFinished={(playerWon) => {
+          setBattleOver(true);
           recordResult(playerWon);
           void pvpTransport.leave();
           void ranked.readEntry().then((entry) => {
@@ -738,10 +771,10 @@ export default function SolMechsBattle({ context, onResult, onClose }: MiniGameC
         playerTeam={playerTeam}
         enemyTeam={enemyTeam}
         opponent={squadOpponent}
-        onClose={leave}
+        onClose={() => requestLeave(leave)}
         // Casual play: nothing is recorded. Leaving frees both players to
         // search again straight away.
-        onFinished={() => { void pvpTransport?.leave(); }}
+        onFinished={() => { setBattleOver(true); void pvpTransport?.leave(); }}
       />
     );
   }
