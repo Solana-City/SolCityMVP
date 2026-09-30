@@ -18,6 +18,7 @@ import { PanelTitleBar, ProtocolLogo, ExternalLinkIcon } from "@/ui/PixelIcons";
 import { CATEGORY_META } from "@/game/minimap/categories";
 import { track } from "@/game/telemetry/track";
 import { chamferBox } from "@/ui/chamfer";
+import { useButtonFeel, feelStyle, type ButtonFeel } from "@/ui/useButtonFeel";
 
 const PIXEL = '"Press Start 2P", monospace';
 const MAGENTA = "#c026d3";
@@ -94,6 +95,7 @@ export interface MagicBlockHubProps {
 
 export default function MagicBlockHub({ children, onClose }: MagicBlockHubProps) {
   const [area, setArea] = useState<Area | null>(null);
+  const privateFeel = useButtonFeel();
 
   if (area === "private") {
     return (
@@ -124,7 +126,7 @@ export default function MagicBlockHub({ children, onClose }: MagicBlockHubProps)
       </header>
 
       <div style={eyebrow}>DO IT HERE</div>
-      <button onClick={() => { track("protocol-open", "magicblock-private"); setArea("private"); }} style={actionCard}>
+      <button onClick={() => { track("protocol-open", "magicblock-private"); setArea("private"); }} {...privateFeel.handlers} style={{ ...actionCard, ...feelStyle(privateFeel) }}>
         <span style={{ fontFamily: PIXEL, fontSize: 9, color: MAGENTA }}>PRIVATE TRANSFER</span>
         <span style={{ fontSize: 9, color: "#9a9ad0", lineHeight: 1.6 }}>
           Deposit, send USDC nobody can read, withdraw.
@@ -135,14 +137,7 @@ export default function MagicBlockHub({ children, onClose }: MagicBlockHubProps)
       <div style={{ ...eyebrow, marginTop: 16 }}>BUILD WITH IT</div>
       <div style={{ display: "grid", gap: 8 }}>
         {TOPICS.map((t) => (
-          <button
-            key={t.id}
-            onClick={() => { track("tutorial", `magicblock-${t.id}`, { value: 1, label: "opened" }); setArea(t.id); }}
-            style={topicCard(t.color)}
-          >
-            <span style={{ fontFamily: PIXEL, fontSize: 8, color: t.color }}>{t.label}</span>
-            <span style={{ fontSize: 9, color: "#8a8aa7" }}>{t.tagline}</span>
-          </button>
+          <TopicCardButton key={t.id} topic={t} onClick={() => { track("tutorial", `magicblock-${t.id}`, { value: 1, label: "opened" }); setArea(t.id); }} />
         ))}
       </div>
 
@@ -197,9 +192,20 @@ function TopicView({ topic }: { topic: Topic }) {
 }
 
 function BackRow({ onBack }: { onBack: () => void }) {
+  const feel = useButtonFeel();
   return (
-    <button onClick={onBack} style={backButton}>
+    <button onClick={onBack} {...feel.handlers} style={{ ...backButton, ...feelStyle(feel) }}>
       {"< BACK"}
+    </button>
+  );
+}
+
+function TopicCardButton({ topic, onClick }: { topic: Topic; onClick: () => void }) {
+  const feel = useButtonFeel();
+  return (
+    <button onClick={onClick} {...feel.handlers} style={{ ...topicCard(topic.color), ...feelStyle(feel) }}>
+      <span style={{ fontFamily: PIXEL, fontSize: 8, color: topic.color }}>{topic.label}</span>
+      <span style={{ fontSize: 9, color: "#8a8aa7" }}>{topic.tagline}</span>
     </button>
   );
 }

@@ -13,6 +13,7 @@ import { useEffect, useState } from "react";
 import { track } from "@/game/telemetry/track";
 import { chamferBox, octagonFrame, chamferRectPoints } from "@/ui/chamfer";
 import { UI_ACCENT } from "@/ui/PixelIcons";
+import { useButtonFeel, feelStyle } from "@/ui/useButtonFeel";
 
 const PIXEL = '"Press Start 2P", monospace';
 /** Matches ChatGuide/Profile's NEXT-style action button, so every "next
@@ -122,6 +123,8 @@ function IntroCards({ spec, onDone }: { spec: IntroSpec; onDone: () => void }) {
   const [i, setI] = useState(0);
   const step = spec.steps[i];
   const last = i === spec.steps.length - 1;
+  const backFeel = useButtonFeel();
+  const nextFeel = useButtonFeel();
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -168,10 +171,12 @@ function IntroCards({ spec, onDone }: { spec: IntroSpec; onDone: () => void }) {
       <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
         <button
           onClick={() => setI((n) => Math.max(0, n - 1))}
+          {...backFeel.handlers}
           style={chamferBox(8, {
             background: "transparent", border: "1px solid #333344", color: "#888899",
             padding: "9px 12px", cursor: "pointer", fontFamily: PIXEL, fontSize: 7,
             visibility: i === 0 ? "hidden" : "visible",
+            ...feelStyle(backFeel),
           })}
         >
           BACK
@@ -183,9 +188,11 @@ function IntroCards({ spec, onDone }: { spec: IntroSpec; onDone: () => void }) {
         </div>
         <button
           onClick={() => (last ? onDone() : setI((n) => n + 1))}
+          {...nextFeel.handlers}
           style={chamferBox(8, {
             background: LIME, color: "#0a0a14", border: "none",
             padding: "10px 16px", cursor: "pointer", fontFamily: PIXEL, fontSize: 7,
+            ...feelStyle(nextFeel),
           })}
         >
           {last ? "START" : "NEXT"}
@@ -214,17 +221,26 @@ export function ProtocolIntroGate({ spec, children }: { spec: IntroSpec; childre
   if (open) return <IntroCards spec={spec} onDone={done} />;
   return (
     <>
-      <button
-        onClick={() => setOpen(true)}
-        style={chamferBox(6, {
-          display: "block", marginLeft: "auto", marginBottom: 6,
-          background: "transparent", border: `1px solid ${UI_ACCENT}66`, color: UI_ACCENT,
-          padding: "4px 7px", cursor: "pointer", fontFamily: PIXEL, fontSize: 7,
-        })}
-      >
-        ? HOW IT WORKS
-      </button>
+      <HowItWorksButton onClick={() => setOpen(true)} />
       {children}
     </>
+  );
+}
+
+function HowItWorksButton({ onClick }: { onClick: () => void }) {
+  const feel = useButtonFeel();
+  return (
+    <button
+      onClick={onClick}
+      {...feel.handlers}
+      style={chamferBox(6, {
+        display: "block", marginLeft: "auto", marginBottom: 6,
+        background: "transparent", border: `1px solid ${UI_ACCENT}66`, color: UI_ACCENT,
+        padding: "4px 7px", cursor: "pointer", fontFamily: PIXEL, fontSize: 7,
+        ...feelStyle(feel),
+      })}
+    >
+      ? HOW IT WORKS
+    </button>
   );
 }

@@ -12,6 +12,7 @@ import { useState } from "react";
 import type { TokenScan } from "@/app/api/token-scan/route";
 import { PanelTitleBar, ProtocolLogo, SiteLinkButton } from "@/ui/PixelIcons";
 import { CATEGORY_META } from "@/game/minimap/categories";
+import { useButtonFeel, feelStyle } from "@/ui/useButtonFeel";
 
 const RED = "#ff5c5c";
 const PROTOCOLS_COLOR = CATEGORY_META.defi.color;
@@ -29,6 +30,7 @@ export default function TokenScanPanel({ onClose }: { onClose: () => void }) {
   const [scan, setScan] = useState<TokenScan | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const scanFeel = useButtonFeel();
 
   const run = async () => {
     const address = mint.trim();
@@ -75,11 +77,13 @@ export default function TokenScanPanel({ onClose }: { onClose: () => void }) {
       <button
         onClick={run}
         disabled={loading || !mint.trim()}
+        {...scanFeel.handlers}
         style={{
           width: "100%", padding: "13px 0", borderRadius: 8, fontFamily: "inherit",
           fontSize: 8, color: mint.trim() ? "#fff" : "#666677",
           background: mint.trim() ? RED : "#12122a",
           border: "none", cursor: mint.trim() && !loading ? "pointer" : "default",
+          ...(mint.trim() && !loading ? feelStyle(scanFeel) : null),
         }}
       >
         {loading ? "SCANNING…" : "SCAN"}
