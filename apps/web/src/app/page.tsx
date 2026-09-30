@@ -653,7 +653,14 @@ export default function Home() {
           )}
           <MobileControls />
           <ExpressionWheel gameRef={game} />
-          {flags.chat && <ChatPanel gameRef={game} visible={chatOpen} />}
+          {flags.chat && (
+            // Its own display:none, not unmounted: H hiding it should not
+            // drop the DM subscription or an in-progress draft, the way
+            // unmounting would.
+            <div style={{ display: hudHidden ? "none" : "contents" }}>
+              <ChatPanel gameRef={game} visible={chatOpen} />
+            </div>
+          )}
           <CalendarPanel gameRef={game} />
           <NPCDialog npc={activeNPC} onClose={handleDialogClose} onAction={handleAction} />
           {nickname && walletAddress && (
