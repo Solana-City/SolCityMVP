@@ -347,7 +347,7 @@ sell it. Cheap to build, needs a policy before it exists.
 Sorted by what it costs us and what it buys. Everything here was checked
 against the code, so each line says what is actually there today.
 
-### M1. The ACT button opens the wrong NPC — STILL OPEN (re-checked 2026-09-30)
+### M1. The ACT button opens the wrong NPC — DONE 2026-09-30
 *"Act button fails on Steve (every NPC)"* and *"two events at the same time"*.
 
 Found it: `CityScene` picks the interaction target with
@@ -357,10 +357,13 @@ and Sol at the plaza steps) the button opens whichever was registered first,
 so it reads as "ACT fails on Steve", and walking between them can hand two
 different NPCs the same press. Fix: pick the NEAREST in-range NPC.
 
-Re-checked 2026-09-30: STILL THERE, at `CityScene.ts:1140` (the mobile ACT
-button) and `CityScene.ts:1164` (E / Space). P2a fixed the CLICK path only —
-clicking an NPC names that NPC — so the bug now reaches only the players who
-press instead of clicking. Same one-line fix as above.
+Re-checked 2026-09-30: it was still there at `CityScene.ts:1140` (the mobile
+ACT button) and `CityScene.ts:1164` (E / Space) — P2a had fixed the CLICK
+path only, so the bug survived for everyone who pressed instead of clicked.
+
+Fixed the same day: both call `nearestInRangeNpc()`, which walks the list and
+keeps the closest. Repelling NPCs are skipped, because `repel` hides the talk
+prompt and the Builder at the fence has nothing to open.
 
 If "two events at the same time" turns out to be two PANELS opening at once
 (a dialog plus a protocol screen), that is a second bug and needs the repro:
@@ -421,6 +424,24 @@ build.
 ### M8. Solana School, basics only — P2, M
 The protocol micro-tutorials are the seed. Scope it to basics and talk to
 **Solana Turbine** about educating devs (partner dependency, not code).
+
+### M9b. The hunted citizen was in a different place for every player — DONE 2026-09-30
+Raised in the session of 2026-09-30: *"pq mesmo o NPC procurado n esta no msm
+lugar para todos?"*
+
+Because only the LOOKS were shared. The target's outfit is seeded from the
+pedestrian index, so citizen #7 dresses the same on every screen, but each
+client spawned its crowd on unseeded random tiles and let it stroll the whole
+map — so the first finder had found their own copy of the citizen.
+
+Now the round decides where too: the walkable city is cut into 22-tile blocks,
+the ones with enough street become districts in a canonical order, two more
+hashes of the round pick the district and the tile inside it, and the target
+is leashed to the block (it strolls, it just stops at the edge). The move
+waits until the citizen is off camera, so nobody sees a teleport.
+
+Deliberately NOT a hint: a district is about half a screen wide and holds
+dozens of citizens, and nothing in the interface names it.
 
 ### M9. Find Someone: only the target NPC on chain — P2, S (needs clarifying)
 Read as: keep the shared round/target on chain and drop the rest. Today the
