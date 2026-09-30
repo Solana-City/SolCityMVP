@@ -14,6 +14,7 @@ import { soundManager } from "@/game/audio/SoundManager";
 import { dmsOffPref, setDmsOffPref } from "@/game/chat/dmEvents";
 import { chamferBox, octagonFrame, avatarFrame, avatarPhoto, octagonFrameThin } from "@/ui/chamfer";
 import { KeysRows } from "@/ui/KeysCard";
+import { useButtonFeel, feelStyle } from "@/ui/useButtonFeel";
 
 const PIXEL = '"Press Start 2P", monospace';
 const CYAN = "#14F0C6";
@@ -152,15 +153,7 @@ export default function ProfilePanel({ gameRef, isOpen, onClose }: ProfilePanelP
               {profile.displayName}
             </div>
             {connected ? (
-              <button
-                onClick={() => window.dispatchEvent(new Event("solcity:open-nickname"))}
-                style={chamferBox(6, {
-                  marginTop: 8, background: "rgba(20,240,198,0.1)", border: "1px solid rgba(20,240,198,0.6)",
-                  color: CYAN, padding: "7px 12px", cursor: "pointer", fontFamily: PIXEL, fontSize: 8,
-                })}
-              >
-                CHANGE NICKNAME
-              </button>
+              <NicknameButton />
             ) : (
               <div style={{ fontSize: 7, color: MUTED, marginTop: 8, lineHeight: 1.6 }}>
                 connect a wallet to pick a nickname
@@ -175,15 +168,7 @@ export default function ProfilePanel({ gameRef, isOpen, onClose }: ProfilePanelP
                 <div style={{ fontSize: 8, color: MUTED }}>WALLET</div>
                 <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 8 }}>
                   <span style={{ fontSize: 12, color: CYAN }}>{wallet.slice(0, 4)}…{wallet.slice(-4)}</span>
-                  <button
-                    onClick={copyWallet}
-                    style={chamferBox(6, {
-                      background: "none", border: "1px solid rgba(20,240,198,0.6)", color: CYAN,
-                      padding: "6px 10px", cursor: "pointer", fontFamily: PIXEL, fontSize: 8,
-                    })}
-                  >
-                    {copied ? "COPIED" : "COPY"}
-                  </button>
+                  <CopyWalletButton onClick={copyWallet} copied={copied} />
                 </div>
               </div>
             </>
@@ -192,25 +177,9 @@ export default function ProfilePanel({ gameRef, isOpen, onClose }: ProfilePanelP
 
         {/* Tabs */}
         <div style={{ display: "flex", gap: 10, marginTop: 16, paddingBottom: 0, borderBottom: "1px solid rgba(255,255,255,0.08)", flexWrap: "wrap" }}>
-          {TABS.map((tab) => {
-            const active = panelTab === tab;
-            return (
-              <button
-                key={tab}
-                onClick={() => setPanelTab(tab)}
-                className="cursor-pointer"
-                style={chamferBox(6, {
-                  background: active ? "rgba(20,240,198,0.08)" : "rgba(255,255,255,0.02)",
-                  border: `2px solid ${active ? CYAN : "#2b3358"}`,
-                  color: active ? CYAN : MUTED,
-                  fontFamily: PIXEL, fontSize: 10, padding: "8px 16px",
-                  marginBottom: 6, textTransform: "uppercase",
-                })}
-              >
-                {tab}
-              </button>
-            );
-          })}
+          {TABS.map((tab) => (
+            <TabButton key={tab} active={panelTab === tab} onClick={() => setPanelTab(tab)}>{tab}</TabButton>
+          ))}
         </div>
 
         <div style={{ marginTop: 14 }}>
@@ -257,6 +226,112 @@ function Num({ label, value, color }: { label: string; value: number; color: str
       <div style={{ fontSize: 20, color, lineHeight: 1 }}>{value}</div>
       <div style={{ fontSize: 8, color: "#cbd5e1", marginTop: 10 }}>{label}</div>
     </Card>
+  );
+}
+
+function NicknameButton() {
+  const feel = useButtonFeel();
+  return (
+    <button
+      onClick={() => window.dispatchEvent(new Event("solcity:open-nickname"))}
+      {...feel.handlers}
+      style={chamferBox(6, {
+        marginTop: 8, background: "rgba(20,240,198,0.1)", border: "1px solid rgba(20,240,198,0.6)",
+        color: CYAN, padding: "7px 12px", cursor: "pointer", fontFamily: PIXEL, fontSize: 8,
+        ...feelStyle(feel),
+      })}
+    >
+      CHANGE NICKNAME
+    </button>
+  );
+}
+
+function CopyWalletButton({ onClick, copied }: { onClick: () => void; copied: boolean }) {
+  const feel = useButtonFeel();
+  return (
+    <button
+      onClick={onClick}
+      {...feel.handlers}
+      style={chamferBox(6, {
+        background: "none", border: "1px solid rgba(20,240,198,0.6)", color: CYAN,
+        padding: "6px 10px", cursor: "pointer", fontFamily: PIXEL, fontSize: 8,
+        ...feelStyle(feel),
+      })}
+    >
+      {copied ? "COPIED" : "COPY"}
+    </button>
+  );
+}
+
+function TabButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+  const feel = useButtonFeel();
+  return (
+    <button
+      onClick={onClick}
+      className="cursor-pointer"
+      {...feel.handlers}
+      style={chamferBox(6, {
+        background: active ? "rgba(20,240,198,0.08)" : "rgba(255,255,255,0.02)",
+        border: `2px solid ${active ? CYAN : "#2b3358"}`,
+        color: active ? CYAN : MUTED,
+        fontFamily: PIXEL, fontSize: 10, padding: "8px 16px",
+        marginBottom: 6, textTransform: "uppercase",
+        ...feelStyle(feel),
+      })}
+    >
+      {children}
+    </button>
+  );
+}
+
+function ConnectWalletButton({ onConnect }: { onConnect: () => void }) {
+  const feel = useButtonFeel();
+  return (
+    <button
+      onClick={onConnect}
+      className="w-full cursor-pointer"
+      {...feel.handlers}
+      style={chamferBox(8, {
+        background: "rgba(153,69,255,0.85)", color: "#fff", border: "none", padding: "12px 12px",
+        fontFamily: PIXEL, fontSize: 8, ...feelStyle(feel),
+      })}
+    >
+      CONNECT WALLET
+    </button>
+  );
+}
+
+function CalendarOpenButton() {
+  const feel = useButtonFeel();
+  return (
+    <button
+      onClick={() => window.dispatchEvent(new Event(OPEN_CALENDAR_EVENT))}
+      {...feel.handlers}
+      style={chamferBox(6, {
+        background: "rgba(183,233,40,0.1)", border: "1px solid rgba(183,233,40,0.7)",
+        color: GREEN, padding: "8px 10px", cursor: "pointer", fontFamily: PIXEL, fontSize: 8,
+        ...feelStyle(feel),
+      })}
+    >
+      CALENDAR
+    </button>
+  );
+}
+
+function ClaimButton({ onClick, label }: { onClick: () => void; label: string }) {
+  const feel = useButtonFeel();
+  return (
+    <button
+      onClick={onClick}
+      {...feel.handlers}
+      style={chamferBox(5, {
+        background: GREEN, color: "#0a0a14", border: "none", padding: "6px 8px",
+        cursor: "pointer", fontFamily: PIXEL, fontSize: 7, flexShrink: 0,
+        ...feelStyle(feel),
+      })}
+    >
+      {label}
+    </button>
   );
 }
 
@@ -313,13 +388,7 @@ function ProfileTab({ profile, wallet, onConnect }: {
         <div style={{ fontSize: 8, color: "#94a3b8", lineHeight: 1.8, marginBottom: 12 }}>
           Connect a wallet to keep a daily streak, track your numbers and claim quests.
         </div>
-        <button
-          onClick={onConnect}
-          className="w-full cursor-pointer"
-          style={chamferBox(8, { background: "rgba(153,69,255,0.85)", color: "#fff", border: "none", padding: "12px 12px", fontFamily: PIXEL, fontSize: 8 })}
-        >
-          CONNECT WALLET
-        </button>
+        <ConnectWalletButton onConnect={onConnect} />
       </Card>
     );
   }
@@ -340,15 +409,7 @@ function ProfileTab({ profile, wallet, onConnect }: {
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <span style={{ fontSize: 30, color: GREEN, lineHeight: 1 }}>{streak?.current ?? 0}</span>
             <span style={{ fontSize: 9, color: "#cbd5e1", lineHeight: 1.6, flex: 1 }}>DAY<br />STREAK</span>
-            <button
-              onClick={() => window.dispatchEvent(new Event(OPEN_CALENDAR_EVENT))}
-              style={chamferBox(6, {
-                background: "rgba(183,233,40,0.1)", border: "1px solid rgba(183,233,40,0.7)",
-                color: GREEN, padding: "8px 10px", cursor: "pointer", fontFamily: PIXEL, fontSize: 8,
-              })}
-            >
-              CALENDAR
-            </button>
+            <CalendarOpenButton />
           </div>
           <div style={{ display: "flex", gap: 6, marginTop: 14 }}>
             {days.map((d) => {
@@ -399,15 +460,7 @@ function ProfileTab({ profile, wallet, onConnect }: {
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <span style={{ flex: 1, minWidth: 0, fontSize: 10, color: claimed ? "#475569" : done ? GREEN : "#e2e8f0" }}>{q.title}</span>
                   {done && !claimed ? (
-                    <button
-                      onClick={() => { claimQuest(wallet, q.id); bump((n) => n + 1); }}
-                      style={chamferBox(5, {
-                        background: GREEN, color: "#0a0a14", border: "none", padding: "6px 8px",
-                        cursor: "pointer", fontFamily: PIXEL, fontSize: 7, flexShrink: 0,
-                      })}
-                    >
-                      CLAIM {q.rewardLabel.toUpperCase()}
-                    </button>
+                    <ClaimButton onClick={() => { claimQuest(wallet, q.id); bump((n) => n + 1); }} label={`CLAIM ${q.rewardLabel.toUpperCase()}`} />
                   ) : (
                     <span style={{ fontSize: 9, color: claimed ? "#475569" : "#94a3b8", flexShrink: 0 }}>
                       {claimed ? "CLAIMED" : `${current}/${q.target}`}
@@ -474,6 +527,7 @@ function SettingsTab() {
   const [volume, setVolume] = useState(0);
   const [muted, setMuted] = useState(false);
   const [dmsOff, setDmsOff] = useState(false);
+  const muteFeel = useButtonFeel();
   useEffect(() => {
     setVolume(soundManager.getVolume());
     setMuted(soundManager.isMuted());
@@ -496,7 +550,8 @@ function SettingsTab() {
             <button
               onClick={() => { const m = soundManager.toggleMuted(); setMuted(m); }}
               title={muted ? "Unmute" : "Mute"}
-              style={{ background: "none", border: "none", cursor: "pointer", lineHeight: 0, padding: 0 }}
+              {...muteFeel.handlers}
+              style={{ background: "none", border: "none", cursor: "pointer", lineHeight: 0, padding: 0, ...feelStyle(muteFeel) }}
             >
               <SpeakerIcon size={18} muted={muted} color={muted ? "#666677" : "#c084fc"} />
             </button>
