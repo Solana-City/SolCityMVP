@@ -96,6 +96,64 @@ The client mirrors all six in `rollPack`, with tests in `packs.test.ts`. When
 the program lands, the client draw is deleted, not adapted: the VRF result is
 the answer, and `rollPack` exists only so the preview plays.
 
+### Adding a season: the recipe (client side, today)
+
+The question this has to answer is "can we keep adding outfits, with their own
+names, traits, rarities and art, season after season?" — yes, and here is
+exactly what it costs. Nothing below touches an item that already exists.
+
+1. **Draw the art.** Same paper-doll contract as every other layer (4x4 grid,
+   64px frames, pink key). New files under `public/assets/sprites/paperdoll/`.
+2. **Add the items** to `LAYER_VARIANTS` in `game/config/paperDoll.ts`, at the
+   END of their category, each with `season: N`. Appending is the whole rule:
+   the position in that list is the index the program stores as a bit, so a
+   new item may go after the last one and nowhere else.
+3. **Give them rarities** in `RARITY_TABLE` (`game/config/packs.ts`). Anything
+   left out is common.
+4. **Open the season** in `game/collections/seasons.ts`: append
+   `{ n: N, name: "...", status: "open" }` and flip the previous one to
+   `closed`. That one line retires last season's items — they stay owned,
+   worn and tradable, and stop being obtainable.
+5. **Nothing else.** The packs, the odds, the reveal, the wardrobe's rarity
+   bars and the "which season am I in" label all read from those two files.
+
+On chain it is the matching pair: append the new indices to the pool, append
+the season's four (start, len) rarity ranges, and move `current_season`. A
+closed season's ranges are never edited again.
+
+Two things to keep an eye on as seasons pile up:
+- **Preload.** `BootScene` loads every wardrobe sheet at startup. That is fine
+  at ~40 items and is not fine at 300: by season 3 or 4 the boot should load
+  the free set, what the wallet owns, and the open season, and fetch the rest
+  when a wardrobe tab is opened. Tracked as PK6 in `FEEDBACK_BACKLOG.md`.
+- **Odds versus stock.** The odds mean nothing if a season's legendary bucket
+  is empty; the draw falls DOWN the ladder and quietly hands out commons.
+  `seasonRarityCounts(season)` is the check, and a test asserts it for the
+  open season.
+
+### Sol Mechs: the same shape, a different collection
+
+Sol Mechs gets its own packs and its own seasons. It is a SEPARATE collection
+on chain and stays that way — one is worn by a character, the other is a game
+piece with stats, and a marketplace filter that mixes them helps nobody — but
+it uses the same two words, from `game/collections/seasons.ts`: the same four
+rarities with the same colours, and the same numbered calendar (drop season 3
+runs alongside ranked season 3).
+
+`MechPart` and `MechMatrix` already carry the two fields, through
+`Collectible`. What is NOT decided, and needs the room before a line of it is
+built: what a Sol Mechs pack actually contains (parts? chassis? cosmetic
+skins?), what it costs, and whether it mints into the Battle Pass collection
+or a new one.
+
+**The rule that is not negotiable**, and the reason the fields are documented
+before they are used: in Sol Mechs, **rarity is scarcity, never power.** Every
+chassis is built to the same 200-point combat budget; Solus is 225 and is
+kept out of ranked for exactly that reason. A legendary arm that hits harder
+than a common one turns the pack into the ladder, and the ladder is what the
+Battle Pass is for. A legendary part may be harder to find and may look like
+nothing else in the city. It may not cost 210 points.
+
 ### Season trait, on the item as well as the pack
 A wardrobe item carries `season` (`LayerVariant.season`, absent = 1). The chain
 needs the same, because the season is what makes a collection time-limited:

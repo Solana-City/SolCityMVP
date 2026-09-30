@@ -442,6 +442,31 @@ unlocks, the treasury and the player PDA are already there, and a second
 program would need its own upgrade authority, its own redeploy and a
 cross-program read of the wardrobe to be useful.
 
+### PK6. Preload grows with every season — P2, watch it
+`BootScene` loads every wardrobe sheet at startup. Fine at ~40 items; not fine
+at 300. By season 3 or 4 the boot should load the free set, what the wallet
+owns and the open season, and fetch the rest when a wardrobe tab is opened.
+Not urgent, and the kind of thing that is only cheap to fix before it hurts.
+
+### PK7. Sol Mechs packs — needs the room before any code
+Sol Mechs gets its own packs and seasons, on its OWN collection (one is worn,
+the other is a game piece with stats). The shared vocabulary is already there:
+`game/collections/seasons.ts` gives both the same four rarities and the same
+numbered calendar, and `MechPart`/`MechMatrix` already carry `season` and
+`rarity` through `Collectible`.
+
+Open questions, all product: what a pack contains (parts, chassis, cosmetic
+skins?), what it costs, whether it mints into the Battle Pass collection or a
+new one, and whether it runs on the Sol Mechs program (it should — that is
+where the pass, the energy and the ratings already live, and it has its own
+deploy cadence).
+
+The rule that is not up for discussion, written where it will be read
+(`data/types.ts`): **rarity is scarcity, never power.** Every chassis is built
+to the same 200-point budget; Solus is 225 and is out of ranked for that
+reason. A legendary part may be harder to find and look like nothing else. It
+may not hit harder.
+
 ### Found while building it — FIXED 2026-10-01
 The draw refused to hand out a single hat: it skipped anything `isFreeItem`
 calls free, and `TEST_UNLOCK_ALL_HATS` (a testing switch that is ON in the
