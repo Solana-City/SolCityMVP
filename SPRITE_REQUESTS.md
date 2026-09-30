@@ -188,6 +188,35 @@ all 56 edge tiles animated would be 224 tiles, half a megabyte, against the
 16.7 MB the whole city's tilesets cost today. The art is not the expensive
 part — how it is wired is, which is why it has to be tile animations.
 
+## Outfit pack sheets (3) — requested 2026-10-01
+
+Three packs go on sale in the wardrobe, and each needs its own animated box.
+The chooser and the opening screen already play them; until the files land,
+each card falls back to the wardrobe icon, so nothing is blocked.
+
+**Files** (exact paths, the code looks for these):
+```
+apps/web/public/assets/ui/packs/pack_street.png
+apps/web/public/assets/ui/packs/pack_city.png
+apps/web/public/assets/ui/packs/pack_prime.png
+```
+
+**Format**: ONE row, 6 square frames side by side, 64x64 each, so the file is
+384x64. Transparent background, no pink key needed (these are interface art,
+not paper-doll layers). The animation is a loop at 8 frames a second: an idle
+shimmer, not an opening — the shake and the glow are done in code, on top.
+
+**What separates them** is value, and it has to read at 84 pixels wide:
+- **Street pack** — the cheap one. Plain box, city green accents.
+- **City pack** — the middle. Better box, cyan accents.
+- **Prime pack** — the expensive one. Gold, and the one a player should want
+  before reading a single number.
+
+Frame count can change; it is one number in `game/config/packs.ts` (`art.frames`).
+If 4 frames say it as well as 6, send 4.
+
+---
+
 ## Recently added to the game, for context
 
 - **City**: nicknames everywhere; one city chat with links blocked; direct

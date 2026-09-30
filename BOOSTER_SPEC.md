@@ -58,6 +58,52 @@ program is live (same rule as `REDEPLOY_CHECKLIST.md`).
 
 ---
 
+## BEFORE THE REDEPLOY: what the program still has to gain (2026-10-01)
+
+The client now has **three packs, four rarities and a season**, as a preview
+(`game/config/packs.ts`, `BoosterOverlay`). The deployed program has none of
+those ideas: it knows one pack, a flat pool and no season. **None of this can
+take money until the program speaks the same shape.** Everything below is
+additive to what is already written, and must land in the SAME redeploy as the
+rest of `REDEPLOY_CHECKLIST.md`.
+
+Numbers in the client (pack names, prices, odds, which item is which rarity)
+are placeholders for the room to tune. The SHAPE is what the program must fix:
+
+1. **`open_booster(pack_id, pool_count, client_seed)`** — a pack id, so the
+   three packs are one instruction and not three. Price per pack lives on
+   chain, not in the client: today it is one constant and the client cannot be
+   trusted to say what it paid.
+2. **A rarity per pool index.** The draw picks a RARITY first, weighted by the
+   pack, then an item of that rarity. The program therefore needs the rarity of
+   each index: either a parallel `[u8; N]` shipped with the pool, or — cheaper
+   — the pool ordered by rarity so each tier is a contiguous index RANGE and
+   the program holds four (start, len) pairs. The second costs nothing to read
+   and nothing to store, but it fixes the pool order, which is append-only; a
+   new common cannot be appended in the middle of the range it belongs to. So:
+   **one range table per SEASON**, appended whole.
+3. **Weights per pack**, as four u16s summing to 10000 (basis points, not
+   percent: 0.5% legendary is a number someone will want).
+4. **A season number**, on the pack and on the pool ranges. A pack only draws
+   from its own season. Closing a season is then one number, and the items it
+   held stay in the wardrobes that own them.
+5. **The fallback ladder.** A rarity with nothing left to give falls DOWN, not
+   up. The client does this already; the program must do it identically or the
+   two disagree about what a pack contained.
+6. **Distinct within a pack.** Already the rule in the client draw.
+
+The client mirrors all six in `rollPack`, with tests in `packs.test.ts`. When
+the program lands, the client draw is deleted, not adapted: the VRF result is
+the answer, and `rollPack` exists only so the preview plays.
+
+### Season trait, on the item as well as the pack
+A wardrobe item carries `season` (`LayerVariant.season`, absent = 1). The chain
+needs the same, because the season is what makes a collection time-limited:
+see the note in `FEEDBACK_BACKLOG.md` (R2b) for the decision on whether the
+season lives on the metadata of a single collection or on separate ones.
+
+---
+
 ## Pieces
 
 ### 1. Canonical item-index table (client ⇄ program must match)
