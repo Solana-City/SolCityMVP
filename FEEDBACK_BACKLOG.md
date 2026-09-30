@@ -208,6 +208,25 @@ runtime pass now skips a sheet whose corner is already transparent, so boot
 does ~67 fewer canvas passes and new art still gets keyed if it arrives
 pink.
 
+#### P1f. A grid of lines across the map at the widest zooms — DONE 2026-10-01
+*"Em alguns dispositivos, às vezes, usando os zooms mínimos (de longe), a
+visualização da tela buga e aparecem uns quadrados."* With a screenshot.
+
+The squares were the ground bake's own chunks. A chunk is drawn as one quad,
+and the camera rounds a quad's position to a whole device pixel (that is what
+keeps the art crisp) without rounding its size — so when a chunk is not a
+whole number of device pixels wide, a neighbour can round a pixel further out
+than the one before it ends, and the canvas behind the city shows through.
+
+Not intermittent: a chunk is 384 world px and the zoom is viewScale * 2 * dpr,
+which comes out whole at every step of the ladder except **0.3x and 0.4x**, at
+dpr 1, 1.5 and 2 alike. "Some devices" meant "players who had zoomed out that
+far".
+
+Fixed by overlapping the chunks instead of meeting them: each texture is
+painted 4 world px past its chunk with the neighbouring tiles that belong
+there. The overlap is the same picture twice, so no other zoom changes.
+
 #### P1e. Kite Clash breaks sometimes
 *"Check kite game breaking sometimes."* No repro yet: which screen, what was
 on it, and whether it was a round already running. Worth catching once with
