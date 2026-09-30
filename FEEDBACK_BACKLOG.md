@@ -68,12 +68,20 @@ in the dev panel: players with a streak of 2, 3, 7.
   outfit system (placeholder art, never wearable). **Open:** reward real
   wardrobe items for achievements? (user's call)
 
-### R2. Hidden items, a few per day, in random places — P1, M (third)
+### R2. Hidden items, a few per day, in random places — NOT NOW (user, 2026-09-30)
 *"X items daily in random places."* Same seed for everyone each day (like the
 hunt), so players can compare and help each other in chat. Found items go to
 a collection, which is also the first **collectible**. Reuses the hunt's
 "deterministic target from a daily seed" approach. Needs a small set of item
 sprites (ask before drawing new ones).
+
+**Parked on 2026-09-30**: *"os itens escondidos eram so uma ideia e nao serao
+introduzidos nesse momento"*. It came out of the daily-return brainstorm as an
+idea, never a commitment, so it is not a candidate for the next slot and
+should not be offered as one. Kept written down because the machinery it would
+reuse now exists — the hunt's seeded district picker (M9b) is the same trick
+as "the same spots for everyone today" — so if it ever comes back it costs
+less than it did when it was written.
 
 ### R3. City news, curated daily — P3 (user, 2026-09-21: must not depend on daily posts; interesting, not a priority)
 One screen (a newspaper stand or a board near spawn) with a few items a day:
