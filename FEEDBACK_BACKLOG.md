@@ -227,12 +227,16 @@ for a screenshot, and there is a card listing every key — a ? button beside
 the zoom control, K or ? opens it, and a player's first desktop session opens
 it once by itself.
 
-#### P2c. The NPC dialogue icons look like buttons
+#### P2c. The NPC dialogue icons look like buttons — DONE 2026-09-29
 *"When interacting with an NPC, remove the frames of the icons. It appears to
 be buttons and people try to click."*
 
 The highlight cards have a border and a filled background, which is button
 grammar. They are captions. Drop the frame, keep the picture and the word.
+
+Shipped: `NPCDialog`'s `Highlights` draws a 6px colour square and the word,
+with no frame and no chip, and the reason written beside the code so nobody
+re-boxes them.
 
 #### P2d. Cloak should open on the action, not the home page
 *"Go directly to the interaction 'shield' when clicking the link."*
@@ -240,7 +244,7 @@ grammar. They are captions. Drop the frame, keep the picture and the word.
 Today the panel links to cloak.ag. Needs their deep link for the shield flow
 (ask Victor for the URL) so the player lands where the action is.
 
-#### P2e. Sol Mechs: rules, and the workshop
+#### P2e. Sol Mechs: rules, and the workshop — PART DONE 2026-09-29
 *"Game rules for Sol Mechs: tutorial and how to strategize."* and *"Change
 the workshop. Stats: instead of bars, icons (click to see what they
 mean/do)."*
@@ -250,13 +254,23 @@ buff is for, why legs matter now, when to substitute. And the workshop shows
 stats as bars, which say "bigger is better" and nothing else. Icons that
 explain themselves on click would say what the stat DOES.
 
-#### P2f. The minimap should say what is around you
+Where it stands (checked 2026-09-30): the rules screen teaches the MECHANICS
+with art — limb HP, the sealed Matrix, the two ways a mech goes down — and
+the workshop carries a `role` line per stat ("Physical damage taken", "Moves
+first") on hover. What is left is the strategy half (when to substitute, what
+a matrix buff buys) and stats as click-to-explain icons rather than bars.
+
+#### P2f. The minimap should say what is around you — PART DONE
 *"Minimap showing what is around."* It shows the city and the landmarks;
 what it does not show is what is near you right now — an NPC two streets
 over, a player, a stand worth visiting. Distinct from "Fix map", which was
 listed separately and needs one sentence from the room about what was wrong.
 
-#### P2g. Achievements in tiers, and one for Find Someone
+Where it stands (checked 2026-09-30): the minimap follows the player and
+carries NPC pins coloured by category plus a legend with counts. There is
+still no proximity readout — nothing computes what is CLOSE to you now.
+
+#### P2g. Achievements in tiers, and one for Find Someone — PART DONE
 *"Levels of achievements: Social Butterfly, speak to 1/5/10/20."*, *"An
 achievement for Find Someone."*, *"As many achievements as possible — they
 give dopamine."*
@@ -264,6 +278,11 @@ give dopamine."*
 The achievements list exists and is flat: each one fires once. Tiers are the
 same data with thresholds, and Find Someone already tracks scores, so it is
 mostly wiring rather than new systems.
+
+Where it stands (checked 2026-09-30): tiers exist as a field
+(`common | rare | epic | legendary`, with `TIER_COLORS`), but the eight
+achievements are still one-shot each — no 1/5/10/20 thresholds, and nothing
+for Find Someone.
 
 #### P2h. Water that moves — BRIEFED 2026-09-26, engine side open
 *"Visual feedbacks: water moving on the beach and also under the bridge."*
@@ -328,7 +347,7 @@ sell it. Cheap to build, needs a policy before it exists.
 Sorted by what it costs us and what it buys. Everything here was checked
 against the code, so each line says what is actually there today.
 
-### M1. The ACT button opens the wrong NPC — P0, S
+### M1. The ACT button opens the wrong NPC — STILL OPEN (re-checked 2026-09-30)
 *"Act button fails on Steve (every NPC)"* and *"two events at the same time"*.
 
 Found it: `CityScene` picks the interaction target with
@@ -338,11 +357,16 @@ and Sol at the plaza steps) the button opens whichever was registered first,
 so it reads as "ACT fails on Steve", and walking between them can hand two
 different NPCs the same press. Fix: pick the NEAREST in-range NPC.
 
+Re-checked 2026-09-30: STILL THERE, at `CityScene.ts:1140` (the mobile ACT
+button) and `CityScene.ts:1164` (E / Space). P2a fixed the CLICK path only —
+clicking an NPC names that NPC — so the bug now reaches only the players who
+press instead of clicking. Same one-line fix as above.
+
 If "two events at the same time" turns out to be two PANELS opening at once
 (a dialog plus a protocol screen), that is a second bug and needs the repro:
 which NPC, and what was on screen.
 
-### M2. The camera has no smoothing at all — P0, S
+### M2. The camera has no smoothing at all — DONE (CAMERA_LERP = 0.16)
 `startFollow(container, true, 1.0, 1.0)`: a lerp of 1.0 means the camera is
 pinned to the player every frame, which is why it feels snappy/jittery on a
 phone. The mentor's "around 200ms of damping" is a lerp near 0.15. One line,
@@ -540,7 +564,7 @@ The end screen shows the city's top five with nicknames, your own line
 highlighted, plus your best and your place. Reads `/api/leaderboard`
 (`game:kite-clash`), which was already collecting the scores.
 
-### 11. Kick a ball, player to player — M
+### 11. Kick a ball, player to player — DONE 2026-09-29
 Suggested as a first "we are both here" interaction. Needs a shared object
 with an owner: whoever last touched the ball owns its physics and broadcasts
 its position, the same trick the city already uses for players.
@@ -550,7 +574,7 @@ Another Indies on Solana game. Needs a building on the map, a door, and
 whatever the two teams agree the door does (a link, an NPC, a portal). Needs
 art and a conversation with them before any code.
 
-### 13. Sol Mechs ranked upgrade — M
+### 13. Sol Mechs ranked upgrade — BUILT, waiting on the redeploy
 Built and committed, not deployed; the RANKED row is hidden. Deploy path is
 the fast one now: build in Playground, export the `.so`, deploy from here.
 
