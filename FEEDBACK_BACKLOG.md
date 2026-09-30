@@ -278,7 +278,7 @@ Where it stands (checked 2026-09-30): the minimap follows the player and
 carries NPC pins coloured by category plus a legend with counts. There is
 still no proximity readout — nothing computes what is CLOSE to you now.
 
-#### P2g. Achievements in tiers, and one for Find Someone — PART DONE
+#### P2g. Achievements in tiers, and one for Find Someone — DONE 2026-10-01
 *"Levels of achievements: Social Butterfly, speak to 1/5/10/20."*, *"An
 achievement for Find Someone."*, *"As many achievements as possible — they
 give dopamine."*
@@ -287,10 +287,29 @@ The achievements list exists and is flat: each one fires once. Tiers are the
 same data with thresholds, and Find Someone already tracks scores, so it is
 mostly wiring rather than new systems.
 
-Where it stands (checked 2026-09-30): tiers exist as a field
+Where it stood on 2026-09-30: tiers existed as a field
 (`common | rare | epic | legendary`, with `TIER_COLORS`), but the eight
-achievements are still one-shot each — no 1/5/10/20 thresholds, and nothing
-for Find Someone.
+achievements were one-shot each — no thresholds, and nothing for Find Someone.
+
+Done 2026-10-01, with the user's own list of what had nothing: eight became
+**45**. New: Find Someone (1/5/25), the beach football (1/25/100), the Caramel
+Dog (1/10/50), mini-games finished (1/10/50) and won (10), Kite Clash score
+(1000/5000/10000, read off the live board where the city's best is in the
+8000s), Sol Mechs wins split into PvE (1/10/25) and ranked PvP (1/5/25),
+stocks bought (1/10/50), reactions used (10), talking to citizens
+(1/5/10/20), swaps (1/10/25/50), sends (1/10), streaks (3/7/14/30) and points
+(100/500/1000/5000).
+
+How it works: the profile carries a bag of `counters`, so a new thing to
+count costs one line in the registry instead of five. Tallies are bumped
+where the action lands — our own kicks only, a stock buy after the order
+confirms, a hunt find only on a first-place claim. The engine's first pass of
+a session is a silent back-fill, so nobody is met by eight toasts for things
+they did last week.
+
+Still open, deliberately not built without a decision: the achievements tab
+is a flat grid, and 45 cards is a wall. Grouping by activity, or showing
+"3/25" progress on the tier in play, is a design call.
 
 #### P2h. Water that moves — BRIEFED 2026-09-26, engine side open
 *"Visual feedbacks: water moving on the beach and also under the bridge."*
