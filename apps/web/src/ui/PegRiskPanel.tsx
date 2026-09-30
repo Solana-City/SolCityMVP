@@ -12,6 +12,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { PegAsset } from "@/app/api/peg-risk/route";
 import { PanelTitleBar, ProtocolLogo, SiteLinkButton } from "@/ui/PixelIcons";
 import { CATEGORY_META } from "@/game/minimap/categories";
+import { useButtonFeel, feelStyle } from "@/ui/useButtonFeel";
 
 const PROTOCOLS_COLOR = CATEGORY_META.defi.color;
 
@@ -132,24 +133,7 @@ export default function PegRiskPanel({ onClose }: { onClose: () => void }) {
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 6, maxHeight: 260, overflowY: "auto" }}>
             {shown.map((a) => (
-              <button
-                key={a.symbol}
-                onClick={() => pick(a)}
-                style={{
-                  display: "flex", alignItems: "center", gap: 7, minWidth: 0,
-                  background: "#12122a", border: "1px solid rgba(255,255,255,0.06)",
-                  borderRadius: 8, padding: "9px 10px", cursor: "pointer",
-                  fontFamily: "inherit", textAlign: "left",
-                }}
-              >
-                <span style={{
-                  width: 8, height: 8, borderRadius: "50%", flexShrink: 0,
-                  background: STATE_COLOR[a.state] ?? STATE_COLOR.UNKNOWN,
-                }} />
-                <span style={{ color: "#ccccdd", fontSize: 8, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {a.symbol}
-                </span>
-              </button>
+              <AssetPickButton key={a.symbol} asset={a} onClick={() => pick(a)} />
             ))}
           </div>
 
@@ -164,6 +148,31 @@ export default function PegRiskPanel({ onClose }: { onClose: () => void }) {
   );
 }
 
+function AssetPickButton({ asset, onClick }: { asset: PegAsset; onClick: () => void }) {
+  const feel = useButtonFeel();
+  return (
+    <button
+      onClick={onClick}
+      {...feel.handlers}
+      style={{
+        display: "flex", alignItems: "center", gap: 7, minWidth: 0,
+        background: "#12122a", border: "1px solid rgba(255,255,255,0.06)",
+        borderRadius: 8, padding: "9px 10px", cursor: "pointer",
+        fontFamily: "inherit", textAlign: "left",
+        ...feelStyle(feel),
+      }}
+    >
+      <span style={{
+        width: 8, height: 8, borderRadius: "50%", flexShrink: 0,
+        background: STATE_COLOR[asset.state] ?? STATE_COLOR.UNKNOWN,
+      }} />
+      <span style={{ color: "#ccccdd", fontSize: 8, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        {asset.symbol}
+      </span>
+    </button>
+  );
+}
+
 function ReadingCard({ asset, reading, loading, onBack }: {
   asset: PegAsset; reading: Reading | null; loading: boolean; onBack: () => void;
 }) {
@@ -174,13 +183,16 @@ function ReadingCard({ asset, reading, loading, onBack }: {
   const intrinsic = reading?.intrinsicUsd ?? asset.intrinsicUsd;
   const market = reading?.marketUsd ?? asset.marketUsd;
 
+  const backFeel = useButtonFeel();
   return (
     <div>
       <button
         onClick={onBack}
+        {...backFeel.handlers}
         style={{
           background: "none", border: "none", color: "#8888aa", cursor: "pointer",
           fontFamily: "inherit", fontSize: 7, padding: 0, marginBottom: 10,
+          ...feelStyle(backFeel),
         }}
       >
         ◂ BACK
