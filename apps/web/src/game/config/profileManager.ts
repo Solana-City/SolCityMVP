@@ -11,6 +11,18 @@ export interface PlayerProfile {
   bountyCount: number;
   /** Best daily check-in streak, mirrored from the server for achievements. */
   streakBest?: number;
+  /**
+   * Free-form tallies: kicks of the beach football, pets of the Caramel Dog,
+   * Sol Mechs wins, citizens found, best kite score.
+   *
+   * A named field per activity would mean touching this interface, the
+   * defaults, the reset and the migration every time the city gains something
+   * to count — and the achievements are meant to keep growing. A bag of
+   * counters keeps that cost at one line in achievementRegistry.ts.
+   *
+   * Optional because profiles saved before this existed load without it.
+   */
+  counters?: Record<string, number>;
   unlockedOutfits: string[];
   unlockedAchievements: string[];
   visitedNPCs: string[];
@@ -51,6 +63,32 @@ export class ProfileManager {
     if (!(best > (this.profile.streakBest ?? 0))) return;
     this.profile.streakBest = best;
     this.save();
+  }
+
+  /**
+   * Adds to a tally — one kick, one pet, one win. See `counters`.
+   *
+   * Saving is what re-runs the achievement checks (save() notifies the
+   * engine), so a tally that crosses a threshold toasts on the spot.
+   */
+  bump(key: string, by = 1): void {
+    const counters = this.profile.counters ?? (this.profile.counters = {});
+    counters[key] = (counters[key] ?? 0) + by;
+    this.save();
+  }
+
+  /** Keeps the best value ever seen, for "reach a score of X" achievements. */
+  raise(key: string, value: number): void {
+    if (!Number.isFinite(value)) return;
+    const counters = this.profile.counters ?? (this.profile.counters = {});
+    if (value <= (counters[key] ?? 0)) return;
+    counters[key] = value;
+    this.save();
+  }
+
+  /** A tally's current value, for UI that shows progress toward a tier. */
+  counter(key: string): number {
+    return this.profile.counters?.[key] ?? 0;
   }
 
   setDisplayName(name: string): void {
@@ -144,6 +182,7 @@ export class ProfileManager {
     this.profile.swapCount = 0;
     this.profile.transferCount = 0;
     this.profile.bountyCount = 0;
+    this.profile.counters = {};
     this.profile.visitedNPCs = [];
     this.profile.unlockedAchievements = [];
     this.profile.unlockedOutfits = ["default"];
@@ -173,6 +212,7 @@ export class ProfileManager {
       swapCount: 0,
       transferCount: 0,
       bountyCount: 0,
+      counters: {},
       unlockedOutfits: ["default"],
       unlockedAchievements: [],
       visitedNPCs: [],

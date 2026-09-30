@@ -190,6 +190,7 @@ export default function Home() {
       // the Brazil Shirt.
       if (npc.action.type === "pet") {
         profileManager.visitNPC(npc.id, npc.name);
+        profileManager.bump("dog-pets");
         track("protocol-open", npc.id, { label: npc.name });
         setPetting(true);
         return;
@@ -333,6 +334,17 @@ export default function Home() {
         success: result.success,
         label: `${result.success ? "won" : "lost"}${score ? ` · ${score}` : ""}`,
       });
+
+      // The tallies behind the mini-game achievements. Every finished game
+      // counts as a play; wins count separately; Kite Clash keeps a best
+      // score, and Sol Mechs separates a ranked win from a win against the
+      // machine, because those are not the same achievement.
+      profileManager.bump("minigame-plays");
+      if (result.success) profileManager.bump("minigame-wins");
+      if (activeMiniGame.id === "kite-clash") profileManager.raise("kite-best", score);
+      if (activeMiniGame.id === "sol-mechs" && result.success) {
+        profileManager.bump(meta.mode === "ranked" ? "mechs-pvp-wins" : "mechs-pve-wins");
+      }
     }
     // Games with their own result screen (Sol Mechs) report the outcome as
     // soon as a match ends and stay open; the player leaves when ready.

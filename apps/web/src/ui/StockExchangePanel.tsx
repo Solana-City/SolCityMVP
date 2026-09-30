@@ -406,6 +406,9 @@ function TradeView(props: {
         outputToken: side === "buy" ? stock.tokenSymbol : payWith,
         amount: side === "buy" ? String(usdAmount) : `${Math.round((sellPct ?? 0) * 100)}%`,
       });
+      // Counted here and not at the click: this line is only reached once the
+      // order came back confirmed. Sells are not buys and do not count.
+      if (side === "buy") profileManager.bump("stocks-buys");
       emitGameEvent("game:swap");
       emitGameEvent("game:stock-trade", {
         side, ticker: stock.ticker, sector: stock.sector, wallStreetOpen: getMarketClock().wallStreetOpen,
@@ -641,6 +644,10 @@ function BasketView(props: {
 
     if (okCount) {
       profileManager.recordSwap({ inputToken: payWith, outputToken: `basket:${basket.id}`, amount: String(total) });
+      // A basket is several buys in one press, and each one is a stock
+      // bought: counting it as a single purchase would under-report the
+      // player who buys the whole sector at once.
+      profileManager.bump("stocks-buys", okCount);
       emitGameEvent("game:swap");
       emitGameEvent("game:stock-trade", {
         side: "buy", basketId: basket.id,

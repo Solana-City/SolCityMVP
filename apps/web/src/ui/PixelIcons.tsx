@@ -350,8 +350,34 @@ export function CheckBox({ state, size = 14 }: { state: "todo" | "done" | "claim
   );
 }
 
-/** Achievement id -> the citizen it is about (or the trophy for the summit). */
-export const ACHIEVEMENT_ART: Record<string, { sheet?: string; img?: string }> = {
+/** Frame 0 of a horizontal strip, square-cropped — the football's roll sheet
+ *  is four frames wide, and a plain <img> would show all four. */
+function StripIcon({ src, frames, size }: { src: string; frames: number; size: number }) {
+  return (
+    <span
+      aria-hidden
+      style={{
+        display: "inline-block", width: size, height: size, flexShrink: 0,
+        backgroundImage: `url("${src}")`,
+        backgroundSize: `${size * frames}px ${size}px`,
+        backgroundPosition: "0 0",
+        backgroundRepeat: "no-repeat",
+        imageRendering: "pixelated",
+      }}
+    />
+  );
+}
+
+/**
+ * Achievement id -> the art that stands for it: the citizen it is about, a
+ * piece of the thing itself (the ball, a mech slot), or an interface icon.
+ *
+ * Tiers of the same activity deliberately share one picture. What separates
+ * them is the tier colour on the title and the number in the description, and
+ * three cards of the same ball reads as a set the way three different icons
+ * never would.
+ */
+export const ACHIEVEMENT_ART: Record<string, { sheet?: string; img?: string; strip?: string; frames?: number }> = {
   "first-swap": { sheet: "Jupiter Joe.png" },
   "first-transfer": { sheet: "send-npc.png" },
   "streak-3": { img: `${UI}/attention_yellow.png` },
@@ -360,11 +386,73 @@ export const ACHIEVEMENT_ART: Record<string, { sheet?: string; img?: string }> =
   "trader-10": { sheet: "Jupiter Joe.png" },
   "streak-7": { img: `${UI}/attention_yellow.png` },
   "score-1000": { img: ICON.trophy },
+
+  // Talking
+  "social-5": { img: `${UI}/ico_chat.png` },
+  "social-10": { img: `${UI}/ico_chat.png` },
+  "social-20": { img: `${UI}/ico_chat.png` },
+
+  // Trading
+  "trader-25": { sheet: "Jupiter Joe.png" },
+  "trader-50": { sheet: "Jupiter Joe.png" },
+  "sender-10": { sheet: "send-npc.png" },
+
+  // Stocks
+  "stocks-1": { sheet: "Stocks Broker.png" },
+  "stocks-10": { sheet: "Stocks Broker.png" },
+  "stocks-50": { sheet: "Stocks Broker.png" },
+
+  // Find Someone
+  "hunt-1": { img: ICON.hunt },
+  "hunt-5": { img: ICON.hunt },
+  "hunt-25": { img: ICON.hunt },
+
+  // The beach football
+  "ball-1": { strip: "/assets/sprites/decor/ball_soccer.png", frames: 4 },
+  "ball-25": { strip: "/assets/sprites/decor/ball_soccer.png", frames: 4 },
+  "ball-100": { strip: "/assets/sprites/decor/ball_soccer.png", frames: 4 },
+
+  // The Caramel Dog
+  "dog-1": { sheet: "caramel-dog.png" },
+  "dog-10": { sheet: "caramel-dog.png" },
+  "dog-50": { sheet: "caramel-dog.png" },
+
+  // Mini-games
+  "games-1": { img: `${UI}/controller.png` },
+  "games-10": { img: `${UI}/controller.png` },
+  "games-win-10": { img: `${UI}/controller.png` },
+  "games-50": { img: `${UI}/controller.png` },
+
+  // Kite Clash
+  "kite-1000": { sheet: "Kite Pro.png" },
+  "kite-5000": { sheet: "Kite Pro.png" },
+  "kite-10000": { sheet: "Kite Pro.png" },
+
+  // Sol Mechs
+  "mechs-pve-1": { img: "/assets/minigames/sol-mechs/ui/slotmini-matrix.png" },
+  "mechs-pve-10": { img: "/assets/minigames/sol-mechs/ui/slotmini-matrix.png" },
+  "mechs-pve-25": { img: "/assets/minigames/sol-mechs/ui/slotmini-matrix.png" },
+  "mechs-pvp-1": { img: `${UI}/icon2_leaderboard.png` },
+  "mechs-pvp-5": { img: `${UI}/icon2_leaderboard.png` },
+  "mechs-pvp-25": { img: `${UI}/icon2_leaderboard.png` },
+
+  // Reactions
+  "express-10": { img: ICON.emote },
+
+  // Coming back
+  "streak-14": { img: `${UI}/icon_calendar.png` },
+  "streak-30": { img: `${UI}/icon_calendar.png` },
+
+  // Points
+  "score-100": { img: ICON.trophy },
+  "score-500": { img: ICON.trophy },
+  "score-5000": { img: ICON.trophy },
 };
 
 export function AchievementIcon({ id, size = 28 }: { id: string; size?: number }) {
   const art = ACHIEVEMENT_ART[id];
   if (art?.sheet) return <CitizenIcon sheet={art.sheet} size={size} />;
+  if (art?.strip) return <StripIcon src={art.strip} frames={art.frames ?? 1} size={size} />;
   return <PixelImg src={art?.img ?? ICON.trophy} size={size} />;
 }
 

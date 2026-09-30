@@ -552,7 +552,12 @@ export class CityScene extends Phaser.Scene {
         // point of predicting them. Only our own goes out to the city;
         // everyone else's is already on its way from their own browser.
         soundManager.play("kick");
-        if (mine) this.network?.sendBallKick(kick);
+        if (mine) {
+          this.network?.sendBallKick(kick);
+          // Only our own touches count toward Beach Pelada: the predicted
+          // ones belong to the player who actually kicked.
+          profileManager.bump("ball-kicks");
+        }
       },
     );
     this.events.once("shutdown", () => { this.beachBall?.destroy(); this.beachBall = null; });
@@ -745,6 +750,10 @@ export class CityScene extends Phaser.Scene {
     // on scene restarts.
     if (!this.registry.get("achievementEngine")) {
       const engine = new AchievementEngine(this.profile);
+      // Runs the silent back-fill now, so a player who already satisfied
+      // achievements added since their last visit is not toasted for all of
+      // them the first time they gain a point.
+      engine.bootstrap();
       this.registry.set("achievementEngine", engine);
     }
 
@@ -843,6 +852,7 @@ export class CityScene extends Phaser.Scene {
     // player's own face for a few seconds, then auto-reverts. Local only.
     this.onGameEvent("expression:trigger", (expr: Expression) => {
       track("expression", expr.textureKey.replace(/^pd-expr-/, "").toLowerCase());
+      profileManager.bump("expressions");
       this.avatar.setExpression(expr.textureKey);
       playExpressionFx(this, this.avatar, expr);
       soundManager.play("emote");
@@ -1613,11 +1623,14 @@ export class CityScene extends Phaser.Scene {
         if (won) {
           this.game.events.emit("whereIsNPC:found", { wallet, loadout: target.loadout });
           track("hunt", "found", { value: 1, label: "found the citizen" });
+          // Only a claim that landed first is a find, same as the score.
+          profileManager.bump("hunt-finds");
         }
       });
     } else {
       this.game.events.emit("whereIsNPC:found", { wallet, loadout: target.loadout });
       track("hunt", "found", { value: 1, label: "found the citizen" });
+      profileManager.bump("hunt-finds");
     }
 
     const FOUND_LINES = [
