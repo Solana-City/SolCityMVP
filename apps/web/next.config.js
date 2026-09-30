@@ -59,6 +59,14 @@ const nextConfig = {
 
 module.exports = withPWA({
   dest: "public",
+  // Everything in /public is precached by default, which for the BGM tracks
+  // would mean every visitor downloading ~7 MB of music before the city even
+  // boots. Music is streamed on demand instead: excluded here, matched by no
+  // runtimeCaching rule below, so the request passes straight through the
+  // service worker to the network and the browser's own HTTP cache. Range
+  // requests (which is how <audio> seeks) also stay intact that way, where a
+  // precached entry would have broken them.
+  publicExcludes: ["!noprecache/**/*", "!assets/audio/**/*"],
   disable: process.env.NODE_ENV === "development",
   reloadOnOnline: true,
   cacheOnFrontEndNav: true,

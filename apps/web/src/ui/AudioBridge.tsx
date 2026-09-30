@@ -2,14 +2,17 @@
 
 import { useEffect } from "react";
 import { soundManager, type Sfx } from "@/game/audio/SoundManager";
+import { musicManager } from "@/game/audio/MusicManager";
 import { progressionBus } from "@/game/progression/progressionBus";
 
 /**
- * Headless audio bridge — wires game/progression events to synthesized SFX.
+ * Headless audio bridge — wires game/progression events to synthesized SFX
+ * and owns the one gesture that starts the background music.
  * Renders nothing; pure side-effect, mounted once in page.tsx.
  *
  *   - Unlocks the AudioContext on the first user gesture (browsers keep it
- *     suspended until then).
+ *     suspended until then) and starts the city BGM on that same gesture,
+ *     which is the only moment autoplay policy lets music begin.
  *   - A delegated pointerdown gives every <button> a UI click with one
  *     listener. A button can opt out with data-sfx="off" (e.g. emoji
  *     buttons, which have their own emote sound) or request a different
@@ -22,7 +25,7 @@ import { progressionBus } from "@/game/progression/progressionBus";
 export default function AudioBridge({ game }: { game: Phaser.Game | null }) {
   // Unlock on first gesture + delegated button-click SFX.
   useEffect(() => {
-    const unlock = () => soundManager.unlock();
+    const unlock = () => { soundManager.unlock(); musicManager.start(); };
     window.addEventListener("pointerdown", unlock, { once: true, capture: true });
     window.addEventListener("keydown", unlock, { once: true, capture: true });
 
