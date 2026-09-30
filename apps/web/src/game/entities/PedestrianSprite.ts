@@ -127,6 +127,15 @@ export class PedestrianSprite {
   /** Real-time deadline: if a walk somehow takes too long, arrive anyway. */
   private walkDeadline = 0;
   private nudgeCooldown = 0;
+  /**
+   * The rectangle this pedestrian may not stroll out of, in world pixels.
+   *
+   * Only the hunted citizen ever has one: the round decides a district and
+   * the target keeps to it, so every client is searching the same streets
+   * (see WhereIsNPCGame.getTargetDistrict). An ordinary pedestrian has none
+   * and walks the whole city as before.
+   */
+  private leash: Phaser.Geom.Rectangle | null = null;
 
   constructor(
     scene: Phaser.Scene,
@@ -221,6 +230,39 @@ export class PedestrianSprite {
 
   /** No visual marker — player must find target by appearance only. */
   setAsTarget(_isTarget: boolean): void {}
+
+  /** Confine (or release) this pedestrian's strolls. See `leash`. */
+  setLeash(rect: Phaser.Geom.Rectangle | null): void {
+    this.leash = rect;
+  }
+
+  /**
+   * Puts this pedestrian somewhere else outright, abandoning the stroll it
+   * was on.
+   *
+   * Only used to move the hunted citizen into the round's district, and
+   * PedestrianManager only calls it while the pedestrian is off screen — a
+   * body that changes position without walking reads as a teleport, which is
+   * the same reason the crowd is never recycled on camera.
+   */
+  placeAt(wx: number, wy: number): void {
+    const container = this.avatar.getContainer();
+    if (!container?.scene || !container.body) return;
+    const body = container.body as Phaser.Physics.Arcade.Body;
+
+    this.moveTimer?.remove(false);
+    this.moveTimer = null;
+    this.walkVx = 0;
+    this.walkVy = 0;
+    this.target = null;
+    this.isMoving = false;
+    body.setVelocity(0, 0);
+    this.avatar.x = wx;
+    this.avatar.y = wy;
+    body.reset(wx, wy);
+    this.showIdleFrame();
+    this.scheduleNextMove();
+  }
 
   /** Brief pause + scale pulse when found, then resume movement cleanly. */
   celebrateFound(): void {
@@ -325,6 +367,27 @@ export class PedestrianSprite {
     return free;
   }
 
+  /**
+   * Shortens a stroll so it stops at the edge of the leash instead of
+   * crossing it.
+   *
+   * Clamping rather than rejecting the direction matters: a target near a
+   * district's edge would otherwise find three of its four options refused
+   * and stand still for the whole round, which is exactly the citizen nobody
+   * believes is alive. This way it still walks, just not out of the district.
+   */
+  private clampToLeash(dir: Direction, dist: number): number {
+    if (!this.leash) return dist;
+    const container = this.avatar.getContainer();
+    const [dx, dy] = DIR_VECTORS[dir];
+    let room = dist;
+    if (dx > 0) room = Math.min(room, this.leash.right - container.x);
+    if (dx < 0) room = Math.min(room, container.x - this.leash.left);
+    if (dy > 0) room = Math.min(room, this.leash.bottom - container.y);
+    if (dy < 0) room = Math.min(room, container.y - this.leash.top);
+    return Math.max(0, room);
+  }
+
   private startMove() {
     if (!this.scene?.sys?.isActive()) return;
     const container = this.avatar.getContainer();
@@ -337,7 +400,7 @@ export class PedestrianSprite {
     let chosen: { dir: Direction; dist: number } | null = null;
     let leastCrowded: { dir: Direction; dist: number; density: number } | null = null;
     for (const dir of this.directionOrder()) {
-      const dist = this.walkableDistance(dir, strollPx);
+      const dist = this.clampToLeash(dir, this.walkableDistance(dir, strollPx));
       if (dist < TILE_SIZE) continue; // needs at least one clear tile
       const [dx, dy] = DIR_VECTORS[dir];
       const density = this.ctx.countNear(

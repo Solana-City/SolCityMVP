@@ -1,7 +1,7 @@
 import * as Phaser from "phaser";
 import { TILE_SIZE } from "../config/constants";
 import { PedestrianSprite, makePedestrianLoadout, type PedestrianContext } from "./PedestrianSprite";
-import { getTargetPedIndex, advanceFindSlot, getCurrentSlot, resetCitizenTimer, ROTATION_BATCH_MS } from "../minigames/whereIsNPC/WhereIsNPCGame";
+import { getTargetPedIndex, getTargetDistrict, getTargetSpot, advanceFindSlot, getCurrentSlot, resetCitizenTimer, ROTATION_BATCH_MS } from "../minigames/whereIsNPC/WhereIsNPCGame";
 
 // The Canvas renderer on mobile redraws every sprite on the CPU each frame,
 // and each pedestrian is up to 7 layered sprites — a 96-strong crowd is
@@ -15,6 +15,26 @@ const PEDESTRIAN_COUNT_MOBILE = 40;
 // same citizen for a given round. Must be ≤ the smallest crowd (mobile) so the
 // index always exists locally.
 const HUNT_TARGET_POOL = PEDESTRIAN_COUNT_MOBILE;
+
+/**
+ * The hunted citizen keeps to one district, and the round decides which.
+ *
+ * Until now the target matched city-wide in LOOKS only: its outfit is seeded
+ * from the pedestrian index, but every client spawned the crowd on unseeded
+ * random tiles, so the citizen one player was chasing by the fountain stood
+ * on the beach on somebody else's screen. Whoever found "the" citizen first
+ * had found their own copy of it.
+ *
+ * A district is a square block of the city, roughly a screenful at the
+ * default zoom, and only blocks with enough walkable street to hold a
+ * wandering citizen count as one. The target is placed on a deterministic
+ * tile inside the round's district and leashed to it, so every client is
+ * searching the same streets. It is not a hint: the district still holds
+ * dozens of citizens, and nothing in the game says which district it is.
+ */
+const DISTRICT_TILES = 22;
+/** A block with less street than this is a courtyard, not a district. */
+const DISTRICT_MIN_WALKABLE = 60;
 
 function getPedestrianCount(): number {
   return window.matchMedia("(pointer: coarse)").matches
@@ -78,6 +98,12 @@ export class PedestrianManager {
   private count = PEDESTRIAN_COUNT_DESKTOP;
   /** Every tile a citizen may stand on — see collectWalkableTiles. */
   private walkable: { col: number; row: number }[] = [];
+  /** Candidate districts for the hunt, in a canonical order — see below. */
+  private districts: { tiles: { col: number; row: number }[]; rect: Phaser.Geom.Rectangle }[] = [];
+  /** Pending relocation of the target, retried until it is off camera. */
+  private relocateTimer: Phaser.Time.TimerEvent | null = null;
+  /** The round the current target was placed for — see refreshTarget. */
+  private targetSlot = -1;
   /** Arcade group — lets us do pedGroup vs pedGroup in one collider call */
   private pedGroup!: Phaser.Physics.Arcade.Group;
 
@@ -105,6 +131,7 @@ export class PedestrianManager {
       console.warn("[pedestrians] no walkable tiles found — crowd disabled");
       return;
     }
+    this.districts = this.buildDistricts();
 
     for (let i = 0; i < this.count; i++) {
       scene.time.delayedCall(i * 80, () => {
@@ -327,20 +354,104 @@ export class PedestrianManager {
     }
   }
 
+  /**
+   * Cuts the walkable city into square blocks and keeps the ones with enough
+   * street in them to hold a wandering citizen.
+   *
+   * The order has to be identical on every client, because the round picks a
+   * district by INDEX: the walkable set already comes from a deterministic
+   * flood fill of the same map, and the blocks are then sorted north-to-south,
+   * west-to-east, so two clients never disagree about which one is #3.
+   */
+  private buildDistricts(): { tiles: { col: number; row: number }[]; rect: Phaser.Geom.Rectangle }[] {
+    const byBlock = new Map<string, { col: number; row: number }[]>();
+    for (const tile of this.walkable) {
+      const bc = Math.floor(tile.col / DISTRICT_TILES);
+      const br = Math.floor(tile.row / DISTRICT_TILES);
+      const key = `${br}:${bc}`;
+      const list = byBlock.get(key);
+      if (list) list.push(tile);
+      else byBlock.set(key, [tile]);
+    }
+
+    const out: { tiles: { col: number; row: number }[]; rect: Phaser.Geom.Rectangle }[] = [];
+    for (const [key, tiles] of byBlock) {
+      if (tiles.length < DISTRICT_MIN_WALKABLE) continue;
+      const [br, bc] = key.split(":").map(Number);
+      out.push({
+        // Sorted inside the block too, so `getTargetSpot` lands on the same
+        // tile everywhere and not on whatever order the fill happened to take.
+        tiles: [...tiles].sort((a, b) => (a.row - b.row) || (a.col - b.col)),
+        rect: new Phaser.Geom.Rectangle(
+          bc * DISTRICT_TILES * TILE_SIZE,
+          br * DISTRICT_TILES * TILE_SIZE,
+          DISTRICT_TILES * TILE_SIZE,
+          DISTRICT_TILES * TILE_SIZE,
+        ),
+      });
+    }
+    out.sort((a, b) => (a.rect.y - b.rect.y) || (a.rect.x - b.rect.x));
+    return out;
+  }
+
+  /**
+   * Moves the hunted citizen into the district this round chose, and leashes
+   * it there.
+   *
+   * The move waits for the pedestrian to be off camera: a body that changes
+   * position without walking reads as a teleport, the same reason
+   * `rotateBatch` never recycles a citizen on screen. Off screen — which is
+   * nearly always, the city being far larger than the view — it happens on
+   * the spot. The retry is cheap and gives up as soon as the round moves on.
+   */
+  private relocateTargetToDistrict(index: number): void {
+    this.relocateTimer?.remove(false);
+    this.relocateTimer = null;
+    if (this.districts.length === 0) return;
+
+    const slot = getCurrentSlot();
+    const district = this.districts[getTargetDistrict(slot, this.districts.length)];
+    const spot = district.tiles[getTargetSpot(slot, district.tiles.length)];
+    const wx = spot.col * TILE_SIZE + TILE_SIZE / 2;
+    const wy = spot.row * TILE_SIZE + TILE_SIZE / 2;
+
+    const place = () => {
+      // The round moved on while we were waiting for the player to look away.
+      if (this.currentTargetIndex !== index) return;
+      const ped = this.pedestrians[index];
+      if (!ped) return;
+      if (this.isOnScreen(ped.x, ped.y)) {
+        this.relocateTimer = this.scene.time.delayedCall(700, place);
+        return;
+      }
+      ped.placeAt(wx, wy);
+      ped.setLeash(district.rect);
+    };
+    place();
+  }
+
   refreshTarget(): void {
     // Derive the target from a FIXED pool (not the device-dependent crowd size)
     // so desktop (96 peds) and mobile (40) pick the SAME index for a given round
     // — indices 0..HUNT_TARGET_POOL-1 exist and share a canonical appearance on
     // every client, so the target citizen is identical city-wide.
-    const newIndex = getTargetPedIndex(getCurrentSlot(), HUNT_TARGET_POOL);
-    if (newIndex === this.currentTargetIndex) return;
+    const slot = getCurrentSlot();
+    const newIndex = getTargetPedIndex(slot, HUNT_TARGET_POOL);
+    // The slot is checked as well as the index: one round in forty picks the
+    // same citizen as the last one, and that citizen still owes the new round
+    // a new district.
+    if (newIndex === this.currentTargetIndex && slot === this.targetSlot) return;
+    this.targetSlot = slot;
 
     if (this.currentTargetIndex >= 0 && this.pedestrians[this.currentTargetIndex]) {
       this.pedestrians[this.currentTargetIndex].setAsTarget(false);
+      // Yesterday's citizen goes back to walking the whole city.
+      this.pedestrians[this.currentTargetIndex].setLeash(null);
     }
     this.currentTargetIndex = newIndex;
     if (this.pedestrians[newIndex]) {
       this.pedestrians[newIndex].setAsTarget(true);
+      this.relocateTargetToDistrict(newIndex);
     }
   }
 
@@ -354,6 +465,9 @@ export class PedestrianManager {
 
   onTargetFound(): void {
     this.pedestrians[this.currentTargetIndex]?.celebrateFound();
+    this.pedestrians[this.currentTargetIndex]?.setLeash(null);
+    this.relocateTimer?.remove(false);
+    this.relocateTimer = null;
     this.currentTargetIndex = -1;
     advanceFindSlot(); // advance slot so other wallets can still find the next target
     resetCitizenTimer(); // the next citizen gets a fresh full countdown
@@ -378,6 +492,8 @@ export class PedestrianManager {
   }
 
   destroy(): void {
+    this.relocateTimer?.remove(false);
+    this.relocateTimer = null;
     for (const p of this.pedestrians) p.destroy();
     this.pedestrians = [];
   }

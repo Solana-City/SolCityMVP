@@ -77,6 +77,41 @@ export function getTargetPedIndex(seq: number, pedCount: number): number {
   return Math.floor(rng((seq * 0x9e3779b9) ^ 0xc0ffee) * pedCount);
 }
 
+/**
+ * Which part of the city the hunted citizen keeps to, for a given citizen
+ * sequence number.
+ *
+ * The target's APPEARANCE has always matched city-wide (the loadout is seeded
+ * from the pedestrian index, see PedestrianManager), but its POSITION never
+ * did: every client spawned its crowd on unseeded random tiles and let it
+ * stroll, so player A could be looking at the right citizen by the fountain
+ * while player B's copy of that same citizen was out on the beach. "Find the
+ * citizen" was really a different hunt per player.
+ *
+ * So the round also decides WHERE. A second hash of the same sequence number
+ * picks one district out of the ones the city offers, and the target is
+ * placed and kept inside it (PedestrianManager.relocateTargetToDistrict).
+ * Every client derives the same district from the same round, so everyone is
+ * searching the same streets.
+ *
+ * A district is about a screenful, so this does not hand anybody the answer:
+ * inside it there are still dozens of citizens to read faces on. Nothing in
+ * the UI says which district it is — that is the whole game.
+ *
+ * Kept as a separate hash from `getTargetPedIndex` so the two never correlate:
+ * citizen #7 is not always in the north.
+ */
+export function getTargetDistrict(seq: number, districtCount: number): number {
+  if (districtCount <= 0) return 0;
+  return Math.floor(rng((seq * 0x85ebca6b) ^ 0x5eed17) * districtCount);
+}
+
+/** Which walkable tile INSIDE that district the target starts on. */
+export function getTargetSpot(seq: number, tileCount: number): number {
+  if (tileCount <= 0) return 0;
+  return Math.floor(rng((seq * 0xc2b2ae35) ^ 0x1057) * tileCount);
+}
+
 export function getMsRemaining(): number {
   return ROUND_MS - (Date.now() % ROUND_MS);
 }
