@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import type { ChatManager, ChatMessage, ChatChannel, DMChannel } from "@/game/chat/ChatManager";
 import { getChannelColor, getChannelLabel, SELF_COLOR } from "@/game/chat/ChatManager";
-import { EMOJI_REGISTRY } from "@/game/chat/EmojiSystem";
+import { EMOJI_REGISTRY, type EmojiDef } from "@/game/chat/EmojiSystem";
 import ChatGuide from "./ChatGuide";
 import { containsLink, maskLinks } from "@/game/chat/linkFilter";
 import { DMClient, OPEN_DM_EVENT, resolveRecipient } from "@/game/chat/dmClient";
@@ -12,6 +12,7 @@ import { cachedName, requestNames } from "@/game/names/nameService";
 import type { OnChainMultiplayer } from "@/game/multiplayer/OnChainMultiplayer";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { chamferBox, chamferClip } from "@/ui/chamfer";
+import { useButtonFeel, feelStyle } from "@/ui/useButtonFeel";
 
 const DM_COLOR = "#FFD700";
 const BTN_FRAME = 'url(/assets/branding/ui/frame-btn.png) 18 fill / 4px / 0 round';
@@ -46,6 +47,11 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
   const [isExpanded, setIsExpanded] = useState(true);
   const [showEmojis, setShowEmojis] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
+  const guideFeel = useButtonFeel();
+  const expandFeel = useButtonFeel();
+  const emojiToggleFeel = useButtonFeel();
+  const expressionToggleFeel = useButtonFeel();
+  const sendFeel = useButtonFeel();
 
   /**
    * How much of the viewport the on-screen keyboard is covering, and how much
@@ -345,6 +351,7 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
           aria-label="How the chat works"
           title="How the chat works"
           className="ml-auto self-center"
+          {...guideFeel.handlers}
           style={{
             width: 22, height: 22, flexShrink: 0,
             backgroundImage: "url(/assets/ui/icon_frame_btn.png)", backgroundSize: "100% 100%",
@@ -353,6 +360,7 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
             fontFamily: "Georgia, serif", fontStyle: "italic", fontWeight: "bold", fontSize: 11,
             lineHeight: "12px", padding: 0, cursor: "pointer",
             display: "flex", alignItems: "center", justifyContent: "center",
+            ...feelStyle(guideFeel),
           }}
         >
           i
@@ -360,12 +368,14 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
         <button
           onClick={() => setIsExpanded(!isExpanded)}
           className="self-center"
+          {...expandFeel.handlers}
           style={{
             backgroundImage: "url(/assets/ui/icon_frame_btn.png)", backgroundSize: "100% 100%",
             imageRendering: "pixelated", border: "none",
             width: 22, height: 22, padding: 0, cursor: "pointer",
             display: "flex", alignItems: "center", justifyContent: "center",
             flexShrink: 0,
+            ...feelStyle(expandFeel),
           }}
         >
           <img src="/assets/ui/icon_down1.png" width={12} height={12} alt="" draggable={false}
@@ -453,30 +463,7 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
           })}
         >
           {EMOJI_REGISTRY.map((em) => (
-            <button
-              key={em.id}
-              // The emote itself makes a sound (in showEmoji); opt out of the
-              // generic UI click so they don't overlap.
-              data-sfx="off"
-              onClick={() => {
-                gameRef?.events.emit("emoji:trigger", em);
-                setShowEmojis(false);
-              }}
-              className="px-2 py-1 text-xs cursor-pointer"
-              style={chamferBox(4, {
-                background: `${em.color}15`,
-                color: em.color,
-                border: `1px solid ${em.color}30`,
-                fontFamily: '"Press Start 2P", monospace',
-                fontSize: "7px",
-                display: "flex",
-                alignItems: "center",
-                gap: 4,
-              })}
-              title={`${em.label} [${em.key}]`}
-            >
-              <span>{em.symbol}</span>
-            </button>
+            <EmojiPickButton key={em.id} em={em} onPick={() => { gameRef?.events.emit("emoji:trigger", em); setShowEmojis(false); }} />
           ))}
         </div>
       )}
@@ -495,9 +482,12 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
         <button
           onClick={() => { setShowEmojis(v => !v); }}
           className="cursor-pointer flex items-center justify-center"
+          {...emojiToggleFeel.handlers}
           style={{
             width: 32, height: 32, flexShrink: 0, padding: 0, background: "none", border: "none",
-            filter: showEmojis ? "brightness(1.3) drop-shadow(0 0 4px rgba(183,233,40,0.7))" : "none",
+            filter: showEmojis ? "brightness(1.3) drop-shadow(0 0 4px rgba(183,233,40,0.7))" : emojiToggleFeel.pressed ? "brightness(0.92)" : emojiToggleFeel.hover ? "brightness(1.15)" : "none",
+            transform: emojiToggleFeel.pressed ? "scale(0.92)" : "none",
+            transition: "filter 0.12s, transform 0.08s",
           }}
           title="Emotes"
         >
@@ -506,8 +496,10 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
         <button
           onClick={() => { window.dispatchEvent(new Event("solcity:openExpressionWheel")); setShowEmojis(false); }}
           className="cursor-pointer flex items-center justify-center"
+          {...expressionToggleFeel.handlers}
           style={{
             width: 32, height: 32, flexShrink: 0, padding: 0, background: "none", border: "none",
+            ...feelStyle(expressionToggleFeel),
           }}
           title="Face expressions"
         >
@@ -545,7 +537,10 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
         {(
           <button
             // Keep focus in the input so a desktop player can keep typing.
-            onPointerDown={(e) => { if (!isTouch) e.preventDefault(); }}
+            onPointerDown={(e) => { if (!isTouch) e.preventDefault(); sendFeel.handlers.onPointerDown(); }}
+            onPointerUp={sendFeel.handlers.onPointerUp}
+            onMouseEnter={sendFeel.handlers.onMouseEnter}
+            onMouseLeave={sendFeel.handlers.onMouseLeave}
             onClick={() => void handleSend()}
             disabled={!input.trim() || busy}
             className="cursor-pointer flex items-center justify-center"
@@ -554,6 +549,8 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
               opacity: input.trim() ? 1 : 0.45,
               filter: input.trim() ? "drop-shadow(0 0 4px rgba(183,233,40,0.6))" : "grayscale(0.6)",
               WebkitTapHighlightColor: "transparent",
+              transform: sendFeel.pressed ? "scale(0.9)" : "none",
+              transition: "transform 0.08s",
             }}
             title="Send"
           >
@@ -565,10 +562,40 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
   );
 }
 
+function EmojiPickButton({ em, onPick }: { em: EmojiDef; onPick: () => void }) {
+  const feel = useButtonFeel();
+  return (
+    <button
+      // The emote itself makes a sound (in showEmoji); opt out of the
+      // generic UI click so they don't overlap.
+      data-sfx="off"
+      onClick={onPick}
+      {...feel.handlers}
+      className="px-2 py-1 text-xs cursor-pointer"
+      style={chamferBox(4, {
+        background: `${em.color}15`,
+        color: em.color,
+        border: `1px solid ${em.color}30`,
+        fontFamily: '"Press Start 2P", monospace',
+        fontSize: "7px",
+        display: "flex",
+        alignItems: "center",
+        gap: 4,
+        ...feelStyle(feel),
+      })}
+      title={`${em.label} [${em.key}]`}
+    >
+      <span>{em.symbol}</span>
+    </button>
+  );
+}
+
 function Chip({ label, active, unread = 0, onClick }: { label: string; active: boolean; unread?: number; onClick: () => void }) {
+  const feel = useButtonFeel();
   return (
     <button
       onClick={onClick}
+      {...feel.handlers}
       className="px-2 py-1 relative"
       style={chamferBox(4, {
         flexShrink: 0, whiteSpace: "nowrap", cursor: "pointer", fontSize: 7,
@@ -576,6 +603,7 @@ function Chip({ label, active, unread = 0, onClick }: { label: string; active: b
         background: active ? "rgba(255,215,0,0.14)" : "transparent",
         color: active ? DM_COLOR : "#8a8aa5",
         border: `1px solid ${active ? "rgba(255,215,0,0.5)" : "rgba(153,69,255,0.25)"}`,
+        ...feelStyle(feel),
       })}
     >
       {label}
@@ -604,9 +632,11 @@ function TabButton({
   compact?: boolean;
   onClick: () => void;
 }) {
+  const feel = useButtonFeel();
   return (
     <button
       onClick={onClick}
+      {...feel.handlers}
       className={compact ? "px-1.5 py-0.5 transition-colors relative" : "px-2 py-1 transition-colors relative"}
       style={{
         background: "rgba(10,10,30,0.5)",
@@ -615,6 +645,7 @@ function TabButton({
         borderImage: BTN_FRAME, imageRendering: "pixelated", clipPath: BTN_CLIP,
         cursor: "pointer",
         fontSize: compact ? 7 : 8,
+        ...feelStyle(feel),
       }}
     >
       {active && (
