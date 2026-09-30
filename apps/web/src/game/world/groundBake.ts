@@ -42,6 +42,34 @@ import type { SparseLayer } from "./sparseLayer";
 
 const CHUNK_PX = 384; // 16 tiles of 24px: tile edges never straddle a chunk
 /**
+ * How far each chunk's texture reaches into its neighbours, in world pixels.
+ *
+ * A chunk is drawn as one quad, and the camera rounds a quad's position to a
+ * whole device pixel (roundPixels, which is what keeps the art crisp) without
+ * rounding its SIZE. When a chunk is a whole number of device pixels wide the
+ * two roundings agree and neighbours meet exactly. When it is not, one
+ * neighbour can round a pixel further out than the one before it ends, and
+ * what shows in the crack is the canvas behind the city: a grid of thin lines
+ * over the whole map, one square per chunk.
+ *
+ * That is not a rare case, it is two specific zoom steps. A chunk is
+ * 384 world px and the camera zoom is viewScale * 2 * dpr, so the width in
+ * device pixels is whole at every step except the two widest, 0.3x and 0.4x
+ * — on every screen density. Which is exactly where players saw it: "the
+ * minimum zooms, from far away".
+ *
+ * So each texture is painted a few pixels PAST its chunk, with the
+ * neighbouring tiles that belong there, and the textures overlap instead of
+ * meeting. The overlap is the same picture drawn twice, so it is invisible at
+ * every zoom, and 4 world px covers a one-device-pixel crack even at the
+ * widest step on a dpr-1 screen (0.6 device px per world px).
+ *
+ * The alternative was to bend the zoom ladder until every step divided 384,
+ * which would have moved steps the room chose and changed nothing about the
+ * cause.
+ */
+const BLEED = 4;
+/**
  * How far beyond the view a chunk is brought in, and how much further it has
  * to be before it is let go. Two numbers, not one: with a single threshold a
  * camera resting on a chunk boundary would create and destroy that texture
@@ -99,6 +127,28 @@ export function bakeStaticLayers(scene: Phaser.Scene, layers: SparseLayer[]): Ba
     }
   }
 
+  // The bleed, as a second pass: a tile sitting within BLEED of a chunk's far
+  // edge is painted into that chunk as well. It is a second pass rather than
+  // part of the first so the tiles keep the order the layers drew them in —
+  // within a chunk's own tiles, and within the borrowed ones. Borrowed tiles
+  // land beyond CHUNK_PX, where a chunk has nothing of its own (tile edges
+  // never straddle a chunk), so drawing them last changes nothing.
+  //
+  // Only chunks that already exist take bleed: a chunk with no tiles of its
+  // own is open sea, and giving it a texture to hold a single column of its
+  // neighbour would cost memory to show nothing.
+  for (const list of lists) {
+    for (const t of list!) {
+      const cx = Math.floor(t.x / CHUNK_PX);
+      const cy = Math.floor(t.y / CHUNK_PX);
+      const nearLeftEdge = t.x - cx * CHUNK_PX < BLEED;
+      const nearTopEdge = t.y - cy * CHUNK_PX < BLEED;
+      if (nearLeftEdge) byChunk.get(`${cx - 1},${cy}`)?.push(t);
+      if (nearTopEdge) byChunk.get(`${cx},${cy - 1}`)?.push(t);
+      if (nearLeftEdge && nearTopEdge) byChunk.get(`${cx - 1},${cy - 1}`)?.push(t);
+    }
+  }
+
   const depth = Math.max(...ordered.map((l) => l.depth));
   const chunks: Chunk[] = [];
   for (const [key, tiles] of byChunk) {
@@ -117,7 +167,9 @@ export function bakeStaticLayers(scene: Phaser.Scene, layers: SparseLayer[]): Ba
   const attach = (c: Chunk): void => {
     if (c.rt) return;
     c.rt = scene.add
-      .renderTexture(c.bounds.x, c.bounds.y, CHUNK_PX, CHUNK_PX)
+      // Bigger than the chunk it stands for, by the bleed: `bounds` stays the
+      // chunk itself, which is what the culling below reasons about.
+      .renderTexture(c.bounds.x, c.bounds.y, CHUNK_PX + BLEED, CHUNK_PX + BLEED)
       .setOrigin(0, 0)
       .setDepth(depth);
     c.rt.texture.setFilter(Phaser.Textures.FilterMode.NEAREST);
@@ -138,6 +190,8 @@ export function bakeStaticLayers(scene: Phaser.Scene, layers: SparseLayer[]): Ba
     if (!c.rt) return;
     c.rt.clear();
     c.rt.beginDraw();
+    // Borrowed tiles are drawn at CHUNK_PX or just past it; the render
+    // texture clips them to the few pixels of bleed that fit.
     for (const t of c.tiles) c.rt.batchDrawFrame(t.key, t.frame, t.x - c.bounds.x, t.y - c.bounds.y);
     c.rt.endDraw();
     c.painted = true;
