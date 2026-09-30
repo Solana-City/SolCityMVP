@@ -1137,7 +1137,7 @@ export class CityScene extends Phaser.Scene {
     this.onGameEvent("touch:interact", () => {
       if (this.chatInputActive || this.interactionBlocked) return;
       if (this.tryHuntInteraction()) return;
-      const nearby = this.npcSprites.find((n) => n.isInRange);
+      const nearby = this.nearestInRangeNpc();
       if (nearby) {
         this.interactionBlocked = true;
         nearby.faceToward(this.avatar.x, this.avatar.y);
@@ -1161,7 +1161,7 @@ export class CityScene extends Phaser.Scene {
     const tryInteract = () => {
       if (this.chatInputActive || this.interactionBlocked) return;
       if (this.tryHuntInteraction()) return;
-      const nearby = this.npcSprites.find((n) => n.isInRange);
+      const nearby = this.nearestInRangeNpc();
       if (nearby) {
         this.interactionBlocked = true;
         nearby.faceToward(this.avatar.x, this.avatar.y);
@@ -1548,6 +1548,38 @@ export class CityScene extends Phaser.Scene {
   }
 
   // ── "Where Is NPC?" hunt ──────────────────────────
+
+  /**
+   * The in-range NPC the player means: the CLOSEST one.
+   *
+   * This was `npcSprites.find((n) => n.isInRange)`, which returns the first
+   * NPC in REGISTRY order, not the nearest. Where two citizens stand together
+   * — Steve and Sol at the plaza steps — ACT opened whichever was registered
+   * first, which is why it was reported as "ACT fails on Steve", and walking
+   * between them could hand two different NPCs the same press. Clicking an
+   * NPC already names that NPC (see `npc:click`); this is the same promise for
+   * the button and for the key.
+   *
+   * Repelling NPCs are skipped: `repel` means the talk prompt never appears,
+   * so the Builder standing at the fence has nothing to open and must not win
+   * a contest the player cannot see.
+   */
+  private nearestInRangeNpc(): NPCSprite | null {
+    let best: NPCSprite | null = null;
+    let bestDistSq = Infinity;
+    for (const npc of this.npcSprites) {
+      if (!npc.isInRange || npc.def.repel) continue;
+      const c = npc.getContainer();
+      const dx = c.x - this.avatar.x;
+      const dy = c.y - this.avatar.y;
+      const distSq = dx * dx + dy * dy;
+      if (distSq < bestDistSq) {
+        bestDistSq = distSq;
+        best = npc;
+      }
+    }
+    return best;
+  }
 
   private tryHuntInteraction(): boolean {
     const target = this.pedestrians.getTargetPedestrian();
