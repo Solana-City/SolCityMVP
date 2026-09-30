@@ -20,6 +20,7 @@ import {
 } from "@/game/config/paperDoll";
 import { profileManager } from "@/game/config/profileManager";
 import { isVariantUnlocked, unlockItem } from "@/game/config/wardrobeUnlocks";
+import { RARITY_COLOR, RARITY_LABEL, isPackItem, rarityOf } from "@/game/config/packs";
 import { progressionBus } from "@/game/progression/progressionBus";
 import BoosterOverlay from "@/ui/BoosterOverlay";
 import { chamferBox } from "@/ui/chamfer";
@@ -575,6 +576,20 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
                     >
                       <div style={{ position: "relative", lineHeight: 0 }}>
                         <ChromaPreview file={v.file} size={TILE} facingUp={activeCategory === "back"} />
+                        {/* Rarity as a bar along the top, not a word: the grid
+                            is already dense, and the colour is the same one
+                            the pack reveal uses. Only on items a pack can
+                            give — a free shirt has no rarity to speak of. */}
+                        {isPackItem(activeCategory, v.id) && (
+                          <span
+                            title={RARITY_LABEL[rarityOf(activeCategory, v.id)]}
+                            style={{
+                              position: "absolute", left: 4, right: 4, top: 0, height: 3,
+                              background: RARITY_COLOR[rarityOf(activeCategory, v.id)],
+                              opacity: locked ? 0.45 : 1,
+                            }}
+                          />
+                        )}
                         {locked && (
                           <span style={chamferBox(6, {
                             position: "absolute", inset: 0,

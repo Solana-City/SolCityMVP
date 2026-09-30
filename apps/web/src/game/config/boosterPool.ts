@@ -1,21 +1,12 @@
-import { LayerCategory, getBoosterPool, isFreeItem } from "./paperDoll";
-import { getUnlockedSet, unlockKeyOf } from "./wardrobeUnlocks";
+import { LayerCategory, getBoosterPool } from "./paperDoll";
 
 /**
- * Booster pack draw.
+ * The index space the client and the program share for wardrobe items.
  *
- * A pack yields 5 DISTINCT items drawn uniformly at random from the booster
- * pool (all non-free, non-quest/NPC wardrobe items), preferring items the
- * wallet doesn't own yet — duplicates only fill in when the un-owned pool is
- * smaller than the pack.
- *
- * PREVIEW NOTE: randomness here is client-side `Math.random`, standing in for
- * MagicBlock VRF. The POOL and the DRAW rules are exactly what the on-chain
- * version will use — only the entropy source (and the grant, localStorage →
- * on-chain PDA) change. See BOOSTER_SPEC.md.
+ * The DRAW itself lives in ./packs.ts, with the packs, the rarities and the
+ * season it draws from. This file is only the table that turns an item into
+ * the number the program stores, and back.
  */
-
-export const PACK_SIZE = 5;
 
 // ── Canonical index table (client ⇄ program) ────────────────────────────────
 //
@@ -45,41 +36,9 @@ export function itemAtIndex(i: number): { category: LayerCategory; id: string; n
   return boosterIndexTable()[i];
 }
 
-export interface BoosterDrop {
-  category: LayerCategory;
-  id: string;
-  name: string;
-  file: string;
-  /** Already owned before this pack (a duplicate). */
-  owned: boolean;
-}
-
-function shuffle<T>(input: T[]): T[] {
-  const a = [...input];
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [a[i], a[j]] = [a[j], a[i]];
-  }
-  return a;
-}
-
-export function rollBooster(wallet: string | null, count = PACK_SIZE): BoosterDrop[] {
-  const owned = getUnlockedSet(wallet);
-  const isOwned = (c: LayerCategory, id: string) => owned.has(unlockKeyOf(c, id));
-
-  // Items that became free since the pool was fixed never drop.
-  const pool = getBoosterPool().filter(p => !isFreeItem(p.category, p.variant.id));
-  const unowned = pool.filter(p => !isOwned(p.category, p.variant.id));
-  const dupes = pool.filter(p => isOwned(p.category, p.variant.id));
-
-  // Un-owned first, then duplicates to top up a pack larger than what's left.
-  const picked = [...shuffle(unowned), ...shuffle(dupes)].slice(0, count);
-
-  return picked.map(({ category, variant }) => ({
-    category,
-    id: variant.id,
-    name: variant.name,
-    file: variant.file,
-    owned: isOwned(category, variant.id),
-  }));
-}
+/**
+ * The pack draw used to live here as `rollBooster`, a single five-item pack
+ * drawn uniformly. It moved to ./packs.ts when packs gained categories,
+ * rarities and a season — one draw, in one place, because it is the thing the
+ * program has to mirror exactly.
+ */

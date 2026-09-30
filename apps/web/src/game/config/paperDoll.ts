@@ -73,6 +73,15 @@ export interface LayerVariant {
   unlockVia?: "quest";
   /** Overrides the default locked-item hint shown in the wardrobe. */
   unlockHint?: string;
+  /**
+   * Which season (collection) this item belongs to. Absent means season 1,
+   * which is everything that existed before seasons did.
+   *
+   * A pack only ever draws from the season it is opened in, so closing a
+   * season retires its items: they stay in the wardrobes that own them and
+   * stop being obtainable. See game/config/packs.ts.
+   */
+  season?: number;
 }
 
 /**
@@ -305,6 +314,25 @@ function inSet(set: Partial<Record<LayerCategory, "*" | string[]>>, category: La
 }
 
 /** True if this item needs no unlock. */
+/**
+ * The free set as the game will SHIP, which is what decides whether an item
+ * can still drop from a pack.
+ *
+ * `TEST_UNLOCK_ALL_HATS` is a testing switch, not a decision. While it is on
+ * every hat reads as free, and a draw that honoured that would refuse to hand
+ * out a single hat — which is most of what a pack has to give, the Crown
+ * included. So the draw asks this instead.
+ */
+const SHIPPED_FREE_ITEMS: Partial<Record<LayerCategory, "*" | string[]>> = {
+  ...FREE_ITEMS,
+  hat: ["hat_black"],
+};
+
+/** Free to everyone in the shipped game — see SHIPPED_FREE_ITEMS. */
+export function isFreeInShippedGame(category: LayerCategory, id: string): boolean {
+  return inSet(SHIPPED_FREE_ITEMS, category, id);
+}
+
 export function isFreeItem(category: LayerCategory, id: string): boolean {
   return inSet(FREE_ITEMS, category, id);
 }
