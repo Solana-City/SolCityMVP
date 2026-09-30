@@ -20,6 +20,24 @@ const BOX = 288;
 export default function PetOverlay({ onClose }: { onClose: () => void }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [failed, setFailed] = useState(false);
+  /**
+   * A press that STARTED on this backdrop, which is the only kind allowed to
+   * close it.
+   *
+   * The tap that opened the square is not a tap on the square. ACT fires on
+   * pointerdown, so this mounts under the finger that is still down, and the
+   * browser then sends that gesture's trailing `click` to whatever is under
+   * the finger when it lifts — which is now this backdrop. Where the browser
+   * does not retarget that click to the button holding pointer capture, the
+   * square opened and shut inside one tap, and the only way to see the dog at
+   * all was to keep ACT held down: exactly the report, and exactly why it
+   * depended on the device.
+   *
+   * A trailing click has no pointerdown of its own here, so requiring one is
+   * the whole fix. No timer to tune, and holding ACT no longer behaves
+   * differently from tapping it.
+   */
+  const pressedHere = useRef(false);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -105,8 +123,10 @@ export default function PetOverlay({ onClose }: { onClose: () => void }) {
         display: "flex", alignItems: "center", justifyContent: "center",
         background: "rgba(6,6,18,0.55)",
       }}
-      // A stuck sheet should never trap the player in here.
-      onClick={onClose}
+      // A stuck sheet should never trap the player in here — but only a press
+      // that began on the backdrop counts (see pressedHere).
+      onPointerDown={() => { pressedHere.current = true; }}
+      onClick={() => { if (pressedHere.current) onClose(); }}
     >
       <div style={{ ...octagonFrame(1), background: "rgba(8,10,30,0.98)" }}>
         {/* Square box, art centred in it whatever shape the frames are. */}
