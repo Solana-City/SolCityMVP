@@ -339,6 +339,22 @@ engine side is ~2-3 hours — read the animations, keep the frames through the
 tileset packer, repaint the animated cells inside the baked ground about 8
 times a second so the per-frame cost stays at zero.
 
+#### P2i. Escape threw away a battle in progress — DONE 2026-10-01
+*"No SolMechs e outros mini-games, precisamos de uma janela de confirmação
+para quando vc aperta esc ou clica no X. Alguns jogadores podem apertar por
+acidente e sairem da batalha."* (user, 2026-10-01)
+
+Escape closes everything in the city, so players pressed it out of habit and
+lost the fight. Now a game declares what a round would cost while it is
+running (`game/minigames/leaveGuard`) and every exit asks first. Nothing else
+changes: menus, the hangar, the rules, a decided match and a game between
+rounds still close in one press.
+
+Guarded: the Sol Mechs battle phases (and its own "back to the menu" from
+inside a battle, which costs the same), Kite Clash while a run is on, the food
+cart while orders are being served. The dialog answers Escape itself, so the
+key that opened it cannot also confirm it.
+
 ### P2 — wanted, needs a decision or art first
 
 #### P3a. Interiors, starting with the Solana City building
