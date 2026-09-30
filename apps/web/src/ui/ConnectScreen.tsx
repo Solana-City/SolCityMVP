@@ -8,6 +8,8 @@ import ConnectingOverlay from "./ConnectingOverlay";
 import { WALLET_LOGOUT_EVENT, WALLET_FLAP_GRACE_MS } from "./walletSession";
 import { chamferBox } from "@/ui/chamfer";
 import ChamferGlow from "@/ui/ChamferGlow";
+import { MusicIcon } from "@/ui/PixelIcons";
+import { musicManager } from "@/game/audio/MusicManager";
 
 export default function ConnectScreen() {
   const { connected } = useWallet();
@@ -22,6 +24,15 @@ export default function ConnectScreen() {
   const [guestNotice, setGuestNotice] = useState(false);
   /** The on-chain session is up (or the player chose to go in without it). */
   const [sessionReady, setSessionReady] = useState(false);
+  /** Music starts on the first tap anywhere, which is usually on this screen,
+   *  so the way out of it has to be on this screen too and not four clicks
+   *  deep in Settings. Subscribed, since the manager also owns the setting. */
+  const [musicMuted, setMusicMuted] = useState(false);
+  useEffect(() => {
+    const sync = () => setMusicMuted(musicManager.isMuted());
+    sync();
+    return musicManager.subscribe(sync);
+  }, []);
 
   // A wallet adapter reports `connected: false` for reasons that are not a
   // logout: the extension reloading, the tab being backgrounded on a phone,
@@ -220,6 +231,20 @@ export default function ConnectScreen() {
       </div>
 
       <div className="sc-hero" />
+
+      <button
+        onClick={() => setMusicMuted(musicManager.toggleMuted())}
+        title={musicMuted ? "Turn music on" : "Turn music off"}
+        aria-label={musicMuted ? "Turn music on" : "Turn music off"}
+        aria-pressed={musicMuted}
+        style={chamferBox(7, {
+          position: "absolute", top: 16, left: 16, zIndex: 2,
+          padding: 10, lineHeight: 0, cursor: "pointer",
+          background: "rgba(7,21,46,0.72)", border: "2px solid rgba(143,166,230,0.35)",
+        })}
+      >
+        <MusicIcon size={18} muted={musicMuted} color={musicMuted ? "#6F88C8" : "#14F0C6"} />
+      </button>
 
       {connecting && (
         <ConnectingOverlay
