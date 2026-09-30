@@ -7,6 +7,7 @@ import { track } from "@/game/telemetry/track";
 import { useNickname } from "@/ui/useNicknames";
 import { OPEN_DM_EVENT, SEND_TOKENS_EVENT } from "@/game/chat/dmEvents";
 import { chamferBox } from "@/ui/chamfer";
+import { useButtonFeel, feelStyle } from "@/ui/useButtonFeel";
 
 /** The city opens Sol Mechs on this, with the player to duel. */
 export const DUEL_INVITE_EVENT = "solcity:solmechs-duel";
@@ -51,6 +52,11 @@ export default function PlayerCard({ gameRef, wallet, displayName, myWallet, onC
     const id = setInterval(() => setPlayer(network.getPlayer(wallet)), 2000);
     return () => clearInterval(id);
   }, [wallet, network]);
+  const closeFeel = useButtonFeel();
+  const copyFeel = useButtonFeel();
+  const sendFeel = useButtonFeel();
+  const messageFeel = useButtonFeel();
+  const battleFeel = useButtonFeel();
 
   if (!wallet) return null;
   const short = `${wallet.slice(0, 4)}…${wallet.slice(-4)}`;
@@ -85,7 +91,7 @@ export default function PlayerCard({ gameRef, wallet, displayName, myWallet, onC
           <span style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 8, color: "#c084fc" }}>
             {name}
           </span>
-          <button onClick={onClose} style={{ background: "none", border: "none", color: "#14F0C6", fontSize: 13, cursor: "pointer" }}>
+          <button onClick={onClose} {...closeFeel.handlers} style={{ background: "none", border: "none", color: "#14F0C6", fontSize: 13, cursor: "pointer", ...feelStyle(closeFeel) }}>
             ×
           </button>
         </div>
@@ -101,12 +107,14 @@ export default function PlayerCard({ gameRef, wallet, displayName, myWallet, onC
           <span style={{ fontSize: 9, color: "#9a9ad0", flex: 1, minWidth: 0 }}>{short}</span>
           <button
             onClick={copyWallet}
+            {...copyFeel.handlers}
             style={chamferBox(6, {
               fontFamily: '"Press Start 2P", monospace', fontSize: 7,
               color: copied ? "#B7E928" : "#c084fc",
               background: "rgba(153,69,255,0.12)",
               border: "1px solid rgba(153,69,255,0.3)",
               padding: "5px 8px", cursor: "pointer", flexShrink: 0,
+              ...feelStyle(copyFeel),
             })}
             title="Copy wallet address"
           >
@@ -124,11 +132,13 @@ export default function PlayerCard({ gameRef, wallet, displayName, myWallet, onC
               window.dispatchEvent(new CustomEvent(SEND_TOKENS_EVENT, { detail: { wallet, name } }));
               onClose();
             }}
+            {...sendFeel.handlers}
             style={chamferBox(8, {
               width: "100%", marginTop: 10, padding: "11px 0",
               fontFamily: '"Press Start 2P", monospace', fontSize: 7, letterSpacing: 1,
               color: "#14F0C6", background: "rgba(20,240,198,0.1)",
               border: "1px solid rgba(20,240,198,0.45)", cursor: "pointer",
+              ...feelStyle(sendFeel),
 })}
           >
             SEND TOKENS
@@ -141,11 +151,13 @@ export default function PlayerCard({ gameRef, wallet, displayName, myWallet, onC
               window.dispatchEvent(new CustomEvent(OPEN_DM_EVENT, { detail: { wallet, name } }));
               onClose();
             }}
+            {...messageFeel.handlers}
             style={chamferBox(8, {
-              width: "100%", marginTop: 10, padding: "11px 0", 
+              width: "100%", marginTop: 10, padding: "11px 0",
               fontFamily: '"Press Start 2P", monospace', fontSize: 7, letterSpacing: 1,
               color: "#FFD700", background: "rgba(255,215,0,0.1)",
               border: "1px solid rgba(255,215,0,0.45)", cursor: "pointer",
+              ...feelStyle(messageFeel),
             })}
           >
             MESSAGE
@@ -161,11 +173,13 @@ export default function PlayerCard({ gameRef, wallet, displayName, myWallet, onC
               }));
               onClose();
             }}
+            {...battleFeel.handlers}
             style={chamferBox(8, {
-              width: "100%", marginTop: 10, padding: "11px 0", 
+              width: "100%", marginTop: 10, padding: "11px 0",
               fontFamily: '"Press Start 2P", monospace', fontSize: 7, letterSpacing: 1,
               color: "#04140c", background: "linear-gradient(135deg, #B7E928, #0db876)",
               border: "none", cursor: "pointer",
+              ...feelStyle(battleFeel),
             })}
           >
             MECH BATTLE

@@ -28,6 +28,7 @@ import { useNicknames } from "./useNicknames";
 import { Citizen, Img, guideSeen } from "./CityGuide";
 import CityCalendar from "./CityCalendar";
 import { useViewportBox, overlayBox } from "@/ui/useViewportBox";
+import { useButtonFeel, feelStyle } from "@/ui/useButtonFeel";
 
 export { OPEN_CALENDAR_EVENT, STREAK_EVENT };
 
@@ -363,12 +364,15 @@ function Leader({ img, label, row, me, unit = "" }: { img: string; label: string
 }
 
 function RankTab({ active, color, onClick, children }: { active: boolean; color: string; onClick: () => void; children: React.ReactNode }) {
+  const feel = useButtonFeel();
   return (
     <button
       onClick={onClick}
+      {...feel.handlers}
       style={{
         background: "none", border: "none", padding: "2px 0", cursor: "pointer", fontFamily: PIXEL, fontSize: 6,
         color: active ? color : "#475569", borderBottom: `2px solid ${active ? color : "transparent"}`,
+        ...feelStyle(feel),
       }}
     >
       {children}
