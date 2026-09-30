@@ -12,6 +12,7 @@
  * The .asset files are the later, playable balance pass (they're what the
  * scenes actually load via MechUnitLoader), so they are canonical here.
  */
+import type { Rarity } from "@/game/collections/seasons";
 
 /** The four body slots a mech is assembled from. Mirrors ModuleSlot.cs. */
 export type ModuleSlot = "rightArm" | "leftArm" | "lowerBody" | "matrix";
@@ -93,8 +94,32 @@ export interface MoveDefinition {
   healAmount?: number;
 }
 
+/**
+ * Collectible identity, shared by every part and chassis that a pack can
+ * hand out. Both fields are optional: everything that exists today is
+ * season 1 and common, which is what their absence means.
+ *
+ * The vocabulary is the city's, not Sol Mechs' — same four rarities, same
+ * season calendar as the wardrobe (see game/collections/seasons.ts). Two
+ * collections on chain, one language on screen.
+ *
+ * ONE RULE, and ranked play depends on it: **rarity is scarcity, never
+ * power.** Every chassis in `catalog.ts` is built to the same 200-point
+ * combat budget on purpose (Solus sits at 225 and is kept out of ranked for
+ * exactly that reason). A legendary arm that hits harder than a common one
+ * turns the pack into the ladder, and the ladder is the reason anybody buys
+ * a pass. A legendary part should be harder to FIND, and may look like
+ * nothing else in the city, and must still cost the same 200 points.
+ */
+export interface Collectible {
+  /** Drop season, stamped at mint. Absent = season 1. */
+  season?: number;
+  /** Absent = common. See the rule above. */
+  rarity?: Rarity;
+}
+
 /** Mirrors MechPart.cs — one equippable limb. */
-export interface MechPart {
+export interface MechPart extends Collectible {
   partCode: string;
   partName: string;
   slot: ModuleSlot;
@@ -106,7 +131,7 @@ export interface MechPart {
 }
 
 /** Mirrors Matrix.cs — the chassis/core. */
-export interface MechMatrix {
+export interface MechMatrix extends Collectible {
   matrixCode: string;
   matrixName: string;
   /**

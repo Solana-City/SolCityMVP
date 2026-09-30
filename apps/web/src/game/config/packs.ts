@@ -1,5 +1,13 @@
 import { LayerCategory, getBoosterPool, isFreeInShippedGame, type LayerVariant } from "./paperDoll";
 import { getUnlockedSet, unlockKeyOf } from "./wardrobeUnlocks";
+import {
+  CURRENT_SEASON, RARITY_ORDER, type Rarity,
+} from "@/game/collections/seasons";
+
+// Re-exported so a screen that shows wardrobe items does not have to know
+// where the shared vocabulary lives.
+export { RARITY_ORDER, RARITY_LABEL, RARITY_COLOR, CURRENT_SEASON, SEASONS, seasonLabel } from "@/game/collections/seasons";
+export type { Rarity } from "@/game/collections/seasons";
 
 /**
  * Outfit packs: three of them, four rarities, one season at a time.
@@ -16,28 +24,6 @@ import { getUnlockedSet, unlockKeyOf } from "./wardrobeUnlocks";
  * runs on `Math.random` here and grants into localStorage, exactly as the
  * on-chain version will run it on VRF and grant into a PDA.
  */
-
-// ── Rarity ──────────────────────────────────────────────────────────────────
-
-export type Rarity = "common" | "uncommon" | "rare" | "legendary";
-
-/** Least to most rare. The order is the fallback ladder for an empty bucket. */
-export const RARITY_ORDER: Rarity[] = ["common", "uncommon", "rare", "legendary"];
-
-export const RARITY_LABEL: Record<Rarity, string> = {
-  common: "COMMON",
-  uncommon: "UNCOMMON",
-  rare: "RARE",
-  legendary: "LEGENDARY",
-};
-
-/** One colour per rarity, used by every surface that shows an item. */
-export const RARITY_COLOR: Record<Rarity, string> = {
-  common: "#8a8aa7",
-  uncommon: "#14F195",
-  rare: "#00D1FF",
-  legendary: "#FFD700",
-};
 
 /**
  * Which items are worth more than the others. PROVISIONAL: a first pass so
@@ -82,20 +68,10 @@ export function rarityOf(category: LayerCategory, id: string): Rarity {
 }
 
 // ── Seasons ─────────────────────────────────────────────────────────────────
-
-/**
- * The season a pack draws from today.
- *
- * Every wardrobe item belongs to a season (`LayerVariant.season`, 1 when it
- * says nothing), and a pack only ever draws from its own. That is the whole
- * mechanic behind "what you could open in January is not what you can open in
- * July": closing a season is one number here and one on chain, and the items
- * it held stay in the wardrobes that own them and stop being obtainable.
- *
- * It is deliberately a number rather than a date: the chain has no calendar
- * anybody trusts, and a number is something the program can compare.
- */
-export const CURRENT_SEASON = 1;
+//
+// The calendar itself lives in game/collections/seasons.ts, shared with the
+// other collection. Here it is only the reader: which season an item belongs
+// to, and the rule that a pack draws from one season and one only.
 
 export function seasonOf(variant: LayerVariant): number {
   return variant.season ?? 1;
@@ -207,13 +183,23 @@ function rollRarity(odds: Record<Rarity, number>): Rarity {
  * failing — a legendary roll in a season with two legendaries, both already
  * drawn in this pack, still hands over something.
  */
-export function rollPack(wallet: string | null, pack: PackDef): PackDrop[] {
+export function rollPack(
+  wallet: string | null,
+  pack: PackDef,
+  /**
+   * Which season this pack draws from. Defaults to the open one, and is an
+   * argument rather than a constant because a pack will one day be an item a
+   * player owns: bought in season 1, opened in season 3, and still a season 1
+   * pack. The program will read it off the pack, not off the clock.
+   */
+  season: number = CURRENT_SEASON,
+): PackDrop[] {
   const owned = getUnlockedSet(wallet);
   const isOwned = (c: LayerCategory, id: string) => owned.has(unlockKeyOf(c, id));
 
   // The season is the gate: a pack never draws an item from another one.
   const pool = getBoosterPool().filter(
-    (p) => !isFreeInShippedGame(p.category, p.variant.id) && seasonOf(p.variant) === CURRENT_SEASON,
+    (p) => !isFreeInShippedGame(p.category, p.variant.id) && seasonOf(p.variant) === season,
   );
 
   const buckets = new Map<Rarity, typeof pool>();
@@ -258,11 +244,11 @@ export function rollPack(wallet: string | null, pack: PackDef): PackDrop[] {
 
 /** How many items of each rarity this season actually holds — the sanity
  *  check behind the odds, and what the dev panel would show. */
-export function seasonRarityCounts(): Record<Rarity, number> {
+export function seasonRarityCounts(season: number = CURRENT_SEASON): Record<Rarity, number> {
   const counts: Record<Rarity, number> = { common: 0, uncommon: 0, rare: 0, legendary: 0 };
   for (const { category, variant } of getBoosterPool()) {
     if (isFreeInShippedGame(category, variant.id)) continue;
-    if (seasonOf(variant) !== CURRENT_SEASON) continue;
+    if (seasonOf(variant) !== season) continue;
     counts[rarityOf(category, variant.id)]++;
   }
   return counts;

@@ -3,6 +3,8 @@ import {
   PACKS, RARITY_ORDER, CURRENT_SEASON, rollPack, rarityOf, seasonRarityCounts, seasonOf,
 } from "./packs";
 import { getBoosterPool } from "./paperDoll";
+import { boosterIndexTable } from "./boosterPool";
+import { SEASONS, CURRENT_SEASON as OPEN_SEASON, seasonLabel } from "@/game/collections/seasons";
 
 /**
  * The draw is the thing the program will have to mirror instruction for
@@ -10,6 +12,22 @@ import { getBoosterPool } from "./paperDoll";
  * decided: a pack always hands over what it promised, never the same item
  * twice, and never an item from another season.
  */
+describe("the season calendar", () => {
+  it("has exactly one season open", () => {
+    expect(SEASONS.filter((s) => s.status === "open")).toHaveLength(1);
+    expect(OPEN_SEASON).toBe(CURRENT_SEASON);
+  });
+
+  it("never reuses a season number", () => {
+    expect(new Set(SEASONS.map((s) => s.n)).size).toBe(SEASONS.length);
+  });
+
+  it("names a season it knows, and still labels one it does not", () => {
+    expect(seasonLabel(1)).toContain("SEASON 1");
+    expect(seasonLabel(99)).toBe("SEASON 99");
+  });
+});
+
 describe("outfit packs", () => {
   it("has three packs whose odds add up", () => {
     expect(PACKS).toHaveLength(3);
@@ -61,6 +79,24 @@ describe("outfit packs", () => {
     for (const rarity of RARITY_ORDER) {
       expect(counts[rarity], rarity).toBeGreaterThan(0);
     }
+  });
+
+  it("draws nothing at all from a season that has no items yet", () => {
+    // Season 2 exists the moment somebody writes it down, and holds nothing
+    // until the art lands. A pack pointed at it must come back EMPTY rather
+    // than quietly falling back to season 1 stock — that fallback would be
+    // the bug that makes a "new collection" sell old items.
+    expect(rollPack("test-wallet", PACKS[0], 2)).toHaveLength(0);
+    expect(seasonRarityCounts(2)).toEqual({ common: 0, uncommon: 0, rare: 0, legendary: 0 });
+  });
+
+  it("keeps the on-chain index of every item that already shipped", () => {
+    // The pool order IS the index space the program stores as bits. Adding a
+    // season appends; it must never renumber what a wallet already owns.
+    const shipped = ["back:backpack_brown", "hat:Crown", "accessory:Golden_ring"];
+    const table = boosterIndexTable().map((e) => `${e.category}:${e.id}`);
+    for (const key of shipped) expect(table, key).toContain(key);
+    expect(table.indexOf("back:backpack_brown")).toBeLessThan(table.indexOf("hat:Crown"));
   });
 
   it("reads an unlisted item as common", () => {
