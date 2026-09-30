@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { PET_FRAMES, PET_FRAME_MS, PET_LOOPS, petSheetUrl } from "@/game/pet/petAssets";
-import { octagonFrameThin } from "@/ui/chamfer";
+import { octagonFrame } from "@/ui/chamfer";
 
 /**
  * The petting square: the Caramel Dog has nothing to say, so meeting it plays
@@ -108,7 +108,7 @@ export default function PetOverlay({ onClose }: { onClose: () => void }) {
       // A stuck sheet should never trap the player in here.
       onClick={onClose}
     >
-      <div style={octagonFrameThin()}>
+      <div style={{ ...octagonFrame(1), background: "rgba(8,10,30,0.98)" }}>
         {/* Square box, art centred in it whatever shape the frames are. */}
         <div style={{
           width: BOX, height: BOX, maxWidth: "70vw", maxHeight: "70vw",
