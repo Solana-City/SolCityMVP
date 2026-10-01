@@ -25,6 +25,44 @@ Player connects wallet
 - **Smart Contract:** Anchor (Rust) with MagicBlock delegation hooks
 - **Sprites:** SimpleSprite system (48x48, 4x4 grid sprite sheets)
 
+## Android, on Seeker
+
+`apps/android/` is the Solana Mobile dApp Store build: a Kotlin app around the
+live web client, built from Solana Mobile's official web-shell template, which
+their docs recommend in place of Bubblewrap.
+
+The web client at [solanacity.io](https://www.solanacity.io) stays the primary
+client for desktop and mobile browsers. Both run the same build against the same
+program, so a player on the app and a player in a browser walk the same streets,
+see each other move and compete in the same hunt, with no lobby and no server to
+federate: the shared world is the chain.
+
+The shell is not a plain WebView. What the Kotlin layer adds, with the reasoning
+in `apps/android/README.md`:
+
+- Mobile Wallet Adapter hand-off to Seed Vault, with the session key derived
+  once so nothing interrupts play afterwards
+- Landscape lock, immersive fullscreen, screen kept on
+- Back button closes the open panel instead of leaving the game
+- JS timers pause in the background to spare the battery, but never during a
+  wallet hand-off, which would kill the MWA session
+- Keyboard handling that keeps chat usable in landscape, without Android's
+  fullscreen text editor
+- A `window.SolCityNative` bridge for native features, absent in browsers
+
+### Hackathon context
+
+This project started on 2026-04-06, months before CLOCK IN opened on 2026-09-08,
+and enters under the rule for pre-existing projects. The entire Android layer,
+and the mobile work in the web client that supports it, were built during the
+hackathon. Every commit for it carries an `(android)` or mobile-fix scope:
+
+```bash
+git log --grep="(android)" --since=2026-09-08 --oneline
+```
+
+Scope and status: `MOBILE_HACKATHON_SCOPE.md` and `HACKATHON_SUBMISSION.md`.
+
 ## Getting started
 
 ```bash
