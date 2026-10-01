@@ -420,10 +420,13 @@ pack id on the instruction, price on chain, a rarity per pool index (as
 contiguous ranges, which is cheap but fixes the pool order), weights in basis
 points, a season number, and the same fallback ladder the client uses.
 
-### PK2. Pack art, three animated sheets — waiting on the artist
-Brief in `SPRITE_REQUESTS.md`: one row, 6 frames of 64x64, 8 fps idle loop,
-one per pack. Until they land each card falls back to the wardrobe icon in the
-pack's colour, so nothing is blocked and nothing looks broken.
+### PK2. Pack art, three animated sheets — DONE 2026-10-02
+Delivered and in: 12 frames of 36x51 each, a bag turning on the spot, red for
+Street, blue for City, purple for Prime. Each pack's accent now comes from its
+own art. The sheets arrived on the pink chroma key and were cleared in the
+files (interface art is loaded by the browser, not by Phaser, so a key left in
+place shows as a pink rectangle). Contract for the next season's packs is in
+`SPRITE_REQUESTS.md`.
 
 ### PK3. The numbers — needs the room, not code
 Pack names (STREET / CITY / PRIME are placeholders), prices (0.025 / 0.05 /
