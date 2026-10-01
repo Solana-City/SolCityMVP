@@ -23,12 +23,11 @@ function useIsTouch() {
 }
 
 interface WalletBarProps {
-  onWalletChange?: (wallet: string | null) => void;
   /** "panel" = embedded in the map + player HUD card (phone and desktop) */
   layout?: "default" | "panel";
 }
 
-export default function WalletBar({ onWalletChange, layout = "default" }: WalletBarProps) {
+export default function WalletBar({ layout = "default" }: WalletBarProps) {
   const { publicKey, connected, disconnect } = useWallet();
   const { connection } = useConnection();
   const { setVisible } = useWalletModal();
@@ -41,10 +40,6 @@ export default function WalletBar({ onWalletChange, layout = "default" }: Wallet
   const shortAddr = address
     ? `${address.slice(0, 4)}...${address.slice(-4)}`
     : null;
-
-  useEffect(() => {
-    onWalletChange?.(address);
-  }, [address, onWalletChange]);
 
   const fetchBalance = useCallback(() => {
     if (!publicKey || !connection) return;

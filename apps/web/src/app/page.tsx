@@ -30,6 +30,7 @@ const TransactionLogPanel = dynamic(() => import("@/ui/TransactionLogPanel"), { 
 const ToastStack          = dynamic(() => import("@/ui/ToastStack"),          { ssr: false });
 const OfflineBadge        = dynamic(() => import("@/ui/OfflineBadge"),        { ssr: false });
 const WalletSignBridge    = dynamic(() => import("@/ui/WalletSignBridge"),    { ssr: false });
+const WalletHandoff       = dynamic(() => import("@/ui/WalletHandoff"),       { ssr: false });
 const MobileControls      = dynamic(() => import("@/ui/MobileControls"),      { ssr: false });
 const ZoomControl         = dynamic(() => import("@/ui/ZoomControl"),         { ssr: false });
 const MiniGameOverlay     = dynamic(() => import("@/ui/MiniGameOverlay"),     { ssr: false });
@@ -467,6 +468,9 @@ export default function Home() {
         <MwaRegistration />
         {/* Headless bridge so Phaser can request wallet signatures */}
         <WalletSignBridge />
+        {/* Headless: the logged-in wallet, to Phaser and to the HUD. Must not
+            live inside a panel that a phone keeps closed — see WalletHandoff. */}
+        <WalletHandoff onWallet={handleWalletChange} />
         <ConnectScreen />
         <main className="w-screen app-viewport relative">
           <PhaserGame onGameReady={(g) => { setGame(g); startSession(); }} />
@@ -580,7 +584,7 @@ export default function Home() {
                   <>
                     <Framed width={9}>
                       <div style={{ padding: "4px 8px" }}>
-                        <WalletBar layout="panel" onWalletChange={handleWalletChange} />
+                        <WalletBar layout="panel" />
                       </div>
                     </Framed>
                     <TransactionLogPanel
@@ -629,7 +633,7 @@ export default function Home() {
 
                 <Framed width={9}>
                   <div style={{ padding: "4px 8px" }}>
-                    <WalletBar layout="panel" onWalletChange={handleWalletChange} />
+                    <WalletBar layout="panel" />
                   </div>
                 </Framed>
 
