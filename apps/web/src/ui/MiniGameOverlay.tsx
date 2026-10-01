@@ -44,7 +44,7 @@ export default function MiniGameOverlay({
           className="fixed inset-0 z-50 flex items-center justify-center"
           style={{ background: "rgba(6,10,20,0.88)" }}
         >
-          <span style={{ color: "#9945FF", fontFamily: '"Press Start 2P", monospace', fontSize: 11 }}>
+          <span style={{ color: "#B7E928", fontFamily: '"Press Start 2P", monospace', fontSize: 11 }}>
             Loading...
           </span>
         </div>

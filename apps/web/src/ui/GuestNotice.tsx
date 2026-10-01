@@ -12,7 +12,6 @@ import { chamferBox, octagonFrame } from "@/ui/chamfer";
 import { useButtonFeel, feelStyle, type ButtonFeel } from "@/ui/useButtonFeel";
 
 const PIXEL = '"Press Start 2P", monospace';
-const PURPLE = "#9945FF";
 const GREEN = "#B7E928";
 const DANGER = "#ff5a5a";
 const UI = "/assets/ui";
@@ -141,7 +140,7 @@ export default function GuestNotice({ onConnect, onPlay }: { onConnect: () => vo
             <button onClick={onPlay} {...playFeel.handlers} style={btn({ flex: 1, background: "transparent", border: "1px solid #333344", color: "#b9b9cc" }, playFeel)}>
               PLAY SOLO
             </button>
-            <button onClick={onConnect} {...connectFeel.handlers} style={btn({ flex: 1, background: PURPLE, color: "#fff" }, connectFeel)}>
+            <button onClick={onConnect} {...connectFeel.handlers} style={btn({ flex: 1, background: GREEN, color: "#0a0a14" }, connectFeel)}>
               CONNECT WALLET
             </button>
           </div>

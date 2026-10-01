@@ -88,7 +88,7 @@ export default function PlayerCard({ gameRef, wallet, displayName, myWallet, onC
         }}
       >
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
-          <span style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 8, color: "#c084fc" }}>
+          <span style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 8, color: "#B7E928" }}>
             {name}
           </span>
           <button onClick={onClose} {...closeFeel.handlers} style={{ background: "none", border: "none", color: "#14F0C6", fontSize: 13, cursor: "pointer", ...feelStyle(closeFeel) }}>
@@ -110,9 +110,9 @@ export default function PlayerCard({ gameRef, wallet, displayName, myWallet, onC
             {...copyFeel.handlers}
             style={chamferBox(6, {
               fontFamily: '"Press Start 2P", monospace', fontSize: 7,
-              color: copied ? "#B7E928" : "#c084fc",
-              background: "rgba(153,69,255,0.12)",
-              border: "1px solid rgba(153,69,255,0.3)",
+              color: copied ? "#B7E928" : "#14F0C6",
+              background: "rgba(20,240,198,0.12)",
+              border: "1px solid rgba(20,240,198,0.3)",
               padding: "5px 8px", cursor: "pointer", flexShrink: 0,
               ...feelStyle(copyFeel),
             })}

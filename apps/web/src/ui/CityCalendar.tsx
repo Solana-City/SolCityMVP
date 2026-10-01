@@ -154,7 +154,7 @@ export default function CityCalendar({ cellHeight = 22, showLegend = true, maxRo
             <DayButton
               key={day}
               day={day} kinds={kinds} isToday={isToday}
-              background={isSelected ? "rgba(153,69,255,0.35)" : spans.has(day) ? "rgba(183,233,40,0.1)" : "#0d0d22"}
+              background={isSelected ? "rgba(183,233,40,0.35)" : spans.has(day) ? "rgba(183,233,40,0.1)" : "#0d0d22"}
               cellHeight={cellHeight} past={past}
               onClick={() => setSelected(day)}
             />

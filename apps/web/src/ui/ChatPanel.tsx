@@ -387,7 +387,7 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
       {dmMode && isExpanded && (
         <div
           className="flex gap-1 p-1 overflow-x-auto"
-          style={{ background: "rgba(10,10,30,0.92)", borderLeft: "1px solid rgba(153,69,255,0.2)", borderRight: "1px solid rgba(153,69,255,0.2)" }}
+          style={{ background: "rgba(10,10,30,0.92)", borderLeft: "1px solid rgba(183,233,40,0.2)", borderRight: "1px solid rgba(183,233,40,0.2)" }}
         >
           {dmChannels.map((dm) => (
             <Chip
@@ -458,7 +458,7 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
           className="flex gap-1 p-1.5 mb-0.5"
           style={chamferBox(6, {
             background: "rgba(10,10,30,0.92)",
-            border: "1px solid rgba(153,69,255,0.2)",
+            border: "1px solid rgba(183,233,40,0.2)",
             backdropFilter: "blur(2px)",
           })}
         >
@@ -602,7 +602,7 @@ function Chip({ label, active, unread = 0, onClick }: { label: string; active: b
         fontFamily: '"Press Start 2P", monospace',
         background: active ? "rgba(255,215,0,0.14)" : "transparent",
         color: active ? DM_COLOR : "#8a8aa5",
-        border: `1px solid ${active ? "rgba(255,215,0,0.5)" : "rgba(153,69,255,0.25)"}`,
+        border: `1px solid ${active ? "rgba(255,215,0,0.5)" : "rgba(183,233,40,0.25)"}`,
         ...feelStyle(feel),
       })}
     >

@@ -179,9 +179,9 @@ export default class ErrorBoundary extends React.Component<Props, State> {
           onClick={this.handleReload}
           style={chamferBox(10, {
             padding: "12px 28px",
-            background: "rgba(153,69,255,0.15)",
-            border: "1px solid rgba(153,69,255,0.5)",
-            color: "#9945FF",
+            background: "rgba(183,233,40,0.15)",
+            border: "1px solid rgba(183,233,40,0.5)",
+            color: "#B7E928",
             fontSize: 10,
             fontWeight: "bold",
             fontFamily: '"Press Start 2P", monospace',

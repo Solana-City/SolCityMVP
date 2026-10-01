@@ -61,8 +61,8 @@ export function KeysRows() {
               <kbd
                 key={k}
                 style={{
-                  fontFamily: "inherit", fontSize: 7, color: "#ccccdd",
-                  background: "#12122a", border: "1px solid rgba(255,255,255,0.12)",
+                  fontFamily: "inherit", fontSize: 7, color: "#061A3A",
+                  background: "#B7E928", border: "1px solid rgba(6,26,58,0.3)",
                   borderRadius: 4, padding: "5px 6px", minWidth: 10, textAlign: "center",
                 }}
               >{k}</kbd>
@@ -96,7 +96,7 @@ export default function KeysCard({ open, onClose }: { open: boolean; onClose: ()
         onClick={(e) => e.stopPropagation()}
         style={{
           background: "rgba(10,10,30,0.97)",
-          border: "1px solid rgba(153,69,255,0.35)",
+          border: "1px solid rgba(183,233,40,0.35)",
           borderRadius: 12,
           padding: 20,
           width: "min(92vw, 420px)",

@@ -123,7 +123,7 @@ function MapPreview({ size = 92 }: { size?: number }) {
   return (
     <div style={{
       width: size, height: size, borderRadius: "50%", overflow: "hidden", flexShrink: 0,
-      border: "3px solid rgba(153,69,255,0.7)", background: "#0b3a5c",
+      border: "3px solid rgba(183,233,40,0.7)", background: "#0b3a5c",
       boxShadow: "0 0 0 1px rgba(183,233,40,0.3)", position: "relative",
     }}>
       {src && <img src={src} alt="" draggable={false} style={{ width: "100%", height: "100%", display: "block" }} />}
@@ -312,7 +312,7 @@ export default function CityGuide({ onDone }: { onDone: () => void }) {
           onClick={() => openWalletModal(true)}
           {...connectFeel.handlers}
           style={chamferBox(8, {
-            display: "block", width: "100%", marginBottom: 8, background: "rgba(153,69,255,0.85)", color: "#fff",
+            display: "block", width: "100%", marginBottom: 8, background: "#B7E928", color: "#0a0a14",
             border: "none", padding: "10px 0", cursor: "pointer", fontFamily: PIXEL, fontSize: 7,
             ...feelStyle(connectFeel),
           })}

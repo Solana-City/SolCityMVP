@@ -258,9 +258,9 @@ export default function WalletBar({ onWalletChange, layout = "default" }: Wallet
         <span
           className="inline-flex items-center gap-1 text-[9px] px-2 py-1 rounded"
           style={{
-            background: hasSGT ? "rgba(255,215,0,0.15)" : "rgba(153,69,255,0.12)",
-            color: hasSGT ? "#FFD700" : "#9945FF",
-            border: `1px solid ${hasSGT ? "rgba(255,215,0,0.4)" : "rgba(153,69,255,0.3)"}`,
+            background: hasSGT ? "rgba(255,215,0,0.15)" : "rgba(183,233,40,0.12)",
+            color: hasSGT ? "#FFD700" : "#B7E928",
+            border: `1px solid ${hasSGT ? "rgba(255,215,0,0.4)" : "rgba(183,233,40,0.3)"}`,
             fontFamily: '"Press Start 2P", monospace',
           }}
           title={hasSGT ? "Seeker Genesis Token holder" : "Android / Seeker device detected"}
@@ -273,7 +273,7 @@ export default function WalletBar({ onWalletChange, layout = "default" }: Wallet
         style={{
           background: "rgba(10,10,30,0.88)",
           color: connected ? "#B7E928" : "#8a8aa7",
-          border: "1px solid rgba(153,69,255,0.18)",
+          border: "1px solid rgba(183,233,40,0.18)",
         }}
         title={connected ? "Wallet online" : "Wallet offline"}
       >
@@ -317,9 +317,9 @@ export default function WalletBar({ onWalletChange, layout = "default" }: Wallet
         className="cursor-pointer transition-colors"
         {...btnFeel.handlers}
         style={chamferBox(6, {
-          background: connected ? "rgba(183,233,40,0.12)" : "rgba(153,69,255,0.8)",
-          color: connected ? "#B7E928" : "#ffffff",
-          border: connected ? "1px solid rgba(183,233,40,0.3)" : "1px solid rgba(153,69,255,0.5)",
+          background: connected ? "rgba(183,233,40,0.12)" : "#B7E928",
+          color: connected ? "#B7E928" : "#0a0a14",
+          border: connected ? "1px solid rgba(183,233,40,0.3)" : "1px solid rgba(183,233,40,0.6)",
           fontFamily: '"Press Start 2P", monospace',
           fontSize: "7px",
           padding: "6px 16px",

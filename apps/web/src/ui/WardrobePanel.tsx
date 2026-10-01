@@ -354,15 +354,15 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
         overflow: "hidden",
         fontFamily: '"Press Start 2P", monospace',
         color: "#d0d0f0",
-        boxShadow: isMobile ? "none" : "0 0 60px rgba(153,69,255,0.15), 0 24px 64px rgba(0,0,0,0.6)",
+        boxShadow: isMobile ? "none" : "0 0 60px rgba(183,233,40,0.15), 0 24px 64px rgba(0,0,0,0.6)",
       }}>
 
         {/* ── Header ── */}
         <div style={{
           display: "flex", alignItems: "center", justifyContent: "space-between",
           padding: isMobile ? "6px 12px" : "12px 20px",
-          borderBottom: "1px solid rgba(153,69,255,0.12)",
-          background: "rgba(153,69,255,0.06)",
+          borderBottom: "1px solid rgba(183,233,40,0.12)",
+          background: "rgba(183,233,40,0.06)",
         }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <PixelImg src={ICON.wardrobe} size={24} />
@@ -379,18 +379,18 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
               onClick={() => setBoosterOpen(true)}
               title="Open a booster pack"
               style={{
-                ...chamferBox(9, { border: "2px solid rgba(153,69,255,0.6)" }),
+                ...chamferBox(9, { border: "2px solid rgba(183,233,40,0.6)" }),
                 fontFamily: '"Press Start 2P", monospace',
                 fontSize: 7,
                 padding: "7px 14px",
-                backgroundColor: "rgba(153,69,255,0.14)",
-                color: "#c084fc",
+                backgroundColor: "rgba(183,233,40,0.14)",
+                color: "#B7E928",
                 cursor: "pointer",
                 letterSpacing: 1,
                 transition: "background 0.15s, transform 0.08s",
               }}
-              onMouseEnter={e => e.currentTarget.style.backgroundColor = "rgba(153,69,255,0.25)"}
-              onMouseLeave={e => { e.currentTarget.style.backgroundColor = "rgba(153,69,255,0.14)"; e.currentTarget.style.transform = "none"; }}
+              onMouseEnter={e => e.currentTarget.style.backgroundColor = "rgba(183,233,40,0.25)"}
+              onMouseLeave={e => { e.currentTarget.style.backgroundColor = "rgba(183,233,40,0.14)"; e.currentTarget.style.transform = "none"; }}
               onPointerDown={e => e.currentTarget.style.transform = "scale(0.95)"}
               onPointerUp={e => e.currentTarget.style.transform = "none"}
             >
@@ -401,18 +401,18 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
               onClick={handleRandom}
               title="Random outfit"
               style={{
-                ...chamferBox(9, { border: "2px solid rgba(183,233,40,0.55)" }),
+                ...chamferBox(9, { border: "2px solid rgba(20,240,198,0.55)" }),
                 fontFamily: '"Press Start 2P", monospace',
                 fontSize: 7,
                 padding: "7px 14px",
-                backgroundColor: "rgba(183,233,40,0.1)",
-                color: "#B7E928",
+                backgroundColor: "rgba(20,240,198,0.1)",
+                color: "#14F0C6",
                 cursor: "pointer",
                 letterSpacing: 1,
                 transition: "background 0.15s, transform 0.08s",
               }}
-              onMouseEnter={e => e.currentTarget.style.backgroundColor = "rgba(183,233,40,0.2)"}
-              onMouseLeave={e => { e.currentTarget.style.backgroundColor = "rgba(183,233,40,0.1)"; e.currentTarget.style.transform = "none"; }}
+              onMouseEnter={e => e.currentTarget.style.backgroundColor = "rgba(20,240,198,0.2)"}
+              onMouseLeave={e => { e.currentTarget.style.backgroundColor = "rgba(20,240,198,0.1)"; e.currentTarget.style.transform = "none"; }}
               onPointerDown={e => e.currentTarget.style.transform = "scale(0.95)"}
               onPointerUp={e => e.currentTarget.style.transform = "none"}
             >
@@ -430,7 +430,7 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
           <div style={{
             width: isMobile ? 150 : 168,
             flexShrink: 0,
-            borderRight: "1px solid rgba(153,69,255,0.1)",
+            borderRight: "1px solid rgba(183,233,40,0.1)",
             display: "flex",
             flexDirection: "column",
             alignItems: "stretch",
@@ -438,8 +438,8 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
           }}>
             <div style={{ display: "flex", justifyContent: "center", padding: isMobile ? "8px 8px 4px" : "14px 12px 8px", flexShrink: 0 }}>
               <div style={chamferBox(10, {
-                background: "rgba(153,69,255,0.06)",
-                border: "1px solid rgba(153,69,255,0.14)",
+                background: "rgba(183,233,40,0.06)",
+                border: "1px solid rgba(183,233,40,0.14)",
                 padding: isMobile ? 4 : 8,
                 width: isMobile ? 84 : 132,
                 height: isMobile ? 84 : 132,
@@ -479,15 +479,15 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
                       height: isMobile ? 30 : undefined,
                       padding: isMobile ? 0 : "7px 10px",
                       marginBottom: isMobile ? 0 : 2,
-                      background: isActive ? "rgba(153,69,255,0.18)" : "transparent",
-                      border: isActive ? "1px solid rgba(153,69,255,0.4)" : "1px solid transparent",
+                      background: isActive ? "rgba(183,233,40,0.18)" : "transparent",
+                      border: isActive ? "1px solid rgba(183,233,40,0.4)" : "1px solid transparent",
                       cursor: "pointer",
-                      color: isActive ? "#e0d0ff" : "#666688",
+                      color: isActive ? "#d9f5a0" : "#666688",
                       textAlign: "left",
                       position: "relative",
                       transition: "background 0.12s, color 0.12s, transform 0.08s",
                     })}
-                    onMouseEnter={e => { if (!isActive) e.currentTarget.style.backgroundColor = "rgba(153,69,255,0.08)"; }}
+                    onMouseEnter={e => { if (!isActive) e.currentTarget.style.backgroundColor = "rgba(183,233,40,0.08)"; }}
                     onMouseLeave={e => { if (!isActive) e.currentTarget.style.backgroundColor = "transparent"; e.currentTarget.style.transform = "none"; }}
                     onPointerDown={e => e.currentTarget.style.transform = "scale(0.96)"}
                     onPointerUp={e => e.currentTarget.style.transform = "none"}
@@ -520,13 +520,13 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
             <div style={{
               display: "flex", alignItems: "center", gap: 8,
               padding: isMobile ? "7px 12px" : "10px 16px 8px",
-              borderBottom: "1px solid rgba(153,69,255,0.08)",
+              borderBottom: "1px solid rgba(183,233,40,0.08)",
             }}>
               <CategoryIcon cat={activeCategory} size={22} />
               <span style={{
                 fontFamily: '"Press Start 2P", monospace',
                 fontSize: 7,
-                color: "#9945FF",
+                color: "#B7E928",
                 letterSpacing: 2,
               }}>
                 {CATEGORY_LABELS[activeCategory].toUpperCase()}
@@ -590,7 +590,7 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
                         )}
                       </div>
                       <span style={{
-                        color: locked ? "#666688" : isSelected ? "#c084fc" : "#aaaacc",
+                        color: locked ? "#666688" : isSelected ? "#B7E928" : "#aaaacc",
                         lineHeight: 1.3,
                         textAlign: "center",
                       }}>{v.name}</span>
@@ -614,20 +614,20 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
         {/* ── Footer ── */}
         <div style={{
           display: "flex", gap: 10, padding: isMobile ? "6px 12px" : "10px 18px",
-          borderTop: "1px solid rgba(153,69,255,0.12)",
+          borderTop: "1px solid rgba(183,233,40,0.12)",
           background: "rgba(0,0,0,0.2)",
           alignItems: "center",
         }}>
           <button onClick={handleReset} style={chamferBox(8, {
             padding: "9px 18px",
             background: "transparent",
-            border: "1px solid rgba(153,69,255,0.2)",
+            border: "1px solid rgba(183,233,40,0.2)",
             color: "#555577", cursor: "pointer",
             fontSize: 8, fontFamily: '"Press Start 2P", monospace',
             transition: "border-color 0.15s, color 0.15s, transform 0.08s",
           })}
-          onMouseEnter={e => { e.currentTarget.style.setProperty("--cbc", "rgba(153,69,255,0.45)"); e.currentTarget.style.color = "#9945FF"; }}
-          onMouseLeave={e => { e.currentTarget.style.setProperty("--cbc", "rgba(153,69,255,0.2)"); e.currentTarget.style.color = "#555577"; e.currentTarget.style.transform = "none"; }}
+          onMouseEnter={e => { e.currentTarget.style.setProperty("--cbc", "rgba(183,233,40,0.45)"); e.currentTarget.style.color = "#B7E928"; }}
+          onMouseLeave={e => { e.currentTarget.style.setProperty("--cbc", "rgba(183,233,40,0.2)"); e.currentTarget.style.color = "#555577"; e.currentTarget.style.transform = "none"; }}
           onPointerDown={e => e.currentTarget.style.transform = "scale(0.95)"}
           onPointerUp={e => e.currentTarget.style.transform = "none"}
           >
@@ -642,7 +642,7 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
           >
             <button onClick={handleSave} style={chamferBox(8, {
               padding: "10px 32px",
-              background: "linear-gradient(135deg, #B7E928, #0db876)",
+              background: "#B7E928",
               border: "none",
               color: "#050a14",
               cursor: "pointer",
@@ -683,13 +683,13 @@ function VariantCard({
 }) {
   const baseBg = locked
     ? "rgba(255,255,255,0.015)"
-    : isSelected ? "rgba(153,69,255,0.15)"
+    : isSelected ? "rgba(183,233,40,0.15)"
     : isFlashing ? "rgba(183,233,40,0.08)"
     : "rgba(255,255,255,0.02)";
   const baseBorder = hintFlashing
     ? "2px solid rgba(255,215,0,0.6)"
     : locked ? "2px solid rgba(255,255,255,0.04)"
-    : isSelected ? "2px solid rgba(153,69,255,0.7)"
+    : isSelected ? "2px solid rgba(183,233,40,0.7)"
     : "2px solid rgba(255,255,255,0.05)";
   return (
     <button
@@ -715,8 +715,8 @@ function VariantCard({
       })}
       onMouseEnter={e => {
         if (!isSelected && !locked) {
-          e.currentTarget.style.backgroundColor = "rgba(153,69,255,0.09)";
-          e.currentTarget.style.setProperty("--cbc", "rgba(153,69,255,0.35)");
+          e.currentTarget.style.backgroundColor = "rgba(183,233,40,0.09)";
+          e.currentTarget.style.setProperty("--cbc", "rgba(183,233,40,0.35)");
         }
         e.currentTarget.style.transform = "scale(1.03)";
       }}

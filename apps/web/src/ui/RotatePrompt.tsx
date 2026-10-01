@@ -59,14 +59,19 @@ export default function RotatePrompt() {
         }
       `}</style>
 
-      <div style={{ fontSize: 46, animation: "sc-rotate-hint 2.4s ease-in-out infinite" }}>
-        📱
+      <div style={{ animation: "sc-rotate-hint 2.4s ease-in-out infinite" }}>
+        <img
+          src="/assets/ui/icon_device.png"
+          alt=""
+          draggable={false}
+          style={{ height: 46, width: "auto", imageRendering: "pixelated", display: "block" }}
+        />
       </div>
 
       <div style={{ textAlign: "center", padding: "0 32px" }}>
         <div
           style={{
-            color: "#9945FF",
+            color: "#B7E928",
             fontSize: 13,
             fontWeight: "bold",
             marginBottom: 10,

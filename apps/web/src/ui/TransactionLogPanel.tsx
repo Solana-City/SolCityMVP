@@ -340,13 +340,13 @@ function Header({
   return (
     <div
       className="flex items-center gap-3 px-4 py-3 flex-shrink-0"
-      style={{ borderBottom: "1px solid rgba(153,69,255,0.15)" }}
+      style={{ borderBottom: "1px solid rgba(183,233,40,0.15)" }}
     >
       <div
         style={{
           fontFamily: '"Press Start 2P", monospace',
           fontSize: "8px",
-          color: "#9945FF",
+          color: "#B7E928",
           letterSpacing: "0.05em",
         }}
       >
@@ -371,9 +371,9 @@ function Header({
             className="cursor-pointer"
             style={chamferBox(4, {
               background: "none",
-              border: "1px solid rgba(153,69,255,0.35)",
+              border: "1px solid rgba(183,233,40,0.35)",
               padding: "2px 6px",
-              color: resetting ? "#555566" : "#9945FF",
+              color: resetting ? "#555566" : "#B7E928",
               fontSize: 7,
               opacity: resetting ? 0.6 : 1,
               ...(resetting ? null : feelStyle(resetFeel)),
@@ -444,7 +444,7 @@ function Filters({
   return (
     <div
       className="flex flex-col gap-2 px-4 py-2 flex-shrink-0"
-      style={{ borderBottom: "1px solid rgba(153,69,255,0.15)" }}
+      style={{ borderBottom: "1px solid rgba(183,233,40,0.15)" }}
     >
       <FilterRow label="kind">
         {KIND_OPTIONS.map((opt) => (
@@ -488,7 +488,7 @@ function FilterChip({
   active,
   onClick,
   children,
-  color = "#9945FF",
+  color = "#B7E928",
 }: {
   active: boolean;
   onClick: () => void;
@@ -505,7 +505,7 @@ function FilterChip({
         padding: "2px 8px",
         fontSize: "8px",
         background: active ? `${color}22` : "transparent",
-        border: `1px solid ${active ? color : "rgba(153,69,255,0.2)"}`,
+        border: `1px solid ${active ? color : "rgba(183,233,40,0.2)"}`,
         color: active ? color : "#888899",
         ...feelStyle(feel),
       })}
@@ -556,8 +556,8 @@ function EntryRow({ entry }: { entry: TxEntry }) {
 
   return (
     <div
-      className="px-4 py-2 flex items-start gap-3 hover:bg-[rgba(153,69,255,0.05)] transition-colors"
-      style={{ borderBottom: "1px solid rgba(153,69,255,0.08)" }}
+      className="px-4 py-2 flex items-start gap-3 hover:bg-[rgba(183,233,40,0.05)] transition-colors"
+      style={{ borderBottom: "1px solid rgba(183,233,40,0.08)" }}
     >
       <PulseDot color={statusColor} active={entry.status === "pending"} />
       <div className="flex-1 min-w-0">
@@ -586,8 +586,8 @@ function EntryRow({ entry }: { entry: TxEntry }) {
             <span
               style={{
                 fontSize: "7px",
-                color: "#9945FF",
-                background: "rgba(153,69,255,0.12)",
+                color: "#14F0C6",
+                background: "rgba(20,240,198,0.12)",
                 padding: "1px 4px",
                 borderRadius: 3,
               }}

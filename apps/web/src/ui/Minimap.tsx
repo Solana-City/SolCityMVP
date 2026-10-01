@@ -22,7 +22,7 @@ import { useButtonFeel, feelStyle, type ButtonFeel } from "@/ui/useButtonFeel";
 
 const PIXEL_FONT = '"Press Start 2P", monospace';
 const PANEL_BG = "rgba(8,10,22,0.72)";
-const PANEL_BORDER = "1px solid rgba(153,69,255,0.28)";
+const PANEL_BORDER = "1px solid rgba(183,233,40,0.28)";
 const WATER = "#0b3a5c";
 const COLLAPSED_KEY = "solcity:minimap-collapsed";
 
@@ -481,7 +481,7 @@ function rimBtn(size: number, feel?: Pick<ButtonFeel, "hover" | "pressed">): Rea
   return {
     position: "absolute", width: size, height: size, borderRadius: "50%", padding: 0,
     display: "flex", alignItems: "center", justifyContent: "center",
-    background: "rgba(8,10,22,0.92)", border: "1px solid rgba(153,69,255,0.55)",
+    background: "rgba(8,10,22,0.92)", border: "1px solid rgba(183,233,40,0.55)",
     color: "#e2e8f0", fontSize: Math.round(size * 0.6), lineHeight: 1, cursor: "pointer",
     boxShadow: "0 2px 10px rgba(0,0,0,0.5)",
     WebkitTapHighlightColor: "transparent", touchAction: "manipulation",
@@ -848,7 +848,7 @@ function FullMap({ host, onClose }: { host: MinimapHost; onClose: () => void }) 
         boxShadow: "0 20px 70px rgba(0,0,0,0.6)",
       }}>
         {/* Header */}
-        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: narrow ? "8px 10px" : "12px 20px", borderBottom: "1px solid rgba(153,69,255,0.12)", background: "rgba(153,69,255,0.06)" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: narrow ? "8px 10px" : "12px 20px", borderBottom: "1px solid rgba(183,233,40,0.12)", background: "rgba(183,233,40,0.06)" }}>
           <PixelImg src="/assets/ui/icon2_map.png" size={narrow ? 18 : 22} />
           <span style={{ fontFamily: PIXEL_FONT, fontSize: narrow ? 11 : 14, color: "#B7E928", letterSpacing: 1 }}>SOLANA CITY MAP</span>
           {!narrow && <span style={{ fontFamily: PIXEL_FONT, fontSize: 7, color: "#64748b" }}>Drag to move · scroll to zoom · click a marker</span>}
@@ -863,9 +863,9 @@ function FullMap({ host, onClose }: { host: MinimapHost; onClose: () => void }) 
 
         <div style={{ flex: 1, minHeight: 0, display: "flex", gap: 0 }}>
           {!narrow && (
-            <aside style={{ width: 250, flexShrink: 0, borderRight: "1px solid rgba(153,69,255,0.18)", padding: 12, overflowY: "auto", display: "flex", flexDirection: "column", gap: 14 }}>
+            <aside style={{ width: 250, flexShrink: 0, borderRight: "1px solid rgba(183,233,40,0.18)", padding: 12, overflowY: "auto", display: "flex", flexDirection: "column", gap: 14 }}>
               {legend}
-              <div style={{ height: 1, background: "rgba(153,69,255,0.18)" }} />
+              <div style={{ height: 1, background: "rgba(183,233,40,0.18)" }} />
               {placeList}
             </aside>
           )}
@@ -1024,7 +1024,7 @@ function hdrBtn(active: boolean, feel?: Pick<ButtonFeel, "hover" | "pressed">): 
 
 const ctrlBtn: React.CSSProperties = chamferBox(8, {
   width: 34, height: 34, cursor: "pointer",
-  background: "rgba(8,10,22,0.9)", border: "1px solid rgba(153,69,255,0.35)",
+  background: "rgba(8,10,22,0.9)", border: "1px solid rgba(183,233,40,0.35)",
   color: "#e2e8f0", fontSize: 17, lineHeight: 1,
   display: "flex", alignItems: "center", justifyContent: "center",
 });

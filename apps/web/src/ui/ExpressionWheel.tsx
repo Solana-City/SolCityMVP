@@ -260,9 +260,9 @@ export default function ExpressionWheel({ gameRef }: { gameRef: Phaser.Game | nu
           >
             <div style={{
               width: node, height: node, borderRadius: "50%",
-              background: active ? "rgba(153,69,255,0.28)" : "rgba(10,10,30,0.72)",
-              border: `2px solid ${active ? "#c084fc" : "rgba(153,69,255,0.35)"}`,
-              boxShadow: active ? "0 0 18px rgba(153,69,255,0.55)" : "none",
+              background: active ? "rgba(183,233,40,0.28)" : "rgba(10,10,30,0.72)",
+              border: `2px solid ${active ? "#B7E928" : "rgba(183,233,40,0.35)"}`,
+              boxShadow: active ? "0 0 18px rgba(183,233,40,0.55)" : "none",
               display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden",
               transition: "background 0.08s, border-color 0.08s, box-shadow 0.08s",
             }}>

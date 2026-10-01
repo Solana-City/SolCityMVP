@@ -122,7 +122,7 @@ export default function NicknameModal({ wallet, current, forced, onDone }: {
           style={chamferBox(8, {
             width: "100%", boxSizing: "border-box", padding: "10px 12px", outline: "none",
             background: "#12122a", color: "#fff", fontFamily: PIX, fontSize: 11,
-            border: `1px solid ${state.kind === "idle" ? "rgba(153,69,255,0.3)" : color}`,
+            border: `1px solid ${state.kind === "idle" ? "rgba(183,233,40,0.3)" : color}`,
           })}
         />
         <div style={{ minHeight: 18, marginTop: 6, fontSize: 7, color, lineHeight: 1.6 }}>
