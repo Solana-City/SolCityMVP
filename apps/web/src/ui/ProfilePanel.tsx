@@ -6,7 +6,9 @@ import { useWallet } from "@solana/wallet-adapter-react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import type { PlayerProfile } from "@/game/config/profileManager";
 import type { ProfileManager } from "@/game/config/profileManager";
-import { ACHIEVEMENTS, TIER_COLORS } from "@/game/progression/achievementRegistry";
+import {
+  TIER_COLORS, TRACKS, levelName, trackProgress,
+} from "@/game/progression/achievementRegistry";
 import { fetchBoard } from "@/game/leaderboards/boards";
 import { DAILY_QUESTS, claimQuest, getQuestProgress, onQuestsChanged } from "@/game/quests/QuestManager";
 import { OPEN_CALENDAR_EVENT, STREAK_EVENT, type StreakView } from "@/game/daily/calendarEvents";
@@ -482,33 +484,86 @@ function ProfileTab({ profile, wallet, onConnect }: {
 
 // ── Achievements tab ────────────────────────────────────────────────────────
 
+/**
+ * One row per thing you can do, with the level reached and a bar to the next
+ * rung.
+ *
+ * The old board was one card per number: "Good Dog", "Dog Person" and "Best
+ * Friend" sat as three separate rows, two of them greyed out, and none of them
+ * said how close the next was. A player could not tell a locked achievement
+ * they were one pet away from one they would never reach. The bar is the whole
+ * point: it turns a list of things you have not done into a list of things you
+ * are partway through.
+ */
 function AchievementsTab({ profile }: { profile: PlayerProfile }) {
+  const rows = TRACKS.map((track) => ({ track, p: trackProgress(track, profile) }));
+  const levels = rows.reduce((n, r) => n + r.p.level, 0);
+  const total = TRACKS.reduce((n, t) => n + t.levels.length, 0);
+
   return (
     <div>
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
         <PixelImg src={ICON.trophy} size={20} />
         <span style={{ fontSize: 10, color: "#fff", flex: 1 }}>ACHIEVEMENTS</span>
-        <span style={{ fontSize: 9, color: MUTED }}>{profile.unlockedAchievements.length}/{ACHIEVEMENTS.length}</span>
+        <span style={{ fontSize: 9, color: MUTED }}>{levels}/{total}</span>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2" style={{ gap: 10 }}>
-        {ACHIEVEMENTS.map((ach) => {
-          const unlocked = profile.unlockedAchievements.includes(ach.id);
-          const color = TIER_COLORS[ach.tier];
-          return (
-            <Card key={ach.id} style={{ display: "flex", alignItems: "center", gap: 12, opacity: unlocked ? 1 : 0.55, padding: 12 }}>
-              <span style={{ position: "relative", lineHeight: 0, flexShrink: 0, filter: unlocked ? "none" : "grayscale(1)" }}>
-                <AchievementIcon id={ach.id} size={28} />
-                {!unlocked && <span style={{ position: "absolute", right: -4, bottom: -4 }}><LockIcon size={12} /></span>}
-              </span>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 9, color: unlocked ? color : "#94a3b8" }}>{ach.title}</div>
-                <div style={{ fontSize: 7, color: MUTED, marginTop: 6, lineHeight: 1.6 }}>{ach.description}</div>
-              </div>
-            </Card>
-          );
-        })}
+        {rows.map(({ track, p }) => (
+          <TrackCard key={track.id} track={track} progress={p} />
+        ))}
       </div>
     </div>
+  );
+}
+
+function TrackCard({ track, progress }: {
+  track: (typeof TRACKS)[number];
+  progress: ReturnType<typeof trackProgress>;
+}) {
+  const { level, value, next, fraction } = progress;
+  const started = level > 0;
+  const color = TIER_COLORS[progress.tier];
+  const done = next === null;
+
+  return (
+    <Card style={{ display: "flex", alignItems: "center", gap: 12, padding: 12, opacity: started ? 1 : 0.7 }}>
+      <span style={{ position: "relative", lineHeight: 0, flexShrink: 0, filter: started ? "none" : "grayscale(1)" }}>
+        <AchievementIcon id={track.art ?? track.id} size={28} />
+        {!started && <span style={{ position: "absolute", right: -4, bottom: -4 }}><LockIcon size={12} /></span>}
+      </span>
+
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
+          <span style={{ fontSize: 9, color: started ? color : "#94a3b8", flex: 1, minWidth: 0 }}>
+            {started ? levelName(track, level) : track.title}
+          </span>
+          {/* The level is the headline number, so it reads before the bar. */}
+          <span style={{ fontSize: 7, color: started ? color : MUTED, flexShrink: 0 }}>
+            {done ? "MAX" : `LV ${level}`}
+          </span>
+        </div>
+
+        {/* The bar. Full and in tier colour when the ladder is finished, so a
+            maxed track reads as an achievement rather than a stalled one. */}
+        <div style={{
+          height: 6, marginTop: 7,
+          background: "rgba(255,255,255,0.07)",
+          ...chamferBox(3, {}),
+        }}>
+          <div style={{
+            width: `${Math.round(fraction * 100)}%`, height: "100%",
+            background: color,
+            transition: "width 0.3s",
+          }} />
+        </div>
+
+        <div style={{ fontSize: 7, color: MUTED, marginTop: 6, lineHeight: 1.6 }}>
+          {done
+            ? `${track.title}: every level`
+            : `${value} / ${next.at}${track.unit ? ` ${track.unit}` : ""}`}
+        </div>
+      </div>
+    </Card>
   );
 }
 

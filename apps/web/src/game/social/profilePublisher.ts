@@ -1,4 +1,6 @@
-import { ACHIEVEMENTS } from "@/game/progression/achievementRegistry";
+import {
+  ACHIEVEMENTS, TRACKS, levelBitIndex, trackProgress,
+} from "@/game/progression/achievementRegistry";
 import { achievementMask } from "@/game/solana/program";
 import type { PlayerProfile, ProfileManager } from "@/game/config/profileManager";
 
@@ -17,33 +19,59 @@ import type { PlayerProfile, ProfileManager } from "@/game/config/profileManager
  */
 
 /**
- * Registry id -> bit index.
+ * Rung id -> its bit position in a published profile.
  *
- * THE ORDER OF `ACHIEVEMENTS` IS NOW A WIRE FORMAT. A published profile is a
- * set of bit positions, so appending to the registry is safe and free, while
- * reordering or removing an entry silently relabels every profile already
- * published: players would appear to hold badges they never earned. Add to the
- * end.
+ * The position comes from the track's own fixed block (see BITS_PER_TRACK), not
+ * from where the rung happens to sit in a flattened list. That is what lets a
+ * track gain a level without moving anybody else's bits: a published profile is
+ * a set of bit positions, and a shifted position means a player appears to hold
+ * a badge they never earned.
  */
-const INDEX_BY_ID = new Map(ACHIEVEMENTS.map((a, i) => [a.id, i] as const));
+const BIT_BY_ID = new Map(ACHIEVEMENTS.map((a) => [a.id, a.bit] as const));
 
-/** Bit index for an achievement id, or undefined if it is not in the registry. */
+/** Bit position for a rung id, or undefined if it is not in the registry. */
 export function achievementIndexOf(id: string): number | undefined {
-  return INDEX_BY_ID.get(id);
+  return BIT_BY_ID.get(id);
 }
 
-/** The registry entry a published bit refers to. */
-export function achievementAtIndex(index: number) {
-  return ACHIEVEMENTS[index];
+/** The rung a published bit refers to. */
+export function achievementAtIndex(bit: number) {
+  return BY_BIT.get(bit);
 }
 
-/** The mask that publishes everything this profile has unlocked. */
+const BY_BIT = new Map(ACHIEVEMENTS.map((a) => [a.bit, a] as const));
+
+/**
+ * The level another player sees on each of our tracks, read out of a published
+ * mask: the highest rung whose bit is set.
+ */
+export function levelsFromMask(bits: Set<number>): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const a of ACHIEVEMENTS) {
+    if (bits.has(a.bit)) {
+      out.set(a.trackId, Math.max(out.get(a.trackId) ?? 0, a.level));
+    }
+  }
+  return out;
+}
+
+/**
+ * The mask that publishes this profile.
+ *
+ * Built from the LEVELS the counters currently justify, not from the list of
+ * ids the profile happens to have saved. Those ids changed shape when
+ * achievements became tracks, and a returning player's levels are recomputed
+ * anyway, so reading the metrics is both simpler and the version that cannot
+ * publish a stale set.
+ */
 export function maskForProfile(profile: PlayerProfile): Uint8Array {
   const indices: number[] = [];
-  for (const id of profile.unlockedAchievements ?? []) {
-    const i = INDEX_BY_ID.get(id);
-    if (i !== undefined) indices.push(i);
-  }
+  TRACKS.forEach((track, trackIndex) => {
+    const { level } = trackProgress(track, profile);
+    for (let lv = 1; lv <= level; lv++) {
+      indices.push(levelBitIndex(trackIndex, lv));
+    }
+  });
   return achievementMask(indices);
 }
 

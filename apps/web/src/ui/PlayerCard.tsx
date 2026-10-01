@@ -10,26 +10,14 @@ import { chamferBox } from "@/ui/chamfer";
 import { useButtonFeel, feelStyle } from "@/ui/useButtonFeel";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { PublicKey } from "@solana/web3.js";
-import { RARITY_COLOR } from "@/game/collections/seasons";
-import { achievementAtIndex } from "@/game/social/profilePublisher";
+import { levelsFromMask } from "@/game/social/profilePublisher";
+import { TRACKS, TIER_COLORS, levelName } from "@/game/progression/achievementRegistry";
+import { AchievementIcon } from "@/ui/PixelIcons";
 import { runFriendAction, type FriendAction } from "@/game/social/friendActions";
 import { standingWith, type FriendStanding } from "@/game/social/friends";
 
 /** The city opens Sol Mechs on this, with the player to duel. */
 export const DUEL_INVITE_EVENT = "solcity:solmechs-duel";
-
-/**
- * Achievement tiers borrow the rarity colours, so gold means the same thing on
- * a badge as it does on a hat. The tier names do not line up one to one
- * (achievements have "epic" where items have "uncommon"), so epic takes the
- * panel's own purple rather than inventing a fifth colour.
- */
-const TIER_COLOR: Record<string, string> = {
-  common: RARITY_COLOR.common,
-  rare: RARITY_COLOR.rare,
-  epic: "#c084fc",
-  legendary: RARITY_COLOR.legendary,
-};
 
 /** What the one friend button says and does, per standing. */
 const FRIEND_BUTTON: Record<Exclude<FriendStanding, "self">, {
@@ -313,47 +301,62 @@ function Stat({ label, value, color, hint }: {
   );
 }
 
-/** How many to show before the row turns into a count. */
-const BADGES_SHOWN = 12;
+/** How many tracks to show before the row turns into a count. */
+const BADGES_SHOWN = 10;
 
 /**
- * The badges, as badges. A list of titles would be a wall of text on a 280px
- * card, where a row of icons reads at a glance and still names each one on
- * hover.
+ * The badges, as one per TRACK with the level on it, which is the same shape
+ * the owner's own board uses.
  *
- * Empty renders nothing rather than "no achievements yet": an absent row says
- * the same thing without spending a line on it.
+ * A card showing a separate badge per rung would repeat the same sprite three
+ * times for someone who has petted the dog fifty times, and say less than one
+ * badge reading "x4" does. Sorted by level, so the deepest tracks lead.
+ *
+ * Nothing earned renders nothing at all: an absent row says "new here" without
+ * spending a line on it.
  */
 function Badges({ indices }: { indices?: Set<number> }) {
   if (!indices || indices.size === 0) return null;
-  const earned = [...indices]
-    .map((i) => achievementAtIndex(i))
-    .filter((a): a is NonNullable<typeof a> => !!a);
+
+  const levels = levelsFromMask(indices);
+  const earned = TRACKS
+    .map((track, i) => ({ track, level: levels.get(track.id) ?? 0, i }))
+    .filter((r) => r.level > 0)
+    .sort((a, b) => b.level - a.level || a.i - b.i);
   if (earned.length === 0) return null;
 
   const shown = earned.slice(0, BADGES_SHOWN);
   const rest = earned.length - shown.length;
+  const totalLevels = earned.reduce((n, r) => n + r.level, 0);
 
   return (
     <div style={{ marginTop: 10 }}>
       <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5 }}>
         <span style={{ fontSize: 7, color: "#555577" }}>BADGES</span>
-        <span style={{ fontSize: 7, color: "#8a8aa7" }}>{earned.length}</span>
+        <span style={{ fontSize: 7, color: "#8a8aa7" }}>{totalLevels}</span>
       </div>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-        {shown.map((a) => (
+        {shown.map(({ track, level }) => (
           <span
-            key={a.id}
-            title={`${a.title} - ${a.description}`}
+            key={track.id}
+            title={`${levelName(track, level)} - ${track.description}`}
             style={chamferBox(4, {
-              width: 22, height: 22,
+              position: "relative",
+              width: 26, height: 26,
               display: "flex", alignItems: "center", justifyContent: "center",
-              fontSize: 11, lineHeight: 1,
               background: "rgba(255,255,255,0.04)",
-              border: `1px solid ${TIER_COLOR[a.tier] ?? RARITY_COLOR.common}`,
+              border: `1px solid ${TIER_COLORS[track.levels[level - 1]?.tier ?? "common"]}`,
             })}
           >
-            {a.icon}
+            <AchievementIcon id={track.art ?? track.id} size={18} />
+            {level > 1 && (
+              <span style={{
+                position: "absolute", right: -1, bottom: -2,
+                fontSize: 5, lineHeight: 1,
+                color: "#0b0e1c", background: TIER_COLORS[track.levels[level - 1]?.tier ?? "common"],
+                padding: "1px 2px",
+              }}>{level}</span>
+            )}
           </span>
         ))}
         {rest > 0 && (
