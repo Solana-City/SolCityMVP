@@ -12,6 +12,7 @@ import {
   type TxStatus,
 } from "@/game/telemetry/transactionLog";
 import { chamferBox, octagonFrame } from "@/ui/chamfer";
+import { useButtonFeel, feelStyle } from "@/ui/useButtonFeel";
 
 interface Props {
   isOpen: boolean;
@@ -334,6 +335,8 @@ function Header({
   onResetSession?: () => void;
   resetting?: boolean;
 }) {
+  const resetFeel = useButtonFeel();
+  const clearFeel = useButtonFeel();
   return (
     <div
       className="flex items-center gap-3 px-4 py-3 flex-shrink-0"
@@ -362,6 +365,7 @@ function Header({
       <div className="ml-auto flex items-center gap-3">
         {onResetSession && (
           <button
+            {...resetFeel.handlers}
             onClick={onResetSession}
             disabled={resetting}
             className="cursor-pointer"
@@ -372,6 +376,7 @@ function Header({
               color: resetting ? "#555566" : "#9945FF",
               fontSize: 7,
               opacity: resetting ? 0.6 : 1,
+              ...(resetting ? null : feelStyle(resetFeel)),
             })}
             title="Undelegate the current player PDA and reconnect from scratch. Use this to force a fresh delegate_pda signature if your wallet's PDA is stuck delegated from a past session"
           >
@@ -379,6 +384,7 @@ function Header({
           </button>
         )}
         <button
+          {...clearFeel.handlers}
           onClick={onClear}
           className="cursor-pointer"
           style={{
@@ -387,6 +393,7 @@ function Header({
             color: "#555566",
             textDecoration: "underline",
             fontSize: 7,
+            ...feelStyle(clearFeel),
           }}
           title="Clear log"
         >
@@ -488,8 +495,10 @@ function FilterChip({
   children: React.ReactNode;
   color?: string;
 }) {
+  const feel = useButtonFeel();
   return (
     <button
+      {...feel.handlers}
       onClick={onClick}
       className="cursor-pointer transition-colors"
       style={chamferBox(4, {
@@ -498,6 +507,7 @@ function FilterChip({
         background: active ? `${color}22` : "transparent",
         border: `1px solid ${active ? color : "rgba(153,69,255,0.2)"}`,
         color: active ? color : "#888899",
+        ...feelStyle(feel),
       })}
     >
       {children}
