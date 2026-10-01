@@ -217,6 +217,45 @@ export const FRIENDSHIP_SEED = "friendship";
 export const FRIEND_REQUEST_SEED = "friend_req";
 
 /**
+ * Base58 for an arbitrary byte array (no BigInt literals - ES2019 safe).
+ *
+ * Exists for getProgramAccounts memcmp filters, which take their comparand as
+ * base58. The length matters: a filter compares exactly as many bytes as the
+ * string decodes to, so an 8-byte discriminator must encode as 8 bytes. Padding
+ * it out to 32 would silently widen the comparison to cover the field after it
+ * and match nothing.
+ */
+const BASE58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+
+export function toBase58(bytes: Buffer | Uint8Array): string {
+  const input = Array.from(bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes));
+
+  // Leading zero bytes are carried as literal "1"s, so they are stripped
+  // BEFORE the conversion and the digit array starts empty. Converting them
+  // too would emit one spurious "1" for an all-zero input - [0x00] encoding as
+  // "11" instead of "1", and the all-zero pubkey as 33 characters instead of
+  // its 32. (That was the behaviour of the copy this replaces.)
+  let leadingZeros = 0;
+  while (leadingZeros < input.length && input[leadingZeros] === 0) leadingZeros++;
+
+  const digits: number[] = [];
+  for (const byte of input.slice(leadingZeros)) {
+    let carry = byte;
+    for (let i = 0; i < digits.length; i++) {
+      carry += digits[i] * 256;
+      digits[i] = carry % 58;
+      carry = Math.floor(carry / 58);
+    }
+    while (carry > 0) {
+      digits.push(carry % 58);
+      carry = Math.floor(carry / 58);
+    }
+  }
+
+  return "1".repeat(leadingZeros) + digits.reverse().map((d) => BASE58_ALPHABET[d]).join("");
+}
+
+/**
  * Anchor's account discriminator: sha256("account:<StructName>")[0..8].
  *
  * Needed because FriendRequest and Friendship are the same size, so a

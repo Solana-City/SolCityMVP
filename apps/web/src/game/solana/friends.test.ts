@@ -13,6 +13,7 @@ import {
   FRIEND_OFFSET,
   friendCounterpart,
   sortPair,
+  toBase58,
 } from "./program";
 
 /**
@@ -163,5 +164,41 @@ describe("the achievement bitmask", () => {
     const mask = achievementMask([9]);
     expect(mask[0]).toBe(0);
     expect(mask[1]).toBe(0b10);
+  });
+});
+describe("base58 for a memcmp filter", () => {
+  it("agrees with web3.js on a full 32-byte key", () => {
+    for (let i = 0; i < 10; i++) {
+      const key = Keypair.generate().publicKey;
+      expect(toBase58(key.toBytes())).toBe(key.toBase58());
+    }
+  });
+
+  it("encodes known short vectors", () => {
+    expect(toBase58(Buffer.from([0x00]))).toBe("1");
+    expect(toBase58(Buffer.from([0x01]))).toBe("2");
+    expect(toBase58(Buffer.from([0xff]))).toBe("5Q");
+  });
+
+  it("encodes the all-zero key as exactly 32 ones, not 33", () => {
+    expect(toBase58(new Uint8Array(32))).toBe(PublicKey.default.toBase58());
+    expect(toBase58(new Uint8Array(32))).toHaveLength(32);
+  });
+
+  it("keeps leading zero bytes, which are information in a discriminator", () => {
+    expect(toBase58(Buffer.from([0x00, 0x00, 0x01]))).toBe("112");
+  });
+
+  it("encodes a discriminator as 8 bytes, NOT padded out to 32", () => {
+    // The bug this guards: a memcmp filter compares exactly as many bytes as
+    // its comparand decodes to. Padding the 8-byte discriminator into a
+    // 32-byte PublicKey widens the comparison over the pubkey field that
+    // follows it, so the filter matches nothing and a player's friend list
+    // comes back silently empty.
+    const disc = accountDiscriminator("Friendship");
+    const padded = Buffer.alloc(32);
+    disc.copy(padded, 0);
+    expect(toBase58(disc)).not.toBe(toBase58(padded));
+    expect(toBase58(disc)).not.toBe(new PublicKey(padded).toBase58());
   });
 });

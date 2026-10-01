@@ -11,7 +11,7 @@
 
 import { Connection, PublicKey } from "@solana/web3.js";
 import { sha256 } from "@noble/hashes/sha256";
-import { SOL_CITY_PROGRAM_ID } from "./program";
+import { SOL_CITY_PROGRAM_ID, toBase58 } from "./program";
 import { isProgramDeployed } from "./instructions";
 
 const BASE_RPC = "https://api.devnet.solana.com";
@@ -186,36 +186,5 @@ async function _fetch(): Promise<LeaderboardEntry[]> {
   return entries;
 }
 
-// ── Minimal base58 encoder (no BigInt literals — ES2019 safe) ────────────────
-// Encodes an arbitrary byte array to a base58 string.
-// Sufficient for encoding the 8-byte discriminator for RPC memcmp filters.
-const BASE58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
-
-function toBase58(bytes: Buffer | Uint8Array): string {
-  const input = Array.from(bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes));
-
-  // Count leading zeros
-  let leadingZeros = 0;
-  for (const b of input) {
-    if (b !== 0) break;
-    leadingZeros++;
-  }
-
-  // Simple base-256 → base-58 conversion using a carry array
-  const digits = [0];
-  for (const byte of input) {
-    let carry = byte;
-    for (let i = 0; i < digits.length; i++) {
-      carry += digits[i] * 256;
-      digits[i] = carry % 58;
-      carry = Math.floor(carry / 58);
-    }
-    while (carry > 0) {
-      digits.push(carry % 58);
-      carry = Math.floor(carry / 58);
-    }
-  }
-
-  const ones = "1".repeat(leadingZeros);
-  return ones + digits.reverse().map((d) => BASE58_ALPHABET[d]).join("");
-}
+// The base58 encoder moved to ./program (toBase58): the friend queries need
+// the same memcmp encoding, and one copy is one place to be right.
