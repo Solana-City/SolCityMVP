@@ -18,6 +18,7 @@
 
 import { track } from "./track";
 import { trackLatency } from "./latency";
+import { haptic } from "@/lib/nativeShell";
 
 export type TxKind =
   | "move"       // update_position on ephemeral rollup
@@ -206,6 +207,16 @@ class TransactionLogService {
     "swap", "stock", "transfer", "bounty",
   ]);
 
+  /**
+   * Kinds the player feels in their hand on the Android app. Deliberately not
+   * every entry: "move" lands ten times a second, and buzzing on each one would
+   * turn the phone into a permanent vibration. These are the ones the player
+   * deliberately asked for and is waiting on.
+   */
+  private static readonly HAPTIC: ReadonlySet<TxKind> = new Set<TxKind>([
+    "swap", "stock", "transfer", "bounty", "outfit", "init",
+  ]);
+
   markConfirmed(id: string, signature: string, latencyMs?: number): void {
     const entry = this.entries.find((e) => e.id === id);
     if (!entry) return;
@@ -219,6 +230,7 @@ class TransactionLogService {
     if (TransactionLogService.TRACKED.has(entry.kind)) {
       track("protocol", entry.kind, { value: 1, label: entry.label });
     }
+    if (TransactionLogService.HAPTIC.has(entry.kind)) haptic("success");
     this.notify();
   }
 
@@ -228,6 +240,7 @@ class TransactionLogService {
     entry.status = "failed";
     entry.error = error;
     entry.updatedAt = Date.now();
+    if (TransactionLogService.HAPTIC.has(entry.kind)) haptic("warning");
     this.notify();
   }
 

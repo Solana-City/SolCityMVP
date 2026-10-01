@@ -9,6 +9,7 @@ import type { MiniGameContext, MiniGameResult } from "@/game/minigames/types";
 import { PublicKey } from "@solana/web3.js";
 import { launch as launchMiniGame } from "@/game/minigames";
 import { usePinchZoom } from "@/ui/usePinchZoom";
+import { haptic } from "@/lib/nativeShell";
 import { hydrateQuests, incrementQuest } from "@/game/quests/QuestManager";
 import { guideSeen, markGuideSeen } from "@/ui/CityGuide";
 import { fetchStatus } from "@/game/names/nameService";
@@ -197,6 +198,8 @@ export default function Home() {
         return;
       }
       setActiveNPC(npc);
+      // The app answers in the hand; a no-op in any browser.
+      haptic("select");
     };
     game.events.on("npc:interact", handler);
     return () => { game.events.off("npc:interact", handler); };
