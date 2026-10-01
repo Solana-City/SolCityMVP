@@ -14,6 +14,7 @@ import { RankedClient, type PairedRoom } from "@/game/solmechs/ranked/rankedClie
 import { MATCHMAKING } from "@/game/solmechs/season/config";
 import { tolerance } from "@/game/solmechs/season/matchmaking";
 import { C, T, SP, R, MONO, DISPLAY, PIXELATED, backdrop, panel, eyebrow, button, W } from "./theme";
+import { useButtonFeel } from "@/ui/useButtonFeel";
 
 const UI = "/assets/minigames/sol-mechs/ui";
 
@@ -36,6 +37,7 @@ export default function RankedQueue({ client, rating, onPaired, onCancel }: Rank
   const pairedRef = useRef(false);
   const onPairedRef = useRef(onPaired);
   onPairedRef.current = onPaired;
+  const cancelFeel = useButtonFeel();
 
   useEffect(() => {
     const ac = new AbortController();
@@ -113,7 +115,7 @@ export default function RankedQueue({ client, rating, onPaired, onCancel }: Rank
           </div>
         </div>
 
-        <button style={{ ...button("ghost"), marginTop: SP.lg }} onClick={onCancel}>
+        <button {...cancelFeel.handlers} style={{ ...button("ghost", { feel: cancelFeel }), marginTop: SP.lg }} onClick={onCancel}>
           {phase.kind === "found" ? "..." : "CANCEL"}
         </button>
         <p style={sx.foot}>Cancelling gives the energy back.</p>

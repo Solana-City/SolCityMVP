@@ -187,7 +187,7 @@ export function frame(): React.CSSProperties {
  * Slice 22 keeps the corner brackets in the corner tiles; the border width is
  * smaller so they scale down with the frame.
  */
-export function actionButton(opts: { selected?: boolean; disabled?: boolean; held?: boolean } = {}): React.CSSProperties {
+export function actionButton(opts: { selected?: boolean; disabled?: boolean; held?: boolean; hover?: boolean } = {}): React.CSSProperties {
   const sprite = opts.held ? "btn-action-hold.png" : "btn-action.png";
   return {
     borderStyle: "solid",
@@ -204,13 +204,20 @@ export function actionButton(opts: { selected?: boolean; disabled?: boolean; hel
     textAlign: "left",
     lineHeight: 1.25,
     imageRendering: "pixelated",
+    // The sprite swap IS the press feedback; hover only needs a touch more
+    // on top of that, never instead of it.
+    filter: opts.disabled ? "none" : opts.hover ? "brightness(1.15)" : "none",
+    transition: "filter 0.12s",
   };
 }
 
 export type ButtonTone = "primary" | "ghost" | "danger" | "neutral";
 
 /** One button treatment, so no screen invents its own. */
-export function button(tone: ButtonTone = "neutral", opts: { block?: boolean; disabled?: boolean } = {}): React.CSSProperties {
+export function button(
+  tone: ButtonTone = "neutral",
+  opts: { block?: boolean; disabled?: boolean; feel?: { hover: boolean; pressed: boolean } } = {},
+): React.CSSProperties {
   const base: React.CSSProperties = {
     fontFamily: "inherit",
     fontSize: T.small,
@@ -223,6 +230,11 @@ export function button(tone: ButtonTone = "neutral", opts: { block?: boolean; di
     width: opts.block ? "100%" : undefined,
     lineHeight: 1.2,
     border: "1px solid transparent",
+    ...(opts.disabled || !opts.feel ? null : {
+      filter: opts.feel.pressed ? "brightness(0.9)" : opts.feel.hover ? "brightness(1.15)" : "none",
+      transform: opts.feel.pressed ? "scale(0.97)" : "none",
+      transition: "filter 0.12s, transform 0.08s",
+    }),
   };
   switch (tone) {
     case "primary":

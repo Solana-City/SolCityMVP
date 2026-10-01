@@ -14,6 +14,7 @@ import type { PublicKey } from "@solana/web3.js";
 import type { DuelIntent, MatchInfo, PvpTransport, SearchPhase } from "@/game/solmechs/pvp";
 import { ChainTransport } from "@/game/solmechs/pvp/chain/ChainTransport";
 import { C, T, SP, R, MONO, PIXELATED, DISPLAY, W, backdrop, panel, eyebrow, button } from "./theme";
+import { useButtonFeel } from "@/ui/useButtonFeel";
 
 const UI = "/assets/minigames/sol-mechs/ui";
 /** Long enough to read who you are about to fight. */
@@ -49,6 +50,8 @@ export default function PvpLobby({ team, transport, duel, ranked, onMatched, onC
   const [attempt, setAttempt] = useState(0);
   const onMatchedRef = useRef(onMatched);
   onMatchedRef.current = onMatched;
+  const retryFeel = useButtonFeel();
+  const cancelFeel = useButtonFeel();
 
   useEffect(() => {
     const ac = new AbortController();
@@ -152,9 +155,9 @@ export default function PvpLobby({ team, transport, duel, ranked, onMatched, onC
 
         <div style={sx.actions}>
           {status.phase === "error" && (
-            <button style={button("primary")} onClick={() => setAttempt((n) => n + 1)}>RETRY</button>
+            <button {...retryFeel.handlers} style={button("primary", { feel: retryFeel })} onClick={() => setAttempt((n) => n + 1)}>RETRY</button>
           )}
-          <button style={button("ghost")} onClick={cancel}>
+          <button {...cancelFeel.handlers} style={button("ghost", { feel: cancelFeel })} onClick={cancel}>
             {status.phase === "found" ? "LEAVE" : "CANCEL"}
           </button>
         </div>

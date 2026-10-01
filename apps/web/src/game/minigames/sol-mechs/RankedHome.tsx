@@ -16,6 +16,7 @@ import { ENERGY, LAMPORTS_PER_SOL } from "@/game/solmechs/season/config";
 import { C, T, SP, R, MONO, DISPLAY, PIXELATED, backdrop, panel, eyebrow, button, W } from "./theme";
 import { SpriteButton } from "./SpriteButton";
 import { CloseButton } from "@/ui/PixelIcons";
+import { useButtonFeel } from "@/ui/useButtonFeel";
 
 const UI = "/assets/minigames/sol-mechs/ui";
 const MAX_ENERGY = 10;
@@ -35,6 +36,9 @@ export default function RankedHome({ client, unavailable, onQueue, onLeaderboard
   const [snap, setSnap] = useState<RankedSnapshot | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const joinFeel = useButtonFeel();
+  const energyFeel = useButtonFeel();
+  const backFeel = useButtonFeel();
 
   const refresh = useCallback(async () => {
     if (!client) return;
@@ -142,7 +146,8 @@ export default function RankedHome({ client, unavailable, onQueue, onLeaderboard
         <div style={sx.secondary}>
           {client && seasonOpen && !entry && (
             <button
-              style={button("primary")}
+              {...joinFeel.handlers}
+              style={button("primary", { disabled: !!busy, feel: joinFeel })}
               disabled={!!busy}
               onClick={() => run("entry", async () => { await client.ensureEntry(); })}
             >
@@ -151,7 +156,8 @@ export default function RankedHome({ client, unavailable, onQueue, onLeaderboard
           )}
           {client && entry && energy < MAX_ENERGY && (
             <button
-              style={button("ghost")}
+              {...energyFeel.handlers}
+              style={button("ghost", { disabled: !!busy || (entry.packsToday ?? 0) >= 1, feel: energyFeel })}
               disabled={!!busy || (entry.packsToday ?? 0) >= 1}
               onClick={() => run("energy", () => client.buyEnergy())}
               title={entry.packsToday >= 1 ? "One pack per day" : `${PACK_PRICE_SOL} SOL`}
@@ -163,7 +169,7 @@ export default function RankedHome({ client, unavailable, onQueue, onLeaderboard
                   : `+${ENERGY.PACK_SIZE} ENERGY · ${PACK_PRICE_SOL} SOL`}
             </button>
           )}
-          <button style={button("ghost")} onClick={onClose}>BACK</button>
+          <button {...backFeel.handlers} style={button("ghost", { feel: backFeel })} onClick={onClose}>BACK</button>
         </div>
 
         <p style={sx.foot}>
