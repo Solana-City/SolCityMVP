@@ -60,6 +60,7 @@ import {
   buildUpdatePositionSessionIx,
   buildUpdateLookSessionIx,
   buildSetExpressionSessionIx,
+  buildPublishProfileSessionIx,
   buildSendChatSessionIx,
   buildRecordSwapIx,
   buildRecordTransferIx,
@@ -1039,6 +1040,24 @@ export class OnChainMultiplayer {
         });
       }
     }, 250);
+  }
+
+  /**
+   * Publishes our achievements + streak onto our own delegated PDA, so the card
+   * another player opens on us is not empty.
+   *
+   * NOT a hot-path write. The caller (social/profilePublisher) only calls this
+   * when the summary actually changes, which is a handful of times a session,
+   * and readers pay nothing for it: these fields ride the position poll they
+   * are already making.
+   */
+  publishProfile(achievements: Uint8Array, streakCurrent: number, streakBest: number): void {
+    if (!isProgramDeployed() || !this.wallet) return;
+    const sk = this.sessionKeys.getSessionPublicKey();
+    this.sendSessionIx(
+      buildPublishProfileSessionIx(this.wallet, sk, achievements, streakCurrent, streakBest),
+      { kind: "profile", label: "Profile published" },
+    );
   }
 
   /** Broadcast a facial expression (texture key) so others animate our avatar. */
@@ -2183,7 +2202,7 @@ export class OnChainMultiplayer {
    */
   private async sendSessionIx(
     ix: TransactionInstruction,
-    log?: { kind: "outfit" | "chat" | "expression" | "ball"; label: string },
+    log?: { kind: "outfit" | "chat" | "expression" | "ball" | "profile"; label: string },
   ): Promise<void> {
     if (!this.wallet || !isProgramDeployed()) return;
     const sessionKey = this.sessionKeys.getSessionPublicKey();

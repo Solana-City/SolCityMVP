@@ -38,6 +38,7 @@ import { PedestrianManager, cullContainer } from "../entities/PedestrianManager"
 import { hasAlreadyFoundCurrent, markCurrentFound, isCitizenExpired, advanceFindSlot, resetCitizenTimer, isHuntOnChain, getRoundIndex } from "../minigames/whereIsNPC/WhereIsNPCGame";
 import { ProfileManager, profileManager } from "../config/profileManager";
 import { AchievementEngine } from "../progression/achievementEngine";
+import { startProfilePublisher } from "../social/profilePublisher";
 import { onMiniGameFinished, onStockTraded, watchNpcConversations, stopWatchingNpcConversations } from "../progression/outfitRewards";
 import { showEmoji, EmojiDef } from "../chat/EmojiSystem";
 import { soundManager } from "../audio/SoundManager";
@@ -755,6 +756,17 @@ export class CityScene extends Phaser.Scene {
       // them the first time they gain a point.
       engine.bootstrap();
       this.registry.set("achievementEngine", engine);
+    }
+
+    // Publishes the achievements + streak onto our own on-chain state, so the
+    // card other players open on us is not empty. Mounted once per page load
+    // like the engine above, and it writes only when the summary changes.
+    if (!this.registry.get("profilePublisher")) {
+      const stop = startProfilePublisher(this.profile, (snap) => {
+        const net = this.registry.get("network") as OnChainMultiplayer | undefined;
+        net?.publishProfile(snap.achievements, snap.streakCurrent, snap.streakBest);
+      });
+      this.registry.set("profilePublisher", stop);
     }
 
     // Superteam Brasil outfit grants (Kuka, and the full citizen roll call).

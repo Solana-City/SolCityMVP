@@ -35,6 +35,8 @@ export type TxKind =
   | "ball"       // a kick of the beach football (memo)
   | "hunt"       // Find Someone: claim_find + the finder's +1
   | "minigame"   // record_mini_game_session
+  | "profile"    // publish_profile_session (achievements + streak)
+  | "friend"     // friend invite sent / accepted / declined / removed
   | "system";    // non-tx internal event (e.g. "session started")
 
 export type TxLayer = "base" | "ephemeral" | "jupiter" | "local";

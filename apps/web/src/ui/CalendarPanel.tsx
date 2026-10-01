@@ -57,6 +57,9 @@ function short(wallet: string): string {
 
 function publishStreak(streak: StreakView): void {
   profileManager.setStreakBest(streak.best);
+  // The running streak goes on the profile as well, which is what carries it
+  // onto our on-chain card for other players to see (social/profilePublisher).
+  profileManager.setStreakCurrent(streak.current);
   window.dispatchEvent(new CustomEvent(STREAK_EVENT, { detail: streak }));
 }
 

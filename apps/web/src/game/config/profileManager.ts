@@ -12,6 +12,12 @@ export interface PlayerProfile {
   /** Best daily check-in streak, mirrored from the server for achievements. */
   streakBest?: number;
   /**
+   * The streak running right now, mirrored from the same server response.
+   * Unlike `streakBest` this one can fall (to 0, on a missed day), so it is
+   * set rather than raised.
+   */
+  streakCurrent?: number;
+  /**
    * Free-form tallies: kicks of the beach football, pets of the Caramel Dog,
    * Sol Mechs wins, citizens found, best kite score.
    *
@@ -55,6 +61,13 @@ export class ProfileManager {
     if (wallet && this.profile.displayName === "Citizen") {
       this.profile.displayName = `${wallet.slice(0, 4)}...${wallet.slice(-4)}`;
     }
+    this.save();
+  }
+
+  /** The streak as it stands today. Falls to 0 when a day is missed. */
+  setStreakCurrent(current: number): void {
+    if (this.profile.streakCurrent === current) return;
+    this.profile.streakCurrent = current;
     this.save();
   }
 
