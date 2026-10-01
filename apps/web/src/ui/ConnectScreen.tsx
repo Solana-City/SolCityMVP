@@ -20,8 +20,15 @@ import { musicManager } from "@/game/audio/MusicManager";
  */
 const useMeasureEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
 
+/**
+ * How long a selected-but-not-connecting wallet may sit there before the
+ * screen tries the connection itself. Long enough that a connect still coming
+ * up is never interrupted, short enough that nobody reaches for F5.
+ */
+const STALLED_CONNECT_MS = 2_000;
+
 export default function ConnectScreen() {
-  const { connected } = useWallet();
+  const { connected, connecting: walletConnecting, wallet, connect } = useWallet();
   /** Sticky: in the city until the wallet is really gone, or a real logout. */
   const [inCity, setInCity] = useState(false);
   const flapTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -95,6 +102,32 @@ export default function ConnectScreen() {
     observer.observe(side);
     return () => observer.disconnect();
   }, []);
+
+  // The first login sometimes ended right here: the player picked a wallet,
+  // approved it, and the screen stayed on CONNECT WALLET — only F5 got them
+  // in. The modal only SELECTS a wallet; the provider connects it in an
+  // effect, and that attempt can be lost on a first visit. The extension
+  // registers itself through the Wallet Standard while the connect is in
+  // flight, which swaps the adapter instance under the provider and resets
+  // its state, and any error on the way is cleared silently (SolanaProvider
+  // swallows them on purpose). Either way we end up with a wallet selected,
+  // nothing connected and nothing in flight: a dead end with no way out but
+  // a reload.
+  //
+  // So the screen finishes the job. One more connect(), which is exactly what
+  // the reload did, minus the reload. Once per selected wallet, so a player
+  // who declines the prompt is not asked again: declining clears the
+  // selection, which is also what re-arms this for the next attempt.
+  const retriedConnect = useRef(false);
+  useEffect(() => {
+    if (!wallet) { retriedConnect.current = false; return; }
+    if (connected || walletConnecting || retriedConnect.current) return;
+    const timer = setTimeout(() => {
+      retriedConnect.current = true;
+      connect().catch(() => undefined);   // suppressed by SolanaProvider too
+    }, STALLED_CONNECT_MS);
+    return () => clearTimeout(timer);
+  }, [wallet, connected, walletConnecting, connect]);
 
   // A wallet adapter reports `connected: false` for reasons that are not a
   // logout: the extension reloading, the tab being backgrounded on a phone,
@@ -267,7 +300,10 @@ export default function ConnectScreen() {
               >
                 <img src="/assets/ui/icon_wallet2.png" alt="" draggable={false}
                   style={{ height: "clamp(22px, 2.6vw, 34px)", width: "auto", imageRendering: "pixelated", display: "block" }} />
-                CONNECT WALLET
+                {/* The wallet's own prompt can be behind the window, or in
+                    another app on a phone. The button says so rather than
+                    looking like it did nothing. */}
+                {walletConnecting ? "CONNECTING..." : "CONNECT WALLET"}
               </button>
             </ChamferGlow>
 
