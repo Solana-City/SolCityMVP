@@ -70,7 +70,10 @@ import {
   buildExpireRoundIx,
   isProgramDeployed,
 } from "../solana/instructions";
-import { derivePlayerPDA, SOL_CITY_PROGRAM_ID, deriveHuntPDA, decodeHuntState } from "../solana/program";
+import {
+  derivePlayerPDA, SOL_CITY_PROGRAM_ID, deriveHuntPDA, decodeHuntState,
+  achievementIndices, ACHIEVEMENT_BITS,
+} from "../solana/program";
 import { BASE_RPC_PRIMARY, resilientBaseFetch } from "../solana/baseRpc";
 import { setHuntFromChain, clearHuntFromChain } from "../minigames/whereIsNPC/WhereIsNPCGame";
 import { transactionLog } from "../telemetry/transactionLog";
@@ -156,6 +159,12 @@ export interface OnChainPlayer {
   displayName?: string;
   score?: number;
   loadout?: Loadout;
+  // -- The public profile, for the card another player opens on you ---------
+  /** Achievement registry indices this player has published. */
+  achievements?: Set<number>;
+  /** Daily check-in streak, as the player last published it. */
+  streakCurrent?: number;
+  streakBest?: number;
 }
 
 type PlayerCallback  = (wallet: string, player: OnChainPlayer) => void;
@@ -1878,6 +1887,25 @@ export class OnChainMultiplayer {
       const lastMessage  = readStr();
       const messageAt    = readTsLo();
 
+      // -- v3 fields: the unlock snapshot, then the public profile -----------
+      // Read defensively like the v2 block above, so a v2 account (shorter
+      // buffer, these fields absent) still decodes as a player with no
+      // achievements rather than failing the whole parse.
+      const readBytes = (n: number): Buffer | null => {
+        if (offset + n > buf.length) { offset = buf.length + 1; return null; }
+        const out = buf.subarray(offset, offset + n); offset += n; return out;
+      };
+      const readU16 = (): number => {
+        if (offset + 2 > buf.length) { offset = buf.length + 1; return 0; }
+        const v = buf.readUInt16LE(offset); offset += 2; return v;
+      };
+      readBytes(32);                                  // unlocked: the look
+                                                      // enforcer's snapshot,
+                                                      // not part of this view
+      const achievementBits = readBytes(ACHIEVEMENT_BITS);
+      const streakCurrent = readU16();
+      const streakBest    = readU16();
+
       if (walletStr === this.wallet?.toBase58()) return; // skip self
 
       // Watching last_active move forward dates the device clock against the
@@ -1964,6 +1992,22 @@ export class OnChainMultiplayer {
           (updated as any)._loadoutStr = loadoutStr;
           updated.loadout = decodeLoadout(loadoutStr);
           for (const cb of this.changeCallbacks) cb(walletStr, updated);
+        }
+
+        // The public profile — persistent fields too, so first sight AND
+        // change, same as the loadout. Compared as raw bytes because the
+        // decoded Set would allocate on every poll just to find out nothing
+        // moved, and this runs for every player twice a second.
+        if (achievementBits) {
+          const sig = achievementBits.toString("base64");
+          if (sig !== (updated as any)._achSig) {
+            (updated as any)._achSig = sig;
+            updated.achievements = achievementIndices(achievementBits);
+          }
+        }
+        if (streakCurrent !== updated.streakCurrent || streakBest !== updated.streakBest) {
+          updated.streakCurrent = streakCurrent;
+          updated.streakBest = streakBest;
         }
 
         // A kick of the beach football rides the chat field, tagged (see
