@@ -46,6 +46,18 @@ pub const HUNT_SEED: &[u8] = b"hunt";
 /// How long a citizen sticks around before it rotates unfound (seconds).
 pub const CITIZEN_DURATION_SECS: i64 = 300;
 
+// ── Social: a profile other players can read, and friends ──────────────────
+/// Achievement bitset capacity in bytes -> 256 achievements. The CLIENT owns
+/// the index->achievement table (achievementRegistry order): append-only,
+/// never reorder, or every published profile reads as the wrong badges.
+pub const ACHIEVEMENT_BITS: usize = 32;
+/// One account per friendship. The seeds are the pair SORTED, so (a,b) and
+/// (b,a) derive the same PDA and a friendship can never exist twice.
+pub const FRIENDSHIP_SEED: &[u8] = b"friendship";
+/// One account per pending invite, from -> to. Being a PDA of the pair is what
+/// makes a duplicate invite impossible: `init` fails the second time.
+pub const FRIEND_REQUEST_SEED: &[u8] = b"friend_req";
+
 // ── Outfit booster ─────────────────────────────────────────────────────────
 /// Per-wallet unlock store (bitset of booster-pool item indices).
 pub const UNLOCKS_SEED: &[u8] = b"unlocks";
@@ -162,6 +174,14 @@ pub enum SolCityError {
     InvalidVrfIdentity,
     #[msg("Too far from the ball to kick it")]
     BallOutOfReach,
+    #[msg("You can't befriend yourself")]
+    FriendSelf,
+    #[msg("This invite is not addressed to you")]
+    FriendNotRecipient,
+    #[msg("Friendship accounts must be seeded with the pair sorted")]
+    FriendPairUnsorted,
+    #[msg("Those two keys are not the pair on this invite")]
+    FriendPairMismatch,
 }
 
 /// Truncates a string to at most `max` BYTES on a char boundary, so a
@@ -905,6 +925,97 @@ pub mod sol_city {
         unlocks.bits[(index / 8) as usize] |= 1u8 << (index % 8) as u8;
         Ok(())
     }
+
+    // -- The public profile ------------------------------------------------
+
+    /// Publishes the achievements + streak a visitor sees on this player's
+    /// card. Session-signed, so it costs no popup and no fee on the rollup,
+    /// and it is called only when the numbers actually change (never per
+    /// frame): the reader pays nothing either, because these fields ride the
+    /// position poll that is already running.
+    ///
+    /// Achievement bits only ever turn ON and `streak_best` only ever rises.
+    /// Both are monotonic for the same reason: a second device, or a client
+    /// that reconnects with a cold profile, must not be able to erase what the
+    /// player already published from somewhere else.
+    pub fn publish_profile_session(
+        ctx: Context<UpdatePlayerSession>,
+        achievements: [u8; 32],
+        streak_current: u16,
+        streak_best: u16,
+    ) -> Result<()> {
+        let player = &mut ctx.accounts.player;
+        for i in 0..ACHIEVEMENT_BITS {
+            player.achievements[i] |= achievements[i];
+        }
+        player.streak_current = streak_current;
+        player.streak_best = player.streak_best.max(streak_best);
+        player.last_active = Clock::get()?.unix_timestamp;
+        Ok(())
+    }
+
+    // -- Friends -----------------------------------------------------------
+
+    /// Invites another citizen. The invite is its own account, so it waits
+    /// on-chain for however long it takes: there is nothing to deliver and no
+    /// inbox to expire, which is what makes "they get it next time they log
+    /// in" fall out for free rather than needing a server.
+    ///
+    /// Wallet-signed, because the invite account needs rent and session keys
+    /// are not funded. One prompt per invite sent, which is the right shape for
+    /// a deliberate act. The rent comes back when the invite is closed,
+    /// whichever way it goes.
+    pub fn send_friend_request(ctx: Context<SendFriendRequest>) -> Result<()> {
+        let to = ctx.accounts.to_player.authority;
+        require!(ctx.accounts.from.key() != to, SolCityError::FriendSelf);
+        let req = &mut ctx.accounts.request;
+        req.from = ctx.accounts.from.key();
+        req.to = to;
+        req.created_at = Clock::get()?.unix_timestamp;
+        Ok(())
+    }
+
+    /// Accepts an invite: the invite account closes (its rent going back to the
+    /// sender) and one Friendship account takes its place.
+    ///
+    /// `a` and `b` are the pair sorted, which the caller passes because a seed
+    /// cannot sort its own inputs. Both are checked here against the invite, so
+    /// a caller cannot point this at some unrelated pair.
+    pub fn accept_friend_request(
+        ctx: Context<AcceptFriendRequest>,
+        a: Pubkey,
+        b: Pubkey,
+    ) -> Result<()> {
+        require!(a < b, SolCityError::FriendPairUnsorted);
+        let req = &ctx.accounts.request;
+        require!(
+            (a == req.from && b == req.to) || (a == req.to && b == req.from),
+            SolCityError::FriendPairMismatch
+        );
+        let f = &mut ctx.accounts.friendship;
+        f.a = a;
+        f.b = b;
+        f.since = Clock::get()?.unix_timestamp;
+        Ok(())
+    }
+
+    /// Turns an invite down. Nothing is recorded: the account closes and the
+    /// sender gets their rent back, same as accepting. A declined invite
+    /// leaving no trace is deliberate, so nobody can read who refused them.
+    pub fn decline_friend_request(_ctx: Context<DeclineFriendRequest>) -> Result<()> {
+        Ok(())
+    }
+
+    /// Takes back an invite you sent and were not answered on.
+    pub fn cancel_friend_request(_ctx: Context<CancelFriendRequest>) -> Result<()> {
+        Ok(())
+    }
+
+    /// Unfriends. Either side can do it alone, and the rent goes to whoever
+    /// closes it.
+    pub fn remove_friend(_ctx: Context<RemoveFriend>) -> Result<()> {
+        Ok(())
+    }
 }
 
 #[derive(Accounts)]
@@ -1160,6 +1271,25 @@ pub struct PlayerState {
     /// Snapshot of UnlockState.bits, copied in at delegate/sync time so the ER's
     /// update_look_session can enforce cosmetics without a cross-cluster read.
     pub unlocked: [u8; 32],
+    // ── The public profile (read off the same ER poll as position) ─────────
+    /// Unlocked achievements, one bit per client registry index.
+    ///
+    /// SELF-REPORTED, on purpose. Most achievements count things only the
+    /// client sees (balls kicked, dogs petted, mini-game runs), so there is no
+    /// on-chain tally to check them against. That makes this exactly as
+    /// trustworthy as the KV boards it is shown beside, and nothing is ever
+    /// gated on it: it is a display of what someone says they did. The things
+    /// that must be true (score, unlocked cosmetics, ranked rating) live in
+    /// fields the program itself writes.
+    pub achievements: [u8; ACHIEVEMENT_BITS],
+    /// Daily check-in streak, mirrored here so a visitor reads it off the poll
+    /// they already make instead of costing a key-value read per card opened.
+    /// `lb:streak` stays the city-wide ranking and the server computes the day
+    /// rollover; this is the copy other players see.
+    pub streak_current: u16,
+    /// Best streak ever. Monotonic in the program, so a stale client that
+    /// reconnects with an old number cannot walk it backwards.
+    pub streak_best: u16,
 }
 
 // ── Outfit booster accounts ────────────────────────────────────────────────
@@ -1242,4 +1372,139 @@ pub struct UnlockState {
 pub struct BoosterOpened {
     pub authority: Pubkey,
     pub indices: Vec<u16>,
+}
+// -- Friends ----------------------------------------------------------------
+//
+// Two small accounts rather than a list on PlayerState, and that is the whole
+// design decision. A `[Pubkey; 32]` on PlayerState would add 1024 bytes to the
+// one account every client re-reads for every citizen every 500ms, so the
+// friend list of people standing near you would be paid for continuously by
+// everyone. These sit off that path: read once at login and once when the panel
+// opens, they cap nothing, and the rent is refunded when a friendship or an
+// invite goes away.
+//
+// Discovery is by `getProgramAccounts` with a memcmp filter:
+//   my friends     -> filter a == me, then b == me (two calls)
+//   invites to me  -> filter to == me
+//   invites I sent -> filter from == me
+// Both types are the same size, so a filter MUST also match the 8-byte
+// discriminator at offset 0 or the two come back mixed together.
+
+#[derive(Accounts)]
+pub struct SendFriendRequest<'info> {
+    #[account(
+        init,
+        payer = from,
+        space = 8 + FriendRequest::INIT_SPACE,
+        seeds = [FRIEND_REQUEST_SEED, from.key().as_ref(), to_player.authority.as_ref()],
+        bump,
+    )]
+    pub request: Account<'info, FriendRequest>,
+    /// The recipient's player account: being a citizen is what makes someone
+    /// invitable, and reading `authority` off it is also how we learn the
+    /// recipient's key without trusting an argument for it.
+    ///
+    /// Consequence of the player_v3 reset: a wallet that has not entered the
+    /// city since the redeploy has no PDA at this seed yet and cannot be
+    /// invited. The client should say "they need to visit the city first"
+    /// rather than surface a raw constraint failure.
+    #[account(
+        seeds = [PLAYER_SEED, to_player.authority.as_ref()],
+        bump,
+    )]
+    pub to_player: Account<'info, PlayerState>,
+    #[account(mut)]
+    pub from: Signer<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+#[instruction(a: Pubkey, b: Pubkey)]
+pub struct AcceptFriendRequest<'info> {
+    #[account(
+        mut,
+        close = from,
+        seeds = [FRIEND_REQUEST_SEED, request.from.as_ref(), to.key().as_ref()],
+        bump,
+        constraint = request.to == to.key() @ SolCityError::FriendNotRecipient,
+    )]
+    pub request: Account<'info, FriendRequest>,
+    #[account(
+        init,
+        payer = to,
+        space = 8 + Friendship::INIT_SPACE,
+        seeds = [FRIENDSHIP_SEED, a.as_ref(), b.as_ref()],
+        bump,
+    )]
+    pub friendship: Account<'info, Friendship>,
+    /// Gets the invite's rent back. Pinned to the sender, so the refund cannot
+    /// be redirected.
+    #[account(mut, address = request.from)]
+    pub from: SystemAccount<'info>,
+    #[account(mut)]
+    pub to: Signer<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct DeclineFriendRequest<'info> {
+    #[account(
+        mut,
+        close = from,
+        seeds = [FRIEND_REQUEST_SEED, request.from.as_ref(), to.key().as_ref()],
+        bump,
+        constraint = request.to == to.key() @ SolCityError::FriendNotRecipient,
+    )]
+    pub request: Account<'info, FriendRequest>,
+    #[account(mut, address = request.from)]
+    pub from: SystemAccount<'info>,
+    pub to: Signer<'info>,
+}
+
+#[derive(Accounts)]
+pub struct CancelFriendRequest<'info> {
+    #[account(
+        mut,
+        close = from,
+        seeds = [FRIEND_REQUEST_SEED, from.key().as_ref(), request.to.as_ref()],
+        bump,
+        has_one = from,
+    )]
+    pub request: Account<'info, FriendRequest>,
+    #[account(mut)]
+    pub from: Signer<'info>,
+}
+
+#[derive(Accounts)]
+pub struct RemoveFriend<'info> {
+    #[account(
+        mut,
+        close = closer,
+        seeds = [FRIENDSHIP_SEED, friendship.a.as_ref(), friendship.b.as_ref()],
+        bump,
+        constraint = friendship.a == closer.key() || friendship.b == closer.key()
+            @ SolCityError::InvalidAuthority,
+    )]
+    pub friendship: Account<'info, Friendship>,
+    /// Either half of the pair. Gets the rent.
+    #[account(mut)]
+    pub closer: Signer<'info>,
+}
+
+#[account]
+#[derive(InitSpace)]
+pub struct FriendRequest {
+    pub from: Pubkey,
+    pub to: Pubkey,
+    pub created_at: i64,
+}
+
+#[account]
+#[derive(InitSpace)]
+pub struct Friendship {
+    /// The lower of the two keys. Seeds are sorted, so one account per pair.
+    pub a: Pubkey,
+    /// The higher of the two keys.
+    pub b: Pubkey,
+    pub since: i64,
 }
