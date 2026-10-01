@@ -187,7 +187,7 @@ export default function ProfilePanel({ gameRef, isOpen, onClose }: ProfilePanelP
           )}
           {panelTab === "achievements" && <AchievementsTab profile={profile} />}
           {panelTab === "keys" && <KeysTab />}
-          {panelTab === "settings" && <SettingsTab />}
+          {panelTab === "settings" && <SettingsTab manager={manager} />}
         </div>
 
         {/* Member info */}
@@ -522,11 +522,13 @@ function KeysTab() {
 
 // ── Settings tab ────────────────────────────────────────────────────────────
 
-function SettingsTab() {
+function SettingsTab({ manager }: { manager: ProfileManager | null }) {
   const [volume, setVolume] = useState(0);
   const [muted, setMuted] = useState(false);
   const [dmsOff, setDmsOff] = useState(false);
+  const [confirmingReset, setConfirmingReset] = useState(false);
   const muteFeel = useButtonFeel();
+  const resetFeel = useButtonFeel();
   useEffect(() => {
     setVolume(soundManager.getVolume());
     setMuted(soundManager.isMuted());
@@ -596,6 +598,38 @@ function SettingsTab() {
             </span>
           </Card>
         </label>
+
+        <div style={{ fontSize: 9, color: "#cbd5e1", margin: "14px 0 10px" }}>PROGRESS</div>
+        <Card>
+          <div style={{ fontSize: 8, color: "#aaaacc", lineHeight: 1.6, marginBottom: 10 }}>
+            Wipes score, counters, visited citizens, unlocked achievements and
+            outfits. Wallet, nickname and photo stay.
+          </div>
+          <button
+            onClick={() => {
+              if (!confirmingReset) { setConfirmingReset(true); return; }
+              manager?.resetProgress();
+              setConfirmingReset(false);
+            }}
+            onBlur={() => setConfirmingReset(false)}
+            {...resetFeel.handlers}
+            disabled={!manager}
+            style={{
+              ...chamferBox(6, {
+                padding: "8px 14px", width: "100%",
+                background: confirmingReset ? "rgba(255,90,90,0.16)" : "transparent",
+                border: `1px solid ${confirmingReset ? "#ff5a5a" : "rgba(183,233,40,0.3)"}`,
+                color: confirmingReset ? "#ff5a5a" : "#B7E928",
+                cursor: manager ? "pointer" : "not-allowed",
+                opacity: manager ? 1 : 0.5,
+              }),
+              fontSize: 8, fontFamily: "inherit",
+              ...(manager ? feelStyle(resetFeel) : null),
+            }}
+          >
+            {confirmingReset ? "CLICK AGAIN TO CONFIRM" : "RESET PROGRESS"}
+          </button>
+        </Card>
       </div>
     </div>
   );

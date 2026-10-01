@@ -87,14 +87,11 @@ export default function RotatePrompt() {
         </div>
       </div>
 
-      {/* Solana purple accent line */}
-      <div
-        style={{
-          width: 48,
-          height: 3,
-          borderRadius: 2,
-          background: "linear-gradient(90deg, #9945FF, #B7E928)",
-        }}
+      <img
+        src="/assets/ui/IconLogoSC-transparent.png"
+        alt=""
+        draggable={false}
+        style={{ height: 28, width: "auto", imageRendering: "pixelated", display: "block" }}
       />
     </div>
   );

@@ -100,13 +100,7 @@ function steps(touch: boolean): Step[] {
       scene: (
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
           {!touch && <Key>ENTER</Key>}
-          <span style={chamferBox(4, {
-            display: "flex", alignItems: "center", justifyContent: "center",
-            padding: "6px 9px",
-            background: "rgba(183,233,40,0.18)", border: "1px solid rgba(183,233,40,0.45)",
-          })}>
-            <Img src="/assets/ui/icon_send.png" h={16} />
-          </span>
+          <Img src="/assets/ui/icon_send.png" h={32} />
           <Citizen sheet="main_char.png" size={60} />
           {touch
             ? (
