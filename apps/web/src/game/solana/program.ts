@@ -1,4 +1,5 @@
 import { PublicKey } from "@solana/web3.js";
+import { sha256 } from "@noble/hashes/sha256";
 
 /**
  * Sol City on-chain program - TypeScript client interface.
@@ -204,3 +205,129 @@ export const EPHEMERAL_CONFIG = {
   commitFrequencyMs: 3000,
   maxPlayersPerSession: 50,
 } as const;
+
+// -- Social: achievements + friends -----------------------------------------
+
+/** Achievement bitset size, mirroring ACHIEVEMENT_BITS in the program. */
+export const ACHIEVEMENT_BITS = 32; // bytes -> 256 achievements
+
+/** One account per friendship; the seeds are the pair SORTED. */
+export const FRIENDSHIP_SEED = "friendship";
+/** One account per pending invite, from -> to. */
+export const FRIEND_REQUEST_SEED = "friend_req";
+
+/**
+ * Anchor's account discriminator: sha256("account:<StructName>")[0..8].
+ *
+ * Needed because FriendRequest and Friendship are the same size, so a
+ * getProgramAccounts dataSize filter alone returns both kinds mixed together.
+ * Every friend query matches this at offset 0 as well.
+ */
+export function accountDiscriminator(name: string): Buffer {
+  return Buffer.from(sha256(new TextEncoder().encode(`account:${name}`)).slice(0, 8));
+}
+
+/**
+ * The pair in the order the program expects, which is the order Rust's `Ord`
+ * on Pubkey gives: a plain lexicographic compare of the 32 raw bytes.
+ *
+ * NOT base58 order. The two disagree, so sorting by the string would derive a
+ * PDA the program then rejects as unsorted.
+ */
+export function sortPair(x: PublicKey, y: PublicKey): [PublicKey, PublicKey] {
+  return Buffer.compare(Buffer.from(x.toBytes()), Buffer.from(y.toBytes())) <= 0 ? [x, y] : [y, x];
+}
+
+/** The friendship PDA for two wallets, in either argument order. */
+export function deriveFriendshipPDA(
+  x: PublicKey,
+  y: PublicKey,
+  programId: PublicKey = SOL_CITY_PROGRAM_ID,
+): [PublicKey, number] {
+  const [a, b] = sortPair(x, y);
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from(FRIENDSHIP_SEED), a.toBuffer(), b.toBuffer()],
+    programId,
+  );
+}
+
+/** The invite PDA for a direction. Order matters here: from, then to. */
+export function deriveFriendRequestPDA(
+  from: PublicKey,
+  to: PublicKey,
+  programId: PublicKey = SOL_CITY_PROGRAM_ID,
+): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from(FRIEND_REQUEST_SEED), from.toBuffer(), to.toBuffer()],
+    programId,
+  );
+}
+
+export interface Friendship {
+  a: PublicKey;
+  b: PublicKey;
+  since: number;
+}
+
+export interface FriendRequest {
+  from: PublicKey;
+  to: PublicKey;
+  createdAt: number;
+}
+
+/** Field offsets, for both decoding and getProgramAccounts memcmp filters. */
+export const FRIEND_OFFSET = {
+  /** Friendship.a / FriendRequest.from */
+  first: 8,
+  /** Friendship.b / FriendRequest.to */
+  second: 8 + 32,
+} as const;
+
+/** Both accounts are {Pubkey, Pubkey, i64}: 8 + 32 + 32 + 8. */
+export const FRIEND_ACCOUNT_SIZE = 80;
+
+function decodePair(data: Uint8Array): { a: PublicKey; b: PublicKey; ts: number } | null {
+  if (data.length < FRIEND_ACCOUNT_SIZE) return null;
+  const buf = Buffer.from(data);
+  return {
+    a: new PublicKey(buf.subarray(FRIEND_OFFSET.first, FRIEND_OFFSET.first + 32)),
+    b: new PublicKey(buf.subarray(FRIEND_OFFSET.second, FRIEND_OFFSET.second + 32)),
+    ts: Number(buf.readBigInt64LE(FRIEND_OFFSET.second + 32)),
+  };
+}
+
+export function decodeFriendship(data: Uint8Array): Friendship | null {
+  const p = decodePair(data);
+  return p && { a: p.a, b: p.b, since: p.ts };
+}
+
+export function decodeFriendRequest(data: Uint8Array): FriendRequest | null {
+  const p = decodePair(data);
+  return p && { from: p.a, to: p.b, createdAt: p.ts };
+}
+
+/** The other half of a friendship, given one side. */
+export function friendCounterpart(f: Friendship, me: PublicKey): PublicKey {
+  return f.a.equals(me) ? f.b : f.a;
+}
+
+/** Achievement registry indices set in a published bitmask. */
+export function achievementIndices(bits: Uint8Array): Set<number> {
+  const out = new Set<number>();
+  for (let byte = 0; byte < Math.min(bits.length, ACHIEVEMENT_BITS); byte++) {
+    for (let bit = 0; bit < 8; bit++) {
+      if ((bits[byte] & (1 << bit)) !== 0) out.add(byte * 8 + bit);
+    }
+  }
+  return out;
+}
+
+/** Registry indices -> the 32-byte mask that publishes them. */
+export function achievementMask(indices: Iterable<number>): Uint8Array {
+  const bits = new Uint8Array(ACHIEVEMENT_BITS);
+  for (const i of indices) {
+    if (i < 0 || i >= ACHIEVEMENT_BITS * 8) continue;
+    bits[Math.floor(i / 8)] |= 1 << (i % 8);
+  }
+  return bits;
+}

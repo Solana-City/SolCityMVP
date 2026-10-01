@@ -24,7 +24,11 @@ import {
   delegationRecordPdaFromDelegatedAccount,
   delegationMetadataPdaFromDelegatedAccount,
 } from "@magicblock-labs/ephemeral-rollups-sdk";
-import { SOL_CITY_PROGRAM_ID, DELEGATION_PROGRAM_ID, derivePlayerPDA, deriveHuntPDA, deriveUnlockPDA, VRF_QUEUE_DEVNET } from "./program";
+import {
+  SOL_CITY_PROGRAM_ID, DELEGATION_PROGRAM_ID, derivePlayerPDA, deriveHuntPDA,
+  deriveUnlockPDA, VRF_QUEUE_DEVNET, deriveFriendshipPDA, deriveFriendRequestPDA,
+  sortPair, ACHIEVEMENT_BITS,
+} from "./program";
 import { sha256 } from "@noble/hashes/sha256";
 
 // ── Discriminator helper ────────────────────────────────────────────────
@@ -59,6 +63,12 @@ const DISC = {
   claimFind:               ixDiscriminator("claim_find"),
   expireRound:             ixDiscriminator("expire_round"),
   openBooster:             ixDiscriminator("open_booster"),
+  publishProfileSession:   ixDiscriminator("publish_profile_session"),
+  sendFriendRequest:       ixDiscriminator("send_friend_request"),
+  acceptFriendRequest:     ixDiscriminator("accept_friend_request"),
+  declineFriendRequest:    ixDiscriminator("decline_friend_request"),
+  cancelFriendRequest:     ixDiscriminator("cancel_friend_request"),
+  removeFriend:            ixDiscriminator("remove_friend"),
 } as const;
 
 // ── Argument packers ────────────────────────────────────────────────────
@@ -488,4 +498,143 @@ export function buildOpenBoosterIx(params: {
  */
 export function isProgramDeployed(): boolean {
   return SOL_CITY_PROGRAM_ID.toBase58() !== "11111111111111111111111111111111";
+}
+// -- The public profile, and friends -----------------------------------------
+
+/**
+ * `publish_profile_session(achievements, streak_current, streak_best)`.
+ *
+ * Session-signed, so no popup and no fee on the rollup. Call it only when the
+ * numbers actually change: it is not a hot-path write, and the reader gets
+ * these fields for free off the position poll that is already running.
+ *
+ * The program ORs the bits in and keeps the higher `best`, so sending a
+ * partial or stale mask can never erase what is already published.
+ */
+export function buildPublishProfileSessionIx(
+  playerWallet: PublicKey,
+  sessionKey: PublicKey,
+  achievements: Uint8Array,
+  streakCurrent: number,
+  streakBest: number,
+): TransactionInstruction {
+  const [playerPda] = derivePlayerPDA(playerWallet);
+  // Fixed-size [u8; 32]: Anchor writes it raw, with no length prefix.
+  const bits = Buffer.alloc(ACHIEVEMENT_BITS);
+  Buffer.from(achievements).copy(bits, 0, 0, Math.min(achievements.length, ACHIEVEMENT_BITS));
+  const data = Buffer.concat([
+    DISC.publishProfileSession,
+    bits,
+    packU16LE(streakCurrent),
+    packU16LE(streakBest),
+  ]);
+  return new TransactionInstruction({
+    programId: SOL_CITY_PROGRAM_ID,
+    keys: [
+      { pubkey: playerPda,  isSigner: false, isWritable: true  },
+      { pubkey: sessionKey, isSigner: true,  isWritable: false },
+    ],
+    data,
+  });
+}
+
+/**
+ * `send_friend_request()` - wallet-signed, because the invite account needs
+ * rent and session keys are not funded.
+ *
+ * `to` must already have a player PDA at the current seed. A wallet that has
+ * not entered the city since the player_v3 reset does not, and the program
+ * rejects the invite: surface that as "they need to visit the city first".
+ */
+export function buildSendFriendRequestIx(
+  from: PublicKey,
+  to: PublicKey,
+): TransactionInstruction {
+  const [requestPda] = deriveFriendRequestPDA(from, to);
+  const [toPlayerPda] = derivePlayerPDA(to);
+  return new TransactionInstruction({
+    programId: SOL_CITY_PROGRAM_ID,
+    keys: [
+      { pubkey: requestPda,                isSigner: false, isWritable: true  },
+      { pubkey: toPlayerPda,               isSigner: false, isWritable: false },
+      { pubkey: from,                      isSigner: true,  isWritable: true  },
+      { pubkey: SystemProgram.programId,   isSigner: false, isWritable: false },
+    ],
+    data: Buffer.from(DISC.sendFriendRequest),
+  });
+}
+
+/**
+ * `accept_friend_request(a, b)` - closes the invite (rent back to the sender)
+ * and opens the friendship. `a`/`b` are the pair sorted, which the program
+ * re-checks, so this cannot be pointed at an unrelated pair.
+ */
+export function buildAcceptFriendRequestIx(
+  me: PublicKey,
+  from: PublicKey,
+): TransactionInstruction {
+  const [requestPda] = deriveFriendRequestPDA(from, me);
+  const [friendshipPda] = deriveFriendshipPDA(from, me);
+  const [a, b] = sortPair(from, me);
+  const data = Buffer.concat([DISC.acceptFriendRequest, a.toBuffer(), b.toBuffer()]);
+  return new TransactionInstruction({
+    programId: SOL_CITY_PROGRAM_ID,
+    keys: [
+      { pubkey: requestPda,              isSigner: false, isWritable: true  },
+      { pubkey: friendshipPda,           isSigner: false, isWritable: true  },
+      { pubkey: from,                    isSigner: false, isWritable: true  },
+      { pubkey: me,                      isSigner: true,  isWritable: true  },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+    ],
+    data,
+  });
+}
+
+/** `decline_friend_request()` - closes it, rent back to the sender, no trace. */
+export function buildDeclineFriendRequestIx(
+  me: PublicKey,
+  from: PublicKey,
+): TransactionInstruction {
+  const [requestPda] = deriveFriendRequestPDA(from, me);
+  return new TransactionInstruction({
+    programId: SOL_CITY_PROGRAM_ID,
+    keys: [
+      { pubkey: requestPda, isSigner: false, isWritable: true  },
+      { pubkey: from,       isSigner: false, isWritable: true  },
+      { pubkey: me,         isSigner: true,  isWritable: false },
+    ],
+    data: Buffer.from(DISC.declineFriendRequest),
+  });
+}
+
+/** `cancel_friend_request()` - take back an invite you sent. */
+export function buildCancelFriendRequestIx(
+  from: PublicKey,
+  to: PublicKey,
+): TransactionInstruction {
+  const [requestPda] = deriveFriendRequestPDA(from, to);
+  return new TransactionInstruction({
+    programId: SOL_CITY_PROGRAM_ID,
+    keys: [
+      { pubkey: requestPda, isSigner: false, isWritable: true },
+      { pubkey: from,       isSigner: true,  isWritable: true },
+    ],
+    data: Buffer.from(DISC.cancelFriendRequest),
+  });
+}
+
+/** `remove_friend()` - either side alone; the rent goes to whoever closes it. */
+export function buildRemoveFriendIx(
+  me: PublicKey,
+  friend: PublicKey,
+): TransactionInstruction {
+  const [friendshipPda] = deriveFriendshipPDA(me, friend);
+  return new TransactionInstruction({
+    programId: SOL_CITY_PROGRAM_ID,
+    keys: [
+      { pubkey: friendshipPda, isSigner: false, isWritable: true },
+      { pubkey: me,            isSigner: true,  isWritable: true },
+    ],
+    data: Buffer.from(DISC.removeFriend),
+  });
 }
