@@ -39,6 +39,7 @@ import { hasAlreadyFoundCurrent, markCurrentFound, isCitizenExpired, advanceFind
 import { ProfileManager, profileManager } from "../config/profileManager";
 import { AchievementEngine } from "../progression/achievementEngine";
 import { startProfilePublisher } from "../social/profilePublisher";
+import { startFriendPresence } from "../social/friendPresence";
 import { onMiniGameFinished, onStockTraded, watchNpcConversations, stopWatchingNpcConversations } from "../progression/outfitRewards";
 import { showEmoji, EmojiDef } from "../chat/EmojiSystem";
 import { soundManager } from "../audio/SoundManager";
@@ -893,6 +894,18 @@ export class CityScene extends Phaser.Scene {
     // On-chain multiplayer via MagicBlock Ephemeral Rollups
     this.network = new OnChainMultiplayer();
     this.registry.set("network", this.network);
+
+    // A friend walking into the city is worth a toast, and costs nothing to
+    // notice: the roster is already telling us about every arrival.
+    if (!this.registry.get("friendPresence")) {
+      const me = this.profile.get().wallet;
+      if (me) {
+        this.registry.set(
+          "friendPresence",
+          startFriendPresence(this.network, new PublicKey(me)),
+        );
+      }
+    }
 
     // Where people walk, sampled every few seconds rather than taken from the
     // position sync, which fires ten times a second and would be all noise.

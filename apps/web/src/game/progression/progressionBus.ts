@@ -27,7 +27,8 @@ export type ProgressionEvent =
   | { type: "score-gained"; amount: number; reason: string }
   | { type: "achievement-unlocked"; id: string; title: string; description: string; icon: string }
   | { type: "outfit-unlocked"; outfitId: string; outfitName: string }
-  | { type: "profile-updated"; profile: PlayerProfile };
+  | { type: "profile-updated"; profile: PlayerProfile }
+  | { type: "friend-online"; wallet: string; name: string };
 
 export type ProgressionEventType = ProgressionEvent["type"];
 

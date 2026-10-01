@@ -18,6 +18,14 @@ import { dmsOffPref, setDmsOffPref } from "@/game/chat/dmEvents";
 import { chamferBox, octagonFrame, avatarFrame, avatarPhoto, octagonFrameThin } from "@/ui/chamfer";
 import { KeysRows } from "@/ui/KeysCard";
 import { useButtonFeel, feelStyle } from "@/ui/useButtonFeel";
+import { PublicKey } from "@solana/web3.js";
+import { useNickname } from "@/ui/useNicknames";
+import type { OnChainMultiplayer } from "@/game/multiplayer/OnChainMultiplayer";
+import {
+  listFriends, listInboundRequests, listOutboundRequests,
+} from "@/game/social/friends";
+import { runFriendAction, type FriendAction } from "@/game/social/friendActions";
+import type { FriendRequest } from "@/game/solana/program";
 
 const PIXEL = '"Press Start 2P", monospace';
 const CYAN = "#14F0C6";
@@ -25,8 +33,8 @@ const GREEN = "#B7E928";
 const PURPLE = "#9945FF";
 const MUTED = "#7f88a8";
 
-type PanelTab = "profile" | "achievements" | "keys" | "settings";
-const TABS: PanelTab[] = ["profile", "achievements", "keys", "settings"];
+type PanelTab = "profile" | "achievements" | "friends" | "keys" | "settings";
+const TABS: PanelTab[] = ["profile", "achievements", "friends", "keys", "settings"];
 import { useViewportBox, overlayBox } from "@/ui/useViewportBox";
 
 interface ProfilePanelProps {
@@ -190,6 +198,7 @@ export default function ProfilePanel({ gameRef, isOpen, onClose }: ProfilePanelP
             <ProfileTab profile={profile} wallet={wallet} onConnect={() => openWalletModal(true)} />
           )}
           {panelTab === "achievements" && <AchievementsTab profile={profile} />}
+          {panelTab === "friends" && <FriendsTab gameRef={gameRef} />}
           {panelTab === "keys" && <KeysTab />}
           {panelTab === "settings" && <SettingsTab />}
         </div>
@@ -564,6 +573,205 @@ function TrackCard({ track, progress }: {
         </div>
       </div>
     </Card>
+  );
+}
+
+// ── Friends tab ──────────────────────────────────────────────────────────────
+
+/**
+ * Who you are friends with, and who is in the city right now.
+ *
+ * Online costs nothing to know: the city is already polling every citizen's
+ * state, so a friend being present is just whether the multiplayer roster has
+ * them. No request of its own, no server.
+ *
+ * The lists themselves are two chain queries, made when this tab opens and
+ * cached after that. Invites are the part worth noticing: one waits on-chain
+ * indefinitely, so an invite sent while you were away is simply here when you
+ * arrive.
+ */
+function FriendsTab({ gameRef }: { gameRef: Phaser.Game | null }) {
+  const { publicKey, signTransaction } = useWallet();
+  const me = publicKey?.toBase58() ?? null;
+
+  const [friends, setFriends] = useState<string[] | null>(null);
+  const [inbound, setInbound] = useState<FriendRequest[]>([]);
+  const [outbound, setOutbound] = useState<FriendRequest[]>([]);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null);
+  const [online, setOnline] = useState<Set<string>>(new Set());
+
+  const load = useCallback(async (force = false) => {
+    if (!publicKey) return;
+    try {
+      const [f, i, o] = await Promise.all([
+        listFriends(publicKey, force),
+        listInboundRequests(publicKey, force),
+        listOutboundRequests(publicKey, force),
+      ]);
+      setFriends(f); setInbound(i); setOutbound(o);
+    } catch {
+      setFriends([]);
+      setNote("Could not read the friend list right now.");
+    }
+  }, [publicKey]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  // Who is in the city, straight off the roster the game already keeps.
+  useEffect(() => {
+    const read = () => {
+      const scene = gameRef?.scene?.getScene("CityScene");
+      const net = scene?.registry?.get("network") as OnChainMultiplayer | undefined;
+      setOnline(new Set((net?.getActivePlayers() ?? []).map((p) => p.wallet)));
+    };
+    read();
+    const id = setInterval(read, 3_000);
+    return () => clearInterval(id);
+  }, [gameRef]);
+
+  const act = async (action: FriendAction, other: string) => {
+    if (!publicKey || !signTransaction) return;
+    setBusy(other); setNote(null);
+    const res = await runFriendAction(action, publicKey, new PublicKey(other), signTransaction);
+    setBusy(null);
+    if (res.ok) await load(true);
+    else setNote(res.message);
+  };
+
+  if (!me) {
+    return (
+      <Card>
+        <div style={{ fontSize: 8, color: MUTED, lineHeight: 1.8 }}>
+          Connect a wallet to add friends.
+        </div>
+      </Card>
+    );
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      {note && <div style={{ fontSize: 7, color: "#FFD700", lineHeight: 1.6 }}>{note}</div>}
+
+      {inbound.length > 0 && (
+        <div>
+          <SectionTitle icon={ICON.chat} label="INVITES" count={inbound.length} />
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {inbound.map((r) => {
+              const who = r.from.toBase58();
+              return (
+                <FriendRow key={who} wallet={who} online={online.has(who)}>
+                  <RowButton label="ACCEPT" color={GREEN} busy={busy === who}
+                    onClick={() => void act("accept", who)} />
+                  <RowButton label="NO" color={MUTED} busy={busy === who}
+                    onClick={() => void act("decline", who)} />
+                </FriendRow>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      <div>
+        <SectionTitle icon={ICON.trophy} label="FRIENDS" count={friends?.length ?? 0} />
+        {friends === null ? (
+          <Card><div style={{ fontSize: 8, color: MUTED }}>Reading the chain...</div></Card>
+        ) : friends.length === 0 ? (
+          <Card>
+            <div style={{ fontSize: 8, color: MUTED, lineHeight: 1.8 }}>
+              Click a player in the city to add them.
+            </div>
+          </Card>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {/* In the city first: a friend who is here right now is the one you
+                might actually do something with. */}
+            {[...friends]
+              .sort((a, b) => Number(online.has(b)) - Number(online.has(a)))
+              .map((w) => (
+                <FriendRow key={w} wallet={w} online={online.has(w)}>
+                  <RowButton label="REMOVE" color={MUTED} busy={busy === w}
+                    onClick={() => void act("remove", w)} />
+                </FriendRow>
+              ))}
+          </div>
+        )}
+      </div>
+
+      {outbound.length > 0 && (
+        <div>
+          <SectionTitle icon={ICON.chat} label="SENT" count={outbound.length} />
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {outbound.map((r) => {
+              const who = r.to.toBase58();
+              return (
+                <FriendRow key={who} wallet={who} online={online.has(who)}>
+                  <RowButton label="CANCEL" color={MUTED} busy={busy === who}
+                    onClick={() => void act("cancel", who)} />
+                </FriendRow>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SectionTitle({ icon, label, count }: { icon: string; label: string; count: number }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+      <PixelImg src={icon} size={16} />
+      <span style={{ fontSize: 9, color: "#fff", flex: 1 }}>{label}</span>
+      <span style={{ fontSize: 8, color: MUTED }}>{count}</span>
+    </div>
+  );
+}
+
+/** One friend or invite: who they are, whether they are here, what you can do. */
+function FriendRow({ wallet, online, children }: {
+  wallet: string; online: boolean; children: React.ReactNode;
+}) {
+  const nickname = useNickname(wallet);
+  const short = `${wallet.slice(0, 4)}...${wallet.slice(-4)}`;
+  return (
+    <Card style={{ display: "flex", alignItems: "center", gap: 10, padding: 10 }}>
+      {/* A dot, not the word "online". It is the only thing on this row that
+          changes on its own, so it should be the thing the eye finds. */}
+      <span style={{
+        width: 8, height: 8, flexShrink: 0,
+        background: online ? GREEN : "rgba(255,255,255,0.14)",
+        boxShadow: online ? `0 0 6px ${GREEN}` : "none",
+      }} />
+      <span style={{ fontSize: 8, color: online ? "#fff" : "#94a3b8", flex: 1, minWidth: 0,
+        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        {nickname || short}
+      </span>
+      {children}
+    </Card>
+  );
+}
+
+function RowButton({ label, color, busy, onClick }: {
+  label: string; color: string; busy: boolean; onClick: () => void;
+}) {
+  const feel = useButtonFeel();
+  return (
+    <button
+      onClick={onClick}
+      disabled={busy}
+      {...feel.handlers}
+      style={chamferBox(5, {
+        fontFamily: PIXEL, fontSize: 6, letterSpacing: 0.5,
+        color, background: "rgba(255,255,255,0.04)",
+        border: `1px solid ${color}55`,
+        padding: "6px 8px", cursor: busy ? "default" : "pointer",
+        flexShrink: 0, opacity: busy ? 0.5 : 1,
+        ...feelStyle(feel),
+      })}
+    >
+      {busy ? "..." : label}
+    </button>
   );
 }
 

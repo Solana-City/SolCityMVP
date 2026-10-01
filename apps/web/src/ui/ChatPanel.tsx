@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import type { ChatManager, ChatMessage, ChatChannel, DMChannel } from "@/game/chat/ChatManager";
 import { getChannelColor, getChannelLabel, SELF_COLOR } from "@/game/chat/ChatManager";
 import { EMOJI_REGISTRY, type EmojiDef } from "@/game/chat/EmojiSystem";
@@ -8,6 +8,7 @@ import ChatGuide from "./ChatGuide";
 import { containsLink, maskLinks } from "@/game/chat/linkFilter";
 import { DMClient, OPEN_DM_EVENT, resolveRecipient } from "@/game/chat/dmClient";
 import { DM_UNREAD_EVENT } from "@/game/chat/dmEvents";
+import { listFriends } from "@/game/social/friends";
 import { cachedName, requestNames } from "@/game/names/nameService";
 import type { OnChainMultiplayer } from "@/game/multiplayer/OnChainMultiplayer";
 import { useWallet } from "@solana/wallet-adapter-react";
@@ -43,6 +44,8 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
   const myWallet = publicKey?.toBase58() ?? null;
   const dmRef = useRef<DMClient | null>(null);
   const [dmChannels, setDmChannels] = useState<DMChannel[]>([]);
+  /** Friends, so their conversations sit first in the row. */
+  const [friendSet, setFriendSet] = useState<Set<string>>(new Set());
   const [isTouch, setIsTouch] = useState(false);
   const [isExpanded, setIsExpanded] = useState(true);
   const [showEmojis, setShowEmojis] = useState(false);
@@ -218,6 +221,31 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
   // and rarely otherwise (each check is a paid command).
   useEffect(() => { dmRef.current?.setActive(dmMode); }, [dmMode]);
 
+  // Who the friends are, read once. Only used for ordering, so a failure here
+  // costs nothing but the ordering.
+  useEffect(() => {
+    if (!publicKey) return;
+    let alive = true;
+    listFriends(publicKey)
+      .then((list) => { if (alive) setFriendSet(new Set(list)); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [publicKey]);
+
+  /**
+   * Friends first, and otherwise the order the client already had.
+   *
+   * A stable sort is what makes this safe: everything inside each group keeps
+   * whatever order DMClient put it in (recency, unread), so this only lifts
+   * friends to the front rather than reshuffling the row.
+   */
+  const orderedDms = useMemo(
+    () => [...dmChannels].sort(
+      (a, b) => Number(friendSet.has(b.sessionId)) - Number(friendSet.has(a.sessionId)),
+    ),
+    [dmChannels, friendSet],
+  );
+
   // The chat may be a closed panel on a phone, where the tab badge cannot be
   // seen: tell the HUD so its chat button can show a dot.
   const unreadTotal = dmChannels.reduce((n, dm) => n + dm.unread, 0);
@@ -389,7 +417,7 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
           className="flex gap-1 p-1 overflow-x-auto"
           style={{ background: "rgba(10,10,30,0.92)", borderLeft: "1px solid rgba(153,69,255,0.2)", borderRight: "1px solid rgba(153,69,255,0.2)" }}
         >
-          {dmChannels.map((dm) => (
+          {orderedDms.map((dm) => (
             <Chip
               key={dm.sessionId}
               label={dm.name}

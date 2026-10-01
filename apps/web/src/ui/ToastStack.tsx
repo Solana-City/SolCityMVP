@@ -61,7 +61,11 @@ export default function ToastStack() {
           const color = def ? TIER_COLORS[def.tier] : "#B7E928";
           addToast({
             variant: "achievement",
-            icon: <AchievementIcon id={event.id} size={40} />,
+            // The art key, not the rung id. Since achievements became tracks an
+            // id looks like "dog:3" while the sprite is still filed under the
+            // family's old id, so passing the id would silently fall back to
+            // the trophy for every unlock.
+            icon: <AchievementIcon id={def?.art ?? event.id} size={40} />,
             title: event.title,
             subtitle: event.description,
             color,
@@ -78,6 +82,16 @@ export default function ToastStack() {
             subtitle: event.outfitName,
             color: "#9945FF",
             lifetime: 4000,
+          });
+          break;
+
+        case "friend-online":
+          addToast({
+            variant: "npc-first",
+            icon: <PixelImg src={ICON.chat} size={20} />,
+            title: `${event.name} is here`,
+            color: "#B7E928",
+            lifetime: 3500,
           });
           break;
 
