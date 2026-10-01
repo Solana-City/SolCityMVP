@@ -18,6 +18,7 @@ import {
 import { CATEGORY_META, CATEGORY_ORDER, type MinimapCategory } from "@/game/minimap/categories";
 import { chamferBox, chamferClip } from "@/ui/chamfer";
 import { PixelImg, CloseButton } from "@/ui/PixelIcons";
+import { useButtonFeel, feelStyle, type ButtonFeel } from "@/ui/useButtonFeel";
 
 const PIXEL_FONT = '"Press Start 2P", monospace';
 const PANEL_BG = "rgba(8,10,22,0.72)";
@@ -261,6 +262,7 @@ export default function Minimap({ compact, corners, bare, iconOnly }: { compact?
       return !v;
     });
   }, []);
+  const iconFeel = useButtonFeel();
 
   if (!host) return null;
   const mobile = compact === "mobile";
@@ -272,11 +274,13 @@ export default function Minimap({ compact, corners, bare, iconOnly }: { compact?
           onClick={() => setOpenAndNotify(true)}
           aria-label="Open city map"
           title="City map [M]"
+          {...iconFeel.handlers}
           style={chamferBox(8, {
             width: mobile ? 26 : 28, height: mobile ? 26 : 28,
             border: "none", background: "none", padding: 0,
             cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
             fontSize: mobile ? 13 : 15, flexShrink: 0,
+            ...feelStyle(iconFeel),
           })}
         ><img src="/assets/ui/icon_map.png" alt="" draggable={false} style={{ width: "100%", height: "100%", imageRendering: "pixelated", display: "block" }} /></button>
       ) : bare ? (
@@ -362,18 +366,23 @@ function CompactMap({ host, mobile, corners, bare, onOpen, onCollapse }: {
   const chip = mobile ? 24 : 26;
   const edge = mobile ? -6 : 4;
   const cornerEdge = mobile ? -10 : -6;
+  const openFeel = useButtonFeel();
+  const collapseFeel = useButtonFeel();
+  const expandFeel = useButtonFeel();
   return (
     <div style={{ position: "relative", width: D, height: D, flexShrink: 0 }}>
       <button
         onClick={onOpen}
         aria-label="Open city map"
         title="City map [M]"
+        {...openFeel.handlers}
         style={{
           position: "absolute", inset: 0, padding: 0, cursor: "pointer",
           border: "none", borderRadius: 0, overflow: "hidden",
           background: "#001D3A",
           boxShadow: "0 6px 24px rgba(0,0,0,0.5)",
           WebkitTapHighlightColor: "transparent", touchAction: "manipulation",
+          ...feelStyle(openFeel, { pressScale: 0.98 }),
         }}
       >
         <canvas ref={canvasRef} style={{
@@ -403,7 +412,8 @@ function CompactMap({ host, mobile, corners, bare, onOpen, onCollapse }: {
             onClick={onCollapse}
             aria-label="Hide minimap"
             title="Hide minimap"
-            style={{ ...rimBtn(chip), left: edge, bottom: edge }}
+            {...collapseFeel.handlers}
+            style={{ ...rimBtn(chip, collapseFeel), left: edge, bottom: edge }}
           >
             −
           </button>
@@ -413,10 +423,12 @@ function CompactMap({ host, mobile, corners, bare, onOpen, onCollapse }: {
         onClick={onOpen}
         aria-label="Open full map"
         title="Full map [M]"
+        {...expandFeel.handlers}
         style={{
           position: "absolute", right: 1, bottom: 1, width: chip, height: chip,
           padding: 0, border: "none", background: "transparent", cursor: "pointer",
           WebkitTapHighlightColor: "transparent", touchAction: "manipulation",
+          ...feelStyle(expandFeel),
         }}
       >
         <img
@@ -436,6 +448,8 @@ function CollapsedMap({ mobile, corners, onExpand, onOpen }: {
   mobile: boolean; corners?: MapCorners; onExpand: () => void; onOpen: () => void;
 }) {
   const size = mobile ? 36 : 40;
+  const mapFeel = useButtonFeel();
+  const expandFeel = useButtonFeel();
   return (
     <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
       {corners?.tl}
@@ -445,7 +459,8 @@ function CollapsedMap({ mobile, corners, onExpand, onOpen }: {
         onClick={onOpen}
         aria-label="Open full map"
         title="Full map [M]"
-        style={{ ...rimBtn(size), position: "static", fontFamily: PIXEL_FONT, fontSize: 7 }}
+        {...mapFeel.handlers}
+        style={{ ...rimBtn(size, mapFeel), position: "static", fontFamily: PIXEL_FONT, fontSize: 7 }}
       >
         MAP
       </button>
@@ -453,7 +468,8 @@ function CollapsedMap({ mobile, corners, onExpand, onOpen }: {
         onClick={onExpand}
         aria-label="Show minimap"
         title="Show minimap"
-        style={{ ...rimBtn(size * 0.7), position: "static", fontSize: 14 }}
+        {...expandFeel.handlers}
+        style={{ ...rimBtn(size * 0.7, expandFeel), position: "static", fontSize: 14 }}
       >
         +
       </button>
@@ -461,7 +477,7 @@ function CollapsedMap({ mobile, corners, onExpand, onOpen }: {
   );
 }
 
-function rimBtn(size: number): React.CSSProperties {
+function rimBtn(size: number, feel?: Pick<ButtonFeel, "hover" | "pressed">): React.CSSProperties {
   return {
     position: "absolute", width: size, height: size, borderRadius: "50%", padding: 0,
     display: "flex", alignItems: "center", justifyContent: "center",
@@ -469,6 +485,7 @@ function rimBtn(size: number): React.CSSProperties {
     color: "#e2e8f0", fontSize: Math.round(size * 0.6), lineHeight: 1, cursor: "pointer",
     boxShadow: "0 2px 10px rgba(0,0,0,0.5)",
     WebkitTapHighlightColor: "transparent", touchAction: "manipulation",
+    ...(feel ? feelStyle(feel) : null),
   };
 }
 
@@ -777,35 +794,17 @@ function FullMap({ host, onClose }: { host: MinimapHost; onClose: () => void }) 
   }, [selected]);
   const selectedPoint = selected ? pointsRef.current.find((p) => p.id === selected) ?? null : null;
 
+  const listToggleFeel = useButtonFeel();
+  const fastTravelFeel = useButtonFeel();
+  const centerFeel = useButtonFeel();
+  const zoomInFeel = useButtonFeel();
+  const zoomOutFeel = useButtonFeel();
+
   const legend = (
     <div style={{ display: "flex", flexDirection: narrow ? "row" : "column", gap: 6, flexWrap: narrow ? "nowrap" : "wrap", overflowX: narrow ? "auto" : "visible" }}>
-      {CATEGORY_ORDER.map((cat) => {
-        const on = enabled.has(cat);
-        return (
-          <button
-            key={cat}
-            onClick={() => toggle(cat)}
-            aria-pressed={on}
-            style={chamferBox(8, {
-              display: "flex", alignItems: "center", gap: 8, flexShrink: 0,
-              padding: narrow ? "6px 9px" : "7px 9px", cursor: "pointer",
-              background: on ? "rgba(255,255,255,0.06)" : "transparent",
-              border: `1px solid ${on ? CATEGORY_META[cat].color + "88" : "rgba(255,255,255,0.1)"}`,
-              opacity: on ? 1 : 0.45, textAlign: "left",
-            })}
-          >
-            <Swatch cat={cat} />
-            <span style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
-              <span style={{ fontFamily: PIXEL_FONT, fontSize: 7, color: "#e2e8f0", whiteSpace: "nowrap" }}>
-                {CATEGORY_META[cat].label.toUpperCase()} <span style={{ color: "#64748b" }}>{counts[cat]}</span>
-              </span>
-              {!narrow && (
-                <span style={{ fontFamily: PIXEL_FONT, fontSize: 6, color: "#8b93a7", marginTop: 3 }}>{CATEGORY_META[cat].hint}</span>
-              )}
-            </span>
-          </button>
-        );
-      })}
+      {CATEGORY_ORDER.map((cat) => (
+        <LegendCategoryButton key={cat} cat={cat} on={enabled.has(cat)} count={counts[cat]} narrow={narrow} onClick={() => toggle(cat)} />
+      ))}
     </div>
   );
 
@@ -817,22 +816,7 @@ function FullMap({ host, onClose }: { host: MinimapHost; onClose: () => void }) 
             {CATEGORY_META[cat].label.toUpperCase()}
           </div>
           {places.get(cat)!.map((p) => (
-            <button
-              key={p.id}
-              onClick={() => goTo(p)}
-              style={chamferBox(6, {
-                display: "flex", alignItems: "center", gap: 8, width: "100%",
-                padding: "5px 6px", cursor: "pointer", textAlign: "left",
-                background: selected === p.id ? "rgba(183,233,40,0.12)" : "transparent",
-                border: "1px solid transparent",
-              })}
-            >
-              {p.portrait ? <Portrait point={p} size={34} /> : <Swatch cat={cat} size={12} />}
-              <span style={{ minWidth: 0 }}>
-                <span style={{ display: "block", fontFamily: PIXEL_FONT, fontSize: 8, color: "#e2e8f0", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.name}</span>
-                {p.role && <span style={{ display: "block", fontFamily: PIXEL_FONT, fontSize: 6, color: "#8b93a7" }}>{p.role}</span>}
-              </span>
-            </button>
+            <PlaceListButton key={p.id} point={p} cat={cat} selected={selected === p.id} onClick={() => goTo(p)} />
           ))}
         </div>
       ))}
@@ -870,7 +854,7 @@ function FullMap({ host, onClose }: { host: MinimapHost; onClose: () => void }) 
           {!narrow && <span style={{ fontFamily: PIXEL_FONT, fontSize: 7, color: "#64748b" }}>Drag to move · scroll to zoom · click a marker</span>}
           <div style={{ flex: 1 }} />
           {narrow && (
-            <button onClick={() => setListOpen((v) => !v)} style={hdrBtn(listOpen)}>{listOpen ? "MAP" : "LIST"}</button>
+            <button onClick={() => setListOpen((v) => !v)} {...listToggleFeel.handlers} style={hdrBtn(listOpen, listToggleFeel)}>{listOpen ? "MAP" : "LIST"}</button>
           )}
           <CloseButton onClick={onClose} label="Close map" />
         </div>
@@ -917,9 +901,11 @@ function FullMap({ host, onClose }: { host: MinimapHost; onClose: () => void }) 
                 {card.point.id === selected && card.point.category !== "players" && (
                   <button
                     onClick={() => travel(card.point)}
+                    {...fastTravelFeel.handlers}
                     style={chamferBox(6, {
                       marginTop: 8, width: "100%", padding: "8px 0", cursor: "pointer",
                       background: "#B7E928", color: "#04140c", border: "none", fontFamily: PIXEL_FONT, fontSize: 7,
+                      ...feelStyle(fastTravelFeel),
                     })}
                   >
                     FAST TRAVEL
@@ -930,9 +916,9 @@ function FullMap({ host, onClose }: { host: MinimapHost; onClose: () => void }) 
 
             {/* Map controls */}
             <div style={{ position: "absolute", right: 10, bottom: 10, display: "flex", flexDirection: "column", gap: 6 }}>
-              <button onClick={() => { const me = host.snapshot().player; if (me) { setSelected(null); focus(me); } }} style={ctrlBtn} title="Center on me" aria-label="Center on me">◎</button>
-              <button onClick={() => zoomBy(1.4)} style={ctrlBtn} aria-label="Zoom in">+</button>
-              <button onClick={() => zoomBy(1 / 1.4)} style={ctrlBtn} aria-label="Zoom out">−</button>
+              <button onClick={() => { const me = host.snapshot().player; if (me) { setSelected(null); focus(me); } }} {...centerFeel.handlers} style={{ ...ctrlBtn, ...feelStyle(centerFeel) }} title="Center on me" aria-label="Center on me">◎</button>
+              <button onClick={() => zoomBy(1.4)} {...zoomInFeel.handlers} style={{ ...ctrlBtn, ...feelStyle(zoomInFeel) }} aria-label="Zoom in">+</button>
+              <button onClick={() => zoomBy(1 / 1.4)} {...zoomOutFeel.handlers} style={{ ...ctrlBtn, ...feelStyle(zoomOutFeel) }} aria-label="Zoom out">−</button>
             </div>
 
             {narrow && listOpen && (
@@ -944,6 +930,62 @@ function FullMap({ host, onClose }: { host: MinimapHost; onClose: () => void }) 
         </div>
       </div>
     </div>
+  );
+}
+
+function LegendCategoryButton({ cat, on, count, narrow, onClick }: {
+  cat: MinimapCategory; on: boolean; count: number; narrow: boolean; onClick: () => void;
+}) {
+  const feel = useButtonFeel();
+  return (
+    <button
+      onClick={onClick}
+      aria-pressed={on}
+      {...feel.handlers}
+      style={chamferBox(8, {
+        display: "flex", alignItems: "center", gap: 8, flexShrink: 0,
+        padding: narrow ? "6px 9px" : "7px 9px", cursor: "pointer",
+        background: on ? "rgba(255,255,255,0.06)" : "transparent",
+        border: `1px solid ${on ? CATEGORY_META[cat].color + "88" : "rgba(255,255,255,0.1)"}`,
+        opacity: on ? 1 : 0.45, textAlign: "left",
+        ...feelStyle(feel),
+      })}
+    >
+      <Swatch cat={cat} />
+      <span style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
+        <span style={{ fontFamily: PIXEL_FONT, fontSize: 7, color: "#e2e8f0", whiteSpace: "nowrap" }}>
+          {CATEGORY_META[cat].label.toUpperCase()} <span style={{ color: "#64748b" }}>{count}</span>
+        </span>
+        {!narrow && (
+          <span style={{ fontFamily: PIXEL_FONT, fontSize: 6, color: "#8b93a7", marginTop: 3 }}>{CATEGORY_META[cat].hint}</span>
+        )}
+      </span>
+    </button>
+  );
+}
+
+function PlaceListButton({ point, cat, selected, onClick }: {
+  point: MinimapPoint; cat: MinimapCategory; selected: boolean; onClick: () => void;
+}) {
+  const feel = useButtonFeel();
+  return (
+    <button
+      onClick={onClick}
+      {...feel.handlers}
+      style={chamferBox(6, {
+        display: "flex", alignItems: "center", gap: 8, width: "100%",
+        padding: "5px 6px", cursor: "pointer", textAlign: "left",
+        background: selected ? "rgba(183,233,40,0.12)" : "transparent",
+        border: "1px solid transparent",
+        ...feelStyle(feel),
+      })}
+    >
+      {point.portrait ? <Portrait point={point} size={34} /> : <Swatch cat={cat} size={12} />}
+      <span style={{ minWidth: 0 }}>
+        <span style={{ display: "block", fontFamily: PIXEL_FONT, fontSize: 8, color: "#e2e8f0", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{point.name}</span>
+        {point.role && <span style={{ display: "block", fontFamily: PIXEL_FONT, fontSize: 6, color: "#8b93a7" }}>{point.role}</span>}
+      </span>
+    </button>
   );
 }
 
@@ -970,12 +1012,13 @@ function Portrait({ point, size }: { point: MinimapPoint; size: number }) {
   );
 }
 
-function hdrBtn(active: boolean): React.CSSProperties {
+function hdrBtn(active: boolean, feel?: Pick<ButtonFeel, "hover" | "pressed">): React.CSSProperties {
   return chamferBox(6, {
     fontFamily: PIXEL_FONT, fontSize: 7, color: active ? "#0a0a14" : "#cbd5e1",
     background: active ? "#B7E928" : "rgba(255,255,255,0.06)",
-    border: "1px solid rgba(255,255,255,0.14)", 
+    border: "1px solid rgba(255,255,255,0.14)",
     padding: "6px 9px", cursor: "pointer",
+    ...(feel ? feelStyle(feel) : null),
   });
 }
 

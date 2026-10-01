@@ -262,6 +262,8 @@ export default function ConnectScreen() {
                 })}
                 onMouseEnter={(e) => { e.currentTarget.style.transform = "translateY(-2px)"; }}
                 onMouseLeave={(e) => { e.currentTarget.style.transform = "translateY(0)"; }}
+                onPointerDown={(e) => { e.currentTarget.style.transform = "scale(0.97)"; }}
+                onPointerUp={(e) => { e.currentTarget.style.transform = "translateY(-2px)"; }}
               >
                 <img src="/assets/ui/icon_wallet2.png" alt="" draggable={false}
                   style={{ height: "clamp(22px, 2.6vw, 34px)", width: "auto", imageRendering: "pixelated", display: "block" }} />
@@ -281,10 +283,12 @@ export default function ConnectScreen() {
                 fontFamily: PX, fontSize: "clamp(8px, 0.9vw, 12px)", letterSpacing: 1,
                 padding: "clamp(14px, 2.2vh, 22px) 24px",
                 background: "transparent", color: "#fff", border: "2px solid #14F0C6", cursor: "pointer",
-                transition: "background-color 0.15s",
+                transition: "background-color 0.15s, transform 0.08s",
               })}
               onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = "rgba(20,240,198,0.12)"; }}
-              onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = "transparent"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = "transparent"; e.currentTarget.style.transform = "none"; }}
+              onPointerDown={(e) => { e.currentTarget.style.transform = "scale(0.97)"; }}
+              onPointerUp={(e) => { e.currentTarget.style.transform = "none"; }}
             >
               CONTINUE AS GUEST
               <svg width="18" height="14" viewBox="0 0 9 7" shapeRendering="crispEdges" fill="#14F0C6">

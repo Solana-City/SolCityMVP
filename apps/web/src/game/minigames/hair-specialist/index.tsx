@@ -11,6 +11,7 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import type { MiniGameComponentProps } from "../types";
 import { CloseButton, ExternalLinkIcon } from "@/ui/PixelIcons";
+import { useButtonFeel, feelStyle, type ButtonFeel } from "@/ui/useButtonFeel";
 import {
   LAYER_ORDER,
   DIRECTION_ROW,
@@ -260,6 +261,11 @@ export default function HairSpecialist({ onResult, onClose }: MiniGameComponentP
   }, []);
 
   const r = landed ? RATING[landed.rating] : null;
+  const againFeel = useButtonFeel();
+  const keepFeel = useButtonFeel();
+  const dropFeel = useButtonFeel();
+  const remediFeel = useButtonFeel();
+  const keepPlayingFeel = useButtonFeel();
 
   return (
     <div
@@ -327,20 +333,24 @@ export default function HairSpecialist({ onResult, onClose }: MiniGameComponentP
         <div style={{ display: "flex", gap: 10, justifyContent: "center", marginTop: 10, minHeight: 38 }}>
           {landed ? (
             <>
-              <button onClick={again} style={btn("#2a3350", touch)}>AGAIN</button>
+              <button onClick={again} {...againFeel.handlers} style={btn("#2a3350", touch, againFeel)}>AGAIN</button>
               {landed.rating !== "miss" && (
-                <button onClick={keep} disabled={kept} style={{ ...btn(kept ? "#14F195" : ACCENT, touch), color: kept ? "#0b1020" : "#fff" }}>
+                <button onClick={keep} disabled={kept} {...(kept ? null : keepFeel.handlers)} style={{ ...btn(kept ? "#14F195" : ACCENT, touch, kept ? undefined : keepFeel), color: kept ? "#0b1020" : "#fff" }}>
                   {kept ? "SAVED!" : "KEEP IT"}
                 </button>
               )}
             </>
           ) : (
             // Pointer-down, not click: click waits for the finger to lift,
-            // which would land the hair late.
+            // which would land the hair late. Still tracks press/hover for
+            // the feel, just alongside the real action instead of through it.
             <button
-              onPointerDown={(e) => { e.preventDefault(); drop(); }}
+              onPointerDown={(e) => { e.preventDefault(); drop(); dropFeel.handlers.onPointerDown(); }}
+              onPointerUp={dropFeel.handlers.onPointerUp}
+              onMouseEnter={dropFeel.handlers.onMouseEnter}
+              onMouseLeave={dropFeel.handlers.onMouseLeave}
               disabled={!ready}
-              style={{ ...btn(ACCENT, touch), touchAction: "none" }}
+              style={{ ...btn(ACCENT, touch, ready ? dropFeel : undefined), touchAction: "none" }}
             >
               {touch ? "DROP!" : "DROP! (E)"}
             </button>
@@ -383,10 +393,10 @@ export default function HairSpecialist({ onResult, onClose }: MiniGameComponentP
                 Exclusive discounts for ST Members worldwide + checkout on Solana.
               </p>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <button onClick={openRemedi} style={{ ...btn(ACCENT, touch), display: "flex", alignItems: "center", gap: 6 }}>
+                <button onClick={openRemedi} {...remediFeel.handlers} style={{ ...btn(ACCENT, touch, remediFeel), display: "flex", alignItems: "center", gap: 6 }}>
                   VISIT REMEDI <ExternalLinkIcon size={9} color="#fff" />
                 </button>
-                <button onClick={() => setPitch(false)} style={btn("#2a3350", touch)}>KEEP PLAYING</button>
+                <button onClick={() => setPitch(false)} {...keepPlayingFeel.handlers} style={btn("#2a3350", touch, keepPlayingFeel)}>KEEP PLAYING</button>
               </div>
             </div>
           </div>
@@ -396,7 +406,7 @@ export default function HairSpecialist({ onResult, onClose }: MiniGameComponentP
   );
 }
 
-function btn(bg: string, big = false): CSSProperties {
+function btn(bg: string, big = false, feel?: Pick<ButtonFeel, "hover" | "pressed">): CSSProperties {
   return {
     background: bg,
     color: "#fff",
@@ -406,5 +416,6 @@ function btn(bg: string, big = false): CSSProperties {
     borderRadius: 8,
     border: "2px solid rgba(0,0,0,0.4)",
     boxShadow: "0 3px 0 rgba(0,0,0,0.45)",
+    ...(feel ? feelStyle(feel) : null),
   };
 }

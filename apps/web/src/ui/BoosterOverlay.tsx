@@ -11,6 +11,7 @@ import { progressionBus } from "@/game/progression/progressionBus";
 import { ChromaPreview } from "@/ui/WardrobePanel";
 import { chamferBox } from "@/ui/chamfer";
 import ChamferGlow from "@/ui/ChamferGlow";
+import { useButtonFeel, feelStyle, type ButtonFeel } from "@/ui/useButtonFeel";
 
 /**
  * Outfit packs — PREVIEW. Three packs, each with its own odds per rarity,
@@ -34,6 +35,9 @@ export default function BoosterOverlay({
   const [pack, setPack] = useState<PackDef | null>(null);
   const [phase, setPhase] = useState<"choose" | "opening" | "revealed">("choose");
   const [drops, setDrops] = useState<PackDrop[]>([]);
+  const laterFeel = useButtonFeel();
+  const anotherFeel = useButtonFeel();
+  const doneFeel = useButtonFeel();
 
   const open = useCallback((chosen: PackDef) => {
     if (!wallet) return;
@@ -113,7 +117,7 @@ export default function BoosterOverlay({
                 <PackCard key={p.id} pack={p} onOpen={() => open(p)} />
               ))}
             </div>
-            <button onClick={onClose} style={btn("ghost")}>LATER</button>
+            <button onClick={onClose} {...laterFeel.handlers} style={btn("ghost", laterFeel)}>LATER</button>
           </>
         ) : phase === "revealed" ? (
           <>
@@ -149,8 +153,8 @@ export default function BoosterOverlay({
               ))}
             </div>
             <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
-              <button onClick={backToPacks} style={btn("ghost")}>OPEN ANOTHER</button>
-              <ChamferGlow glow={BTN_GLOW}><button onClick={onClose} style={btn("primary")}>DONE</button></ChamferGlow>
+              <button onClick={backToPacks} {...anotherFeel.handlers} style={btn("ghost", anotherFeel)}>OPEN ANOTHER</button>
+              <ChamferGlow glow={BTN_GLOW}><button onClick={onClose} {...doneFeel.handlers} style={btn("primary", doneFeel)}>DONE</button></ChamferGlow>
             </div>
           </>
         ) : (
@@ -168,6 +172,7 @@ export default function BoosterOverlay({
 
 /** One pack on the chooser: its art, what it costs, and what it rolls. */
 function PackCard({ pack, onOpen }: { pack: PackDef; onOpen: () => void }) {
+  const openFeel = useButtonFeel();
   return (
     <div style={chamferBox(12, {
       padding: "14px 12px 12px",
@@ -205,10 +210,12 @@ function PackCard({ pack, onOpen }: { pack: PackDef; onOpen: () => void }) {
       <ChamferGlow glow={`drop-shadow(0 0 10px ${pack.accent}55)`} style={{ display: "block", width: "100%" }}>
         <button
           onClick={onOpen}
+          {...openFeel.handlers}
           style={chamferBox(8, {
             width: "100%", fontFamily: '"Press Start 2P", monospace',
             fontSize: 7, letterSpacing: 1, padding: "10px 8px", cursor: "pointer",
             background: pack.accent, color: "#04140c", border: "none",
+            ...feelStyle(openFeel),
           })}
         >
           OPEN
@@ -274,7 +281,7 @@ function PackArt({ pack, size }: { pack: PackDef; size: number }) {
 
 const BTN_GLOW = "drop-shadow(0 0 10px rgba(153,69,255,0.45))";
 
-function btn(kind: "primary" | "ghost"): React.CSSProperties {
+function btn(kind: "primary" | "ghost", feel?: Pick<ButtonFeel, "hover" | "pressed">): React.CSSProperties {
   const base: React.CSSProperties = {
     fontFamily: '"Press Start 2P", monospace',
     fontSize: 9, letterSpacing: 1, padding: "12px 24px",
@@ -282,6 +289,6 @@ function btn(kind: "primary" | "ghost"): React.CSSProperties {
   };
   return chamferBox(8, kind === "primary"
     ? { ...base, background: "linear-gradient(135deg, #9945FF, #7a2fd8)", color: "#fff",
-        border: "1px solid rgba(200,150,255,0.5)" }
-    : { ...base, background: "transparent", color: "#8a8aa7", border: "1px solid rgba(153,69,255,0.3)" });
+        border: "1px solid rgba(200,150,255,0.5)", ...(feel ? feelStyle(feel) : null) }
+    : { ...base, background: "transparent", color: "#8a8aa7", border: "1px solid rgba(153,69,255,0.3)", ...(feel ? feelStyle(feel) : null) });
 }

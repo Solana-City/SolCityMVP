@@ -14,6 +14,7 @@ import { fetchSaleState, fetchPrizePoolLamports, fetchOwnedPasses, type SaleStat
 import { mintPass, PER_WALLET_LIMIT } from "@/game/solmechs/pass/mint";
 import { isPassConfigured, PRIZE_POOL_ADDRESS, CANDY_MACHINE_ADDRESS } from "@/game/solmechs/pass/config";
 import { LAMPORTS_PER_SOL, PASS_PRICE_LAMPORTS, SUPPLY } from "@/game/solmechs/season/config";
+import { useButtonFeel, feelStyle } from "@/ui/useButtonFeel";
 
 const C = {
   ink: "#0b0616", panel: "#150c2b", line: "#33235c",
@@ -71,6 +72,7 @@ export default function PassSale() {
   };
 
   const soldOut = sale !== null && sale.remaining <= 0;
+  const mintFeel = useButtonFeel();
 
   return (
     <main style={sx.page}>
@@ -127,7 +129,8 @@ export default function PassSale() {
                 <button
                   onClick={onMint}
                   disabled={busy || soldOut}
-                  style={{ ...sx.mint, opacity: busy || soldOut ? 0.45 : 1 }}
+                  {...mintFeel.handlers}
+                  style={{ ...sx.mint, opacity: busy || soldOut ? 0.45 : 1, ...(busy || soldOut ? null : feelStyle(mintFeel)) }}
                 >
                   {busy ? "MINTING…" : soldOut ? "SOLD OUT" : `MINT · ${sol(PASS_PRICE_LAMPORTS)} SOL`}
                 </button>

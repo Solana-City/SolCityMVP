@@ -15,6 +15,7 @@ import {
 import { PRESET_BUILDS } from "@/game/solmechs/data/catalog";
 import type { MechId } from "@/game/solmechs/data/types";
 import { C, T, SP, DISPLAY, PIXELATED, W, PANEL_HEIGHT, backdrop, panel, frame, button } from "./theme";
+import { useButtonFeel } from "@/ui/useButtonFeel";
 
 const A = "/assets/minigames/sol-mechs";
 
@@ -158,6 +159,9 @@ export default function RulesScreen({ onClose }: RulesScreenProps) {
   const last = page >= pages.length - 1;
   const next = () => (last ? onClose() : setPage((n) => n + 1));
   const prev = () => setPage((n) => n - 1);
+  const closeFeel = useButtonFeel();
+  const backFeel = useButtonFeel();
+  const nextFeel = useButtonFeel();
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -193,7 +197,7 @@ export default function RulesScreen({ onClose }: RulesScreenProps) {
           <h2 style={sx.title}>RULES</h2>
           <span style={sx.pageTitle}>{current.title}</span>
           <div style={{ flex: 1 }} />
-          <button onClick={onClose} style={button("ghost")}>CLOSE</button>
+          <button onClick={onClose} {...closeFeel.handlers} style={button("ghost", { feel: closeFeel })}>CLOSE</button>
         </header>
 
         <div key={page} style={{ ...sx.grid, gridTemplateColumns: compact ? "minmax(0, 1fr)" : sx.grid.gridTemplateColumns }}>
@@ -225,24 +229,16 @@ export default function RulesScreen({ onClose }: RulesScreenProps) {
         </div>
 
         <footer style={sx.footer}>
-          <button onClick={prev} style={{ ...button("ghost"), visibility: page === 0 ? "hidden" : "visible" }}>
+          <button onClick={prev} {...backFeel.handlers} style={{ ...button("ghost", { feel: backFeel }), visibility: page === 0 ? "hidden" : "visible" }}>
             ◂ BACK
           </button>
           <div style={sx.dots}>
             {pages.map((p, n) => (
-              <button
-                key={p.title}
-                onClick={() => setPage(() => n)}
-                aria-label={`Rules page ${n + 1}: ${p.title}`}
-                style={{
-                  ...sx.dot,
-                  width: n === page ? 22 : compact ? 6 : 8,
-                  background: n === page ? C.teal : n < page ? C.dim : C.line,
-                }}
-              />
+              <DotButton key={p.title} label={`Rules page ${n + 1}: ${p.title}`} onClick={() => setPage(() => n)}
+                style={{ ...sx.dot, width: n === page ? 22 : compact ? 6 : 8, background: n === page ? C.teal : n < page ? C.dim : C.line }} />
             ))}
           </div>
-          <button onClick={next} style={button("primary")}>{last ? "GOT IT" : "NEXT ▸"}</button>
+          <button onClick={next} {...nextFeel.handlers} style={button("primary", { feel: nextFeel })}>{last ? "GOT IT" : "NEXT ▸"}</button>
         </footer>
       </div>
       <style>{`@keyframes sm-rules-in { from { opacity: 0; transform: translateX(14px); } to { opacity: 1; transform: none; } }`}</style>
@@ -286,6 +282,18 @@ function MechIcon({ mech, h }: { mech: MechId; h: number }) {
       width={crop.w}
       height={crop.h}
       style={{ ...PIXELATED, height: h, width: "auto", display: "block" }}
+    />
+  );
+}
+
+function DotButton({ label, onClick, style }: { label: string; onClick: () => void; style: React.CSSProperties }) {
+  const feel = useButtonFeel();
+  return (
+    <button
+      onClick={onClick}
+      aria-label={label}
+      {...feel.handlers}
+      style={{ ...style, transform: feel.pressed ? "scale(0.8)" : "none", filter: feel.hover ? "brightness(1.3)" : "none", transition: "transform 0.08s, filter 0.12s" }}
     />
   );
 }

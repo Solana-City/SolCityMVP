@@ -14,6 +14,7 @@ import { PublicKey } from "@solana/web3.js";
 import { watchIncomingDuel, type IncomingDuel } from "@/game/solmechs/pvp/chain/challengeWatch";
 import { DUEL_INVITE_EVENT } from "@/ui/PlayerCard";
 import { chamferBox } from "@/ui/chamfer";
+import { useButtonFeel, feelStyle } from "@/ui/useButtonFeel";
 import { cachedName, onNames, requestNames } from "@/game/names/nameService";
 import { Bust } from "@/game/minigames/sol-mechs/SquadPortraits";
 import { PRESET_BUILDS } from "@/game/solmechs/data/catalog";
@@ -50,6 +51,8 @@ export default function DuelInvite({ wallet }: { wallet: string | null }) {
       if (found) setName(found);
     });
   }, [invite]);
+  const fightFeel = useButtonFeel();
+  const laterFeel = useButtonFeel();
 
   if (!invite) return null;
   const who = name ?? shortWallet(invite.challenger);
@@ -91,9 +94,11 @@ export default function DuelInvite({ wallet }: { wallet: string | null }) {
       </div>
       <button
         onClick={accept}
+        {...fightFeel.handlers}
         style={chamferBox(8, {
           fontFamily: PIX, fontSize: 7, padding: "9px 10px", border: "none",
           background: "#B7E928", color: "#04140c", cursor: "pointer", flexShrink: 0,
+          ...feelStyle(fightFeel),
         })}
       >
         FIGHT
@@ -101,10 +106,12 @@ export default function DuelInvite({ wallet }: { wallet: string | null }) {
       <button
         onClick={decline}
         aria-label="Decline"
+        {...laterFeel.handlers}
         style={chamferBox(8, {
-          fontFamily: PIX, fontSize: 7, padding: "9px 8px", 
+          fontFamily: PIX, fontSize: 7, padding: "9px 8px",
           background: "transparent", border: "1px solid rgba(139,139,167,0.4)",
           color: "#8b8ba7", cursor: "pointer", flexShrink: 0,
+          ...feelStyle(laterFeel),
         })}
       >
         LATER

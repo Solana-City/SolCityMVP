@@ -9,6 +9,7 @@ import { Citizen, Img, Key } from "./CityGuide";
 import { track } from "@/game/telemetry/track";
 import { chamferBox, octagonFrame } from "@/ui/chamfer";
 import { CloseButton } from "@/ui/PixelIcons";
+import { useButtonFeel, feelStyle } from "@/ui/useButtonFeel";
 
 const PIXEL = '"Press Start 2P", monospace';
 const LOCAL = "#B7E928";
@@ -125,6 +126,8 @@ export default function ChatGuide({ touch, onClose }: { touch: boolean; onClose:
   const [i, setI] = useState(0);
   const step = list[i];
   const last = i === list.length - 1;
+  const backFeel = useButtonFeel();
+  const nextFeel = useButtonFeel();
 
   useEffect(() => {
     track("tutorial", "chat-guide", { value: i + 1, label: `step ${i + 1}/${list.length}` });
@@ -163,10 +166,12 @@ export default function ChatGuide({ touch, onClose }: { touch: boolean; onClose:
       <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
         <button
           onClick={() => setI((n) => Math.max(0, n - 1))}
+          {...backFeel.handlers}
           style={chamferBox(6, {
-            background: "transparent", border: "1px solid #333344", color: "#888899", 
+            background: "transparent", border: "1px solid #333344", color: "#888899",
             padding: "7px 10px", cursor: "pointer", fontFamily: PIXEL, fontSize: 7,
             visibility: i === 0 ? "hidden" : "visible",
+            ...feelStyle(backFeel),
           })}
         >
           BACK
@@ -178,9 +183,11 @@ export default function ChatGuide({ touch, onClose }: { touch: boolean; onClose:
         </div>
         <button
           onClick={() => (last ? onClose() : setI((n) => n + 1))}
+          {...nextFeel.handlers}
           style={chamferBox(6, {
-            background: LOCAL, color: "#0a0a14", border: "none", 
+            background: LOCAL, color: "#0a0a14", border: "none",
             padding: "8px 12px", cursor: "pointer", fontFamily: PIXEL, fontSize: 7,
+            ...feelStyle(nextFeel),
           })}
         >
           {last ? "GOT IT" : "NEXT"}

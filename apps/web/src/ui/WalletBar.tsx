@@ -8,6 +8,7 @@ import { WALLET_LOGOUT_EVENT } from "./walletSession";
 import { useSeekerDevice } from "@/ui/useSeekerDevice";
 import { progressionBus } from "@/game/progression/progressionBus";
 import { chamferBox } from "@/ui/chamfer";
+import { useButtonFeel, feelStyle } from "@/ui/useButtonFeel";
 
 function useIsTouch() {
   const [isTouch, setIsTouch] = useState(false);
@@ -90,6 +91,10 @@ export default function WalletBar({ onWalletChange, layout = "default" }: Wallet
       setVisible(true);
     }
   }, [connected, disconnect, setVisible]);
+  // Every layout below renders exactly one action button per render (a
+  // connected/disconnected alternative, never both), so one shared feel
+  // state is enough — it's never asked to track two buttons at once.
+  const btnFeel = useButtonFeel();
 
   // ── Panel layout: single compact row for the unified HUD card ───────────────
   if (layout === "panel") {
@@ -131,9 +136,8 @@ export default function WalletBar({ onWalletChange, layout = "default" }: Wallet
           <button
             onClick={handleClick}
             title="Disconnect wallet" aria-label="Disconnect wallet"
-            style={{ background: "none", border: "none", padding: 0, cursor: "pointer", flexShrink: 0, lineHeight: 0 }}
-            onMouseEnter={(e) => { e.currentTarget.style.filter = "brightness(1.25) drop-shadow(0 0 4px rgba(20,240,198,0.7))"; }}
-            onMouseLeave={(e) => { e.currentTarget.style.filter = "none"; }}
+            {...btnFeel.handlers}
+            style={{ background: "none", border: "none", padding: 0, cursor: "pointer", flexShrink: 0, lineHeight: 0, ...feelStyle(btnFeel) }}
           >
             <img src="/assets/ui/icon_disconnect.png" alt="" draggable={false} width={32} height={32} style={{ imageRendering: "pixelated", display: "block" }} />
           </button>
@@ -141,6 +145,7 @@ export default function WalletBar({ onWalletChange, layout = "default" }: Wallet
           /* Same pixel-art CONNECT button used on mobile, scaled down to fit the panel row */
           <button
             onClick={handleClick}
+            {...btnFeel.handlers}
             style={{
               background: "transparent",
               border: "none",
@@ -148,6 +153,7 @@ export default function WalletBar({ onWalletChange, layout = "default" }: Wallet
               cursor: "pointer",
               flexShrink: 0,
               lineHeight: 0,
+              ...feelStyle(btnFeel),
             }}
           >
             <img
@@ -198,6 +204,7 @@ export default function WalletBar({ onWalletChange, layout = "default" }: Wallet
           <button
             onClick={handleClick}
             className="rounded cursor-pointer"
+            {...btnFeel.handlers}
             style={{
               background: "rgba(183,233,40,0.12)",
               color: "#B7E928",
@@ -209,6 +216,7 @@ export default function WalletBar({ onWalletChange, layout = "default" }: Wallet
               display: "flex",
               alignItems: "center",
               WebkitTapHighlightColor: "transparent",
+              ...feelStyle(btnFeel),
             }}
           >
             ●
@@ -217,6 +225,7 @@ export default function WalletBar({ onWalletChange, layout = "default" }: Wallet
           /* Pixel-art CONNECT button at its native 90x30 size */
           <button
             onClick={handleClick}
+            {...btnFeel.handlers}
             style={{
               background: "transparent",
               border: "none",
@@ -224,6 +233,7 @@ export default function WalletBar({ onWalletChange, layout = "default" }: Wallet
               cursor: "pointer",
               WebkitTapHighlightColor: "transparent",
               lineHeight: 0,
+              ...feelStyle(btnFeel),
             }}
           >
             <img
@@ -305,6 +315,7 @@ export default function WalletBar({ onWalletChange, layout = "default" }: Wallet
       <button
         onClick={handleClick}
         className="cursor-pointer transition-colors"
+        {...btnFeel.handlers}
         style={chamferBox(6, {
           background: connected ? "rgba(183,233,40,0.12)" : "rgba(153,69,255,0.8)",
           color: connected ? "#B7E928" : "#ffffff",
@@ -315,6 +326,7 @@ export default function WalletBar({ onWalletChange, layout = "default" }: Wallet
           minHeight: 44,
           display: "flex",
           alignItems: "center",
+          ...feelStyle(btnFeel),
         })}
       >
         {connected ? "CONNECTED" : "CONNECT WALLET"}

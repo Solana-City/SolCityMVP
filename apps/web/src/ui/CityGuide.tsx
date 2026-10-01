@@ -18,6 +18,7 @@ import { PRESET_BUILDS } from "@/game/solmechs/data/catalog";
 import { track } from "@/game/telemetry/track";
 import { chamferBox } from "@/ui/chamfer";
 import ChamferGlow from "@/ui/ChamferGlow";
+import { useButtonFeel, feelStyle } from "@/ui/useButtonFeel";
 
 const PIXEL = '"Press Start 2P", monospace';
 const GREEN = "#B7E928";
@@ -257,6 +258,10 @@ export default function CityGuide({ onDone }: { onDone: () => void }) {
   const { setVisible: openWalletModal } = useWalletModal();
   const step = steps[i];
   const last = i === steps.length - 1;
+  const connectFeel = useButtonFeel();
+  const backFeel = useButtonFeel();
+  const nextFeel = useButtonFeel();
+  const skipFeel = useButtonFeel();
 
   const finish = () => {
     track("tutorial", "city-guide", { value: steps.length, success: true, label: "finished" });
@@ -305,9 +310,11 @@ export default function CityGuide({ onDone }: { onDone: () => void }) {
       {last && !connected && (
         <button
           onClick={() => openWalletModal(true)}
+          {...connectFeel.handlers}
           style={chamferBox(8, {
             display: "block", width: "100%", marginBottom: 8, background: "rgba(153,69,255,0.85)", color: "#fff",
             border: "none", padding: "10px 0", cursor: "pointer", fontFamily: PIXEL, fontSize: 7,
+            ...feelStyle(connectFeel),
           })}
         >
           CONNECT WALLET
@@ -317,10 +324,12 @@ export default function CityGuide({ onDone }: { onDone: () => void }) {
       <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
         <button
           onClick={() => setI((n) => Math.max(0, n - 1))}
+          {...backFeel.handlers}
           style={chamferBox(8, {
-            background: "transparent", border: "1px solid #333344", color: "#888899", 
+            background: "transparent", border: "1px solid #333344", color: "#888899",
             padding: "9px 12px", cursor: "pointer", fontFamily: PIXEL, fontSize: 7,
             visibility: i === 0 ? "hidden" : "visible",
+            ...feelStyle(backFeel),
           })}
         >
           BACK
@@ -332,9 +341,11 @@ export default function CityGuide({ onDone }: { onDone: () => void }) {
         </div>
         <button
           onClick={() => (last ? finish() : setI((n) => n + 1))}
+          {...nextFeel.handlers}
           style={chamferBox(8, {
-            background: GREEN, color: "#0a0a14", border: "none", 
+            background: GREEN, color: "#0a0a14", border: "none",
             padding: "10px 14px", cursor: "pointer", fontFamily: PIXEL, fontSize: 7,
+            ...feelStyle(nextFeel),
           })}
         >
           {last ? "EXPLORE" : "NEXT"}
@@ -343,9 +354,11 @@ export default function CityGuide({ onDone }: { onDone: () => void }) {
       {!last && (
         <button
           onClick={finish}
+          {...skipFeel.handlers}
           style={{
             display: "block", margin: "10px auto 0", background: "none", border: "none",
             color: "#555566", fontFamily: PIXEL, fontSize: 7, cursor: "pointer",
+            ...feelStyle(skipFeel),
           }}
         >
           SKIP TOUR

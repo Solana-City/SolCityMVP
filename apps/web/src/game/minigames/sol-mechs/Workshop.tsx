@@ -37,6 +37,7 @@ import { createUnit, calculateDamage } from "@/game/solmechs/engine/BattleEngine
 import { squadPositionLabel } from "@/game/solmechs/data/team";
 import { C, T, SP, R, MONO, W, PANEL_HEIGHT, DISPLAY, frame } from "./theme";
 import { CloseButton } from "@/ui/PixelIcons";
+import { useButtonFeel, feelStyle } from "@/ui/useButtonFeel";
 
 const UI = "/assets/minigames/sol-mechs/ui";
 const PIXELATED: React.CSSProperties = { imageRendering: "pixelated" };
@@ -91,6 +92,8 @@ export default function Workshop({ onClose, teamContext }: WorkshopProps) {
   const [activeSlot, setActiveSlot] = useState<ModuleSlot>("matrix");
   const [lockToFamily, setLockToFamily] = useState(false);
   const [dirty, setDirty] = useState(false);
+  const resetFeel = useButtonFeel();
+  const doneFeel = useButtonFeel();
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rafRef = useRef(0);
@@ -437,11 +440,11 @@ export default function Workshop({ onClose, teamContext }: WorkshopProps) {
         </section>
 
         <footer style={sx.footer}>
-          <button onClick={revert} style={sx.btnGhost}>RESET TO STOCK</button>
+          <button {...resetFeel.handlers} onClick={revert} style={{ ...sx.btnGhost, ...feelStyle(resetFeel) }}>RESET TO STOCK</button>
           <div style={{ flex: 1 }} />
           {/* Edits already propagate live to the squad, so this is a "done"
               rather than a commit, and always enabled. */}
-          <button onClick={save} style={{ ...sx.btnPrimary, cursor: "pointer" }}>
+          <button {...doneFeel.handlers} onClick={save} style={{ ...sx.btnPrimary, cursor: "pointer", ...feelStyle(doneFeel) }}>
             DONE
           </button>
         </footer>
@@ -473,10 +476,12 @@ function SlotRow({ slot, selected, name, position, takenBy, canCycle, onSelect, 
   onSelect: () => void;
   onCycle: (dir: -1 | 1) => void;
 }) {
+  const feel = useButtonFeel();
   return (
     <div style={sx.slotRowWrap}>
       <Arrow dir="left" onClick={() => onCycle(-1)} disabled={!canCycle} />
       <button
+        {...feel.handlers}
         onClick={onSelect}
         title={SLOT_META[slot].label}
         style={{
@@ -484,7 +489,8 @@ function SlotRow({ slot, selected, name, position, takenBy, canCycle, onSelect, 
           backgroundImage: `url(${UI}/row-${SLOT_META[slot].icon}.png)`,
           // Selection is a glow, not a border: the sprite is not a rectangle,
           // so a box around it would not follow its shape.
-          filter: selected ? "brightness(1.25)" : "none",
+          filter: feel.pressed ? "brightness(0.92)" : selected || feel.hover ? "brightness(1.25)" : "none",
+          transform: feel.pressed ? "scale(0.97)" : "none",
         }}
       >
         <span style={{ ...sx.rowName, color: selected ? C.text : C.body }}>{name}</span>
@@ -529,16 +535,19 @@ function Corner({ top, left }: { top?: boolean; left?: boolean }) {
 
 function Arrow({ dir, onClick, disabled }: { dir: "left" | "right"; onClick: () => void; disabled?: boolean }) {
   const [down, setDown] = useState(false);
+  const [hover, setHover] = useState(false);
   return (
     <button
       onClick={onClick}
       disabled={disabled}
       onPointerDown={() => setDown(true)}
       onPointerUp={() => setDown(false)}
-      onPointerLeave={() => setDown(false)}
+      onPointerLeave={() => { setDown(false); setHover(false); }}
+      onMouseEnter={() => setHover(true)}
       style={{
         background: "none", border: "none", padding: "2px 0", flexShrink: 0,
         cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.2 : 1,
+        filter: !disabled && hover && !down ? "brightness(1.25)" : "none",
       }}
       aria-label={dir === "left" ? "Previous" : "Next"}
     >

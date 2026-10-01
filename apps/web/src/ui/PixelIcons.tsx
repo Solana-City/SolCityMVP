@@ -3,6 +3,7 @@
 import { useState } from "react";
 
 import { chamferBox } from "@/ui/chamfer";
+import { useButtonFeel, feelStyle } from "@/ui/useButtonFeel";
 
 /**
  * Pixel-art icons for HUD panels, from sprites already in the build.
@@ -60,11 +61,17 @@ export function CloseButton({
   color?: string;
   style?: React.CSSProperties;
 }) {
+  const feel = useButtonFeel();
   return (
     <button
       onClick={onClick}
       aria-label={label}
-      style={{ background: "none", border: "none", padding: 0, cursor: "pointer", lineHeight: 0, flexShrink: 0, display: "block", ...style }}
+      {...feel.handlers}
+      style={{
+        background: "none", border: "none", padding: 0, cursor: "pointer", lineHeight: 0, flexShrink: 0, display: "block",
+        ...feelStyle(feel, { pressScale: 0.85 }),
+        ...style,
+      }}
     >
       <span aria-hidden style={maskIcon(ICON.close, color, size)} />
     </button>

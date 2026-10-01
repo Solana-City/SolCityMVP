@@ -7,6 +7,7 @@ import { profileManager } from "@/game/config/profileManager";
 import { chamferBox } from "@/ui/chamfer";
 import ChamferGlow from "@/ui/ChamferGlow";
 import { CloseButton, ExternalLinkIcon } from "@/ui/PixelIcons";
+import { useButtonFeel, feelStyle } from "@/ui/useButtonFeel";
 
 function useIsTouch() {
   const [isTouch, setIsTouch] = useState(false);
@@ -52,6 +53,8 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
   /** Set by skipToEnd so the line it lands on appears fully, not typed out. */
   const instantRef = useRef(false);
   const isTouch = useIsTouch();
+  const actionFeel = useButtonFeel();
+  const skipFeel = useButtonFeel();
 
   // Reset when NPC changes
   useEffect(() => {
@@ -319,6 +322,7 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
           {isLastLine && doneTyping ? (
             <button
               onClick={(e) => { e.stopPropagation(); onAction(npc.action); }}
+              {...actionFeel.handlers}
               style={chamferBox(8, {
                 background:  color,
                 border:      "none",
@@ -330,6 +334,7 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
                 fontWeight:  "bold",
                 touchAction: "manipulation",
                 display: "flex", alignItems: "center", gap: 6,
+                ...feelStyle(actionFeel),
               })}
             >
               {npc.action.label.toUpperCase()}
@@ -347,7 +352,8 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
               {showSkip && (
                 <button
                   onClick={(e) => { e.stopPropagation(); skipToEnd(); }}
-                  style={{ ...skipStyle, padding: "8px 10px", touchAction: "manipulation" }}
+                  {...skipFeel.handlers}
+                  style={{ ...skipStyle, padding: "8px 10px", touchAction: "manipulation", ...feelStyle(skipFeel) }}
                   aria-label="Skip dialog"
                 >
                   {"SKIP >>"}
@@ -476,7 +482,8 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
             {showSkip && (
               <button
                 onClick={(e) => { e.stopPropagation(); skipToEnd(); }}
-                style={skipStyle}
+                {...skipFeel.handlers}
+                style={{ ...skipStyle, ...feelStyle(skipFeel) }}
                 title="Skip to the end [Tab]"
                 aria-label="Skip dialog"
               >
@@ -486,6 +493,7 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
             {isLastLine && doneTyping && (
               <button
                 onClick={(e) => { e.stopPropagation(); onAction(npc.action); }}
+                {...actionFeel.handlers}
                 style={chamferBox(8, {
                   background:  color,
                   border:      "none",
@@ -496,6 +504,7 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
                   cursor:      "pointer",
                   fontWeight:  "bold",
                   display: "flex", alignItems: "center", gap: 6,
+                  ...feelStyle(actionFeel),
                 })}
               >
                 {npc.action.label.toUpperCase()}

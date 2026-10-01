@@ -66,7 +66,12 @@ export default function OfflinePage() {
           fontWeight: "bold",
           fontFamily: '"Press Start 2P", monospace',
           cursor: "pointer",
+          transition: "filter 0.12s, transform 0.08s",
         }}
+        onMouseEnter={(e) => { e.currentTarget.style.filter = "brightness(1.2)"; }}
+        onMouseLeave={(e) => { e.currentTarget.style.filter = "none"; e.currentTarget.style.transform = "none"; }}
+        onPointerDown={(e) => { e.currentTarget.style.transform = "scale(0.96)"; }}
+        onPointerUp={(e) => { e.currentTarget.style.transform = "none"; }}
       >
         Retry
       </button>

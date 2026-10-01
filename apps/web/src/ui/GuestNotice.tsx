@@ -9,6 +9,7 @@ import { useEffect, useState } from "react";
 import { Citizen, Img } from "./CityGuide";
 import { track } from "@/game/telemetry/track";
 import { chamferBox, octagonFrame } from "@/ui/chamfer";
+import { useButtonFeel, feelStyle, type ButtonFeel } from "@/ui/useButtonFeel";
 
 const PIXEL = '"Press Start 2P", monospace';
 const PURPLE = "#9945FF";
@@ -78,15 +79,20 @@ const STEPS: Step[] = [
   },
 ];
 
-const btn = (over: React.CSSProperties): React.CSSProperties => chamferBox(6, {
+const btn = (over: React.CSSProperties, feel?: Pick<ButtonFeel, "hover" | "pressed">): React.CSSProperties => chamferBox(6, {
   border: "none", padding: "9px 12px", cursor: "pointer", fontFamily: PIXEL, fontSize: 7,
   ...over,
+  ...(feel ? feelStyle(feel) : null),
 });
 
 export default function GuestNotice({ onConnect, onPlay }: { onConnect: () => void; onPlay: () => void }) {
   const [i, setI] = useState(0);
   const step = STEPS[i];
   const last = i === STEPS.length - 1;
+  const playFeel = useButtonFeel();
+  const connectFeel = useButtonFeel();
+  const backFeel = useButtonFeel();
+  const nextFeel = useButtonFeel();
 
   useEffect(() => {
     track("tutorial", "guest-notice", { value: i + 1, label: `step ${i + 1}/${STEPS.length}` });
@@ -132,10 +138,10 @@ export default function GuestNotice({ onConnect, onPlay }: { onConnect: () => vo
 
         {last ? (
           <div style={{ display: "flex", gap: 8 }}>
-            <button onClick={onPlay} style={btn({ flex: 1, background: "transparent", border: "1px solid #333344", color: "#b9b9cc" })}>
+            <button onClick={onPlay} {...playFeel.handlers} style={btn({ flex: 1, background: "transparent", border: "1px solid #333344", color: "#b9b9cc" }, playFeel)}>
               PLAY SOLO
             </button>
-            <button onClick={onConnect} style={btn({ flex: 1, background: PURPLE, color: "#fff" })}>
+            <button onClick={onConnect} {...connectFeel.handlers} style={btn({ flex: 1, background: PURPLE, color: "#fff" }, connectFeel)}>
               CONNECT WALLET
             </button>
           </div>
@@ -143,11 +149,12 @@ export default function GuestNotice({ onConnect, onPlay }: { onConnect: () => vo
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <button
               onClick={() => setI((n) => Math.max(0, n - 1))}
-              style={btn({ background: "transparent", border: "1px solid #333344", color: "#888899", visibility: i === 0 ? "hidden" : "visible" })}
+              {...backFeel.handlers}
+              style={btn({ background: "transparent", border: "1px solid #333344", color: "#888899", visibility: i === 0 ? "hidden" : "visible" }, backFeel)}
             >
               BACK
             </button>
-            <button onClick={() => setI((n) => n + 1)} style={btn({ marginLeft: "auto", background: GREEN, color: "#0a0a14" })}>
+            <button onClick={() => setI((n) => n + 1)} {...nextFeel.handlers} style={btn({ marginLeft: "auto", background: GREEN, color: "#0a0a14" }, nextFeel)}>
               NEXT
             </button>
           </div>

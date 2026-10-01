@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import type { MiniGameComponentProps, FoodCartContext } from "../types";
 import { ICON, UI_ACCENT, maskIcon } from "@/ui/PixelIcons";
 import { useLeaveStake } from "../leaveGuard";
+import { useButtonFeel, feelStyle } from "@/ui/useButtonFeel";
 
 // ─── CSS animations ───────────────────────────────────────────────────────────
 
@@ -314,6 +315,7 @@ export default function FoodCartGame({
   }, []);
 
   // ─── Layout ──────────────────────────────────────────────────────────────
+  const helpFeel = useButtonFeel();
 
   return (
     <div
@@ -382,9 +384,11 @@ export default function FoodCartGame({
           <div className="flex items-center gap-5">
             <button
               onClick={() => setHelpOpen(true)}
+              {...helpFeel.handlers}
               style={{
                 background: "rgba(255,107,53,0.12)", border: "1px solid rgba(255,107,53,0.6)", color: "#FFA06B",
                 borderRadius: 8, padding: "6px 9px", cursor: "pointer", fontFamily: '"Press Start 2P", monospace', fontSize: 7,
+                ...feelStyle(helpFeel),
               }}
             >
               ? HOW TO PLAY
@@ -671,6 +675,9 @@ export default function FoodCartGame({
                   onMouseLeave={e => {
                     if (!isPicked) (e.currentTarget as HTMLButtonElement).style.transform = "scale(1)";
                   }}
+                  onPointerDown={e => {
+                    if (!isDisabled) (e.currentTarget as HTMLButtonElement).style.transform = "scale(0.95)";
+                  }}
                 >
                   {/* Hotkey badge */}
                   <span style={{
@@ -749,6 +756,8 @@ function CompactBoard({
 }) {
   const recipe = orders[orderIdx]?.recipe;
   const PIX = '"Press Start 2P", monospace';
+  const helpFeel = useButtonFeel();
+  const closeFeel = useButtonFeel();
   return (
     <div
       className="relative flex flex-col rounded-2xl overflow-hidden sc-slide"
@@ -780,9 +789,11 @@ function CompactBoard({
         <button
           onClick={onHelp}
           aria-label="How to play"
+          {...helpFeel.handlers}
           style={{
             width: 30, height: 30, borderRadius: 8, background: "rgba(255,107,53,0.14)",
             border: "1px solid rgba(255,107,53,0.6)", color: "#FFA06B", fontFamily: PIX, fontSize: 10, touchAction: "manipulation",
+            ...feelStyle(helpFeel),
           }}
         >
           ?
@@ -790,9 +801,11 @@ function CompactBoard({
         <button
           onClick={onClose}
           aria-label="Close"
+          {...closeFeel.handlers}
           style={{
             width: 30, height: 30, borderRadius: 8, background: "transparent",
             border: "1px solid rgba(255,255,255,0.15)", display: "flex", alignItems: "center", justifyContent: "center", touchAction: "manipulation",
+            ...feelStyle(closeFeel),
           }}
         >
           <span aria-hidden style={maskIcon(ICON.close, UI_ACCENT, 22)} />
@@ -872,6 +885,8 @@ function CompactBoard({
                 key={ing.id}
                 onClick={() => onPick(ing.id)}
                 disabled={isDisabled}
+                onPointerDown={e => { if (!isDisabled) (e.currentTarget as HTMLButtonElement).style.transform = "scale(0.93)"; }}
+                onPointerUp={e => { (e.currentTarget as HTMLButtonElement).style.transform = "none"; }}
                 className={`flex flex-col items-center justify-center ${isCorrect ? "sc-correct" : isWrong ? "sc-wrong" : ""}`}
                 style={{
                   gap: 3, borderRadius: 10, minHeight: 0, padding: 2, touchAction: "manipulation",
@@ -879,6 +894,7 @@ function CompactBoard({
                   border: `2px solid ${isWrong ? "rgba(255,50,50,0.65)" : isCorrect ? "rgba(20,241,149,0.55)" : isNext ? "#9945FF" : "rgba(153,69,255,0.18)"}`,
                   opacity: isDisabled && !isPicked ? 0.5 : 1,
                   fontFamily: PIX,
+                  transition: "transform 0.08s",
                 }}
               >
                 <Sprite id={ing.id} size={40} />
@@ -927,6 +943,7 @@ function ResultShell({ tone, children }: { tone: "good" | "bad"; children: React
 }
 
 function SuccessCard({ completed, total, onContinue }: { completed: number; total: number; onContinue: () => void }) {
+  const feel = useButtonFeel();
   return (
     <ResultShell tone="good">
       <Chef size={96} />
@@ -946,9 +963,11 @@ function SuccessCard({ completed, total, onContinue }: { completed: number; tota
       </div>
       <button
         onClick={onContinue}
+        {...feel.handlers}
         style={{
           width: "100%", padding: "12px 24px", borderRadius: 12, background: "#14F195", color: "#021a0e",
           fontSize: 10, fontFamily: '"Press Start 2P", monospace', border: "none", cursor: "pointer",
+          ...feelStyle(feel),
         }}
       >
         CONTINUE
@@ -958,6 +977,7 @@ function SuccessCard({ completed, total, onContinue }: { completed: number; tota
 }
 
 function FailureCard({ reason, wrongId, onContinue }: { reason: "timeout" | "wrong" | null; wrongId: IngId | null; onContinue: () => void }) {
+  const feel = useButtonFeel();
   return (
     <ResultShell tone="bad">
       {reason === "wrong" && wrongId ? (
@@ -982,9 +1002,11 @@ function FailureCard({ reason, wrongId, onContinue }: { reason: "timeout" | "wro
       </div>
       <button
         onClick={onContinue}
+        {...feel.handlers}
         style={{
           width: "100%", padding: "11px 24px", borderRadius: 12, background: "rgba(255,60,60,0.12)", color: "#ff9999",
           fontSize: 10, fontFamily: '"Press Start 2P", monospace', border: "1px solid rgba(255,60,60,0.35)", cursor: "pointer",
+          ...feelStyle(feel),
         }}
       >
         CLOSE
@@ -1071,6 +1093,8 @@ function HowToPlay({ onDone }: { onDone: () => void }) {
   ];
   const step = steps[i];
   const last = i === steps.length - 1;
+  const backFeel = useButtonFeel();
+  const nextFeel = useButtonFeel();
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -1109,7 +1133,8 @@ function HowToPlay({ onDone }: { onDone: () => void }) {
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           <button
             onClick={() => setI((n) => Math.max(0, n - 1))}
-            style={{ background: "transparent", border: "1px solid #333344", color: "#888899", borderRadius: 8, padding: "9px 12px", cursor: "pointer", fontFamily: "inherit", fontSize: 7, visibility: i === 0 ? "hidden" : "visible" }}
+            {...backFeel.handlers}
+            style={{ background: "transparent", border: "1px solid #333344", color: "#888899", borderRadius: 8, padding: "9px 12px", cursor: "pointer", fontFamily: "inherit", fontSize: 7, visibility: i === 0 ? "hidden" : "visible", ...feelStyle(backFeel) }}
           >
             BACK
           </button>
@@ -1120,7 +1145,8 @@ function HowToPlay({ onDone }: { onDone: () => void }) {
           </div>
           <button
             onClick={() => (last ? onDone() : setI((n) => n + 1))}
-            style={{ background: "#FF6B35", color: "#0a0a14", border: "none", borderRadius: 8, padding: "10px 16px", cursor: "pointer", fontFamily: "inherit", fontSize: 7 }}
+            {...nextFeel.handlers}
+            style={{ background: "#FF6B35", color: "#0a0a14", border: "none", borderRadius: 8, padding: "10px 16px", cursor: "pointer", fontFamily: "inherit", fontSize: 7, ...feelStyle(nextFeel) }}
           >
             {last ? "COOK!" : "NEXT"}
           </button>

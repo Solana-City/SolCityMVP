@@ -19,6 +19,7 @@ import CloakPanel from "@/ui/CloakPanel";
 import TokenScanPanel from "@/ui/TokenScanPanel";
 import { backdropClose } from "@/ui/backdrop";
 import { useViewportBox, overlayBox } from "@/ui/useViewportBox";
+import { useButtonFeel, feelStyle, type ButtonFeel } from "@/ui/useButtonFeel";
 
 /** Every protocol NPC's app window uses the map legend's "Protocols" color. */
 const PROTOCOLS_COLOR = CATEGORY_META.defi.color;
@@ -264,6 +265,10 @@ function SwapPanel({ onClose }: { onClose: () => void }) {
   const [status,  setStatus]  = useState<"idle"|"quoting"|"signing"|"submitting"|"done"|"error">("idle");
   const [result,  setResult]  = useState<{ signature?: string; outAmount?: string; error?: string } | null>(null);
   const quotedAt = useRef(0);
+  const closeFeel = useButtonFeel();
+  const retryFeel = useButtonFeel();
+  const quoteFeel = useButtonFeel();
+  const swapFeel = useButtonFeel();
 
   const jupRef = useRef<typeof import("@/game/solana/jupiterSwap") | null>(null);
   useEffect(() => { import("@/game/solana/jupiterSwap").then(m => { jupRef.current = m; }); }, []);
@@ -363,7 +368,7 @@ function SwapPanel({ onClose }: { onClose: () => void }) {
               View on Solscan <ExternalLinkIcon size={9} color="#14F0C6" />
             </a>
           )}
-          <button onClick={onClose} style={btnStyle("#B7E928")} className="w-full mt-4">CLOSE</button>
+          <button onClick={onClose} {...closeFeel.handlers} style={btnStyle("#B7E928", "#fff", closeFeel)} className="w-full mt-4">CLOSE</button>
         </div>
       </>
     );
@@ -376,7 +381,7 @@ function SwapPanel({ onClose }: { onClose: () => void }) {
         <div className="text-center py-6">
           <div style={{ fontSize: "9px", color: "#ff4444", marginBottom: 12 }}>{result.error}</div>
           <button onClick={() => { setStatus("idle"); setResult(null); setQuote(null); }}
-            style={btnStyle("#333344", "#888899")} className="px-4 py-2">Try again</button>
+            {...retryFeel.handlers} style={btnStyle("#333344", "#888899", retryFeel)} className="px-4 py-2">Try again</button>
         </div>
       </>
     );
@@ -421,12 +426,12 @@ function SwapPanel({ onClose }: { onClose: () => void }) {
       <div className="flex gap-2 mt-4">
         {!quote ? (
           <button onClick={handleQuote} disabled={!connected || loading || !amount}
-            style={btnStyle(connected ? "#FFD700" : "#333344", connected ? "#000" : "#666677")} className="flex-1 py-2.5">
+            {...quoteFeel.handlers} style={btnStyle(connected ? "#FFD700" : "#333344", connected ? "#000" : "#666677", quoteFeel)} className="flex-1 py-2.5">
             {!connected ? "CONNECT WALLET FIRST" : loading ? "GETTING QUOTE..." : "GET QUOTE"}
           </button>
         ) : (
           <button onClick={handleSwap} disabled={status === "signing" || status === "submitting"}
-            style={btnStyle("#B7E928", "#000")} className="flex-1 py-2.5">
+            {...swapFeel.handlers} style={btnStyle("#B7E928", "#000", swapFeel)} className="flex-1 py-2.5">
             {status === "signing" ? "SIGN IN WALLET..." : status === "submitting" ? "SUBMITTING..." : "CONFIRM SWAP"}
           </button>
         )}
@@ -445,6 +450,9 @@ function TransferPanel({ onClose, to, toName }: { onClose: () => void; to?: stri
   const [amount, setAmount] = useState("0.01");
   const [status, setStatus] = useState<"idle" | "sending" | "done" | "error">("idle");
   const [result, setResult] = useState<{ signature?: string; error?: string } | null>(null);
+  const closeFeel = useButtonFeel();
+  const retryFeel = useButtonFeel();
+  const sendFeel = useButtonFeel();
 
   const handleSend = useCallback(async () => {
     if (!publicKey || !recipient || !amount) return;
@@ -490,7 +498,7 @@ function TransferPanel({ onClose, to, toName }: { onClose: () => void; to?: stri
             style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 5, marginTop: 8, fontSize: "9px", color: "#14F0C6" }}>
             View on Explorer <ExternalLinkIcon size={9} color="#14F0C6" />
           </a>
-          <button onClick={onClose} style={btnStyle("#14F0C6", "#000")} className="w-full mt-4">CLOSE</button>
+          <button onClick={onClose} {...closeFeel.handlers} style={btnStyle("#14F0C6", "#000", closeFeel)} className="w-full mt-4">CLOSE</button>
         </div>
       </>
     );
@@ -502,7 +510,7 @@ function TransferPanel({ onClose, to, toName }: { onClose: () => void; to?: stri
         <PanelTitleBar title="SEND SOL" onClose={onClose} color={PROTOCOLS_COLOR} logo={<ProtocolLogo sheet="send-npc.png" />} />
         <div className="text-center py-6">
           <div style={{ fontSize: "9px", color: "#ff4444", marginBottom: 12 }}>{result.error}</div>
-          <button onClick={() => { setStatus("idle"); setResult(null); }} style={btnStyle("#333344", "#888899")} className="px-4 py-2">Try again</button>
+          <button onClick={() => { setStatus("idle"); setResult(null); }} {...retryFeel.handlers} style={btnStyle("#333344", "#888899", retryFeel)} className="px-4 py-2">Try again</button>
         </div>
       </>
     );
@@ -525,7 +533,7 @@ function TransferPanel({ onClose, to, toName }: { onClose: () => void; to?: stri
       </div>
       <div className="flex gap-2">
         <button onClick={handleSend} disabled={!connected || status === "sending" || !recipient || !amount}
-          style={btnStyle(connected ? "#14F0C6" : "#333344", connected ? "#000" : "#666677")} className="flex-1 py-2.5">
+          {...sendFeel.handlers} style={btnStyle(connected ? "#14F0C6" : "#333344", connected ? "#000" : "#666677", sendFeel)} className="flex-1 py-2.5">
           {!connected ? "CONNECT WALLET FIRST" : status === "sending" ? "SENDING…" : "SEND"}
         </button>
       </div>
@@ -606,6 +614,7 @@ function EarnListingsStage({
   const [listings, setListings] = useState<EarnListing[]>([]);
   const [loading, setLoading]   = useState(true);
   const [failed, setFailed]     = useState(false);
+  const backFeel = useButtonFeel();
 
   useEffect(() => {
     let cancelled = false;
@@ -644,7 +653,8 @@ function EarnListingsStage({
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
         <button
           onClick={onBack}
-          style={chamferBox(6, { background: "transparent", border: `1px solid ${category.color}44`, color: category.color, padding: "4px 10px", cursor: "pointer", fontFamily: '"Press Start 2P", monospace', fontSize: "7px" })}
+          {...backFeel.handlers}
+          style={chamferBox(6, { background: "transparent", border: `1px solid ${category.color}44`, color: category.color, padding: "4px 10px", cursor: "pointer", fontFamily: '"Press Start 2P", monospace', fontSize: "7px", ...feelStyle(backFeel) })}
         >
           ← BACK
         </button>
@@ -799,6 +809,15 @@ function PrivatePaymentPanel({ onClose }: { onClose: () => void }) {
   useEffect(() => {
     if (balance !== null && balance <= 0 && !pickedTabRef.current) setActiveTab("deposit");
   }, [balance]);
+  const connectFeel = useButtonFeel();
+  const backFeel = useButtonFeel();
+  const howFeel = useButtonFeel();
+  const showBalanceFeel = useButtonFeel();
+  const showAmountFeel = useButtonFeel();
+  const emptyDepositFeel = useButtonFeel();
+  const sendFeel = useButtonFeel();
+  const depositFeel = useButtonFeel();
+  const withdrawFeel = useButtonFeel();
 
   // Re-authenticate whenever cluster changes
   useEffect(() => {
@@ -917,7 +936,7 @@ function PrivatePaymentPanel({ onClose }: { onClose: () => void }) {
         <div style={{ textAlign: "center", padding: "4px 0 12px", color: "#b9b9cc", fontSize: 8 }}>
           Connect a wallet to start.
         </div>
-        <button onClick={() => openWalletModal(true)} style={btnStyle(FUCHSIA, "#fff")} className="w-full py-2.5">CONNECT WALLET</button>
+        <button onClick={() => openWalletModal(true)} {...connectFeel.handlers} style={btnStyle(FUCHSIA, "#fff", connectFeel)} className="w-full py-2.5">CONNECT WALLET</button>
       </>
     );
   }
@@ -950,7 +969,7 @@ function PrivatePaymentPanel({ onClose }: { onClose: () => void }) {
             {isWithdraw ? "Back in your wallet." : "Sent. No public trace."}
           </div>
         </div>
-        <button onClick={() => setStatus("ready")} style={btnStyle(FUCHSIA, "#fff")} className="w-full py-2.5 mt-2">BACK</button>
+        <button onClick={() => setStatus("ready")} {...backFeel.handlers} style={btnStyle(FUCHSIA, "#fff", backFeel)} className="w-full py-2.5 mt-2">BACK</button>
       </>
     );
   }
@@ -964,7 +983,8 @@ function PrivatePaymentPanel({ onClose }: { onClose: () => void }) {
         <button
           onClick={() => setIntroOpen(true)}
           title="How it works"
-          style={chamferBox(6, { background: "transparent", border: `1px solid ${FUCHSIA}66`, color: FUCHSIA, padding: "4px 7px", cursor: "pointer", fontFamily: '"Press Start 2P", monospace', fontSize: 7, marginRight: 22 })}
+          {...howFeel.handlers}
+          style={chamferBox(6, { background: "transparent", border: `1px solid ${FUCHSIA}66`, color: FUCHSIA, padding: "4px 7px", cursor: "pointer", fontFamily: '"Press Start 2P", monospace', fontSize: 7, marginRight: 22, ...feelStyle(howFeel) })}
         >
           ? HOW
         </button>
@@ -980,7 +1000,8 @@ function PrivatePaymentPanel({ onClose }: { onClose: () => void }) {
           </span>
           <button
             onClick={() => setShowBalance(v => !v)}
-            style={{ background: "none", border: "none", cursor: "pointer", color: "#555566", fontSize: 11, padding: 0, lineHeight: 1 }}
+            {...showBalanceFeel.handlers}
+            style={{ background: "none", border: "none", cursor: "pointer", color: "#555566", fontSize: 11, padding: 0, lineHeight: 1, ...feelStyle(showBalanceFeel) }}
             title={showBalance ? "Hide balance" : "Show balance"}
           >
             {showBalance ? "◉" : "◎"}
@@ -1014,7 +1035,8 @@ function PrivatePaymentPanel({ onClose }: { onClose: () => void }) {
               <span>Amount (USDC)</span>
               <button
                 onClick={() => setShowAmount(v => !v)}
-                style={{ background: "none", border: "none", cursor: "pointer", color: "#555566", fontSize: 10, padding: 0 }}
+                {...showAmountFeel.handlers}
+                style={{ background: "none", border: "none", cursor: "pointer", color: "#555566", fontSize: 10, padding: 0, ...feelStyle(showAmountFeel) }}
                 title={showAmount ? "Hide amount" : "Show amount"}
               >
                 {showAmount ? "◉" : "◎"}
@@ -1035,7 +1057,8 @@ function PrivatePaymentPanel({ onClose }: { onClose: () => void }) {
           {balance !== null && balance <= 0 && (
             <button
               onClick={() => { pickedTabRef.current = true; setActiveTab("deposit"); }}
-              style={chamferBox(8, { display: "block", width: "100%", background: `${FUCHSIA}18`, border: `1px dashed ${FUCHSIA}`, color: FUCHSIA, padding: "8px 0", marginBottom: 10, cursor: "pointer", fontFamily: '"Press Start 2P", monospace', fontSize: 7 })}
+              {...emptyDepositFeel.handlers}
+              style={chamferBox(8, { display: "block", width: "100%", background: `${FUCHSIA}18`, border: `1px dashed ${FUCHSIA}`, color: FUCHSIA, padding: "8px 0", marginBottom: 10, cursor: "pointer", fontFamily: '"Press Start 2P", monospace', fontSize: 7, ...feelStyle(emptyDepositFeel) })}
             >
               EMPTY: DEPOSIT FIRST (STEP 1) ▸
             </button>
@@ -1045,7 +1068,8 @@ function PrivatePaymentPanel({ onClose }: { onClose: () => void }) {
             <button
               onClick={handleTransfer}
               disabled={status === "transferring" || !balance || balance <= 0}
-              style={btnStyle(balance && balance > 0 ? FUCHSIA : "#333344", "#fff")}
+              {...sendFeel.handlers}
+              style={btnStyle(balance && balance > 0 ? FUCHSIA : "#333344", "#fff", sendFeel)}
               className="flex-1 py-2.5"
             >
               {status === "transferring" ? "SIGNING…" : "SEND PRIVATELY"}
@@ -1071,7 +1095,8 @@ function PrivatePaymentPanel({ onClose }: { onClose: () => void }) {
             <button
               onClick={handleDeposit}
               disabled={status === "depositing"}
-              style={btnStyle(FUCHSIA, "#fff")}
+              {...depositFeel.handlers}
+              style={btnStyle(FUCHSIA, "#fff", depositFeel)}
               className="flex-1 py-2.5"
             >
               {status === "depositing" ? "SIGNING…" : "DEPOSIT"}
@@ -1097,7 +1122,8 @@ function PrivatePaymentPanel({ onClose }: { onClose: () => void }) {
             <button
               onClick={handleWithdraw}
               disabled={status === "withdrawing" || !balance || balance <= 0}
-              style={btnStyle(balance && balance > 0 ? FUCHSIA : "#333344", "#fff")}
+              {...withdrawFeel.handlers}
+              style={btnStyle(balance && balance > 0 ? FUCHSIA : "#333344", "#fff", withdrawFeel)}
               className="flex-1 py-2.5"
             >
               {status === "withdrawing" ? "SIGNING…" : "WITHDRAW"}
@@ -1128,30 +1154,39 @@ function ClusterToggle({ cluster, onChange, disabled }: {
       <span style={{ fontSize: 7, color: "#555566", fontFamily: '"Press Start 2P", monospace', flexShrink: 0 }}>NETWORK</span>
       <div style={chamferBox(6, { display: "flex", gap: 0, background: "#0d0d22", border: "1px solid #1a1a3a", overflow: "hidden", opacity: disabled ? 0.45 : 1 })}>
         {(["devnet", "mainnet"] as const).map(c => (
-          <button
-            key={c}
-            onClick={() => !disabled && onChange(c)}
-            style={{
-              background: cluster === c ? "#c026d322" : "transparent",
-              color: cluster === c ? "#c026d3" : "#444455",
-              border: "none",
-              borderRight: c === "devnet" ? "1px solid #1a1a3a" : "none",
-              padding: "6px 12px",
-              fontFamily: '"Press Start 2P", monospace',
-              fontSize: 7,
-              cursor: disabled ? "not-allowed" : "pointer",
-              textTransform: "uppercase",
-              fontWeight: cluster === c ? "bold" : "normal",
-            }}
-          >
-            {c}
-          </button>
+          <ClusterOption key={c} c={c} active={cluster === c} disabled={disabled} onClick={() => !disabled && onChange(c)} />
         ))}
       </div>
     </div>
   );
 }
 
+function ClusterOption({ c, active, disabled, onClick }: {
+  c: "devnet" | "mainnet"; active: boolean; disabled?: boolean; onClick: () => void;
+}) {
+  const feel = useButtonFeel();
+  return (
+    <button
+      onClick={onClick}
+      {...feel.handlers}
+      style={{
+        background: active ? "#c026d322" : "transparent",
+        color: active ? "#c026d3" : "#444455",
+        border: "none",
+        borderRight: c === "devnet" ? "1px solid #1a1a3a" : "none",
+        padding: "6px 12px",
+        fontFamily: '"Press Start 2P", monospace',
+        fontSize: 7,
+        cursor: disabled ? "not-allowed" : "pointer",
+        textTransform: "uppercase",
+        fontWeight: active ? "bold" : "normal",
+        ...(disabled ? null : feelStyle(feel)),
+      }}
+    >
+      {c}
+    </button>
+  );
+}
 
 // ── Private payments: the flow as a picture ─────────────────────────────
 
@@ -1249,6 +1284,8 @@ function PrivateIntro({ onDone }: { onDone: () => void }) {
   const step = PRIVATE_STEPS[i];
   const last = i === PRIVATE_STEPS.length - 1;
   const F = "#c026d3";
+  const backFeel = useButtonFeel();
+  const nextFeel = useButtonFeel();
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -1279,7 +1316,8 @@ function PrivateIntro({ onDone }: { onDone: () => void }) {
       <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
         <button
           onClick={() => setI((n) => Math.max(0, n - 1))}
-          style={chamferBox(8, { background: "transparent", border: "1px solid #333344", color: "#888899", padding: "9px 12px", cursor: "pointer", fontFamily: '"Press Start 2P", monospace', fontSize: 7, visibility: i === 0 ? "hidden" : "visible" })}
+          {...backFeel.handlers}
+          style={chamferBox(8, { background: "transparent", border: "1px solid #333344", color: "#888899", padding: "9px 12px", cursor: "pointer", fontFamily: '"Press Start 2P", monospace', fontSize: 7, visibility: i === 0 ? "hidden" : "visible", ...feelStyle(backFeel) })}
         >
           BACK
         </button>
@@ -1288,7 +1326,7 @@ function PrivateIntro({ onDone }: { onDone: () => void }) {
             <span key={s.id} style={{ width: n === i ? 16 : 6, height: 6, background: n === i ? F : "#333344", transition: "width .2s" }} />
           ))}
         </div>
-        <button onClick={() => (last ? onDone() : setI((n) => n + 1))} style={btnStyle(F, "#fff")} className="px-4 py-2.5">
+        <button onClick={() => (last ? onDone() : setI((n) => n + 1))} {...nextFeel.handlers} style={btnStyle(F, "#fff", nextFeel)} className="px-4 py-2.5">
           {last ? "START" : "NEXT"}
         </button>
       </div>
@@ -1353,7 +1391,7 @@ function StepCard({ number, title, description, color, action }: {
   );
 }
 
-function btnStyle(bg: string, color = "#fff"): React.CSSProperties {
+function btnStyle(bg: string, color = "#fff", feel?: Pick<ButtonFeel, "hover" | "pressed">): React.CSSProperties {
   return chamferBox(8, {
     background: bg,
     color,
@@ -1363,5 +1401,6 @@ function btnStyle(bg: string, color = "#fff"): React.CSSProperties {
     fontSize: "7px",
     display: "block",
     textAlign: "center",
+    ...(feel ? feelStyle(feel) : null),
   });
 }

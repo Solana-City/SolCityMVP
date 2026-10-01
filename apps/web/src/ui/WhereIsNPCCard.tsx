@@ -18,6 +18,7 @@ import { track } from "@/game/telemetry/track";
 import { cachedName, requestNames } from "@/game/names/nameService";
 import { chamferBox, octagonFrame } from "@/ui/chamfer";
 import ChamferGlow from "@/ui/ChamferGlow";
+import { useButtonFeel, feelStyle } from "@/ui/useButtonFeel";
 
 // ── Chroma key ────────────────────────────────────────────────────────────────
 const CHROMA_R = 215, CHROMA_G = 123, CHROMA_B = 186, CHROMA_TOL = 30;
@@ -262,6 +263,8 @@ export default function WhereIsNPCCard({ gameRef, wallet }: Props) {
   const [msLeft, setMsLeft] = useState(getCitizenMsRemaining());
   const [foundMsg, setFoundMsg] = useState<string | null>(null);
   const [round, setRound] = useState(getRoundIndex());
+  const infoFeel = useButtonFeel();
+  const collapseFeel = useButtonFeel();
 
   useEffect(() => {
     const id = setInterval(() => {
@@ -377,18 +380,22 @@ export default function WhereIsNPCCard({ gameRef, wallet }: Props) {
               width: 22, height: 22, padding: 0, lineHeight: "12px", cursor: "pointer",
               display: "flex", alignItems: "center", justifyContent: "center",
               flexShrink: 0,
+              ...feelStyle(infoFeel),
             }}
               onClick={e => { e.stopPropagation(); setShowInfo(v => !v); }}
+              {...infoFeel.handlers}
               title="How to play"
             >?</button>
             <button
               onClick={e => { e.stopPropagation(); setCollapsed(v => !v); }}
+              {...collapseFeel.handlers}
               style={{
                 backgroundImage: "url(/assets/ui/icon_frame_btn.png)", backgroundSize: "100% 100%",
                 imageRendering: "pixelated", border: "none",
                 width: 22, height: 22, padding: 0, cursor: "pointer",
                 display: "flex", alignItems: "center", justifyContent: "center",
                 flexShrink: 0,
+                ...feelStyle(collapseFeel),
               }}
               title={collapsed ? "Expand" : "Collapse"}
             >
@@ -479,17 +486,17 @@ export default function WhereIsNPCCard({ gameRef, wallet }: Props) {
  * be — just smaller, since this one sits inside a card instead of the HUD.
  */
 function LeaderboardButton({ onClick }: { onClick: () => void }) {
-  const [hover, setHover] = useState(false);
+  const feel = useButtonFeel();
   return (
     <button
       onClick={onClick} title="Leaderboard" aria-label="Leaderboard"
-      onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
+      {...feel.handlers}
       style={{
         width: 22, height: 22, padding: 0, border: "none", background: "none",
         cursor: "pointer", flexShrink: 0, display: "block",
-        filter: hover ? "brightness(1.25) drop-shadow(0 0 4px rgba(20,240,198,0.7))" : "none",
-        transform: hover ? "translateY(-1px)" : "none",
-        transition: "filter 0.12s, transform 0.12s",
+        filter: feel.pressed ? "brightness(1.1)" : feel.hover ? "brightness(1.25) drop-shadow(0 0 4px rgba(20,240,198,0.7))" : "none",
+        transform: feel.pressed ? "scale(0.92)" : feel.hover ? "translateY(-1px)" : "none",
+        transition: "filter 0.12s, transform 0.08s",
       }}
     >
       <img src="/assets/ui/icon_leaderboard.png" alt="" draggable={false}
@@ -518,6 +525,8 @@ function HuntKey({ label }: { label: string }) {
 function HuntHowTo({ loadout, isTouch, onClose }: { loadout: Loadout | null; isTouch: boolean; onClose: () => void }) {
   useEffect(() => { track("tutorial", "find-someone", { value: 1, label: "opened" }); }, []);
   const [i, setI] = useState(0);
+  const backFeel = useButtonFeel();
+  const nextFeel = useButtonFeel();
   const target = loadout
     ? <MiniAvatar loadout={loadout} size={96} />
     : <div aria-hidden style={{ width: 96, height: 96, backgroundImage: 'url("/assets/sprites/main_char.png")', backgroundSize: "384px 384px", backgroundPosition: "0 0", imageRendering: "pixelated" }} />;
@@ -601,7 +610,8 @@ function HuntHowTo({ loadout, isTouch, onClose }: { loadout: Loadout | null; isT
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <button
             onClick={() => setI((n) => Math.max(0, n - 1))}
-            style={chamferBox(8, { background: "transparent", border: "1px solid #333355", color: "#8888aa", padding: "9px 12px", cursor: "pointer", fontFamily: PIX, fontSize: 7, visibility: i === 0 ? "hidden" : "visible" })}
+            {...backFeel.handlers}
+            style={chamferBox(8, { background: "transparent", border: "1px solid #333355", color: "#8888aa", padding: "9px 12px", cursor: "pointer", fontFamily: PIX, fontSize: 7, visibility: i === 0 ? "hidden" : "visible", ...feelStyle(backFeel) })}
           >
             BACK
           </button>
@@ -612,7 +622,8 @@ function HuntHowTo({ loadout, isTouch, onClose }: { loadout: Loadout | null; isT
           </div>
           <button
             onClick={next}
-            style={chamferBox(8, { background: "#9945FF", color: "#fff", border: "none", padding: "10px 16px", cursor: "pointer", fontFamily: PIX, fontSize: 7 })}
+            {...nextFeel.handlers}
+            style={chamferBox(8, { background: "#9945FF", color: "#fff", border: "none", padding: "10px 16px", cursor: "pointer", fontFamily: PIX, fontSize: 7, ...feelStyle(nextFeel) })}
           >
             {last ? "GOT IT" : "NEXT"}
           </button>

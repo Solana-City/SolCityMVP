@@ -55,6 +55,7 @@ import { lockReason } from "@/game/solmechs/ownership";
 import { formatClock } from "@/game/solmechs/data/clock";
 import { DEFAULT_CLOCK } from "@/game/solmechs/data/clock";
 import { C, T, SP, R, MONO, backdrop, panel, eyebrow, button, actionButton, W, PANEL_HEIGHT } from "./theme";
+import { useButtonFeel, feelStyle } from "@/ui/useButtonFeel";
 import TeamBuilder from "./TeamBuilder";
 import TeamBattleScreen from "./TeamBattleScreen";
 import { validateTeam, type TeamBuild } from "@/game/solmechs/data/team";
@@ -225,6 +226,10 @@ export default function SolMechsBattle({ context, onResult, onClose }: MiniGameC
     { won: boolean; before: number; after: number | null; error?: string } | null
   >(null);
   const { publicKey, signTransaction } = useWallet();
+  const rankedBackFeel = useButtonFeel();
+  const hangarDeployFeel = useButtonFeel();
+  const resultMenuFeel = useButtonFeel();
+  const resultLeaveFeel = useButtonFeel();
 
   // A PvP transport lives only while the player is on a PvP screen.
   const pvpTransportRef = useRef<PvpTransport | null>(null);
@@ -743,7 +748,8 @@ export default function SolMechsBattle({ context, onResult, onClose }: MiniGameC
           </div>
           <div style={{ display: "flex", gap: SP.sm, justifyContent: "center", marginTop: SP.lg }}>
             <button
-              style={button("primary")}
+              {...rankedBackFeel.handlers}
+              style={button("primary", { feel: rankedBackFeel })}
               onClick={() => {
                 setEnemyTeam(null);
                 setSquadOpponent(null);
@@ -823,6 +829,7 @@ export default function SolMechsBattle({ context, onResult, onClose }: MiniGameC
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", flexShrink: 0 }}>
           <button
+            {...hangarDeployFeel.handlers}
             onClick={() => startBattle(playerMech)}
             disabled={lockReason(ownership, playerMech) !== null}
             style={{
@@ -830,6 +837,7 @@ export default function SolMechsBattle({ context, onResult, onClose }: MiniGameC
               color: C.ink, border: "none", borderRadius: 8, fontSize: 15,
               fontWeight: 700, cursor: "pointer",
               opacity: lockReason(ownership, playerMech) ? 0.45 : 1,
+              ...(lockReason(ownership, playerMech) ? null : feelStyle(hangarDeployFeel)),
             }}
           >
             DEPLOY
@@ -909,8 +917,8 @@ export default function SolMechsBattle({ context, onResult, onClose }: MiniGameC
             {battle.history.length} rounds
             {clock.p1 <= 0 || clock.p2 <= 0 ? " · decided on time" : ""}
           </div>
-          <button onClick={() => setPhase("menu")} style={btnStyle(C.teal)}>MAIN MENU</button>
-          <button onClick={onClose} style={{ ...btnStyle(C.line), color: "#fff", marginLeft: 8 }}>LEAVE</button>
+          <button {...resultMenuFeel.handlers} onClick={() => setPhase("menu")} style={{ ...btnStyle(C.teal), ...feelStyle(resultMenuFeel) }}>MAIN MENU</button>
+          <button {...resultLeaveFeel.handlers} onClick={onClose} style={{ ...btnStyle(C.line), color: "#fff", marginLeft: 8, ...feelStyle(resultLeaveFeel) }}>LEAVE</button>
         </div>
       ) : (
         <div style={sxBattle.controls}>
@@ -1007,6 +1015,7 @@ function MechCard({ matrixName, role, build, custom, locked, selected, onSelect 
 }) {
   const ref = useRef<HTMLCanvasElement>(null);
   const raf = useRef(0);
+  const feel = useButtonFeel();
   // Cropped to the mech, not to the doll box — see mechBounds.
   const [crop, setCrop] = useState<MechBounds>({ x: 0, y: 0, w: DOLL_WIDTH, h: DOLL_HEIGHT });
 
@@ -1039,6 +1048,7 @@ function MechCard({ matrixName, role, build, custom, locked, selected, onSelect 
 
   return (
     <button
+      {...feel.handlers}
       onClick={onSelect}
       disabled={locked !== null}
       style={{
@@ -1050,6 +1060,7 @@ function MechCard({ matrixName, role, build, custom, locked, selected, onSelect 
         // what the pass is for; hiding it would sell nothing.
         opacity: locked ? 0.45 : 1,
         color: "#fff", display: "flex", flexDirection: "column", gap: 4,
+        ...(locked ? null : feelStyle(feel)),
       }}
     >
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 6 }}>
@@ -1181,6 +1192,7 @@ function Shell({ children, onClose, onBack, title, subtitle = "", fit = false, w
   /** Take the battle-sized width. Menus and lists stay narrow. */
   wide?: boolean;
 }) {
+  const backFeel = useButtonFeel();
   return (
     <div style={backdrop}>
       <div style={{
@@ -1191,7 +1203,7 @@ function Shell({ children, onClose, onBack, title, subtitle = "", fit = false, w
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: SP.md, flexShrink: 0 }}>
           {onBack && (
-            <button onClick={onBack} aria-label="Back" style={{ ...button("ghost"), padding: "8px 12px", fontSize: T.lead }}>
+            <button {...backFeel.handlers} onClick={onBack} aria-label="Back" style={{ ...button("ghost", { feel: backFeel }), padding: "8px 12px", fontSize: T.lead }}>
               &lsaquo;
             </button>
           )}

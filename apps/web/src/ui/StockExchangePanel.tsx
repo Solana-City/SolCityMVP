@@ -22,6 +22,7 @@ import { profileManager } from "@/game/config/profileManager";
 import { chamferBox } from "@/ui/chamfer";
 import { PanelTitleBar, ProtocolLogo, ExternalLinkIcon } from "@/ui/PixelIcons";
 import { CATEGORY_META } from "@/game/minimap/categories";
+import { useButtonFeel, feelStyle, type ButtonFeel } from "@/ui/useButtonFeel";
 
 const PIXEL = '"Press Start 2P", monospace';
 const PROTOCOLS_COLOR = CATEGORY_META.defi.color;
@@ -108,6 +109,7 @@ export default function StockExchangePanel({ onClose }: { onClose: () => void })
   const [query, setQuery] = useState("");
   const [sector, setSector] = useState<StockSector | "all">("all");
   const clock = useMemo(() => getMarketClock(), [market.updatedAt]);
+  const connectFeel = useButtonFeel();
 
   useEffect(() => stockMarket.subscribe(setMarket), []);
 
@@ -183,14 +185,9 @@ export default function StockExchangePanel({ onClose }: { onClose: () => void })
       {/* Tabs */}
       <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
         {(["market", "baskets", "mine"] as const).map((t) => (
-          <button key={t} onClick={() => setTab(t)} style={chamferBox(8, {
-            flex: 1, padding: "8px 0", cursor: "pointer", fontFamily: PIXEL, fontSize: 6,
-            border: `1px solid ${tab === t ? GOLD : "#2a2f45"}`,
-            background: tab === t ? "rgba(255,181,71,0.12)" : "transparent",
-            color: tab === t ? GOLD : MUTED,
-          })}>
+          <SEPTabButton key={t} active={tab === t} onClick={() => setTab(t)}>
             {t === "market" ? "MARKET" : t === "baskets" ? "BASKETS" : `MINE${owned.length ? ` (${owned.length})` : ""}`}
-          </button>
+          </SEPTabButton>
         ))}
       </div>
 
@@ -212,11 +209,9 @@ export default function StockExchangePanel({ onClose }: { onClose: () => void })
               (a sideways scroll hid the last ones behind the panel edge). */}
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
             {(["all", ...SECTORS] as const).map((sct) => (
-              <button key={sct} onClick={() => setSector(sct)} style={{
-                ...chip(sector === sct), flex: "0 0 auto", padding: "6px 9px", fontSize: 6,
-              }}>
+              <SectorChip key={sct} active={sector === sct} onClick={() => setSector(sct)}>
                 {sct === "all" ? "ALL" : SECTOR_LABELS[sct]}
-              </button>
+              </SectorChip>
             ))}
           </div>
           {marketList.length === 0 && (
@@ -232,20 +227,7 @@ export default function StockExchangePanel({ onClose }: { onClose: () => void })
             const moves = stocks.map((s) => market.quotes[s.mint]?.change24h).filter((v): v is number => v != null);
             const avg = moves.length ? moves.reduce((a, v) => a + v, 0) / moves.length : null;
             return (
-              <button key={b.id} onClick={() => setSelectedBasket(b)} style={chamferBox(10, {
-                display: "flex", alignItems: "center", gap: 10, padding: 10, cursor: "pointer",
-                textAlign: "left", background: "#12162b", border: `1px solid ${b.color}44`, minWidth: 0,
-              })}>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontFamily: PIXEL, fontSize: 8, color: "#fff" }}>{b.name.toUpperCase()}</div>
-                  <div style={{ fontFamily: PIXEL, fontSize: 5, color: MUTED, marginTop: 4, lineHeight: 1.5 }}>{b.tagline}</div>
-                  <div style={{ marginTop: 8 }}><LogoStack stocks={stocks} size={18} /></div>
-                </div>
-                <div style={{ textAlign: "right", flexShrink: 0 }}>
-                  <div style={{ fontFamily: PIXEL, fontSize: 7, color: avg == null ? MUTED : moveColor(avg) }}>{avg == null ? "..." : pct(avg)}</div>
-                  <div style={{ fontFamily: PIXEL, fontSize: 5, color: MUTED, marginTop: 4 }}>{stocks.length} STOCKS</div>
-                </div>
-              </button>
+              <BasketCard key={b.id} basket={b} stocks={stocks} avg={avg} onClick={() => setSelectedBasket(b)} />
             );
           })}
         </div>
@@ -259,7 +241,7 @@ export default function StockExchangePanel({ onClose }: { onClose: () => void })
       )}
 
       {tab === "mine" && !connected && (
-        <button onClick={() => openWalletModal(true)} style={primaryBtn(GOLD)}>CONNECT WALLET</button>
+        <button onClick={() => openWalletModal(true)} {...connectFeel.handlers} style={primaryBtn(GOLD, connectFeel)}>CONNECT WALLET</button>
       )}
       {tab === "mine" && connected && owned.length === 0 && (
         <div style={{ textAlign: "center", padding: "18px 0", fontSize: 7, color: MUTED }}>
@@ -276,32 +258,7 @@ export default function StockExchangePanel({ onClose }: { onClose: () => void })
           const b = basis[s.mint];
           const pnl = h && b && b.usd > 0 ? ((value - b.usd) / b.usd) * 100 : null;
           return (
-            <button key={s.mint} onClick={() => setSelected(s)} style={chamferBox(10, {
-              display: "flex", flexDirection: "column", gap: 6, padding: 10, cursor: "pointer",
-              textAlign: "left", background: "#12162b", border: `1px solid ${s.color}33`, minWidth: 0,
-            })}>
-              <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
-                <StockLogo stock={s} size={22} />
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                    <span style={{ fontFamily: PIXEL, fontSize: 8, color: "#fff" }}>{s.ticker}</span>
-                    {isPreIpo(s) && <span style={{ fontFamily: PIXEL, fontSize: 4, color: "#14F0C6", border: "1px solid #14F0C655", borderRadius: 3, padding: "1px 2px" }}>PRE</span>}
-                  </div>
-                  <div style={{ fontFamily: PIXEL, fontSize: 5, color: MUTED, marginTop: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.name}</div>
-                </div>
-              </div>
-              {tab === "market" ? (
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", fontFamily: PIXEL }}>
-                  <span style={{ fontSize: 7, color: "#fff" }}>{q ? usd(q.usdPrice) : "..."}</span>
-                  <span style={{ fontSize: 6, color: q ? moveColor(q.change24h) : MUTED }}>{q ? pct(q.change24h) : ""}</span>
-                </div>
-              ) : (
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", fontFamily: PIXEL }}>
-                  <span style={{ fontSize: 7, color: "#fff" }}>{usd(value)}</span>
-                  <span style={{ fontSize: 6, color: pnl == null ? MUTED : moveColor(pnl) }}>{pnl == null ? "" : pct(pnl)}</span>
-                </div>
-              )}
-            </button>
+            <StockGridCard key={s.mint} stock={s} isMarket={tab === "market"} quote={q} value={value} pnl={pnl} onClick={() => setSelected(s)} />
           );
         })}
       </div>
@@ -344,6 +301,9 @@ function TradeView(props: {
   const quotedAt = useRef(0);
   const reqSeq = useRef(0);
 
+  const backFeel = useButtonFeel();
+  const tradeConnectFeel = useButtonFeel();
+  const confirmFeel = useButtonFeel();
   const choice = side === "buy" ? usdAmount : sellPct;
 
   const requestOrder = useCallback(async (): Promise<OrderResponse | null> => {
@@ -436,7 +396,7 @@ function TradeView(props: {
             View on Solscan <ExternalLinkIcon size={7} color="#14F0C6" />
           </a>
         )}
-        <button onClick={onBack} style={{ ...primaryBtn(GOLD), marginTop: 16 }}>BACK TO MARKET</button>
+        <button onClick={onBack} {...backFeel.handlers} style={{ ...primaryBtn(GOLD, backFeel), marginTop: 16 }}>BACK TO MARKET</button>
       </div>
     );
   }
@@ -451,7 +411,7 @@ function TradeView(props: {
 
   return (
     <div style={{ fontFamily: PIXEL }}>
-      <button onClick={onBack} style={{ background: "none", border: "none", color: MUTED, fontFamily: PIXEL, fontSize: 7, cursor: "pointer", padding: 0, marginBottom: 12 }}>
+      <button onClick={onBack} {...backFeel.handlers} style={{ background: "none", border: "none", color: MUTED, fontFamily: PIXEL, fontSize: 7, cursor: "pointer", padding: 0, marginBottom: 12, ...feelStyle(backFeel) }}>
         {"< MARKET"}
       </button>
 
@@ -484,18 +444,8 @@ function TradeView(props: {
       {/* Buy / Sell */}
       <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
         {(["buy", "sell"] as const).map((s) => (
-          <button key={s} onClick={() => { setSide(s); setUsdAmount(null); setSellPct(null); }}
-            disabled={s === "sell" && !holding}
-            style={chamferBox(8, {
-              flex: 1, padding: "10px 0", fontFamily: PIXEL, fontSize: 8,
-              cursor: s === "sell" && !holding ? "not-allowed" : "pointer",
-              opacity: s === "sell" && !holding ? 0.35 : 1,
-              border: `1px solid ${side === s ? (s === "buy" ? UP : DOWN) : "#2a2f45"}`,
-              background: side === s ? (s === "buy" ? "rgba(183,233,40,0.12)" : "rgba(255,77,109,0.12)") : "transparent",
-              color: side === s ? (s === "buy" ? UP : DOWN) : MUTED,
-            })}>
-            {s.toUpperCase()}
-          </button>
+          <SideButton key={s} side={s} active={side === s} disabled={s === "sell" && !holding}
+            onClick={() => { setSide(s); setUsdAmount(null); setSellPct(null); }} />
         ))}
       </div>
 
@@ -509,7 +459,7 @@ function TradeView(props: {
       <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 10 }}>
         <span style={{ fontSize: 6, color: MUTED, width: 44 }}>{side === "buy" ? "PAY" : "GET"}</span>
         {(IS_DEVNET ? (["SOL"] as const) : (["USDC", "SOL"] as const)).map((t) => (
-          <button key={t} onClick={() => setPayWith(t)} style={chip(payWith === t)}>{t}</button>
+          <ChipButton key={t} active={payWith === t} onClick={() => setPayWith(t)}>{t}</ChipButton>
         ))}
       </div>
 
@@ -517,10 +467,10 @@ function TradeView(props: {
       <div style={{ display: "grid", gridTemplateColumns: `repeat(${side === "buy" ? BUY_USD.length : SELL_PCT.length}, 1fr)`, gap: 6, marginBottom: 12 }}>
         {side === "buy"
           ? BUY_USD.map((v) => (
-            <button key={v} onClick={() => setUsdAmount(v)} style={{ ...chip(usdAmount === v), padding: "12px 0", fontSize: 8 }}>${v}</button>
+            <ChipButton key={v} active={usdAmount === v} onClick={() => setUsdAmount(v)} style={{ padding: "12px 0", fontSize: 8 }}>${v}</ChipButton>
           ))
           : SELL_PCT.map((v) => (
-            <button key={v} onClick={() => setSellPct(v)} style={{ ...chip(sellPct === v), padding: "12px 0", fontSize: 8 }}>{v === 1 ? "ALL" : `${v * 100}%`}</button>
+            <ChipButton key={v} active={sellPct === v} onClick={() => setSellPct(v)} style={{ padding: "12px 0", fontSize: 8 }}>{v === 1 ? "ALL" : `${v * 100}%`}</ChipButton>
           ))}
       </div>
 
@@ -537,10 +487,11 @@ function TradeView(props: {
       <ShareToggle />
 
       {!connected ? (
-        <button onClick={onConnect} style={primaryBtn(GOLD)}>CONNECT WALLET</button>
+        <button onClick={onConnect} {...tradeConnectFeel.handlers} style={primaryBtn(GOLD, tradeConnectFeel)}>CONNECT WALLET</button>
       ) : (
         <button onClick={confirm} disabled={!order || busy}
-          style={{ ...primaryBtn(side === "buy" ? UP : DOWN), opacity: !order || busy ? 0.4 : 1, cursor: !order || busy ? "not-allowed" : "pointer" }}>
+          {...confirmFeel.handlers}
+          style={{ ...primaryBtn(side === "buy" ? UP : DOWN, !order || busy ? undefined : confirmFeel), opacity: !order || busy ? 0.4 : 1, cursor: !order || busy ? "not-allowed" : "pointer" }}>
           {side === "buy" ? `BUY ${stock.ticker}` : `SELL ${stock.ticker}`}
         </button>
       )}
@@ -578,6 +529,9 @@ function BasketView(props: {
 
   const moves = stocks.map((s) => market.quotes[s.mint]?.change24h).filter((v): v is number => v != null);
   const avg = moves.length ? moves.reduce((a, v) => a + v, 0) / moves.length : null;
+  const backFeel = useButtonFeel();
+  const basketConnectFeel = useButtonFeel();
+  const buyFeel = useButtonFeel();
 
   const buy = useCallback(async () => {
     if (!total || !wallet || !(signAllTransactions || signTransaction)) return;
@@ -683,14 +637,14 @@ function BasketView(props: {
             </div>
           ))}
         </div>
-        <button onClick={onBack} style={{ ...primaryBtn(GOLD), marginTop: 16 }}>BACK TO BASKETS</button>
+        <button onClick={onBack} {...backFeel.handlers} style={{ ...primaryBtn(GOLD, backFeel), marginTop: 16 }}>BACK TO BASKETS</button>
       </div>
     );
   }
 
   return (
     <div style={{ fontFamily: PIXEL }}>
-      <button onClick={onBack} disabled={busy} style={{ background: "none", border: "none", color: MUTED, fontFamily: PIXEL, fontSize: 7, cursor: "pointer", padding: 0, marginBottom: 12 }}>
+      <button onClick={onBack} disabled={busy} {...backFeel.handlers} style={{ background: "none", border: "none", color: MUTED, fontFamily: PIXEL, fontSize: 7, cursor: "pointer", padding: 0, marginBottom: 12, ...(busy ? null : feelStyle(backFeel)) }}>
         {"< BASKETS"}
       </button>
 
@@ -715,9 +669,7 @@ function BasketView(props: {
           const leg = legs?.find((l) => l.stock.mint === s.mint);
           return (
             <div key={s.mint} style={chamferBox(8, { background: "#12162b", border: `1px solid ${isOpen ? s.color + "66" : "transparent"}` })}>
-              <button onClick={() => setOpen(isOpen ? null : s.mint)} style={{
-                display: "flex", alignItems: "center", gap: 8, width: "100%", padding: 8, background: "none", border: "none", cursor: "pointer", textAlign: "left",
-              }}>
+              <BasketLegToggle onClick={() => setOpen(isOpen ? null : s.mint)}>
                 <StockLogo stock={s} size={22} />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontFamily: PIXEL, fontSize: 7, color: "#fff" }}>{s.ticker}</div>
@@ -732,7 +684,7 @@ function BasketView(props: {
                 ) : (
                   <span style={{ fontFamily: PIXEL, fontSize: 8, color: GOLD, width: 10, textAlign: "center", flexShrink: 0 }}>{isOpen ? "-" : "+"}</span>
                 )}
-              </button>
+              </BasketLegToggle>
               {isOpen && (
                 <div style={{ padding: "0 8px 8px", fontFamily: PIXEL, fontSize: 6, lineHeight: 1.7 }}>
                   <div style={{ color: "#c9cde0" }}>{s.about}</div>
@@ -757,14 +709,14 @@ function BasketView(props: {
       <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 10 }}>
         <span style={{ fontSize: 6, color: MUTED, width: 44 }}>PAY</span>
         {(IS_DEVNET ? (["SOL"] as const) : (["USDC", "SOL"] as const)).map((t) => (
-          <button key={t} onClick={() => setPayWith(t)} disabled={busy} style={chip(payWith === t)}>{t}</button>
+          <ChipButton key={t} active={payWith === t} disabled={busy} onClick={() => setPayWith(t)}>{t}</ChipButton>
         ))}
       </div>
 
       {/* Total */}
       <div style={{ display: "grid", gridTemplateColumns: `repeat(${BASKET_USD.length}, 1fr)`, gap: 6, marginBottom: 6 }}>
         {BASKET_USD.map((v) => (
-          <button key={v} onClick={() => setTotal(v)} disabled={busy} style={{ ...chip(total === v), padding: "12px 0", fontSize: 8 }}>${v}</button>
+          <ChipButton key={v} active={total === v} disabled={busy} onClick={() => setTotal(v)} style={{ padding: "12px 0", fontSize: 8 }}>${v}</ChipButton>
         ))}
       </div>
       <div style={{ minHeight: 24, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 6, textAlign: "center", lineHeight: 1.6, marginBottom: 6 }}>
@@ -779,10 +731,11 @@ function BasketView(props: {
       <ShareToggle />
 
       {!connected ? (
-        <button onClick={onConnect} style={primaryBtn(GOLD)}>CONNECT WALLET</button>
+        <button onClick={onConnect} {...basketConnectFeel.handlers} style={primaryBtn(GOLD, basketConnectFeel)}>CONNECT WALLET</button>
       ) : (
         <button onClick={buy} disabled={!total || busy}
-          style={{ ...primaryBtn(UP), opacity: !total || busy ? 0.4 : 1, cursor: !total || busy ? "not-allowed" : "pointer" }}>
+          {...buyFeel.handlers}
+          style={{ ...primaryBtn(UP, !total || busy ? undefined : buyFeel), opacity: !total || busy ? 0.4 : 1, cursor: !total || busy ? "not-allowed" : "pointer" }}>
           {total ? `BUY BASKET FOR ${usd(total)}` : "PICK AN AMOUNT"}
         </button>
       )}
@@ -810,14 +763,28 @@ function LogoStack({ stocks, size }: { stocks: StockInfo[]; size: number }) {
 }
 
 /** "Show my trades in the city", remembered per browser. */
+function BasketLegToggle({ onClick, children }: { onClick: () => void; children: React.ReactNode }) {
+  const feel = useButtonFeel();
+  return (
+    <button onClick={onClick} {...feel.handlers} style={{
+      display: "flex", alignItems: "center", gap: 8, width: "100%", padding: 8, background: "none", border: "none", cursor: "pointer", textAlign: "left",
+      ...feelStyle(feel),
+    }}>
+      {children}
+    </button>
+  );
+}
+
 function ShareToggle() {
   const [share, setShare] = useState(true);
   useEffect(() => { setShare(getShareTrades()); }, []);
   const toggle = () => { const v = !share; setShare(v); setShareTrades(v); };
+  const feel = useButtonFeel();
   return (
-    <button onClick={toggle} style={{
+    <button onClick={toggle} {...feel.handlers} style={{
       display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "4px 0", marginBottom: 10,
       background: "none", border: "none", cursor: "pointer", fontFamily: PIXEL, fontSize: 6, color: share ? "#c9cde0" : MUTED, textAlign: "left",
+      ...feelStyle(feel),
     }}>
       <span style={{
         width: 12, height: 12, borderRadius: 3, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
@@ -857,18 +824,138 @@ function trimAmount(s: string): string {
   return n.toPrecision(4);
 }
 
-function chip(active: boolean): React.CSSProperties {
+function SEPTabButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+  const feel = useButtonFeel();
+  return (
+    <button onClick={onClick} {...feel.handlers} style={chamferBox(8, {
+      flex: 1, padding: "8px 0", cursor: "pointer", fontFamily: PIXEL, fontSize: 6,
+      border: `1px solid ${active ? GOLD : "#2a2f45"}`,
+      background: active ? "rgba(255,181,71,0.12)" : "transparent",
+      color: active ? GOLD : MUTED,
+      ...feelStyle(feel),
+    })}>
+      {children}
+    </button>
+  );
+}
+
+function SectorChip({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+  const feel = useButtonFeel();
+  return (
+    <button onClick={onClick} {...feel.handlers} style={{
+      ...chip(active, feel), flex: "0 0 auto", padding: "6px 9px", fontSize: 6,
+    }}>
+      {children}
+    </button>
+  );
+}
+
+/** Same "am I picked" chip as SectorChip, plain — every preset/side/pay-with toggle in this panel uses it. */
+function ChipButton({ active, disabled, onClick, style, children }: {
+  active: boolean; disabled?: boolean; onClick: () => void; style?: React.CSSProperties; children: React.ReactNode;
+}) {
+  const feel = useButtonFeel();
+  return (
+    <button onClick={onClick} disabled={disabled} {...feel.handlers} style={{ ...chip(active, disabled ? undefined : feel), ...style }}>
+      {children}
+    </button>
+  );
+}
+
+function SideButton({ side, active, disabled, onClick }: {
+  side: "buy" | "sell"; active: boolean; disabled?: boolean; onClick: () => void;
+}) {
+  const feel = useButtonFeel();
+  const color = side === "buy" ? UP : DOWN;
+  return (
+    <button onClick={onClick} disabled={disabled} {...feel.handlers}
+      style={chamferBox(8, {
+        flex: 1, padding: "10px 0", fontFamily: PIXEL, fontSize: 8,
+        cursor: disabled ? "not-allowed" : "pointer",
+        opacity: disabled ? 0.35 : 1,
+        border: `1px solid ${active ? color : "#2a2f45"}`,
+        background: active ? (side === "buy" ? "rgba(183,233,40,0.12)" : "rgba(255,77,109,0.12)") : "transparent",
+        color: active ? color : MUTED,
+        ...(disabled ? null : feelStyle(feel)),
+      })}>
+      {side.toUpperCase()}
+    </button>
+  );
+}
+
+function BasketCard({ basket, stocks, avg, onClick }: {
+  basket: StockBasket; stocks: StockInfo[]; avg: number | null; onClick: () => void;
+}) {
+  const feel = useButtonFeel();
+  return (
+    <button onClick={onClick} {...feel.handlers} style={chamferBox(10, {
+      display: "flex", alignItems: "center", gap: 10, padding: 10, cursor: "pointer",
+      textAlign: "left", background: "#12162b", border: `1px solid ${basket.color}44`, minWidth: 0,
+      ...feelStyle(feel),
+    })}>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontFamily: PIXEL, fontSize: 8, color: "#fff" }}>{basket.name.toUpperCase()}</div>
+        <div style={{ fontFamily: PIXEL, fontSize: 5, color: MUTED, marginTop: 4, lineHeight: 1.5 }}>{basket.tagline}</div>
+        <div style={{ marginTop: 8 }}><LogoStack stocks={stocks} size={18} /></div>
+      </div>
+      <div style={{ textAlign: "right", flexShrink: 0 }}>
+        <div style={{ fontFamily: PIXEL, fontSize: 7, color: avg == null ? MUTED : moveColor(avg) }}>{avg == null ? "..." : pct(avg)}</div>
+        <div style={{ fontFamily: PIXEL, fontSize: 5, color: MUTED, marginTop: 4 }}>{stocks.length} STOCKS</div>
+      </div>
+    </button>
+  );
+}
+
+function StockGridCard({ stock, isMarket, quote, value, pnl, onClick }: {
+  stock: StockInfo; isMarket: boolean; quote: StockMarketState["quotes"][string] | undefined;
+  value: number; pnl: number | null; onClick: () => void;
+}) {
+  const feel = useButtonFeel();
+  return (
+    <button onClick={onClick} {...feel.handlers} style={chamferBox(10, {
+      display: "flex", flexDirection: "column", gap: 6, padding: 10, cursor: "pointer",
+      textAlign: "left", background: "#12162b", border: `1px solid ${stock.color}33`, minWidth: 0,
+      ...feelStyle(feel),
+    })}>
+      <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+        <StockLogo stock={stock} size={22} />
+        <div style={{ minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+            <span style={{ fontFamily: PIXEL, fontSize: 8, color: "#fff" }}>{stock.ticker}</span>
+            {isPreIpo(stock) && <span style={{ fontFamily: PIXEL, fontSize: 4, color: "#14F0C6", border: "1px solid #14F0C655", borderRadius: 3, padding: "1px 2px" }}>PRE</span>}
+          </div>
+          <div style={{ fontFamily: PIXEL, fontSize: 5, color: MUTED, marginTop: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{stock.name}</div>
+        </div>
+      </div>
+      {isMarket ? (
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", fontFamily: PIXEL }}>
+          <span style={{ fontSize: 7, color: "#fff" }}>{quote ? usd(quote.usdPrice) : "..."}</span>
+          <span style={{ fontSize: 6, color: quote ? moveColor(quote.change24h) : MUTED }}>{quote ? pct(quote.change24h) : ""}</span>
+        </div>
+      ) : (
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", fontFamily: PIXEL }}>
+          <span style={{ fontSize: 7, color: "#fff" }}>{usd(value)}</span>
+          <span style={{ fontSize: 6, color: pnl == null ? MUTED : moveColor(pnl) }}>{pnl == null ? "" : pct(pnl)}</span>
+        </div>
+      )}
+    </button>
+  );
+}
+
+function chip(active: boolean, feel?: Pick<ButtonFeel, "hover" | "pressed">): React.CSSProperties {
   return chamferBox(8, {
     flex: 1, padding: "8px 0", cursor: "pointer", fontFamily: PIXEL, fontSize: 7,
     border: `1px solid ${active ? GOLD : "#2a2f45"}`,
     background: active ? "rgba(255,181,71,0.14)" : "transparent",
     color: active ? GOLD : "#c9cde0",
+    ...(feel ? feelStyle(feel) : null),
   });
 }
 
-function primaryBtn(bg: string): React.CSSProperties {
+function primaryBtn(bg: string, feel?: Pick<ButtonFeel, "hover" | "pressed">): React.CSSProperties {
   return chamferBox(10, {
     width: "100%", padding: "12px 0", border: "none", cursor: "pointer",
     fontFamily: PIXEL, fontSize: 8, background: bg, color: "#0b0f24",
+    ...(feel ? feelStyle(feel) : null),
   });
 }

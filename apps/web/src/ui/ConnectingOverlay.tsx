@@ -17,6 +17,7 @@
 import { useEffect, useState } from "react";
 import { Citizen, Img } from "./CityGuide";
 import { chamferBox, octagonFrame } from "@/ui/chamfer";
+import { useButtonFeel, feelStyle } from "@/ui/useButtonFeel";
 
 const PIXEL = '"Press Start 2P", monospace';
 const GREEN = "#B7E928";
@@ -70,6 +71,8 @@ export default function ConnectingOverlay({ onEnter, onRetry }: { onEnter: () =>
 
   const step = stepOf(label);
   const needsSignature = label.toLowerCase().includes("sign");
+  const enterFeel = useButtonFeel();
+  const retryFeel = useButtonFeel();
 
   return (
     <div style={{
@@ -123,18 +126,22 @@ export default function ConnectingOverlay({ onEnter, onRetry }: { onEnter: () =>
           <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
             <button
               onClick={onEnter}
+              {...enterFeel.handlers}
               style={chamferBox(6, {
                 flex: 1, fontFamily: PIXEL, fontSize: 7, padding: "9px 10px", cursor: "pointer",
                 background: "transparent", border: "1px solid #333344", color: "#b9b9cc",
+                ...feelStyle(enterFeel),
               })}
             >
               ENTER ANYWAY
             </button>
             <button
               onClick={onRetry}
+              {...retryFeel.handlers}
               style={chamferBox(6, {
                 flex: 1, fontFamily: PIXEL, fontSize: 7, padding: "9px 10px", cursor: "pointer",
                 background: failed ? DANGER : PURPLE, color: "#fff", border: "none",
+                ...feelStyle(retryFeel),
               })}
             >
               TRY AGAIN

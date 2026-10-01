@@ -15,6 +15,7 @@ import { ELIGIBILITY } from "@/game/solmechs/season/config";
 import { cachedName, onNames, requestNames } from "@/game/names/nameService";
 import { C, T, SP, R, MONO, DISPLAY, PIXELATED, backdrop, panel, eyebrow, button, W } from "./theme";
 import { CloseButton } from "@/ui/PixelIcons";
+import { useButtonFeel } from "@/ui/useButtonFeel";
 
 const UI = "/assets/minigames/sol-mechs/ui";
 
@@ -42,6 +43,7 @@ export default function Leaderboard({ client, me, onClose }: LeaderboardProps) {
   }, [client]);
 
   useEffect(() => onNames(() => bumpNames((n) => n + 1)), []);
+  const backFeel = useButtonFeel();
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
@@ -109,7 +111,7 @@ export default function Leaderboard({ client, me, onClose }: LeaderboardProps) {
           {ELIGIBILITY.MIN_DISTINCT_OPPONENTS} different pilots. Dimmed ratings
           are not there yet.
         </p>
-        <button style={{ ...button("ghost"), marginTop: SP.sm }} onClick={onClose}>BACK</button>
+        <button {...backFeel.handlers} style={{ ...button("ghost", { feel: backFeel }), marginTop: SP.sm }} onClick={onClose}>BACK</button>
       </div>
     </div>
   );

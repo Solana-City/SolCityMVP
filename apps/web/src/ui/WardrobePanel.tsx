@@ -388,10 +388,12 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
                 color: "#c084fc",
                 cursor: "pointer",
                 letterSpacing: 1,
-                transition: "background 0.15s",
+                transition: "background 0.15s, transform 0.08s",
               }}
               onMouseEnter={e => e.currentTarget.style.backgroundColor = "rgba(153,69,255,0.25)"}
-              onMouseLeave={e => e.currentTarget.style.backgroundColor = "rgba(153,69,255,0.14)"}
+              onMouseLeave={e => { e.currentTarget.style.backgroundColor = "rgba(153,69,255,0.14)"; e.currentTarget.style.transform = "none"; }}
+              onPointerDown={e => e.currentTarget.style.transform = "scale(0.95)"}
+              onPointerUp={e => e.currentTarget.style.transform = "none"}
             >
               OPEN PACK
             </button>
@@ -408,10 +410,12 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
                 color: "#B7E928",
                 cursor: "pointer",
                 letterSpacing: 1,
-                transition: "background 0.15s",
+                transition: "background 0.15s, transform 0.08s",
               }}
               onMouseEnter={e => e.currentTarget.style.backgroundColor = "rgba(183,233,40,0.2)"}
-              onMouseLeave={e => e.currentTarget.style.backgroundColor = "rgba(183,233,40,0.1)"}
+              onMouseLeave={e => { e.currentTarget.style.backgroundColor = "rgba(183,233,40,0.1)"; e.currentTarget.style.transform = "none"; }}
+              onPointerDown={e => e.currentTarget.style.transform = "scale(0.95)"}
+              onPointerUp={e => e.currentTarget.style.transform = "none"}
             >
               RANDOM
             </button>
@@ -482,10 +486,12 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
                       color: isActive ? "#e0d0ff" : "#666688",
                       textAlign: "left",
                       position: "relative",
-                      transition: "background 0.12s, color 0.12s",
+                      transition: "background 0.12s, color 0.12s, transform 0.08s",
                     })}
                     onMouseEnter={e => { if (!isActive) e.currentTarget.style.backgroundColor = "rgba(153,69,255,0.08)"; }}
-                    onMouseLeave={e => { if (!isActive) e.currentTarget.style.backgroundColor = "transparent"; }}
+                    onMouseLeave={e => { if (!isActive) e.currentTarget.style.backgroundColor = "transparent"; e.currentTarget.style.transform = "none"; }}
+                    onPointerDown={e => e.currentTarget.style.transform = "scale(0.96)"}
+                    onPointerUp={e => e.currentTarget.style.transform = "none"}
                   >
                     <span style={{ flexShrink: 0, lineHeight: 0 }}>
                       <CategoryIcon cat={cat} size={22} />
@@ -633,10 +639,12 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
             border: "1px solid rgba(153,69,255,0.2)",
             color: "#555577", cursor: "pointer",
             fontSize: 8, fontFamily: '"Press Start 2P", monospace',
-            transition: "border-color 0.15s, color 0.15s",
+            transition: "border-color 0.15s, color 0.15s, transform 0.08s",
           })}
           onMouseEnter={e => { e.currentTarget.style.setProperty("--cbc", "rgba(153,69,255,0.45)"); e.currentTarget.style.color = "#9945FF"; }}
-          onMouseLeave={e => { e.currentTarget.style.setProperty("--cbc", "rgba(153,69,255,0.2)"); e.currentTarget.style.color = "#555577"; }}
+          onMouseLeave={e => { e.currentTarget.style.setProperty("--cbc", "rgba(153,69,255,0.2)"); e.currentTarget.style.color = "#555577"; e.currentTarget.style.transform = "none"; }}
+          onPointerDown={e => e.currentTarget.style.transform = "scale(0.95)"}
+          onPointerUp={e => e.currentTarget.style.transform = "none"}
           >
             Reset
           </button>
@@ -661,6 +669,8 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
             })}
             onMouseEnter={e => { e.currentTarget.style.transform = "translateY(-1px)"; }}
             onMouseLeave={e => { e.currentTarget.style.transform = "translateY(0)"; }}
+            onPointerDown={e => { e.currentTarget.style.transform = "scale(0.96)"; }}
+            onPointerUp={e => { e.currentTarget.style.transform = "translateY(-1px)"; }}
             >
               SAVE OUTFIT
             </button>
@@ -732,6 +742,8 @@ function VariantCard({
         }
         e.currentTarget.style.transform = isFlashing || hintFlashing ? "scale(1.04)" : "scale(1)";
       }}
+      onPointerDown={e => { if (!locked) e.currentTarget.style.transform = "scale(0.96)"; }}
+      onPointerUp={e => { e.currentTarget.style.transform = isFlashing || hintFlashing ? "scale(1.04)" : "scale(1.03)"; }}
     >
       {children}
     </button>

@@ -13,6 +13,7 @@ import { useWallet } from "@solana/wallet-adapter-react";
 import { checkName, claimName } from "@/game/names/nameService";
 import { LockIcon, CloseButton } from "@/ui/PixelIcons";
 import { chamferBox } from "@/ui/chamfer";
+import { useButtonFeel, feelStyle } from "@/ui/useButtonFeel";
 
 const PIX = '"Press Start 2P", monospace';
 const RULE = /^[A-Za-z][A-Za-z0-9_]{2,15}$/;
@@ -70,6 +71,8 @@ export default function NicknameModal({ wallet, current, forced, onDone }: {
     }
   };
 
+  const saveFeel = useButtonFeel();
+  const skipFeel = useButtonFeel();
   const preview = name.trim() || "YOUR NAME";
   const color = state.kind === "ok" ? "#B7E928" : state.kind === "bad" ? "#ff6b6b" : "#8b8ba7";
 
@@ -141,10 +144,12 @@ export default function NicknameModal({ wallet, current, forced, onDone }: {
         <button
           onClick={save}
           disabled={state.kind !== "ok" || saving}
+          {...saveFeel.handlers}
           style={chamferBox(8, {
             width: "100%", padding: "11px 0", border: "none", fontFamily: PIX, fontSize: 8,
             cursor: state.kind === "ok" && !saving ? "pointer" : "not-allowed",
             background: state.kind === "ok" ? "#B7E928" : "#2a2a45", color: state.kind === "ok" ? "#04140c" : "#666688",
+            ...(state.kind === "ok" && !saving ? feelStyle(saveFeel) : null),
           })}
         >
           {saving ? "SIGN IN YOUR WALLET..." : "SAVE NICKNAME"}
@@ -152,9 +157,11 @@ export default function NicknameModal({ wallet, current, forced, onDone }: {
         {!current && !forced && (
           <button
             onClick={() => onDone(null)}
+            {...skipFeel.handlers}
             style={chamferBox(8, {
               width: "100%", marginTop: 8, padding: "9px 0", fontFamily: PIX, fontSize: 7,
               background: "transparent", border: "1px solid rgba(139,139,167,0.35)", color: "#8b8ba7", cursor: "pointer",
+              ...feelStyle(skipFeel),
             })}
           >
             SKIP FOR NOW

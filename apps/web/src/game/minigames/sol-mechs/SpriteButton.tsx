@@ -17,6 +17,7 @@ export interface SpriteButtonProps extends React.ButtonHTMLAttributes<HTMLButton
 
 export function SpriteButton({ selected, disabled, style, children, ...rest }: SpriteButtonProps) {
   const [held, setHeld] = useState(false);
+  const [hover, setHover] = useState(false);
   const release = () => setHeld(false);
   return (
     <button
@@ -24,9 +25,11 @@ export function SpriteButton({ selected, disabled, style, children, ...rest }: S
       disabled={disabled}
       onPointerDown={(e) => { if (!disabled) setHeld(true); rest.onPointerDown?.(e); }}
       onPointerUp={(e) => { release(); rest.onPointerUp?.(e); }}
-      onPointerLeave={(e) => { release(); rest.onPointerLeave?.(e); }}
+      onPointerLeave={(e) => { release(); setHover(false); rest.onPointerLeave?.(e); }}
       onPointerCancel={(e) => { release(); rest.onPointerCancel?.(e); }}
-      style={{ ...actionButton({ selected, disabled: !!disabled, held: held && !disabled }), ...style }}
+      onMouseEnter={(e) => { if (!disabled) setHover(true); (rest as any).onMouseEnter?.(e); }}
+      onMouseLeave={(e) => { setHover(false); (rest as any).onMouseLeave?.(e); }}
+      style={{ ...actionButton({ selected, disabled: !!disabled, held: held && !disabled, hover: hover && !held && !disabled }), ...style }}
     >
       {children}
     </button>

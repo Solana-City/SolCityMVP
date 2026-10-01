@@ -13,6 +13,7 @@ import { fetchEarnListings, type EarnListing } from "@/game/solana/superteamEarn
 import { CITY_EVENTS } from "@/game/daily/calendar";
 import { chamferBox } from "@/ui/chamfer";
 import { ExternalLinkIcon } from "@/ui/PixelIcons";
+import { useButtonFeel, feelStyle } from "@/ui/useButtonFeel";
 
 const PIXEL = '"Press Start 2P", monospace';
 
@@ -150,26 +151,13 @@ export default function CityCalendar({ cellHeight = 22, showLegend = true, maxRo
           const isSelected = day === selected;
           const past = day < today;
           return (
-            <button
+            <DayButton
               key={day}
+              day={day} kinds={kinds} isToday={isToday}
+              background={isSelected ? "rgba(153,69,255,0.35)" : spans.has(day) ? "rgba(183,233,40,0.1)" : "#0d0d22"}
+              cellHeight={cellHeight} past={past}
               onClick={() => setSelected(day)}
-              style={{
-                height: cellHeight, padding: 0, cursor: "pointer",
-                display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2,
-                background: isSelected ? "rgba(153,69,255,0.35)" : spans.has(day) ? "rgba(183,233,40,0.1)" : "#0d0d22",
-                border: isToday ? "1px solid #fff" : "1px solid rgba(255,255,255,0.05)",
-                opacity: past ? 0.45 : 1,
-              }}
-            >
-              <span style={{ fontFamily: PIXEL, fontSize: 6, color: isToday ? "#fff" : "#cbd5e1" }}>
-                {Number(day.slice(8))}
-              </span>
-              <span style={{ display: "flex", gap: 2, height: 4 }}>
-                {kinds.map((k) => (
-                  <span key={k} style={{ width: 4, height: 4, borderRadius: "50%", background: KIND[k].color }} />
-                ))}
-              </span>
-            </button>
+            />
           );
         })}
       </div>
@@ -208,6 +196,34 @@ export default function CityCalendar({ cellHeight = 22, showLegend = true, maxRo
   );
 }
 
+function DayButton({ day, kinds, isToday, background, cellHeight, past, onClick }: {
+  day: string; kinds: Kind[]; isToday: boolean; background: string; cellHeight: number; past: boolean; onClick: () => void;
+}) {
+  const feel = useButtonFeel();
+  return (
+    <button
+      onClick={onClick}
+      {...feel.handlers}
+      style={{
+        height: cellHeight, padding: 0, cursor: "pointer",
+        display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2,
+        background, border: isToday ? "1px solid #fff" : "1px solid rgba(255,255,255,0.05)",
+        opacity: past ? 0.45 : 1,
+        ...feelStyle(feel),
+      }}
+    >
+      <span style={{ fontFamily: PIXEL, fontSize: 6, color: isToday ? "#fff" : "#cbd5e1" }}>
+        {Number(day.slice(8))}
+      </span>
+      <span style={{ display: "flex", gap: 2, height: 4 }}>
+        {kinds.map((k) => (
+          <span key={k} style={{ width: 4, height: 4, borderRadius: "50%", background: KIND[k].color }} />
+        ))}
+      </span>
+    </button>
+  );
+}
+
 function Row({ entry, showDate }: { entry: Entry; showDate?: boolean }) {
   const body = (
     <div style={{ display: "flex", alignItems: "flex-start", gap: 7, margin: "4px 0" }}>
@@ -230,14 +246,17 @@ function Row({ entry, showDate }: { entry: Entry; showDate?: boolean }) {
 }
 
 function NavButton({ children, disabled, onClick }: { children: React.ReactNode; disabled: boolean; onClick: () => void }) {
+  const feel = useButtonFeel();
   return (
     <button
       onClick={onClick}
       disabled={disabled}
+      {...feel.handlers}
       style={chamferBox(4, {
         width: 22, height: 18, border: "1px solid rgba(255,255,255,0.08)",
         background: "#0d0d22", color: disabled ? "#334155" : "#cbd5e1", cursor: disabled ? "default" : "pointer",
         fontSize: 14, lineHeight: 1, padding: 0,
+        ...(disabled ? null : feelStyle(feel)),
       })}
     >
       {children}
