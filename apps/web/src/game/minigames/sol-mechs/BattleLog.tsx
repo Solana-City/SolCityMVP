@@ -18,6 +18,7 @@
 
 import { useState } from "react";
 import { C, T, SP, MONO, eyebrow } from "./theme";
+import { useButtonFeel, feelStyle } from "@/ui/useButtonFeel";
 
 /**
  * The Unity log panel as a 9-slice.
@@ -47,6 +48,7 @@ export interface BattleLogProps {
 
 export function BattleLog({ lines, turns, initiallyCollapsed = false, fill = false }: BattleLogProps) {
   const [open, setOpen] = useState(!initiallyCollapsed);
+  const toggleFeel = useButtonFeel();
 
   return (
     <div style={fill ? { flex: 1, minHeight: 0, display: "flex", flexDirection: "column", position: "relative" } : undefined}>
@@ -63,12 +65,14 @@ export function BattleLog({ lines, turns, initiallyCollapsed = false, fill = fal
         </span>
       )}
       {!fill && <button
+        {...toggleFeel.handlers}
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         style={{
           display: "flex", alignItems: "center", gap: 8, width: "100%",
           background: "none", border: "none", padding: "2px 0", cursor: "pointer",
           ...eyebrow, marginBottom: SP.xs, fontFamily: "inherit",
+          ...feelStyle(toggleFeel),
         }}
       >
         <span style={{ transform: open ? "rotate(90deg)" : "none", transition: "transform .15s" }}>▸</span>

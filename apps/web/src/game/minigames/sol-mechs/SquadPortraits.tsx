@@ -14,6 +14,7 @@ import { isDefeated } from "@/game/solmechs/engine/BattleEngine";
 import type { TeamSide } from "@/game/solmechs/engine/TeamBattle";
 import type { MechBuild, MechUnit, ModuleSlot } from "@/game/solmechs/data/types";
 import { C, MONO } from "./theme";
+import { useButtonFeel, feelStyle } from "@/ui/useButtonFeel";
 
 const SIZE = 38;
 const SLOTS: ModuleSlot[] = ["matrix", "rightArm", "leftArm", "lowerBody"];
@@ -159,6 +160,7 @@ function PartsCard({ unit, index, active, right, top, onSubstitute }: {
   onSubstitute?: () => void;
 }) {
   const down = isDefeated(unit);
+  const subFeel = useButtonFeel();
   return (
     <div style={{
       position: "absolute", top, [right ? "right" : "left"]: 0, zIndex: 20,
@@ -201,12 +203,14 @@ function PartsCard({ unit, index, active, right, top, onSubstitute }: {
       })}
       {onSubstitute && (
         <button
+          {...subFeel.handlers}
           onClick={(e) => { e.stopPropagation(); onSubstitute(); }}
           style={{
             width: "100%", marginTop: 6, padding: "6px 0",
             background: "rgba(95,160,255,.12)", border: `1px solid ${C.blue}`, borderRadius: 4,
             color: C.blue, fontFamily: "inherit", fontSize: 11, fontWeight: 700, letterSpacing: 1,
             cursor: "pointer",
+            ...feelStyle(subFeel),
           }}
         >
           SUBSTITUTE
