@@ -29,6 +29,7 @@ import { loadHangar, setTeam } from "@/game/solmechs/hangar";
 import Workshop from "./Workshop";
 import { C, T, SP, R, MONO, W, PANEL_HEIGHT, DISPLAY, frame } from "./theme";
 import { CloseButton } from "@/ui/PixelIcons";
+import { useButtonFeel, feelStyle } from "@/ui/useButtonFeel";
 
 
 const SLOTS: ModuleSlot[] = ["matrix", "rightArm", "leftArm", "lowerBody"];
@@ -54,6 +55,8 @@ export interface TeamBuilderProps {
 export default function TeamBuilder({ onDeploy, onClose, deployLabel = "DEPLOY SQUAD", notice }: TeamBuilderProps) {
   const [mechs, setMechs] = useState<MechBuild[]>(() => loadHangar().team.slice(0, TEAM_SIZE));
   const [editing, setEditing] = useState<number | null>(null);
+  const backFeel = useButtonFeel();
+  const deployFeel = useButtonFeel();
 
   // Every part's art, so the shared preview crop (stableBounds) can resolve.
   useEffect(() => { preloadAll(); }, []);
@@ -151,15 +154,17 @@ export default function TeamBuilder({ onDeploy, onClose, deployLabel = "DEPLOY S
         )}
 
         <footer style={sx.footer}>
-          <button onClick={onClose} style={sx.btnGhost}>BACK</button>
+          <button {...backFeel.handlers} onClick={onClose} style={{ ...sx.btnGhost, ...feelStyle(backFeel) }}>BACK</button>
           <div style={{ flex: 1 }} />
           <button
+            {...deployFeel.handlers}
             onClick={deploy}
             disabled={!validation.ok}
             style={{
               ...sx.btnPrimary,
               opacity: validation.ok ? 1 : 0.35,
               cursor: validation.ok ? "pointer" : "not-allowed",
+              ...(validation.ok ? feelStyle(deployFeel) : null),
             }}
           >
             {deployLabel}
@@ -174,6 +179,7 @@ function SquadCard({ index, build, clashes, onEdit }: {
   index: number; build: MechBuild; clashes: TeamViolation[]; onEdit: () => void;
 }) {
   const flagged = clashes.length > 0;
+  const feel = useButtonFeel();
   const ref = useRef<HTMLCanvasElement>(null);
   const raf = useRef(0);
   // Cropped to the mech rather than to the doll box, one box for every build
@@ -221,9 +227,11 @@ function SquadCard({ index, build, clashes, onEdit }: {
 
   return (
     <button
+      {...feel.handlers}
       onClick={onEdit}
       style={{
         ...sx.card,
+        ...feelStyle(feel),
         // The card only gets a warning edge; the part rows below say exactly
         // which part clashes. A solid red card read as "this whole mech is
         // broken" when one part of it was shared with another mech.
