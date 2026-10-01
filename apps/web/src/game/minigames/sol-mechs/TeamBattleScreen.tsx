@@ -32,6 +32,7 @@ import {
 import { SQUAD_CLOCK, formatClock } from "@/game/solmechs/data/clock";
 import { C, T, SP, R, W, PANEL_HEIGHT, actionButton, frame, DISPLAY } from "./theme";
 import { CloseButton } from "@/ui/PixelIcons";
+import { useButtonFeel, feelStyle } from "@/ui/useButtonFeel";
 
 /**
  * Narrows the team log to the events BattleRenderer understands. Switches and
@@ -148,6 +149,9 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, opponent, onFi
   /** True while a remote opponent has not yet answered this step. */
   const [waiting, setWaiting] = useState(false);
   const [netError, setNetError] = useState<string | null>(null);
+  const pickingBackFeel = useButtonFeel();
+  const pendingBackFeel = useButtonFeel();
+  const swapFeel = useButtonFeel();
 
   /** Runs while the round is being chosen; stops while it resolves. */
   // A remote rival's clock runs on their own client; this one only sees its
@@ -545,9 +549,7 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, opponent, onFi
               <div style={sx.prompt}>{tight ? "Pick a free replacement" : "Your mech is down. Send out a replacement (free)."}</div>
               <div className="sm-btnrow" style={sx.btnRow}>
                 {bench.map((i) => (
-                  <button key={i} onClick={() => submitForced(i)} style={sx.btn}>
-                    <BenchLabel unit={state.p1.units[i]} />
-                  </button>
+                  <BenchButton key={i} unit={state.p1.units[i]} onClick={() => submitForced(i)} />
                 ))}
               </div>
             </>
@@ -561,12 +563,13 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, opponent, onFi
             <>
               <div style={sx.promptRow}>
                 <span style={sx.promptText}>{tight ? "Swap uses your turn" : "Substitute: this uses your action for the round."}</span>
-                <button onClick={() => setPicking(false)} style={sx.back}>◂ BACK</button>
+                <button {...pickingBackFeel.handlers} onClick={() => setPicking(false)} style={{ ...sx.back, ...feelStyle(pickingBackFeel) }}>◂ BACK</button>
               </div>
               <div className="sm-btnrow" style={sx.btnRow}>
                 {bench.map((i) => (
-                  <button
+                  <BenchButton
                     key={i}
+                    unit={state.p1.units[i]}
                     // A VOLUNTARY substitution is a normal round action, not a
                     // forced one: submitForced bails unless the battle is
                     // already awaiting a switch, so routing this through it
@@ -576,10 +579,7 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, opponent, onFi
                       setPicking(false);
                       submitRound({ kind: "switch", side: "p1", toIndex: i });
                     }}
-                    style={sx.btn}
-                  >
-                    <BenchLabel unit={state.p1.units[i]} />
-                  </button>
+                  />
                 ))}
               </div>
             </>
@@ -593,38 +593,20 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, opponent, onFi
                 {!tight && pendingTargets.some(offTarget) && (
                   <span style={sx.hint}>Dimmed parts only land if {opponent.name} switches mechs.</span>
                 )}
-                <button onClick={() => setPending(null)} style={sx.back}>◂ BACK</button>
+                <button {...pendingBackFeel.handlers} onClick={() => setPending(null)} style={{ ...sx.back, ...feelStyle(pendingBackFeel) }}>◂ BACK</button>
               </div>
               <div className="sm-btnrow" style={sx.btnRow}>
                 {pendingTargets.map((slot) => (
-                  <button
+                  <TargetPickButton
                     key={slot}
+                    slot={slot}
+                    tight={tight}
+                    pendingSelf={pendingSelf}
+                    off={offTarget(slot)}
+                    hp={pendingUnit.partStatuses[slot].currentHP}
                     onClick={() => commitMove(slot)}
-                    onMouseEnter={() => setHoverTarget(offTarget(slot) ? null : slot)}
-                    onMouseLeave={() => setHoverTarget(null)}
-                    style={{
-                      ...sx.btn,
-                      // Own mech reads blue, the rival's core red — so the two
-                      // pickers can't be confused for each other at a glance.
-                      background: pendingSelf ? C.raised : slot === "matrix" ? "#5c1830" : C.raised,
-                      borderColor: pendingSelf ? C.blue : undefined,
-                      opacity: offTarget(slot) ? 0.62 : 1,
-                    }}
-                  >
-                    <Sprite src={SLOT_ICON[slot]} h={tight ? 18 : 22} dim={offTarget(slot)} />
-                    <div style={{ ...sx.btnTitle, ...(tight ? sx.tightTitle : null) }}>
-                      {tight && offTarget(slot) ? (slot === "matrix" ? "SEALED" : "GONE") : SLOT_LABEL[slot]}
-                    </div>
-                    {tight && offTarget(slot) ? null : offTarget(slot) ? (
-                      <div style={{ ...sx.btnSub, color: slot === "matrix" ? C.warn : C.bad, fontWeight: 700 }}>
-                        {tight
-                          ? (slot === "matrix" ? "SEALED" : "GONE")
-                          : (slot === "matrix" ? "sealed on this mech" : "destroyed on this mech")}
-                      </div>
-                    ) : (
-                      <div style={sx.btnSub}>{pendingUnit.partStatuses[slot].currentHP} HP</div>
-                    )}
-                  </button>
+                    onHoverChange={(on) => setHoverTarget(on && !offTarget(slot) ? slot : null)}
+                  />
                 ))}
               </div>
             </>
@@ -634,9 +616,10 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, opponent, onFi
                 <span style={sx.promptText}>Choose an action</span>
                 {bench.length > 0 && (
                   <button
+                    {...swapFeel.handlers}
                     onClick={() => setPicking(true)}
                     className={armsDown ? "sm-pulse" : undefined}
-                    style={sx.swap}
+                    style={{ ...sx.swap, ...feelStyle(swapFeel) }}
                     title="Substitute: uses your action this round"
                   >
                     {tight ? "\u21c4 SWAP" : "\u21c4 SUBSTITUTE"}
@@ -645,21 +628,15 @@ export default function TeamBattleScreen({ playerTeam, enemyTeam, opponent, onFi
               </div>
               <div className="sm-btnrow" style={sx.btnRow}>
                 {moves.map((o) => (
-                  <button
+                  <MoveOptionButton
                     key={`${o.slot}-${o.moveIndex}`}
+                    move={o.move}
+                    tight={tight}
                     // Self-targeting moves go through the same picker now, so
                     // the part being buffed is chosen rather than assumed.
                     onClick={() => { setPending({ slot: o.slot, moveIndex: o.moveIndex }); setHoverMove(null); }}
-                    onMouseEnter={() => setHoverMove({ slot: o.slot, moveIndex: o.moveIndex })}
-                    onMouseLeave={() => setHoverMove(null)}
-                    onFocus={() => setHoverMove({ slot: o.slot, moveIndex: o.moveIndex })}
-                    onBlur={() => setHoverMove(null)}
-                    style={{ ...sx.btn, ...(tight ? sx.tightBtn : null) }}
-                  >
-                    <CategoryTile m={o.move} size={tight ? 20 : 24} />
-                    <div style={{ ...sx.btnTitle, ...(tight ? sx.tightTitle : null) }}>{o.move.name}</div>
-                    {!tight && <MoveBadge m={o.move} />}
-                  </button>
+                    onHoverChange={(on) => setHoverMove(on ? { slot: o.slot, moveIndex: o.moveIndex } : null)}
+                  />
                 ))}
               </div>
             </>
@@ -702,9 +679,87 @@ function ResultCard({ won, actions, onLeave }: {
           {won ? "SQUAD VICTORY" : "SQUAD DEFEATED"}
         </div>
         <div style={sx.resultMeta}>{actions} {actions === 1 ? "action" : "actions"}</div>
-        <button onClick={onLeave} style={sx.btnPrimary}>LEAVE</button>
+        <ResultLeaveButton onClick={onLeave} />
       </div>
     </div>
+  );
+}
+
+function ResultLeaveButton({ onClick }: { onClick: () => void }) {
+  const feel = useButtonFeel();
+  return (
+    <button {...feel.handlers} onClick={onClick} style={{ ...sx.btnPrimary, ...feelStyle(feel) }}>LEAVE</button>
+  );
+}
+
+/** A bench entry as its own picker button, with hover/pressed feedback. */
+function BenchButton({ unit, onClick }: { unit: import("@/game/solmechs/data/types").MechUnit; onClick: () => void }) {
+  const feel = useButtonFeel();
+  return (
+    <button {...feel.handlers} onClick={onClick} style={{ ...sx.btn, ...feelStyle(feel) }}>
+      <BenchLabel unit={unit} />
+    </button>
+  );
+}
+
+/** One part-target option in the aim picker. */
+function TargetPickButton({ slot, tight, pendingSelf, off, hp, onClick, onHoverChange }: {
+  slot: ModuleSlot; tight: boolean; pendingSelf: boolean; off: boolean; hp: number;
+  onClick: () => void; onHoverChange: (on: boolean) => void;
+}) {
+  const feel = useButtonFeel();
+  return (
+    <button
+      {...feel.handlers}
+      onClick={onClick}
+      onMouseEnter={() => { onHoverChange(true); feel.handlers.onMouseEnter(); }}
+      onMouseLeave={() => { onHoverChange(false); feel.handlers.onMouseLeave(); }}
+      style={{
+        ...sx.btn,
+        ...feelStyle(feel),
+        // Own mech reads blue, the rival's core red — so the two
+        // pickers can't be confused for each other at a glance.
+        background: pendingSelf ? C.raised : slot === "matrix" ? "#5c1830" : C.raised,
+        borderColor: pendingSelf ? C.blue : undefined,
+        opacity: off ? 0.62 : 1,
+      }}
+    >
+      <Sprite src={SLOT_ICON[slot]} h={tight ? 18 : 22} dim={off} />
+      <div style={{ ...sx.btnTitle, ...(tight ? sx.tightTitle : null) }}>
+        {tight && off ? (slot === "matrix" ? "SEALED" : "GONE") : SLOT_LABEL[slot]}
+      </div>
+      {tight && off ? null : off ? (
+        <div style={{ ...sx.btnSub, color: slot === "matrix" ? C.warn : C.bad, fontWeight: 700 }}>
+          {tight
+            ? (slot === "matrix" ? "SEALED" : "GONE")
+            : (slot === "matrix" ? "sealed on this mech" : "destroyed on this mech")}
+        </div>
+      ) : (
+        <div style={sx.btnSub}>{hp} HP</div>
+      )}
+    </button>
+  );
+}
+
+/** One move option in the action list. */
+function MoveOptionButton({ move, tight, onClick, onHoverChange }: {
+  move: MoveDefinition; tight: boolean; onClick: () => void; onHoverChange: (on: boolean) => void;
+}) {
+  const feel = useButtonFeel();
+  return (
+    <button
+      {...feel.handlers}
+      onClick={onClick}
+      onMouseEnter={() => { onHoverChange(true); feel.handlers.onMouseEnter(); }}
+      onMouseLeave={() => { onHoverChange(false); feel.handlers.onMouseLeave(); }}
+      onFocus={() => onHoverChange(true)}
+      onBlur={() => onHoverChange(false)}
+      style={{ ...sx.btn, ...(tight ? sx.tightBtn : null), ...feelStyle(feel) }}
+    >
+      <CategoryTile m={move} size={tight ? 20 : 24} />
+      <div style={{ ...sx.btnTitle, ...(tight ? sx.tightTitle : null) }}>{move.name}</div>
+      {!tight && <MoveBadge m={move} />}
+    </button>
   );
 }
 
