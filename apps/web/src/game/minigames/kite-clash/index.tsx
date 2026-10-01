@@ -6,6 +6,7 @@ import { KiteClashEngine, type EngineSnapshot } from "./KiteClashEngine";
 import type { MiniGameComponentProps } from "../types";
 import { fetchBoard, invalidateBoard, type BoardResult } from "@/game/leaderboards/boards";
 import type { MiniGameBaseContext } from "../types";
+import { useButtonFeel, feelStyle } from "@/ui/useButtonFeel";
 
 const isTouchDevice = () =>
   typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches;
@@ -195,6 +196,12 @@ export default function KiteClashGame({ context, onResult, onClose }: MiniGameCo
     1,
     WIND_FRAME_BASE[snapshot?.windTier ?? "LOW"] - (windShimmer ? 1 : 0)
   );
+  const closeFeel = useButtonFeel();
+  const howToFeel = useButtonFeel();
+  const relaunchFeel = useButtonFeel();
+  const endHowToFeel = useButtonFeel();
+  const leaveFeel = useButtonFeel();
+  const [reelHover, setReelHover] = useState(false);
 
   return (
     <div
@@ -400,11 +407,12 @@ export default function KiteClashGame({ context, onResult, onClose }: MiniGameCo
       {/* Close button */}
       <button
         onClick={onClose}
+        {...closeFeel.handlers}
         style={{
           position: "absolute",
           top: 14,
           left: "50%",
-          transform: "translateX(-50%)",
+          transform: closeFeel.pressed ? "translateX(-50%) scale(0.95)" : "translateX(-50%)",
           background: "rgba(0,0,0,0.35)",
           border: "1px solid rgba(255,255,255,0.2)",
           color: "#cbd5e1",
@@ -412,6 +420,8 @@ export default function KiteClashGame({ context, onResult, onClose }: MiniGameCo
           borderRadius: 6,
           padding: "4px 10px",
           cursor: "pointer",
+          filter: closeFeel.hover ? "brightness(1.2)" : "none",
+          transition: "filter 0.12s, transform 0.08s",
         }}
       >
         ESC to close
@@ -423,6 +433,7 @@ export default function KiteClashGame({ context, onResult, onClose }: MiniGameCo
           onClick={openHowTo}
           aria-label="How to play"
           className={howToDone ? undefined : "kc-howto-glow"}
+          {...howToFeel.handlers}
           style={{
             display: "flex", alignItems: "center", gap: 7,
             background: howToDone ? "rgba(0,0,0,0.45)" : "#FFA94D",
@@ -430,6 +441,7 @@ export default function KiteClashGame({ context, onResult, onClose }: MiniGameCo
             color: howToDone ? "#FFA94D" : "#0a0a14",
             fontFamily: '"Press Start 2P", monospace',
             fontSize: 9, borderRadius: 8, padding: "7px 12px", cursor: "pointer",
+            ...feelStyle(howToFeel),
           }}
         >
           <span style={{
@@ -517,6 +529,8 @@ export default function KiteClashGame({ context, onResult, onClose }: MiniGameCo
             onPointerUp={() => engineRef.current?.setTouchReel(false)}
             onPointerCancel={() => engineRef.current?.setTouchReel(false)}
             onContextMenu={(e) => e.preventDefault()}
+            onMouseEnter={() => setReelHover(true)}
+            onMouseLeave={() => setReelHover(false)}
             style={{
               width: 90, height: 90, borderRadius: "50%",
               background: snapshot?.nearbyOpponent
@@ -535,6 +549,8 @@ export default function KiteClashGame({ context, onResult, onClose }: MiniGameCo
               display: "flex", alignItems: "center", justifyContent: "center",
               textAlign: "center", lineHeight: 1.4,
               WebkitTapHighlightColor: "transparent",
+              filter: reelHover ? "brightness(1.15)" : "none",
+              transition: "filter 0.12s",
             }}
           >
             {snapshot?.nearbyOpponent ? "✂ CUT" : "REEL"}
@@ -616,6 +632,7 @@ export default function KiteClashGame({ context, onResult, onClose }: MiniGameCo
           )}
           <button
             onClick={() => engineRef.current?.relaunch()}
+            {...relaunchFeel.handlers}
             style={{
               background: "linear-gradient(135deg, #9945FF, #c084fc)",
               border: "none",
@@ -625,6 +642,7 @@ export default function KiteClashGame({ context, onResult, onClose }: MiniGameCo
               fontFamily: '"Press Start 2P", monospace',
               fontSize: 9,
               cursor: "pointer",
+              ...feelStyle(relaunchFeel),
             }}
           >
             RELAUNCH
@@ -632,18 +650,21 @@ export default function KiteClashGame({ context, onResult, onClose }: MiniGameCo
           <button
             onClick={openHowTo}
             className={howToDone ? undefined : "kc-howto-glow"}
+            {...endHowToFeel.handlers}
             style={{
               background: howToDone ? "transparent" : "#FFA94D",
               border: `1px solid ${howToDone ? "rgba(255,169,77,0.6)" : "#FFD700"}`,
               borderRadius: 8, padding: "8px 18px", cursor: "pointer",
               color: howToDone ? "#FFA94D" : "#0a0a14",
               fontFamily: '"Press Start 2P", monospace', fontSize: 8,
+              ...feelStyle(endHowToFeel),
             }}
           >
             ? HOW TO PLAY
           </button>
           <button
             onClick={onClose}
+            {...leaveFeel.handlers}
             style={{
               background: "transparent",
               border: "1px solid rgba(255,255,255,0.2)",
@@ -652,6 +673,7 @@ export default function KiteClashGame({ context, onResult, onClose }: MiniGameCo
               color: "#cbd5e1",
               fontSize: 8,
               cursor: "pointer",
+              ...feelStyle(leaveFeel),
             }}
           >
             Leave
@@ -727,6 +749,9 @@ function HowToPlayCard({ isTouch, onStart }: { isTouch: boolean; onStart: (compl
   }, [next, back]);
 
   const accent = step.warning ? "#ff5a5a" : "#FFA94D";
+  const backFeel = useButtonFeel();
+  const nextFeel = useButtonFeel();
+  const skipFeel = useButtonFeel();
 
   return (
     <div
@@ -773,7 +798,7 @@ function HowToPlayCard({ isTouch, onStart }: { isTouch: boolean; onStart: (compl
         </p>
 
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10 }}>
-          <button onClick={back} disabled={i === 0} style={{ ...navBtn, visibility: i === 0 ? "hidden" : "visible" }}>
+          <button onClick={back} disabled={i === 0} {...backFeel.handlers} style={{ ...navBtn, visibility: i === 0 ? "hidden" : "visible", ...feelStyle(backFeel) }}>
             BACK
           </button>
           <div style={{ flex: 1, display: "flex", justifyContent: "center", gap: 6 }}>
@@ -784,17 +809,19 @@ function HowToPlayCard({ isTouch, onStart }: { isTouch: boolean; onStart: (compl
               }} />
             ))}
           </div>
-          <button onClick={next} style={{
+          <button onClick={next} {...nextFeel.handlers} style={{
             ...navBtn, border: "none", color: "#0a0a14",
             background: "linear-gradient(135deg, #9945FF, #c084fc)",
+            ...feelStyle(nextFeel),
           }}>
             {last ? "PLAY" : "NEXT"}
           </button>
         </div>
         {!last && (
-          <button onClick={() => onStart(false)} style={{
+          <button onClick={() => onStart(false)} {...skipFeel.handlers} style={{
             display: "block", margin: "10px auto 0", background: "none", border: "none",
             color: "#64748b", fontFamily: '"Press Start 2P", monospace', fontSize: 7, cursor: "pointer",
+            ...feelStyle(skipFeel),
           }}>
             SKIP TUTORIAL
           </button>
