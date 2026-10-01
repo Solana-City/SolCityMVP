@@ -91,9 +91,14 @@ export interface PackDef {
   priceSol: number;
   /** Weight per rarity for EACH item drawn. Must add up to 100. */
   odds: Record<Rarity, number>;
-  /** Animated art: one row of `frames` square cells. See SPRITE_REQUESTS.md. */
-  art: { file: string; frames: number };
-  /** Panel accent. */
+  /**
+   * Animated art: one row of `frames` cells, `frameWidth` x `frameHeight`
+   * each. The cells are NOT square — the delivered sheets are 36x51 — so
+   * both numbers are carried rather than assumed, and the art is only ever
+   * drawn at a whole multiple of them (see PackArt) so it stays crisp.
+   */
+  art: { file: string; frames: number; frameWidth: number; frameHeight: number };
+  /** Panel accent. Taken from the art's own highlight colour. */
   accent: string;
 }
 
@@ -109,8 +114,8 @@ export const PACKS: PackDef[] = [
     size: 5,
     priceSol: 0.025,
     odds: { common: 70, uncommon: 22, rare: 7, legendary: 1 },
-    art: { file: "/assets/ui/packs/pack_street.png", frames: 6 },
-    accent: "#14F195",
+    art: { file: "/assets/ui/packs/pack_street.png", frames: 12, frameWidth: 36, frameHeight: 51 },
+    accent: "#F5464C",
   },
   {
     id: "city",
@@ -119,8 +124,8 @@ export const PACKS: PackDef[] = [
     size: 5,
     priceSol: 0.05,
     odds: { common: 45, uncommon: 35, rare: 17, legendary: 3 },
-    art: { file: "/assets/ui/packs/pack_city.png", frames: 6 },
-    accent: "#00D1FF",
+    art: { file: "/assets/ui/packs/pack_city.png", frames: 12, frameWidth: 36, frameHeight: 51 },
+    accent: "#4995F3",
   },
   {
     id: "prime",
@@ -129,8 +134,8 @@ export const PACKS: PackDef[] = [
     size: 5,
     priceSol: 0.1,
     odds: { common: 20, uncommon: 40, rare: 30, legendary: 10 },
-    art: { file: "/assets/ui/packs/pack_prime.png", frames: 6 },
-    accent: "#FFD700",
+    art: { file: "/assets/ui/packs/pack_prime.png", frames: 12, frameWidth: 36, frameHeight: 51 },
+    accent: "#9A46FE",
   },
 ];
 

@@ -159,10 +159,10 @@ export default function BoosterOverlay({
           </>
         ) : (
           <div style={{
-            width: 120, height: 120, margin: "6px auto 24px",
+            display: "inline-block", margin: "6px auto 24px",
             animation: "booster-shake 0.16s linear infinite, booster-glow 0.5s ease-in-out infinite",
           }}>
-            {pack && <PackArt pack={pack} size={120} />}
+            {pack && <PackArt pack={pack} scale={3} />}
           </div>
         )}
       </div>
@@ -180,7 +180,7 @@ function PackCard({ pack, onOpen }: { pack: PackDef; onOpen: () => void }) {
       border: `2px solid ${pack.accent}55`,
       display: "flex", flexDirection: "column", alignItems: "center", gap: 8,
     })}>
-      <PackArt pack={pack} size={84} />
+      <PackArt pack={pack} scale={2} />
       <div style={{ fontSize: 8, color: pack.accent, letterSpacing: 1 }}>{pack.name}</div>
       <div style={{ fontSize: 6, color: "#8a8aa7", lineHeight: 1.6, minHeight: 20 }}>{pack.blurb}</div>
 
@@ -226,15 +226,21 @@ function PackCard({ pack, onOpen }: { pack: PackDef; onOpen: () => void }) {
 }
 
 /**
- * A pack's animated sheet: one row of square frames, played on a CSS step
- * animation so it costs no JavaScript per frame.
+ * A pack's animated sheet, played on a CSS step animation so it costs no
+ * JavaScript per frame.
  *
- * The art is not drawn yet for any of the three (SPRITE_REQUESTS.md), so a
- * missing file falls back to the wardrobe icon in the pack's own colour. That
- * keeps the chooser readable today and lights up on its own the moment a
- * sheet lands in public/assets/ui/packs/.
+ * Drawn at a WHOLE multiple of the frame, never at a target size: a 51px tall
+ * bag stretched to fit an 84px box lands its pixels on fractions of a screen
+ * pixel, and pixel art resampled at a fraction is the tearing the interface
+ * was fixed for (see ui/crispPixels.ts). So the caller asks for 2x or 3x and
+ * the box takes the size that follows.
+ *
+ * A missing file falls back to the wardrobe icon in the pack's own colour,
+ * which is what the chooser showed before the art arrived.
  */
-function PackArt({ pack, size }: { pack: PackDef; size: number }) {
+function PackArt({ pack, scale }: { pack: PackDef; scale: number }) {
+  const width = pack.art.frameWidth * scale;
+  const height = pack.art.frameHeight * scale;
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
@@ -249,14 +255,14 @@ function PackArt({ pack, size }: { pack: PackDef; size: number }) {
   if (!ready) {
     return (
       <div style={chamferBox(14, {
-        width: size, height: size,
+        width, height,
         display: "flex", alignItems: "center", justifyContent: "center",
         background: `linear-gradient(135deg, ${pack.accent}33, rgba(153,69,255,0.12))`,
         border: `2px solid ${pack.accent}77`,
       })}>
         <img
           src="/assets/ui/ico_wardrop.png" alt="" draggable={false}
-          style={{ width: size * 0.5, height: size * 0.5, imageRendering: "pixelated" }}
+          style={{ width: width * 0.6, height: width * 0.6, imageRendering: "pixelated" }}
         />
       </div>
     );
@@ -266,13 +272,13 @@ function PackArt({ pack, size }: { pack: PackDef; size: number }) {
     <div
       aria-hidden
       style={{
-        width: size, height: size,
+        width, height,
         backgroundImage: `url("${pack.art.file}")`,
-        backgroundSize: `${size * pack.art.frames}px ${size}px`,
+        backgroundSize: `${width * pack.art.frames}px ${height}px`,
         backgroundRepeat: "no-repeat",
         imageRendering: "pixelated",
         // The strip is walked one frame at a time and wraps at its full width.
-        ["--roll" as string]: `-${size * pack.art.frames}px`,
+        ["--roll" as string]: `-${width * pack.art.frames}px`,
         animation: `pack-roll ${(pack.art.frames / 8).toFixed(2)}s steps(${pack.art.frames}) infinite`,
       }}
     />
