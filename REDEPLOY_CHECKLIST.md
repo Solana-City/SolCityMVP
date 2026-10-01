@@ -17,6 +17,8 @@ here. One deploy ships:
 | 5 | `claim_free_outfit` (quest / NPC reward items, free, once per wallet) | in lib.rs |
 | 5 | Wardrobe enforcement: `player_v3` + `unlocked` snapshot + `sync_unlocks` + enforcing `update_look_session` | in lib.rs |
 | 6 | Beach football: `BallState` PDA + `initialize_ball` / `kick_ball_session` / `delegate_ball` (added 2026-09-30) | in lib.rs |
+| 7 | Public profile: `achievements: [u8; 32]` + `streak_current` / `streak_best` on `PlayerState` + `publish_profile_session` (added 2026-10-01) | in lib.rs |
+| 8 | Friends: `FriendRequest` + `Friendship` PDAs + `send` / `accept` / `decline` / `cancel` / `remove` (added 2026-10-01) | in lib.rs |
 | 1 | HuntScore PDA | **deferred** (the KV leaderboard covers the player-facing part) |
 | 3 | `delegate_hunt` | **skipped** |
 | 4 | On-chain display names | **dropped** (the off-chain nickname registry replaced them) |
@@ -325,6 +327,92 @@ another deploy.
 
 ---
 
+### Items 7 and 8 — the public profile and friends (APPLIED in lib.rs, 2026-10-01)
+
+Why they are in this deploy rather than a later one: both touch `PlayerState`,
+and `player_v3` already re-inits every wallet. Adding fields during a reset that
+is happening anyway costs nothing; adding them afterwards costs another reset.
+
+**Item 7, the profile other players can read.** Achievements and streaks were
+`localStorage` only, which is exactly why nobody could see anybody else's. Three
+fields at the END of `PlayerState` (after `unlocked`), and one session-signed
+instruction that writes them:
+
+- `achievements: [u8; ACHIEVEMENT_BITS]` (32 bytes, 256 rungs)
+- `streak_current: u16`, `streak_best: u16`
+- `publish_profile_session(achievements: [u8; 32], streak_current: u16, streak_best: u16)`
+
+It costs nothing on either side. The write is session-signed (no popup, no fee
+on the rollup) and happens only when the summary changes, a handful of times a
+session. The read is free: these fields ride the 500ms position poll every
+client already makes for every citizen, so no new request and no KV command.
+
+Monotonic on purpose: bits only turn ON and `streak_best` only rises, so a
+second device or a client with a cold profile cannot erase what was published
+elsewhere.
+
+Self-reported, also on purpose. Most achievements count things only the client
+sees (balls kicked, dogs petted), so there is no on-chain tally to check them
+against. Same trust level as the KV boards they sit beside, and nothing is gated
+on them. The doc comment in lib.rs says so.
+
+**The bit layout is a wire format.** Achievements are one track per action with
+levels, and each track owns a FIXED block of `BITS_PER_TRACK` (8) bits. Bits are
+NOT handed out in sequence across tracks: if they were, adding one rung to the
+dog track would shift every track after it and relabel every profile already on
+chain, showing players levels they never reached. Appending a rung takes a free
+bit inside its own block; appending a track takes a fresh block. A track may not
+exceed 8 levels, and `achievementRegistry.test.ts` holds all of this.
+
+**Item 8, friends.** Two small accounts, 80 bytes each, both on BASE (not
+delegated: they are written twice in their life, so a rollup buys nothing and
+costs two extra txs per friendship).
+
+- `FriendRequest`, seeds `["friend_req", from, to]`. Being a PDA of the pair is
+  what makes a duplicate invite impossible, since `init` fails the second time.
+- `Friendship`, seeds `["friendship", a, b]` with the pair SORTED, so one
+  account per pair and no cap on how many friends anyone has.
+- `send_friend_request`, `accept_friend_request(a, b)`, `decline_friend_request`,
+  `cancel_friend_request`, `remove_friend`.
+
+Offline delivery needs no server and no TTL. An invite is an account that sits
+on-chain until it is answered, so "they get it next time they log in" is just
+what happens. The DM inbox could not have done this: it expires in 24 hours.
+
+Rent is refunded on every exit, including declining. A declined invite leaves no
+trace at all, so nobody can read who refused them.
+
+Wallet-signed, not session-signed, because these create accounts and the session
+key holds no lamports (`fundLamports` exists but is never used with a value).
+One prompt per deliberate act.
+
+Two things to know before testing:
+- **A wallet with no player PDA cannot be invited.** `send_friend_request` reads
+  the recipient's key off their `PlayerState`, which also proves they are a
+  citizen. After the `player_v3` reset that means both players must enter the
+  city once. The client already words this as "they need to visit the city
+  first" rather than surfacing a constraint failure.
+- **Invite spam costs the sender.** `init` on the pair blocks duplicates to the
+  same person, but a spammer could invite many different people, paying ~0.0015
+  SOL of refundable rent each time. Watch it in testing; a per-sender counter
+  would need another account, so it is deliberately not in this deploy.
+
+**Discovery is `getProgramAccounts` with memcmp filters**, which is the one read
+that has rate-limited us before, so nothing here polls. `game/social/friends.ts`
+reads at login and on panel-open and caches, invalidating on mutation.
+
+Both account kinds are the same 80 bytes, so **every filter must also match the
+8-byte discriminator at offset 0** or the two come back mixed together. And the
+discriminator must encode as 8 bytes: a memcmp filter compares exactly as many
+bytes as its comparand decodes to, so padding it into a 32-byte PublicKey to
+borrow its base58 widens the comparison over the next field and matches nothing.
+`friends.test.ts` holds both traps.
+
+Listing friends is TWO queries, because the pair is stored sorted: a player is
+in slot `a` for about half their friendships and in slot `b` for the rest.
+
+---
+
 ## CLIENT changes (post-deploy — apply ONLY after the new program is live)
 
 Order: deploy program → verify → then push these together. Booster and
@@ -333,6 +421,11 @@ free-outfit wiring stays behind `NEXT_PUBLIC_BOOSTER_ONCHAIN` until verified.
 1. **`game/solana/program.ts`**: `PLAYER_SEED` → `"player_v3"`. Add
    `unlocked: Uint8Array(32)` at the END of the `PlayerState` decoder (after
    `message_at`).
+   - The friend derivations, decoders and `toBase58` are ALREADY in this file
+     (2026-10-01) and are inert until the seed flips.
+   - `OnChainMultiplayer.decodeAndUpdatePlayer` ALREADY reads the profile fields
+     after `unlocked`, defensively, so a v2 account decodes as a citizen with no
+     achievements. Nothing to change there.
 2. **`game/solana/instructions.ts`**: `DISC` + builders for
    `recordSwapSession`, `recordTransferSession`,
    `syncUnlocks`, `claimFreeOutfit(index: u16)`, `openBooster(poolCount: u16,
@@ -398,6 +491,32 @@ free-outfit wiring stays behind `NEXT_PUBLIC_BOOSTER_ONCHAIN` until verified.
       coordinates across the map is rejected (`BallOutOfReach`).
 - [ ] Ball: `seq` advances on every kick, including three inside one second.
 - [ ] Full cross-device multiplayer still green (compare to Parabéns 2.0).
+
+**Profile (item 7)** — needs two devices:
+- [ ] Earn something on A; B opens A's card and sees the badge and the level,
+      with no extra request (watch the network tab: it should ride the poll).
+- [ ] Check in on A; B sees the streak on A's card.
+- [ ] Publish from A, then open the city on a SECOND device with a cold profile
+      and let it publish: the first device's badges are still there (the OR is
+      what protects this).
+- [ ] The publish shows ONCE per change in the onchain log under `profile`, not
+      per frame.
+
+**Friends (item 8)** — two devices, two wallets:
+- [ ] A invites B while B is OFFLINE. B opens the city later and the invite is
+      waiting in the FRIENDS tab. This is the whole feature: do not skip it.
+- [ ] B accepts: both see each other in FRIENDS, and A got the invite's rent
+      back.
+- [ ] A invites B twice → the second is refused and the card says so, not a raw
+      error.
+- [ ] Invite a wallet that has never entered the city since the reset → "they
+      need to visit the city first".
+- [ ] Decline leaves nothing behind: nothing in either list, rent back to the
+      sender.
+- [ ] `remove_friend` from EITHER side alone closes the friendship.
+- [ ] A friend walking in toasts once, and does NOT toast again when they walk
+      out of range and back.
+- [ ] Friend list survives a reload (it is on chain, not in localStorage).
 
 ---
 
