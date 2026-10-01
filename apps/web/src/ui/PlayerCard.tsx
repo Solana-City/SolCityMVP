@@ -8,9 +8,41 @@ import { useNickname } from "@/ui/useNicknames";
 import { OPEN_DM_EVENT, SEND_TOKENS_EVENT } from "@/game/chat/dmEvents";
 import { chamferBox } from "@/ui/chamfer";
 import { useButtonFeel, feelStyle } from "@/ui/useButtonFeel";
+import { useWallet } from "@solana/wallet-adapter-react";
+import { PublicKey } from "@solana/web3.js";
+import { RARITY_COLOR } from "@/game/collections/seasons";
+import { achievementAtIndex } from "@/game/social/profilePublisher";
+import { runFriendAction, type FriendAction } from "@/game/social/friendActions";
+import { standingWith, type FriendStanding } from "@/game/social/friends";
 
 /** The city opens Sol Mechs on this, with the player to duel. */
 export const DUEL_INVITE_EVENT = "solcity:solmechs-duel";
+
+/**
+ * Achievement tiers borrow the rarity colours, so gold means the same thing on
+ * a badge as it does on a hat. The tier names do not line up one to one
+ * (achievements have "epic" where items have "uncommon"), so epic takes the
+ * panel's own purple rather than inventing a fifth colour.
+ */
+const TIER_COLOR: Record<string, string> = {
+  common: RARITY_COLOR.common,
+  rare: RARITY_COLOR.rare,
+  epic: "#c084fc",
+  legendary: RARITY_COLOR.legendary,
+};
+
+/** What the one friend button says and does, per standing. */
+const FRIEND_BUTTON: Record<Exclude<FriendStanding, "self">, {
+  label: string;
+  action: FriendAction | null;
+  color: string;
+  border: string;
+}> = {
+  none:            { label: "ADD FRIEND",     action: "invite",  color: "#14F195", border: "rgba(20,241,149,0.45)" },
+  "invited-them":  { label: "INVITE SENT",    action: "cancel",  color: "#8a8aa7", border: "rgba(138,138,167,0.4)" },
+  "invited-me":    { label: "ACCEPT FRIEND",  action: "accept",  color: "#FFD700", border: "rgba(255,215,0,0.5)"  },
+  friends:         { label: "FRIENDS",        action: null,      color: "#14F195", border: "rgba(20,241,149,0.45)" },
+};
 
 /**
  * Opened by clicking another connected player's avatar in the city
@@ -52,8 +84,45 @@ export default function PlayerCard({ gameRef, wallet, displayName, myWallet, onC
     const id = setInterval(() => setPlayer(network.getPlayer(wallet)), 2000);
     return () => clearInterval(id);
   }, [wallet, network]);
+  const { signTransaction } = useWallet();
+  const [standing, setStanding] = useState<FriendStanding>("none");
+  const [friendBusy, setFriendBusy] = useState(false);
+  const [friendNote, setFriendNote] = useState<string | null>(null);
+
+  // Where we stand with them, read once when the card opens. Cached in
+  // social/friends, so opening the same card again usually costs no query.
+  useEffect(() => {
+    if (!wallet || !myWallet || wallet === myWallet) return;
+    let alive = true;
+    standingWith(new PublicKey(myWallet), new PublicKey(wallet))
+      .then((s) => { if (alive) setStanding(s); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [wallet, myWallet]);
+
+  const onFriend = async (): Promise<void> => {
+    const action = standing === "self" ? null : FRIEND_BUTTON[standing].action;
+    if (!action || !wallet || !myWallet || !signTransaction) return;
+    setFriendBusy(true);
+    setFriendNote(null);
+    const res = await runFriendAction(
+      action, new PublicKey(myWallet), new PublicKey(wallet), signTransaction,
+    );
+    setFriendBusy(false);
+    if (res.ok) {
+      setStanding(
+        action === "invite" ? "invited-them"
+        : action === "accept" ? "friends"
+        : "none",
+      );
+    } else {
+      setFriendNote(res.message);
+    }
+  };
+
   const closeFeel = useButtonFeel();
   const copyFeel = useButtonFeel();
+  const friendFeel = useButtonFeel();
   const sendFeel = useButtonFeel();
   const messageFeel = useButtonFeel();
   const battleFeel = useButtonFeel();
@@ -62,6 +131,7 @@ export default function PlayerCard({ gameRef, wallet, displayName, myWallet, onC
   const short = `${wallet.slice(0, 4)}…${wallet.slice(-4)}`;
   const name = nickname || displayName || player?.displayName || short;
   const isSelf = wallet === myWallet;
+  const best = player?.streakBest ?? 0;
 
   return (
     <div
@@ -122,9 +192,39 @@ export default function PlayerCard({ gameRef, wallet, displayName, myWallet, onC
           </button>
         </div>
 
-        <div style={{ margin: "12px 0 4px" }}>
+        <div style={{ display: "flex", gap: 8, margin: "12px 0 4px" }}>
           <Stat label="Score" value={player?.score ?? 0} color="#B7E928" />
+          <Stat label="Streak" value={player?.streakCurrent ?? 0} color="#FFD700"
+            hint={best > 0 ? `best ${best}` : undefined} />
         </div>
+
+        <Badges indices={player?.achievements} />
+
+        {!isSelf && standing !== "self" && (
+          <button
+            onClick={() => void onFriend()}
+            disabled={friendBusy || FRIEND_BUTTON[standing].action === null}
+            {...friendFeel.handlers}
+            style={chamferBox(8, {
+              width: "100%", marginTop: 10, padding: "11px 0",
+              fontFamily: '"Press Start 2P", monospace', fontSize: 7, letterSpacing: 1,
+              color: FRIEND_BUTTON[standing].color,
+              background: "rgba(255,255,255,0.03)",
+              border: `1px solid ${FRIEND_BUTTON[standing].border}`,
+              cursor: FRIEND_BUTTON[standing].action ? "pointer" : "default",
+              opacity: friendBusy ? 0.6 : 1,
+              ...feelStyle(friendFeel),
+            })}
+          >
+            {friendBusy ? "..." : FRIEND_BUTTON[standing].label}
+          </button>
+        )}
+
+        {friendNote && (
+          <div style={{ fontSize: 6, color: "#FFD700", lineHeight: 1.6, marginTop: 8 }}>
+            {friendNote}
+          </div>
+        )}
 
         {!isSelf && (
           <button
@@ -188,7 +288,7 @@ export default function PlayerCard({ gameRef, wallet, displayName, myWallet, onC
 
         <div style={{ fontSize: 7, color: "#3a3a5a", lineHeight: 1.5, marginTop: 10 }}>
           {isSelf
-            ? "Presence score is shared live. Achievements and mini-game scores are still local for now."
+            ? "Score, streak and badges are shared live."
             : flags.duels
               ? "A friendly Sol Mechs duel, 3v3. Nothing is at stake and no rating moves."
               : "Duels are off right now."}
@@ -198,11 +298,70 @@ export default function PlayerCard({ gameRef, wallet, displayName, myWallet, onC
   );
 }
 
-function Stat({ label, value, color }: { label: string; value: number; color: string }) {
+function Stat({ label, value, color, hint }: {
+  label: string; value: number; color: string; hint?: string;
+}) {
   return (
-    <div style={chamferBox(8, { background: "rgba(255,255,255,0.03)", padding: "8px 10px" })}>
+    <div style={chamferBox(8, {
+      flex: 1, minWidth: 0,
+      background: "rgba(255,255,255,0.03)", padding: "8px 10px",
+    })}>
       <div style={{ fontSize: 7, color: "#555577" }}>{label}</div>
       <div style={{ fontSize: 11, color, fontWeight: 600 }}>{value}</div>
+      {hint && <div style={{ fontSize: 5, color: "#555577", marginTop: 2 }}>{hint}</div>}
+    </div>
+  );
+}
+
+/** How many to show before the row turns into a count. */
+const BADGES_SHOWN = 12;
+
+/**
+ * The badges, as badges. A list of titles would be a wall of text on a 280px
+ * card, where a row of icons reads at a glance and still names each one on
+ * hover.
+ *
+ * Empty renders nothing rather than "no achievements yet": an absent row says
+ * the same thing without spending a line on it.
+ */
+function Badges({ indices }: { indices?: Set<number> }) {
+  if (!indices || indices.size === 0) return null;
+  const earned = [...indices]
+    .map((i) => achievementAtIndex(i))
+    .filter((a): a is NonNullable<typeof a> => !!a);
+  if (earned.length === 0) return null;
+
+  const shown = earned.slice(0, BADGES_SHOWN);
+  const rest = earned.length - shown.length;
+
+  return (
+    <div style={{ marginTop: 10 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5 }}>
+        <span style={{ fontSize: 7, color: "#555577" }}>BADGES</span>
+        <span style={{ fontSize: 7, color: "#8a8aa7" }}>{earned.length}</span>
+      </div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+        {shown.map((a) => (
+          <span
+            key={a.id}
+            title={`${a.title} - ${a.description}`}
+            style={chamferBox(4, {
+              width: 22, height: 22,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              fontSize: 11, lineHeight: 1,
+              background: "rgba(255,255,255,0.04)",
+              border: `1px solid ${TIER_COLOR[a.tier] ?? RARITY_COLOR.common}`,
+            })}
+          >
+            {a.icon}
+          </span>
+        ))}
+        {rest > 0 && (
+          <span style={{
+            fontSize: 7, color: "#8a8aa7", alignSelf: "center", paddingLeft: 2,
+          }}>+{rest}</span>
+        )}
+      </div>
     </div>
   );
 }
