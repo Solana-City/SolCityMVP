@@ -53,13 +53,34 @@ in `apps/android/README.md`:
 ### Hackathon context
 
 This project started on 2026-04-06, months before CLOCK IN opened on 2026-09-08,
-and enters under the rule for pre-existing projects. The entire Android layer,
-and the mobile work in the web client that supports it, were built during the
-hackathon. Every commit for it carries an `(android)` or mobile-fix scope:
+and enters under the rule for pre-existing projects. The web game predates the
+hackathon. The entire Android layer, and the mobile work in the web client that
+supports it, were built during it.
+
+The Android app did not exist before the hackathon, so its whole history is
+hackathon work:
 
 ```bash
-git log --grep="(android)" --since=2026-09-08 --oneline
+git log --since=2026-09-08 --oneline -- apps/android
 ```
+
+The mobile work in the web client sits alongside the rest of the game, so the
+main commits are listed here rather than left to a grep:
+
+| Commit | Work |
+|---|---|
+| `6264f68` | The Seeker app shell, from Solana Mobile's official web-shell |
+| `b6abf51` | First build on device |
+| `36ac794` | Real PWA and store icons, replacing a broken file |
+| `c771fc5` | Full screen on device, and no rotate prompt inside the app |
+| `35437c4` | MWA authorizes the network the game actually runs on |
+| `1c3734d` | Keyboard handling, and the on-chain log sized for a phone |
+| `349badb` | The on-chain log as a side sheet, so you can still walk |
+| `39b4dc0` | Chat input stays above the on-screen keyboard |
+| `d117a1a` | Unread marker on the chat button |
+| `2888ded` | Pixel icon set and uniform HUD icon buttons |
+| `d08710e` | Responsive pass: rail icons, centered chat, smaller action button |
+| `e000992` | Haptics through the native bridge |
 
 Scope and status: `MOBILE_HACKATHON_SCOPE.md` and `HACKATHON_SUBMISSION.md`.
 
