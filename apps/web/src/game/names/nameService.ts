@@ -6,6 +6,7 @@
  * without polling per sprite.
  */
 import { claimMessage } from "@/lib/names/claimMessage";
+import { serverNow } from "@/lib/clockSkew";
 
 /**
  * Names seen before, kept on the device.
@@ -122,7 +123,10 @@ export async function claimName(
   name: string,
   signMessage: (msg: Uint8Array) => Promise<Uint8Array>,
 ): Promise<{ ok: boolean; message?: string }> {
-  const ts = Date.now();
+  // The server's clock (lib/clockSkew.ts). The window here is five minutes,
+  // so this only matters for a machine badly out of step, but the claim is
+  // signed by the WALLET: a rejection costs the player a popup for nothing.
+  const ts = serverNow();
   const sig = await signMessage(new TextEncoder().encode(claimMessage(wallet, name, ts)));
   const signature = btoa(String.fromCharCode(...sig));
   const res = await fetch("/api/names", {

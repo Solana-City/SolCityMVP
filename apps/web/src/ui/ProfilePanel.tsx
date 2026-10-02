@@ -11,7 +11,7 @@ import {
 } from "@/game/progression/achievementRegistry";
 import { fetchBoard } from "@/game/leaderboards/boards";
 import { DAILY_QUESTS, claimQuest, getQuestProgress, onQuestsChanged } from "@/game/quests/QuestManager";
-import { OPEN_CALENDAR_EVENT, STREAK_EVENT, type StreakView } from "@/game/daily/calendarEvents";
+import { OPEN_CALENDAR_EVENT, STREAK_EVENT, CHECKIN_STALLED_EVENT, type StreakView } from "@/game/daily/calendarEvents";
 import { soundManager } from "@/game/audio/SoundManager";
 import { musicManager } from "@/game/audio/MusicManager";
 import { dmsOffPref, setDmsOffPref } from "@/game/chat/dmEvents";
@@ -364,6 +364,9 @@ function ProfileTab({ profile, wallet, onConnect }: {
   onConnect: () => void;
 }) {
   const [streak, setStreak] = useState<StreakView | null>(null);
+  /** The check-in stopped trying. The strip said "CHECKING IN..." either way
+   *  before, which is how a broken check-in went unseen for eight days. */
+  const [checkinStalled, setCheckinStalled] = useState(false);
   const [mine, setMine] = useState({ finds: 0, kite: 0, quest: 0 });
   const [, bump] = useState(0);
 
@@ -374,9 +377,18 @@ function ProfileTab({ profile, wallet, onConnect }: {
       .then((r) => r.json())
       .then((b) => { if (!cancelled && b.streak) setStreak(b.streak); })
       .catch(() => undefined);
-    const onStreak = (e: Event) => setStreak((e as CustomEvent<StreakView>).detail);
+    const onStreak = (e: Event) => {
+      setStreak((e as CustomEvent<StreakView>).detail);
+      setCheckinStalled(false);
+    };
+    const onStalled = () => setCheckinStalled(true);
     window.addEventListener(STREAK_EVENT, onStreak);
-    return () => { cancelled = true; window.removeEventListener(STREAK_EVENT, onStreak); };
+    window.addEventListener(CHECKIN_STALLED_EVENT, onStalled);
+    return () => {
+      cancelled = true;
+      window.removeEventListener(STREAK_EVENT, onStreak);
+      window.removeEventListener(CHECKIN_STALLED_EVENT, onStalled);
+    };
   }, [wallet]);
 
   useEffect(() => {
@@ -441,7 +453,11 @@ function ProfileTab({ profile, wallet, onConnect }: {
           </div>
           <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginTop: 12, fontSize: 8, color: MUTED }}>
             <span>BEST {Math.max(streak?.best ?? 0, profile.streakBest ?? 0)}</span>
-            <span>{streak?.checkedInToday ? "COME BACK TOMORROW" : "CHECKING IN..."}</span>
+            <span>{
+              streak?.checkedInToday ? "COME BACK TOMORROW"
+                : checkinStalled ? "CHECK-IN DID NOT GO THROUGH"
+                : "CHECKING IN..."
+            }</span>
           </div>
         </Card>
 

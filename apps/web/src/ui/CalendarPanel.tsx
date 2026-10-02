@@ -19,10 +19,11 @@ import ChamferGlow from "@/ui/ChamferGlow";
 import nacl from "tweetnacl";
 import { useWallet } from "@solana/wallet-adapter-react";
 import type { OnChainMultiplayer, OnChainPlayer } from "@/game/multiplayer/OnChainMultiplayer";
+import { learnClockSkew, serverNow } from "@/lib/clockSkew";
 import { checkinMessage } from "@/lib/checkinMessage";
 import { fetchBoard, type BoardRow } from "@/game/leaderboards/boards";
 import { fetchLeaderboard, type LeaderboardEntry } from "@/game/solana/leaderboard";
-import { OPEN_CALENDAR_EVENT, STREAK_EVENT, type StreakView } from "@/game/daily/calendarEvents";
+import { OPEN_CALENDAR_EVENT, STREAK_EVENT, CHECKIN_STALLED_EVENT, type StreakView } from "@/game/daily/calendarEvents";
 import { profileManager } from "@/game/config/profileManager";
 import { useNicknames } from "./useNicknames";
 import { Citizen, Img, guideSeen } from "./CityGuide";
@@ -63,6 +64,12 @@ function publishStreak(streak: StreakView): void {
   window.dispatchEvent(new CustomEvent(STREAK_EVENT, { detail: streak }));
 }
 
+/** Says, once, that the check-in stopped trying, so the profile can stop
+ *  claiming it is still going. */
+function stalled(): void {
+  window.dispatchEvent(new Event(CHECKIN_STALLED_EVENT));
+}
+
 export default function CalendarPanel({ gameRef }: { gameRef: Phaser.Game | null }) {
   const { publicKey } = useWallet();
   const wallet = publicKey?.toBase58() ?? null;
@@ -77,10 +84,17 @@ export default function CalendarPanel({ gameRef }: { gameRef: Phaser.Game | null
 
   // ── Daily check-in: signed with the session key, retried while the key is
   // still being authorized on-chain in the first seconds after connecting.
+  //
+  // Signed with the SERVER's clock, learned from its own responses. The server
+  // refuses a timestamp more than a minute old, which is what stops a replay,
+  // and which silently refused every check-in from a machine a minute out of
+  // step. One player's streak stopped dead for eight days that way: 63 seconds
+  // behind, against a 60 second window. See lib/clockSkew.ts.
   useEffect(() => {
     if (!gameRef || !wallet) return;
     let cancelled = false;
     let attempts = 0;
+    let corrections = 0;
     let timer: ReturnType<typeof setTimeout> | null = null;
     const got = (s: StreakView) => { if (!cancelled) { setStreak(s); publishStreak(s); } };
 
@@ -90,7 +104,7 @@ export default function CalendarPanel({ gameRef }: { gameRef: Phaser.Game | null
       if (net) {
         try {
           const kp = net.getSessionKeys().getSessionKey();
-          const ts = Date.now();
+          const ts = serverNow();
           const sig = nacl.sign.detached(new TextEncoder().encode(checkinMessage(wallet, ts)), kp.secretKey);
           const res = await fetch("/api/checkin", {
             method: "POST",
@@ -102,16 +116,29 @@ export default function CalendarPanel({ gameRef }: { gameRef: Phaser.Game | null
           });
           const body = await res.json();
           if (body.ok && body.streak) { got(body.streak); return; }
-          if (!body.retry) return; // store off or a hard failure: stop quietly
+          if (typeof body.serverTs === "number") {
+            // Our clock was the problem. Correct it and sign again straight
+            // away: waiting five seconds for a clock that is minutes out helps
+            // nobody, and two tries cover any drift.
+            learnClockSkew(body.serverTs);
+            if (++corrections <= 2) { void attempt(); return; }
+          }
+          if (!body.retry) { if (!cancelled) stalled(); return; }
         } catch { /* network blip: retry */ }
       }
       if (++attempts < 24) timer = setTimeout(attempt, 5_000);
+      else if (!cancelled) stalled();
     };
 
-    // Show the stored streak straight away; the check-in updates it.
+    // Show the stored streak straight away; the check-in updates it. This
+    // response also carries the server's clock, so the FIRST signature is
+    // already corrected on a machine that is out of step.
     fetch(`/api/checkin?wallet=${wallet}`)
       .then((r) => r.json())
-      .then((b) => { if (b.streak) got(b.streak); })
+      .then((b) => {
+        if (typeof b.serverTs === "number") learnClockSkew(b.serverTs);
+        if (b.streak) got(b.streak);
+      })
       .catch(() => undefined);
     void attempt();
     return () => { cancelled = true; if (timer) clearTimeout(timer); };

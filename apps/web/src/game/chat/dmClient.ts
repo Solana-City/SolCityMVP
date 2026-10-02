@@ -6,6 +6,7 @@
  * senders; it pauses while the tab is hidden.
  */
 import nacl from "tweetnacl";
+import { learnClockSkew, serverNow } from "@/lib/clockSkew";
 import type { Keypair } from "@solana/web3.js";
 import { dmMessage, type DmAction } from "@/lib/dm/dmMessage";
 
@@ -148,7 +149,10 @@ export class DMClient {
     extra: { to?: string; text?: string; off?: boolean } = {},
   ): Promise<{ ok: boolean; retry?: boolean; message?: string; off?: boolean; messages?: IncomingDM[] }> {
     const kp = this.sessionKey();
-    const ts = Date.now();
+    // The server's clock, not this machine's: it refuses a signature more than
+    // a minute old, and an ordinary minute of drift would silently swallow
+    // every message. See lib/clockSkew.ts.
+    const ts = serverNow();
     const msg = new TextEncoder().encode(dmMessage(action, this.wallet, ts, extra));
     const signature = btoa(String.fromCharCode(...nacl.sign.detached(msg, kp.secretKey)));
     const res = await fetch("/api/dm", {
@@ -156,7 +160,9 @@ export class DMClient {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action, wallet: this.wallet, sessionKey: kp.publicKey.toBase58(), ts, signature, ...extra }),
     });
-    return res.json();
+    const body = await res.json();
+    if (typeof body?.serverTs === "number") learnClockSkew(body.serverTs);
+    return body;
   }
 }
 

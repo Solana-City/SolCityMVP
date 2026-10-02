@@ -55,7 +55,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, message: "Bad request." }, { status: 400 });
   }
   if (!Number.isFinite(ts) || Math.abs(Date.now() - ts) > MAX_AGE_MS) {
-    return NextResponse.json({ ok: false, message: "Request expired." }, { status: 400 });
+    // A clock, not an attack, almost every time. Hand ours back so the client
+    // can correct itself and sign the next one properly (lib/clockSkew.ts):
+    // this window swallowed every message from a machine a minute out of step.
+    return NextResponse.json(
+      { ok: false, serverTs: Date.now(), message: "Request expired." },
+      { status: 400 },
+    );
   }
   const extra = { to: body.to, text: body.text, off: body.off };
   if (!verifyEd25519(sessionKey, dmMessage(action, wallet, ts, extra), body.signature)) {

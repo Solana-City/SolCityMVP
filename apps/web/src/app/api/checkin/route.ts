@@ -13,15 +13,25 @@ function isWallet(s: string): boolean {
   try { return new PublicKey(s).toBase58() === s; } catch { return false; }
 }
 
-/** GET ?wallet=<w> -> { streak } (read only) */
+/**
+ * GET ?wallet=<w> -> { streak, serverTs } (read only)
+ *
+ * `serverTs` is this server's clock, and it is on every response on purpose:
+ * the POST below signs a timestamp and refuses one older than a minute, so a
+ * player whose machine is a minute out could never check in. The client reads
+ * this and signs with the corrected clock (lib/clockSkew.ts).
+ */
 export async function GET(req: NextRequest) {
   const wallet = req.nextUrl.searchParams.get("wallet") ?? "";
-  if (storeMode() === "off" || !isWallet(wallet)) return NextResponse.json({ enabled: storeMode() !== "off", streak: null });
+  const serverTs = Date.now();
+  if (storeMode() === "off" || !isWallet(wallet)) {
+    return NextResponse.json({ enabled: storeMode() !== "off", streak: null, serverTs });
+  }
   try {
-    return NextResponse.json({ enabled: true, streak: await readStreak(wallet) });
+    return NextResponse.json({ enabled: true, streak: await readStreak(wallet), serverTs });
   } catch (err) {
     console.error("[checkin] read", err);
-    return NextResponse.json({ enabled: false, streak: null });
+    return NextResponse.json({ enabled: false, streak: null, serverTs });
   }
 }
 
@@ -40,7 +50,16 @@ export async function POST(req: NextRequest) {
   if (!isWallet(wallet) || !isWallet(sessionKey) || !body.signature || !Number.isFinite(ts)) {
     return NextResponse.json({ ok: false }, { status: 400 });
   }
-  if (Math.abs(Date.now() - ts) > MAX_AGE_MS) return NextResponse.json({ ok: false, message: "Expired." }, { status: 400 });
+  if (Math.abs(Date.now() - ts) > MAX_AGE_MS) {
+    // Almost always a clock, not an attack. Hand back ours and ask for one
+    // more try: the client corrects itself and signs again (lib/clockSkew.ts).
+    // This used to be a flat rejection, and a player 63 seconds behind lost
+    // their streak for eight days without a word on screen.
+    return NextResponse.json(
+      { ok: false, retry: true, serverTs: Date.now(), message: "Expired." },
+      { status: 400 },
+    );
+  }
   if (!verifyEd25519(sessionKey, checkinMessage(wallet, ts), body.signature)) {
     return NextResponse.json({ ok: false }, { status: 401 });
   }
