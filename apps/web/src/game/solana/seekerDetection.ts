@@ -12,6 +12,11 @@
  *
  * SGT Collection: 6J3HcGLoM8EAgEMpGzgHdCMgChH1GbJ1NHtEGfwzbnqj (mainnet)
  * Reference: https://docs.solanamobile.com/recipes/general/detecting-seeker-users
+ *
+ * 3. SKR balance — holding the Solana Mobile token, device or not
+ *    holdsSkr(wallet) → true when the wallet holds any SKR
+ *
+ * SKR mint: SKRbvo6Gf7GondiT3BbTfuRDPqLWei4j2Qy2NPGZhW3 (mainnet)
  */
 
 import { Connection, PublicKey } from "@solana/web3.js";
@@ -141,4 +146,38 @@ function parseCollectionFromMetadata(data: Buffer): string | null {
   } catch {
     return null;
   }
+}
+
+// ── SKR ──────────────────────────────────────────────────────────────────────
+
+/** SKR, the Solana Mobile token. Mainnet only, which is why this reads mainnet
+ *  directly rather than going through the game's own (devnet) connection. */
+const SKR_MINT = new PublicKey("SKRbvo6Gf7GondiT3BbTfuRDPqLWei4j2Qy2NPGZhW3");
+
+/**
+ * How much SKR a wallet holds, on mainnet. Returns 0 on any error, so a flaky
+ * RPC reads as "no SKR" rather than breaking whatever asked.
+ *
+ * Owning the phone is not required and is deliberately not checked here: the
+ * token is the gate, so a player on a desktop browser can qualify too.
+ */
+export async function skrBalance(walletAddress: string): Promise<number> {
+  try {
+    const connection = new Connection(MAINNET_RPC, "confirmed");
+    const accounts = await connection.getParsedTokenAccountsByOwner(
+      new PublicKey(walletAddress),
+      { mint: SKR_MINT },
+    );
+    return accounts.value.reduce(
+      (sum, { account }) => sum + (account.data.parsed?.info?.tokenAmount?.uiAmount ?? 0),
+      0,
+    );
+  } catch {
+    return 0;
+  }
+}
+
+/** True when the wallet holds any SKR at all. */
+export async function holdsSkr(walletAddress: string): Promise<boolean> {
+  return (await skrBalance(walletAddress)) > 0;
 }
