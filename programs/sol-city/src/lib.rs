@@ -42,7 +42,11 @@ pub const POOL_VERSION: u16 = 1;
 pub const QUEST_FREE_SLOTS: u16 = 16;
 pub const BUFFER_SEED: &[u8] = b"buffer";
 /// Global "Find Someone" hunt state — one account for the whole city.
-pub const HUNT_SEED: &[u8] = b"hunt";
+///
+/// Bumped to "hunt_v2" when the round stopped needing a transaction to advance
+/// (see the hunt block below). The v1 account is a different shape and is left
+/// where it is; the new one is created once by `initialize_hunt` after deploy.
+pub const HUNT_SEED: &[u8] = b"hunt_v2";
 /// How long a citizen sticks around before it rotates unfound (seconds).
 pub const CITIZEN_DURATION_SECS: i64 = 300;
 
@@ -174,10 +178,8 @@ pub enum SolCityError {
     InvalidSessionKey,
     #[msg("Authority mismatch — wrong wallet for this player")]
     InvalidAuthority,
-    #[msg("Hunt round is stale — someone already advanced it")]
+    #[msg("Hunt round is stale — the citizen has moved on")]
     HuntRoundStale,
-    #[msg("Hunt citizen has not expired yet")]
-    HuntNotExpired,
     #[msg("A booster pack is already being opened for this wallet")]
     BoosterPending,
     #[msg("Booster pool count too small for a full pack")]
@@ -610,53 +612,53 @@ pub mod sol_city {
         Ok(())
     }
 
-    // ── "Find Someone" global hunt ─────────────────────────────────────────
+    // ── "Find Someone" global hunt ─────────────────────────────────
     //
     // One global HuntState account is the shared source of truth for the
-    // city-wide hide-and-seek: its `round` deterministically seeds the target
-    // citizen (every client derives the same pedestrian from it), and its
-    // `deadline` drives the countdown. Advancing the round — on a find or on
-    // expiry — is the universal "next citizen + reset timer" signal every
-    // client reads. All writes are signed by a session key (seamless, no
-    // wallet popup) and are first-writer-wins via the `round` guard, so the
-    // first player to land a claim for a given round is the sole winner.
+    // city-wide hide-and-seek: the round deterministically seeds the target
+    // citizen, so every client hunts the same one, and the deadline drives the
+    // countdown everybody sees.
+    //
+    // THE ROUND ADVANCES BY ITSELF. It used to be a stored counter that only
+    // moved when somebody sent a transaction — a find, or a crank once the five
+    // minutes were up. Nothing on Solana runs on its own, so that made the
+    // city-wide hunt only as alive as whoever happened to be standing in it:
+    // with nobody connected, or nobody able to sign, the deadline slid into the
+    // past and the same citizen stayed hunted. Round 952 sat expired for over
+    // an hour on 2026-10-02 for exactly that reason.
+    //
+    // So the round is now DERIVED: an anchor (a round number and the moment it
+    // started) plus however many whole citizen durations have passed since.
+    // Every reader computes the same current round from the same account with
+    // no transaction at all, and an unfound citizen rotates on time whether
+    // anybody is playing or not. A transaction is only needed to say somebody
+    // WON, which is the one thing a clock cannot know.
+    //
+    // `claim_find` stays first-writer-wins: it re-anchors to the next round, so
+    // a second claim for the same round no longer matches the derived current
+    // round and fails the guard. Exactly one winner per round, as before.
 
     /// Creates the global hunt account (call once, ever, after deploy).
     pub fn initialize_hunt(ctx: Context<InitializeHunt>) -> Result<()> {
         let hunt = &mut ctx.accounts.hunt;
-        let now = Clock::get()?.unix_timestamp;
-        hunt.round = 0;
+        hunt.anchor_round = 0;
+        hunt.anchor_at = Clock::get()?.unix_timestamp;
         hunt.winner = Pubkey::default();
-        hunt.found_at = now;
-        hunt.deadline = now + CITIZEN_DURATION_SECS;
         Ok(())
     }
 
-    /// First finder of `round` wins it and advances the hunt to the next
-    /// citizen. A concurrent claim for the same round fails the guard once
-    /// the round has moved on, so exactly one winner is recorded per round.
+    /// First finder of `round` wins it and starts the next citizen immediately.
+    ///
+    /// Re-anchoring to `now` is what gives the next citizen a FULL five minutes
+    /// instead of the remainder of a wall-clock slot, which is the same thing
+    /// the client's per-citizen timer was written to guarantee.
     pub fn claim_find(ctx: Context<ClaimFind>, round: u32) -> Result<()> {
-        let hunt = &mut ctx.accounts.hunt;
-        require!(hunt.round == round, SolCityError::HuntRoundStale);
         let now = Clock::get()?.unix_timestamp;
+        let hunt = &mut ctx.accounts.hunt;
+        require!(hunt.current_round(now) == round, SolCityError::HuntRoundStale);
         hunt.winner = ctx.accounts.finder.key(); // session key of the finder
-        hunt.round = hunt.round.wrapping_add(1);
-        hunt.found_at = now;
-        hunt.deadline = now + CITIZEN_DURATION_SECS;
-        Ok(())
-    }
-
-    /// Rolls a citizen nobody found once its deadline has passed. Any client
-    /// can crank it; first-writer-wins keeps it to a single advance.
-    pub fn expire_round(ctx: Context<ExpireRound>, round: u32) -> Result<()> {
-        let hunt = &mut ctx.accounts.hunt;
-        require!(hunt.round == round, SolCityError::HuntRoundStale);
-        let now = Clock::get()?.unix_timestamp;
-        require!(now >= hunt.deadline, SolCityError::HuntNotExpired);
-        hunt.winner = Pubkey::default(); // expired — no winner this round
-        hunt.round = hunt.round.wrapping_add(1);
-        hunt.found_at = now;
-        hunt.deadline = now + CITIZEN_DURATION_SECS;
+        hunt.anchor_round = round.wrapping_add(1);
+        hunt.anchor_at = now;
         Ok(())
     }
 
@@ -1196,13 +1198,6 @@ pub struct ClaimFind<'info> {
     pub finder: Signer<'info>,
 }
 
-#[derive(Accounts)]
-pub struct ExpireRound<'info> {
-    #[account(mut, seeds = [HUNT_SEED], bump)]
-    pub hunt: Account<'info, HuntState>,
-    /// Any session key may crank an expired round forward.
-    pub cranker: Signer<'info>,
-}
 
 #[derive(Accounts)]
 pub struct InitializeBall<'info> {
@@ -1288,14 +1283,44 @@ pub struct BallState {
 #[account]
 #[derive(InitSpace)]
 pub struct HuntState {
-    /// Increments on every find or expiry — deterministically seeds the target.
-    pub round: u32,
-    /// Session key of the current round's finder (default = expired/unfound).
+    /// The round this anchor starts. The round actually being hunted is this
+    /// plus the whole citizen durations elapsed since `anchor_at` — never read
+    /// it as the current round, use `current_round`.
+    pub anchor_round: u32,
+    /// When the anchor round started. A claim moves it to the moment of the
+    /// find, which is what gives the next citizen a full countdown.
+    pub anchor_at: i64,
+    /// Session key that claimed round `anchor_round - 1`.
+    ///
+    /// Meaningful only while no round has rolled past unclaimed, which is to
+    /// say while `current_round == anchor_round`. Once the clock has carried
+    /// the hunt further than the last claim, this is simply the last person who
+    /// ever won, and the rounds in between had no winner. There is no longer an
+    /// instruction to clear it, because there is no longer a transaction at the
+    /// end of an unfound round to clear it from.
     pub winner: Pubkey,
-    /// Unix ts of the last round advance.
-    pub found_at: i64,
-    /// Unix ts the current citizen rotates if still unfound.
-    pub deadline: i64,
+}
+
+impl HuntState {
+    /// Whole citizen durations between the anchor and `now`.
+    ///
+    /// Saturating and floored at zero: a validator clock that steps backwards
+    /// must leave the hunt where it is, never wind it back to an older citizen.
+    pub fn rounds_passed(&self, now: i64) -> u32 {
+        let elapsed = now.saturating_sub(self.anchor_at).max(0);
+        (elapsed / CITIZEN_DURATION_SECS) as u32
+    }
+
+    /// The round being hunted right now. This is the number every client seeds
+    /// the target citizen from, and the only one `claim_find` accepts.
+    pub fn current_round(&self, now: i64) -> u32 {
+        self.anchor_round.wrapping_add(self.rounds_passed(now))
+    }
+
+    /// When the current citizen rotates if nobody finds it.
+    pub fn current_deadline(&self, now: i64) -> i64 {
+        self.anchor_at + (self.rounds_passed(now) as i64 + 1) * CITIZEN_DURATION_SECS
+    }
 }
 
 #[account]

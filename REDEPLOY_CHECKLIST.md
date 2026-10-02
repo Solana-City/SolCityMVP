@@ -20,6 +20,7 @@ here. One deploy ships:
 | 7 | Public profile: `achievements: [u8; 32]` + `streak_current` / `streak_best` on `PlayerState` + `publish_profile_session` (added 2026-10-01) | in lib.rs |
 | 8 | Friends: `FriendRequest` + `Friendship` PDAs + `send` / `accept` / `decline` / `cancel` / `remove` (added 2026-10-01) | in lib.rs |
 | 9 | Mini-game bests on chain: `game_bests: [u32; 16]` on `PlayerState` + `record_game_score_session` (added 2026-10-02) | in lib.rs |
+| 10 | Self-advancing hunt round: `hunt_v2` seed, anchor-derived round, `expire_round` deleted (added 2026-10-02) | in lib.rs |
 | 1 | HuntScore PDA | **deferred** (the KV leaderboard covers the player-facing part) |
 | 3 | `delegate_hunt` | **skipped** |
 | 4 | On-chain display names | **dropped** (the off-chain nickname registry replaced them) |
@@ -420,6 +421,97 @@ borrow its base58 widens the comparison over the next field and matches nothing.
 
 Listing friends is TWO queries, because the pair is stored sorted: a player is
 in slot `a` for about half their friendships and in slot `b` for the rest.
+
+---
+
+### Item 10 — The hunt round advances by itself (APPLIED in lib.rs, 2026-10-02)
+
+**The bug this ends.** The round was a stored counter that only moved when
+somebody sent a transaction: `claim_find` on a find, `expire_round` once the
+five minutes were up. Nothing on Solana runs on its own, so the city-wide hunt
+was only as alive as whoever happened to be standing in the city. With nobody
+connected, or nobody whose wallet was connected (every hunt write needs it, the
+read needs nothing), the deadline slid into the past and the same citizen stayed
+hunted. On 2026-10-02 round 952 sat expired for 77 minutes with nothing on chain
+to show for it, while clients read 0:00 off that dead deadline forever.
+
+**The fix is to stop storing what a clock already knows.** `HuntState` now holds
+an ANCHOR, not a counter:
+
+```rust
+pub struct HuntState {
+    pub anchor_round: u32,   // the round the anchor starts
+    pub anchor_at: i64,      // when it started
+    pub winner: Pubkey,      // who claimed anchor_round - 1
+}
+// current_round(now)    = anchor_round + (now - anchor_at) / 300
+// current_deadline(now) = anchor_at + (rounds_passed + 1) * 300
+```
+
+An unfound citizen rotates on time whether anybody is playing or not, and every
+reader derives the same round from the same account with no transaction at all.
+A transaction is only needed to say somebody WON, which is the one thing a clock
+cannot know. `expire_round`, its accounts struct and `HuntNotExpired` are
+deleted: there is nothing left for them to do.
+
+`claim_find` is unchanged in spirit and still first-writer-wins — it validates
+against the DERIVED current round and re-anchors to `now`, so a second claim for
+the same round no longer matches and fails the guard. Re-anchoring is also what
+gives the next citizen a full five minutes rather than the remainder of a
+wall-clock slot, which is what the client's per-citizen timer already promised.
+
+**The seed is bumped to `hunt_v2`**, because the v1 account is a different shape
+and would decode as nonsense. Post-deploy that needs one admin call with no UI,
+like the ball: `initialize_hunt` once, ever. Until it exists, clients read no
+hunt and fall back to the local round, which is the pre-2026-08 behaviour and
+harmless.
+
+**`winner` loses its eraser.** There is no longer a transaction at the end of an
+unfound round, so nothing clears it. It is the winner of `anchor_round - 1`, and
+only while `current_round == anchor_round`; once the clock has carried the hunt
+past the last claim, those rounds simply had no winner. Any UI that shows "who
+found the last one" must check that, not read `winner` blindly.
+
+**Error codes shift.** Removing `HuntNotExpired` moves every variant after it
+down by one. Nothing in the client maps this program's codes today (the one
+`custom program error` check in `game/social/friendActions.ts` is for `0x0` on
+an `init`), but re-check before relying on a number.
+
+**CLIENT changes (post-deploy):**
+
+- `game/solana/program.ts`: `decodeHuntState` reads `anchor_round u32`,
+  `anchor_at i64`, `winner Pubkey` — and exposes `currentRound(now)` /
+  `currentDeadline(now)` with the same arithmetic as the Rust. The 300 must come
+  from one shared constant, not be written twice.
+- `multiplayer/OnChainMultiplayer.ts`: `pollHunt` pushes the DERIVED round and
+  deadline into `setHuntFromChain`. Delete `expireRound`, `crankAttempt`,
+  `CRANK_RETRY_MS` and `buildExpireRoundIx`.
+- `scenes/CityScene.ts`: the 2s tick stops cranking. An expired citizen under
+  the shared hunt now means only "the poll has not caught up yet", so it waits.
+- Keep the wallet guard in `pollHunt` anyway: a client that cannot claim can
+  still follow the shared hunt honestly now that it needs no crank, so this can
+  be relaxed to "follow, but never score" — decide it with the client work.
+- **Delete the server cranker**: `lib/hunt/crank.ts`, the call in
+  `api/leaderboard/route.ts`, `api/admin/hunt`, the panel's CRANK NOW button and
+  the `HUNT_CRANK_SECRET` env var. It exists only because the round could not
+  advance by itself. Keep the panel's round readout, which is still useful.
+- Clock skew: the client derives the round from its OWN clock against
+  `anchor_at`, while `claim_find` is validated against the validator's. A client
+  a few seconds ahead at a boundary claims a round the chain has not reached and
+  gets `HuntRoundStale`. Re-read the account and retry once — the same retry the
+  claim already wants for a lost send.
+
+**Verification:**
+- [ ] `initialize_hunt` once; the account exists under the `hunt_v2` seed.
+- [ ] Read the account twice, six minutes apart, with NO transaction in between:
+      the derived round has advanced by one and the derived deadline moved with
+      it. This is the whole point of the item.
+- [ ] A find re-anchors: the round goes up by one and the deadline is a full
+      five minutes out, not the remainder of the old slot.
+- [ ] Two devices claim the same round at once: one wins, the other gets
+      `HuntRoundStale`, and both see the same next citizen.
+- [ ] Leave the city empty for fifteen minutes, come back: the citizen has
+      changed on its own and the countdown is sane.
 
 ---
 
