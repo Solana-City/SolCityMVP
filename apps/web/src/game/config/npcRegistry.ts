@@ -415,6 +415,28 @@ const NPC_SEEDS: NPCSeed[] = [
     spriteKey: "BK",
   },
   {
+    id: "seeker-lover",
+    name: "Seeker Lover",
+    role: "Solana Mobile",
+    // On the walkway in front of the energy plant (BuildGenericEnergy, cols
+    // 102-111 / rows 22-33). Row 34 is the first walkable row below it.
+    // TODO: swap spriteKey and the highlight sheet when the Seeker art lands.
+    tileX: 106,
+    tileY: 34,
+    dialog: [
+      "Hi! I'm Seeker Lover. That phone changed how I live in this city.",
+      "You don't need the device to take my gift. Hold SKR in your wallet and it's yours.",
+      "Talk to me once you have some, and check the phone out for yourself.",
+    ],
+    highlights: [
+      { img: "/assets/ui/icon_wallet.png", label: "HOLD SKR" },
+      { img: "/assets/ui/ico_wardrop.png", label: "FREE GIFT" },
+      { img: "/assets/ui/controller.png", label: "NO PHONE NEEDED" },
+    ],
+    action: { type: "link", label: "See the Seeker", url: "https://solanamobile.com/seeker" },
+    spriteKey: "Builder",
+  },
+  {
     id: "mr-bananas",
     name: "Mr. Bananas",
     role: "MonkeDAO",
