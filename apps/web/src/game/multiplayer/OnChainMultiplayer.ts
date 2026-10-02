@@ -196,6 +196,12 @@ type ExprCallback    = (wallet: string, textureKey: string) => void;
  * citizen is genuinely gone, while a claim that never landed means the citizen
  * is still out there and the find has to be given back.
  */
+/** What a hunt write did, so a failure can say why instead of vanishing. */
+interface HuntSend {
+  signature: string | null;
+  error: string | null;
+}
+
 export interface ClaimResult {
   won: boolean;
   roundMoved: boolean;
@@ -915,8 +921,9 @@ export class OnChainMultiplayer {
 
   /** Sends a session-signed instruction to the hunt on BASE, fire-and-forget
    *  with one fresh-blockhash retry. Returns the signature, or null on failure. */
-  private async sendHuntIx(ix: TransactionInstruction): Promise<string | null> {
+  private async sendHuntIx(ix: TransactionInstruction): Promise<HuntSend> {
     const sessionKey = this.sessionKeys.getSessionPublicKey();
+    let error = "no attempt was made";
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
         if (attempt === 1) this.cachedMoveBlockhash = null;
@@ -924,15 +931,29 @@ export class OnChainMultiplayer {
         tx.feePayer = sessionKey;
         tx.recentBlockhash = await this.getMoveBlockhash("base");
         this.sessionKeys.signTransaction(tx);
-        return await OnChainMultiplayer.withTimeout(
-          this.baseConnection.sendRawTransaction(tx.serialize(), { skipPreflight: true }), 8_000,
-        );
+        // Preflight ON. It was skipped to save a round trip, which also threw
+        // away the only account of WHY a hunt write did not happen: a skipped
+        // send that the leader then drops leaves nothing on chain and nothing
+        // in hand, which is how finds failed silently for a day. A hunt write
+        // happens at most once per round, so the round trip is affordable and
+        // the reason is worth more than the millisecond.
+        //
+        // The timeout has to outlast the failover underneath it: baseRpc walks
+        // two endpoints at 8s each, so a budget of 8s here guaranteed that a
+        // slow first endpoint was abandoned BEFORE the second was ever tried.
+        return {
+          signature: await OnChainMultiplayer.withTimeout(
+            this.baseConnection.sendRawTransaction(tx.serialize()), 20_000,
+          ),
+          error: null,
+        };
       } catch (err: any) {
         this.cachedMoveBlockhash = null;
-        if (attempt === 1) console.warn("[Hunt] ix skipped:", err?.message);
+        error = err?.message ?? String(err);
+        console.warn(`[Hunt] send attempt ${attempt + 1} failed:`, error);
       }
     }
-    return null;
+    return { signature: null, error };
   }
 
   /** Creates the global hunt account if it doesn't exist yet (first player ever).
@@ -985,7 +1006,7 @@ export class OnChainMultiplayer {
     const entry = transactionLog.record({
       kind: "hunt", layer: "base", label: "Find someone: claim", status: "pending",
     });
-    const sig = await this.sendHuntIx(buildClaimFindIx(sessionKey, round));
+    const sent = await this.sendHuntIx(buildClaimFindIx(sessionKey, round));
 
     // Confirm by reading the hunt: our claim landed iff the winner is our
     // session key and the round moved on. Polled rather than slept on once —
@@ -1006,16 +1027,21 @@ export class OnChainMultiplayer {
 
     const roundMoved = !!hunt && hunt.round !== round;
     const won = roundMoved && !!hunt && hunt.winner.equals(sessionKey);
-    if (won && sig) {
-      transactionLog.markConfirmed(entry.id, sig);
+    if (won && sent.signature) {
+      transactionLog.markConfirmed(entry.id, sent.signature);
       // A find is worth exactly +1 (not +100) — a single point per citizen, the
       // Find Someone leaderboard metric. Recorded on the ER (seamless) on the
       // finder's player PDA.
       this.recordScoreSession(true, 1, "Find someone ★ +1", "hunt").catch(() => {});
     } else {
+      // The reason, not just the verdict: the transaction log is the one place
+      // a player (or whoever is running an event) can read why a find did not
+      // score, and "it did not land" without the cause is what made this take a
+      // day to find.
       transactionLog.markFailed(
         entry.id,
-        roundMoved ? "another player claimed this round first" : "the claim did not land",
+        roundMoved ? "another player claimed this round first"
+                   : `the claim did not land: ${sent.error ?? "unknown"}`,
       );
     }
     return { won, roundMoved };
@@ -1032,10 +1058,11 @@ export class OnChainMultiplayer {
     if (prev && prev.round === round && Date.now() - prev.at < OnChainMultiplayer.CRANK_RETRY_MS) return;
     this.crankAttempt = { round, at: Date.now() };
     const sessionKey = this.sessionKeys.getSessionPublicKey();
-    const sig = await this.sendHuntIx(buildExpireRoundIx(sessionKey, round));
+    const sent = await this.sendHuntIx(buildExpireRoundIx(sessionKey, round));
     console.log(
-      sig ? `[Hunt] crank sent for round ${round}: ${sig.slice(0, 12)}`
-          : `[Hunt] crank for round ${round} did not send — retrying in 9s`,
+      sent.signature
+        ? `[Hunt] crank sent for round ${round}: ${sent.signature.slice(0, 12)}`
+        : `[Hunt] crank for round ${round} did not send (${sent.error}) — retrying in 9s`,
     );
     await new Promise((r) => setTimeout(r, 1000));
     await this.pollHunt();
