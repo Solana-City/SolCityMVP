@@ -51,6 +51,24 @@ pub const CITIZEN_DURATION_SECS: i64 = 300;
 /// the index->achievement table (achievementRegistry order): append-only,
 /// never reorder, or every published profile reads as the wrong badges.
 pub const ACHIEVEMENT_BITS: usize = 32;
+/// Mini-game slots on `PlayerState`: one best score per game.
+///
+/// Indexed by the CLIENT's mini-game table, which is append-only and must
+/// never be reordered — the same discipline as `ACHIEVEMENT_BITS`, and for the
+/// same reason: the index is the only thing that says which game a number
+/// belongs to, so moving one re-labels every score already on chain.
+///
+///   0 food-cart   1 kite-clash   2 sol-mechs   3 hair-specialist
+///
+/// Sixteen leaves room to append twelve more without touching the layout.
+pub const GAME_SLOTS: usize = 16;
+/// What a won mini-game adds to the city score, decided here rather than sent
+/// by the client: raw mini-game scores differ by orders of magnitude between
+/// games (a kite run scores thousands, a haircut scores tens), so letting the
+/// run's own number into the shared score would rank players by which game
+/// they played. The best run per game is kept separately, unscaled.
+pub const MINI_GAME_WIN_POINTS: u32 = 100;
+
 /// One account per friendship. The seeds are the pair SORTED, so (a,b) and
 /// (b,a) derive the same PDA and a friendship can never exist twice.
 pub const FRIENDSHIP_SEED: &[u8] = b"friendship";
@@ -182,6 +200,8 @@ pub enum SolCityError {
     FriendPairUnsorted,
     #[msg("Those two keys are not the pair on this invite")]
     FriendPairMismatch,
+    #[msg("No such mini-game slot")]
+    UnknownMiniGame,
 }
 
 /// Truncates a string to at most `max` BYTES on a char boundary, so a
@@ -317,6 +337,47 @@ pub mod sol_city {
         let player = &mut ctx.accounts.player;
         if success {
             player.score = player.score.saturating_add(score_delta);
+            player.bounty_count = player.bounty_count.saturating_add(1);
+        }
+        player.last_active = Clock::get()?.unix_timestamp;
+        Ok(())
+    }
+
+    /// Records one mini-game run: the best score per game, on chain.
+    ///
+    /// Session-signed, so it lands on the ephemeral rollup with no wallet popup
+    /// and no fee, and the delegation commits to base every 3 seconds — which is
+    /// where the city-wide read scans it from, the same `getProgramAccounts` over
+    /// `PlayerState` the score leaderboard already makes. No new account, no
+    /// shared account to contend on, and a player's own bests arrive on the
+    /// position poll they are already making.
+    ///
+    /// Monotonic: a worse run never lowers a best, so a client replaying an old
+    /// number cannot walk one backwards. `success` adds the flat city-score
+    /// credit and counts the run; a loss records the attempt and the score it
+    /// reached, which is what a leaderboard of bests wants anyway.
+    ///
+    /// Use this for mini-games. `record_mini_game_session` stays for the callers
+    /// that only move the city score by a fixed amount (a Find Someone claim).
+    ///
+    /// HONEST ABOUT TRUST: the number comes from the client, exactly as it does
+    /// for the key-value board this replaces and for `achievements`. Being on
+    /// chain makes a score shared, permanent and readable by anything — it does
+    /// not make it verified, and nothing is ever granted on the strength of it.
+    pub fn record_game_score_session(
+        ctx: Context<UpdatePlayerSession>,
+        game: u8,
+        score: u32,
+        success: bool,
+    ) -> Result<()> {
+        let slot = game as usize;
+        require!(slot < GAME_SLOTS, SolCityError::UnknownMiniGame);
+        let player = &mut ctx.accounts.player;
+        if score > player.game_bests[slot] {
+            player.game_bests[slot] = score;
+        }
+        if success {
+            player.score = player.score.saturating_add(MINI_GAME_WIN_POINTS);
             player.bounty_count = player.bounty_count.saturating_add(1);
         }
         player.last_active = Clock::get()?.unix_timestamp;
@@ -1290,6 +1351,16 @@ pub struct PlayerState {
     /// Best streak ever. Monotonic in the program, so a stale client that
     /// reconnects with an old number cannot walk it backwards.
     pub streak_best: u16,
+    // ── Mini-game bests (read off the same ER poll, and off the base scan) ──
+    /// Best score per mini-game, indexed by the client's mini-game table (see
+    /// GAME_SLOTS). Zero means never played.
+    ///
+    /// LAST FIELD ON PURPOSE: every client decoder reads this account by walking
+    /// offsets from the front (leaderboard.ts, decodeAndUpdatePlayer), so a field
+    /// appended here is invisible to the ones that do not know about it yet,
+    /// while a field inserted anywhere above would silently shift every number
+    /// after it. Anything added later goes below this, for the same reason.
+    pub game_bests: [u32; GAME_SLOTS],
 }
 
 // ── Outfit booster accounts ────────────────────────────────────────────────

@@ -19,6 +19,7 @@ here. One deploy ships:
 | 6 | Beach football: `BallState` PDA + `initialize_ball` / `kick_ball_session` / `delegate_ball` (added 2026-09-30) | in lib.rs |
 | 7 | Public profile: `achievements: [u8; 32]` + `streak_current` / `streak_best` on `PlayerState` + `publish_profile_session` (added 2026-10-01) | in lib.rs |
 | 8 | Friends: `FriendRequest` + `Friendship` PDAs + `send` / `accept` / `decline` / `cancel` / `remove` (added 2026-10-01) | in lib.rs |
+| 9 | Mini-game bests on chain: `game_bests: [u32; 16]` on `PlayerState` + `record_game_score_session` (added 2026-10-02) | in lib.rs |
 | 1 | HuntScore PDA | **deferred** (the KV leaderboard covers the player-facing part) |
 | 3 | `delegate_hunt` | **skipped** |
 | 4 | On-chain display names | **dropped** (the off-chain nickname registry replaced them) |
@@ -71,6 +72,15 @@ Sections for items 1, 3 and 4 below are kept for reference only.
    above heads, never a chosen name. Need (a) `set_display_name_session` to change
    the name post-init and propagate it via the ER, and (b) a `NameClaim` registry
    PDA so a name is owned first-come (a second wallet can't take it).
+
+9. **Mini-game scores on chain.** The pitch says the mini-game scores are
+   on-chain via the ER, and half of that is already true: every run calls
+   `record_mini_game_session`, which adds to the player's `score` and
+   `bounty_count` on the rollup. What is NOT on chain is the thing players
+   actually look at — the per-game board ("best kite-clash run in the city"),
+   which lives only in the key-value store under `ev:minigame:<id>:best`. So the
+   claim is defensible for the city score and wrong for the leaderboard. Item 9
+   closes the gap.
 
 6. **The beach football gets its own account.** The ball currently rides the
    KICKER's `last_message` chat field as a `§ball:` tag — it works, and the
@@ -413,6 +423,61 @@ in slot `a` for about half their friendships and in slot `b` for the rest.
 
 ---
 
+### Item 9 — Mini-game bests on chain (APPLIED in lib.rs, 2026-10-02)
+
+Why it is in this deploy: the pitch says the mini-game scores are on-chain via
+the ER, and the leaderboard players look at is the one place that is not true.
+It also touches `PlayerState`, which `player_v3` re-inits anyway — the same
+argument that put items 7 and 8 here.
+
+**What is already true before this deploy.** Every finished run calls
+`record_mini_game_session(success, score_delta)`, which adds to `score` and
+`bounty_count` on the rollup. So a run does reach the chain, seamlessly, with no
+popup. What never reached it is WHICH game and HOW WELL: the per-game board is
+`ev:minigame:<id>:best` in the key-value store, which is also why it silently
+froze when the analytics gate closed (fixed 2026-10-02, commit 3f7032f).
+
+**One field and one instruction:**
+
+- `game_bests: [u32; GAME_SLOTS]` appended to `PlayerState` (`GAME_SLOTS = 16`,
+  64 bytes). The index is the client's mini-game table, append-only and never
+  reordered, exactly like `achievements`: `0 food-cart`, `1 kite-clash`,
+  `2 sol-mechs`, `3 hair-specialist`. Reordering re-labels every score already
+  written.
+- `record_game_score_session(game: u8, score: u32, success: bool)`,
+  session-signed on `UpdatePlayerSession`. Keeps `max(best, score)` per slot, so
+  a replayed old number cannot walk a best backwards. `success` adds a flat
+  `MINI_GAME_WIN_POINTS` (100) to the city score and counts the run.
+
+**Why the flat 100 instead of the run's own score.** Raw scores differ by orders
+of magnitude between games — a kite run scores thousands, a haircut scores tens.
+Letting the run's number into the shared `score` would rank the city by which
+game people happened to play. The unscaled number is kept per game, where
+comparing it means something.
+
+**Why no new account.** The board is read with the `getProgramAccounts` scan
+over `PlayerState` that `game/solana/leaderboard.ts` already makes, so the whole
+city's bests arrive in one call and a player's own arrive on the position poll
+they are already making. A shared top-N account would add contention and a
+`delegate_*` dance to buy nothing. The delegation commits every 3000 ms
+(`commit_frequency_ms` in `delegate`), so the base scan trails the rollup by
+about three seconds, which a leaderboard does not notice.
+
+**It is not verification.** The score still comes from the client, exactly as it
+does for the key-value board it replaces and for `achievements`. On chain makes
+it shared, permanent and readable by anything; it does not make it true, and
+nothing is granted on the strength of it. Say it that way in the pitch too: the
+honest claim is "scores and bests are written to the player's own on-chain
+account through the ER, with no popup and no fee", not "scores are verified
+on-chain".
+
+**Open question, deliberately left open:** whether the KV board stays as the
+fast read and the chain as the record, or the panel/board switches to the chain
+scan once it is live. Keeping both for a while costs one `zincrby` and tells us
+whether the two ever disagree, which is the cheapest audit available.
+
+---
+
 ## CLIENT changes (post-deploy — apply ONLY after the new program is live)
 
 Order: deploy program → verify → then push these together. Booster and
@@ -467,7 +532,24 @@ free-outfit wiring stays behind `NEXT_PUBLIC_BOOSTER_ONCHAIN` until verified.
      the work, this is about accuracy, not feel.
    - `seq` replaces the per-sender sequence number already on the wire; the
      dedupe becomes "seq changed".
-6. **Verify layouts** before pushing: `npx tsc --noEmit` + `simulateTransaction`
+6. **Mini-game bests (item 9)**:
+   - `game/solana/instructions.ts`: `recordGameScoreSession(game: u8, score: u32,
+     success: bool)` builder, discriminator from the new IDL. Same accounts as
+     the other session writes: `player` (w), `session_authority` (signer).
+   - A canonical index table in ONE place — `game/minigames/onChainIndex.ts`,
+     `{ "food-cart": 0, "kite-clash": 1, "sol-mechs": 2, "hair-specialist": 3 }`,
+     append-only, with a comment saying a reorder re-labels every score on chain.
+     The registry Map is import-ordered, so it must NOT be the source of this.
+   - `page.tsx` where `track("minigame", id, ...)` already fires at the end of a
+     run: call the new ix with the run's score instead of
+     `recordMiniGame(success)`, which sends the flat +100 twice over otherwise.
+     Keep the `track` call: the KV board is the fast read.
+   - Decoders: append `game_bests` (16 × u32) AFTER `streak_best` in both
+     `leaderboard.ts` and `decodeAndUpdatePlayer`, read defensively so an account
+     written by an older client still decodes.
+   - A game with no slot yet (a fifth mini-game) must NOT send: `UnknownMiniGame`
+     is a failed tx, not a no-op.
+7. **Verify layouts** before pushing: `npx tsc --noEmit` + `simulateTransaction`
    of every new ix against the deployed program.
 
 ---
@@ -491,6 +573,16 @@ free-outfit wiring stays behind `NEXT_PUBLIC_BOOSTER_ONCHAIN` until verified.
       coordinates across the map is rejected (`BallOutOfReach`).
 - [ ] Ball: `seq` advances on every kick, including three inside one second.
 - [ ] Full cross-device multiplayer still green (compare to Parabéns 2.0).
+
+**Mini-game bests (item 9)**:
+- [ ] Play a run: `simulateTransaction` first, then a real one. `game_bests[i]`
+      holds the run's score and `score` moved by exactly 100 on a win.
+- [ ] Play a WORSE run on the same game: the best does not move, `score` still
+      gets its 100.
+- [ ] `game: 16` (out of range) is rejected with `UnknownMiniGame`.
+- [ ] The base `getProgramAccounts` scan shows the new best within ~3 seconds of
+      the ER write (the commit frequency), on a second device.
+- [ ] The KV board and the chain agree for the same run.
 
 **Profile (item 7)** — needs two devices:
 - [ ] Earn something on A; B opens A's card and sees the badge and the level,
