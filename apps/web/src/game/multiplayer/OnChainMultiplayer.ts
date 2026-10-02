@@ -1013,7 +1013,7 @@ export class OnChainMultiplayer {
     // a fixed 1.2s wait called a slow devnet a loss, and the caller needs the
     // difference between "somebody beat me" and "my claim never landed" to know
     // whether the citizen is really gone.
-    let hunt: { round: number; winner: PublicKey } | null = null;
+    let hunt: { round: number; winner: PublicKey; deadline: number } | null = null;
     for (let i = 0; i < 8; i++) {
       await new Promise((r) => setTimeout(r, i === 0 ? 700 : 500));
       try {
@@ -1023,9 +1023,18 @@ export class OnChainMultiplayer {
       } catch { /* transient RPC: try again */ }
       if (hunt && hunt.round !== round) break;
     }
-    await this.pollHunt();
 
     const roundMoved = !!hunt && hunt.round !== round;
+    // Push the new round and deadline from the account we ALREADY read.
+    //
+    // This used to call pollHunt(), which fetched the very same account again
+    // just to hand the countdown its new deadline. That second read goes
+    // through the base failover like any other, so when it was slow or failed
+    // the clock did not reset on the find at all: it kept running the old
+    // deadline down until some later 3s poll happened to get through, which is
+    // why the next citizen's timer appeared minutes late instead of at once.
+    // The data was in hand the whole time.
+    if (roundMoved && hunt) setHuntFromChain(hunt.round, hunt.deadline);
     const won = roundMoved && !!hunt && hunt.winner.equals(sessionKey);
     if (won && sent.signature) {
       transactionLog.markConfirmed(entry.id, sent.signature);
