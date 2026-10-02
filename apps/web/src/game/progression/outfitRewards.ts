@@ -2,6 +2,8 @@ import { NPC_REGISTRY } from "@/game/config/npcRegistry";
 import { profileManager } from "@/game/config/profileManager";
 import { progressionBus } from "@/game/progression/progressionBus";
 import { unlockItem } from "@/game/config/wardrobeUnlocks";
+import { getVariant } from "@/game/config/paperDoll";
+import { holdsSkr } from "@/game/solana/seekerDetection";
 
 /**
  * Earned outfits: items a player unlocks by doing something, never by rolling
@@ -28,7 +30,16 @@ const REWARDS = {
   stbrCrew:  { category: "tshirt", id: "Brazilian_shirt", name: "Brazil Shirt" },
   streak7:   { category: "hat", id: "Cap_Sol", name: "Cap Sol" },
   firstTrade: { category: "accessory", id: "Trader_shades", name: "Trader Shades" },
+  // Seeker Lover's gift, for holding SKR. The art is not in yet: until the
+  // variant exists in paperDoll.ts this grant is a no-op, so nothing can be
+  // equipped that has no sprite. When the art lands, add the variant and this
+  // starts working with no change here. If the spriter makes something other
+  // than a cap, these two fields are the only edit.
+  skrHolder: { category: "hat", id: "Seeker_cap", name: "Seeker Cap" },
 } as const;
+
+/** NPC who checks SKR and hands over the gift. */
+const SEEKER_LOVER_ID = "seeker-lover";
 
 /** Best check-in streak that earns the Solana cap. */
 const STREAK_FOR_CAP = 7;
@@ -66,7 +77,25 @@ function requiredNpcIds(): string[] {
 function grant(reward: { category: string; id: string; name: string }): void {
   const wallet = profileManager.get().wallet;
   if (!wallet) return;
+  // A reward whose art has not shipped yet is skipped rather than granted: an
+  // unlock key for a variant that does not exist would show an empty slot in
+  // the wardrobe.
+  if (!getVariant(reward.category as never, reward.id)) return;
   unlockItem(wallet, reward.category as never, reward.id, reward.name);
+}
+
+/**
+ * Seeker Lover's gift. Talking to him reads the wallet's SKR balance on
+ * mainnet, and any amount earns the collectible. The phone itself is never
+ * checked, which is the point: holding SKR is enough.
+ *
+ * Granting is idempotent, so re-checking on every conversation costs one RPC
+ * read and nothing else.
+ */
+async function grantSkrGift(): Promise<void> {
+  const wallet = profileManager.get().wallet;
+  if (!wallet) return;
+  if (await holdsSkr(wallet)) grant(REWARDS.skrHolder);
 }
 
 /** True once the wallet has met the whole ST Brasil crew. */
@@ -103,6 +132,8 @@ export function watchNpcConversations(): void {
   unsubscribe?.();
   const offVisits = progressionBus.on("npc-visited", (e) => {
     if (e.npcId === KUKA_ID) grant(REWARDS.kuka);
+    // Fire and forget: the dialog should never wait on a mainnet round trip.
+    if (e.npcId === SEEKER_LOVER_ID) void grantSkrGift();
     // Checked on every visit, not just the last one: a wallet that had already
     // met the crew before this reward existed still earns the shirt on its next
     // conversation, instead of being locked out by having finished too early.
