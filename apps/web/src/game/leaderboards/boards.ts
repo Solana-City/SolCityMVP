@@ -18,6 +18,17 @@ export interface BoardRow {
 export interface BoardResult {
   rows: BoardRow[];
   mine: { value: number; rank: number | null } | null;
+  /**
+   * Whether the board actually answered.
+   *
+   * An empty board and an unreachable one both used to arrive as an empty
+   * array, so every caller had to guess, and they all guessed the same wrong
+   * way: no rows meant "fall back to this browser's own history". That made a
+   * freshly cleared board show the OLD local scores back again, which is
+   * indistinguishable from a reset that did not work. An empty board is a
+   * legitimate answer, and this is how a caller can tell.
+   */
+  ok: boolean;
 }
 
 const CACHE_MS = 15_000;
@@ -36,12 +47,13 @@ export async function fetchBoard(
     const params = new URLSearchParams({ board, limit: String(opts.limit ?? 10) });
     if (opts.wallet) params.set("wallet", opts.wallet);
     const res = await fetch(`/api/leaderboard?${params.toString()}`);
+    if (!res.ok) throw new Error(`board ${res.status}`);
     const body = await res.json();
-    const value: BoardResult = { rows: body.rows ?? [], mine: body.mine ?? null };
+    const value: BoardResult = { rows: body.rows ?? [], mine: body.mine ?? null, ok: true };
     cache.set(key, { at: Date.now(), value });
     return value;
   } catch {
-    return hit?.value ?? { rows: [], mine: null };
+    return hit?.value ?? { rows: [], mine: null, ok: false };
   }
 }
 

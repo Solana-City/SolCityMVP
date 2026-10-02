@@ -173,13 +173,16 @@ function LeaderboardModal({ onClose }: { onClose: () => void }) {
   const [rows, setRows] = useState<BoardRow[] | null>(null);
   useEffect(() => {
     let cancelled = false;
-    fetchBoard("hunt", { limit: 10 })
-      .then((r) => { if (!cancelled) setRows(r.rows); })
+    fetchBoard("hunt", { limit: 10, force: true })
+      // Only a board that ANSWERED replaces the local fallback. An empty answer
+      // is still an answer: a city board that has just been cleared shows
+      // nobody, rather than resurrecting this browser's own old scores.
+      .then((r) => { if (!cancelled && r.ok) setRows(r.rows); })
       .catch(() => undefined);
     return () => { cancelled = true; };
   }, []);
 
-  const entries = rows?.length
+  const entries = rows
     ? rows.map((r) => ({ wallet: r.wallet, display: r.name ?? shortWallet(r.wallet), count: r.value }))
     : getLeaderboard(10);
   const { display } = useNicknames(entries.map((e) => e.wallet));
@@ -323,7 +326,11 @@ export default function WhereIsNPCCard({ gameRef, wallet }: Props) {
     if (!wallet) return;
     let cancelled = false;
     fetchBoard("hunt", { wallet, limit: 50 })
-      .then((r) => { if (!cancelled && r.mine && r.mine.value > 0) setMyScore(r.mine.value); })
+      // The city's number wins once it arrives, zero included. Keeping the
+      // local count whenever the board said zero meant a cleared board left
+      // every player still looking at their old total, which reads as a reset
+      // that did nothing.
+      .then((r) => { if (!cancelled && r.ok) setMyScore(r.mine?.value ?? 0); })
       .catch(() => undefined);
     return () => { cancelled = true; };
   }, [effectiveWallet, wallet, foundMsg]);
