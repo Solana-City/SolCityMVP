@@ -310,9 +310,9 @@ const NPC_SEEDS: NPCSeed[] = [
       "Warm up against the CPU or battle other players online. The rules are in the menu whenever you need them.",
     ],
     action: { type: "minigame", label: "Enter the Hangar", miniGameId: "sol-mechs" },
-    // No spriteKey yet — falls back to the default avatar sheet until the
-    // handler's own art is drawn. Same for the portrait: the Unity source
-    // only ships 2048x2048 busts, well over this repo's 256x256 convention.
+    spriteKey: "Mech Builder",
+    // Still no portrait: the Unity source only ships 2048x2048 busts, well
+    // over this repo's 256x256 convention.
   },
   {
     id: "caramel-dog",
