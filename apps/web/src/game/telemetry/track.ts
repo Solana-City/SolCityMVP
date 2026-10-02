@@ -29,8 +29,9 @@ export function track(
 ): void {
   const wallet = opts.wallet ?? currentWallet;
   if (!wallet || typeof fetch === "undefined") return;
-  // Off by default: see lib/analytics/enabled.ts. Purchases always count.
-  if (!ANALYTICS_ON && !alwaysRecorded(kind)) return;
+  // Off by default: see lib/analytics/enabled.ts. What a board shows players
+  // always counts.
+  if (!ANALYTICS_ON && !alwaysRecorded(kind, id)) return;
   try {
     void fetch("/api/events", {
       method: "POST",
