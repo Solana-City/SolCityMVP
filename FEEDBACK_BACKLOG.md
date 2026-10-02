@@ -376,6 +376,66 @@ inside a battle, which costs the same), Kite Clash while a run is on, the food
 cart while orders are being served. The dialog answers Escape itself, so the
 key that opened it cannot also confirm it.
 
+#### P2j. Social login, for players who have no wallet — P1 (user, 2026-10-02)
+*"A possibilidade de criar um Social Login mesmo para quem nao tem wallet.
+Possamos usar solucoes como Privy ou outras abstraction solutions. Sei que
+esse e um topico abrangente e pode necessitar que nos de alguma forma
+paguemos pela delegacao para os ERs de forma segura e sem exploit (para que
+ngm fique criando contas e farmando esse dinheiro)."*
+
+To attack in the coming weeks, not this one. Written down now with what the
+city already has, so the work starts from the real shape of it.
+
+**What it buys.** The connect screen is the wall. Today somebody without a
+wallet can press "continue as guest" and walk around, but a guest owns
+nothing: no player PDA, so no score, no streak, no wardrobe unlocks, no
+Find Someone claim, no DMs. Everything that makes a player come back a
+second time is behind a wallet they do not have. A social login (Privy or
+similar: an embedded wallet behind an email or an X account) turns a guest
+into a citizen without asking them to understand a seed phrase.
+
+**What it touches here.**
+- `ConnectScreen` + the wallet adapter: an embedded wallet has to look like
+  any other adapter, or every screen that reads `useWallet()` learns about it.
+- `authorize_session`: the main wallet signs once per session to authorize the
+  session key. An embedded wallet can sign that without a popup, which is the
+  part that makes social login FEEL different, not just easier.
+- `delegate` on the player PDA, and the PDA's own rent: today the player is
+  the fee payer for both, which is the rule we chose on purpose ("the player
+  paying their own rent is fine"). A socially-logged player has no SOL. So
+  somebody pays, and that somebody is us.
+
+**The hard part, which is the one the user named.** The moment we pay for
+account creation and delegation, an account becomes something that costs us
+money and can be created in a loop. A script with a thousand throwaway emails
+is a thousand PDAs, a thousand delegations, and a free drain on the treasury
+— and if any reward is attached to a new account, it is a farm.
+
+Directions worth costing out, cheapest first; none of them is decided:
+1. **Pay late, not on sign-up.** Create nothing on chain until the player has
+   done something a bot would not bother to do (a conversation, a mini-game
+   finished, a first swap). Until then they live exactly like today's guest.
+   This alone removes most of the attack, because the cost moves behind real
+   play.
+2. **One account per identity, enforced off chain.** Privy already gives a
+   verified email/phone/social identity; the server keeps identity -> wallet
+   and refuses the second. Cheap, and it is the lever that actually bounds a
+   farm, but it needs the sponsor to be a server we run, not a client.
+3. **Sponsor with a budget, not a blank cheque.** A per-identity and per-day
+   lamport ceiling on the sponsoring wallet, with the numbers in one place
+   like `solmechs/season/config.ts` so a leak is a number to change and not a
+   deploy.
+4. **Let the player graduate.** Export/transfer the embedded wallet to a real
+   one, so the account stops costing us the moment somebody is serious.
+5. **Keep rewards away from account AGE.** Anything a new account gets for
+   free is the thing a farm harvests. Rewards for play, never for existing.
+
+**Open questions for the room**, in the order they block work: which provider
+(Privy, Turnkey, Dynamic, Magic — cost per user and Solana support differ a
+lot); whether the sponsoring wallet is the game treasury or a separate one
+with a cap; mainnet or devnet first; and what a socially-logged player is
+allowed to do before we have spent anything on them.
+
 ### P2 — wanted, needs a decision or art first
 
 #### P3a. Interiors, starting with the Solana City building
