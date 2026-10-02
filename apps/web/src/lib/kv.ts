@@ -58,6 +58,25 @@ export async function setex(key: string, value: string, seconds: number): Promis
 }
 
 /**
+ * Takes a lock that releases itself: SET NX EX, which is one command and is
+ * atomic, so several server instances racing for the same job leave exactly one
+ * winner. Returns true to the one that took it.
+ *
+ * The expiry is what makes it a lock and not a tombstone: a holder that dies
+ * mid-job, or a job that failed, frees it again after `seconds` instead of
+ * blocking that work forever.
+ */
+export async function lock(key: string, seconds: number): Promise<boolean> {
+  if (storeMode() === "redis") {
+    return (await redis<string | null>(["SET", key, "1", "NX", "EX", seconds])) === "OK";
+  }
+  if (memory.has(key)) return false;
+  memory.set(key, "1");
+  setTimeout(() => memory.delete(key), seconds * 1000).unref?.();
+  return true;
+}
+
+/**
  * Runs a Lua script atomically: one Redis command however much it does,
  * which keeps hot paths (the DM poll) cheap. `local` is the in-memory
  * equivalent for development, handed the raw memory map.
