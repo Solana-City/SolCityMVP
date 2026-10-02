@@ -243,16 +243,28 @@ export interface ExpressionFxDef {
   frameRate: number;
 }
 
+/**
+ * The whole set arrived in one shape: a single row of seven 32px frames,
+ * named after the expression it belongs to. A sheet drawn to any other grid
+ * writes the object out in full instead.
+ */
+const fxSheet = (name: string): ExpressionFxDef => ({
+  textureKey: `expr-fx-${name}`,
+  file: `${name}.png`,
+  frameWidth: 32,
+  frameHeight: 32,
+  frameRate: 10,
+});
+
 export const EXPRESSIONS: Expression[] = [
-  { id: "nya",   name: "Nya",   uiSymbol: "😸", textureKey: "pd-expr-Nya",   file: "expressions/Nya.png" },
-  { id: "sleep", name: "Sleep", uiSymbol: "😴", textureKey: "pd-expr-Sleep", file: "expressions/Sleep.png" },
-  { id: "angry", name: "Angry", uiSymbol: "😠", textureKey: "pd-expr-Angry", file: "expressions/Angry.png" },
-  { id: "cry",   name: "Cry",   uiSymbol: "😢", textureKey: "pd-expr-Cry",   file: "expressions/Cry.png" },
-  { id: "lol",   name: "LOL",   uiSymbol: "😂", textureKey: "pd-expr-LOL",   file: "expressions/LOL.png" },
-  { id: "love",  name: "Love",  uiSymbol: "😍", textureKey: "pd-expr-Love",  file: "expressions/Love.png",
-    fx: { textureKey: "expr-fx-Love", file: "Love.png", frameWidth: 32, frameHeight: 32, frameRate: 10 } },
-  { id: "shy",   name: "Shy",   uiSymbol: "😳", textureKey: "pd-expr-Shy",   file: "expressions/Shy.png" },
-  { id: "stars", name: "Stars", uiSymbol: "🤩", textureKey: "pd-expr-Stars", file: "expressions/Stars.png" },
+  { id: "nya",   name: "Nya",   uiSymbol: "😸", textureKey: "pd-expr-Nya",   file: "expressions/Nya.png",   fx: fxSheet("Nya") },
+  { id: "sleep", name: "Sleep", uiSymbol: "😴", textureKey: "pd-expr-Sleep", file: "expressions/Sleep.png", fx: fxSheet("Sleep") },
+  { id: "angry", name: "Angry", uiSymbol: "😠", textureKey: "pd-expr-Angry", file: "expressions/Angry.png", fx: fxSheet("Angry") },
+  { id: "cry",   name: "Cry",   uiSymbol: "😢", textureKey: "pd-expr-Cry",   file: "expressions/Cry.png",   fx: fxSheet("Cry") },
+  { id: "lol",   name: "LOL",   uiSymbol: "😂", textureKey: "pd-expr-LOL",   file: "expressions/LOL.png",   fx: fxSheet("LOL") },
+  { id: "love",  name: "Love",  uiSymbol: "😍", textureKey: "pd-expr-Love",  file: "expressions/Love.png",  fx: fxSheet("Love") },
+  { id: "shy",   name: "Shy",   uiSymbol: "😳", textureKey: "pd-expr-Shy",   file: "expressions/Shy.png",   fx: fxSheet("Shy") },
+  { id: "stars", name: "Stars", uiSymbol: "🤩", textureKey: "pd-expr-Stars", file: "expressions/Stars.png", fx: fxSheet("Stars") },
 ];
 
 export const CATEGORY_LABELS: Record<LayerCategory, string> = {
