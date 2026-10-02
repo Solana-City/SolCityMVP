@@ -231,11 +231,14 @@ function Card({ children, style }: { children: React.ReactNode; style?: React.CS
   );
 }
 
-function Num({ label, value, color }: { label: string; value: number; color: string }) {
+function Num({ label, value, color, icon }: { label: string; value: number; color: string; icon?: string }) {
   return (
     <Card style={{ padding: "14px 6px", textAlign: "center" }}>
       <div style={{ fontSize: 20, color, lineHeight: 1 }}>{value}</div>
-      <div style={{ fontSize: 8, color: "#cbd5e1", marginTop: 10 }}>{label}</div>
+      <div style={{ fontSize: 8, color: "#cbd5e1", marginTop: 10, display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}>
+        {icon && <img src={icon} alt="" draggable={false} style={{ height: 16, width: "auto", imageRendering: "pixelated" }} />}
+        {label}
+      </div>
     </Card>
   );
 }
@@ -465,7 +468,7 @@ function ProfileTab({ profile, wallet, onConnect }: {
           <Num label="SWAPS" value={profile.swapCount} color={CYAN} />
           <Num label="TRANSFERS" value={profile.transferCount} color={CYAN} />
           <Num label="FINDS" value={mine.finds} color="#c084fc" />
-          <Num label="BEST KITE" value={mine.kite} color="#FFA94D" />
+          <Num label="BEST KITE" value={mine.kite} color="#FFA94D" icon="/assets/minigames/kite/kites/kite_stb.png" />
           <Num label="QUEST PTS" value={mine.quest} color={CYAN} />
         </div>
       </div>

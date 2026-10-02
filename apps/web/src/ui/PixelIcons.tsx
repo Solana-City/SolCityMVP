@@ -20,8 +20,7 @@ const FRAME_PX = 64;
 
 export const ICON = {
   trophy: `${UI}/icon2_trophy.png`,
-  tasks: `${UI}/icon_tasks1.png`,
-  hunt: `${UI}/icon_quests2.png`,
+  tasks: `${UI}/icon_tasks1.png`,  hunt: `${UI}/icon_quests2.png`,
   wardrobe: `${UI}/icon_wardrob1.png`,
   chat: `${UI}/ico_chat.png`,
   emote: `${UI}/ico_emoji.png`,
@@ -431,9 +430,9 @@ export const ACHIEVEMENT_ART: Record<string, { sheet?: string; img?: string; str
   "games-50": { img: `${UI}/controller.png` },
 
   // Kite Clash
-  "kite-1000": { sheet: "Kite Pro.png" },
-  "kite-5000": { sheet: "Kite Pro.png" },
-  "kite-10000": { sheet: "Kite Pro.png" },
+  "kite-1000": { img: `${UI}/icon_kite.png` },
+  "kite-5000": { img: `${UI}/icon_kite.png` },
+  "kite-10000": { img: `${UI}/icon_kite.png` },
 
   // Sol Mechs
   "mechs-pve-1": { img: "/assets/minigames/sol-mechs/ui/slotmini-matrix.png" },
