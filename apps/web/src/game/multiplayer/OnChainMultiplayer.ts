@@ -955,6 +955,17 @@ export class OnChainMultiplayer {
    *  so every client targets the same citizen and shares the countdown. */
   private async pollHunt(): Promise<void> {
     if (!isProgramDeployed()) return;
+    // Only let the shared hunt drive this client if this client can also push
+    // it forward. Every write — claim, crank, init — needs the wallet, while
+    // this read needed nothing, so a player with no wallet connected adopted
+    // the chain's round and its deadline and then had no way to advance
+    // either: the countdown sat at 0:00 and the citizen never changed, for as
+    // long as nobody with a wallet was in the city to crank it. Without a
+    // wallet the local hunt is the honest one to play.
+    if (!this.wallet) {
+      clearHuntFromChain();
+      return;
+    }
     try {
       const [huntPda] = deriveHuntPDA();
       const info = await this.baseConnection.getAccountInfo(huntPda);
@@ -1021,7 +1032,11 @@ export class OnChainMultiplayer {
     if (prev && prev.round === round && Date.now() - prev.at < OnChainMultiplayer.CRANK_RETRY_MS) return;
     this.crankAttempt = { round, at: Date.now() };
     const sessionKey = this.sessionKeys.getSessionPublicKey();
-    await this.sendHuntIx(buildExpireRoundIx(sessionKey, round));
+    const sig = await this.sendHuntIx(buildExpireRoundIx(sessionKey, round));
+    console.log(
+      sig ? `[Hunt] crank sent for round ${round}: ${sig.slice(0, 12)}`
+          : `[Hunt] crank for round ${round} did not send — retrying in 9s`,
+    );
     await new Promise((r) => setTimeout(r, 1000));
     await this.pollHunt();
   }
