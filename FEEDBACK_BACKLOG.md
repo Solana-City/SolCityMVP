@@ -227,6 +227,27 @@ Fixed by overlapping the chunks instead of meeting them: each texture is
 painted 4 world px past its chunk with the neighbouring tiles that belong
 there. The overlap is the same picture twice, so no other zoom changes.
 
+#### P1g. The streak stopped counting — DONE 2026-10-02
+*"O Streak nao esta contando."* With a screenshot: 0 day streak, BEST 4, and
+"CHECKING IN..." sitting on screen.
+
+The check-in is signed with a timestamp and the server refuses one older than
+60 seconds (replay protection). The reporting machine's clock is **63 seconds
+behind** the server, measured three times. Every check-in from it had been
+rejected since 2026-09-24, while another player on the same build checked in
+every day — the stored record proves both. The client read the rejection as a
+hard failure and stopped trying without a word.
+
+Fixed by signing with the SERVER's clock, learned from its own responses
+(`lib/clockSkew.ts`). The same window was silently swallowing direct messages
+(60s) and could cost a wallet popup on a nickname claim (5 min); both
+corrected. And the profile now says when a check-in gave up instead of
+claiming forever that it is still going.
+
+Note for whoever reads this later: a minute of drift is ordinary (a machine
+that slept, automatic time off, a VM). Any future endpoint that signs a
+timestamp must use `serverNow()`, not `Date.now()`.
+
 #### P1e. Kite Clash breaks sometimes
 *"Check kite game breaking sometimes."* No repro yet: which screen, what was
 on it, and whether it was a round already running. Worth catching once with
