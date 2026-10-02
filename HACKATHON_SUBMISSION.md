@@ -13,20 +13,19 @@ is not.
 |---|---|
 | Functional Android APK | **Done.** Debug-signed, installs and runs on a Seeker |
 | Public GitHub repo | **Done.** github.com/Solana-City/SolCityMVP |
-| Demo video | **Not started** |
-| Pitch deck | **Not started** |
+| Demo video | **Done** by the user, 2026-10-02 |
+| Pitch deck | **Done** by the user, 2026-10-02 |
 
-Two of the four are missing, and both are mandatory. Nothing else matters until
-they exist.
+All four exist. What remains is quality and the release build.
 
 ## Judging criteria, and what we have for each
 
 | Criterion | What answers it | Status |
 |---|---|---|
 | Stickiness, a reason to come back | Push notifications were the plan | **Dropped**, see below |
-| User experience | Touch pass on the Seeker, haptics | Haptics wiring in progress, touch pass **not started** |
-| Innovation | Web and Seeker players in one on-chain world, no wallet popups mid-game | Exists in the product, **not yet demonstrated** |
-| Presentation | Video, deck, README | **Not started** |
+| User experience | Responsive UI for Seeker, haptics | **Done** |
+| Innovation | Web and Seeker players in one on-chain world, no wallet popups mid-game | Shown in the demo video |
+| Presentation | Video, deck, README | **Done** |
 
 ## Push notifications: cut on 2026-10-02
 
@@ -41,22 +40,32 @@ Firebase exists, it can come back.
 ## What does not need the user
 
 - [x] README section on the Android app and the hackathon work
-- [ ] Haptics wired to game events through the existing bridge
-- [ ] Touch pass, for whatever can be fixed without seeing the device
-- [ ] Deck outline and video script
-- [ ] Signed release APK, once the keystore exists
+- [x] Haptics wired to game events through the existing bridge
+- [x] Release build validated under R8: the minified dex still carries
+      SolCityNative, haptic, version, the web-shell user-agent marker and the
+      solana-wallet hand-off, so the proguard keep rule holds. 2 MB, against
+      29.6 MB for the debug build
+- [ ] Signed release APK with the real keystore
 
 ## What needs the user
 
 | Need | Why it blocks |
 |---|---|
-| **USB debugging, or photos panel by panel** | The touch pass is the largest remaining item and cannot be done blind |
-| **Confirm chat and on-chain log on device** | Two fixes shipped on 09-23, still unverified |
+| **Keystore password** | The release APK was proven with a throwaway key. The real one must be created once, and kept, because losing it means the dApp Store listing can never be updated |
 | **Devnet or mainnet for the judged build** | Recommendation: devnet |
 | **Eligible countries list** | Decides whether the USDC prize exists for this team at all |
-| **Contact and support email** | `dapp-store/config.yaml` still has REPLACE_WITH placeholders |
-| **Keystore password** | Needed for the signed release APK |
-| **Two devices for the demo video** | The cross-play shot is the one that carries the submission |
+| **Contact and support email** | `dapp-store/config.yaml` still has REPLACE_WITH placeholders, needed only for publishing |
+
+## The freeze matters more than usual
+
+The APK loads the live site, so **the judged app is whatever is deployed at the
+moment a judge opens it**, which can be weeks after submission. A broken deploy
+during judging breaks the submission, and the demo video will no longer match
+what they see.
+
+Freeze web deploys from 10-06 until the results are announced. Anything urgent in
+that window should be weighed against the fact that it ships straight into the
+hands of the judges.
 
 ## Not required by the deadline
 
@@ -68,9 +77,8 @@ still needs emails and screenshots.
 
 | Day | Work |
 |---|---|
-| Oct 2 | README, haptics wired, this checklist |
-| Oct 3-4 | Touch pass on the Seeker |
-| Oct 5 | Signed release APK, store screenshots, deck drafted |
-| Oct 6 | **Freeze.** Record the two-device demo |
-| Oct 7 | Video edited, deck finished |
-| Oct 8 | Submit. Buffer, not a work day |
+| Oct 2 | README, haptics, R8 validated, video and deck done |
+| Oct 3-5 | Signed release APK, install it on the Seeker and play a full loop |
+| Oct 6 | **Freeze**, and it stays frozen through judging |
+| Oct 7 | Submit |
+| Oct 8 | Deadline. Buffer, not a work day |
