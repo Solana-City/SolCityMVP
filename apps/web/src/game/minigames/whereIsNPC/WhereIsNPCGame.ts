@@ -23,17 +23,32 @@ const STORAGE_KEY = "solcity:whereIsNPC:scores";
 
 let onChainRound: number | null = null;
 let onChainDeadlineMs: number | null = null;
+let onChainWinner: string | null = null;
 
-/** Called by the hunt poll. `deadlineSecs` is the on-chain unix deadline. */
-export function setHuntFromChain(round: number, deadlineSecs: number): void {
+/** Called by the hunt poll. `deadlineSecs` is the on-chain unix deadline.
+ *  `winnerWallet` is who claimed the round before this one, when the poll could
+ *  put a wallet to the session key the chain records; null when nobody found
+ *  that citizen, or when the finder is not someone this client knows. */
+export function setHuntFromChain(
+  round: number,
+  deadlineSecs: number,
+  winnerWallet: string | null = null,
+): void {
   onChainRound = round >>> 0;
   onChainDeadlineMs = deadlineSecs * 1000;
+  onChainWinner = winnerWallet;
+}
+
+/** Who won the round that just ended, if anybody did. */
+export function getHuntWinner(): string | null {
+  return onChainWinner;
 }
 
 /** Drop back to the local slot (e.g. on disconnect). */
 export function clearHuntFromChain(): void {
   onChainRound = null;
   onChainDeadlineMs = null;
+  onChainWinner = null;
 }
 
 /** Whether the shared on-chain hunt is driving the round. */

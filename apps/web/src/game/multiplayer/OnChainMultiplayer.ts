@@ -916,6 +916,16 @@ export class OnChainMultiplayer {
   // tick returned early on the guard, and the hunt froze on a citizen that
   // could no longer be found or expired for the rest of the session. The round
   // is now only retired once the chain has actually moved past it.
+  /**
+   * Session key -> wallet, for everyone the position poll has seen.
+   *
+   * The hunt records its winner as the SESSION key that signed the claim, which
+   * is not an identity anybody recognises. The poll already walks every online
+   * player's account, and that account carries both keys, so the mapping costs
+   * nothing beyond keeping the bytes it was already stepping over.
+   */
+  private sessionToWallet = new Map<string, string>();
+
   private crankAttempt: { round: number; at: number } | null = null;
   private static readonly CRANK_RETRY_MS = 9_000;
 
@@ -974,6 +984,22 @@ export class OnChainMultiplayer {
 
   /** Reads the on-chain hunt and pushes round + deadline into WhereIsNPCGame,
    *  so every client targets the same citizen and shares the countdown. */
+  /**
+   * The wallet behind the session key the hunt recorded as its winner.
+   *
+   * Null when nobody claimed the round (the program stores the default key for
+   * an expired one) or when the finder is not a player this client has seen —
+   * better to say nothing than to put up a key nobody recognises.
+   */
+  private resolveWinner(winner: PublicKey): string | null {
+    if (winner.equals(PublicKey.default)) return null;
+    const key = winner.toBase58();
+    if (key === this.sessionKeys.getSessionPublicKey().toBase58()) {
+      return this.wallet?.toBase58() ?? null;
+    }
+    return this.sessionToWallet.get(key) ?? null;
+  }
+
   private async pollHunt(): Promise<void> {
     if (!isProgramDeployed()) return;
     // Only let the shared hunt drive this client if this client can also push
@@ -992,7 +1018,7 @@ export class OnChainMultiplayer {
       const info = await this.baseConnection.getAccountInfo(huntPda);
       if (!info) return; // not initialized yet (ensureHuntInitialized will make it)
       const hunt = decodeHuntState(info.data);
-      if (hunt) setHuntFromChain(hunt.round, hunt.deadline);
+      if (hunt) setHuntFromChain(hunt.round, hunt.deadline, this.resolveWinner(hunt.winner));
     } catch { /* transient RPC — keep the last known round */ }
   }
 
@@ -1034,7 +1060,9 @@ export class OnChainMultiplayer {
     // deadline down until some later 3s poll happened to get through, which is
     // why the next citizen's timer appeared minutes late instead of at once.
     // The data was in hand the whole time.
-    if (roundMoved && hunt) setHuntFromChain(hunt.round, hunt.deadline);
+    if (roundMoved && hunt) {
+      setHuntFromChain(hunt.round, hunt.deadline, this.resolveWinner(hunt.winner));
+    }
     const won = roundMoved && !!hunt && hunt.winner.equals(sessionKey);
     if (won && sent.signature) {
       transactionLog.markConfirmed(entry.id, sent.signature);
@@ -1968,6 +1996,14 @@ export class OnChainMultiplayer {
 
       // session_authority: Option<Pubkey> — 1 tag byte + 32 if tag=1
       const hasSession = buf.readUInt8(offset) === 1;
+      if (hasSession) {
+        // Kept, not skipped: this is the only place the two keys appear
+        // together, and the hunt needs it to name a winner.
+        this.sessionToWallet.set(
+          new PublicKey(buf.subarray(offset + 1, offset + 33)).toBase58(),
+          walletStr,
+        );
+      }
       offset += 1 + (hasSession ? 32 : 0);
 
       // display_name: 4-byte length + UTF-8 string (max 20 bytes)

@@ -4,7 +4,7 @@ import { PixelImg, ICON, RankBadge, CloseButton } from "@/ui/PixelIcons";
 import { useState, useEffect, useRef, useCallback } from "react";
 import {
   getRoundIndex, getCitizenMsRemaining, CITIZEN_MS, recordFind, getMyScore,
-  getLeaderboard, recordRoundWinner,
+  getLeaderboard, recordRoundWinner, getHuntWinner,
   type ScoreEntry,
 } from "@/game/minigames/whereIsNPC/WhereIsNPCGame";
 import {
@@ -273,10 +273,22 @@ export default function WhereIsNPCCard({ gameRef, wallet }: Props) {
     const id = setInterval(() => {
       setMsLeft(getCitizenMsRemaining());
       const newRound = getRoundIndex();
-      if (newRound !== round) { setRound(newRound); setFoundMsg(null); }
+      if (newRound === round) return;
+      setRound(newRound);
+      // A round only ends two ways, and the chain says which: somebody claimed
+      // the citizen, or it ran out of time. Everyone used to see neither —
+      // the "found" event is local to the winner, so to every other player a
+      // citizen simply vanished and another took its place. The claim is on
+      // chain with the finder on it, so the city can be told who got there
+      // first, in the line the finder's own message already uses.
+      const winner = getHuntWinner();
+      if (!winner) { setFoundMsg(null); return; }          // nobody found that one
+      if (winner === effectiveWallet) return;              // my own message stands
+      requestNames([winner]);
+      setFoundMsg(`${cachedName(winner) ?? shortWallet(winner)} found them!`);
     }, 1000);
     return () => clearInterval(id);
-  }, [round]);
+  }, [round, effectiveWallet]);
 
   useEffect(() => {
     if (!gameRef) return;
