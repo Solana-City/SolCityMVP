@@ -294,6 +294,9 @@ export default function WhereIsNPCCard({ gameRef, wallet }: Props) {
       // so reflect the fresh full countdown immediately.
       setMsLeft(getCitizenMsRemaining());
     };
+    // The press did not reach the chain, so it did not count and the citizen is
+    // back. Said once, in the same spot the find message uses.
+    const onClaimLost = () => setFoundMsg("Did not count. Try again!");
     const onRoundCheck = () => {
       setMsLeft(getCitizenMsRemaining());
       gameRef.events.emit("whereIsNPC:requestTarget");
@@ -301,11 +304,13 @@ export default function WhereIsNPCCard({ gameRef, wallet }: Props) {
     const onTargetInfo = (loadout: Loadout) => setTargetLoadout(loadout);
 
     gameRef.events.on("whereIsNPC:found", onFound);
+    gameRef.events.on("whereIsNPC:claimLost", onClaimLost);
     gameRef.events.on("whereIsNPC:roundCheck", onRoundCheck);
     gameRef.events.on("whereIsNPC:targetInfo", onTargetInfo);
     gameRef.events.emit("whereIsNPC:requestTarget");
     return () => {
       gameRef.events.off("whereIsNPC:found", onFound);
+      gameRef.events.off("whereIsNPC:claimLost", onClaimLost);
       gameRef.events.off("whereIsNPC:roundCheck", onRoundCheck);
       gameRef.events.off("whereIsNPC:targetInfo", onTargetInfo);
     };

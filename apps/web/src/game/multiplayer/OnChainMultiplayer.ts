@@ -190,6 +190,17 @@ type ExprCallback    = (wallet: string, textureKey: string) => void;
  *
  * Both layers share the same callbacks — CityScene doesn't distinguish.
  */
+/**
+ * Outcome of a `claim_find`. `won` is the only thing that scores, but the
+ * caller also needs `roundMoved`: a claim that lost to another player means the
+ * citizen is genuinely gone, while a claim that never landed means the citizen
+ * is still out there and the find has to be given back.
+ */
+export interface ClaimResult {
+  won: boolean;
+  roundMoved: boolean;
+}
+
 export class OnChainMultiplayer {
   // Connections
   private routerConnection:    ConnectionMagicRouter;
@@ -892,7 +903,15 @@ export class OnChainMultiplayer {
   // first-writer-wins so exactly one player scores per round, and the round it
   // advances is the "next citizen" signal every client's poll picks up.
 
-  private lastCrankedRound = -1;
+  // The last crank attempt, so a round that failed to advance is tried again.
+  // This used to be a single `lastCrankedRound` number set before the send, so
+  // ONE failed attempt — a timed-out base RPC, a send that never landed —
+  // retired the round forever: the deadline stayed in the past, every later
+  // tick returned early on the guard, and the hunt froze on a citizen that
+  // could no longer be found or expired for the rest of the session. The round
+  // is now only retired once the chain has actually moved past it.
+  private crankAttempt: { round: number; at: number } | null = null;
+  private static readonly CRANK_RETRY_MS = 9_000;
 
   /** Sends a session-signed instruction to the hunt on BASE, fire-and-forget
    *  with one fresh-blockhash retry. Returns the signature, or null on failure. */
@@ -948,25 +967,34 @@ export class OnChainMultiplayer {
   /** First-finder claim for `round`. First-writer-wins on-chain: if we land it
    *  we scored (points recorded on our player PDA via the ER); if someone beat
    *  us the tx no-ops on the stale-round guard. Refreshes the hunt right after
-   *  so the new round shows promptly. Returns true if WE won. */
-  async claimFind(round: number): Promise<boolean> {
-    if (!this.wallet || !isProgramDeployed()) return false;
+   *  so the new round shows promptly. */
+  async claimFind(round: number): Promise<ClaimResult> {
+    if (!this.wallet || !isProgramDeployed()) return { won: false, roundMoved: false };
     const sessionKey = this.sessionKeys.getSessionPublicKey();
     const entry = transactionLog.record({
       kind: "hunt", layer: "base", label: "Find someone: claim", status: "pending",
     });
     const sig = await this.sendHuntIx(buildClaimFindIx(sessionKey, round));
-    // Confirm the outcome by reading the hunt: the winner is set to our session
-    // key iff our claim landed first.
-    await new Promise((r) => setTimeout(r, 1200));
+
+    // Confirm by reading the hunt: our claim landed iff the winner is our
+    // session key and the round moved on. Polled rather than slept on once —
+    // a fixed 1.2s wait called a slow devnet a loss, and the caller needs the
+    // difference between "somebody beat me" and "my claim never landed" to know
+    // whether the citizen is really gone.
+    let hunt: { round: number; winner: PublicKey } | null = null;
+    for (let i = 0; i < 8; i++) {
+      await new Promise((r) => setTimeout(r, i === 0 ? 700 : 500));
+      try {
+        const [huntPda] = deriveHuntPDA();
+        const info = await this.baseConnection.getAccountInfo(huntPda);
+        hunt = info ? decodeHuntState(info.data) : null;
+      } catch { /* transient RPC: try again */ }
+      if (hunt && hunt.round !== round) break;
+    }
     await this.pollHunt();
-    let won = false;
-    try {
-      const [huntPda] = deriveHuntPDA();
-      const info = await this.baseConnection.getAccountInfo(huntPda);
-      const hunt = info ? decodeHuntState(info.data) : null;
-      won = !!hunt && hunt.winner.equals(sessionKey) && hunt.round === round + 1;
-    } catch { /* ignore */ }
+
+    const roundMoved = !!hunt && hunt.round !== round;
+    const won = roundMoved && !!hunt && hunt.winner.equals(sessionKey);
     if (won && sig) {
       transactionLog.markConfirmed(entry.id, sig);
       // A find is worth exactly +1 (not +100) — a single point per citizen, the
@@ -974,17 +1002,24 @@ export class OnChainMultiplayer {
       // finder's player PDA.
       this.recordScoreSession(true, 1, "Find someone ★ +1", "hunt").catch(() => {});
     } else {
-      transactionLog.markFailed(entry.id, "another player claimed this round first");
+      transactionLog.markFailed(
+        entry.id,
+        roundMoved ? "another player claimed this round first" : "the claim did not land",
+      );
     }
-    return won;
+    return { won, roundMoved };
   }
 
-  /** Cranks an expired round forward (any client). Guarded so we don't spam a
-   *  claim tx per client every tick — one attempt per round locally. */
+  /** Cranks an expired round forward (any client). Throttled rather than
+   *  one-shot: a client retries the same round every CRANK_RETRY_MS until the
+   *  chain has moved past it, so a dropped send costs a few seconds instead of
+   *  stalling the hunt. First-writer-wins keeps it to a single advance however
+   *  many clients crank at once. */
   async expireRound(round: number): Promise<void> {
     if (!this.wallet || !isProgramDeployed()) return;
-    if (this.lastCrankedRound === round) return;
-    this.lastCrankedRound = round;
+    const prev = this.crankAttempt;
+    if (prev && prev.round === round && Date.now() - prev.at < OnChainMultiplayer.CRANK_RETRY_MS) return;
+    this.crankAttempt = { round, at: Date.now() };
     const sessionKey = this.sessionKeys.getSessionPublicKey();
     await this.sendHuntIx(buildExpireRoundIx(sessionKey, round));
     await new Promise((r) => setTimeout(r, 1000));

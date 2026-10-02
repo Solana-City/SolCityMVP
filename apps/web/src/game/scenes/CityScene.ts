@@ -35,7 +35,7 @@ const NPC_DEEP_LINKS: Record<string, string> = {
 import { NPCSprite } from "../entities/NPCSprite";
 import { NPC_REGISTRY } from "../config/npcRegistry";
 import { PedestrianManager, cullContainer } from "../entities/PedestrianManager";
-import { hasAlreadyFoundCurrent, markCurrentFound, isCitizenExpired, advanceFindSlot, resetCitizenTimer, isHuntOnChain, getRoundIndex } from "../minigames/whereIsNPC/WhereIsNPCGame";
+import { hasAlreadyFoundCurrent, markCurrentFound, unmarkCurrentFound, isCitizenExpired, advanceFindSlot, resetCitizenTimer, isHuntOnChain, getRoundIndex } from "../minigames/whereIsNPC/WhereIsNPCGame";
 import { ProfileManager, profileManager } from "../config/profileManager";
 import { AchievementEngine } from "../progression/achievementEngine";
 import { startProfilePublisher } from "../social/profilePublisher";
@@ -1644,12 +1644,22 @@ export class CityScene extends Phaser.Scene {
       // Shared hunt: the on-chain claim is first-writer-wins, so only the first
       // finder city-wide scores. Award the "found" banner (and its on-chain
       // points) only if OUR claim landed first; the round then advances for all.
-      this.network?.claimFind(getRoundIndex()).then((won) => {
-        if (won) {
+      this.network?.claimFind(getRoundIndex()).then((result) => {
+        if (result.won) {
           this.game.events.emit("whereIsNPC:found", { wallet, loadout: target.loadout });
           track("hunt", "found", { value: 1, label: "found the citizen" });
           // Only a claim that landed first is a find, same as the score.
           profileManager.bump("hunt-finds");
+          return;
+        }
+        if (!result.roundMoved) {
+          // The claim never reached the chain, so this citizen was never found:
+          // the round is unchanged and everyone else is still hunting it. Give
+          // it back rather than leaving this player in a city with no target
+          // and a find logged against a citizen that is still walking around.
+          unmarkCurrentFound(wallet);
+          this.pedestrians.restoreTarget();
+          this.game.events.emit("whereIsNPC:claimLost");
         }
       });
     } else {

@@ -250,6 +250,16 @@ export function markCurrentFound(wallet: string): void {
   saveFindLog(log);
 }
 
+/** Undo `markCurrentFound` — for a find whose on-chain claim never landed, so
+ *  the citizen is still out there and this wallet may press again. */
+export function unmarkCurrentFound(wallet: string): void {
+  const log = loadFindLog();
+  const w = log[wallet];
+  if (!w) return;
+  delete w[String(getCurrentSlot())];
+  saveFindLog(log);
+}
+
 /** Advance to the next citizen (called on a find or an expiry). No-op under the
  *  on-chain hunt — there the round only advances when the chain says so (via a
  *  claim/expire landing), which the poll then reflects. */

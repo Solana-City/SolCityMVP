@@ -104,6 +104,8 @@ export class PedestrianManager {
   private relocateTimer: Phaser.Time.TimerEvent | null = null;
   /** The round the current target was placed for — see refreshTarget. */
   private targetSlot = -1;
+  /** The slot whose citizen has already been found, so it is not re-adopted. */
+  private resolvedSlot = -1;
   /** Arcade group — lets us do pedGroup vs pedGroup in one collider call */
   private pedGroup!: Phaser.Physics.Arcade.Group;
 
@@ -436,6 +438,13 @@ export class PedestrianManager {
     // — indices 0..HUNT_TARGET_POOL-1 exist and share a canonical appearance on
     // every client, so the target citizen is identical city-wide.
     const slot = getCurrentSlot();
+    // This citizen has been found. Under the shared on-chain hunt the slot IS
+    // the chain's round, which only moves when the claim lands, so for a second
+    // or two there is no new citizen to adopt yet — and re-adopting this one
+    // meant the player found the SAME citizen again, got "you already found me
+    // this round", and saw no new citizen appear at all if the claim never
+    // landed. Nothing is the target until the round actually moves on.
+    if (slot === this.resolvedSlot) return;
     const newIndex = getTargetPedIndex(slot, HUNT_TARGET_POOL);
     // The slot is checked as well as the index: one round in forty picks the
     // same citizen as the last one, and that citizen still owes the new round
@@ -469,9 +478,24 @@ export class PedestrianManager {
     this.relocateTimer?.remove(false);
     this.relocateTimer = null;
     this.currentTargetIndex = -1;
+    this.resolvedSlot = getCurrentSlot();
     advanceFindSlot(); // advance slot so other wallets can still find the next target
     resetCitizenTimer(); // the next citizen gets a fresh full countdown
     this.scene.time.delayedCall(800, () => this.refreshTarget());
+  }
+
+  /**
+   * Gives the citizen back, for a find that turned out not to have happened:
+   * our claim never reached the chain, so the round did not move and this
+   * citizen is still the one every other player is hunting. Without this the
+   * player who pressed first would be left in a city with no target at all
+   * until the round expired.
+   */
+  restoreTarget(): void {
+    this.resolvedSlot = -1;
+    this.currentTargetIndex = -1;
+    this.targetSlot = -1;
+    this.refreshTarget();
   }
 
   updateDepths(): void {
