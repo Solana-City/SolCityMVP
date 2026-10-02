@@ -28,6 +28,9 @@ interface Player {
 
 interface FlagDef { id: string; label: string; effect: string; default: boolean }
 
+/** A row of the public Find Someone board (/api/leaderboard?board=hunt). */
+interface BoardRow { wallet: string; name: string | null; value: number }
+
 interface Overview {
   ok: boolean;
   store: "redis" | "memory" | "off";
@@ -49,6 +52,7 @@ export default function DeveloperPanel() {
   const [busy, setBusy] = useState(false);
   const [log, setLog] = useState<string[]>([]);
   const [tab, setTab] = useState<"live" | "analytics">("live");
+  const [hunt, setHunt] = useState<BoardRow[]>([]);
 
   useEffect(() => {
     try {
@@ -98,6 +102,48 @@ export default function DeveloperPanel() {
       return body;
     } catch (err) {
       say(`${action}: ${(err as Error).message}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // ── Find Someone, for running an event ───────────────────────────────────
+  // The board is the city's cumulative find count. A host running rounds on
+  // stage needs to watch it live and to start it at zero, so both live here
+  // rather than in the game, where a reset button has no business being.
+  const loadHunt = useCallback(async () => {
+    try {
+      // The public board is cached for 15s at the edge; an event host wants the
+      // standings as they are, so the read is cache-busted.
+      const res = await fetch(`/api/leaderboard?board=hunt&limit=20&t=${Date.now()}`, {
+        cache: "no-store",
+      });
+      const body = await res.json();
+      setHunt((body.rows ?? []) as BoardRow[]);
+    } catch { /* leave the last standings up rather than blanking the screen */ }
+  }, []);
+
+  useEffect(() => { void loadHunt(); }, [loadHunt]);
+
+  useEffect(() => {
+    if (!data || tab !== "live") return;
+    const t = setInterval(() => void loadHunt(), 10_000);
+    return () => clearInterval(t);
+  }, [data, loadHunt, tab]);
+
+  const resetHunt = async () => {
+    setBusy(true);
+    try {
+      const res = await fetch("/api/admin/board", {
+        method: "POST",
+        headers: { "x-admin-key": key, "content-type": "application/json" },
+        body: JSON.stringify({ board: "hunt" }),
+      });
+      const body = await res.json();
+      say(`find someone board reset: ${body.ok ? "cleared" : body.message ?? "failed"}`);
+      await loadHunt();
+    } catch (err) {
+      say(`find someone board reset: ${(err as Error).message}`);
     } finally {
       setBusy(false);
     }
@@ -230,6 +276,57 @@ export default function DeveloperPanel() {
             </tbody>
           </table>
         )}
+      </Panel>
+
+      {/* ── Find Someone ── */}
+      <Panel title={`Find Someone (${hunt.length} ${hunt.length === 1 ? "finder" : "finders"})`}>
+        <p style={sx.dim}>
+          One point per citizen found, to the player whose on-chain claim landed
+          first. Refreshes every 10 seconds while this tab is open.
+        </p>
+        {hunt.length === 0 ? (
+          <p style={sx.dim}>Nobody has found a citizen yet.</p>
+        ) : (
+          <table style={sx.table}>
+            <thead>
+              <tr>
+                <th style={sx.th}>#</th>
+                <th style={sx.th}>Player</th>
+                <th style={sx.th}>Wallet</th>
+                <th style={sx.thNum}>Finds</th>
+              </tr>
+            </thead>
+            <tbody>
+              {hunt.map((r, i) => (
+                <tr key={r.wallet}>
+                  <td style={sx.td}>{i + 1}</td>
+                  <td style={sx.td}>{r.name ?? <span style={sx.dim}>no name</span>}</td>
+                  <td style={{ ...sx.td, fontFamily: "monospace", fontSize: 12 }}>
+                    {r.wallet.slice(0, 4)}…{r.wallet.slice(-4)}
+                  </td>
+                  <td style={sx.tdNum}>{r.value}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+        <div style={{ display: "flex", gap: 12, alignItems: "center", marginTop: 14 }}>
+          <button style={sx.ghost} disabled={busy} onClick={() => void loadHunt()}>
+            REFRESH BOARD
+          </button>
+          <button
+            style={sx.danger}
+            disabled={busy || storeBad}
+            onClick={() => {
+              if (confirm("Clear the Find Someone board? Every player's find count goes back to zero.")) {
+                void resetHunt();
+              }
+            }}
+          >
+            RESET TO ZERO
+          </button>
+          <span style={sx.dim}>Reset just before the first round, so the board ranks the room.</span>
+        </div>
       </Panel>
 
       {/* ── Nicknames ── */}
