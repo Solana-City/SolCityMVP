@@ -1365,9 +1365,33 @@ export class OnChainMultiplayer {
       const sessionKey = this.sessionKeys.getSessionPublicKey();
       const name = displayName ?? walletStr.slice(0, 8);
 
-      const SESSION_FUND_LAMPORTS = 2_000_000; // 0.002 SOL — cheaper init for low-balance test wallets (ER fees are tiny)
+      // Topping the session key up is measured against RENT EXEMPTION, not
+      // against zero.
+      //
+      // A fee payer may not be left holding a non-zero balance below the
+      // rent-exempt minimum (650,240 lamports for an account with no data on
+      // devnet), so a session key just above that floor can pay for nothing at
+      // all: the transaction is rejected outright with "insufficient funds for
+      // rent", never reaching the chain. The old threshold of 500,000 sat
+      // BELOW the floor, which created a dead band — anything between 500,000
+      // and about 655,000 counted as funded and could not send a single
+      // transaction. A key that drifted into it stopped claiming finds and
+      // stopped cranking the hunt, silently, with nothing on chain to show for
+      // it, until somebody read the simulation error.
+      //
+      // The floor is read from the cluster rather than hardcoded, because it
+      // is a cluster parameter and a wrong constant here is invisible until it
+      // strands somebody again.
+      const rentFloor = await this.baseConnection
+        .getMinimumBalanceForRentExemption(0)
+        .catch(() => 650_240);
+      // Enough for a few hundred base-layer writes on top of the floor. Finds
+      // and cranks are the only ones, at 5,000 lamports each.
+      const SESSION_FUND_LAMPORTS = rentFloor + 2_500_000;
       const sessionBalance = await this.baseConnection.getBalance(sessionKey).catch(() => 0);
-      const needsFunding = sessionBalance < 500_000;
+      // Top up well before the floor, so a session that runs long does not end
+      // it stranded one fee above the line.
+      const needsFunding = sessionBalance < rentFloor + 500_000;
 
       if (!existing) {
         this.progress("Creating your player (sign)…");
