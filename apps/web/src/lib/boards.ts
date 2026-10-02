@@ -36,12 +36,27 @@ export interface BoardRow {
   value: number;
 }
 
-function huntKey(): string {
-  return "ev:hunt:found:by";
-}
-
 function gameKey(id: string): string {
   return `ev:minigame:${id}:best`;
+}
+
+/**
+ * The store key behind a board name, or null when the name is not one we
+ * serve. `hunt`, `quests`, `streak`, or `game:<id>`.
+ *
+ * Exported because the admin reset needs the same mapping: a board can only be
+ * cleared through a name this function recognises, so no request can name an
+ * arbitrary key to delete.
+ */
+export function boardKey(board: string): string | null {
+  if (board === "hunt") return "ev:hunt:found:by";
+  if (board === "quests") return QUEST_POINTS_KEY;
+  if (board === "streak") return "lb:streak";
+  if (board.startsWith("game:")) {
+    const id = board.slice(5);
+    if (/^[a-z0-9][a-z0-9_-]{0,39}$/i.test(id)) return gameKey(id);
+  }
+  return null;
 }
 
 /**
@@ -50,14 +65,7 @@ function gameKey(id: string): string {
  */
 export async function readBoard(board: string, limit = 10): Promise<BoardRow[]> {
   if (storeMode() === "off") return [];
-  let key: string | null = null;
-  if (board === "hunt") key = huntKey();
-  else if (board === "quests") key = QUEST_POINTS_KEY;
-  else if (board === "streak") key = "lb:streak";
-  else if (board.startsWith("game:")) {
-    const id = board.slice(5);
-    if (/^[a-z0-9][a-z0-9_-]{0,39}$/i.test(id)) key = gameKey(id);
-  }
+  const key = boardKey(board);
   if (!key) return [];
 
   const rows = await ztop(key, Math.min(50, Math.max(1, limit)));
