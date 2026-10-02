@@ -237,7 +237,7 @@ function AchievementFrame({ toast }: { toast: Toast }) {
 
       <div
         style={{
-          background: `linear-gradient(135deg, rgba(10,10,30,0.97) 0%, ${toast.color}22 100%)`,
+          background: "#061A3A",
           border: `2px solid ${toast.color}`,
           borderRadius: 8,
           padding: "16px 20px",
@@ -250,7 +250,6 @@ function AchievementFrame({ toast }: { toast: Toast }) {
             inset 0 0 20px ${toast.color}11,
             0 6px 24px rgba(0,0,0,0.5)
           `,
-          backdropFilter: "blur(6px)",
           position: "relative",
         }}
       >

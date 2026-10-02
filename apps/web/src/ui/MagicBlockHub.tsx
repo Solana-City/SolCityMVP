@@ -274,8 +274,8 @@ const docsLink: React.CSSProperties = chamferBox(8, {
   fontFamily: PIXEL,
   fontSize: 8,
   padding: "10px 0",
-  border: "1px solid rgba(153,69,255,0.45)",
-  color: "#c084fc",
+  border: "1px solid rgba(183,233,40,0.45)",
+  color: "#B7E928",
   textDecoration: "none",
 });
 

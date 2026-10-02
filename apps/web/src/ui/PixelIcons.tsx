@@ -20,7 +20,7 @@ const FRAME_PX = 64;
 
 export const ICON = {
   trophy: `${UI}/icon2_trophy.png`,
-  tasks: `${UI}/ico_tasks.png`,
+  tasks: `${UI}/icon_tasks1.png`,
   hunt: `${UI}/icon_quests2.png`,
   wardrobe: `${UI}/icon_wardrob1.png`,
   chat: `${UI}/ico_chat.png`,

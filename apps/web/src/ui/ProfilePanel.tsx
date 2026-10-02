@@ -30,7 +30,6 @@ import type { FriendRequest } from "@/game/solana/program";
 const PIXEL = '"Press Start 2P", monospace';
 const CYAN = "#14F0C6";
 const GREEN = "#B7E928";
-const PURPLE = "#9945FF";
 const MUTED = "#7f88a8";
 
 type PanelTab = "profile" | "achievements" | "friends" | "keys" | "settings";
@@ -304,7 +303,7 @@ function ConnectWalletButton({ onConnect }: { onConnect: () => void }) {
       className="w-full cursor-pointer"
       {...feel.handlers}
       style={chamferBox(8, {
-        background: "rgba(153,69,255,0.85)", color: "#fff", border: "none", padding: "12px 12px",
+        background: "#B7E928", color: "#0a0a14", border: "none", padding: "12px 12px",
         fontFamily: PIXEL, fontSize: 8, ...feelStyle(feel),
       })}
     >
@@ -496,7 +495,7 @@ function ProfileTab({ profile, wallet, onConnect }: {
                   )}
                 </div>
                 <div style={{ height: 12, background: "#171d42", marginTop: 12, overflow: "hidden" }}>
-                  <div style={{ width: `${(current / q.target) * 100}%`, height: "100%", background: done ? GREEN : PURPLE }} />
+                  <div style={{ width: `${(current / q.target) * 100}%`, height: "100%", background: done ? GREEN : CYAN }} />
                 </div>
               </Card>
             );
@@ -829,7 +828,7 @@ function VolumeRow({ label, icon, volume, muted, onVolume, onToggleMute, preview
           {...muteFeel.handlers}
           style={{ background: "none", border: "none", cursor: "pointer", lineHeight: 0, padding: 0, ...feelStyle(muteFeel) }}
         >
-          {icon(muted, muted ? "#666677" : "#c084fc")}
+          {icon(muted, muted ? "#666677" : "#B7E928")}
         </button>
       </div>
       <div className="flex items-center gap-2">
@@ -927,7 +926,7 @@ function SettingsTab() {
               type="checkbox"
               checked={dmsOff}
               onChange={(e) => { setDmsOff(e.target.checked); setDmsOffPref(e.target.checked); }}
-              style={{ accentColor: PURPLE, width: 16, height: 16, cursor: "pointer", flexShrink: 0 }}
+              style={{ accentColor: GREEN, width: 16, height: 16, cursor: "pointer", flexShrink: 0 }}
             />
             <span style={{ fontSize: 8, color: "#aaaacc", lineHeight: 1.6 }}>
               Turn off direct messages

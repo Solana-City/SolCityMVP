@@ -21,7 +21,7 @@ import { useButtonFeel, feelStyle } from "@/ui/useButtonFeel";
 
 const PIXEL = '"Press Start 2P", monospace';
 const GREEN = "#B7E928";
-const PURPLE = "#9945FF";
+const LIME = "#B7E928";
 const DANGER = "#ff5a5a";
 const UI = "/assets/ui";
 
@@ -105,9 +105,9 @@ export default function ConnectingOverlay({ onEnter, onRetry }: { onEnter: () =>
             <div key={s} style={chamferBox(6, {
               flex: 1, padding: "6px 2px", 
               fontFamily: PIXEL, fontSize: 6, lineHeight: 1.5,
-              color: n < step ? "#0a0a14" : n === step ? "#fff" : "#6a6a7d",
-              background: n < step ? GREEN : n === step ? "rgba(153,69,255,0.35)" : "rgba(255,255,255,0.05)",
-              border: `1px solid ${n === step && !failed ? PURPLE : "transparent"}`,
+              color: n < step || n === step ? "#0a0a14" : "#6a6a7d",
+              background: n < step ? GREEN : n === step ? "rgba(183,233,40,0.35)" : "rgba(255,255,255,0.05)",
+              border: `1px solid ${n === step && !failed ? LIME : "transparent"}`,
             })}>
               {s}
             </div>
@@ -140,7 +140,7 @@ export default function ConnectingOverlay({ onEnter, onRetry }: { onEnter: () =>
               {...retryFeel.handlers}
               style={chamferBox(6, {
                 flex: 1, fontFamily: PIXEL, fontSize: 7, padding: "9px 10px", cursor: "pointer",
-                background: failed ? DANGER : PURPLE, color: "#fff", border: "none",
+                background: failed ? DANGER : LIME, color: failed ? "#fff" : "#0a0a14", border: "none",
                 ...feelStyle(retryFeel),
               })}
             >

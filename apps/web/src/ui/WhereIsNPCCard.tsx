@@ -199,8 +199,8 @@ function LeaderboardModal({ onClose }: { onClose: () => void }) {
         animation: "slideUp 0.18s ease",
       }}>
         <div style={{
-          padding: "16px 20px", background: "rgba(153,69,255,0.07)",
-          borderBottom: "1px solid rgba(153,69,255,0.1)",
+          padding: "16px 20px", background: "rgba(183,233,40,0.07)",
+          borderBottom: "1px solid rgba(183,233,40,0.1)",
           display: "flex", alignItems: "center", justifyContent: "space-between",
         }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -220,7 +220,7 @@ function LeaderboardModal({ onClose }: { onClose: () => void }) {
             <div key={e.wallet} style={{
               display: "flex", alignItems: "center", gap: 12,
               padding: "10px 0",
-              borderBottom: i < entries.length - 1 ? "1px solid rgba(153,69,255,0.07)" : "none",
+              borderBottom: i < entries.length - 1 ? "1px solid rgba(183,233,40,0.07)" : "none",
             }}>
               <span style={{
                 fontFamily: '"Press Start 2P", monospace', fontSize: 7,
@@ -339,12 +339,12 @@ export default function WhereIsNPCCard({ gameRef, wallet }: Props) {
         @keyframes slideUp { from { transform: translateY(8px); opacity: 0 } to { transform: translateY(0); opacity: 1 } }
         @keyframes pulseGreen { 0%,100% { opacity: 1 } 50% { opacity: 0.6 } }
         .hunt-card { transition: box-shadow 0.2s ease; }
-        .hunt-card:hover { box-shadow: 0 6px 40px rgba(153,69,255,0.18) !important; }
+        .hunt-card:hover { box-shadow: 0 6px 40px rgba(183,233,40,0.18) !important; }
         .hunt-btn { transition: background 0.15s ease, transform 0.1s ease; }
         .hunt-btn:hover { transform: scale(1.05); }
         .hunt-btn:active { transform: scale(0.97); }
         .hunt-collapse { transition: color 0.15s ease; }
-        .hunt-collapse:hover { color: #9945FF !important; }
+        .hunt-collapse:hover { color: #B7E928 !important; }
       `}</style>
 
       {showLeaderboard && <LeaderboardModal onClose={() => setShowLeaderboard(false)} />}
@@ -366,7 +366,7 @@ export default function WhereIsNPCCard({ gameRef, wallet }: Props) {
         <div style={{
           display: "flex", alignItems: "center", gap: 8,
           padding: isTouch ? "8px 10px" : "11px 13px",
-          borderBottom: collapsed ? "none" : "1px solid rgba(153,69,255,0.1)",
+          borderBottom: collapsed ? "none" : "1px solid rgba(183,233,40,0.1)",
           cursor: "pointer",
           userSelect: "none",
         }} onClick={() => setCollapsed(v => !v)}>
@@ -429,10 +429,10 @@ export default function WhereIsNPCCard({ gameRef, wallet }: Props) {
               <div style={{ display: "flex", justifyContent: "center" }}>
                 <div style={chamferBox(10, {
                   padding: AVATAR_BORDER_W,
-                  background: "rgba(153,69,255,0.18)",
+                  background: "rgba(183,233,40,0.18)",
                 })}>
                   <div style={chamferBox(10 - AVATAR_BORDER_W, {
-                    background: "rgba(153,69,255,0.07)",
+                    background: "rgba(183,233,40,0.07)",
                     padding: isTouch ? 6 : 8,
                   })}>
                     <MiniAvatar loadout={targetLoadout} size={isTouch ? 60 : 88} />
@@ -459,7 +459,7 @@ export default function WhereIsNPCCard({ gameRef, wallet }: Props) {
               <div style={{ height: 3, background: "rgba(255,255,255,0.06)", borderRadius: 2 }}>
                 <div style={{
                   height: "100%", width: `${pct}%`,
-                  background: "linear-gradient(90deg, #9945FF, #c084fc)",
+                  background: "#B7E928",
                   borderRadius: 2,
                   transition: "width 1s linear",
                 }} />
@@ -542,7 +542,7 @@ function HuntHowTo({ loadout, isTouch, onClose }: { loadout: Loadout | null; isT
       line: "The card shows who to find. Look for them in the city.",
       scene: (
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-          <div style={chamferBox(10, { border: "2px solid rgba(153,69,255,0.6)", padding: 4, background: "rgba(153,69,255,0.08)" })}>{target}</div>
+          <div style={chamferBox(10, { border: "2px solid rgba(183,233,40,0.6)", padding: 4, background: "rgba(183,233,40,0.08)" })}>{target}</div>
           <PixelImg src={ICON.hunt} size={40} />
         </div>
       ),
@@ -566,7 +566,7 @@ function HuntHowTo({ loadout, isTouch, onClose }: { loadout: Loadout | null; isT
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 14 }}>
           <RankBadge rank={1} size={44} />
           <div style={{ width: 180, height: 8, background: "rgba(255,255,255,0.08)", borderRadius: 4, overflow: "hidden" }}>
-            <div className="hunt-timer-demo" style={{ height: "100%", background: "linear-gradient(90deg, #9945FF, #c084fc)" }} />
+            <div className="hunt-timer-demo" style={{ height: "100%", background: "#B7E928" }} />
           </div>
         </div>
       ),
@@ -605,8 +605,8 @@ function HuntHowTo({ loadout, isTouch, onClose }: { loadout: Loadout | null; isT
         </div>
         <div key={i} style={chamferBox(10, {
           height: isTouch ? 118 : 140, display: "flex", alignItems: "center", justifyContent: "center",
-          background: "radial-gradient(circle at 50% 60%, rgba(153,69,255,0.14), rgba(12,15,30,0) 70%), #10132a",
-          border: "1px solid rgba(153,69,255,0.18)", overflow: "hidden",
+          background: "radial-gradient(circle at 50% 60%, rgba(183,233,40,0.14), rgba(12,15,30,0) 70%), #10132a",
+          border: "1px solid rgba(183,233,40,0.18)", overflow: "hidden",
         })}>
           {step.scene}
         </div>
@@ -622,13 +622,13 @@ function HuntHowTo({ loadout, isTouch, onClose }: { loadout: Loadout | null; isT
           </button>
           <div style={{ flex: 1, display: "flex", justifyContent: "center", gap: 5 }}>
             {steps.map((st, n) => (
-              <span key={st.title} style={{ width: n === i ? 16 : 6, height: 6, background: n === i ? "#9945FF" : "#333355", transition: "width .2s" }} />
+              <span key={st.title} style={{ width: n === i ? 16 : 6, height: 6, background: n === i ? "#B7E928" : "#333355", transition: "width .2s" }} />
             ))}
           </div>
           <button
             onClick={next}
             {...nextFeel.handlers}
-            style={chamferBox(8, { background: "#9945FF", color: "#fff", border: "none", padding: "10px 16px", cursor: "pointer", fontFamily: PIX, fontSize: 7, ...feelStyle(nextFeel) })}
+            style={chamferBox(8, { background: "#B7E928", color: "#0a0a14", border: "none", padding: "10px 16px", cursor: "pointer", fontFamily: PIX, fontSize: 7, ...feelStyle(nextFeel) })}
           >
             {last ? "GOT IT" : "NEXT"}
           </button>

@@ -57,7 +57,7 @@ export default function ZoomControl({ compact = false }: { compact?: boolean }) 
       <div
         style={chamferBox(6, {
           padding: CHAMFER_BORDER_W,
-          background: "#9945FF",
+          background: "#B7E928",
         })}
       >
         <div
@@ -104,7 +104,7 @@ function ZBtn({
   onClick,
   disabled,
   size,
-  color = "#9945FF",
+  color = "#B7E928",
 }: {
   children: string;
   onClick: () => void;

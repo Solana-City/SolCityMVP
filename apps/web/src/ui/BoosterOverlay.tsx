@@ -79,7 +79,7 @@ export default function BoosterOverlay({
     >
       <style>{`
         @keyframes booster-shake { 0%,100%{transform:translateX(0) rotate(0)} 25%{transform:translateX(-4px) rotate(-3deg)} 75%{transform:translateX(4px) rotate(3deg)} }
-        @keyframes booster-glow  { 0%,100%{filter:drop-shadow(0 0 12px rgba(153,69,255,0.6))} 50%{filter:drop-shadow(0 0 22px rgba(183,233,40,0.8))} }
+        @keyframes booster-glow  { 0%,100%{filter:drop-shadow(0 0 12px rgba(183,233,40,0.5))} 50%{filter:drop-shadow(0 0 22px rgba(183,233,40,0.9))} }
         @keyframes booster-pop   { 0%{transform:scale(0.5) translateY(10px);opacity:0} 60%{transform:scale(1.08)} 100%{transform:scale(1);opacity:1} }
         @keyframes pack-roll     { from { background-position: 0 0 } to { background-position: var(--roll) 0 } }
       `}</style>
@@ -95,7 +95,7 @@ export default function BoosterOverlay({
         boxShadow: "0 24px 64px rgba(0,0,0,0.6)",
         textAlign: "center",
       }}>
-        <div style={{ fontSize: 10, color: "#c084fc", letterSpacing: 2, marginBottom: 4 }}>
+        <div style={{ fontSize: 10, color: "#B7E928", letterSpacing: 2, marginBottom: 4 }}>
           {phase === "choose" ? "OUTFIT PACKS" : pack?.name}
         </div>
         <div style={{ fontSize: 6, color: "#FFD700", opacity: 0.7, letterSpacing: 1, marginBottom: 18 }}>
@@ -257,7 +257,7 @@ function PackArt({ pack, scale }: { pack: PackDef; scale: number }) {
       <div style={chamferBox(14, {
         width, height,
         display: "flex", alignItems: "center", justifyContent: "center",
-        background: `linear-gradient(135deg, ${pack.accent}33, rgba(153,69,255,0.12))`,
+        background: `linear-gradient(135deg, ${pack.accent}33, rgba(183,233,40,0.12))`,
         border: `2px solid ${pack.accent}77`,
       })}>
         <img
@@ -285,7 +285,7 @@ function PackArt({ pack, scale }: { pack: PackDef; scale: number }) {
   );
 }
 
-const BTN_GLOW = "drop-shadow(0 0 10px rgba(153,69,255,0.45))";
+const BTN_GLOW = "drop-shadow(0 0 10px rgba(183,233,40,0.45))";
 
 function btn(kind: "primary" | "ghost", feel?: Pick<ButtonFeel, "hover" | "pressed">): React.CSSProperties {
   const base: React.CSSProperties = {
@@ -294,7 +294,7 @@ function btn(kind: "primary" | "ghost", feel?: Pick<ButtonFeel, "hover" | "press
     cursor: "pointer",
   };
   return chamferBox(8, kind === "primary"
-    ? { ...base, background: "linear-gradient(135deg, #9945FF, #7a2fd8)", color: "#fff",
-        border: "1px solid rgba(200,150,255,0.5)", ...(feel ? feelStyle(feel) : null) }
-    : { ...base, background: "transparent", color: "#8a8aa7", border: "1px solid rgba(153,69,255,0.3)", ...(feel ? feelStyle(feel) : null) });
+    ? { ...base, background: "#B7E928", color: "#0a0a14",
+        border: "none", ...(feel ? feelStyle(feel) : null) }
+    : { ...base, background: "transparent", color: "#8a8aa7", border: "1px solid rgba(183,233,40,0.3)", ...(feel ? feelStyle(feel) : null) });
 }

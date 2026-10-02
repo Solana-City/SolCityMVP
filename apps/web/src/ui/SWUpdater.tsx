@@ -111,7 +111,7 @@ export default function SWUpdater() {
     >
       {reloadNote && (
         <div style={chamferBox(6, {
-          padding: "8px 12px", background: "rgba(10,10,30,0.92)",
+          padding: "8px 12px", background: "#061A3A",
           color: "#8888aa", fontSize: 7, lineHeight: 1.6,
         })}>
           the city reloaded itself: {reloadNote}
@@ -122,7 +122,7 @@ export default function SWUpdater() {
           onClick={() => apply(waiting)}
           {...updateFeel.handlers}
           style={chamferBox(6, {
-            padding: "9px 14px", background: "rgba(183,233,40,0.14)",
+            padding: "9px 14px", background: "#061A3A",
             color: "#B7E928", border: "1px solid rgba(183,233,40,0.5)",
             fontFamily: "inherit", fontSize: 7, cursor: "pointer", pointerEvents: "auto",
             ...feelStyle(updateFeel),

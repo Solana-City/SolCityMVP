@@ -183,7 +183,7 @@ export default function ActionPanel({ action, onClose }: ActionPanelProps) {
           className="relative w-full rounded-t-2xl"
           style={{
             background: "rgba(10,10,30,0.98)",
-            border: "1px solid rgba(153,69,255,0.25)",
+            border: "1px solid rgba(183,233,40,0.25)",
             borderBottom: "none",
             fontFamily: '"Press Start 2P", monospace',
             maxHeight: "100%",
@@ -194,7 +194,7 @@ export default function ActionPanel({ action, onClose }: ActionPanelProps) {
           }}
         >
           {/* Drag handle */}
-          <div style={{ width: 40, height: 4, borderRadius: 2, background: "rgba(153,69,255,0.35)", margin: "0 auto 16px" }} />
+          <div style={{ width: 40, height: 4, borderRadius: 2, background: "rgba(183,233,40,0.35)", margin: "0 auto 16px" }} />
           {action.type === "tutor" && <CloseButton onClick={onClose} style={{ position: "absolute", top: 16, right: 16 }} />}
 
           {action.type === "tutor"           && <TutorPanel           onClose={onClose} />}
@@ -1355,7 +1355,7 @@ function TokenBox({ label, token, onTokenChange, excludeToken, tokens, getLogo, 
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           {logo && <img src={logo} alt={token} style={{ width: 18, height: 18, borderRadius: "50%" }} />}
           <select value={token} onChange={(e) => onTokenChange(e.target.value)}
-            style={chamferBox(4, { background: "#1a1a3a", color: "#9945FF", border: "1px solid rgba(153,69,255,0.2)", padding: "2px 6px", fontSize: "9px", cursor: "pointer", outline: "none" })}>
+            style={chamferBox(4, { background: "#1a1a3a", color: "#B7E928", border: "1px solid rgba(183,233,40,0.2)", padding: "2px 6px", fontSize: "9px", cursor: "pointer", outline: "none" })}>
             {tokens.filter(t => t !== excludeToken).map(t => <option key={t} value={t}>{t}</option>)}
           </select>
         </div>

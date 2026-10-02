@@ -232,7 +232,7 @@ export default function CalendarPanel({ gameRef }: { gameRef: Phaser.Game | null
         }}
       >
         {/* Header, with today's check-in as the first thing you see */}
-        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: layout.short ? 6 : 10, padding: layout.short ? "4px 8px" : "8px 12px", background: "rgba(153,69,255,0.06)", borderBottom: "1px solid rgba(153,69,255,0.12)" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: layout.short ? 6 : 10, padding: layout.short ? "4px 8px" : "8px 12px", background: "rgba(183,233,40,0.06)", borderBottom: "1px solid rgba(183,233,40,0.12)" }}>
           <PixelImg src="/assets/ui/icon_calendar1.png" size={layout.short ? 24 : 40} />
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 12, color: GREEN, letterSpacing: 1 }}>CITY CALENDAR</div>
@@ -323,7 +323,7 @@ function CalIcon({ size, day }: { size: number; day: number }) {
       width: size, height: size, flexShrink: 0, display: "flex", flexDirection: "column",
       overflow: "hidden", background: "#f8fafc", border: "2px solid #14F0C6",
     }}>
-      <span style={{ height: "34%", background: "#9945FF" }} />
+      <span style={{ height: "34%", background: "#B7E928" }} />
       <span style={{
         flex: 1, display: "flex", alignItems: "center", justifyContent: "center",
         fontFamily: PIXEL, fontSize: Math.round(size * 0.3), color: "#0a0a14", lineHeight: 1,
