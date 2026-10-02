@@ -31,6 +31,16 @@ interface FlagDef { id: string; label: string; effect: string; default: boolean 
 /** A row of the public Find Someone board (/api/leaderboard?board=hunt). */
 interface BoardRow { wallet: string; name: string | null; value: number }
 
+/** The global hunt round (/api/admin/hunt). */
+interface HuntStatus {
+  round: number | null;
+  winner: string | null;
+  deadline: number | null;
+  expiredFor: number;
+  armed: boolean;
+  cranker: string | null;
+}
+
 interface Overview {
   ok: boolean;
   store: "redis" | "memory" | "off";
@@ -53,6 +63,7 @@ export default function DeveloperPanel() {
   const [log, setLog] = useState<string[]>([]);
   const [tab, setTab] = useState<"live" | "analytics">("live");
   const [hunt, setHunt] = useState<BoardRow[]>([]);
+  const [huntRound, setHuntRound] = useState<HuntStatus | null>(null);
 
   useEffect(() => {
     try {
@@ -121,7 +132,12 @@ export default function DeveloperPanel() {
       const body = await res.json();
       setHunt((body.rows ?? []) as BoardRow[]);
     } catch { /* leave the last standings up rather than blanking the screen */ }
-  }, []);
+    try {
+      const res = await fetch("/api/admin/hunt", { headers: { "x-admin-key": key } });
+      const body = await res.json();
+      if (body.ok) setHuntRound(body.hunt as HuntStatus);
+    } catch { /* same: the standings matter more than the round readout */ }
+  }, [key]);
 
   useEffect(() => { void loadHunt(); }, [loadHunt]);
 
@@ -130,6 +146,28 @@ export default function DeveloperPanel() {
     const t = setInterval(() => void loadHunt(), 10_000);
     return () => clearInterval(t);
   }, [data, loadHunt, tab]);
+
+  const crankHunt = async () => {
+    setBusy(true);
+    try {
+      const res = await fetch("/api/admin/hunt", {
+        method: "POST",
+        headers: { "x-admin-key": key, "content-type": "application/json" },
+      });
+      const body = await res.json();
+      const r = body.result ?? {};
+      say(
+        r.cranked ? `round cranked -> ${r.signature?.slice(0, 12)}`
+                  : `round not cranked: ${r.reason ?? "unknown"}`,
+      );
+      if (body.hunt) setHuntRound(body.hunt as HuntStatus);
+      await loadHunt();
+    } catch (err) {
+      say(`crank: ${(err as Error).message}`);
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const resetHunt = async () => {
     setBusy(true);
@@ -284,6 +322,27 @@ export default function DeveloperPanel() {
           One point per citizen found, to the player whose on-chain claim landed
           first. Refreshes every 10 seconds while this tab is open.
         </p>
+        {huntRound && (
+          <div style={{
+            ...sx.flagRow,
+            gap: 18, flexWrap: "wrap",
+            color: huntRound.expiredFor > 60 ? "#ff9aa6" : "#aab3d4",
+          }}>
+            <span>round <b>{huntRound.round ?? "none"}</b></span>
+            <span>
+              {huntRound.round === null ? "the hunt account does not exist yet"
+                : huntRound.expiredFor > 0 ? `overdue by ${Math.floor(huntRound.expiredFor / 60)}m ${huntRound.expiredFor % 60}s`
+                : "running"}
+            </span>
+            <span style={sx.dim}>
+              {huntRound.armed ? `server crank armed (${huntRound.cranker?.slice(0, 4)}…${huntRound.cranker?.slice(-4)})`
+                               : "server crank NOT armed — set HUNT_CRANK_SECRET"}
+            </span>
+            <button style={sx.ghost} disabled={busy} onClick={() => void crankHunt()}>
+              CRANK NOW
+            </button>
+          </div>
+        )}
         {hunt.length === 0 ? (
           <p style={sx.dim}>Nobody has found a citizen yet.</p>
         ) : (
