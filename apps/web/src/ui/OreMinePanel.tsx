@@ -45,7 +45,7 @@ import {
   setShareClaims,
   type CitySquare,
 } from "@/game/chat/claimBroadcast";
-import { onOreClaim } from "@/game/progression/outfitRewards";
+import { onOreStaked, onOreWon } from "@/game/progression/outfitRewards";
 import { CATEGORY_META } from "@/game/minimap/categories";
 
 const ACCENT = CATEGORY_META.defi.color;
@@ -136,8 +136,9 @@ export default function OreMinePanel({ onClose }: { onClose: () => void }) {
           miner,
         }),
       () => {
-        // The achievement track and the miner's cosmetic.
-        onOreClaim();
+        // Moves the achievement track. The helmet is not earned here: a stake
+        // is a bet, and the trophy waits until ORE is actually struck.
+        onOreStaked();
         // The city's claim map, unless this player opted out.
         if (getShareClaims()) {
           emitGameEvent("game:ore-claim", {
@@ -232,7 +233,21 @@ export default function OreMinePanel({ onClose }: { onClose: () => void }) {
                     small
                     label={busy === "ore" ? "..." : `CLAIM ${miner ? formatOre(miner.rewardsOre, 3) : "0"} ORE`}
                     disabled={!miner || miner.rewardsOre <= BigInt(0) || busy !== null}
-                    onClick={() => run("ore", () => claimOre(publicKey!, signTransaction!))}
+                    onClick={() => {
+                      // Read before the claim: afterwards the account says zero,
+                      // so this is the only moment that knows ORE was really won.
+                      const won = miner?.rewardsOre ?? BigInt(0);
+                      void run(
+                        "ore",
+                        () => claimOre(publicKey!, signTransaction!),
+                        () => {
+                          if (won > BigInt(0)) {
+                            onOreWon();
+                            setNotice({ text: `You struck ${formatOre(won, 4)} ORE.` });
+                          }
+                        },
+                      );
+                    }}
                   />
                   <Button
                     small

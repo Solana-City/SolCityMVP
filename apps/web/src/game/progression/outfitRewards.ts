@@ -36,6 +36,9 @@ const REWARDS = {
   // starts working with no change here. If the spriter makes something other
   // than a cap, these two fields are the only edit.
   skrHolder: { category: "hat", id: "Seeker_cap", name: "Seeker Cap" },
+  // Earned by actually striking ORE, not by staking a claim: the helmet is a
+  // trophy, not a receipt for turning up.
+  //
   // Same arrangement as the Seeker gift: the art is not in yet, so grant()
   // skips this until the variant exists in paperDoll.ts. One line changes when
   // the spriter delivers, and if it turns out to be something other than a
@@ -129,14 +132,23 @@ export function onStockTraded(): void {
 
 /**
  * A claim staked on the ORE board. Called by the claim office once a deploy
- * confirms, so the counter behind the achievement track moves and the first
- * claim earns the miner's cosmetic.
+ * confirms, and it only moves the achievement track.
  *
  * Deliberately counts claims rather than SOL: the track is about turning up,
  * not about how much a player put at risk on mainnet.
  */
-export function onOreClaim(): void {
+export function onOreStaked(): void {
   profileManager.bump("ore-claims");
+}
+
+/**
+ * ORE actually struck and taken out of the board. This is what earns the
+ * miner's helmet: staking a claim is a bet, and a bet is not an achievement.
+ * Called by the claim office after a claim transaction confirms for a reward
+ * that was really there.
+ */
+export function onOreWon(): void {
+  profileManager.bump("ore-won");
   grant(REWARDS.oreMiner);
 }
 
