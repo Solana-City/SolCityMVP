@@ -1,7 +1,7 @@
 # CLOCK IN submission checklist
 
-Deadline **2026-10-08**. Code and APK freeze **2026-10-06**, leaving two days for
-the video and the deck. Audited 2026-10-02.
+Deadline **2026-10-12**, extended from 10-08. Code and APK freeze **2026-10-10**.
+Audited 2026-10-06.
 
 This file is the single source of truth for submission status. The plan and the
 reasoning live in `MOBILE_HACKATHON_SCOPE.md`; this is only what is done and what
@@ -78,7 +78,20 @@ still needs emails and screenshots.
 | Day | Work |
 |---|---|
 | Oct 2 | README, haptics, R8 validated, video and deck done |
-| Oct 3-5 | Signed release APK, install it on the Seeker and play a full loop |
-| Oct 6 | **Freeze**, and it stays frozen through judging |
-| Oct 7 | Submit |
-| Oct 8 | Deadline. Buffer, not a work day |
+| Oct 3 | Seeker Lover, SKR balance read on mainnet, gift wired |
+| Oct 6 | Decide the Seeker gift (art, or reserve an existing hat) and ORE |
+| Oct 7-9 | ORE, if taken. Otherwise install the release APK and play a full loop |
+| Oct 10 | **Freeze**, and it stays frozen through judging |
+| Oct 11 | Submit |
+| Oct 12 | Deadline. Buffer, not a work day |
+
+## Open on 2026-10-06
+
+- **The Seeker gift delivers nothing.** The art never landed, and grant() skips a
+  reward whose variant is missing, so Seeker Lover promises a gift and hands over
+  nothing. Either the art arrives or an existing hat is reserved with `unlockVia`,
+  which also removes it from the booster pool.
+- **ORE is viable again.** It was cut on 10-02 for want of time. Four extra days
+  bring it back: 2 to 3 days, mainnet, hand-rolled instruction encoders. The
+  matched prize only pays inside the Top 10, so it is a bet on placing anyway.
+- **Push stays cut.** It does not fit alongside ORE, and ORE has the larger prize.
