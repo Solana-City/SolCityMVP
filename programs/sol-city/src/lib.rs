@@ -188,6 +188,29 @@ pub const DELEGATION_PROGRAM_ID: Pubkey =
 /// nothing until they turn it back on, and then it keeps it turned off for us.
 const NO_PERIODIC_COMMIT: u32 = u32::MAX;
 
+/// MagicBlock's magic program, and the context account it keeps the scheduled
+/// work in. Both live on the rollup; neither exists on the base layer.
+pub const MAGIC_PROGRAM_ID: Pubkey =
+    pubkey!("Magic11111111111111111111111111111111111111");
+pub const MAGIC_CONTEXT_ID: Pubkey =
+    pubkey!("MagicContext1111111111111111111111111111111");
+
+/// Magic program instruction tags, a bare u32 rather than an 8-byte Anchor
+/// discriminator (that program is not an Anchor program).
+const MAGIC_IX_COMMIT: u32 = 1;
+const MAGIC_IX_COMMIT_AND_UNDELEGATE: u32 = 2;
+
+/// Seeds of the buffer the delegation program fills with the committed state
+/// and hands to `process_undelegation`. Derived under the DELEGATION program,
+/// not under ours, which is what makes it unforgeable.
+pub const UNDELEGATE_BUFFER_SEED: &[u8] = b"undelegate-buffer";
+
+/// Offset of `session_authority` inside a serialized PlayerState: 8 bytes of
+/// Anchor discriminator, 32 of `authority`, then the Option tag at 40 and the
+/// key at 41..73. Read by hand because the accounts below take the PDA as an
+/// UncheckedAccount (see the note on CommitPlayerSession).
+const SESSION_AUTHORITY_TAG_OFFSET: usize = 8 + 32;
+
 #[error_code]
 pub enum SolCityError {
     #[msg("Invalid session key — call authorize_session first")]
@@ -220,6 +243,10 @@ pub enum SolCityError {
     FriendPairMismatch,
     #[msg("No such mini-game slot")]
     UnknownMiniGame,
+    #[msg("Undelegation buffer is not the canonical one for this account")]
+    InvalidUndelegationBuffer,
+    #[msg("Those seeds do not derive the account being undelegated")]
+    InvalidUndelegationSeeds,
 }
 
 /// Truncates a string to at most `max` BYTES on a char boundary, so a
@@ -233,6 +260,81 @@ fn cap_bytes(s: String, max: usize) -> String {
         end -= 1;
     }
     s[..end].to_string()
+}
+
+/// Checks a delegated PlayerState’s stored `session_authority` by reading the
+/// bytes, for the instructions that take the account unchecked.
+///
+/// Same move `delegate` makes for `authority`: when Anchor must not own the
+/// account, the constraint has to be done by hand. Layout: 8 discriminator,
+/// 32 `authority`, then the Option tag and the key.
+fn require_stored_session_authority(
+    player: &UncheckedAccount,
+    signer: &Pubkey,
+) -> Result<()> {
+    let data = player.data.borrow();
+    require!(
+        data.len() >= SESSION_AUTHORITY_TAG_OFFSET + 1 + 32,
+        SolCityError::InvalidSessionKey
+    );
+    require!(
+        data[SESSION_AUTHORITY_TAG_OFFSET] == 1,
+        SolCityError::InvalidSessionKey
+    );
+    let start = SESSION_AUTHORITY_TAG_OFFSET + 1;
+    let stored: [u8; 32] = data[start..start + 32]
+        .try_into()
+        .map_err(|_| error!(SolCityError::InvalidSessionKey))?;
+    require_keys_eq!(
+        Pubkey::from(stored),
+        *signer,
+        SolCityError::InvalidSessionKey
+    );
+    Ok(())
+}
+
+/// CPIs the magic program to schedule a commit of one account.
+///
+/// Instruction data is a bare u32 tag (that program is not an Anchor program),
+/// and the accounts are payer, magic context, then the account to commit. The
+/// account is writable only for the undelegating variant, which is what the
+/// validator requires to lock it against further writes. Plain `invoke`, not
+/// `invoke_signed`: the magic program authorises this by seeing OUR program id
+/// as the CPI parent, so no PDA signature is needed.
+fn schedule_magic_commit<'info>(
+    tag: u32,
+    payer: &AccountInfo<'info>,
+    magic_context: &AccountInfo<'info>,
+    magic_program: &AccountInfo<'info>,
+    committee: &AccountInfo<'info>,
+    undelegate: bool,
+) -> Result<()> {
+    let committee_meta = if undelegate {
+        SolAccountMeta::new(*committee.key, false)
+    } else {
+        SolAccountMeta::new_readonly(*committee.key, false)
+    };
+
+    let ix = SolInstruction {
+        program_id: MAGIC_PROGRAM_ID,
+        accounts: vec![
+            SolAccountMeta::new(*payer.key, true),
+            SolAccountMeta::new(*magic_context.key, false),
+            committee_meta,
+        ],
+        data: tag.to_le_bytes().to_vec(),
+    };
+
+    invoke(
+        &ix,
+        &[
+            payer.clone(),
+            magic_context.clone(),
+            committee.clone(),
+            magic_program.clone(),
+        ],
+    )?;
+    Ok(())
 }
 
 #[program]
@@ -899,6 +1001,191 @@ pub mod sol_city {
         Ok(())
     }
 
+    // ── Carrying rollup state back to the base layer ───────────────────
+    //
+    // A delegated account is only ever read on the rollup, and its base copy
+    // stays frozen at whatever it held when `delegate` ran. Two things move it:
+    // a commit, which copies the live state down while the account stays
+    // delegated, and a commit-and-undelegate, which does that and then hands
+    // ownership back to this program.
+    //
+    // BOTH MUST LIVE HERE. The magic program refuses to schedule a commit
+    // unless the program that OWNS the account invoked it by CPI
+    // (validate_commit_schedule_permissions: the parent program id must equal
+    // the account’s owner, or the account itself must sign, or the validator
+    // must). A client calling the magic program straight, which is what the
+    // SDK’s `createCommitInstruction` builds, is a top-level instruction with
+    // no parent and fails with "failed to find parent program id" no matter
+    // who signed it. That is why the client-side commit_and_undelegate never
+    // landed, and why PDAs pile up delegated forever.
+    //
+    // Budget: an account gets TEN commits before the eleventh fails with
+    // 0xA0000000. Commit on milestones (a find, an unlock, a best), never on
+    // movement. A final commit-and-undelegate is still allowed at the limit.
+
+    /// Copies the player’s live rollup state onto the base layer, keeping the
+    /// account delegated. Session-signed, so no wallet popup, and free: a
+    /// rollup transaction costs nothing, and the commit charge is capped by a
+    /// delegation deposit the session fee already exceeds.
+    pub fn commit_player_session(ctx: Context<CommitPlayerSession>) -> Result<()> {
+        require_stored_session_authority(
+            &ctx.accounts.player,
+            &ctx.accounts.session_authority.key(),
+        )?;
+        schedule_magic_commit(
+            MAGIC_IX_COMMIT,
+            &ctx.accounts.session_authority.to_account_info(),
+            &ctx.accounts.magic_context.to_account_info(),
+            &ctx.accounts.magic_program.to_account_info(),
+            &ctx.accounts.player.to_account_info(),
+            false,
+        )
+    }
+
+    /// Ends the session: commits the live state and gives the PDA back to this
+    /// program. This is the rollup half; the base-layer half is
+    /// `process_undelegation`, which the delegation program calls back.
+    pub fn commit_and_undelegate_player_session(
+        ctx: Context<CommitAndUndelegatePlayerSession>,
+    ) -> Result<()> {
+        require_stored_session_authority(
+            &ctx.accounts.player,
+            &ctx.accounts.session_authority.key(),
+        )?;
+        schedule_magic_commit(
+            MAGIC_IX_COMMIT_AND_UNDELEGATE,
+            &ctx.accounts.session_authority.to_account_info(),
+            &ctx.accounts.magic_context.to_account_info(),
+            &ctx.accounts.magic_program.to_account_info(),
+            &ctx.accounts.player.to_account_info(),
+            true,
+        )
+    }
+
+    /// The undelegation callback. Never called by us.
+    ///
+    /// Once an undelegation settles, the delegation program CPIs into this
+    /// program with discriminator [196, 28, 41, 206, 48, 37, 51, 167] and the
+    /// account’s seeds. THE NAME IS LOAD-BEARING: Anchor derives exactly that
+    /// discriminator from sha256("global:process_undelegation"), and any other
+    /// name produces a different one, which means the callback finds no handler
+    /// and the account never comes home. Checked against the delegation
+    /// program, 2026-10-06. Do not rename.
+    ///
+    /// It re-creates the PDA under this program at the buffer’s size and copies
+    /// the committed state in. Generic on purpose: the seeds arrive as an
+    /// argument, so it serves the player PDA and the ball alike.
+    ///
+    /// Anyone may call it. What makes that safe is the buffer: it has to sign,
+    /// it has to be owned by the delegation program, and it has to be the
+    /// canonical undelegate-buffer PDA for this account. Only the delegation
+    /// program can produce a signature for it.
+    pub fn process_undelegation(
+        ctx: Context<InitializeAfterUndelegation>,
+        account_seeds: Vec<Vec<u8>>,
+    ) -> Result<()> {
+        let base_account = &ctx.accounts.base_account;
+        let buffer = &ctx.accounts.buffer;
+
+        require!(buffer.is_signer, SolCityError::InvalidUndelegationBuffer);
+        require_keys_eq!(
+            *buffer.owner,
+            DELEGATION_PROGRAM_ID,
+            SolCityError::InvalidUndelegationBuffer
+        );
+        let (canonical_buffer, _) = Pubkey::find_program_address(
+            &[UNDELEGATE_BUFFER_SEED, base_account.key().as_ref()],
+            &DELEGATION_PROGRAM_ID,
+        );
+        require_keys_eq!(
+            buffer.key(),
+            canonical_buffer,
+            SolCityError::InvalidUndelegationBuffer
+        );
+
+        // The seeds must derive the very account being handed back, or the
+        // invoke_signed below would be signing for somebody else’s PDA.
+        let seeds: Vec<&[u8]> = account_seeds.iter().map(|s| s.as_slice()).collect();
+        let (derived, bump) = Pubkey::find_program_address(&seeds, &crate::ID);
+        require_keys_eq!(
+            derived,
+            base_account.key(),
+            SolCityError::InvalidUndelegationSeeds
+        );
+
+        let bump_slice: &[u8] = &[bump];
+        let mut signer_seeds: Vec<&[u8]> = seeds.clone();
+        signer_seeds.push(bump_slice);
+        // Spelled out in two steps rather than &[&signer_seeds]: Playground is
+        // the first compiler to see this file, so nothing here leans on a
+        // coercion being inferred.
+        let signer_slice: &[&[u8]] = &signer_seeds;
+        let signer: &[&[&[u8]]] = &[signer_slice];
+
+        let space = buffer.data_len();
+        let rent = SolanaRent::get()?;
+
+        if base_account.lamports() == 0 {
+            invoke_signed(
+                &system_instruction::create_account(
+                    ctx.accounts.payer.key,
+                    base_account.key,
+                    rent.minimum_balance(space),
+                    space as u64,
+                    &crate::ID,
+                ),
+                &[
+                    ctx.accounts.payer.to_account_info(),
+                    base_account.to_account_info(),
+                    ctx.accounts.system_program.to_account_info(),
+                ],
+                signer,
+            )?;
+        } else {
+            // It still holds lamports, so it cannot be created: top it up to
+            // rent exemption, give it its space back, and take ownership.
+            let shortfall = rent
+                .minimum_balance(space)
+                .saturating_sub(base_account.lamports());
+            if shortfall > 0 {
+                invoke(
+                    &system_instruction::transfer(
+                        ctx.accounts.payer.key,
+                        base_account.key,
+                        shortfall,
+                    ),
+                    &[
+                        ctx.accounts.payer.to_account_info(),
+                        base_account.to_account_info(),
+                        ctx.accounts.system_program.to_account_info(),
+                    ],
+                )?;
+            }
+            invoke_signed(
+                &system_instruction::allocate(base_account.key, space as u64),
+                &[
+                    base_account.to_account_info(),
+                    ctx.accounts.system_program.to_account_info(),
+                ],
+                signer,
+            )?;
+            invoke_signed(
+                &system_instruction::assign(base_account.key, &crate::ID),
+                &[
+                    base_account.to_account_info(),
+                    ctx.accounts.system_program.to_account_info(),
+                ],
+                signer,
+            )?;
+        }
+
+        let mut target = base_account.try_borrow_mut_data()?;
+        let source = buffer.try_borrow_data()?;
+        target.copy_from_slice(&source);
+
+        Ok(())
+    }
+
     // ── Outfit booster (VRF) ───────────────────────────────────────────────
     //
     // open_booster: wallet pays BOOSTER_PRICE_LAMPORTS to the treasury and
@@ -1299,6 +1586,70 @@ pub struct DelegateBall<'info> {
     pub delegation_metadata: UncheckedAccount<'info>,
     /// CHECK: MagicBlock delegation program
     pub delegation_program: UncheckedAccount<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+/// Committing a delegated player, with the PDA taken UNCHECKED on purpose.
+///
+/// The magic program touches the account during the CPI: commit-and-undelegate
+/// reassigns its owner so nothing can write to it while the undelegation is in
+/// flight. An `Account<PlayerState>` would have Anchor serialise its own copy
+/// back over that when the instruction ends, which is the stale-write the
+/// MagicBlock docs warn about. So the account comes in raw, the seeds tie it to
+/// `authority`, and the session key is checked against the stored bytes.
+#[derive(Accounts)]
+pub struct CommitPlayerSession<'info> {
+    /// CHECK: seeds tie it to `authority`; the session key is verified in the body.
+    #[account(seeds = [PLAYER_SEED, authority.key().as_ref()], bump)]
+    pub player: UncheckedAccount<'info>,
+    /// CHECK: never read, never written. It is only the PDA’s second seed.
+    pub authority: UncheckedAccount<'info>,
+    /// Session key ─ seamless, no wallet popup. Pays the (zero) rollup fee.
+    pub session_authority: Signer<'info>,
+    /// CHECK: MagicBlock’s scheduling context, pinned by address.
+    #[account(mut, address = MAGIC_CONTEXT_ID)]
+    pub magic_context: UncheckedAccount<'info>,
+    /// CHECK: MagicBlock’s magic program, pinned by address.
+    #[account(address = MAGIC_PROGRAM_ID)]
+    pub magic_program: UncheckedAccount<'info>,
+}
+
+/// As above, but the PDA is writable: the validator refuses to undelegate an
+/// account it cannot lock.
+#[derive(Accounts)]
+pub struct CommitAndUndelegatePlayerSession<'info> {
+    /// CHECK: seeds tie it to `authority`; the session key is verified in the body.
+    #[account(mut, seeds = [PLAYER_SEED, authority.key().as_ref()], bump)]
+    pub player: UncheckedAccount<'info>,
+    /// CHECK: never read, never written. It is only the PDA’s second seed.
+    pub authority: UncheckedAccount<'info>,
+    /// Session key ─ seamless, no wallet popup.
+    pub session_authority: Signer<'info>,
+    /// CHECK: MagicBlock’s scheduling context, pinned by address.
+    #[account(mut, address = MAGIC_CONTEXT_ID)]
+    pub magic_context: UncheckedAccount<'info>,
+    /// CHECK: MagicBlock’s magic program, pinned by address.
+    #[account(address = MAGIC_PROGRAM_ID)]
+    pub magic_program: UncheckedAccount<'info>,
+}
+
+/// Accounts for the undelegation callback, in the order the delegation program
+/// passes them. Nothing here is seeds-checked by Anchor: the account is
+/// whatever came home (player PDA or ball), and every guard is in the body.
+#[derive(Accounts)]
+pub struct InitializeAfterUndelegation<'info> {
+    /// CHECK: the account coming home. Its seeds are validated in the body
+    /// against the ones the delegation program passed as an argument.
+    #[account(mut)]
+    pub base_account: UncheckedAccount<'info>,
+    /// CHECK: the delegation program’s buffer holding the committed state.
+    /// Validated in the body: must sign, must be owned by the delegation
+    /// program, and must be the canonical ["undelegate-buffer", account] PDA.
+    /// That signature is the whole security boundary of this instruction.
+    pub buffer: UncheckedAccount<'info>,
+    /// CHECK: whoever the delegation program names to cover the rent.
+    #[account(mut)]
+    pub payer: UncheckedAccount<'info>,
     pub system_program: Program<'info, System>,
 }
 
