@@ -172,6 +172,22 @@ pub const BALL_MAX_Y: u32 = 104 * 24;
 pub const DELEGATION_PROGRAM_ID: Pubkey =
     pubkey!("DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh");
 
+/// `commit_frequency_ms` for every delegation this program opens: never commit
+/// on a timer. u32::MAX is the value MagicBlock's own SDK defaults to.
+///
+/// A real frequency (this used to be 3_000) is the expensive way to delegate.
+/// An account gets ten commits before the eleventh fails with 0xA0000000, and
+/// every commit after the first bills 0.001 SOL against the delegation deposit,
+/// which for a player PDA is only ~0.0023 SOL of the player's own money. At
+/// three seconds that allowance is gone in half a minute.
+///
+/// Nothing here needs it. Every client reads live state off the rollup, never
+/// off the base copy, and the base copy only has to be right when the session
+/// ends, which `commit_and_undelegate` already guarantees. The validator has
+/// the timer path disabled today (magicblock-validator#625), so this changes
+/// nothing until they turn it back on, and then it keeps it turned off for us.
+const NO_PERIODIC_COMMIT: u32 = u32::MAX;
+
 #[error_code]
 pub enum SolCityError {
     #[msg("Invalid session key — call authorize_session first")]
@@ -469,6 +485,12 @@ pub mod sol_city {
     ///   4. Reassign the player PDA to the delegation program
     ///   5. CPI to the delegation program (it sets up ephemeral rollup records)
     ///   6. Close the buffer (return rent to payer)
+    ///
+    /// Takes one OPTIONAL remaining account: the rollup validator this player
+    /// should be delegated to. Pass the identity of the ER the client reads
+    /// from and that rollup is the one the delegation record names, instead of
+    /// whichever validator happens to see the PDA first. Omit it and the
+    /// record stays open, which is what every session did before.
     pub fn delegate(ctx: Context<DelegatePlayer>) -> Result<()> {
         let authority_key = ctx.accounts.authority.key();
         let player_key    = ctx.accounts.player.key();
@@ -559,20 +581,34 @@ pub mod sol_city {
         //   u32  commit_frequency_ms
         //   u32  seeds.len()
         //   [u32 len + bytes] for each seed
-        //   u8   option tag (0 = no validator preference)
+        //   u8   option tag + 32 bytes when a validator is named
+        //
+        // The validator is DATA, not an account: the delegation program only
+        // writes the key into the delegation record. The client names one by
+        // appending its pubkey as the single remaining account, and omitting
+        // it leaves the record open to whichever rollup claims the PDA first,
+        // which is what every session did before this was here.
+        let preferred_validator: Option<Pubkey> =
+            ctx.remaining_accounts.first().map(|acc| *acc.key);
         let seeds_vec: [Vec<u8>; 2] = [
             PLAYER_SEED.to_vec(),
             authority_key.to_bytes().to_vec(),
         ];
-        let mut ix_data: Vec<u8> = Vec::with_capacity(64);
+        let mut ix_data: Vec<u8> = Vec::with_capacity(96);
         ix_data.extend_from_slice(&[0u8; 8]);                          // discriminator
-        ix_data.extend_from_slice(&3_000u32.to_le_bytes());            // commit_frequency_ms
+        ix_data.extend_from_slice(&NO_PERIODIC_COMMIT.to_le_bytes());  // commit_frequency_ms
         ix_data.extend_from_slice(&(seeds_vec.len() as u32).to_le_bytes()); // seeds.len()
         for seed in &seeds_vec {
             ix_data.extend_from_slice(&(seed.len() as u32).to_le_bytes());
             ix_data.extend_from_slice(seed);
         }
-        ix_data.push(0u8);                                              // None validator
+        match preferred_validator {
+            Some(validator) => {
+                ix_data.push(1u8);
+                ix_data.extend_from_slice(validator.as_ref());
+            }
+            None => ix_data.push(0u8),
+        }
 
         let delegate_ix = SolInstruction {
             program_id: DELEGATION_PROGRAM_ID,
@@ -735,6 +771,8 @@ pub mod sol_city {
     /// a generic helper out of the one delegation path that has already
     /// shipped would put it at risk to save a screen of code.
     ///
+    /// Takes the same OPTIONAL validator remaining account as `delegate`.
+    ///
     /// Nothing ever undelegates it. The ball is a fixture of the city, not a
     /// session: it belongs on the rollup for as long as the rollup is there.
     pub fn delegate_ball(ctx: Context<DelegateBall>) -> Result<()> {
@@ -802,17 +840,26 @@ pub mod sol_city {
         )?;
 
         // ── 5. CPI → delegation program ────────────────────────────────────
-        // Same layout as `delegate`, with ONE seed instead of two.
+        // Same layout as `delegate`, with ONE seed instead of two, and the
+        // same optional validator as the single remaining account.
+        let preferred_validator: Option<Pubkey> =
+            ctx.remaining_accounts.first().map(|acc| *acc.key);
         let seeds_vec: [Vec<u8>; 1] = [BALL_SEED.to_vec()];
-        let mut ix_data: Vec<u8> = Vec::with_capacity(64);
+        let mut ix_data: Vec<u8> = Vec::with_capacity(96);
         ix_data.extend_from_slice(&[0u8; 8]);                               // discriminator
-        ix_data.extend_from_slice(&3_000u32.to_le_bytes());                 // commit_frequency_ms
+        ix_data.extend_from_slice(&NO_PERIODIC_COMMIT.to_le_bytes());       // commit_frequency_ms
         ix_data.extend_from_slice(&(seeds_vec.len() as u32).to_le_bytes()); // seeds.len()
         for seed in &seeds_vec {
             ix_data.extend_from_slice(&(seed.len() as u32).to_le_bytes());
             ix_data.extend_from_slice(seed);
         }
-        ix_data.push(0u8);                                                   // None validator
+        match preferred_validator {
+            Some(validator) => {
+                ix_data.push(1u8);
+                ix_data.extend_from_slice(validator.as_ref());
+            }
+            None => ix_data.push(0u8),
+        }
 
         let delegate_ix = SolInstruction {
             program_id: DELEGATION_PROGRAM_ID,
