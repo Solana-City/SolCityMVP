@@ -121,7 +121,7 @@ export interface OreBoard {
 }
 
 /** Account discriminators, from the OreAccount enum. */
-const DISCRIMINATOR = { miner: BigInt(103), board: BigInt(105) } as const;
+const DISCRIMINATOR = { miner: BigInt(103), board: BigInt(105), round: BigInt(109) } as const;
 
 export async function fetchBoard(): Promise<OreBoard | null> {
   try {
@@ -262,4 +262,82 @@ export function formatOre(raw: bigint, places = 4): string {
   const whole = raw / scale;
   const frac = ((raw % scale) * BigInt(10) ** BigInt(places)) / scale;
   return `${whole}.${frac.toString().padStart(places, "0")}`;
+}
+
+// ── Round ────────────────────────────────────────────────────────────────────
+
+export interface OreRound {
+  id: bigint;
+  /** Lamports every miner put on each square. */
+  deployed: bigint[];
+  /** How many miners were on each square. */
+  count: bigint[];
+  /** ORE paid out per square. In practice one square pays and the rest are 0. */
+  rewards: bigint[];
+  totalMiners: bigint;
+  motherlode: bigint;
+}
+
+/**
+ * Byte offsets into a Round account, from the Rust field order and checked
+ * against a closed round on mainnet: 952 bytes, discriminator 109.
+ */
+const ROUND = {
+  id: 8,
+  deployed: 16,
+  mass: 216,
+  count: 416,
+  slotHash: 616,
+  expiresAt: 648,
+  motherlode: 656,
+  rentPayer: 664,
+  rewards: 696,
+  totalVaulted: 896,
+  totalReturnedSol: 904,
+  totalMiners: 912,
+  topMiner: 920,
+  size: 952,
+} as const;
+
+export const ROUND_ACCOUNT_SIZE = ROUND.size;
+
+/**
+ * Reads a round, which is how the office knows which square paid.
+ *
+ * A round account is closed once it expires, so an old round reads as null
+ * rather than as an error.
+ */
+export async function fetchRound(roundId: bigint): Promise<OreRound | null> {
+  try {
+    const info = await oreConnection().getAccountInfo(roundPda(roundId));
+    if (!info || info.data.length < ROUND.size) return null;
+    const d = info.data;
+    if (d.readBigUInt64LE(0) !== DISCRIMINATOR.round) return null;
+    const read = (base: number): bigint[] =>
+      Array.from({ length: SQUARE_COUNT }, (_, i) => d.readBigUInt64LE(base + i * 8));
+    return {
+      id: d.readBigUInt64LE(ROUND.id),
+      deployed: read(ROUND.deployed),
+      count: read(ROUND.count),
+      rewards: read(ROUND.rewards),
+      totalMiners: d.readBigUInt64LE(ROUND.totalMiners),
+      motherlode: d.readBigUInt64LE(ROUND.motherlode),
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** The squares that paid ORE, as 1-based numbers. */
+export function payingSquares(round: OreRound): number[] {
+  const out: number[] = [];
+  round.rewards.forEach((ore, i) => { if (ore > BigInt(0)) out.push(i + 1); });
+  return out;
+}
+
+/** The squares a miner was on, as 1-based numbers. */
+export function minerSquares(miner: OreMiner): number[] {
+  const out: number[] = [];
+  miner.deployed.forEach((lamports, i) => { if (lamports > BigInt(0)) out.push(i + 1); });
+  return out;
 }
