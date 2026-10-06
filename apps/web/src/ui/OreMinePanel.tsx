@@ -26,6 +26,13 @@ import {
   type OreMiner,
 } from "@/game/solana/ore";
 import { PanelTitleBar } from "@/ui/PixelIcons";
+import {
+  cityClaims,
+  getShareClaims,
+  pruneClaims,
+  setShareClaims,
+  type CitySquare,
+} from "@/game/chat/claimBroadcast";
 import { CATEGORY_META } from "@/game/minimap/categories";
 
 const ACCENT = CATEGORY_META.defi.color;
@@ -39,12 +46,18 @@ export default function OreMinePanel({ onClose }: { onClose: () => void }) {
   const [miner, setMiner] = useState<OreMiner | null>(null);
   const [slot, setSlot] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [city, setCity] = useState<{ squares: CitySquare[]; citizens: number } | null>(null);
 
   const refresh = useCallback(async () => {
     const [b, s] = await Promise.all([fetchBoard(), currentSlot()]);
     setBoard(b);
     setSlot(s);
     if (publicKey) setMiner(await fetchMiner(publicKey));
+    if (b) {
+      const round = Number(b.roundId);
+      pruneClaims(round);
+      setCity(cityClaims(round));
+    }
     setLoading(false);
   }, [publicKey]);
 
@@ -101,7 +114,8 @@ export default function OreMinePanel({ onClose }: { onClose: () => void }) {
               value={`${(Number(board.productionCostEma) / LAMPORTS).toFixed(3)} SOL`}
             />
 
-            <Grid mine={mine} />
+            <Grid mine={mine} city={city?.squares} />
+            <CityLine citizens={city?.citizens ?? 0} />
 
             {publicKey ? (
               <>
@@ -153,27 +167,72 @@ function Row({ label, value }: { label: string; value: string }) {
   );
 }
 
-/** The 25 squares, with the player's own marked. */
-function Grid({ mine }: { mine: bigint[] }) {
+/** One line about the crowd, plus the control over being part of it. */
+function CityLine({ citizens }: { citizens: number }) {
+  const [share, setShare] = useState(true);
+  useEffect(() => { setShare(getShareClaims()); }, []);
+  const toggle = () => { const v = !share; setShare(v); setShareClaims(v); };
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      <div style={{ fontSize: 8, color: DIM, lineHeight: 1.6 }}>
+        {citizens > 0
+          ? `${citizens} ${citizens === 1 ? "citizen is" : "citizens are"} on the board this round. Their squares are the dotted ones.`
+          : "No citizen has staked a claim this round yet."}
+      </div>
+      <button
+        onClick={toggle}
+        style={{
+          display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "4px 0",
+          background: "none", border: "none", cursor: "pointer",
+          fontFamily: '"Press Start 2P", monospace', fontSize: 7,
+          color: share ? "#c9cde0" : DIM, textAlign: "left",
+        }}
+      >
+        <span style={{
+          width: 10, height: 10, flexShrink: 0,
+          border: `1px solid ${share ? ACCENT : DIM}`,
+          background: share ? ACCENT : "transparent",
+        }} />
+        Show my claim on the city map
+      </button>
+    </div>
+  );
+}
+
+/** The 25 squares: the player's own marked, the city's crowd dotted. */
+function Grid({ mine, city }: { mine: bigint[]; city?: CitySquare[] }) {
   return (
     <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 4 }}>
       {Array.from({ length: SQUARE_COUNT }, (_, i) => {
         const taken = (mine[i] ?? BigInt(0)) > BigInt(0);
+        const crowd = city?.[i]?.citizens ?? 0;
         return (
           <div
             key={i}
             style={{
+              position: "relative",
               aspectRatio: "1",
-              border: `1px solid ${taken ? ACCENT : "rgba(255,255,255,0.12)"}`,
-              background: taken ? `${ACCENT}33` : "rgba(255,255,255,0.03)",
+              border: `1px solid ${taken ? ACCENT : crowd > 0 ? `${ACCENT}66` : "rgba(255,255,255,0.12)"}`,
+              borderStyle: !taken && crowd > 0 ? "dashed" : "solid",
+              // The more citizens on a square, the warmer it reads.
+              background: taken
+                ? `${ACCENT}33`
+                : crowd > 0
+                  ? `rgba(20,241,149,${Math.min(0.28, 0.07 * crowd)})`
+                  : "rgba(255,255,255,0.03)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
               fontSize: 7,
-              color: taken ? ACCENT : "rgba(255,255,255,0.25)",
+              color: taken ? ACCENT : crowd > 0 ? "#c9cde0" : "rgba(255,255,255,0.25)",
             }}
           >
             {i + 1}
+            {crowd > 0 && (
+              <span style={{ position: "absolute", bottom: 1, right: 2, fontSize: 6, color: ACCENT }}>
+                {crowd}
+              </span>
+            )}
           </div>
         );
       })}

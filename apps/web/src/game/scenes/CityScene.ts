@@ -11,6 +11,7 @@ import { containsLink, maskLinks } from "../chat/linkFilter";
 import { ChatBubble, BUBBLE_Y } from "../chat/ChatBubble";
 import { TradeBubble } from "../chat/TradeBubble";
 import { decodeTrade, encodeTrade, tradeLogLine, type TradeSide } from "../chat/tradeBroadcast";
+import { decodeClaim, claimLogLine, recordClaim } from "../chat/claimBroadcast";
 import { BUFFS, MAX_SPEED_MULTIPLIER, isBuffActive, onBuffsChanged, speedMultiplier } from "../buffs/playerBuffs";
 
 /** Chat-log color for stock trade lines. */
@@ -819,6 +820,13 @@ export class CityScene extends Phaser.Scene {
         this.chat.addMessage("city", shown, shown, tradeLogLine(trade), TRADE_COLOR);
         const trader = wallet ? this.remotePlayers.get(wallet) : undefined;
         if (trader) new TradeBubble(this, trader.getContainer(), trade);
+        return;
+      }
+      // ORE claims ride the same pipe, and feed the city's claim map.
+      const claim = decodeClaim(raw);
+      if (claim) {
+        if (wallet) recordClaim(wallet, claim);
+        this.chat.addMessage("city", shown, shown, claimLogLine(claim), TRADE_COLOR);
         return;
       }
       // A modified client can still write a link on-chain: mask it on arrival.
