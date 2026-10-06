@@ -21,6 +21,7 @@ here. One deploy ships:
 | 8 | Friends: `FriendRequest` + `Friendship` PDAs + `send` / `accept` / `decline` / `cancel` / `remove` (added 2026-10-01) | in lib.rs |
 | 9 | Mini-game bests on chain: `game_bests: [u32; 16]` on `PlayerState` + `record_game_score_session` (added 2026-10-02) | in lib.rs |
 | 10 | Self-advancing hunt round: `hunt_v2` seed, anchor-derived round, `expire_round` deleted (added 2026-10-02) | in lib.rs |
+| 11 | ER v1 delegation: `commit_frequency_ms` → `u32::MAX` + optional validator on `delegate` / `delegate_ball` (added 2026-10-06) | in lib.rs |
 | 1 | HuntScore PDA | **deferred** (the KV leaderboard covers the player-facing part) |
 | 3 | `delegate_hunt` | **skipped** |
 | 4 | On-chain display names | **dropped** (the off-chain nickname registry replaced them) |
@@ -570,6 +571,70 @@ whether the two ever disagree, which is the cheapest audit available.
 
 ---
 
+### Item 11 — the delegation record MagicBlock v1 wants (APPLIED in lib.rs, 2026-10-06)
+
+Why it is in this deploy: MagicBlock tagged validator v1.0.0 on 2026-10-06 and
+published the commit economics with it. `commit_frequency_ms` is written into
+the delegation record at delegate time, so it is the one ER setting that cannot
+be changed from the client. Getting it wrong is a bill, and fixing it later is
+another deploy.
+
+**What the numbers are.** Session charge `0.003 SOL`; every commit after the
+first `0.001 SOL`; both taken from the delegation deposit at undelegate time,
+and the deposit is the rent of the two delegation accounts, paid by whoever
+delegates. Measured on a live devnet player PDA of ours:
+
+```
+delegation record    1,137,920 lamports (96 b)
+delegation metadata  1,168,400 lamports (102 b)
+deposit                      2,306,320 lamports = 0.002306 SOL
+```
+
+The deposit is smaller than the session charge alone, so a session takes all of
+it and refunds nothing. The fees went up 10x on 2026-10-01
+(delegation-program#204); before that a session cost 0.0003 and gave ~0.002
+back. On top of that an account without a delegated fee payer gets ten commits
+and the eleventh fails with `0xA0000000` (`COMMIT_LIMIT = 10` in the validator).
+
+**What changed.** `3_000` → `NO_PERIODIC_COMMIT` (`u32::MAX`, which is what
+MagicBlock's own SDK defaults to) in both `delegate` and `delegate_ball`. Ten
+timed commits at three seconds is half a minute of session, and it buys nothing:
+every client reads live state off the rollup, and the base copy only has to be
+right when the session ends, which `commit_and_undelegate` already handles.
+
+**This is safe for the current build.** The validator has the timed-commit path
+disabled (`build_crank_commits_ix`, `#[allow(dead_code)]`,
+magicblock-validator#625), so the old `3_000` was already a no-op. That is also
+the real reason the base copy of a delegated PDA is frozen at spawn, which
+`OnChainMultiplayer` had written down as an observation without a cause.
+
+**The second half: an optional validator.** Both delegates now read
+`ctx.remaining_accounts.first()` and write that key into the delegation record
+as DATA (the delegation program never touches the account, so it is read-only
+and not a signer). We pass nothing today, which leaves the record open to
+whichever rollup claims the PDA first. That happens to be the validator behind
+`ENDPOINTS.ephemeral` only because every ER write in `OnChainMultiplayer` goes
+to that one endpoint. A PDA claimed anywhere else reads as empty to us, which is
+the stuck-delegated state `forceUndelegateAndReconnect` exists for.
+
+**Compatibility, checked, nothing to do.** The hand-rolled CPI still matches the
+current delegation program byte for byte: discriminator `[0u8; 8]`, then `u32
+commit_frequency_ms`, `Vec<Vec<u8>> seeds`, `Option<Pubkey> validator`, and the
+same seven accounts in the same order as `createDelegateInstruction` in SDK
+0.17.3 (`dlp-api::DelegateArgs`, verified 2026-10-06).
+
+**Still open, needs a decision before the deploy is final:** with timed commits
+off, our base copy never moves during a session, so anything reading player
+state from the base layer sees spawn values. If we want scores, unlocks and
+finds to be durable at the moment they happen rather than at undelegate, that
+is a `commit_player_session` instruction (hand-rolled CPI to the magic program,
+`ScheduleCommit`, same pattern as `delegate` and the VRF request) and it has to
+go in THIS deploy or wait for the next one. Commit 1 of a session is free, so
+one commit per real event is affordable; ten of them are not. Not written yet:
+say the word and it goes in.
+
+---
+
 ## CLIENT changes (post-deploy — apply ONLY after the new program is live)
 
 Order: deploy program → verify → then push these together. Booster and
@@ -593,6 +658,12 @@ free-outfit wiring stays behind `NEXT_PUBLIC_BOOSTER_ONCHAIN` until verified.
    (`Vrf1RNUjXmQGjmQrQLvJHs9SNkvDJEsRVFPkfSQUwGz`), `slot_hashes` (sysvar),
    `system_program`.
 3. **`multiplayer/OnChainMultiplayer.ts`**
+   - **Item 11:** pass the rollup identity to `buildDelegateIx`:
+     `buildDelegateIx(wallet, new PublicKey(EPHEMERAL_VALIDATOR_IDENTITY))`.
+     The optional parameter and the constant are ALREADY in the branch
+     (2026-10-06) and inert: the deployed program writes `None` whatever it
+     receives. One line, and only after the deploy is verified, so a bad
+     delegation cannot be blamed on two changes at once.
    - `recordAction("swap"|"transfer")`: wallet popup on base →
      `record_*_session` on the ER, mirroring `recordScoreSession`.
    - Before `delegate`: if the wallet's `UnlockState` exists, send
@@ -665,6 +736,20 @@ free-outfit wiring stays behind `NEXT_PUBLIC_BOOSTER_ONCHAIN` until verified.
       coordinates across the map is rejected (`BallOutOfReach`).
 - [ ] Ball: `seq` advances on every kick, including three inside one second.
 - [ ] Full cross-device multiplayer still green (compare to Parabéns 2.0).
+
+**ER delegation (item 11)**:
+- [ ] Delegate a fresh wallet, then read the delegation record through
+      `getDelegationStatus` on the router: it comes back `isDelegated: true`
+      with `fqdn` pointing at the ER the client reads from.
+- [ ] Movement, chat and outfit changes still land on the rollup with no popup
+      and no fee, and both devices see them. The frequency change must be
+      invisible in play; if anything got slower, it is not this.
+- [ ] Close the tab mid-session, reconnect: `forceUndelegateAndReconnect` still
+      digs the PDA out, and `commit_and_undelegate` still carries the session's
+      final state to the base copy (read the base account after it settles).
+- [ ] Only AFTER the client one-liner ships: a newly delegated PDA has our
+      validator in its delegation record, and a wallet delegated before the
+      change still plays (its record has no validator and must keep working).
 
 **Mini-game bests (item 9)**:
 - [ ] Play a run: `simulateTransaction` first, then a real one. `game_bests[i]`
