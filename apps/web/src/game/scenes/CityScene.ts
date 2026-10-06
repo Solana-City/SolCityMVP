@@ -11,7 +11,7 @@ import { containsLink, maskLinks } from "../chat/linkFilter";
 import { ChatBubble, BUBBLE_Y } from "../chat/ChatBubble";
 import { TradeBubble } from "../chat/TradeBubble";
 import { decodeTrade, encodeTrade, tradeLogLine, type TradeSide } from "../chat/tradeBroadcast";
-import { decodeClaim, claimLogLine, recordClaim } from "../chat/claimBroadcast";
+import { decodeClaim, encodeClaim, claimLogLine, recordClaim } from "../chat/claimBroadcast";
 import { BUFFS, MAX_SPEED_MULTIPLIER, isBuffActive, onBuffsChanged, speedMultiplier } from "../buffs/playerBuffs";
 
 /** Chat-log color for stock trade lines. */
@@ -836,6 +836,15 @@ export class CityScene extends Phaser.Scene {
       // Float the message over the sender's avatar, if they're in view.
       const avatar = wallet ? this.remotePlayers.get(wallet) : undefined;
       if (avatar) this.showBubble(avatar, text, color);
+    });
+
+    // Our own ORE claim (claim office). The panel only emits this when the
+    // player left the city map switched on, so there is nothing to check here.
+    this.onGameEvent("game:ore-claim", (e: { roundId: number; squares: number; sol: number }) => {
+      const claim = { roundId: e.roundId, squares: e.squares, sol: e.sol };
+      const me = this.walletAddress;
+      if (me) recordClaim(me, claim);
+      if (this.network?.connected) this.network.sendChat(encodeClaim(claim));
     });
 
     // Our own stock trade (Stocks Broker panel). Always shown over our head;
