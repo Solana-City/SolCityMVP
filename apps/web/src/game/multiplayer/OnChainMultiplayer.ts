@@ -88,6 +88,24 @@ const ENDPOINTS = {
   solanaDevnet: "https://api.devnet.solana.com",
 } as const;
 
+/**
+ * The rollup validator behind ENDPOINTS.ephemeral, as `getIdentity` reports it.
+ *
+ * We delegate with no validator preference, so the rollup that claims a player
+ * PDA is whichever one sees it first, and since every ER write in this file
+ * goes straight to ENDPOINTS.ephemeral, that is always this validator. It is
+ * true by accident, not by contract: a PDA claimed by a different rollup would
+ * be invisible to our reads, which is exactly the "stuck delegated" state
+ * forceUndelegateAndReconnect exists to dig out of.
+ *
+ * `delegate` takes this key as an optional remaining account and writes it into
+ * the delegation record, which turns the accident into the contract. Passing it
+ * waits on the program redeploy (see REDEPLOY_CHECKLIST.md); the deployed build
+ * ignores extra accounts and would keep writing None.
+ */
+export const EPHEMERAL_VALIDATOR_IDENTITY =
+  "MAS1Dt9qreoRMQ14YQuhg8UTZMMzDdKhmkZMECCzk57";
+
 // Minimum byte length of a CURRENT-layout (player_v2) PlayerState account.
 // The v2 account is ~505 bytes (adds loadout/expression/chat over v1's 133).
 // Discovery uses this to ignore STALE pre-v2 PDAs (old seed, still delegated on

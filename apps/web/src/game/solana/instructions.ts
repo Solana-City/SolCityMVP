@@ -371,8 +371,17 @@ export function buildChangeOutfitIx(
  * wallet needs to sign as fee payer — the PDA signing happens inside the
  * program via CPI. This is the correct approach for PDAs that cannot sign
  * a browser wallet transaction directly.
+ *
+ * `preferredValidator` is the rollup identity to write into the delegation
+ * record, so the PDA is served by the ER this client reads from rather than
+ * by whichever one claims it first. It needs the program redeploy to have any
+ * effect (the deployed build writes None whatever we pass), so callers leave
+ * it out until then. See REDEPLOY_CHECKLIST.md.
  */
-export function buildDelegateIx(authority: PublicKey): TransactionInstruction {
+export function buildDelegateIx(
+  authority: PublicKey,
+  preferredValidator?: PublicKey,
+): TransactionInstruction {
   const [playerPda] = derivePlayerPDA(authority);
 
   const delegateBuffer = delegateBufferPdaFromDelegatedAccountAndOwnerProgram(
@@ -381,18 +390,27 @@ export function buildDelegateIx(authority: PublicKey): TransactionInstruction {
   const delegationRecord   = delegationRecordPdaFromDelegatedAccount(playerPda);
   const delegationMetadata = delegationMetadataPdaFromDelegatedAccount(playerPda);
 
+  const keys = [
+    { pubkey: authority,            isSigner: true,  isWritable: true  }, // authority (payer)
+    { pubkey: playerPda,            isSigner: false, isWritable: true  }, // player PDA
+    { pubkey: SOL_CITY_PROGRAM_ID,  isSigner: false, isWritable: false }, // owner_program
+    { pubkey: delegateBuffer,       isSigner: false, isWritable: true  }, // delegate_buffer
+    { pubkey: delegationRecord,     isSigner: false, isWritable: true  }, // delegation_record
+    { pubkey: delegationMetadata,   isSigner: false, isWritable: true  }, // delegation_metadata
+    { pubkey: DELEGATION_PROGRAM_ID, isSigner: false, isWritable: false }, // delegation_program
+    { pubkey: SystemProgram.programId, isSigner: false, isWritable: false }, // system_program
+  ];
+
+  // The rollup this player should be delegated to, as the one remaining
+  // account. Read-only and never a signer: the program copies the key into
+  // the delegation record and the delegation CPI never touches the account.
+  if (preferredValidator) {
+    keys.push({ pubkey: preferredValidator, isSigner: false, isWritable: false });
+  }
+
   return new TransactionInstruction({
     programId: SOL_CITY_PROGRAM_ID,
-    keys: [
-      { pubkey: authority,            isSigner: true,  isWritable: true  }, // authority (payer)
-      { pubkey: playerPda,            isSigner: false, isWritable: true  }, // player PDA
-      { pubkey: SOL_CITY_PROGRAM_ID,  isSigner: false, isWritable: false }, // owner_program
-      { pubkey: delegateBuffer,       isSigner: false, isWritable: true  }, // delegate_buffer
-      { pubkey: delegationRecord,     isSigner: false, isWritable: true  }, // delegation_record
-      { pubkey: delegationMetadata,   isSigner: false, isWritable: true  }, // delegation_metadata
-      { pubkey: DELEGATION_PROGRAM_ID, isSigner: false, isWritable: false }, // delegation_program
-      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false }, // system_program
-    ],
+    keys,
     data: DISC.delegate,
   });
 }
