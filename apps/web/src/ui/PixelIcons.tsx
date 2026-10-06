@@ -403,6 +403,10 @@ export const ACHIEVEMENT_ART: Record<string, { sheet?: string; img?: string; str
   "trader-50": { sheet: "Jupiter Joe.png" },
   "sender-10": { sheet: "send-npc.png" },
 
+  // ORE. TODO: placeholder, the same borrowed sheet the ORE Miner NPC is using
+  // until the spriter delivers, so the stand-in is obvious rather than subtle.
+  "ore": { sheet: "main_char.png" },
+
   // Stocks
   "stocks-1": { sheet: "Stocks Broker.png" },
   "stocks-10": { sheet: "Stocks Broker.png" },

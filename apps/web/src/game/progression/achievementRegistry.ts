@@ -339,6 +339,25 @@ export const TRACKS: AchievementTrack[] = [
       { at: 10000, tier: "legendary" },
     ],
   },
+  // Appended on purpose, never inserted: a published profile is a set of bit
+  // positions handed out by track index, so putting a track anywhere but the
+  // end would move every achievement after it.
+  {
+    id: "ore",
+    title: "The Claim Office",
+    description: "Stake a claim on the ORE board.",
+    // TODO: placeholder icon, and no `art` key, until the spriter delivers the
+    // miner sprite. The track works without it; only the picture is missing.
+    icon: "⛏️",
+    unit: "claims",
+    metric: (p) => tally(p, "ore-claims"),
+    levels: [
+      { at: 1,   title: "Prospector", tier: "common" },
+      { at: 10,  title: "Claim Staker", tier: "rare" },
+      { at: 50,  title: "Deep Vein", tier: "epic" },
+      { at: 200, tier: "legendary" },
+    ],
+  },
 ];
 
 // ── Reading a track ─────────────────────────────────────────────────────────
