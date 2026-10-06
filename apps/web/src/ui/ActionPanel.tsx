@@ -16,6 +16,7 @@ import { CloseButton, PanelTitleBar, ProtocolLogo, ExternalLinkIcon } from "@/ui
 import { CATEGORY_META } from "@/game/minimap/categories";
 import PegRiskPanel from "@/ui/PegRiskPanel";
 import CloakPanel from "@/ui/CloakPanel";
+import OreMinePanel from "@/ui/OreMinePanel";
 import TokenScanPanel from "@/ui/TokenScanPanel";
 import { backdropClose } from "@/ui/backdrop";
 import { useViewportBox, overlayBox } from "@/ui/useViewportBox";
@@ -120,6 +121,22 @@ const SWAP_INTRO: IntroSpec = {
   ],
 };
 
+/** ORE Miner: what the board is, before the claim office. */
+const ORE_INTRO: IntroSpec = {
+  id: "ore-mine",
+  title: "HOW THE ORE BOARD WORKS",
+  nodes: [
+    { sheet: "main_char.png", label: "YOU" },
+    { sheet: "main_char.png", label: "THE BOARD" },
+    { sheet: "main_char.png", label: "PAYOUT" },
+  ],
+  steps: [
+    { title: "PICK", line: "The board has 25 squares. Miners put SOL on the ones they like.", edge: 0 },
+    { title: "WAIT", line: "A round lasts about a minute, then the board closes and scores it.", edge: 0 },
+    { title: "COLLECT", line: "Squares that paid out send ORE and SOL back to the miner.", edge: 1, chip: "ORE" },
+  ],
+};
+
 /** Stocks Broker: what a tokenized stock is, before the exchange. */
 const STOCK_INTRO: IntroSpec = {
   id: "stock-exchange",
@@ -209,6 +226,7 @@ export default function ActionPanel({ action, onClose }: ActionPanelProps) {
           {action.type === "peg-risk"        && <ProtocolIntroGate spec={PEG_RISK_INTRO}><PegRiskPanel onClose={onClose} /></ProtocolIntroGate>}
           {action.type === "token-scan"      && <ProtocolIntroGate spec={TOKEN_SCAN_INTRO}><TokenScanPanel onClose={onClose} /></ProtocolIntroGate>}
           {action.type === "private-transfer" && <ProtocolIntroGate spec={CLOAK_INTRO}><CloakPanel onClose={onClose} /></ProtocolIntroGate>}
+          {action.type === "ore-mine"        && <ProtocolIntroGate spec={ORE_INTRO}><OreMinePanel onClose={onClose} /></ProtocolIntroGate>}
         </div>
       </div>
     );
@@ -248,6 +266,7 @@ export default function ActionPanel({ action, onClose }: ActionPanelProps) {
           {action.type === "peg-risk"        && <ProtocolIntroGate spec={PEG_RISK_INTRO}><PegRiskPanel onClose={onClose} /></ProtocolIntroGate>}
           {action.type === "token-scan"      && <ProtocolIntroGate spec={TOKEN_SCAN_INTRO}><TokenScanPanel onClose={onClose} /></ProtocolIntroGate>}
           {action.type === "private-transfer" && <ProtocolIntroGate spec={CLOAK_INTRO}><CloakPanel onClose={onClose} /></ProtocolIntroGate>}
+          {action.type === "ore-mine"        && <ProtocolIntroGate spec={ORE_INTRO}><OreMinePanel onClose={onClose} /></ProtocolIntroGate>}
       </div>
     </div>
   );

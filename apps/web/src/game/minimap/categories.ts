@@ -46,7 +46,8 @@ export function npcCategory(npc: { id: string; action: NPCAction }): MinimapCate
     case "transfer":
     case "bounties":
     case "private-payment":
-    case "stock-exchange": return "defi";
+    case "stock-exchange":
+    case "ore-mine": return "defi";
     case "minigame": return "games";
     default: return "community";
   }

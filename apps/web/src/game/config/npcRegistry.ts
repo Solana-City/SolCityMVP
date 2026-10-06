@@ -2,7 +2,7 @@ import { npcCategory, CATEGORY_META } from "../minimap/categories";
 import type { BuffId } from "../buffs/playerBuffs";
 
 export interface NPCAction {
-  type: "tutor" | "swap" | "transfer" | "bounties" | "link" | "placeholder" | "private-payment" | "minigame" | "stock-exchange" | "peg-risk" | "token-scan" | "private-transfer" | "speed-buff" | "pet";
+  type: "tutor" | "swap" | "transfer" | "bounties" | "link" | "placeholder" | "private-payment" | "minigame" | "stock-exchange" | "peg-risk" | "token-scan" | "private-transfer" | "speed-buff" | "pet" | "ore-mine";
   label: string;
   url?: string;
   miniGameId?: string;
@@ -437,6 +437,27 @@ const NPC_SEEDS: NPCSeed[] = [
       { img: "/assets/ui/controller.png", label: "NO PHONE NEEDED" },
     ],
     action: { type: "link", label: "See the Seeker", url: "https://solanamobile.com/seeker" },
+    spriteKey: "avatar-player",
+  },
+  {
+    id: "ore-miner",
+    name: "ORE Miner",
+    role: "ORE",
+    // Placeholder spot on the north sidewalk while the claim office is built.
+    // TODO: move him to the mining district and give him his own sprite.
+    tileX: 90,
+    tileY: 18,
+    dialog: [
+      "(WIP) I'm still setting up the claim office, but you can look around.",
+      "ORE runs a board of 25 squares. Miners put SOL on squares, and when the round closes the board pays out.",
+      "A round lasts about a minute. Come watch one.",
+    ],
+    highlights: [
+      { img: "/assets/ui/ico_tasks.png", label: "25 SQUARES" },
+      { img: "/assets/ui/ico_achievements.png", label: "1 MIN ROUNDS" },
+      { img: "/assets/ui/icon_wallet.png", label: "REAL SOL" },
+    ],
+    action: { type: "ore-mine", label: "See the board" },
     spriteKey: "avatar-player",
   },
   {
