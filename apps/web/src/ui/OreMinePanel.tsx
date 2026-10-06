@@ -26,7 +26,8 @@ import {
   lastOreError,
   minerSquares,
   needsCheckpoint,
-  payingSquares,
+  topMinerReward,
+  winningSquare,
   roundProgress,
   slotsToSeconds,
   type OreBoard,
@@ -77,7 +78,8 @@ export default function OreMinePanel({ onClose }: { onClose: () => void }) {
 
   /** What the last round paid, revealed when the board moves on. */
   const [result, setResult] = useState<{
-    roundId: bigint; winners: number[]; ore: bigint; miners: bigint; youWere: number[];
+    roundId: bigint; winner: number; sharedBy: bigint; topReward: bigint;
+    miners: bigint; youWere: number[];
   } | null>(null);
   /** The squares we last saw this wallet standing on, to compare after the flip. */
   const mySquares = useRef<{ roundId: bigint; squares: number[] } | null>(null);
@@ -93,13 +95,14 @@ export default function OreMinePanel({ onClose }: { onClose: () => void }) {
   const reveal = useCallback(async (roundId: bigint) => {
     const round = await fetchRound(roundId);
     if (!round) return;
-    const winners = payingSquares(round);
-    const ore = winners.reduce((sum, sq) => sum + round.rewards[sq - 1], BigInt(0));
     const mine = mySquares.current;
     setResult({
       roundId,
-      winners,
-      ore,
+      winner: winningSquare(round),
+      // How many miners were on the winning square, since the payout is split
+      // between all of them.
+      sharedBy: round.count[winningSquare(round) - 1],
+      topReward: topMinerReward(round),
       miners: round.totalMiners,
       youWere: mine && mine.roundId === roundId ? mine.squares : [],
     });
@@ -355,31 +358,33 @@ export default function OreMinePanel({ onClose }: { onClose: () => void }) {
 function Result({
   result,
 }: {
-  result: { roundId: bigint; winners: number[]; ore: bigint; miners: bigint; youWere: number[] };
+  result: {
+    roundId: bigint; winner: number; sharedBy: bigint; topReward: bigint;
+    miners: bigint; youWere: number[];
+  };
 }) {
-  const hit = result.youWere.filter((sq) => result.winners.includes(sq));
+  const hit = result.youWere.includes(result.winner);
   const played = result.youWere.length > 0;
   return (
     <div
       style={{
-        border: `1px solid ${hit.length ? ACCENT : "rgba(255,255,255,0.12)"}`,
-        background: hit.length ? `${ACCENT}1a` : "rgba(255,255,255,0.03)",
+        border: `1px solid ${hit ? ACCENT : "rgba(255,255,255,0.12)"}`,
+        background: hit ? `${ACCENT}1a` : "rgba(255,255,255,0.03)",
         padding: 10,
         fontSize: 8,
         lineHeight: 1.8,
       }}
     >
       <div style={{ color: DIM }}>ROUND #{result.roundId.toString()} CLOSED</div>
-      <div>
-        {result.winners.length === 0
-          ? "No square paid."
-          : `Square ${result.winners.join(", ")} paid ${formatOre(result.ore, 4)} ORE.`}
+      <div>Square {result.winner} won.</div>
+      <div style={{ color: DIM }}>
+        Shared by {result.sharedBy.toString()} of {result.miners.toString()} miners. Top miner took{" "}
+        {formatOre(result.topReward, 2)} ORE.
       </div>
-      <div style={{ color: DIM }}>{result.miners.toString()} miners were on the board.</div>
       {played && (
-        <div style={{ color: hit.length ? ACCENT : WARN, marginTop: 4 }}>
-          {hit.length
-            ? `You were on ${hit.join(", ")}. Claim your ORE below.`
+        <div style={{ color: hit ? ACCENT : WARN, marginTop: 4 }}>
+          {hit
+            ? `You were on ${result.winner}. Claim your ORE below.`
             : `You were on ${result.youWere.join(", ")}. Not this time.`}
         </div>
       )}

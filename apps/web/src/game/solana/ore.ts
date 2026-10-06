@@ -272,8 +272,14 @@ export interface OreRound {
   deployed: bigint[];
   /** How many miners were on each square. */
   count: bigint[];
-  /** ORE paid out per square. In practice one square pays and the rest are 0. */
+  /**
+   * NOT a per-square payout, despite the name. The program's only use of it
+   * sums all 25 to get the top miner's reward, which is why index 0 carries the
+   * whole amount and the rest are zero in every round.
+   */
   rewards: bigint[];
+  /** 32 bytes of entropy. The winning square is derived from this. */
+  slotHash: Buffer;
   totalMiners: bigint;
   motherlode: bigint;
 }
@@ -320,6 +326,7 @@ export async function fetchRound(roundId: bigint): Promise<OreRound | null> {
       deployed: read(ROUND.deployed),
       count: read(ROUND.count),
       rewards: read(ROUND.rewards),
+      slotHash: d.subarray(ROUND.slotHash, ROUND.slotHash + 32),
       totalMiners: d.readBigUInt64LE(ROUND.totalMiners),
       motherlode: d.readBigUInt64LE(ROUND.motherlode),
     };
@@ -328,11 +335,26 @@ export async function fetchRound(roundId: bigint): Promise<OreRound | null> {
   }
 }
 
-/** The squares that paid ORE, as 1-based numbers. */
-export function payingSquares(round: OreRound): number[] {
-  const out: number[] = [];
-  round.rewards.forEach((ore, i) => { if (ore > BigInt(0)) out.push(i + 1); });
-  return out;
+/**
+ * The square that won, 1 to 25.
+ *
+ * The program does not store it. `winning_square()` derives it from the
+ * round's entropy: the 32-byte slot hash is read as four little-endian u64s,
+ * XORed together, and taken modulo 25.
+ *
+ * Reading `rewards` as the result instead was wrong, and looked right for a
+ * while: that array always carries its whole value at index 0, so the office
+ * reported square 1 winning every single round.
+ */
+export function winningSquare(round: OreRound): number {
+  let rng = BigInt(0);
+  for (let i = 0; i < 4; i++) rng ^= round.slotHash.readBigUInt64LE(i * 8);
+  return Number(rng % BigInt(SQUARE_COUNT)) + 1;
+}
+
+/** What the round's top miner took, in ORE. */
+export function topMinerReward(round: OreRound): bigint {
+  return round.rewards.reduce((sum, v) => sum + v, BigInt(0));
 }
 
 /** The squares a miner was on, as 1-based numbers. */

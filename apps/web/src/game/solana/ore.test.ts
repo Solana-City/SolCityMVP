@@ -10,6 +10,8 @@ import {
   formatOre,
   needsCheckpoint,
   roundProgress,
+  topMinerReward,
+  winningSquare,
 } from "./ore";
 import { PublicKey } from "@solana/web3.js";
 
@@ -70,5 +72,30 @@ describe("ORE helpers", () => {
     // Left a previous round unchecked.
     const stale = { roundId: BigInt(430143), checkpointId: BigInt(430142) } as never;
     expect(needsCheckpoint(stale, board)).toBe(true);
+  });
+});
+
+describe("the winning square", () => {
+  /** Round 430418 on mainnet, whose entropy and winner were read from chain. */
+  const round = (hex: string) =>
+    ({ slotHash: Buffer.from(hex, "hex"), rewards: [], count: [], deployed: [] }) as never;
+
+  it("derives it from the round's entropy, not from the rewards array", () => {
+    expect(
+      winningSquare(round("267cf01c5e5f44b75d879c3579cf7323baaa8c6792fc02796f7c78243732db2f")),
+    ).toBe(24);
+  });
+
+  it("XORs the four halves, so a zeroed hash lands on square 1", () => {
+    expect(winningSquare(round("00".repeat(32)))).toBe(1);
+    // r1 = 5, the other three zero: 5 % 25 = 5, which is square 6.
+    expect(winningSquare(round("0500000000000000" + "00".repeat(24)))).toBe(6);
+    // The same value in two halves cancels out.
+    expect(winningSquare(round("0500000000000000" + "0500000000000000" + "00".repeat(16)))).toBe(1);
+  });
+
+  it("sums the rewards array for the top miner's prize", () => {
+    const r = { rewards: [BigInt(100_000_000_000), ...Array(24).fill(BigInt(0))] } as never;
+    expect(topMinerReward(r)).toBe(BigInt(100_000_000_000));
   });
 });
