@@ -639,7 +639,7 @@ the deposit, so the player loses the same 0.0023 SOL whether we commit once or
 ten times. The binding constraint is the count, not the money: ten commits
 maximum, and a final `commit_and_undelegate` is still allowed after the limit.
 Budget one commit per real milestone (a find, an unlock, a best) and never one
-per frame, which is the same rule [[the position writes already follow]].
+per frame, which is the rule the position writes already follow.
 
 The counter-argument for leaving it out: nothing player-facing reads the base
 copy. `onlinePlayers()` in `lib/admin/onchain.ts` and
