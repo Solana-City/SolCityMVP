@@ -14,16 +14,19 @@
  * running: between rounds the program wants entropy accounts there is no
  * reliable way to pick, so the office waits instead of guessing.
  */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import {
   SQUARE_COUNT,
   currentSlot,
   fetchBoard,
   fetchMiner,
+  fetchRound,
   formatOre,
   lastOreError,
+  minerSquares,
   needsCheckpoint,
+  payingSquares,
   roundProgress,
   slotsToSeconds,
   type OreBoard,
@@ -72,23 +75,72 @@ export default function OreMinePanel({ onClose }: { onClose: () => void }) {
   const [loading, setLoading] = useState(true);
   const [city, setCity] = useState<{ squares: CitySquare[]; citizens: number } | null>(null);
 
+  /** What the last round paid, revealed when the board moves on. */
+  const [result, setResult] = useState<{
+    roundId: bigint; winners: number[]; ore: bigint; miners: bigint; youWere: number[];
+  } | null>(null);
+  /** The squares we last saw this wallet standing on, to compare after the flip. */
+  const mySquares = useRef<{ roundId: bigint; squares: number[] } | null>(null);
+  /** Slot plus the moment it was read, so the clock runs between refreshes. */
+  const slotBase = useRef<{ slot: number; at: number }>({ slot: 0, at: Date.now() });
+
   const [picked, setPicked] = useState<number[]>([]);
   const [perSquare, setPerSquare] = useState(AMOUNTS[0]);
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ text: string; bad?: boolean } | null>(null);
 
+  /** Reads a finished round and turns it into one line the player can read. */
+  const reveal = useCallback(async (roundId: bigint) => {
+    const round = await fetchRound(roundId);
+    if (!round) return;
+    const winners = payingSquares(round);
+    const ore = winners.reduce((sum, sq) => sum + round.rewards[sq - 1], BigInt(0));
+    const mine = mySquares.current;
+    setResult({
+      roundId,
+      winners,
+      ore,
+      miners: round.totalMiners,
+      youWere: mine && mine.roundId === roundId ? mine.squares : [],
+    });
+  }, []);
+
   const refresh = useCallback(async () => {
     const [b, s] = await Promise.all([fetchBoard(), currentSlot()]);
-    setBoard(b);
+    setBoard((before) => {
+      // The board moved on: the round that just closed can now be read, and it
+      // says which square paid.
+      if (b && before && b.roundId !== before.roundId) void reveal(before.roundId);
+      return b;
+    });
+    slotBase.current = { slot: s, at: Date.now() };
     setSlot(s);
-    if (publicKey) setMiner(await fetchMiner(publicKey));
+    const m = publicKey ? await fetchMiner(publicKey) : null;
+    setMiner(m);
+    // Remember where this wallet stood, because after the flip the miner
+    // account has already been rewritten for the next round.
+    if (m && m.deployed.some((v) => v > BigInt(0))) {
+      mySquares.current = { roundId: m.roundId, squares: minerSquares(m) };
+    }
     if (b) {
       const round = Number(b.roundId);
       pruneClaims(round);
       setCity(cityClaims(round));
     }
     setLoading(false);
-  }, [publicKey]);
+  }, [publicKey, reveal]);
+
+  // The slot only arrives with a refresh, which is every ten seconds, so the
+  // countdown is carried forward locally in between. A Solana slot is about
+  // 400ms, which is close enough for a clock a player is watching tick.
+  useEffect(() => {
+    const t = setInterval(() => {
+      const { slot: base, at } = slotBase.current;
+      if (!base) return;
+      setSlot(base + Math.floor((Date.now() - at) / 400));
+    }, 1000);
+    return () => clearInterval(t);
+  }, []);
 
   useEffect(() => {
     void refresh();
@@ -198,6 +250,8 @@ export default function OreMinePanel({ onClose }: { onClose: () => void }) {
               value={`${(Number(board.productionCostEma) / LAMPORTS).toFixed(3)} SOL`}
             />
 
+            {result && <Result result={result} />}
+
             <Grid mine={mine} city={city?.squares} picked={picked} onPick={toggle} />
             <CityLine citizens={city?.citizens ?? 0} />
 
@@ -293,6 +347,42 @@ export default function OreMinePanel({ onClose }: { onClose: () => void }) {
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+/** What the last round paid, and whether this player was standing on it. */
+function Result({
+  result,
+}: {
+  result: { roundId: bigint; winners: number[]; ore: bigint; miners: bigint; youWere: number[] };
+}) {
+  const hit = result.youWere.filter((sq) => result.winners.includes(sq));
+  const played = result.youWere.length > 0;
+  return (
+    <div
+      style={{
+        border: `1px solid ${hit.length ? ACCENT : "rgba(255,255,255,0.12)"}`,
+        background: hit.length ? `${ACCENT}1a` : "rgba(255,255,255,0.03)",
+        padding: 10,
+        fontSize: 8,
+        lineHeight: 1.8,
+      }}
+    >
+      <div style={{ color: DIM }}>ROUND #{result.roundId.toString()} CLOSED</div>
+      <div>
+        {result.winners.length === 0
+          ? "No square paid."
+          : `Square ${result.winners.join(", ")} paid ${formatOre(result.ore, 4)} ORE.`}
+      </div>
+      <div style={{ color: DIM }}>{result.miners.toString()} miners were on the board.</div>
+      {played && (
+        <div style={{ color: hit.length ? ACCENT : WARN, marginTop: 4 }}>
+          {hit.length
+            ? `You were on ${hit.join(", ")}. Claim your ORE below.`
+            : `You were on ${result.youWere.join(", ")}. Not this time.`}
+        </div>
+      )}
     </div>
   );
 }
