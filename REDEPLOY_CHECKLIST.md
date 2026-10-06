@@ -629,9 +629,25 @@ state from the base layer sees spawn values. If we want scores, unlocks and
 finds to be durable at the moment they happen rather than at undelegate, that
 is a `commit_player_session` instruction (hand-rolled CPI to the magic program,
 `ScheduleCommit`, same pattern as `delegate` and the VRF request) and it has to
-go in THIS deploy or wait for the next one. Commit 1 of a session is free, so
-one commit per real event is affordable; ten of them are not. Not written yet:
-say the word and it goes in.
+go in THIS deploy or wait for the next one. Not written yet: say the word and it
+goes in.
+
+What it would cost, worked out: nothing. The undelegate charge is `3,000,000 +
+1,000,000 * (commits - 1)` lamports and MagicBlock takes at most the deposit,
+2,306,320, without creating a debt. The session charge alone already exceeds
+the deposit, so the player loses the same 0.0023 SOL whether we commit once or
+ten times. The binding constraint is the count, not the money: ten commits
+maximum, and a final `commit_and_undelegate` is still allowed after the limit.
+Budget one commit per real milestone (a find, an unlock, a best) and never one
+per frame, which is the same rule [[the position writes already follow]].
+
+The counter-argument for leaving it out: nothing player-facing reads the base
+copy. `onlinePlayers()` in `lib/admin/onchain.ts` and
+`discoverPlayersFromBase` (a misnomer, it reads the ER) both scan the rollup,
+and `commit_and_undelegate` carries the session's final state home. What a
+mid-session commit buys is insurance against the rollup losing state for a
+session that never undelegated cleanly, which is the state 28 of our devnet
+PDAs are sitting in right now.
 
 ---
 
