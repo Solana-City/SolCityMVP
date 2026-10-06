@@ -443,9 +443,10 @@ const NPC_SEEDS: NPCSeed[] = [
     id: "ore-miner",
     name: "ORE Miner",
     role: "ORE",
-    // Placeholder spot on the north sidewalk while the claim office is built.
-    // TODO: move him to the mining district and give him his own sprite.
-    tileX: 90,
+    // North sidewalk, east of the Remedi building (BuildRemedi, cols 103-113),
+    // where the pavement still runs. Placeholder spot while the claim office is
+    // built. TODO: a mining district, and his own sprite.
+    tileX: 118,
     tileY: 18,
     dialog: [
       "(WIP) I'm still setting up the claim office, but you can look around.",
