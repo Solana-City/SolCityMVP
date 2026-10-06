@@ -22,6 +22,7 @@ import {
   fetchBoard,
   fetchMiner,
   formatOre,
+  lastOreError,
   needsCheckpoint,
   roundProgress,
   slotsToSeconds,
@@ -164,8 +165,11 @@ export default function OreMinePanel({ onClose }: { onClose: () => void }) {
         {loading && <div style={{ fontSize: 9, color: DIM }}>Reading the board...</div>}
 
         {!loading && !board && (
-          <div style={{ fontSize: 9, color: DIM }}>
+          <div style={{ fontSize: 9, color: DIM, lineHeight: 1.7 }}>
             The board is not answering right now. Try again in a moment.
+            {lastOreError() && (
+              <div style={{ fontSize: 7, color: BAD, marginTop: 6 }}>{lastOreError()}</div>
+            )}
           </div>
         )}
 

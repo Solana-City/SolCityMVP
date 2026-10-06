@@ -11,7 +11,6 @@
  */
 
 import {
-  Connection,
   PublicKey,
   Transaction,
   type TransactionInstruction,
@@ -20,6 +19,7 @@ import {
   fetchBoard,
   fetchMiner,
   needsCheckpoint,
+  oreConnection,
   type OreBoard,
   type OreMiner,
 } from "./ore";
@@ -30,13 +30,9 @@ import {
   buildDeploy,
 } from "./oreInstructions";
 
-const MAINNET_RPC = "https://api.mainnet-beta.solana.com";
-
-let connection: Connection | null = null;
-export function oreConnection(): Connection {
-  connection ??= new Connection(MAINNET_RPC, "confirmed");
-  return connection;
-}
+// One connection for the whole office, with the failover that lives in ore.ts:
+// sending through the public endpoint alone fails the same way reading did.
+export { oreConnection } from "./ore";
 
 export type SignTransaction = (tx: Transaction) => Promise<Transaction>;
 

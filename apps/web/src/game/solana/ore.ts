@@ -39,11 +39,50 @@ export const ORE_DECIMALS = 11;
 /** The board is five by five. */
 export const SQUARE_COUNT = 25;
 
-const MAINNET_RPC = "https://api.mainnet-beta.solana.com";
+/**
+ * Mainnet, with a failover, for the same reason baseRpc.ts has one on devnet:
+ * no single public endpoint is dependable. api.mainnet-beta.solana.com answers
+ * fine from a script and refuses or throttles browsers, which is exactly how
+ * the claim office first came up empty.
+ *
+ * Helius goes first (the project's key, the same one baseRpc uses on devnet),
+ * with the public endpoint behind it.
+ */
+const MAINNET_RPCS: readonly string[] = [
+  "https://mainnet.helius-rpc.com/?api-key=92175bf8-4484-4c09-a60a-4d08ee821058",
+  "https://api.mainnet-beta.solana.com",
+];
+
+/** Why the last read failed, so a panel can say something better than nothing. */
+let lastError: string | null = null;
+export function lastOreError(): string | null {
+  return lastError;
+}
+
+/** Tries each endpoint in order, and keeps the reason if they all fail. */
+const failoverFetch: typeof fetch = async (input, init) => {
+  const body = init?.body;
+  let problem = "no endpoint answered";
+  for (const url of MAINNET_RPCS) {
+    try {
+      const res = await fetch(url, { ...init, body });
+      // A 403 or a 429 from a public endpoint is a refusal, not an answer.
+      if (res.ok) return res;
+      problem = `${new URL(url).host} replied ${res.status}`;
+    } catch (err) {
+      problem = err instanceof Error ? err.message : String(err);
+    }
+  }
+  throw new Error(problem);
+};
 
 let connection: Connection | null = null;
-function rpc(): Connection {
-  connection ??= new Connection(MAINNET_RPC, "confirmed");
+/** The failover mainnet connection, shared by every ORE read and send. */
+export function oreConnection(): Connection {
+  connection ??= new Connection(MAINNET_RPCS[0], {
+    commitment: "confirmed",
+    fetch: failoverFetch,
+  });
   return connection;
 }
 
@@ -86,17 +125,25 @@ const DISCRIMINATOR = { miner: BigInt(103), board: BigInt(105) } as const;
 
 export async function fetchBoard(): Promise<OreBoard | null> {
   try {
-    const info = await rpc().getAccountInfo(ORE_BOARD);
-    if (!info || info.data.length < 40) return null;
+    const info = await oreConnection().getAccountInfo(ORE_BOARD);
+    if (!info || info.data.length < 40) {
+      lastError = "the board account came back empty";
+      return null;
+    }
     const d = info.data;
-    if (d.readBigUInt64LE(0) !== DISCRIMINATOR.board) return null;
+    if (d.readBigUInt64LE(0) !== DISCRIMINATOR.board) {
+      lastError = "the board account is not shaped the way this client expects";
+      return null;
+    }
+    lastError = null;
     return {
       roundId: d.readBigUInt64LE(8),
       startSlot: d.readBigUInt64LE(16),
       endSlot: d.readBigUInt64LE(24),
       productionCostEma: d.readBigUInt64LE(32),
     };
-  } catch {
+  } catch (err) {
+    lastError = err instanceof Error ? err.message : String(err);
     return null;
   }
 }
@@ -116,7 +163,7 @@ export function slotsToSeconds(slots: number): number {
 
 export async function currentSlot(): Promise<number> {
   try {
-    return await rpc().getSlot();
+    return await oreConnection().getSlot();
   } catch {
     return 0;
   }
@@ -174,7 +221,7 @@ export const MINER_ACCOUNT_SIZE = MINER.size;
 
 export async function fetchMiner(authority: PublicKey): Promise<OreMiner | null> {
   try {
-    const info = await rpc().getAccountInfo(minerPda(authority));
+    const info = await oreConnection().getAccountInfo(minerPda(authority));
     // A wallet that has never deployed simply has no miner account yet.
     if (!info || info.data.length < MINER.size) return null;
     const d = info.data;
