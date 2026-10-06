@@ -36,6 +36,11 @@ const REWARDS = {
   // starts working with no change here. If the spriter makes something other
   // than a cap, these two fields are the only edit.
   skrHolder: { category: "hat", id: "Seeker_cap", name: "Seeker Cap" },
+  // Same arrangement as the Seeker gift: the art is not in yet, so grant()
+  // skips this until the variant exists in paperDoll.ts. One line changes when
+  // the spriter delivers, and if it turns out to be something other than a
+  // helmet, these two fields are the whole edit.
+  oreMiner: { category: "hat", id: "Miner_helmet", name: "Miner Helmet" },
 } as const;
 
 /** NPC who checks SKR and hands over the gift. */
@@ -120,6 +125,19 @@ export function onMiniGameFinished(miniGameId: string, success: boolean): void {
  */
 export function onStockTraded(): void {
   grant(REWARDS.firstTrade);
+}
+
+/**
+ * A claim staked on the ORE board. Called by the claim office once a deploy
+ * confirms, so the counter behind the achievement track moves and the first
+ * claim earns the miner's cosmetic.
+ *
+ * Deliberately counts claims rather than SOL: the track is about turning up,
+ * not about how much a player put at risk on mainnet.
+ */
+export function onOreClaim(): void {
+  profileManager.bump("ore-claims");
+  grant(REWARDS.oreMiner);
 }
 
 /**
