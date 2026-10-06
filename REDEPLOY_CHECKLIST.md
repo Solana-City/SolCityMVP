@@ -22,6 +22,7 @@ here. One deploy ships:
 | 9 | Mini-game bests on chain: `game_bests: [u32; 16]` on `PlayerState` + `record_game_score_session` (added 2026-10-02) | in lib.rs |
 | 10 | Self-advancing hunt round: `hunt_v2` seed, anchor-derived round, `expire_round` deleted (added 2026-10-02) | in lib.rs |
 | 11 | ER v1 delegation: `commit_frequency_ms` → `u32::MAX` + optional validator on `delegate` / `delegate_ball` (added 2026-10-06) | in lib.rs |
+| 12 | Commits that work: `commit_player_session` / `commit_and_undelegate_player_session` / `process_undelegation` (added 2026-10-07) | in lib.rs |
 | 1 | HuntScore PDA | **deferred** (the KV leaderboard covers the player-facing part) |
 | 3 | `delegate_hunt` | **skipped** |
 | 4 | On-chain display names | **dropped** (the off-chain nickname registry replaced them) |
@@ -623,14 +624,8 @@ commit_frequency_ms`, `Vec<Vec<u8>> seeds`, `Option<Pubkey> validator`, and the
 same seven accounts in the same order as `createDelegateInstruction` in SDK
 0.17.3 (`dlp-api::DelegateArgs`, verified 2026-10-06).
 
-**Still open, needs a decision before the deploy is final:** with timed commits
-off, our base copy never moves during a session, so anything reading player
-state from the base layer sees spawn values. If we want scores, unlocks and
-finds to be durable at the moment they happen rather than at undelegate, that
-is a `commit_player_session` instruction (hand-rolled CPI to the magic program,
-`ScheduleCommit`, same pattern as `delegate` and the VRF request) and it has to
-go in THIS deploy or wait for the next one. Not written yet: say the word and it
-goes in.
+**Decided and written, 2026-10-07:** see item 12. Investigating it turned up
+something larger than the durability question it started as.
 
 What it would cost, worked out: nothing. The undelegate charge is `3,000,000 +
 1,000,000 * (commits - 1)` lamports and MagicBlock takes at most the deposit,
@@ -648,6 +643,88 @@ and `commit_and_undelegate` carries the session's final state home. What a
 mid-session commit buys is insurance against the rollup losing state for a
 session that never undelegated cleanly, which is the state 28 of our devnet
 PDAs are sitting in right now.
+
+---
+
+### Item 12 — commits that actually work (APPLIED in lib.rs, 2026-10-07)
+
+Why it is in this deploy: the commit path we ship today cannot work, and three
+instructions are the only way to get one that does. This started as the
+durability question left open under item 11 and turned into a defect.
+
+**The finding.** The magic program refuses to schedule a commit unless the
+program that OWNS the account invoked it by CPI. Simulated against the live
+devnet validator on one of our own delegated PDAs:
+
+```
+--- ScheduleCommit (1) ---
+err: {"InstructionError":[0,"InvalidInstructionData"]}
+    ScheduleCommit: parent program id: None
+    ScheduleCommit ERR: failed to find parent program id
+
+--- ScheduleCommitAndUndelegate (2) ---
+    (identical)
+```
+
+`validate_commit_schedule_permissions` allows exactly three callers: the owning
+program via CPI, the committed account itself as a signer (impossible for a PDA
+driven from a browser), or the validator. A client calling the magic program
+directly is a top-level instruction with no parent, so it fails before any
+signature is considered. The SDK's `createCommitInstruction` and
+`createCommitAndUndelegateInstruction` build exactly that shape.
+
+**What that means for what is live.** `commitAndUndelegatePlayer` in
+`OnChainMultiplayer` has been failing since it was written, into a
+`.catch(() => {})` at the disconnect call site. Consequences, all of which we
+had already written down as unexplained observations:
+
+- 27 PDAs sit delegated on devnet right now, four of them still on the 133-byte
+  pre-v2 layout, delegated since before the seed changed;
+- `resetSession` logs "undelegate didn't settle in time" because it does not;
+- the base copy of a player is frozen at spawn FOREVER, not just mid-session,
+  so on an explorer every player's scores and bests read as zero;
+- the 0.0023 SOL delegation deposit is never charged, because the charge happens
+  at undelegation. It is locked, not spent. The per-session cost written under
+  item 11 only becomes real once this works.
+
+The game plays correctly through all of it because every read goes to the
+rollup. Nothing a player sees is wrong.
+
+**What was written.**
+
+| Instruction | Runs on | Does |
+| :--- | :--- | :--- |
+| `commit_player_session` | ER | copies live state to the base copy, stays delegated |
+| `commit_and_undelegate_player_session` | ER | the same, then hands the PDA back |
+| `process_undelegation` | base | the delegation program's callback, re-creates the PDA under us |
+
+Both commit instructions are session-signed, so no wallet popup, and free.
+
+**`process_undelegation`: do not rename it.** Anchor derives
+`[196, 28, 41, 206, 48, 37, 51, 167]` from
+`sha256("global:process_undelegation")`, and that is exactly the discriminator
+the delegation program calls back with. Verified by hand, 2026-10-07. Any other
+name (including `undelegate`) produces a different discriminator, the callback
+finds no handler, and the account never comes home. It is generic over the seeds
+it is passed, so the ball uses the same handler as a player.
+
+Anyone may call it, and that is fine: the buffer has to sign, be owned by the
+delegation program, and be the canonical `["undelegate-buffer", account]` PDA.
+Only the delegation program can sign for it. The seeds are checked to derive the
+account being returned before anything signs with them.
+
+**Why both commits take the PDA unchecked.** The magic program reassigns the
+account's owner during commit-and-undelegate, to lock it while the undelegation
+is in flight. An `Account<PlayerState>` would have Anchor serialise its own copy
+back over that when the instruction ends, which is the stale write the MagicBlock
+docs warn about. So the account arrives raw, the seeds tie it to `authority`, and
+`session_authority` is read off the bytes the way `delegate` reads `authority`.
+
+**The commit budget, which the client has to respect.** Ten commits per session;
+the eleventh fails with `0xA0000000`. A final commit-and-undelegate is still
+allowed at the limit. They cost nothing (see item 11), so the limit is the count,
+not the money. One commit per milestone, never one per frame, and the client
+needs a per-session counter rather than a commit call dropped into each handler.
 
 ---
 
@@ -674,6 +751,22 @@ free-outfit wiring stays behind `NEXT_PUBLIC_BOOSTER_ONCHAIN` until verified.
    (`Vrf1RNUjXmQGjmQrQLvJHs9SNkvDJEsRVFPkfSQUwGz`), `slot_hashes` (sysvar),
    `system_program`.
 3. **`multiplayer/OnChainMultiplayer.ts`**
+   - **Item 12:** replace `createCommitAndUndelegateInstruction(sessionKey,
+     [playerPDA])` in `commitAndUndelegatePlayer` with our own
+     `commit_and_undelegate_player_session`. Accounts: player PDA (w),
+     authority (ro), session key (signer), magic context
+     `MagicContext1111111111111111111111111111111` (w), magic program
+     `Magic11111111111111111111111111111111111111` (ro). Drop the
+     `.catch(() => {})` at the disconnect call site, or the next failure hides
+     the same way this one did.
+   - **Item 12:** add `commitPlayerSession()` on the same account shape minus
+     the writable flag, with a per-session counter capped at 8 (ten minus the
+     final undelegate, minus one spare). Call it on a find, an unlock and a new
+     mini-game best. Nowhere else.
+   - **Item 12, one-off:** the 27 PDAs already stuck delegated will not free
+     themselves. After the deploy, walk them with
+     `commit_and_undelegate_player_session` from the dev panel, using each
+     wallet's session key. The four 133-byte ones are pre-v2 and can be left.
    - **Item 11:** pass the rollup identity to `buildDelegateIx`:
      `buildDelegateIx(wallet, new PublicKey(EPHEMERAL_VALIDATOR_IDENTITY))`.
      The optional parameter and the constant are ALREADY in the branch
@@ -766,6 +859,27 @@ free-outfit wiring stays behind `NEXT_PUBLIC_BOOSTER_ONCHAIN` until verified.
 - [ ] Only AFTER the client one-liner ships: a newly delegated PDA has our
       validator in its delegation record, and a wallet delegated before the
       change still plays (its record has no validator and must keep working).
+
+**Commits (item 12)** — do these BEFORE touching the client, the way item 6 does:
+- [ ] `simulateTransaction` a `commit_player_session` on the ER for a delegated
+      PDA. It must not come back with "failed to find parent program id"; that
+      error means the CPI is not being seen as the parent and nothing else in
+      this item will work.
+- [ ] Real `commit_player_session`, then read the BASE copy: it now holds the
+      session's state instead of the spawn values. This is the first time that
+      has ever been true.
+- [ ] Eleven commits in one session: the eleventh fails with `0xA0000000` and a
+      `commit_and_undelegate_player_session` after it still succeeds.
+- [ ] `commit_and_undelegate_player_session`, then poll the delegation record on
+      base until it disappears. It must actually disappear, within seconds.
+- [ ] After it settles: the PDA is owned by our program again, its data is the
+      committed state (not zeroed, not the spawn copy), and the leftover
+      delegation deposit went back to the wallet.
+- [ ] Reconnect that wallet: it delegates again with one prompt and plays. The
+      full cycle closing is the thing this item exists for.
+- [ ] A wrong-session-key `commit_player_session` is rejected with
+      `InvalidSessionKey`, and one with a mismatched `authority` fails the seeds
+      constraint.
 
 **Mini-game bests (item 9)**:
 - [ ] Play a run: `simulateTransaction` first, then a real one. `game_bests[i]`
