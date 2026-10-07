@@ -242,9 +242,6 @@ export class OnChainMultiplayer {
 
   // Player registry (local)
   private knownPlayers = new Map<string, OnChainPlayer>();
-  // Wallets temporarily blocked from re-discovery after ghost-pruning.
-  // Prevents the add→prune→rediscover cycle for accounts with stale on-chain timestamps.
-  private blockedPlayers = new Map<string, number>(); // wallet → unblock-at epoch ms
 
   // Callbacks wired by CityScene
   private addCallbacks:    PlayerCallback[] = [];
@@ -317,12 +314,12 @@ export class OnChainMultiplayer {
   private cleanupInterval: ReturnType<typeof setInterval> | null = null;
   /** Poll/discovery timers — cleared on disconnect so they don't stack across reconnects. */
   private discoveryTimers: ReturnType<typeof setInterval>[] = [];
-  /** Program-wide and chat-log subscriptions — removed on disconnect. The
-   *  wallet adapter can cycle connect/disconnect rapidly; leaking one
-   *  subscription per cycle is what trips devnet's connection-level rate
-   *  limit ("Connection rate limits exceeded"). */
+  /** Program-wide subscription — removed on disconnect. The wallet adapter
+   *  can cycle connect/disconnect rapidly; leaking one subscription per cycle
+   *  is what trips devnet's connection-level rate limit ("Connection rate
+   *  limits exceeded"). Never assigned today: the Magic Router does not
+   *  support onProgramAccountChange, so the ER poll carries reads instead. */
   private programSubId: number | null = null;
-  private logsSubId: number | null = null;
 
   constructor() {
     this.routerConnection    = new ConnectionMagicRouter(ENDPOINTS.magicRouter,  "confirmed");
@@ -346,10 +343,6 @@ export class OnChainMultiplayer {
   // flap in and out of the city.
   private rpcBackoffMs = 0;
   private rpcBackoffUntil = 0;
-
-  private rpcAvailable(): boolean {
-    return Date.now() >= this.rpcBackoffUntil;
-  }
 
   private noteRpcSuccess(): void {
     this.rpcBackoffMs = 0;
@@ -479,9 +472,9 @@ export class OnChainMultiplayer {
     this.bc?.close();
     this.bc = null;
 
-    // Unsubscribe per-player account listeners. Subs are created on the
-    // base connection (subscribeToPlayerWallet) or the ephemeral one
-    // (subscribeToPlayer) — try both; removing an unknown id is a no-op.
+    // Unsubscribe per-player account listeners. subscribeToPlayerWallet
+    // creates them; try both connections, since removing an unknown id is a
+    // no-op and the id does not say which one it came from.
     for (const subId of this.accountSubs.values()) {
       this.baseConnection.removeAccountChangeListener(subId).catch(() => {});
       this.ephemeralConnection.removeAccountChangeListener(subId).catch(() => {});
@@ -496,10 +489,6 @@ export class OnChainMultiplayer {
     if (this.programSubId !== null) {
       this.baseConnection.removeProgramAccountChangeListener(this.programSubId).catch(() => {});
       this.programSubId = null;
-    }
-    if (this.logsSubId !== null) {
-      this.baseConnection.removeOnLogsListener(this.logsSubId).catch(() => {});
-      this.logsSubId = null;
     }
 
     if (this.cleanupInterval) { clearInterval(this.cleanupInterval); this.cleanupInterval = null; }
@@ -784,65 +773,6 @@ export class OnChainMultiplayer {
     tx.recentBlockhash = blockhash;
     this.sessionKeys.signTransaction(tx);
     return await this.baseConnection.sendRawTransaction(tx.serialize(), { skipPreflight: false });
-  }
-
-  /** Subscribe to Memo program logs for real-time cross-browser chat. */
-  private subscribeCrossNetworkChat(): void {
-    if (this.logsSubId !== null) return; // already subscribed — don't stack
-    try {
-      this.logsSubId = this.baseConnection.onLogs(
-        MEMO_PROGRAM_ID,
-        (logs) => {
-          if (logs.err) return;
-          for (const log of logs.logs) {
-            // Memo program emits: 'Program log: Memo (len N): "TEXT"'
-            // The Memo program logs `Program log: Memo (len N): "<text>"` — the
-            // parenthetical is "len N" (NOT "N bytes"); match it flexibly so any
-            // wording works, and grab everything between the outer quotes.
-            const match = log.match(/Memo \([^)]*\):\s*"([\s\S]*)"/);
-            if (!match) continue;
-            const raw = match[1];
-
-            // Cross-device look: "solcity-look:<wallet>:<loadoutJSON>"
-            if (raw.startsWith(LOOK_PREFIX)) {
-              const body = raw.slice(LOOK_PREFIX.length);
-              const i = body.indexOf(":");
-              if (i !== -1) this.handleLook(body.slice(0, i), decodeLoadout(body.slice(i + 1)));
-              continue;
-            }
-            // Cross-device expression: "solcity-expr:<wallet>:<textureKey>"
-            if (raw.startsWith(EXPR_PREFIX)) {
-              const body = raw.slice(EXPR_PREFIX.length);
-              const i = body.indexOf(":");
-              if (i !== -1) this.handleExpr(body.slice(0, i), body.slice(i + 1));
-              continue;
-            }
-
-            if (!raw.startsWith(CHAT_PREFIX)) continue;
-
-            // Format: "solcity-chat:<wallet>:<displayName>:<message>"
-            const withoutPrefix = raw.slice(CHAT_PREFIX.length);
-            const c1 = withoutPrefix.indexOf(":");
-            if (c1 === -1) continue;
-            const senderWallet = withoutPrefix.slice(0, c1);
-            if (senderWallet === this.wallet?.toBase58()) continue; // our own memo
-            const rest = withoutPrefix.slice(c1 + 1);
-            const c2 = rest.indexOf(":");
-            if (c2 === -1) continue;
-            const senderName = rest.slice(0, c2);
-            const message    = rest.slice(c2 + 1);
-
-            // Emit as a chat event so CityScene logs it + floats a bubble.
-            const bus = (globalThis as any).__solCityGameEvents;
-            bus?.emit("chat:network", { wallet: senderWallet, name: senderName, text: message });
-          }
-        },
-        "confirmed",
-      );
-      console.log("[Multiplayer] cross-browser chat subscription active");
-    } catch (err) {
-      console.warn("[Multiplayer] chat subscription failed:", err);
-    }
   }
 
   /**
@@ -1590,7 +1520,7 @@ export class OnChainMultiplayer {
 
     // 6. Cross-device chat/outfit/expression now ride the ER PlayerState fields
     //    (read off the position poll), so the base-layer Memo + onLogs channel
-    //    is no longer used. (subscribeCrossNetworkChat intentionally not called.)
+    //    is no longer used; the Memo log subscription that served it is gone.
 
     // 7. Force a presence broadcast on next sendInput tick
     this.lastPos = { x: -1, y: -1, direction: -1, isWalking: false, buffed: false };
@@ -1947,43 +1877,6 @@ export class OnChainMultiplayer {
     }
   }
 
-  private async discoverPlayers(self: PublicKey): Promise<void> {
-    try {
-      // Get all PDAs owned by our program on the ephemeral rollup.
-      // This includes all currently delegated (online) player accounts.
-      const accounts = await this.ephemeralConnection.getProgramAccounts(
-        SOL_CITY_PROGRAM_ID,
-        { commitment: "processed", encoding: "base64" }
-      );
-
-      for (const { pubkey, account } of accounts) {
-        const data = account.data;
-        const walletStr = pubkey.toBase58();
-        if (walletStr === self.toBase58()) continue;
-        this.decodeAndUpdatePlayer(walletStr, data);
-        // Subscribe to future changes for this player
-        this.subscribeToPlayer(pubkey);
-      }
-    } catch (err) {
-      // getProgramAccounts may not be enabled on all RPC nodes — not fatal
-      console.info("[Multiplayer] discovery unavailable, relying on broadcast");
-    }
-  }
-
-  private subscribeToPlayer(playerPDA: PublicKey): void {
-    const key = playerPDA.toBase58();
-    if (this.accountSubs.has(key)) return; // already subscribed
-
-    const subId = this.ephemeralConnection.onAccountChange(
-      playerPDA,
-      (accountInfo, context) => {
-        this.decodeAndUpdatePlayer(key, accountInfo.data, context.slot);
-      },
-      "processed"
-    );
-    this.accountSubs.set(key, subId);
-  }
-
   // ── Account data decoder ──────────────────────────────────────────────
 
   /**
@@ -2147,16 +2040,6 @@ export class OnChainMultiplayer {
       // Device time, shifted onto the chain's clock — the only timeline an
       // on-chain timestamp can be compared against.
       const chainNow = now - this.clockSkewMs;
-
-      // Skip wallets that were recently ghost-pruned — prevents the rapid
-      // add→prune→rediscover cycle for accounts with stale on-chain timestamps
-      // (e.g. ER-active players whose base-layer last_active is old, or dead
-      // test accounts that keep appearing via getProgramAccounts).
-      const blockedUntil = this.blockedPlayers.get(walletStr);
-      if (blockedUntil !== undefined) {
-        if (now < blockedUntil) return; // still blocked
-        this.blockedPlayers.delete(walletStr); // block expired — allow re-discovery
-      }
 
       // Freshness gate — surface only accounts active recently. A delegated PDA
       // whose owner closed the tab without undelegating stays on the ER forever
