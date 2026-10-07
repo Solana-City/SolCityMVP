@@ -58,10 +58,12 @@ export function readMemStats(scene: Phaser.Scene): MemStats {
 
   const world = (scene.physics as Phaser.Physics.Arcade.ArcadePhysics | undefined)?.world;
 
-  // Frame rate belongs here because on a phone this log IS the instrument:
-  // a release APK has WebView debugging off, so there is no DevTools to
-  // attach — but the shell forwards console to logcat, so `adb logcat` can
-  // read these lines off a real device with no cable ceremony beyond USB.
+  // Frame rate belongs here because on a phone this log is the instrument.
+  // Reaching it needs a DEBUG build either way: the Android shell only
+  // enables WebView debugging when BuildConfig.DEBUG is set, and its
+  // WebChromeClient drops every console message below ERROR in release. So
+  // a release APK reports none of this — measure on a debug build over
+  // chrome://inspect or `adb logcat -s SolCity`, or in the browser PWA.
   const loop = scene.game.loop as Phaser.Core.TimeStep & { _limitRate?: number };
   const rate = loop._limitRate ?? 0;
 
