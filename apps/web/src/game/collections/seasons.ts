@@ -52,6 +52,58 @@ export const RARITY_COLOR: Record<Rarity, string> = {
   legendary: "#FFD700",
 };
 
+/**
+ * The frame a rarity is drawn as. THE ONE PLACE to change how a rarity looks:
+ * every surface asks `rarityTheme()` rather than picking its own border and
+ * tint, so editing a hex in RARITY_COLOR above moves the wardrobe grid, the
+ * pack reveal and anything added later together.
+ *
+ * Only `color` is authored. The tint and the glow are the same colour at a
+ * fixed alpha, which is what keeps four rarities reading as one system.
+ */
+export interface RarityTheme {
+  /** The line itself: border, label text, odds bar. */
+  color: string;
+  /** Behind the item, so the frame is not a lone outline. */
+  fill: string;
+  /** For a drop-shadow on the rarities worth lighting up. */
+  glow: string;
+  label: string;
+}
+
+/** Hex + two-digit alpha. The palette is authored as 6-digit hex on purpose. */
+const alpha = (hex: string, aa: string) => `${hex}${aa}`;
+
+/** Fill and glow strength per rarity: common stays flat, legendary burns. */
+const RARITY_WEIGHT: Record<Rarity, { fill: string; glow: string }> = {
+  common: { fill: "0d", glow: "00" },
+  uncommon: { fill: "16", glow: "55" },
+  rare: { fill: "1c", glow: "66" },
+  legendary: { fill: "22", glow: "88" },
+};
+
+/** An item with no rarity at all (a free shirt, a quest reward). Same shape,
+ *  so a grid can frame every tile without asking whether it drops. */
+export const UNRANKED_THEME: RarityTheme = {
+  color: "rgba(255,255,255,0.10)",
+  fill: "rgba(255,255,255,0.02)",
+  glow: "transparent",
+  label: "",
+};
+
+const RARITY_THEME: Record<Rarity, RarityTheme> = Object.fromEntries(
+  RARITY_ORDER.map((r) => [r, {
+    color: RARITY_COLOR[r],
+    fill: alpha(RARITY_COLOR[r], RARITY_WEIGHT[r].fill),
+    glow: alpha(RARITY_COLOR[r], RARITY_WEIGHT[r].glow),
+    label: RARITY_LABEL[r],
+  }]),
+) as Record<Rarity, RarityTheme>;
+
+export function rarityTheme(rarity: Rarity | null | undefined): RarityTheme {
+  return rarity ? RARITY_THEME[rarity] : UNRANKED_THEME;
+}
+
 // ── Seasons ─────────────────────────────────────────────────────────────────
 
 export interface SeasonDef {

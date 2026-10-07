@@ -6,8 +6,8 @@ import {
 
 // Re-exported so a screen that shows wardrobe items does not have to know
 // where the shared vocabulary lives.
-export { RARITY_ORDER, RARITY_LABEL, RARITY_COLOR, CURRENT_SEASON, SEASONS, seasonLabel } from "@/game/collections/seasons";
-export type { Rarity } from "@/game/collections/seasons";
+export { RARITY_ORDER, RARITY_LABEL, RARITY_COLOR, rarityTheme, UNRANKED_THEME, CURRENT_SEASON, SEASONS, seasonLabel } from "@/game/collections/seasons";
+export type { Rarity, RarityTheme } from "@/game/collections/seasons";
 
 /**
  * Outfit packs: three of them, four rarities, one season at a time.
