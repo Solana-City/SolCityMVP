@@ -1,13 +1,13 @@
 "use client";
 
-import { PixelImg, ICON, LockIcon, CloseButton } from "@/ui/PixelIcons";
+import { PixelImg, ICON, LockIcon, CloseButton, Bitmap } from "@/ui/PixelIcons";
+import { useButtonFeel, feelStyle } from "@/ui/useButtonFeel";
 import { useState, useCallback, useEffect, useRef } from "react";
 import {
   LAYER_ORDER,
   CATEGORY_LABELS,
   LayerCategory,
   Loadout,
-  DEFAULT_LOADOUT,
   saveLoadout,
   loadSavedLoadout,
   getVariant,
@@ -23,7 +23,7 @@ import { isVariantUnlocked, unlockItem } from "@/game/config/wardrobeUnlocks";
 import { RARITY_LABEL, isPackItem, rarityOf, rarityTheme, type Rarity } from "@/game/config/packs";
 import { progressionBus } from "@/game/progression/progressionBus";
 import BoosterOverlay from "@/ui/BoosterOverlay";
-import { chamferBox } from "@/ui/chamfer";
+import { chamferBox, solidColor } from "@/ui/chamfer";
 import ChamferGlow from "@/ui/ChamferGlow";
 import { useViewportBox, overlayBox } from "@/ui/useViewportBox";
 
@@ -42,15 +42,19 @@ function removeChroma(ctx: CanvasRenderingContext2D, w: number, h: number) {
   ctx.putImageData(d, 0, 0);
 }
 
-function AvatarPreview({ loadout, facingUp, scale = 3 }: { loadout: Loadout; facingUp?: boolean; scale?: number }) {
+type Facing = keyof typeof DIRECTION_ROW;
+/** Quarter turns, in the order the preview arrows walk through them. */
+const FACING_ORDER: Facing[] = ["down", "right", "up", "left"];
+
+function AvatarPreview({ loadout, facing = "down", scale = 3 }: { loadout: Loadout; facing?: Facing; scale?: number }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const SCALE = scale;
   const FW = SPRITE_FRAME_WIDTH * SCALE;
   const FH = SPRITE_FRAME_HEIGHT * SCALE;
-  // Backpacks are worn on the back — from the front only the strap tops
-  // peek over the shoulders, so browsing that category previews the
-  // character facing away (north) instead of the usual front-facing pose.
-  const rowY = (facingUp ? DIRECTION_ROW.up : DIRECTION_ROW.down) * SPRITE_FRAME_HEIGHT;
+  // The row of the sheet for the way the character is turned. The Back tab
+  // turns it away on its own (see pickCategory): from the front only the
+  // strap tops of a backpack peek over the shoulders.
+  const rowY = DIRECTION_ROW[facing] * SPRITE_FRAME_HEIGHT;
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -246,7 +250,22 @@ function CategoryIcon({ cat, size }: { cat: LayerCategory; size: number }) {
   return <ChromaPreview file={first.file} size={size} facingUp={cat === "back"} crop />;
 }
 
+/** Random may leave these bare. */
 const OPTIONAL: LayerCategory[] = ["hat", "accessory", "back"];
+/** Categories the player can take off: they get a None tile first in the grid. */
+const REMOVABLE: LayerCategory[] = ["hat", "hair", "accessory", "back"];
+/** No pack carries these, so no Open Pack tile at the end of their grid. */
+const NO_PACKS: LayerCategory[] = ["hair", "eyesFace", "skin"];
+
+function sameLoadout(a: Loadout, b: Loadout): boolean {
+  return LAYER_ORDER.every((cat) => (a[cat] ?? undefined) === (b[cat] ?? undefined));
+}
+
+/** The arrows beside the preview (the font has none). */
+function TurnGlyph({ dir, color }: { dir: "left" | "right"; color: string }) {
+  const rows = ["....#", "...##", "..###", ".####", "#####", ".####", "..###", "...##", "....#"];
+  return <Bitmap size={14} color={color} rows={dir === "left" ? rows : rows.map((r) => [...r].reverse().join(""))} />;
+}
 
 function randomLoadout(wallet: string | null): Loadout {
   const out: Loadout = {};
@@ -267,9 +286,18 @@ interface WardrobePanelProps {
 
 export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) {
   const [loadout, setLoadout] = useState<Loadout>(() => loadSavedLoadout());
+  // What was saved when the window opened: Reset goes back to it, Save is
+  // only on while the loadout differs from it, and leaving with a difference
+  // asks first.
+  const [original] = useState<Loadout>(() => loadSavedLoadout());
   const [activeCategory, setActiveCategory] = useState<LayerCategory>("skin");
+  const [facing, setFacing] = useState<Facing>("down");
+  const [confirmLeave, setConfirmLeave] = useState(false);
   const [flash, setFlash] = useState<string | null>(null);
   const [isMobile, setIsMobile] = useState(false);
+  // A phone held sideways (the Seeker, ~915x412) is wide enough for the desktop
+  // window, but not tall enough for its full-size paddings.
+  const [short, setShort] = useState(false);
   const viewport = useViewportBox();
   const [wallet] = useState<string | null>(() => profileManager?.get().wallet ?? null);
   const [boosterOpen, setBoosterOpen] = useState(false);
@@ -277,11 +305,15 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
   const [, bumpUnlocks] = useState(0);
 
   useEffect(() => {
-    const mq = window.matchMedia("(max-width: 720px), (pointer: coarse)");
+    const mq = window.matchMedia("(max-width: 720px)");
+    const sq = window.matchMedia("(max-height: 520px)");
     setIsMobile(mq.matches);
+    setShort(sq.matches);
     const on = (e: MediaQueryListEvent) => setIsMobile(e.matches);
+    const onShort = (e: MediaQueryListEvent) => setShort(e.matches);
     mq.addEventListener("change", on);
-    return () => mq.removeEventListener("change", on);
+    sq.addEventListener("change", onShort);
+    return () => { mq.removeEventListener("change", on); sq.removeEventListener("change", onShort); };
   }, []);
 
   useEffect(() => {
@@ -312,6 +344,17 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
     return () => { delete (window as unknown as Record<string, unknown>).solcityUnlock; };
   }, [wallet]);
 
+  const dirty = !sameLoadout(loadout, original);
+
+  // The Back tab turns the character away (a backpack hides behind it); every
+  // other tab turns it to face you.
+  const pickCategory = useCallback((cat: LayerCategory) => {
+    setActiveCategory(cat);
+    setFacing(cat === "back" ? "up" : "down");
+  }, []);
+  const turn = (step: 1 | -1) =>
+    setFacing((f) => FACING_ORDER[(FACING_ORDER.indexOf(f) + step + FACING_ORDER.length) % FACING_ORDER.length]);
+
   const selectVariant = useCallback((category: LayerCategory, variantId: string | undefined) => {
     if (variantId) {
       const v = getVariant(category, variantId);
@@ -338,7 +381,17 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
     onClose();
   }, [loadout, gameRef, onClose]);
 
-  const handleReset = useCallback(() => setLoadout({ ...DEFAULT_LOADOUT }), []);
+  const handleReset = useCallback(() => setLoadout({ ...original }), [original]);
+
+  const requestClose = useCallback(() => {
+    if (dirty) setConfirmLeave(true); else onClose();
+  }, [dirty, onClose]);
+  // The change was previewed live on the character in the city; leaving
+  // without saving has to put the saved look back.
+  const leaveWithoutSaving = useCallback(() => {
+    gameRef?.events.emit("wardrobe:loadout", original);
+    onClose();
+  }, [gameRef, original, onClose]);
 
   const variants = getEnabledVariants(activeCategory);
   // The item art, not the card. It is drawn CROPPED to the item itself (a hat
@@ -346,6 +399,8 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
   // size the hat actually gets — which is why it can be this big.
   const TILE = isMobile ? 52 : 68;
   const currentVariantId = loadout[activeCategory];
+  const showPackTile = !NO_PACKS.includes(activeCategory)
+    && variants.some((v) => isPackItem(activeCategory, v.id));
 
   // Reverse so topmost layer (hat) appears first in the tab list
   const tabOrder = [...LAYER_ORDER].reverse() as LayerCategory[];
@@ -354,7 +409,7 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
     <div
       className="z-50 flex items-center justify-center"
       style={{ ...overlayBox(viewport), background: "rgba(0,0,0,0.7)", backdropFilter: "blur(4px)" }}
-      onClick={e => e.target === e.currentTarget && onClose()}
+      onClick={e => e.target === e.currentTarget && requestClose()}
     >
       <div style={{
         background: "#0b0e1c",
@@ -368,19 +423,20 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
         width: isMobile ? "100vw" : 700,
         maxWidth: isMobile ? "100vw" : "96vw",
         height: isMobile ? "100%" : undefined,
-        maxHeight: isMobile ? "100%" : "92vh",
+        maxHeight: isMobile ? "100%" : short ? "96vh" : "92vh",
         display: "flex",
         flexDirection: "column",
         overflow: "hidden",
         fontFamily: '"Press Start 2P", monospace',
         color: "#d0d0f0",
         boxShadow: isMobile ? "none" : "0 0 60px rgba(183,233,40,0.15), 0 24px 64px rgba(0,0,0,0.6)",
+        position: "relative",
       }}>
 
         {/* ── Header ── */}
         <div style={{
           display: "flex", alignItems: "center", justifyContent: "space-between",
-          padding: isMobile ? "6px 12px" : "12px 20px",
+          padding: isMobile ? "6px 12px" : short ? "7px 20px" : "12px 20px",
           borderBottom: "1px solid rgba(183,233,40,0.12)",
           background: "rgba(183,233,40,0.06)",
         }}>
@@ -393,52 +449,9 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
               letterSpacing: 2,
             }}>WARDROBE</span>
           </div>
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            {/* Booster pack (preview) */}
-            <button
-              onClick={() => setBoosterOpen(true)}
-              title="Open a booster pack"
-              style={{
-                ...chamferBox(9, { border: "2px solid rgba(183,233,40,0.6)" }),
-                fontFamily: '"Press Start 2P", monospace',
-                fontSize: 7,
-                padding: "7px 14px",
-                backgroundColor: "rgba(183,233,40,0.14)",
-                color: "#B7E928",
-                cursor: "pointer",
-                letterSpacing: 1,
-                transition: "background 0.15s, transform 0.08s",
-              }}
-              onMouseEnter={e => e.currentTarget.style.backgroundColor = "rgba(183,233,40,0.25)"}
-              onMouseLeave={e => { e.currentTarget.style.backgroundColor = "rgba(183,233,40,0.14)"; e.currentTarget.style.transform = "none"; }}
-              onPointerDown={e => e.currentTarget.style.transform = "scale(0.95)"}
-              onPointerUp={e => e.currentTarget.style.transform = "none"}
-            >
-              OPEN PACK
-            </button>
-            {/* Random button */}
-            <button
-              onClick={handleRandom}
-              title="Random outfit"
-              style={{
-                ...chamferBox(9, { border: "2px solid rgba(20,240,198,0.55)" }),
-                fontFamily: '"Press Start 2P", monospace',
-                fontSize: 7,
-                padding: "7px 14px",
-                backgroundColor: "rgba(20,240,198,0.1)",
-                color: "#14F0C6",
-                cursor: "pointer",
-                letterSpacing: 1,
-                transition: "background 0.15s, transform 0.08s",
-              }}
-              onMouseEnter={e => e.currentTarget.style.backgroundColor = "rgba(20,240,198,0.2)"}
-              onMouseLeave={e => { e.currentTarget.style.backgroundColor = "rgba(20,240,198,0.1)"; e.currentTarget.style.transform = "none"; }}
-              onPointerDown={e => e.currentTarget.style.transform = "scale(0.95)"}
-              onPointerUp={e => e.currentTarget.style.transform = "none"}
-            >
-              RANDOM
-            </button>
-            <CloseButton onClick={onClose} />
+          <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+            <SaveButton enabled={dirty} onClick={handleSave} />
+            <CloseButton onClick={requestClose} />
           </div>
         </div>
 
@@ -455,21 +468,38 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
             flexDirection: "column",
             alignItems: "stretch",
             background: "rgba(0,0,0,0.2)",
+            // Taller than a sideways phone: scroll rather than cut the tabs off.
+            overflowY: "auto", minHeight: 0,
           }}>
-            <div style={{ display: "flex", justifyContent: "center", padding: isMobile ? "8px 8px 4px" : "14px 12px 8px", flexShrink: 0 }}>
-              <div style={chamferBox(10, {
-                background: "rgba(183,233,40,0.06)",
-                border: "1px solid rgba(183,233,40,0.14)",
-                padding: isMobile ? 4 : 8,
-                width: isMobile ? 84 : 132,
-                height: isMobile ? 84 : 132,
-                flexShrink: 0,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-              })}>
-                <AvatarPreview loadout={loadout} facingUp={activeCategory === "back"} scale={3} />
+            <div style={{ display: "flex", justifyContent: "center", padding: isMobile ? "8px 8px 4px" : short ? "8px 12px 4px" : "14px 12px 8px", flexShrink: 0 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                <TurnButton dir="left" onClick={() => turn(-1)} />
+                <div style={chamferBox(10, {
+                  background: "rgba(183,233,40,0.06)",
+                  border: "1px solid rgba(183,233,40,0.14)",
+                  padding: isMobile ? 4 : 6,
+                  width: isMobile ? 84 : short ? 92 : 104,
+                  height: isMobile ? 84 : short ? 92 : 104,
+                  flexShrink: 0,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                })}>
+                  <AvatarPreview loadout={loadout} facing={facing} scale={3} />
+                </div>
+                <TurnButton dir="right" onClick={() => turn(1)} />
               </div>
+            </div>
+
+            {/* Reset and Random change the character, so they live under it
+                (not in a bar at the bottom, next to Save). */}
+            <div style={{ display: "flex", justifyContent: "center", gap: 8, padding: "0 8px 6px", flexShrink: 0 }}>
+              <PreviewTool label="Random outfit from what you own" onClick={handleRandom} color="#14F0C6">
+                RANDOM
+              </PreviewTool>
+              <PreviewTool label="Reset to your saved outfit" disabled={!dirty} onClick={handleReset} color="#B7E928">
+                RESET
+              </PreviewTool>
             </div>
 
             {/* Tabs: labelled list on desktop, a 4x2 icon grid on a phone. */}
@@ -483,12 +513,12 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
               {tabOrder.map(cat => {
                 const isActive = activeCategory === cat;
                 const hasItem = !!loadout[cat];
-                const isOptional = OPTIONAL.includes(cat);
+                const isOptional = REMOVABLE.includes(cat);
                 const dot = hasItem ? "#B7E928" : isOptional ? "#333344" : "#ff4444";
                 return (
                   <button
                     key={cat}
-                    onClick={() => setActiveCategory(cat)}
+                    onClick={() => pickCategory(cat)}
                     title={CATEGORY_LABELS[cat]}
                     style={chamferBox(8, {
                       display: "flex",
@@ -497,8 +527,8 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
                       gap: 8,
                       width: "100%",
                       height: isMobile ? 30 : undefined,
-                      padding: isMobile ? 0 : "7px 10px",
-                      marginBottom: isMobile ? 0 : 2,
+                      padding: isMobile ? 0 : short ? "3px 9px" : "7px 10px",
+                      marginBottom: isMobile ? 0 : short ? 1 : 2,
                       background: isActive ? "rgba(183,233,40,0.18)" : "transparent",
                       border: isActive ? "1px solid rgba(183,233,40,0.4)" : "1px solid transparent",
                       cursor: "pointer",
@@ -513,7 +543,7 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
                     onPointerUp={e => e.currentTarget.style.transform = "none"}
                   >
                     <span style={{ flexShrink: 0, lineHeight: 0 }}>
-                      <CategoryIcon cat={cat} size={22} />
+                      <CategoryIcon cat={cat} size={short ? 20 : 22} />
                     </span>
                     {isMobile ? (
                       <span style={{
@@ -553,7 +583,7 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
               </span>
               <span style={{ fontSize: 8, color: "#444466", marginLeft: "auto" }}>
                 {variants.length} {variants.length === 1 ? "option" : "options"}
-                {OPTIONAL.includes(activeCategory) && " · optional"}
+                {REMOVABLE.includes(activeCategory) && " · optional"}
               </span>
             </div>
 
@@ -566,8 +596,8 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
                 gridTemplateColumns: `repeat(auto-fill, minmax(${isMobile ? 74 : 96}px, 1fr))`,
                 gap: isMobile ? 5 : 8,
               }}>
-                {/* None option for optional categories */}
-                {OPTIONAL.includes(activeCategory) && (
+                {/* None, first, wherever the item can be taken off */}
+                {REMOVABLE.includes(activeCategory) && (
                   <VariantCard
                     isSelected={!currentVariantId}
                     isFlashing={flash === `${activeCategory}:undefined`}
@@ -619,8 +649,8 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
                       }}>{v.name}</span>
                       {locked && (
                         <span style={{
-                          fontSize: 5,
-                          color: hintFlashing ? "#FFD700" : "#7a7aa0",
+                          fontSize: 6,
+                          color: hintFlashing ? "#FFD700" : "#9a9ac0",
                           letterSpacing: 0.5,
                           textAlign: "center",
                           lineHeight: 1.4,
@@ -629,67 +659,160 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
                     </VariantCard>
                   );
                 })}
+
+                {showPackTile && (
+                  <PackTile tile={TILE} compact={isMobile} onClick={() => setBoosterOpen(true)} />
+                )}
               </div>
             </div>
           </div>
         </div>
 
-        {/* ── Footer ── */}
-        <div style={{
-          display: "flex", gap: 10, padding: isMobile ? "6px 12px" : "10px 18px",
-          borderTop: "1px solid rgba(183,233,40,0.12)",
-          background: "rgba(0,0,0,0.2)",
-          alignItems: "center",
-        }}>
-          <button onClick={handleReset} style={chamferBox(8, {
-            padding: "9px 18px",
-            background: "transparent",
-            border: "1px solid rgba(183,233,40,0.2)",
-            color: "#555577", cursor: "pointer",
-            fontSize: 8, fontFamily: '"Press Start 2P", monospace',
-            transition: "border-color 0.15s, color 0.15s, transform 0.08s",
-          })}
-          onMouseEnter={e => { e.currentTarget.style.setProperty("--cbc", "rgba(183,233,40,0.45)"); e.currentTarget.style.color = "#B7E928"; }}
-          onMouseLeave={e => { e.currentTarget.style.setProperty("--cbc", "rgba(183,233,40,0.2)"); e.currentTarget.style.color = "#555577"; e.currentTarget.style.transform = "none"; }}
-          onPointerDown={e => e.currentTarget.style.transform = "scale(0.95)"}
-          onPointerUp={e => e.currentTarget.style.transform = "none"}
-          >
-            Reset
-          </button>
-          <div style={{ flex: 1 }} />
-          <ChamferGlow
-            glow="drop-shadow(0 0 8px rgba(183,233,40,0.4))"
-            style={{ transition: "filter 0.15s" }}
-            onMouseEnter={e => { e.currentTarget.style.filter = "drop-shadow(0 0 14px rgba(183,233,40,0.65))"; }}
-            onMouseLeave={e => { e.currentTarget.style.filter = "drop-shadow(0 0 8px rgba(183,233,40,0.4))"; }}
-          >
-            <button onClick={handleSave} style={chamferBox(8, {
-              padding: "10px 32px",
-              background: "#B7E928",
-              border: "none",
-              color: "#050a14",
-              cursor: "pointer",
-              fontSize: 9,
-              fontWeight: 700,
-              fontFamily: '"Press Start 2P", monospace',
-              letterSpacing: 1,
-              transition: "transform 0.1s",
-            })}
-            onMouseEnter={e => { e.currentTarget.style.transform = "translateY(-1px)"; }}
-            onMouseLeave={e => { e.currentTarget.style.transform = "translateY(0)"; }}
-            onPointerDown={e => { e.currentTarget.style.transform = "scale(0.96)"; }}
-            onPointerUp={e => { e.currentTarget.style.transform = "translateY(-1px)"; }}
-            >
-              SAVE OUTFIT
-            </button>
-          </ChamferGlow>
-        </div>
+        {confirmLeave && (
+          <div style={{
+            position: "absolute", inset: 0, zIndex: 5, display: "flex", alignItems: "center", justifyContent: "center",
+            background: "rgba(4,6,16,0.8)",
+          }}>
+            <div style={chamferBox(12, {
+              background: "#061A3A", border: "2px solid #B7E928", padding: "18px 22px",
+              display: "flex", flexDirection: "column", alignItems: "center", gap: 12, maxWidth: "80%", textAlign: "center",
+            })}>
+              <div style={{ fontSize: 10, color: "#B7E928", letterSpacing: 1 }}>LEAVE WITHOUT SAVING?</div>
+              <div style={{ fontSize: 7, color: "#aaaacc", lineHeight: 1.7 }}>The changes to your outfit will be lost.</div>
+              <div style={{ display: "flex", gap: 10 }}>
+                <DialogButton onClick={() => setConfirmLeave(false)} primary>KEEP EDITING</DialogButton>
+                <DialogButton onClick={leaveWithoutSaving}>LEAVE</DialogButton>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {boosterOpen && (
         <BoosterOverlay wallet={wallet} onClose={() => setBoosterOpen(false)} />
       )}
     </div>
+  );
+}
+
+function SaveButton({ enabled, onClick }: { enabled: boolean; onClick: () => void }) {
+  const feel = useButtonFeel();
+  const button = (
+    <button
+      onClick={onClick}
+      disabled={!enabled}
+      title={enabled ? "Save outfit" : "Nothing to save yet"}
+      {...feel.handlers}
+      style={chamferBox(8, {
+        padding: "8px 16px",
+        background: enabled ? "#B7E928" : "rgba(183,233,40,0.14)",
+        border: "none",
+        color: enabled ? "#050a14" : "#5d6a3e",
+        cursor: enabled ? "pointer" : "not-allowed",
+        fontSize: 8, fontWeight: 700, letterSpacing: 1,
+        fontFamily: '"Press Start 2P", monospace',
+        ...(enabled ? feelStyle(feel) : null),
+      })}
+    >
+      SAVE OUTFIT
+    </button>
+  );
+  return enabled
+    ? <ChamferGlow glow="drop-shadow(0 0 8px rgba(183,233,40,0.4))">{button}</ChamferGlow>
+    : button;
+}
+
+function TurnButton({ dir, onClick }: { dir: "left" | "right"; onClick: () => void }) {
+  const feel = useButtonFeel();
+  return (
+    <button
+      onClick={onClick}
+      aria-label={dir === "left" ? "Turn the character left" : "Turn the character right"}
+      {...feel.handlers}
+      style={{
+        width: 20, height: 40, padding: 0, background: "none", border: "none", cursor: "pointer",
+        display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+        ...feelStyle(feel, { pressScale: 0.85 }),
+      }}
+    >
+      <TurnGlyph dir={dir} color="#B7E928" />
+    </button>
+  );
+}
+
+/** A small icon button under the preview. The colour is the button's own. */
+function PreviewTool({ label, color, disabled = false, onClick, children }: {
+  label: string; color: string; disabled?: boolean; onClick: () => void; children: React.ReactNode;
+}) {
+  const feel = useButtonFeel();
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      title={label}
+      aria-label={label}
+      {...feel.handlers}
+      style={chamferBox(6, {
+        flex: 1, minWidth: 0, height: 26, padding: "0 4px",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        fontSize: 6, letterSpacing: 0.5, whiteSpace: "nowrap",
+        fontFamily: '"Press Start 2P", monospace',
+        background: disabled ? "transparent" : color + "1f",
+        border: "1px solid " + (disabled ? "rgba(255,255,255,0.1)" : color + "88"),
+        color: disabled ? "#444466" : color,
+        cursor: disabled ? "not-allowed" : "pointer",
+        ...(disabled ? null : feelStyle(feel)),
+      })}
+    >
+      {children}
+    </button>
+  );
+}
+
+/** Last tile of a category's grid: buying a pack right when you want one. */
+function PackTile({ tile, compact, onClick }: { tile: number; compact: boolean; onClick: () => void }) {
+  const feel = useButtonFeel();
+  return (
+    <button
+      onClick={onClick}
+      title="Open a booster pack"
+      {...feel.handlers}
+      style={chamferBox(10, {
+        display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+        gap: compact ? 3 : 5, padding: compact ? "5px 3px" : "8px 5px",
+        background: "rgba(183,233,40,0.07)",
+        border: "2px dashed rgba(183,233,40,0.55)",
+        color: "#B7E928", cursor: "pointer",
+        fontSize: compact ? 5 : 6, letterSpacing: 0.5, lineHeight: 1.3,
+        fontFamily: '"Press Start 2P", monospace',
+        ...feelStyle(feel),
+      })}
+    >
+      <span style={{ width: tile, height: tile, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <PixelImg src="/assets/ui/ico_wardrop.png" size={Math.round(tile * 0.7)} />
+      </span>
+      <span>OPEN PACK</span>
+    </button>
+  );
+}
+
+function DialogButton({ primary = false, onClick, children }: { primary?: boolean; onClick: () => void; children: React.ReactNode }) {
+  const feel = useButtonFeel();
+  return (
+    <button
+      onClick={onClick}
+      {...feel.handlers}
+      style={chamferBox(6, {
+        padding: "8px 12px", fontSize: 7, letterSpacing: 1, cursor: "pointer",
+        fontFamily: '"Press Start 2P", monospace',
+        background: primary ? "#B7E928" : "transparent",
+        color: primary ? "#050a14" : "#cbd5e1",
+        border: primary ? "none" : "1px solid rgba(255,255,255,0.25)",
+        ...feelStyle(feel),
+      })}
+    >
+      {children}
+    </button>
   );
 }
 
@@ -752,7 +875,7 @@ function VariantCard({
         cursor: "pointer",
         fontSize: compact ? 5 : 6,
         fontFamily: '"Press Start 2P", monospace',
-        opacity: locked ? 0.78 : 1,
+        opacity: locked ? 0.6 : 1,
         transition: "background 0.15s, border-color 0.15s, transform 0.1s",
         transform: isFlashing || hintFlashing ? "scale(1.04)" : "scale(1)",
         outline: isFlashing ? "2px solid rgba(183,233,40,0.5)" : "none",
@@ -763,14 +886,14 @@ function VariantCard({
           // Hover brightens the item's own colour rather than washing it lime,
           // so it previews what picking the tile would look like.
           e.currentTarget.style.backgroundColor = theme.fillStrong;
-          e.currentTarget.style.setProperty("--cbc", theme.strong);
+          e.currentTarget.style.setProperty("--cbc", solidColor(theme.strong));
         }
         e.currentTarget.style.transform = "scale(1.03)";
       }}
       onMouseLeave={e => {
         if (!isSelected && !locked) {
           e.currentTarget.style.backgroundColor = theme.fill;
-          e.currentTarget.style.setProperty("--cbc", theme.color);
+          e.currentTarget.style.setProperty("--cbc", solidColor(theme.color));
         }
         e.currentTarget.style.transform = isFlashing || hintFlashing ? "scale(1.04)" : "scale(1)";
       }}

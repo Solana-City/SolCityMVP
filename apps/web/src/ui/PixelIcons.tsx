@@ -231,7 +231,7 @@ export function CitizenIcon({ sheet, size }: { sheet: string; size: number }) {
 }
 
 /** Draw a bitmap of rows ("#" = filled) as crisp squares. */
-function Bitmap({ rows, size, color }: { rows: string[]; size: number; color: string }) {
+export function Bitmap({ rows, size, color }: { rows: string[]; size: number; color: string }) {
   const h = rows.length;
   const w = rows[0].length;
   return (
