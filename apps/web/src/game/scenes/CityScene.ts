@@ -527,6 +527,19 @@ export class CityScene extends Phaser.Scene {
         }
       }
     }
+    // The parsed Tiled map is dead weight from here on. city.packed.json is
+    // 46KB over the wire but about 4.4MB once parsed, and Phaser keeps that
+    // object in its tilemap cache for the life of the game — after the layers
+    // above have been built from it, nothing reads it again (the blitters and
+    // the static bake work off the layer objects, not the cache).
+    //
+    // Safe to drop because CityScene is created exactly once: BootScene is the
+    // only caller of scene.start("CityScene") and nothing anywhere calls
+    // scene.restart(). A remount builds a whole new Phaser.Game, whose cache
+    // BootScene fills again. If a restart path is ever added, this has to go
+    // or that restart will come up to an empty city.
+    this.cache.tilemap.remove("city-map");
+
     console.log(
       `[CityScene] layers ${layersBefore} → ${allLayers.length}` +
       ` (${this.sparseLayers.length} as blitters${legacyTiles ? ", legacy mode" : ""})` +

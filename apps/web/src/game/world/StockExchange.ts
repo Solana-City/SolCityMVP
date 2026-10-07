@@ -230,18 +230,27 @@ export function createStockExchange(
 
   // Company logos, served same-origin by /api/stock-logo so the canvas may
   // draw them without tainting. Rows show a colored dot until one loads.
-  let pendingLogos = 0;
-  for (const s of STOCKS) {
-    if (scene.textures.exists(logoKey(s))) continue;
-    scene.load.image(logoKey(s), `/api/stock-logo/${s.ticker}`);
-    pendingLogos++;
-  }
-  if (pendingLogos) {
+  //
+  // Fetched the first time the building is actually on camera, not at scene
+  // create: that was 30 requests and 432KB competing with everything else the
+  // city needs to start, for screens most players walk past once or never.
+  // Same gate the price feed below already uses, for the same reason.
+  let logosRequested = false;
+  const loadLogos = (): void => {
+    if (logosRequested) return;
+    logosRequested = true;
+    let pendingLogos = 0;
+    for (const s of STOCKS) {
+      if (scene.textures.exists(logoKey(s))) continue;
+      scene.load.image(logoKey(s), `/api/stock-logo/${s.ticker}`);
+      pendingLogos++;
+    }
+    if (!pendingLogos) return;
     const onLogos = () => paintScreens();
     scene.load.once(Phaser.Loader.Events.COMPLETE, onLogos);
     cleanups.push(() => scene.load.off(Phaser.Loader.Events.COMPLETE, onLogos));
     scene.load.start();
-  }
+  };
 
   // ── The price feed follows the camera too ─────────────────────────────
   // The screens subscribed for the whole session, and the feed polls every
@@ -267,6 +276,7 @@ export function createStockExchange(
   let unsubscribeMarket: (() => void) | null = null;
   const followCamera = (): void => {
     const near = onCamera();
+    if (near) loadLogos(); // no-op after the first time
     if (near && !unsubscribeMarket) unsubscribeMarket = stockMarket.subscribe(onMarket);
     else if (!near && unsubscribeMarket) { unsubscribeMarket(); unsubscribeMarket = null; }
   };
