@@ -16,7 +16,7 @@ import { soundManager } from "@/game/audio/SoundManager";
 import { musicManager } from "@/game/audio/MusicManager";
 import { dmsOffPref, setDmsOffPref } from "@/game/chat/dmEvents";
 import { chamferBox, octagonFrame, octagonFrameThin } from "@/ui/chamfer";
-import { AvatarHeadFrame } from "@/ui/AvatarHead";
+import { AvatarPortrait } from "@/ui/AvatarPortrait";
 import { KeysRows } from "@/ui/KeysCard";
 import { useButtonFeel, feelStyle } from "@/ui/useButtonFeel";
 import { PublicKey } from "@solana/web3.js";
@@ -121,10 +121,10 @@ export default function ProfilePanel({ gameRef, isOpen, onClose }: ProfilePanelP
 
         {/* Header: avatar + name, wallet */}
         <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap", paddingRight: 40 }}>
-          {/* The player's own face, wearing what they have on right now.
-              Changing it is the wardrobe's job, so this is a portrait and not
-              a button. */}
-          <AvatarHeadFrame gameRef={gameRef} size={108} frame={2} />
+          {/* The player's own character, wearing what they have on right
+              now. Changing it is the wardrobe's job, so this is a picture and
+              not a button. */}
+          <AvatarPortrait gameRef={gameRef} size={88} frame={2} />
 
           <div style={{ minWidth: 0 }}>
             <div style={{ fontSize: 22, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 280 }}>

@@ -55,7 +55,7 @@ const ExpressionWheel     = dynamic(() => import("@/ui/ExpressionWheel"),     { 
 const Minimap             = dynamic(() => import("@/ui/Minimap"),             { ssr: false });
 
 import ErrorBoundary from "@/ui/ErrorBoundary";
-import { AvatarHeadFrame } from "@/ui/AvatarHead";
+import { AvatarPortrait } from "@/ui/AvatarPortrait";
 import { chamferBox, chamferClip } from "@/ui/chamfer";
 import { OPEN_DM_EVENT } from "@/game/chat/dmEvents";
 import { OPEN_CALENDAR_EVENT } from "@/game/daily/calendarEvents";
@@ -564,7 +564,7 @@ export default function Home() {
                  touch the wallet. */
               <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                  <ProfileButton gameRef={game} size={44} frame="thin" onClick={() => setProfileOpen(true)} />
+                  <ProfileButton gameRef={game} size={60} frame="thin" onClick={() => setProfileOpen(true)} />
                   <WardrobeButton size={30} onClick={() => setWardrobeOpen(true)} />
                   <CalendarButton size={30} />
                   <HudIconBtn
@@ -624,7 +624,7 @@ export default function Home() {
                 <Framed width={9}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, padding: 4 }}>
                     <span style={{ display: "block", flexShrink: 0 }}>
-                      <ProfileButton gameRef={game} size={54} onClick={() => setProfileOpen(true)} />
+                      <ProfileButton gameRef={game} size={70} onClick={() => setProfileOpen(true)} />
                     </span>
                     <span style={{ display: "flex", gap: 4, flexShrink: 0, marginLeft: "auto" }}>
                       <WardrobeButton size={34} onClick={() => setWardrobeOpen(true)} />
@@ -900,11 +900,11 @@ function HudIconBtn({ size, src, onClick, title, overlay, dot, ...aria }: {
 }
 
 /**
- * Opens the profile. The face on it is the player's own, wearing whatever they
- * have equipped right now - the same composited head the expression wheel
- * shows. It used to be an uploadable picture, which nothing but the uploader
- * ever saw: it was not published anywhere, so it told other players nothing
- * and told this one something they already knew.
+ * Opens the profile. The picture on it is the player's own character, cut at
+ * the waist and wearing whatever they have equipped right now. It used to be
+ * an uploadable photo, which nothing but the uploader ever saw: it was not
+ * published anywhere, so it told other players nothing and told this one
+ * something they already knew.
  */
 function ProfileButton({ gameRef, onClick, size, frame }: {
   gameRef: Phaser.Game | null;
@@ -920,7 +920,7 @@ function ProfileButton({ gameRef, onClick, size, frame }: {
       title="Profile [P]"
       aria-label="Profile"
     >
-      <AvatarHeadFrame gameRef={gameRef} size={size} frame={frame} />
+      <AvatarPortrait gameRef={gameRef} size={size} frame={frame} />
     </button>
   );
 }

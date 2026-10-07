@@ -9,19 +9,37 @@ import { octagonFrame, octagonFrameThin, chamferClip } from "@/ui/chamfer";
 import { devicePixelRatioSafe } from "@/ui/crispPixels";
 
 /**
- * The player's OWN head, composited from their equipped paper-doll layers.
+ * The player's OWN character, composited from their equipped paper-doll layers
+ * and cropped to a portrait.
  *
- * This is the one place that draws it. The expression wheel shows the same
- * head once per expression (with the expression sheet standing in for the
- * eyes) and the HUD and profile show it as the player's portrait, so the
- * compositing - chroma key, hair under hat masking, head crop - lives here
- * instead of being copied per surface.
+ * This is the one place that draws it. The expression wheel shows the head
+ * once per expression (with the expression sheet standing in for the eyes),
+ * and the HUD and profile show the bust, so the compositing - chroma key,
+ * hair under hat masking, the crops - lives here instead of being copied per
+ * surface.
  */
 
 const CHROMA_R = 215, CHROMA_G = 123, CHROMA_B = 186, CHROMA_TOL = 30;
 
-/** Head crop within the 64px down-facing frame (x14..50, y0..36 - hat to neck). */
-export const HEAD_X = 14, HEAD_Y = 0, HEAD_W = 36, HEAD_H = 36;
+/**
+ * What to take out of the 64px down-facing frame.
+ *
+ * "head" is hat to neck, tight to the face: the expression wheel's job is to
+ * show which face you are about to pull, so anything below the chin is noise.
+ *
+ * "bust" is the portrait, cut at the waist, and sized off what the art
+ * actually uses: hats reach x9..55 (the Viking horns are the widest thing in
+ * the set), the t-shirt and the Jetpack bottom out at y49 and y50. 52 square
+ * clears all of that, leaves the character centred with a little air at the
+ * sides, and takes the first rows of the pants with it so the body runs to
+ * the bottom edge instead of floating.
+ */
+export const CROPS = {
+  head: { x: 14, y: 0, w: 36, h: 36 },
+  bust: { x:  6, y: 0, w: 52, h: 52 },
+} as const;
+
+export type CropName = keyof typeof CROPS;
 
 function removeChroma(ctx: CanvasRenderingContext2D, w: number, h: number) {
   const d = ctx.getImageData(0, 0, w, h);
@@ -37,6 +55,8 @@ function removeChroma(ctx: CanvasRenderingContext2D, w: number, h: number) {
 }
 
 interface DrawOptions {
+  /** How much of the character to show. Default: the head. */
+  crop?: CropName;
   /**
    * Sheet to draw as the eyes instead of the loadout's own face - the
    * expression wheel passes one per node. Omitted: the player's own face.
@@ -51,12 +71,13 @@ interface DrawOptions {
   smooth?: boolean;
 }
 
-/** Composites the head described by `loadout`, filling `canvas`. */
-export function drawAvatarHead(canvas: HTMLCanvasElement, loadout: Loadout, opts: DrawOptions = {}): void {
+/** Composites the character described by `loadout`, filling `canvas`. */
+export function drawAvatarPortrait(canvas: HTMLCanvasElement, loadout: Loadout, opts: DrawOptions = {}): void {
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.imageSmoothingEnabled = opts.smooth ?? false;
+  const crop = CROPS[opts.crop ?? "head"];
   const rowY = DIRECTION_ROW.down * SPRITE_FRAME_HEIGHT;
 
   const layerFiles: Array<{ cat: LayerCategory; file: string }> = [];
@@ -133,7 +154,7 @@ export function drawAvatarHead(canvas: HTMLCanvasElement, loadout: Loadout, opts
     for (const { cat } of imgs) {
       const off = offByCat.get(cat);
       if (!off) continue;
-      ctx.drawImage(off, HEAD_X, rowY + HEAD_Y, HEAD_W, HEAD_H, 0, 0, canvas.width, canvas.height);
+      ctx.drawImage(off, crop.x, rowY + crop.y, crop.w, crop.h, 0, 0, canvas.width, canvas.height);
     }
   };
 
@@ -179,23 +200,28 @@ const FRAMES = {
 } as const;
 
 /**
- * The player's head inside the octagon frame.
+ * The player's character inside the octagon frame: the picture that stands
+ * for them in the HUD and at the top of their profile.
  *
- * The head is 36 art pixels, so it is shown at a WHOLE multiple of that and
- * centred in the ring, rather than stretched to whatever the box happens to
- * be: a fractional size gives some rows of a pixel two screen pixels and
- * their neighbours one, which is the tearing the HUD art was fixed for. What
- * the head does not use is frame and fill, not mangled art.
+ * The art is 52 pixels of bust (see CROPS), so it is shown at a WHOLE
+ * multiple of that and centred in the ring, rather than stretched to whatever
+ * the box happens to be: a fractional size gives some rows of a pixel two
+ * screen pixels and their neighbours one, which is the tearing the HUD art
+ * was fixed for. What the picture does not use is frame and fill, not mangled
+ * art. A box too small for even 1x shrinks it smoothly instead, since it is
+ * blowing art UP unevenly that chews it.
  *
- * Pick `size` so the ring leaves at least 36px inside it, or the head will sit
- * under the ring's edge: 44 with the thin ring, 54 with ring 1, 108 with 2.
+ * So pick `size` to leave the crop room inside the ring: for the bust that is
+ * 60 with the thin ring, 70 with ring 1, 88 with ring 2.
  */
-export function AvatarHeadFrame({
-  gameRef, size, frame = 1, title, fill = "rgba(8,12,32,0.95)",
+export function AvatarPortrait({
+  gameRef, size, crop = "bust", frame = 1, title, fill = "rgba(8,12,32,0.95)",
 }: {
   gameRef: Phaser.Game | null;
   /** Total size including the frame. */
   size: number;
+  /** How much of the character to show. Default: the bust. */
+  crop?: CropName;
   /** Ring weight: "thin" is 4px, 1 a 9px ring, 2 the native 18px. */
   frame?: keyof typeof FRAMES;
   title?: string;
@@ -214,22 +240,25 @@ export function AvatarHeadFrame({
   }, []);
 
   const { ring, corner, style } = FRAMES[frame];
+  const source = CROPS[crop].w;
   const inside = size - 2 * ring;
-  // The head's size on the page, which stays put whatever the screen is: a
+  // The picture's size on the page, which stays put whatever the screen is: a
   // layout that moved with the pixel ratio is the mistake useCrispPixelArt
   // was written to undo.
-  const headCss = HEAD_W * Math.max(1, Math.floor(inside / HEAD_W));
+  const scale = Math.floor(inside / source);
+  const artCss = scale >= 1 ? source * scale : inside;
   // ...while the canvas behind it is at the screen's own resolution.
-  const px = Math.max(1, Math.round(headCss * dpr));
-  const whole = Math.abs(dpr - Math.round(dpr)) < 0.01;
+  const px = Math.max(1, Math.round(artCss * dpr));
+  const wholeDpr = Math.abs(dpr - Math.round(dpr)) < 0.01;
+  const smooth = scale < 1 || !wholeDpr;
 
   useEffect(() => {
     const canvas = ref.current;
     if (!canvas || !loadout) return;
     canvas.width = px;
     canvas.height = px;
-    drawAvatarHead(canvas, loadout, { smooth: !whole });
-  }, [loadout, px, whole]);
+    drawAvatarPortrait(canvas, loadout, { crop, smooth });
+  }, [loadout, crop, px, smooth]);
 
   return (
     <span
@@ -244,7 +273,7 @@ export function AvatarHeadFrame({
       <canvas
         ref={ref}
         style={{
-          display: "block", width: headCss, height: headCss,
+          display: "block", width: artCss, height: artCss,
           imageRendering: "pixelated",
         }}
       />

@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import {
   EXPRESSIONS, type Expression, loadSavedLoadout, type Loadout,
 } from "@/game/config/paperDoll";
-import { drawAvatarHead } from "@/ui/AvatarHead";
+import { drawAvatarPortrait } from "@/ui/AvatarPortrait";
 
 /**
  * GTA-style radial expression picker. Hold Q (desktop) to open a wheel of
@@ -30,7 +30,7 @@ function HeadPreview({ loadout, expr, size, active }: {
     // The head fills the node, so the backing store is the node's own size.
     canvas.width = size;
     canvas.height = size;
-    drawAvatarHead(canvas, loadout, { expressionFile: expr.file });
+    drawAvatarPortrait(canvas, loadout, { crop: "head", expressionFile: expr.file });
   }, [loadout, expr.file, size]);
   return (
     <canvas
