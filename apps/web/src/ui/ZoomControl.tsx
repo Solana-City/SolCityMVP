@@ -84,9 +84,12 @@ export default function ZoomControl({ compact = false }: { compact?: boolean }) 
         // shrink, so squeezing this container just clipped "+" behind its
         // own chamfer corner instead of actually making anything smaller.
         flexShrink: 0,
-        background: "rgba(10,10,30,0.85)",
+        // 0.92 rather than 0.85, paying back the backdrop blur that used to sit
+        // here. It sat over the game canvas, so the browser re-blurred this
+        // rectangle on every frame the city moved, to show a hint of scenery
+        // through a background that was already nearly solid.
+        background: "rgba(10,10,30,0.92)",
         border: `1px solid ${CYAN}40`,
-        backdropFilter: "blur(4px)",
         fontFamily: "monospace",
       })}
     >

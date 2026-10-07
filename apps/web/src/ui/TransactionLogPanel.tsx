@@ -155,8 +155,9 @@ export default function TransactionLogPanel({ isOpen, onToggle, gameRef, compact
         maxWidth: compact ? undefined : "calc(100vw - 32px)",
         height: compact ? undefined : `min(560px, calc(100vh - ${panelTop + 8}px))`,
         ...octagonFrame(1),
+        // No backdrop blur: at 97% opacity nothing showed through it, and over
+        // the game canvas the browser had to redo it every frame.
         background: "rgba(10,10,30,0.97)",
-        backdropFilter: "blur(4px)",
         fontFamily: '"Press Start 2P", monospace',
       }}
     >

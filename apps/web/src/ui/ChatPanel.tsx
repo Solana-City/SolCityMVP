@@ -464,7 +464,10 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
             minHeight: typing && isTouch ? 0 : 92,
             borderWidth: 4, borderStyle: "solid", borderColor: "transparent",
             borderImage: BTN_FRAME, imageRendering: "pixelated", clipPath: BTN_CLIP,
-            backdropFilter: "blur(3px)",
+            // No backdrop blur. It sits over the game canvas, which changes
+            // every frame, so the browser re-blurred this whole rectangle every
+            // frame — and behind a 96% opaque background there was nothing left
+            // to see through it anyway.
             overflowX: "hidden", // long words wrap (below) instead of scrolling sideways
           }}
         >
@@ -497,7 +500,7 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
           style={chamferBox(6, {
             background: "rgba(10,10,30,0.92)",
             border: "1px solid rgba(183,233,40,0.2)",
-            backdropFilter: "blur(2px)",
+            // No backdrop blur over the canvas — see the message log above.
           })}
         >
           {EMOJI_REGISTRY.map((em) => (

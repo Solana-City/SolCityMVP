@@ -164,9 +164,10 @@ function SmallCard({ toast }: { toast: Toast }) {
     <div
       className="toast-small px-4 py-3 flex items-center gap-3"
       style={chamferBox(12, {
+        // No backdrop blur: invisible behind 97% opacity, and re-blurred every
+        // frame while it sat over the moving canvas.
         background: "rgba(10,10,30,0.97)",
         border: `2px solid ${toast.color}`,
-        backdropFilter: "blur(4px)",
         minWidth: 260,
         maxWidth: 400,
       })}
