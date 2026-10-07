@@ -27,7 +27,25 @@ const LEGACY_ZOOM_KEY = "solcity:zoom";
  * in halves. The old ladder was five even steps from 0.5 to 2.5, which meant
  * one single option below 1x and three above it.
  */
-const VIEW_SCALES = [0.3, 0.4, 0.5, 0.625, 0.75, 1.0, 1.5, 2.0];
+/*
+ * Every step lands a 24px tile on a whole number of canvas pixels.
+ *
+ * A tile is drawn at TILE_SIZE * cameraZoom, and cameraZoom is
+ * viewScale * 2 * dpr — so the tile measures 48 * viewScale * dpr pixels. The
+ * first two steps used to be 0.3 and 0.4, which give 14.4 and 19.2 px at dpr 1,
+ * 28.8 and 38.4 at dpr 2. Fractional, and the only two in the ladder that were.
+ *
+ * Adjacent tiles then start on fractional boundaries, and on phones — which
+ * run the CANVAS renderer, not WebGL — each drawImage rounds on its own and
+ * leaves a sliver of the background between them: a black grid over every tile
+ * in the map, at the two widest zooms and nowhere else. WebGL hides it because
+ * it samples rather than gapping, which is why desktop never showed it.
+ *
+ * 0.3125 (5/16) and 0.375 (3/8) are the nearest steps that come out whole at
+ * both dpr 1 and dpr 2, and both are exact in binary so no float drift creeps
+ * back in. The widest view loses about 4% of its reach; the second gains 6%.
+ */
+const VIEW_SCALES = [0.3125, 0.375, 0.5, 0.625, 0.75, 1.0, 1.5, 2.0];
 
 /**
  * DPR the canvas backing store is rendered at. PhaserGame publishes the
