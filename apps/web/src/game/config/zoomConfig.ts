@@ -40,7 +40,42 @@ export function getRenderDpr(): number {
   return computeRenderDpr();
 }
 
+/** Stored render-scale choice: "auto" (today's behaviour), "1" or "1.5". */
+const RENDER_SCALE_KEY = "solcity:render-scale";
+
+/**
+ * An opt-in override for how many device pixels the canvas is rendered at.
+ *
+ * The backing store is the single biggest piece of GPU work the game does —
+ * at dpr 2 it is 4x the pixels of dpr 1, every frame — so this is the largest
+ * lever available for heat and battery. It is a CHOICE and not a default
+ * because it is paid for in sharpness, not in anything invisible: see
+ * CityScene.applyZoomSmoothing for which zoom steps survive it.
+ *
+ * `?render=1` in the URL for a side-by-side test without touching settings;
+ * otherwise whatever was stored. Anything unparseable, or "auto", leaves the
+ * original behaviour exactly as it was.
+ */
+function renderScaleOverride(): number | null {
+  if (typeof window === "undefined") return null;
+  let raw: string | null = null;
+  try {
+    raw = new URLSearchParams(window.location.search).get("render")
+      ?? window.localStorage.getItem(RENDER_SCALE_KEY);
+  } catch { return null; } // private mode, blocked storage
+  if (!raw || raw === "auto") return null;
+  const n = Number(raw);
+  return Number.isFinite(n) && n >= 1 && n <= 2 ? n : null;
+}
+
+/** Persists a render-scale choice. The canvas is built at boot, so the caller reloads. */
+export function setRenderScale(value: number | "auto"): void {
+  try { window.localStorage.setItem(RENDER_SCALE_KEY, String(value)); } catch { /* ignore */ }
+}
+
 export function computeRenderDpr(): number {
+  const override = renderScaleOverride();
+  if (override !== null) return override;
   // Capped at 2 everywhere: on mobile the Canvas2D renderer redraws every
   // backing-store pixel each frame, so the cap bounds the fill cost at 4x
   // CSS resolution (phones at dpr 3 get a slight CSS upscale instead).
@@ -98,10 +133,19 @@ export function snapZoom(zoom: number): number {
  */
 const DEFAULT_VIEW_SCALE = 0.5;
 
-/** True when this step lands on whole device pixels and renders crisp. */
+/**
+ * True when this step renders crisp — which takes BOTH scalings landing whole:
+ * the game into the backing store (0.5 * zoom), and the backing store onto the
+ * screen (viewScale * the real dpr). They are the same number until render
+ * scale is overridden; see CityScene.applyZoomSmoothing for the long version.
+ *
+ * Currently unused by the UI; kept in step with applyZoomSmoothing so the two
+ * can never disagree about the same zoom.
+ */
 export function isCrisp(zoom: number): boolean {
-  const px = viewScale(zoom) * (typeof window === "undefined" ? 1 : window.devicePixelRatio || 1);
-  return px >= 1 && Math.abs(px - Math.round(px)) < 0.01;
+  const realDpr = typeof window === "undefined" ? 1 : window.devicePixelRatio || 1;
+  const whole = (n: number) => n >= 1 && Math.abs(n - Math.round(n)) < 0.01;
+  return whole(0.5 * zoom) && whole(viewScale(zoom) * realDpr);
 }
 
 /** The valid zoom whose view scale is closest to DEFAULT_VIEW_SCALE. */

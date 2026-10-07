@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import * as Phaser from "phaser";
 import { BootScene } from "./scenes/BootScene";
 import { CityScene } from "./scenes/CityScene";
-import { computeRenderDpr } from "./config/zoomConfig";
+import { computeRenderDpr, setRenderScale } from "./config/zoomConfig";
 
 interface PhaserGameProps {
   onGameReady?: (game: Phaser.Game) => void;
@@ -95,6 +95,12 @@ export default function PhaserGame({ onGameReady }: PhaserGameProps) {
     // was actually created with.
     const dpr = computeRenderDpr();
     (globalThis as { __solCityRenderDpr?: number }).__solCityRenderDpr = dpr;
+
+    // Switch render scale from the console and reload, for side-by-side tests
+    // before this is worth a settings entry. `?render=1` does the same for one
+    // visit without storing anything.
+    (globalThis as { __solCityRenderScale?: (v: number | "auto") => void })
+      .__solCityRenderScale = (v) => { setRenderScale(v); window.location.reload(); };
 
     // Size from the container, not window.inner* — on mobile the visible
     // viewport (URL bar collapsed/expanded) differs from 100vh, and a canvas

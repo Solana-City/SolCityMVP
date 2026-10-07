@@ -1647,10 +1647,27 @@ export class CityScene extends Phaser.Scene {
   private applyZoomSmoothing(zoom: number): void {
     const canvas = this.game.canvas as HTMLCanvasElement | null;
     if (!canvas) return;
+    // TWO scalings in series, and both have to land whole for the art to read
+    // as pixel art:
+    //
+    //   1. the game into the canvas's backing store — 0.5 * cameraZoom pixels
+    //      per source pixel. Below 1 the detail is already gone, thrown away
+    //      before the browser ever sees it.
+    //   2. the backing store onto the screen — viewScale * the real dpr.
+    //
+    // While the canvas is rendered at the screen's own dpr these two are the
+    // same number, which is why this only ever checked the second. They come
+    // apart the moment render scale is overridden (see zoomConfig): at render
+    // scale 1 on a retina screen, a 0.5 view scale is half a backing-store
+    // pixel per source pixel — ruined — while the second ratio works out to a
+    // tidy 1.0 and would have asked the browser to upscale the wreckage
+    // sharply. Smoothing it is the better of the two bad options.
     const realDpr = window.devicePixelRatio || 1;
+    const canvasPxPerSourcePx = 0.5 * zoom;
     const devicePxPerSourcePx = viewScale(zoom) * realDpr;
-    const whole = Math.abs(devicePxPerSourcePx - Math.round(devicePxPerSourcePx)) < 0.01;
-    canvas.style.imageRendering = whole && devicePxPerSourcePx >= 1 ? "pixelated" : "auto";
+    const isWhole = (n: number) => n >= 1 && Math.abs(n - Math.round(n)) < 0.01;
+    canvas.style.imageRendering =
+      isWhole(canvasPxPerSourcePx) && isWhole(devicePxPerSourcePx) ? "pixelated" : "auto";
   }
 
   // ── "Where Is NPC?" hunt ──────────────────────────
