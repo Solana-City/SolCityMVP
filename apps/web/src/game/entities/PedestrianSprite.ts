@@ -120,6 +120,9 @@ export class PedestrianSprite {
 
   private moveTimer: Phaser.Time.TimerEvent | null = null;
   private isMoving = false;
+  /** False while off camera — see setAwake. Spawns awake, then the first
+   *  cull pass of the frame settles it. */
+  private awake = true;
   private lastDir: Direction = "down";
   private walkVx = 0;
   private walkVy = 0;
@@ -180,7 +183,49 @@ export class PedestrianSprite {
     scene.events.on("update", this.tick, this);
   }
 
+  /**
+   * Off-camera pedestrians stop costing anything.
+   *
+   * Asleep means: no steering (this tick returns at once), no animation
+   * stepping (the layer sprites leave the scene's update list — Phaser reads
+   * `active` per sprite, and a Container has no preUpdate of its own, so
+   * deactivating the container would do nothing), no physics body in the
+   * world step, and no stroll timer firing.
+   *
+   * This is safe to do here because a pedestrian's position is purely local
+   * decoration: unlike the football or the hunted citizen, no other client
+   * ever sees where this one stands. PedestrianManager keeps the hunt target
+   * awake for exactly that reason.
+   *
+   * Waking does not try to resume the interrupted stroll. Its deadline has
+   * passed by then, so the next tick calls arrive() — a clean stop, then a
+   * fresh stroll on the normal timer. Nobody can have seen the difference.
+   */
+  setAwake(on: boolean): void {
+    if (this.awake === on) return;
+    this.awake = on;
+
+    const container = this.avatar.getContainer();
+    if (!container?.scene) return;
+
+    for (const child of container.list as Phaser.GameObjects.Sprite[]) {
+      if (child.anims) child.setActive(on);
+    }
+
+    const body = container.body as Phaser.Physics.Arcade.Body | null;
+    if (body) {
+      // Zero the velocity before parking the body: drag is reset to 0 by the
+      // group defaults, so a body left with velocity would keep that velocity
+      // waiting for us the moment it is re-enabled.
+      if (!on) body.setVelocity(0, 0);
+      body.enable = on;
+    }
+
+    if (this.moveTimer) this.moveTimer.paused = !on;
+  }
+
   private tick() {
+    if (!this.awake) return;
     const container = this.avatar.getContainer();
     // Container/body can already be torn down (e.g. mid-recycle in
     // PedestrianManager.rotateBatch()) by the time this frame's "update"
@@ -318,6 +363,10 @@ export class PedestrianSprite {
       roll < 0.92 ? (900 + this.rng() * 1400) * this.pauseScale :
                     (2600 + this.rng() * 1800) * this.pauseScale; // long idle
     this.moveTimer = this.scene.time.delayedCall(pause, () => this.startMove());
+    // placeAt and celebrateFound both drop the timer and schedule a fresh one,
+    // which would otherwise come back unpaused on a sleeping pedestrian. Keep
+    // the invariant in one place: asleep means the stroll timer is paused.
+    if (!this.awake) this.moveTimer.paused = true;
   }
 
   /** Directions to try, most preferred first: strong momentum bias toward

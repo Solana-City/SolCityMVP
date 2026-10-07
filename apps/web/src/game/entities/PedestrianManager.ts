@@ -511,7 +511,24 @@ export class PedestrianManager {
    * still walk, collide and animate; they just are not drawn.
    */
   cull(view: Phaser.Geom.Rectangle, pad: number): void {
-    for (const p of this.pedestrians) cullContainer(p.getContainer(), view, pad);
+    for (let i = 0; i < this.pedestrians.length; i++) {
+      const p = this.pedestrians[i];
+      const container = p.getContainer();
+      cullContainer(container, view, pad);
+      // Hiding them was only half of it: a hidden pedestrian still steered,
+      // still animated every layer sprite and still took a slot in the
+      // physics step. setAwake stops all of that, reusing the visibility
+      // cullContainer just worked out rather than testing the rectangle
+      // twice.
+      //
+      // The hunted citizen is the one exception and must keep walking. Every
+      // client's camera is somewhere different, so freezing it would park it
+      // in a different spot for the finder than for everyone else — and the
+      // whole point of the hunt is that all of us are looking for the same
+      // citizen in the same place. (The football is safe: it collides
+      // against NPCs and remote players, never the crowd.)
+      p.setAwake(container.visible || i === this.currentTargetIndex);
+    }
   }
 
   destroy(): void {
