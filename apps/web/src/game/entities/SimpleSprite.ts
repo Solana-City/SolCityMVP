@@ -322,7 +322,11 @@ export class SimpleSprite {
   }
 
   updateDepth(): void {
-    this.container.depth = this.container.y;
+    // Only write when it actually changed — Phaser's depth setter queues a
+    // full display-list sort on every assignment, identical value or not.
+    // See AvatarSprite.updateDepth.
+    const depth = this.container.y;
+    if (this.container.depth !== depth) this.container.depth = depth;
   }
 
   setTexture(textureKey: string, directionRow?: DirectionRow): void {

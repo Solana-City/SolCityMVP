@@ -488,7 +488,14 @@ export class AvatarSprite {
    * Sets the depth based on the Y position (for depth sorting).
    */
   updateDepth(): void {
-    this.container.depth = this.container.y;
+    // Compare before writing. Phaser's depth setter has no equality check of
+    // its own (gameobjects/components/Depth.js): every assignment queues a
+    // full depth sort of the scene's display list, even one that stores the
+    // value already there. The scene calls this once per character per frame,
+    // so a city standing perfectly still was re-sorting its entire display
+    // list sixty times a second for nothing.
+    const depth = this.container.y;
+    if (this.container.depth !== depth) this.container.depth = depth;
   }
 
   destroy(): void {
