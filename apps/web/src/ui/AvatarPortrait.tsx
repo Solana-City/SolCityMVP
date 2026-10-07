@@ -215,9 +215,15 @@ const FRAMES = {
  * 60 with the thin ring, 70 with ring 1, 88 with ring 2.
  */
 export function AvatarPortrait({
-  gameRef, size, crop = "bust", frame = 1, title, fill = "rgba(8,12,32,0.95)",
+  loadout, size, crop = "bust", frame = 1, title, fill = "rgba(8,12,32,0.95)",
 }: {
-  gameRef: Phaser.Game | null;
+  /**
+   * Whose character this is. The player's own comes from useLiveLoadout;
+   * another player's rides along with their position (OnChainPlayer.loadout).
+   * Null leaves the frame empty rather than showing a stand-in wearing
+   * something they are not.
+   */
+  loadout: Loadout | null;
   /** Total size including the frame. */
   size: number;
   /** How much of the character to show. Default: the bust. */
@@ -227,7 +233,6 @@ export function AvatarPortrait({
   title?: string;
   fill?: string;
 }) {
-  const loadout = useLiveLoadout(gameRef);
   const ref = useRef<HTMLCanvasElement>(null);
   // Read on the client only, and again if the window moves to another screen
   // (a 100% and a 150% monitor side by side is common).

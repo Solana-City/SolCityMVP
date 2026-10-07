@@ -7,6 +7,7 @@ import { track } from "@/game/telemetry/track";
 import { useNickname } from "@/ui/useNicknames";
 import { OPEN_DM_EVENT, SEND_TOKENS_EVENT } from "@/game/chat/dmEvents";
 import { chamferBox } from "@/ui/chamfer";
+import { AvatarPortrait } from "@/ui/AvatarPortrait";
 import { useButtonFeel, feelStyle } from "@/ui/useButtonFeel";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { PublicKey } from "@solana/web3.js";
@@ -145,11 +146,18 @@ export default function PlayerCard({ gameRef, wallet, displayName, myWallet, onC
           animation: "pcFade 0.15s ease",
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
-          <span style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 8, color: "#B7E928" }}>
+        {/* Who this is: their character wearing what they have on right now.
+            The loadout rides along with their position, so it is as current
+            as the sprite the player just clicked in the city. */}
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+          <AvatarPortrait loadout={player?.loadout ?? null} size={70} />
+          <span style={{
+            fontFamily: '"Press Start 2P", monospace', fontSize: 8, color: "#B7E928",
+            flex: 1, minWidth: 0, lineHeight: 1.6, overflowWrap: "anywhere",
+          }}>
             {name}
           </span>
-          <button onClick={onClose} {...closeFeel.handlers} style={{ background: "none", border: "none", color: "#14F0C6", fontSize: 13, cursor: "pointer", ...feelStyle(closeFeel) }}>
+          <button onClick={onClose} {...closeFeel.handlers} style={{ background: "none", border: "none", color: "#14F0C6", fontSize: 13, cursor: "pointer", alignSelf: "flex-start", ...feelStyle(closeFeel) }}>
             ×
           </button>
         </div>

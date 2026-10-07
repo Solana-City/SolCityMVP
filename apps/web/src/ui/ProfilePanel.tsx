@@ -16,7 +16,7 @@ import { soundManager } from "@/game/audio/SoundManager";
 import { musicManager } from "@/game/audio/MusicManager";
 import { dmsOffPref, setDmsOffPref } from "@/game/chat/dmEvents";
 import { chamferBox, octagonFrame, octagonFrameThin } from "@/ui/chamfer";
-import { AvatarPortrait } from "@/ui/AvatarPortrait";
+import { AvatarPortrait, useLiveLoadout } from "@/ui/AvatarPortrait";
 import { KeysRows } from "@/ui/KeysCard";
 import { useButtonFeel, feelStyle } from "@/ui/useButtonFeel";
 import { PublicKey } from "@solana/web3.js";
@@ -46,6 +46,7 @@ interface ProfilePanelProps {
 export default function ProfilePanel({ gameRef, isOpen, onClose }: ProfilePanelProps) {
   const [profile, setProfile] = useState<PlayerProfile | null>(null);
   const [panelTab, setPanelTab] = useState<PanelTab>("profile");
+  const myLoadout = useLiveLoadout(gameRef);
   const [copied, setCopied] = useState(false);
   const viewport = useViewportBox();
   const { connected } = useWallet();
@@ -124,7 +125,7 @@ export default function ProfilePanel({ gameRef, isOpen, onClose }: ProfilePanelP
           {/* The player's own character, wearing what they have on right
               now. Changing it is the wardrobe's job, so this is a picture and
               not a button. */}
-          <AvatarPortrait gameRef={gameRef} size={88} frame={2} />
+          <AvatarPortrait loadout={myLoadout} size={88} frame={2} />
 
           <div style={{ minWidth: 0 }}>
             <div style={{ fontSize: 22, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 280 }}>

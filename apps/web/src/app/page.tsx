@@ -55,7 +55,7 @@ const ExpressionWheel     = dynamic(() => import("@/ui/ExpressionWheel"),     { 
 const Minimap             = dynamic(() => import("@/ui/Minimap"),             { ssr: false });
 
 import ErrorBoundary from "@/ui/ErrorBoundary";
-import { AvatarPortrait } from "@/ui/AvatarPortrait";
+import { AvatarPortrait, useLiveLoadout } from "@/ui/AvatarPortrait";
 import { chamferBox, chamferClip } from "@/ui/chamfer";
 import { OPEN_DM_EVENT } from "@/game/chat/dmEvents";
 import { OPEN_CALENDAR_EVENT } from "@/game/daily/calendarEvents";
@@ -912,6 +912,7 @@ function ProfileButton({ gameRef, onClick, size, frame }: {
   size: number;
   frame?: "thin" | 1 | 2;
 }) {
+  const loadout = useLiveLoadout(gameRef);
   return (
     <button
       onClick={onClick}
@@ -920,7 +921,7 @@ function ProfileButton({ gameRef, onClick, size, frame }: {
       title="Profile [P]"
       aria-label="Profile"
     >
-      <AvatarPortrait gameRef={gameRef} size={size} frame={frame} />
+      <AvatarPortrait loadout={loadout} size={size} frame={frame} />
     </button>
   );
 }
