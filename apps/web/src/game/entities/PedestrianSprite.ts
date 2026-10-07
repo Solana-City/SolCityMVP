@@ -237,9 +237,8 @@ export class PedestrianSprite {
     const container = this.avatar.getContainer();
     if (!container?.scene) return;
 
-    for (const child of container.list as Phaser.GameObjects.Sprite[]) {
-      if (child.anims) child.setActive(on);
-    }
+    // The sprite half lives on AvatarSprite, shared with remote players.
+    this.avatar.setAwake(on);
 
     const body = container.body as Phaser.Physics.Arcade.Body | null;
     if (body) {

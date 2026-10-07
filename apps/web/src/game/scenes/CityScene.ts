@@ -1532,7 +1532,20 @@ export class CityScene extends Phaser.Scene {
         cullContainer(npc.getContainer(), view, CHARACTER_PAD);
       }
       for (const avatar of this.remotePlayers.values()) {
-        cullContainer(avatar.getContainer(), view, CHARACTER_PAD);
+        const c = avatar.getContainer();
+        cullContainer(c, view, CHARACTER_PAD);
+        // Hiding them left every layer sprite still stepping its walk cycle
+        // off camera; this takes them off the update list too.
+        //
+        // Safe to do to a SHARED character, and it cannot cost anyone a beat
+        // of fluency, because of three things together: this pass runs every
+        // frame, not on a timer, so waking lands the same frame they cross
+        // into range; CHARACTER_PAD gives 96 world px of that range before
+        // they are visible at all; and their position is written by
+        // followRemote below whatever state they are in, so a sleeping
+        // player is still tracking their real position and arrives exactly
+        // where they should be, already moving.
+        avatar.setAwake(c.visible);
       }
 
       for (const layer of this.overheadLayers) {

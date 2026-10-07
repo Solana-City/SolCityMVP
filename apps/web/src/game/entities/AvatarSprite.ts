@@ -233,6 +233,8 @@ export class AvatarSprite {
   private contactBlob: Phaser.GameObjects.Ellipse | null = null;
   private currentDirection: Direction = "down";
   private currentLoadout: Loadout;
+  /** False while off camera — see setAwake. */
+  private awake = true;
   private isWalking = false;
   /** Every layer is already playing the walk for currentDirection. */
   private walkSynced = false;
@@ -477,6 +479,26 @@ export class AvatarSprite {
     }
   }
 
+  /**
+   * Takes this character's sprites in and out of the scene's update list.
+   *
+   * Phaser reads `active` per entry, and the entries are these sprites — a
+   * Container has no preUpdate of its own, so deactivating the container
+   * would do nothing at all.
+   *
+   * Nothing here can leave a character looking wrong on the way back.
+   * `active` only decides whether a sprite's preUpdate runs, which is what
+   * ADVANCES an animation; it does not stop, reset or rewind one. A sprite
+   * asleep mid-stride wakes mid-stride and carries on from that frame. And
+   * position never passes through here — the scene writes container.x/y
+   * directly — so a sleeping character is still exactly where it belongs.
+   */
+  setAwake(on: boolean): void {
+    if (this.awake === on) return;
+    this.awake = on;
+    for (const sprite of this.animatedSprites()) sprite.setActive(on);
+  }
+
   /** All sprites that follow the walk cycle — the layers plus the shadow. */
   private animatedSprites(): Phaser.GameObjects.Sprite[] {
     const sprites: Phaser.GameObjects.Sprite[] = [...this.layerSprites.values()];
@@ -546,6 +568,10 @@ export class AvatarSprite {
         sprite.setScale(0.5);
       }
 
+      // A wardrobe change rebuilds these from scratch, and a fresh sprite is
+      // active. Without this, changing outfit off camera would quietly put a
+      // sleeping character back on the update list.
+      if (!this.awake) sprite.setActive(false);
       this.container.add(sprite);
       this.layerSprites.set(category, sprite);
       this.registerAnimations(textureKey);
