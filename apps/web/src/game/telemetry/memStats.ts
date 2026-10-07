@@ -13,9 +13,26 @@ import * as Phaser from "phaser";
  * `[mem]` so a tester can just play and read the trend afterwards.
  */
 
+/**
+ * Timestamps of the frames actually drawn in the last second.
+ *
+ * Fed by the game's own `prerender`, which fires once per DRAWN frame — unlike
+ * Phaser's framesThisSecond, which is incremented before the frame limiter
+ * decides whether to draw at all.
+ */
+const renderTimes: number[] = [];
+
+function renderedFps(): number {
+  const cutoff = performance.now() - 1000;
+  while (renderTimes.length && renderTimes[0] < cutoff) renderTimes.shift();
+  return renderTimes.length;
+}
+
 export interface MemStats {
-  /** Frames actually achieved over the last second. */
+  /** Frames actually DRAWN in the last second — counted here, not read off Phaser. */
   fps: number;
+  /** Animation frames the browser delivered, i.e. the display's own rate. */
+  rafHz: number;
   /** The frame limiter's current setting: ~65 active, 30 idle, 0 if uncapped. */
   fpsCap: number;
   /** "canvas" on phones, "webgl" on desktop — their costs are not comparable. */
@@ -58,6 +75,13 @@ export function readMemStats(scene: Phaser.Scene): MemStats {
 
   const world = (scene.physics as Phaser.Physics.Arcade.ArcadePhysics | undefined)?.world;
 
+  // NOT loop.actualFps for the drawn rate. Phaser's limited stepper counts
+  // framesThisSecond BEFORE its own rate gate (TimeStep.js), so actualFps is
+  // every animation frame the browser delivered — the display's refresh rate —
+  // whether or not the frame was drawn. It reads 144 on a 144Hz screen with the
+  // limiter pinned at 15, which is exactly backwards from what this log is for.
+  // Both are reported: fps is what was drawn, rafHz is what the display offered.
+  //
   // Frame rate belongs here because on a phone this log is the instrument.
   // Reaching it needs a DEBUG build either way: the Android shell only
   // enables WebView debugging when BuildConfig.DEBUG is set, and its
@@ -68,7 +92,8 @@ export function readMemStats(scene: Phaser.Scene): MemStats {
   const rate = loop._limitRate ?? 0;
 
   return {
-    fps: Math.round(loop.actualFps),
+    fps: renderedFps(),
+    rafHz: Math.round(loop.actualFps),
     // What the frame limiter is set to right now: ~65 active, 30 idle. The
     // pair (fps, fpsCap) is what says whether the idle throttle engaged, or
     // whether the device simply cannot reach the cap.
@@ -97,10 +122,15 @@ export function startMemStats(scene: Phaser.Scene): () => void {
   const read = () => readMemStats(scene);
   (globalThis as { __solCityStats?: () => MemStats }).__solCityStats = read;
 
+  // One push per drawn frame; renderedFps() drops anything older than a second,
+  // so this never grows past the display's refresh rate.
+  const onRender = () => { renderTimes.push(performance.now()); };
+  scene.game.events.on(Phaser.Core.Events.PRE_RENDER, onRender);
+
   const log = () => {
     const s = read();
     console.log(
-      `[mem] ${s.fps}fps/${s.fpsCap || "∞"} ${s.renderer}` +
+      `[mem] ${s.fps}fps drawn (cap ${s.fpsCap || "∞"}, ${s.rafHz}Hz panel) ${s.renderer}` +
       ` | heap ${s.heapMB ?? "?"}MB | tiles ${s.tileCells.toLocaleString()}` +
       ` | tex ${s.textures} (${s.textureMB}MB, ${s.canvasTextures} canvas)` +
       ` | objs ${s.displayObjects} | tweens ${s.tweens} | timers ${s.timers}` +
@@ -109,5 +139,10 @@ export function startMemStats(scene: Phaser.Scene): () => void {
   };
   const first = setTimeout(log, 5_000);
   const id = setInterval(log, 60_000);
-  return () => { clearTimeout(first); clearInterval(id); };
+  return () => {
+    clearTimeout(first);
+    clearInterval(id);
+    scene.game.events.off(Phaser.Core.Events.PRE_RENDER, onRender);
+    renderTimes.length = 0;
+  };
 }
