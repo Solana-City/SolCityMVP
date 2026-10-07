@@ -87,7 +87,46 @@ export function useCrispPixelArt(): void {
 
     // New panels, icons that finish loading after their panel rendered, and
     // anything React swaps in.
-    const observer = new MutationObserver(schedule);
+    //
+    // Two filters, because this observer watches the whole body subtree and
+    // the sweep behind it runs a querySelectorAll plus a getComputedStyle per
+    // match — and the HUD re-renders constantly while the player stands still
+    // (the transaction feed alone ticks a few times a second even closed).
+    //
+    // 1. Only element nodes can carry pixel art, so a batch that moved nothing
+    //    but text is dropped without scheduling anything.
+    // 2. Leading-edge throttle: the first mutation after a quiet spell sweeps
+    //    on the next frame as before, so a panel opening never shows a frame
+    //    of wrongly-smoothed art. A burst after that is collapsed into one
+    //    trailing sweep instead of one per frame.
+    const QUIET_MS = 200;
+    let lastSweep = -Infinity;
+    let trailing: ReturnType<typeof setTimeout> | null = null;
+    const onMutations = (records: MutationRecord[]) => {
+      let touchedElements = false;
+      for (const r of records) {
+        for (const n of Array.from(r.addedNodes)) {
+          if (n.nodeType === Node.ELEMENT_NODE) { touchedElements = true; break; }
+        }
+        if (touchedElements) break;
+      }
+      if (!touchedElements) return;
+
+      const now = performance.now();
+      if (now - lastSweep >= QUIET_MS) {
+        lastSweep = now;
+        schedule();
+        return;
+      }
+      if (trailing) return;
+      trailing = setTimeout(() => {
+        trailing = null;
+        lastSweep = performance.now();
+        schedule();
+      }, QUIET_MS - (now - lastSweep));
+    };
+
+    const observer = new MutationObserver(onMutations);
     observer.observe(document.body, { childList: true, subtree: true });
 
     // Moving a window between screens changes the ratio under our feet.
@@ -96,6 +135,7 @@ export function useCrispPixelArt(): void {
 
     return () => {
       if (frame) cancelAnimationFrame(frame);
+      if (trailing) clearTimeout(trailing);
       observer.disconnect();
       window.removeEventListener("resize", schedule);
       document.removeEventListener("load", schedule, true);
