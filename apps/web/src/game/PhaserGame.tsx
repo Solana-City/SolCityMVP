@@ -47,8 +47,23 @@ interface PhaserGameProps {
  *   60Hz -> 60    90Hz -> 45    120Hz -> 60    144Hz -> 48
  */
 const ACTIVE_FPS_LIMIT = 65;
-const IDLE_FPS_LIMIT = 30;
-const IDLE_AFTER_MS = 10_000;
+/**
+ * 31, not 30, for exactly the reason ACTIVE_FPS_LIMIT is 65 and not 60 — this
+ * one was wrong on the first pass.
+ *
+ * At 30 the gate sits at 33.33ms, and a browser throttled to 30Hz (Chrome's
+ * Energy Saver, or a laptop on battery) delivers frames about 33.3ms apart.
+ * Jitter puts most of them a hair under the gate, so they are skipped and the
+ * next carries double the delta: measured 10fps, with visibly choppy idle
+ * animation, on precisely the battery-saving setup this throttle exists to
+ * help. 31 puts the gate at 32.26ms, just under a 30Hz frame, so every one
+ * lands: a steady 30 on 30Hz, 60Hz and 120Hz panels alike.
+ */
+const IDLE_FPS_LIMIT = 31;
+/** Window visible but not focused — the city still moves, just slowly. */
+const BLUR_FPS_LIMIT = 15;
+/** 5s, not 10: ten seconds at full rate is most of an ordinary pause. */
+const IDLE_AFTER_MS = 5_000;
 
 export default function PhaserGame({ onGameReady }: PhaserGameProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -165,8 +180,15 @@ export default function PhaserGame({ onGameReady }: PhaserGameProps) {
     // See the constants above. _limitRate is what stepLimitFPS actually reads
     // each frame; fpsLimit is kept in step so anything inspecting the loop
     // (or __solCityStats) reports the truth.
-    let idle = false;
+    // One place decides the frame rate. Nothing else in the codebase writes
+    // loop.fpsLimit, and nothing else should: two owners of a rate that is
+    // changed from events is how you get a game stuck at 15fps.
+    //
+    // A hidden TAB needs nothing from us — the browser stops delivering
+    // animation frames, so the loop stops on its own.
     let lastInput = performance.now();
+    let focused = typeof document !== "undefined" ? document.hasFocus() : true;
+    let currentFps = 0;
     const applyFps = (fps: number) => {
       const loop = gameRef.current?.loop as
         (Phaser.Core.TimeStep & { _limitRate: number }) | undefined;
@@ -174,17 +196,23 @@ export default function PhaserGame({ onGameReady }: PhaserGameProps) {
       loop.fpsLimit = fps;
       loop._limitRate = 1000 / fps;
     };
-    const onInput = () => {
-      lastInput = performance.now();
-      if (!idle) return;
-      idle = false;
-      applyFps(ACTIVE_FPS_LIMIT);
+    const desiredFps = () => {
+      if (!focused) return BLUR_FPS_LIMIT;
+      return performance.now() - lastInput > IDLE_AFTER_MS
+        ? IDLE_FPS_LIMIT : ACTIVE_FPS_LIMIT;
     };
-    const idleWatch = window.setInterval(() => {
-      if (idle || performance.now() - lastInput < IDLE_AFTER_MS) return;
-      idle = true;
-      applyFps(IDLE_FPS_LIMIT);
-    }, 2_000);
+    const syncFps = () => {
+      const fps = desiredFps();
+      if (fps === currentFps) return;
+      currentFps = fps;
+      applyFps(fps);
+    };
+    const onInput = () => { lastInput = performance.now(); syncFps(); };
+    const onFocus = () => { focused = true; lastInput = performance.now(); syncFps(); };
+    const onBlur = () => { focused = false; syncFps(); };
+    window.addEventListener("focus", onFocus);
+    window.addEventListener("blur", onBlur);
+    const idleWatch = window.setInterval(syncFps, 1_000);
     // Capture phase, because the React panels and the touch joystick stop
     // plenty of these from bubbling to window.
     const INPUT_EVENTS = [
@@ -206,6 +234,8 @@ export default function PhaserGame({ onGameReady }: PhaserGameProps) {
     return () => {
       observer.disconnect();
       window.clearInterval(idleWatch);
+      window.removeEventListener("focus", onFocus);
+      window.removeEventListener("blur", onBlur);
       for (const ev of INPUT_EVENTS) {
         window.removeEventListener(ev, onInput, { capture: true });
       }
