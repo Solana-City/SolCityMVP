@@ -71,7 +71,8 @@ function loadSheetFrame(url: string): Promise<HTMLCanvasElement> {
       const c = document.createElement("canvas");
       c.width = FW;
       c.height = FH;
-      const ctx = c.getContext("2d")!;
+      // willReadFrequently: the chroma pass below reads this canvas straight back.
+      const ctx = c.getContext("2d", { willReadFrequently: true })!;
       ctx.drawImage(img, 0, DIRECTION_ROW.down * FH, FW, FH, 0, 0, FW, FH);
       const d = ctx.getImageData(0, 0, FW, FH);
       const px = d.data;

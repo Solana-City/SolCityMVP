@@ -77,7 +77,11 @@ function AvatarPreview({ loadout, facingUp, scale = 3 }: { loadout: Loadout; fac
         const off = document.createElement("canvas");
         off.width = img.naturalWidth;
         off.height = img.naturalHeight;
-        const oc = off.getContext("2d")!;
+        // willReadFrequently: removeChroma reads this canvas straight back, and
+        // the hair/hat masking below reads it again. The flag only counts on the
+        // FIRST getContext for a canvas — later calls reuse the context and drop
+        // their options — so it belongs here, not at the read sites.
+        const oc = off.getContext("2d", { willReadFrequently: true })!;
         oc.drawImage(img, 0, 0);
         removeChroma(oc, img.naturalWidth, img.naturalHeight);
         offByCategory.set(cat, off);
@@ -181,7 +185,9 @@ export function ChromaPreview({ file, size, facingUp, crop }: { file: string; si
       const off = document.createElement("canvas");
       off.width = img.naturalWidth;
       off.height = img.naturalHeight;
-      const oc = off.getContext("2d")!;
+      // willReadFrequently: removeChroma reads it, and icon mode reads it again
+      // below to find the item's bounding box.
+      const oc = off.getContext("2d", { willReadFrequently: true })!;
       oc.drawImage(img, 0, 0);
       removeChroma(oc, img.naturalWidth, img.naturalHeight);
       if (!crop) {

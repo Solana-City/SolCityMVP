@@ -65,7 +65,13 @@ function drawHead(canvas: HTMLCanvasElement, loadout: Loadout, expressionFile: s
     for (const { img, cat } of imgs) {
       const off = document.createElement("canvas");
       off.width = img.naturalWidth; off.height = img.naturalHeight;
-      const oc = off.getContext("2d")!;
+      // willReadFrequently: every one of these canvases is read back, first by
+      // removeChroma and then (for hair/hat) by the masking pass below. Without
+      // the hint the browser keeps the surface on the GPU and each getImageData
+      // pays a readback stall — expensive on the mobile Canvas2D renderer. The
+      // flag has to go on the FIRST getContext call for a canvas: later calls
+      // return the same context and silently ignore their options.
+      const oc = off.getContext("2d", { willReadFrequently: true })!;
       oc.drawImage(img, 0, 0);
       removeChroma(oc, img.naturalWidth, img.naturalHeight);
       offByCat.set(cat, off);

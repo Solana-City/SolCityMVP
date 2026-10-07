@@ -117,7 +117,10 @@ function MiniAvatar({ loadout, size = 64 }: { loadout: Loadout; size?: number })
           const off = document.createElement("canvas");
           off.width = SPRITE_FRAME_WIDTH;
           off.height = SPRITE_FRAME_HEIGHT;
-          const oc = off.getContext("2d")!;
+          // willReadFrequently: de-chroma reads this back, and maskHairWithHat
+          // reads the hair/hat canvases again. Must be the first getContext for
+          // the canvas — later calls reuse the context and ignore the options.
+          const oc = off.getContext("2d", { willReadFrequently: true })!;
           oc.drawImage(
             img, 0, 0, SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT,
             0, 0, SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT,
