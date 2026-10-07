@@ -82,9 +82,22 @@ export default function BoosterOverlay({
         @keyframes booster-glow  { 0%,100%{filter:drop-shadow(0 0 12px rgba(183,233,40,0.5))} 50%{filter:drop-shadow(0 0 22px rgba(183,233,40,0.9))} }
         @keyframes booster-pop   { 0%{transform:scale(0.5) translateY(10px);opacity:0} 60%{transform:scale(1.08)} 100%{transform:scale(1);opacity:1} }
         @keyframes pack-roll     { from { background-position: 0 0 } to { background-position: var(--roll) 0 } }
+        /* A phone held sideways (the Seeker is about 915x412): the three tall
+           cards plus the header did not fit and the window was cut off. Each
+           card lies down instead (art left, details right) and the paddings
+           shrink, which takes the chooser from ~470px to ~270px tall. */
+        @media (pointer: coarse) and (max-height: 520px) {
+          .booster-panel { padding: 10px 14px 8px !important; }
+          .booster-sub   { margin-bottom: 8px !important; }
+          .booster-grid  { gap: 8px !important; margin-bottom: 8px !important; }
+          .pack-card     { flex-direction: row !important; padding: 10px !important; gap: 10px !important; }
+          .pack-card > div:first-child { flex-shrink: 0; }
+          .pack-info     { gap: 5px !important; }
+          .pack-blurb    { display: none !important; }
+        }
       `}</style>
 
-      <div style={{
+      <div className="booster-panel" style={{
         width: phase === "choose" ? "min(720px, 96vw)" : "min(560px, 94vw)",
         background: "#0b0e1c",
         borderWidth: 20, borderStyle: "solid", borderColor: "transparent",
@@ -98,7 +111,7 @@ export default function BoosterOverlay({
         <div style={{ fontSize: 10, color: "#B7E928", letterSpacing: 2, marginBottom: 4 }}>
           {phase === "choose" ? "OUTFIT PACKS" : pack?.name}
         </div>
-        <div style={{ fontSize: 6, color: "#FFD700", opacity: 0.7, letterSpacing: 1, marginBottom: 18 }}>
+        <div className="booster-sub" style={{ fontSize: 6, color: "#FFD700", opacity: 0.7, letterSpacing: 1, marginBottom: 18 }}>
           SEASON {CURRENT_SEASON} · PREVIEW · RANDOMNESS → MAGICBLOCK VRF
         </div>
 
@@ -108,7 +121,7 @@ export default function BoosterOverlay({
           </div>
         ) : phase === "choose" ? (
           <>
-            <div style={{
+            <div className="booster-grid" style={{
               display: "grid",
               gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))",
               gap: 12, marginBottom: 16,
@@ -174,15 +187,16 @@ export default function BoosterOverlay({
 function PackCard({ pack, onOpen }: { pack: PackDef; onOpen: () => void }) {
   const openFeel = useButtonFeel();
   return (
-    <div style={chamferBox(12, {
+    <div className="pack-card" style={chamferBox(12, {
       padding: "14px 12px 12px",
       background: "rgba(255,255,255,0.02)",
       border: `2px solid ${pack.accent}55`,
       display: "flex", flexDirection: "column", alignItems: "center", gap: 8,
     })}>
       <PackArt pack={pack} scale={2} />
+      <div className="pack-info" style={{ flex: 1, minWidth: 0, width: "100%", display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
       <div style={{ fontSize: 8, color: pack.accent, letterSpacing: 1 }}>{pack.name}</div>
-      <div style={{ fontSize: 6, color: "#8a8aa7", lineHeight: 1.6, minHeight: 20 }}>{pack.blurb}</div>
+      <div className="pack-blurb" style={{ fontSize: 6, color: "#8a8aa7", lineHeight: 1.6, minHeight: 20 }}>{pack.blurb}</div>
 
       {/* The odds, as a bar per rarity: a table of four percentages is four
           numbers nobody reads, where the bar says "this one is better" at a
@@ -221,6 +235,7 @@ function PackCard({ pack, onOpen }: { pack: PackDef; onOpen: () => void }) {
           OPEN
         </button>
       </ChamferGlow>
+      </div>
     </div>
   );
 }

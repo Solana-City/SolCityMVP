@@ -715,21 +715,17 @@ export default function Home() {
   );
 }
 
-/** The lime outline round an active rail button, cut with the same chamfer as the
-    rest of the HUD: one clip-path with two octagons, filled between them only. */
+/** The lime outline round an active rail button. It is pixel art on the icon's
+    own grid (36x36 round a 32x32 octagon, 2px thick, same chamfer) rather than a
+    clip-path: a clipped polygon is anti-aliased and the icon is not, so on a phone
+    with a fractional pixel ratio (the Seeker, ~2.6x) the two rounded differently
+    and the top-left chamfer came out lopsided. */
 function ActiveRing() {
-  const c = 9, t = 2;
-  const ci = +(c - t * 0.586).toFixed(2); // keeps the diagonal the same thickness as the sides
-  const oct = (i: number, k: number) =>
-    `${i + k}px ${i}px, calc(100% - ${i + k}px) ${i}px, calc(100% - ${i}px) ${i + k}px, calc(100% - ${i}px) calc(100% - ${i + k}px), calc(100% - ${i + k}px) calc(100% - ${i}px), ${i + k}px calc(100% - ${i}px), ${i}px calc(100% - ${i + k}px), ${i}px ${i + k}px`;
   return (
-    <span
-      aria-hidden
-      style={{
-        position: "absolute", inset: 4, pointerEvents: "none",
-        background: "rgba(183,233,40,0.85)",
-        clipPath: `polygon(evenodd, ${oct(0, c)}, ${oct(t, ci)})`,
-      }}
+    <img
+      src="/assets/ui/ring_active.png" alt="" aria-hidden draggable={false}
+      width={36} height={36}
+      style={{ position: "absolute", left: 4, top: 4, imageRendering: "pixelated", pointerEvents: "none" }}
     />
   );
 }

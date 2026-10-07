@@ -379,7 +379,7 @@ export default function WhereIsNPCCard({ gameRef, wallet }: Props) {
         borderWidth: 20, borderStyle: "solid", borderColor: "transparent",
         borderImage: 'url(/assets/branding/ui/frame-panel-test.png) 64 fill / 20px / 0 round',
         imageRendering: "pixelated",
-        width: isTouch ? 176 : 224,
+        width: isTouch ? 208 : 224,
         fontFamily: '"Press Start 2P", monospace',
         color: "#d0d0f0",
         overflow: "hidden",
