@@ -220,6 +220,11 @@ export class PedestrianManager {
     const overlapY = Math.min(ba.bottom, bb.bottom) - Math.max(ba.top, bb.top);
     if (overlapX <= 0 || overlapY <= 0) return;
 
+    // Never nudge the hunted citizen — the nudge writes straight to x/y, and
+    // this contact happens on one client and not another, which is exactly
+    // how the target ends up in a slightly different spot on each screen.
+    if (a?.isDeterministic || b?.isDeterministic) return;
+
     const ca = aObj as unknown as Phaser.GameObjects.Container;
     const cb = bObj as unknown as Phaser.GameObjects.Container;
     if (overlapX < overlapY) {
@@ -241,6 +246,10 @@ export class PedestrianManager {
     const player = playerCont as unknown as Phaser.GameObjects.Container;
     const pedSprite = this.pedestrians.find(p => p.getContainer() === ped);
     if (!pedSprite) return;
+    // Walking into the hunted citizen must not shove it: only one of us is
+    // standing there, so the shove would happen on one screen and not the
+    // others. It behaves like an NPC for the round it is the target.
+    if (pedSprite.isDeterministic) return;
 
     // Cancel any physics impulse before nudging so the ped doesn't slide.
     pedSprite.cancelImpulse();
@@ -427,6 +436,10 @@ export class PedestrianManager {
       }
       ped.placeAt(wx, wy);
       ped.setLeash(district.rect);
+      // From here the round's citizen is driven by the wall clock, seeded on
+      // the slot — so (wx, wy), the district and every step after it are the
+      // same on every client, which is the whole promise of a shared hunt.
+      ped.setDeterministicWander({ x: wx, y: wy }, slot);
     };
     place();
   }
@@ -453,7 +466,9 @@ export class PedestrianManager {
 
     if (this.currentTargetIndex >= 0 && this.pedestrians[this.currentTargetIndex]) {
       this.pedestrians[this.currentTargetIndex].setAsTarget(false);
-      // Yesterday's citizen goes back to walking the whole city.
+      // Yesterday's citizen goes back to walking the whole city, on its own
+      // local stroll again rather than the shared clock.
+      this.pedestrians[this.currentTargetIndex].setDeterministicWander(null);
       this.pedestrians[this.currentTargetIndex].setLeash(null);
     }
     this.currentTargetIndex = newIndex;
@@ -472,6 +487,9 @@ export class PedestrianManager {
   }
 
   onTargetFound(): void {
+    // Hand it back to the local stroll before the celebration, so the
+    // celebration's own timing is not fighting a clock step.
+    this.pedestrians[this.currentTargetIndex]?.setDeterministicWander(null);
     this.pedestrians[this.currentTargetIndex]?.celebrateFound();
     this.pedestrians[this.currentTargetIndex]?.setLeash(null);
     this.relocateTimer?.remove(false);

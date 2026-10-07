@@ -76,6 +76,10 @@ const OPPOSITE: Record<Direction, Direction> = {
 };
 
 const INTERACT_RANGE = TILE_SIZE * 2;
+/** One clock step for the hunted citizen — matches the NPCs' 4s cadence. */
+const DETERMINISTIC_STEP_MS = 4_000;
+/** How far it may drift from the district spot the round anchored it to. */
+const DETERMINISTIC_RADIUS = TILE_SIZE * 1.5;
 /** A destination is "crowded" when this many peds already stand near it. */
 const CROWD_LIMIT = 4;
 const CROWD_RADIUS = TILE_SIZE * 2.5;
@@ -139,6 +143,9 @@ export class PedestrianSprite {
    * and walks the whole city as before.
    */
   private leash: Phaser.Geom.Rectangle | null = null;
+  /** Set only on the hunted citizen — see setDeterministicWander. */
+  private deterministic: { x: number; y: number; seed: number } | null = null;
+  private detTimer: Phaser.Time.TimerEvent | null = null;
 
   constructor(
     scene: Phaser.Scene,
@@ -226,6 +233,8 @@ export class PedestrianSprite {
 
   private tick() {
     if (!this.awake) return;
+    // The hunted citizen is driven by the clock, not by this steering.
+    if (this.deterministic) return;
     const container = this.avatar.getContainer();
     // Container/body can already be torn down (e.g. mid-recycle in
     // PedestrianManager.rotateBatch()) by the time this frame's "update"
@@ -279,6 +288,133 @@ export class PedestrianSprite {
   /** Confine (or release) this pedestrian's strolls. See `leash`. */
   setLeash(rect: Phaser.Geom.Rectangle | null): void {
     this.leash = rect;
+  }
+
+  /** True while the wall clock, not local physics, decides where this one is. */
+  get isDeterministic(): boolean {
+    return this.deterministic !== null;
+  }
+
+  /**
+   * Drives this pedestrian from the wall clock instead of the local physics
+   * stroll, so every client puts it in the same place at the same instant.
+   *
+   * Only the hunted citizen gets this. An ordinary pedestrian's position is
+   * local decoration, but the hunt only works if we are all looking at the
+   * same citizen standing in the same spot, and a physics stroll can never
+   * deliver that: it is steered frame by frame, so it diverges with frame
+   * timing, with who collided with whom, and (since off-camera pedestrians
+   * sleep) with where each player's camera happens to be.
+   *
+   * Same shape as NPCSprite.startDeterministicBehavior: a seeded PRNG keyed
+   * on (round slot + step index) picks each step's destination, and a client
+   * that joins mid-step snaps to the interpolated position it should already
+   * be at. Nothing here reads local state, so two browsers agree without
+   * exchanging a byte.
+   *
+   * Pass null to hand the citizen back to the ordinary stroll.
+   */
+  setDeterministicWander(origin: { x: number; y: number } | null, slotSeed = 0): void {
+    const container = this.avatar.getContainer();
+    this.detTimer?.remove(false);
+    this.detTimer = null;
+    if (container?.scene) this.scene.tweens.killTweensOf(container);
+
+    const body = container?.body as Phaser.Physics.Arcade.Body | undefined;
+
+    if (!origin) {
+      if (!this.deterministic) return;
+      this.deterministic = null;
+      body?.setImmovable(false);
+      this.showIdleFrame();
+      this.scheduleNextMove();
+      return;
+    }
+
+    // Stop the local stroll dead before the clock takes over.
+    this.moveTimer?.remove(false);
+    this.moveTimer = null;
+    this.isMoving = false;
+    this.target = null;
+    this.walkVx = 0;
+    this.walkVy = 0;
+    if (body) {
+      body.setVelocity(0, 0);
+      // Immovable for the same reason NPCs are: a citizen that can be shoved
+      // is a citizen standing somewhere else on your screen than on mine.
+      body.setImmovable(true);
+    }
+    this.deterministic = { x: origin.x, y: origin.y, seed: slotSeed >>> 0 };
+    this.runDeterministicStep(true);
+  }
+
+  /** Where the hunted citizen stands at a given wall-clock step. */
+  private deterministicTarget(step: number): { x: number; y: number } {
+    const d = this.deterministic!;
+    // mulberry32 over (round slot, step index) — identical on every client.
+    let s = (d.seed ^ Math.imul(step, 0x9e3779b9)) >>> 0;
+    const rnd = (): number => {
+      s += 0x6D2B79F5;
+      let t = Math.imul(s ^ (s >>> 15), 1 | s);
+      t ^= t + Math.imul(t ^ (t >>> 7), 61 | t);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+    const angle = rnd() * Math.PI * 2;
+    // Just over half the steps are a stand-still, so the citizen reads as
+    // someone loitering rather than pacing a circle.
+    const dist = rnd() < 0.55 ? 0 : (0.3 + rnd() * 0.7) * DETERMINISTIC_RADIUS;
+    let x = d.x + Math.cos(angle) * dist;
+    let y = d.y + Math.sin(angle) * dist;
+    // The district leash still wins: it is the promise the hunt card makes
+    // about where to look, and it is the same rectangle on every client.
+    if (this.leash) {
+      x = Math.max(this.leash.left, Math.min(this.leash.right, x));
+      y = Math.max(this.leash.top, Math.min(this.leash.bottom, y));
+    }
+    return { x, y };
+  }
+
+  private runDeterministicStep(snap: boolean): void {
+    const container = this.avatar.getContainer();
+    if (!container?.scene || !this.deterministic) return;
+
+    const now = Date.now();
+    const step = Math.floor(now / DETERMINISTIC_STEP_MS);
+    const from = this.deterministicTarget(step - 1);
+    const to = this.deterministicTarget(step);
+
+    if (snap) {
+      // Joining mid-step: be where the clock says we already are.
+      const progress = (now - step * DETERMINISTIC_STEP_MS) / DETERMINISTIC_STEP_MS;
+      this.avatar.x = from.x + (to.x - from.x) * progress;
+      this.avatar.y = from.y + (to.y - from.y) * progress;
+      (container.body as Phaser.Physics.Arcade.Body | undefined)
+        ?.reset(this.avatar.x, this.avatar.y);
+    }
+
+    const dx = to.x - container.x;
+    const dy = to.y - container.y;
+    const dist = Math.hypot(dx, dy);
+    const msLeft = DETERMINISTIC_STEP_MS - (now % DETERMINISTIC_STEP_MS);
+
+    if (dist > 1) {
+      const dir: Direction = Math.abs(dx) >= Math.abs(dy)
+        ? (dx > 0 ? "right" : "left")
+        : (dy > 0 ? "down" : "up");
+      this.lastDir = dir;
+      this.avatar.walk(dir);
+      this.scene.tweens.add({
+        targets: container,
+        x: to.x, y: to.y,
+        duration: Math.max(16, msLeft),
+        ease: "Linear",
+        onComplete: () => { if (this.deterministic) this.showIdleFrame(); },
+      });
+    } else {
+      this.showIdleFrame();
+    }
+
+    this.detTimer = this.scene.time.delayedCall(msLeft, () => this.runDeterministicStep(false));
   }
 
   /**
@@ -498,6 +634,10 @@ export class PedestrianSprite {
    * residual velocity (e.g. a shove that slid them into a neighbor) zeroed.
    */
   haltFromContact(): void {
+    // The hunted citizen does not react to being bumped: its whole position
+    // is a function of the clock, and anything local that moves it puts it
+    // somewhere different on this screen than on everyone else's.
+    if (this.deterministic) return;
     const container = this.avatar.getContainer();
     if (!container?.scene || !container.body) return;
     const body = container.body as Phaser.Physics.Arcade.Body;
@@ -566,6 +706,9 @@ export class PedestrianSprite {
 
   destroy() {
     this.moveTimer?.remove(false);
+    this.detTimer?.remove(false);
+    const container = this.avatar.getContainer();
+    if (container?.scene) this.scene.tweens.killTweensOf(container);
     this.scene.events.off("update", this.tick, this);
     this.avatar.destroy();
   }
