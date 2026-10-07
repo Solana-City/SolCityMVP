@@ -10,6 +10,31 @@ interface PhaserGameProps {
   onGameReady?: (game: Phaser.Game) => void;
 }
 
+/**
+ * Idle frame throttling.
+ *
+ * Rendering is about half of the CPU an idle tab spends: a profile of a
+ * standing player put `render` at 48.8% of the trace, with `batchQuad` the
+ * single most expensive function in it. That cost is per quad submitted, and
+ * the city submits thousands of them a frame — to redraw a picture that, for
+ * a player who is not touching anything, is nearly the one already on screen.
+ *
+ * So the loop drops to 30fps after a spell without input, and snaps back the
+ * instant anything is pressed, clicked or touched.
+ *
+ * Deliberately a throttle and NOT a sleep: this world keeps moving while you
+ * stand still. Pedestrians walk, NPCs step every 4 seconds, the football
+ * rolls, other players wander past. Pausing the loop would freeze all of
+ * that; halving its rate just renders it at 30, which on slow-moving pixel
+ * art is very hard to see.
+ *
+ * Arcade physics is unaffected: it runs fixedStep with a catch-up loop, so it
+ * keeps taking ~60 steps a second regardless of how often we draw.
+ */
+const ACTIVE_FPS_LIMIT = 240;
+const IDLE_FPS_LIMIT = 30;
+const IDLE_AFTER_MS = 10_000;
+
 export default function PhaserGame({ onGameReady }: PhaserGameProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const gameRef = useRef<Phaser.Game | null>(null);
@@ -54,6 +79,18 @@ export default function PhaserGame({ onGameReady }: PhaserGameProps) {
       pixelArt: true,
       roundPixels: true,
       antialias: false,
+      // This limit is not meant to limit anything at 240: it exists so that
+      // Phaser binds its RATE-LIMITED stepper at boot. TimeStep picks the
+      // step function once, in start(), based on hasFpsLimit (which is just
+      // `limit > 0`) — so without a limit here the unlimited stepper is bound
+      // for the life of the game and writing loop.fpsLimit later does
+      // literally nothing. With it, the limited stepper re-reads _limitRate
+      // every frame and the idle throttle below works.
+      //
+      // 240 rather than 60 because the limiter discards the surplus delta
+      // (`this.delta = 0` after each callback), so a limit equal to the
+      // display's own rate drops roughly every other frame and judders.
+      fps: { limit: ACTIVE_FPS_LIMIT },
       physics: {
         default: "arcade",
         arcade: {
@@ -112,6 +149,38 @@ export default function PhaserGame({ onGameReady }: PhaserGameProps) {
       );
     });
 
+    // See the constants above. _limitRate is what stepLimitFPS actually reads
+    // each frame; fpsLimit is kept in step so anything inspecting the loop
+    // (or __solCityStats) reports the truth.
+    let idle = false;
+    let lastInput = performance.now();
+    const applyFps = (fps: number) => {
+      const loop = gameRef.current?.loop as
+        (Phaser.Core.TimeStep & { _limitRate: number }) | undefined;
+      if (!loop) return;
+      loop.fpsLimit = fps;
+      loop._limitRate = 1000 / fps;
+    };
+    const onInput = () => {
+      lastInput = performance.now();
+      if (!idle) return;
+      idle = false;
+      applyFps(ACTIVE_FPS_LIMIT);
+    };
+    const idleWatch = window.setInterval(() => {
+      if (idle || performance.now() - lastInput < IDLE_AFTER_MS) return;
+      idle = true;
+      applyFps(IDLE_FPS_LIMIT);
+    }, 2_000);
+    // Capture phase, because the React panels and the touch joystick stop
+    // plenty of these from bubbling to window.
+    const INPUT_EVENTS = [
+      "keydown", "pointerdown", "pointermove", "touchstart", "touchmove", "wheel",
+    ] as const;
+    for (const ev of INPUT_EVENTS) {
+      window.addEventListener(ev, onInput, { capture: true, passive: true });
+    }
+
     try {
       gameRef.current = new Phaser.Game(config);
       onGameReady?.(gameRef.current);
@@ -123,6 +192,10 @@ export default function PhaserGame({ onGameReady }: PhaserGameProps) {
 
     return () => {
       observer.disconnect();
+      window.clearInterval(idleWatch);
+      for (const ev of INPUT_EVENTS) {
+        window.removeEventListener(ev, onInput, { capture: true });
+      }
       gameRef.current?.destroy(true);
       gameRef.current = null;
     };

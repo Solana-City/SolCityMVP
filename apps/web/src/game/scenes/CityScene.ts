@@ -1476,8 +1476,12 @@ export class CityScene extends Phaser.Scene {
       this.walkStartAt = 0; // stopped — reset the intensity ramp
       // Delay idle by ~8 frames so a brief tap shows at least 1 walk animation
       // frame (frameRate=8 → 125ms/frame; 8 game frames ≈ 133ms at 60fps).
-      if (this.idleDelay < 8) {
-        this.idleDelay++;
+      // Milliseconds, not frames. This used to count 8 frames "≈133ms at
+      // 60fps", which silently became ~266ms once the loop started dropping
+      // to 30 while the player is idle — and this is exactly the moment the
+      // loop is idle, so it was the one place guaranteed to be wrong.
+      if (this.idleDelay < 133) {
+        this.idleDelay += this.game.loop.delta;
       } else {
         this.avatar.idle();
       }
