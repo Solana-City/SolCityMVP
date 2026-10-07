@@ -167,6 +167,10 @@ export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
     { id: "Magawk_blue", name: "Magawk Blue", textureKey: "pd-hair-Magawk_blue", file: "hair/Magawk_blue.png" },
     { id: "Magawk_green",name: "Magawk Green",textureKey: "pd-hair-Magawk_green",file: "hair/Magawk_green.png" },
     { id: "Magawk_red",  name: "Magawk Red",  textureKey: "pd-hair-Magawk_red",  file: "hair/Magawk_red.png" },
+    { id: "black_long",  name: "Long Black Hair", textureKey: "pd-hair-black_long", file: "hair/black_long.png" },
+    // Facial hair rides the hair slot, so a beard and a hairstyle cannot be
+    // worn at the same time. That is the slot's shape, not a choice made here.
+    { id: "brown_beard", name: "Brown Beard", textureKey: "pd-hair-brown_beard", file: "hair/brown_beard.png" },
   ],
   hat: [
     // Earned, not boxed: the reward for a 7-day check-in streak. Moved out of
@@ -185,6 +189,8 @@ export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
     { id: "hat_black",  name: "Black Hat",  textureKey: "pd-hat-hat_black",  file: "hat/hat_black.png" },
     { id: "hat_red",    name: "Red Hat",    textureKey: "pd-hat-hat_red",    file: "hat/hat_red.png" },
     { id: "red_belt",   name: "Red Bandana",textureKey: "pd-hat-red_belt",   file: "hat/red_belt.png", hatCoverage: "band" },
+    { id: "city_cap",   name: "City Cap",   textureKey: "pd-hat-city_cap",   file: "hat/city_cap.png" },
+    { id: "turkish_head", name: "Turkish Hat", textureKey: "pd-hat-turkish_head", file: "hat/turkish_head.png" },
     // Superteam Brasil set — earned, never dropped by a booster (see unlockVia).
     { id: "STB_cap", name: "Superteam Brasil Cap", textureKey: "pd-hat-STB_cap",
       file: "hat/STB_cap.png", unlockVia: "quest", unlockHint: "Win a round of Kite Clash" },
