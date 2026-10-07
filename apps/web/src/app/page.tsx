@@ -624,7 +624,7 @@ export default function Home() {
                 <Framed width={9}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, padding: 4 }}>
                     <span style={{ display: "block", flexShrink: 0 }}>
-                      <ProfileButton gameRef={game} size={70} onClick={() => setProfileOpen(true)} />
+                      <ProfileButton gameRef={game} size={60} frame="thin" onClick={() => setProfileOpen(true)} />
                     </span>
                     <span style={{ display: "flex", gap: 4, flexShrink: 0, marginLeft: "auto" }}>
                       <WardrobeButton size={34} onClick={() => setWardrobeOpen(true)} />
