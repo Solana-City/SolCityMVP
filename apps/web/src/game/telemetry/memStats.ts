@@ -14,6 +14,12 @@ import * as Phaser from "phaser";
  */
 
 export interface MemStats {
+  /** Frames actually achieved over the last second. */
+  fps: number;
+  /** The frame limiter's current setting: ~65 active, 30 idle, 0 if uncapped. */
+  fpsCap: number;
+  /** "canvas" on phones, "webgl" on desktop — their costs are not comparable. */
+  renderer: "canvas" | "webgl";
   /** JS heap in use, MB (Chrome only). */
   heapMB: number | null;
   /** Cells across every tilemap layer — each is a Tile object. */
@@ -52,7 +58,25 @@ export function readMemStats(scene: Phaser.Scene): MemStats {
 
   const world = (scene.physics as Phaser.Physics.Arcade.ArcadePhysics | undefined)?.world;
 
+  // Frame rate belongs here because on a phone this log IS the instrument:
+  // a release APK has WebView debugging off, so there is no DevTools to
+  // attach — but the shell forwards console to logcat, so `adb logcat` can
+  // read these lines off a real device with no cable ceremony beyond USB.
+  const loop = scene.game.loop as Phaser.Core.TimeStep & { _limitRate?: number };
+  const rate = loop._limitRate ?? 0;
+
   return {
+    fps: Math.round(loop.actualFps),
+    // What the frame limiter is set to right now: ~65 active, 30 idle. The
+    // pair (fps, fpsCap) is what says whether the idle throttle engaged, or
+    // whether the device simply cannot reach the cap.
+    fpsCap: rate > 0 ? Math.round(1000 / rate) : 0,
+    // Phones are forced to Canvas2D (see PhaserGame), where cost scales with
+    // the number of draws rather than with batched quads — so a desktop
+    // profile does not transfer, and this says which renderer produced the
+    // numbers below.
+    renderer: scene.game.renderer instanceof Phaser.Renderer.Canvas.CanvasRenderer
+      ? "canvas" : "webgl",
     heapMB: perf.memory ? Math.round(perf.memory.usedJSHeapSize / 1048576) : null,
     tileCells,
     textures,
@@ -74,7 +98,8 @@ export function startMemStats(scene: Phaser.Scene): () => void {
   const log = () => {
     const s = read();
     console.log(
-      `[mem] heap ${s.heapMB ?? "?"}MB | tiles ${s.tileCells.toLocaleString()}` +
+      `[mem] ${s.fps}fps/${s.fpsCap || "∞"} ${s.renderer}` +
+      ` | heap ${s.heapMB ?? "?"}MB | tiles ${s.tileCells.toLocaleString()}` +
       ` | tex ${s.textures} (${s.textureMB}MB, ${s.canvasTextures} canvas)` +
       ` | objs ${s.displayObjects} | tweens ${s.tweens} | timers ${s.timers}` +
       ` | anims ${s.animations} | bodies ${s.bodies}`,
