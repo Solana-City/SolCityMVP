@@ -2028,6 +2028,13 @@ export class OnChainMultiplayer {
       }
       offset += 1 + (hasSession ? 32 : 0);
 
+      // Our own account arrives in every ER getProgramAccounts page (the PDA
+      // poll filters self, the discovery sweep cannot), and the whole parse
+      // below was being thrown away at the end. Bail here instead: this is the
+      // earliest point where it is safe, because the session->wallet line above
+      // is the one thing we do need from our own record.
+      if (walletStr === this.wallet?.toBase58()) return;
+
       // display_name: 4-byte length + UTF-8 string (max 20 bytes)
       const nameLen = Math.min(buf.readUInt32LE(offset), 20);
       offset += 4;
@@ -2093,7 +2100,7 @@ export class OnChainMultiplayer {
       const streakCurrent = readU16();
       const streakBest    = readU16();
 
-      if (walletStr === this.wallet?.toBase58()) return; // skip self
+      // (self already returned above, right after the session->wallet line)
 
       // Watching last_active move forward dates the device clock against the
       // chain: this write is happening now on both. It has to be the SAME
