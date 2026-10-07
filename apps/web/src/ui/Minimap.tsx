@@ -322,15 +322,31 @@ function CompactMap({ host, mobile, corners, bare, onOpen, onCollapse }: {
     // fresh radial gradient, all to produce the picture already on screen.
     // Nothing here reads as choppy at 20: the YOU dot crosses a 176px disc
     // slowly, and the pulse is a slow breath.
-    const MIN_FRAME_MS = 1000 / 20;
+    // Two rates, because almost every frame of an idle session redrew a
+    // picture identical to the one already on screen. MOVING_MS is the
+    // ceiling while anything is actually moving; STILL_MS is what a standing
+    // player costs, and it exists only so the YOU pulse keeps breathing — a
+    // slow pulse reads exactly the same at 5fps as at 60.
+    const MOVING_MS = 1000 / 20;
+    const STILL_MS = 1000 / 5;
     let lastDraw = -Infinity;
+    // Cheap movement fingerprint: our rounded position, how many other
+    // players are on the map, and the sum of their rounded coordinates.
+    // Enough to catch anyone moving a whole pixel, with no allocation.
+    let lastMark = NaN;
     const loop = (t: number) => {
       raf = requestAnimationFrame(loop);
-      if (t - lastDraw < MIN_FRAME_MS) return;
-      lastDraw = t;
+      if (t - lastDraw < MOVING_MS) return;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       const snap = host.snapshot();
       const me = snap.player ?? { x: host.worldW / 2, y: host.worldH / 2 };
+
+      let mark = Math.round(me.x) * 8191 + Math.round(me.y);
+      for (const p of snap.players) mark += Math.round(p.x) + Math.round(p.y);
+      const still = mark === lastMark;
+      lastMark = mark;
+      if (still && t - lastDraw < STILL_MS) return;
+      lastDraw = t;
       // Stop at the city's edges: near a border the window holds still and the
       // YOU dot moves toward the rim, instead of the map sliding off into blue.
       const half = D / 2 / zoom;
