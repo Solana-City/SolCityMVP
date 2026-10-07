@@ -62,12 +62,21 @@ export const RARITY_COLOR: Record<Rarity, string> = {
  * fixed alpha, which is what keeps four rarities reading as one system.
  */
 export interface RarityTheme {
-  /** The line itself: border, label text, odds bar. */
+  /** The line at rest: border, label text, odds bar. */
   color: string;
-  /** The same line on a tile that is locked or otherwise stood down. */
+  /** The line stood down, for a locked tile. Still legible AS the rarity. */
   muted: string;
+  /**
+   * The line at full strength, for the one tile that is selected. Selection
+   * is drawn in the item's OWN colour, never a separate accent — a second
+   * hue in a grid of four rarities reads as a fifth rarity, not as "this one
+   * is on". Weight carries selection; see the wardrobe's SELECTED_BORDER.
+   */
+  strong: string;
   /** Behind the item, so the frame is not a lone outline. */
   fill: string;
+  /** The same tint, raised, for the selected tile. */
+  fillStrong: string;
   /** For a drop-shadow on the rarities worth lighting up. */
   glow: string;
   label: string;
@@ -76,23 +85,27 @@ export interface RarityTheme {
 /** Hex + two-digit alpha. The palette is authored as 6-digit hex on purpose. */
 const alpha = (hex: string, aa: string) => `${hex}${aa}`;
 
-/** Fill and glow strength per rarity: common stays flat, legendary burns. */
-const RARITY_WEIGHT: Record<Rarity, { fill: string; glow: string }> = {
-  common: { fill: "0d", glow: "00" },
-  uncommon: { fill: "16", glow: "55" },
-  rare: { fill: "1c", glow: "66" },
-  legendary: { fill: "22", glow: "88" },
+/** Tint and glow strength per rarity: common stays flat, legendary burns. */
+const RARITY_WEIGHT: Record<Rarity, { fill: string; fillStrong: string; glow: string }> = {
+  common: { fill: "0d", fillStrong: "26", glow: "00" },
+  uncommon: { fill: "16", fillStrong: "33", glow: "55" },
+  rare: { fill: "1c", fillStrong: "38", glow: "66" },
+  legendary: { fill: "22", fillStrong: "40", glow: "88" },
 };
 
 /** One step down for every rarity: a locked item still says what it is. */
 const MUTED = "55";
 
 /** An item with no rarity at all (a free shirt, a quest reward). Same shape,
- *  so a grid can frame every tile without asking whether it drops. */
+ *  so a grid can frame every tile without asking whether it drops. Its line
+ *  is deliberately faint at rest, which is why `strong` has further to climb
+ *  here than it does for a rarity that is already a full-strength hex. */
 export const UNRANKED_THEME: RarityTheme = {
   color: "rgba(255,255,255,0.10)",
   muted: "rgba(255,255,255,0.04)",
+  strong: "rgba(255,255,255,0.50)",
   fill: "rgba(255,255,255,0.02)",
+  fillStrong: "rgba(255,255,255,0.08)",
   glow: "transparent",
   label: "",
 };
@@ -101,7 +114,9 @@ const RARITY_THEME: Record<Rarity, RarityTheme> = Object.fromEntries(
   RARITY_ORDER.map((r) => [r, {
     color: RARITY_COLOR[r],
     muted: alpha(RARITY_COLOR[r], MUTED),
+    strong: RARITY_COLOR[r],
     fill: alpha(RARITY_COLOR[r], RARITY_WEIGHT[r].fill),
+    fillStrong: alpha(RARITY_COLOR[r], RARITY_WEIGHT[r].fillStrong),
     glow: alpha(RARITY_COLOR[r], RARITY_WEIGHT[r].glow),
     label: RARITY_LABEL[r],
   }]),

@@ -693,8 +693,9 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
   );
 }
 
-/** Frame weight. Selected is deliberately double, so it reads as selected
- *  before the eye has to work out which colour it is. */
+/** Frame weight. Selection is WEIGHT, not hue: the frame keeps the item's
+ *  own rarity colour and simply doubles, because a lime accent in a grid of
+ *  four rarity colours competes with them instead of standing out. */
 const BORDER = 2;
 const SELECTED_BORDER = 4;
 
@@ -725,16 +726,13 @@ function VariantCard({
   const theme = rarityTheme(rarity);
   const baseBg = locked
     ? "rgba(255,255,255,0.015)"
-    : isSelected ? "rgba(183,233,40,0.15)"
+    : isSelected ? theme.fillStrong
     : isFlashing ? "rgba(183,233,40,0.08)"
     : theme.fill;
-  // Selection is BOTH the colour and the weight. Colour alone has to compete
-  // with four rarity colours around it; a frame twice as thick does not.
-  const width = isSelected ? SELECTED_BORDER : BORDER;
   const baseBorder = hintFlashing
     ? `${BORDER}px solid rgba(255,215,0,0.6)`
     : locked ? `${BORDER}px solid ${theme.muted}`
-    : isSelected ? `${width}px solid #B7E928`
+    : isSelected ? `${SELECTED_BORDER}px solid ${theme.strong}`
     : `${BORDER}px solid ${theme.color}`;
   return (
     <button
@@ -762,8 +760,10 @@ function VariantCard({
       })}
       onMouseEnter={e => {
         if (!isSelected && !locked) {
-          e.currentTarget.style.backgroundColor = "rgba(183,233,40,0.09)";
-          e.currentTarget.style.setProperty("--cbc", "rgba(183,233,40,0.35)");
+          // Hover brightens the item's own colour rather than washing it lime,
+          // so it previews what picking the tile would look like.
+          e.currentTarget.style.backgroundColor = theme.fillStrong;
+          e.currentTarget.style.setProperty("--cbc", theme.strong);
         }
         e.currentTarget.style.transform = "scale(1.03)";
       }}
