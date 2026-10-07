@@ -2,6 +2,7 @@
 // colour knocked out.
 //
 //   node apps/web/scripts/import-sprite-sheet.mjs <source.png> "<Sprite Key>"
+//   node apps/web/scripts/import-sprite-sheet.mjs <source.png> paperdoll/hat/Seeker_hat
 //
 // Sheets arrive on a flat colour (the artist's canvas) which has to become
 // transparent, and under a name that says nothing (seeker.png). The file lands
@@ -14,17 +15,19 @@
 // catches a sheet that was saved through a lossy step on the way here.
 
 import { Jimp, intToRGBA } from "jimp";
+import { mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const [source, key] = process.argv.slice(2);
-if (!source || !key) {
-  console.error('usage: import-sprite-sheet.mjs <source.png> "<Sprite Key>"');
+const [source, name] = process.argv.slice(2);
+if (!source || !name) {
+  console.error('usage: import-sprite-sheet.mjs <source.png> "<Sprite Key>" | <sub/folder/name>');
   process.exit(1);
 }
 
 const here = dirname(fileURLToPath(import.meta.url));
-const out = join(here, "../public/assets/sprites", `${key}.png`);
+const out = join(here, "../public/assets/sprites", `${name}.png`);
+mkdirSync(dirname(out), { recursive: true });
 
 /** How far a pixel may sit from the background colour and still be knocked out. */
 const TOLERANCE = 12;
@@ -51,7 +54,7 @@ await img.write(out);
 
 const hex = `#${[bg.r, bg.g, bg.b].map((v) => v.toString(16).padStart(2, "0")).join("")}`;
 const pct = ((100 * cleared) / (img.width * img.height)).toFixed(1);
-console.log(`${key}.png  ${img.width}x${img.height}`);
+console.log(`${name}.png  ${img.width}x${img.height}`);
 console.log(`background ${hex} cleared on ${pct}% of the sheet`);
 if (img.width % 64 === 0 && img.height % 64 === 0) {
   console.log(`grid ${img.width / 64} x ${img.height / 64} frames of 64px`);
