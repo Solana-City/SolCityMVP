@@ -477,7 +477,9 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
             <div key={msg.id} className="leading-relaxed mb-0.5" style={{ fontSize: 8, overflowWrap: "anywhere", wordBreak: "break-word" }}>
               <SenderName
                 name={msg.senderName}
-                wallet={msg.senderWallet}
+                // Not your own: the card would open on you, which is a trip to
+                // the profile you already have a button for.
+                wallet={msg.senderWallet === myWallet ? undefined : msg.senderWallet}
                 color={msg.color || channelColor}
                 onOpen={openCard}
               />
@@ -604,9 +606,14 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
  *
  * The same card clicking the player in the street opens, through the same
  * event, so there is one way for the city to show somebody and not two. A
- * system line and anything that arrived without a wallet stay plain text:
- * underlining something that does nothing is the complaint the dialogue
- * highlight cards already earned.
+ * system line, your own name, and anything that arrived without a wallet stay
+ * plain text: marking something that does nothing is the complaint the
+ * dialogue highlight cards already earned.
+ *
+ * Hovering BRIGHTENS the name rather than underlining or emboldening it. At
+ * 8px in a pixel font, an underline sits on the glyphs and a synthetic bold
+ * smears them, and both change how much room the line takes; brightness
+ * changes nothing but the light.
  */
 function SenderName({ name, wallet, color, onOpen }: {
   name: string;
@@ -623,12 +630,14 @@ function SenderName({ name, wallet, color, onOpen }: {
       onMouseLeave={() => setHover(false)}
       title={`Open ${name}'s profile`}
       style={{
-        // A name, not a button: no frame, no padding, no background. The only
-        // thing that marks it is the cursor, and an underline under the
-        // pointer.
+        // A name, not a button: no frame, no padding, no background. What
+        // marks it is the cursor, and the name lighting up under the pointer.
         font: "inherit", color, background: "none", border: "none",
         padding: 0, margin: 0, cursor: "pointer", lineHeight: "inherit",
-        textDecoration: hover ? "underline" : "none",
+        textDecoration: "none",
+        filter: hover ? "brightness(1.45)" : "none",
+        textShadow: hover ? `0 0 6px ${color}66` : "none",
+        transition: "filter 0.1s linear",
       }}
     >
       {name}
