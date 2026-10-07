@@ -208,7 +208,7 @@ export class CityScene extends Phaser.Scene {
     // Drop every game-level listener when this scene goes away, and stop the
     // outfit-reward subscription with it — both live on buses that outlast the
     // scene, so without this a restart would double them.
-    this.events.once("shutdown", () => {
+    this.onTeardown(() => {
       this.teardownGameEvents();
       stopWatchingNpcConversations();
     });
@@ -522,7 +522,7 @@ export class CityScene extends Phaser.Scene {
         this.bakedGround = bakeStaticLayers(this, statics);
         if (this.bakedGround) {
           const baked = this.bakedGround;
-          this.events.once("shutdown", () => baked.destroy());
+          this.onTeardown(() => baked.destroy());
           console.log(`[CityScene] baked ${statics.length} static layers (${baked.tiles.toLocaleString()} tiles) into ${baked.chunks} chunk textures`);
         }
       }
@@ -552,12 +552,12 @@ export class CityScene extends Phaser.Scene {
     const destroyStockScreens = createStockExchange(
       this, allLayers.find(l => l.layer.name.endsWith("BuildStocklana")),
     );
-    this.events.once("shutdown", destroyStockScreens);
+    this.onTeardown(destroyStockScreens);
 
     // Waving props (the Superteam Turkey flag by the Remedi building): sprites,
     // not tiles, since Phaser does not play Tiled's tile animations.
     const destroyDecor = createAnimatedDecor(this, FOREGROUND_DEPTH, this.collisionLayers[0]);
-    this.events.once("shutdown", destroyDecor);
+    this.onTeardown(destroyDecor);
 
     // The football on the ST Brasil beach. It runs its own simulation rather
     // than an arcade body: every client has to integrate the same roll from
@@ -582,7 +582,7 @@ export class CityScene extends Phaser.Scene {
         }
       },
     );
-    this.events.once("shutdown", () => { this.beachBall?.destroy(); this.beachBall = null; });
+    this.onTeardown(() => { this.beachBall?.destroy(); this.beachBall = null; });
 
     // Spawn on the central fountain's walkway (col 78, row 38) — the two-tile
     // flight of steps climbing from the south path up to the sculpture...
@@ -659,7 +659,7 @@ export class CityScene extends Phaser.Scene {
     const onHide = () => saveSpot();
     window.addEventListener("pagehide", onHide);
     document.addEventListener("visibilitychange", onHide);
-    this.events.once("shutdown", () => {
+    this.onTeardown(() => {
       saveTimer.remove();
       window.removeEventListener("pagehide", onHide);
       document.removeEventListener("visibilitychange", onHide);
@@ -667,7 +667,7 @@ export class CityScene extends Phaser.Scene {
 
     // Memory census: __solCityStats() in the console, and a [mem] line a minute.
     const stopMemStats = startMemStats(this);
-    this.events.once("shutdown", stopMemStats);
+    this.onTeardown(stopMemStats);
 
     // Where the player can go = the tilesets' authored collision + the
     // ColliderInvisible barrier layer + the world bounds (the map edges). No
@@ -693,7 +693,7 @@ export class CityScene extends Phaser.Scene {
     const buffBadge = this.attachBuffBadge(this.avatar, isBuffActive("vietnamese-coffee"));
     if (buffBadge) {
       const offBuffs = onBuffsChanged(() => buffBadge.setVisible(isBuffActive("vietnamese-coffee")));
-      this.events.once("shutdown", offBuffs);
+      this.onTeardown(offBuffs);
     }
     const showOwnName = () => {
       const n = this.walletAddress ? cachedName(this.walletAddress) : null;
@@ -714,7 +714,7 @@ export class CityScene extends Phaser.Scene {
       delay: 60_000, loop: true,
       callback: () => requestNames([...this.remotePlayers.keys()], true),
     });
-    this.events.once("shutdown", () => {
+    this.onTeardown(() => {
       window.removeEventListener(NAME_CHANGED_EVENT, onNameChanged);
       offNames();
       nameRefresh.remove();
@@ -948,7 +948,7 @@ export class CityScene extends Phaser.Scene {
     // position sync, which fires ten times a second and would be all noise.
     const stopHeatmap = startHeatmap(() =>
       this.avatar ? { x: this.avatar.x, y: this.avatar.y } : null);
-    this.events.once("shutdown", stopHeatmap);
+    this.onTeardown(stopHeatmap);
 
     // Register callbacks immediately so they are active during discovery.
     // CRITICAL: setupNetworkCallbacks must be called BEFORE network.connect()
@@ -1644,6 +1644,30 @@ export class CityScene extends Phaser.Scene {
    * ladder, same labels, same backing store, nothing moves when you press
    * the button.
    */
+  /**
+   * Runs `fn` once when this scene goes away — on EITHER lifecycle event.
+   *
+   * These were all registered on "shutdown" alone, and PhaserGame tears the
+   * game down with game.destroy(true). That path reaches Systems.destroy(),
+   * which emits DESTROY and never SHUTDOWN (and then strips every listener),
+   * so none of this cleanup ran on unmount: the document listeners, the
+   * heatmap and memory samplers, the game-event unbinding, all left behind.
+   *
+   * Errors are caught per step. During DESTROY the scene is already half torn
+   * down, so a step that expects a live scene can throw — and one throwing
+   * must not stop the nine after it from running.
+   */
+  private onTeardown(fn: () => void): void {
+    let done = false;
+    const run = () => {
+      if (done) return;
+      done = true;
+      try { fn(); } catch (err) { console.warn("[CityScene] teardown step failed:", err); }
+    };
+    this.events.once("shutdown", run);
+    this.events.once("destroy", run);
+  }
+
   private applyZoomSmoothing(zoom: number): void {
     const canvas = this.game.canvas as HTMLCanvasElement | null;
     if (!canvas) return;
