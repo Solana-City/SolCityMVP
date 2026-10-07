@@ -158,7 +158,7 @@ export class PedestrianManager {
    */
   setupColliders(
     playerContainer: Phaser.GameObjects.Container,
-    npcContainers: Phaser.GameObjects.Container[],
+    npcGroup: Phaser.Physics.Arcade.Group,
   ): void {
     const scene = this.scene;
 
@@ -178,10 +178,9 @@ export class PedestrianManager {
       this,
     );
 
-    // Peds can't walk through fixed NPCs
-    for (const nc of npcContainers) {
-      scene.physics.add.collider(this.pedGroup, nc);
-    }
+    // Peds can't walk through fixed NPCs. One group-vs-group collider instead
+    // of one per NPC: same separation, 23 fewer collider objects per step.
+    scene.physics.add.collider(this.pedGroup, npcGroup);
 
     // Peds can't walk through each other — but they must NEVER push each
     // other either. A collider transfers momentum during separation (the

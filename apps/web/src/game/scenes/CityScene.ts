@@ -151,6 +151,12 @@ export class CityScene extends Phaser.Scene {
   private expressionTimer: Phaser.Time.TimerEvent | null = null;
   private chatInputActive = false;
   private npcSprites: NPCSprite[] = [];
+  /**
+   * Every NPC body in one physics group, so the player and the crowd each
+   * need a single collider against all of them instead of one per NPC.
+   * Built with `immovable: true` deliberately — see the spawn loop.
+   */
+  private npcGroup!: Phaser.Physics.Arcade.Group;
   /** A shove in progress from a repelling NPC — see applyRepel. */
   private shove: { dx: number; dy: number; v0: number; ms: number; until: number } | null = null;
   private pedestrians!: PedestrianManager;
@@ -1058,6 +1064,20 @@ export class CityScene extends Phaser.Scene {
       this.game.events.emit("wallet:connected", pendingWallet);
     }
 
+    // One group for every NPC body. This used to be a collider per NPC — the
+    // player against each of the 23, and the crowd against each of the 23
+    // again (see PedestrianManager.setupColliders) — so 46 collider objects
+    // were walked on every physics step to do the work of two.
+    //
+    // `immovable: true` is load-bearing, not decoration. Arcade applies a
+    // table of defaults to every body added to a physics group, and that
+    // table includes `setImmovable: false`, so a bare physics.add.group()
+    // would silently undo the setImmovable(true) below and let players and
+    // pedestrians shove NPCs off their posts. Belt and braces: the explicit
+    // setImmovable(true) after the add keeps the intent visible in the code
+    // and survives anyone editing this group config later.
+    this.npcGroup = this.physics.add.group({ immovable: true });
+
     // NPCs — position read from Tiled NPC layer, scanned to first walkable row
     for (const def of NPC_REGISTRY) {
       if (def.enabled === false) continue;
@@ -1067,14 +1087,20 @@ export class CityScene extends Phaser.Scene {
       const npc = new NPCSprite(this, def, wx, wy, this.collisionLayers);
       this.npcSprites.push(npc);
 
+      // Adding to the group creates and enables the body (so the old explicit
+      // physics.world.enable is gone) and applies the group defaults. Size and
+      // offset are NOT in that default table, so setting them after the add is
+      // safe; immovable IS, which is why it is set in the group config above.
       const npcContainer = npc.getContainer();
-      this.physics.world.enable(npcContainer);
+      this.npcGroup.add(npcContainer);
       const npcBody = npcContainer.body as Phaser.Physics.Arcade.Body;
       npcBody.setSize(TILE_SIZE * 0.6, TILE_SIZE * 0.4);
       npcBody.setOffset(-TILE_SIZE * 0.3, -TILE_SIZE * 0.2);
       npcBody.setImmovable(true);
-      this.physics.add.collider(container, npcContainer);
     }
+
+    // 23 player-vs-NPC colliders collapse into this one.
+    this.physics.add.collider(container, this.npcGroup);
 
     // Minimap: drawn from these same layers, so it always matches the map.
     publishMinimap(this, map, allLayers, {
@@ -1123,10 +1149,7 @@ export class CityScene extends Phaser.Scene {
     // Pedestrians + "Where Is NPC?" hunt game
     this.pedestrians = new PedestrianManager();
     this.pedestrians.spawn(this, this.collisionLayers, map, 78, 38);
-    this.pedestrians.setupColliders(
-      container,
-      this.npcSprites.map(n => n.getContainer()),
-    );
+    this.pedestrians.setupColliders(container, this.npcGroup);
 
     // Citizen expiry + target sync. When the current citizen's per-citizen
     // countdown runs out unfound, rotate to the next one and reset the
