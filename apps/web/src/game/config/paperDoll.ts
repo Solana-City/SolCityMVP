@@ -188,6 +188,11 @@ export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
     // Superteam Brasil set — earned, never dropped by a booster (see unlockVia).
     { id: "STB_cap", name: "Superteam Brasil Cap", textureKey: "pd-hat-STB_cap",
       file: "hat/STB_cap.png", unlockVia: "quest", unlockHint: "Win a round of Kite Clash" },
+    // Seeker Lover's gift. unlockVia also keeps it out of the booster pool,
+    // which is every item that is neither free nor spoken for.
+    { id: "Seeker_hat", name: "Seeker Hat", textureKey: "pd-hat-Seeker_hat",
+      file: "hat/Seeker_hat.png", unlockVia: "quest",
+      unlockHint: "Hold SKR and talk to Seeker Lover" },
   ],
 };
 

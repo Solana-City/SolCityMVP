@@ -3,7 +3,7 @@ import { profileManager } from "@/game/config/profileManager";
 import { progressionBus } from "@/game/progression/progressionBus";
 import { unlockItem } from "@/game/config/wardrobeUnlocks";
 import { getVariant } from "@/game/config/paperDoll";
-import { holdsSkr } from "@/game/solana/seekerDetection";
+import { skrBalance } from "@/game/solana/seekerDetection";
 
 /**
  * Earned outfits: items a player unlocks by doing something, never by rolling
@@ -30,12 +30,12 @@ const REWARDS = {
   stbrCrew:  { category: "tshirt", id: "Brazilian_shirt", name: "Brazil Shirt" },
   streak7:   { category: "hat", id: "Cap_Sol", name: "Cap Sol" },
   firstTrade: { category: "accessory", id: "Trader_shades", name: "Trader Shades" },
-  // Seeker Lover's gift, for holding SKR. The art is not in yet: until the
-  // variant exists in paperDoll.ts this grant is a no-op, so nothing can be
-  // equipped that has no sprite. When the art lands, add the variant and this
-  // starts working with no change here. If the spriter makes something other
-  // than a cap, these two fields are the only edit.
-  skrHolder: { category: "hat", id: "Seeker_cap", name: "Seeker Cap" },
+  // Seeker Lover's gifts, for holding SKR: the hat for any amount at all, the
+  // backpack for holding a real position.
+  skrHolder: { category: "hat", id: "Seeker_hat", name: "Seeker Hat" },
+  // Waiting on its art and on the threshold below. grant() skips a reward whose
+  // variant is missing, so this stays inert until both land.
+  skrBackpack: { category: "back", id: "Seeker_backpack", name: "Seeker Backpack" },
   // Earned by actually striking ORE, not by staking a claim: the helmet is a
   // trophy, not a receipt for turning up.
   //
@@ -46,8 +46,15 @@ const REWARDS = {
   oreMiner: { category: "hat", id: "Miner_helmet", name: "Miner Helmet" },
 } as const;
 
-/** NPC who checks SKR and hands over the gift. */
+/** NPC who checks SKR and hands over the gifts. */
 const SEEKER_LOVER_ID = "seeker-lover";
+
+/**
+ * How much SKR earns the backpack. Still to be decided, and null until it is:
+ * the hat is for holding any SKR at all, so the backpack has to mean something
+ * more than that.
+ */
+const SKR_FOR_BACKPACK: number | null = null;
 
 /** Best check-in streak that earns the Solana cap. */
 const STREAK_FOR_CAP = 7;
@@ -103,7 +110,13 @@ function grant(reward: { category: string; id: string; name: string }): void {
 async function grantSkrGift(): Promise<void> {
   const wallet = profileManager.get().wallet;
   if (!wallet) return;
-  if (await holdsSkr(wallet)) grant(REWARDS.skrHolder);
+  const balance = await skrBalance(wallet);
+  if (balance <= 0) return;
+  grant(REWARDS.skrHolder);
+  // TODO: SKR_FOR_BACKPACK is undecided, so the second gift cannot be earned
+  // yet. Null rather than zero on purpose: zero would hand the backpack to
+  // anyone holding a single token, which is the hat's job.
+  if (SKR_FOR_BACKPACK !== null && balance >= SKR_FOR_BACKPACK) grant(REWARDS.skrBackpack);
 }
 
 /** True once the wallet has met the whole ST Brasil crew. */
