@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { CATEGORY_LABELS } from "@/game/config/paperDoll";
 import {
-  PACKS, RARITY_COLOR, RARITY_LABEL, RARITY_ORDER, CURRENT_SEASON,
+  PACKS, RARITY_COLOR, RARITY_LABEL, RARITY_ORDER, rarityTheme, CURRENT_SEASON,
   rollPack, type PackDef, type PackDrop,
 } from "@/game/config/packs";
 import { unlockItem } from "@/game/config/wardrobeUnlocks";
@@ -145,12 +145,14 @@ export default function BoosterOverlay({
                   style={chamferBox(10, {
                     display: "flex", flexDirection: "column", alignItems: "center", gap: 5,
                     padding: "10px 4px",
-                    background: d.owned ? "rgba(255,255,255,0.02)" : `${RARITY_COLOR[d.rarity]}14`,
-                    border: `2px solid ${d.owned ? "rgba(255,255,255,0.08)" : RARITY_COLOR[d.rarity]}`,
+                    background: d.owned ? "rgba(255,255,255,0.02)" : rarityTheme(d.rarity).fill,
+                    border: `2px solid ${d.owned ? "rgba(255,255,255,0.08)" : rarityTheme(d.rarity).color}`,
                     animation: `booster-pop 0.4s ${i * 0.09}s ease-out both`,
                   })}
                 >
-                  <ChromaPreview file={d.file} size={52} facingUp={d.category === "back"} />
+                  {/* Cropped, same as the wardrobe grid: the reveal is about
+                      the item, not the character it sits on. */}
+                  <ChromaPreview file={d.file} size={60} facingUp={d.category === "back"} crop />
                   <span style={{ fontSize: 6, color: "#e0d0ff", lineHeight: 1.3, textAlign: "center" }}>{d.name}</span>
                   <span style={{ fontSize: 5, color: "#7a7aa0", letterSpacing: 0.5 }}>
                     {CATEGORY_LABELS[d.category]}

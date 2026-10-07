@@ -20,7 +20,7 @@ import {
 } from "@/game/config/paperDoll";
 import { profileManager } from "@/game/config/profileManager";
 import { isVariantUnlocked, unlockItem } from "@/game/config/wardrobeUnlocks";
-import { RARITY_COLOR, RARITY_LABEL, isPackItem, rarityOf } from "@/game/config/packs";
+import { RARITY_LABEL, isPackItem, rarityOf, rarityTheme, type Rarity } from "@/game/config/packs";
 import { progressionBus } from "@/game/progression/progressionBus";
 import BoosterOverlay from "@/ui/BoosterOverlay";
 import { chamferBox } from "@/ui/chamfer";
@@ -206,10 +206,20 @@ export function ChromaPreview({ file, size, facingUp, crop }: { file: string; si
         }
       }
       if (x1 < 0) return;
-      const side = Math.max(x1 - x0 + 1, y1 - y0 + 1) + 2;
-      const cx = (x0 + x1 + 1) / 2;
-      const cy = (y0 + y1 + 1) / 2;
-      ctx.drawImage(off, cx - side / 2, rowY + cy - side / 2, side, side, 0, 0, size, size);
+      // A square around the item, kept INSIDE the frame: a hat sits at the very
+      // top, so a square centred on it runs off the edge, and drawImage then
+      // clips the source and stretches what is left (the item lands offset and
+      // the wrong size). Clamping the square costs a little centring and keeps
+      // the art honest.
+      const side = Math.min(
+        SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT,
+        Math.max(x1 - x0 + 1, y1 - y0 + 1) + 2,
+      );
+      const topLeft = (centre: number, extent: number) =>
+        Math.max(0, Math.min(centre - side / 2, extent - side));
+      const sx = topLeft((x0 + x1 + 1) / 2, SPRITE_FRAME_WIDTH);
+      const sy = topLeft((y0 + y1 + 1) / 2, SPRITE_FRAME_HEIGHT);
+      ctx.drawImage(off, sx, rowY + sy, side, side, 0, 0, size, size);
     };
   }, [file, size, rowY, crop]);
   return (
@@ -331,7 +341,10 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
   const handleReset = useCallback(() => setLoadout({ ...DEFAULT_LOADOUT }), []);
 
   const variants = getEnabledVariants(activeCategory);
-  const TILE = isMobile ? 40 : 52;
+  // The item art, not the card. It is drawn CROPPED to the item itself (a hat
+  // is a dozen pixels at the top of a 64px character frame), so this is the
+  // size the hat actually gets — which is why it can be this big.
+  const TILE = isMobile ? 52 : 68;
   const currentVariantId = loadout[activeCategory];
 
   // Reverse so topmost layer (hat) appears first in the tab list
@@ -550,7 +563,7 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
             <div style={{ flex: 1, overflowY: "auto", padding: isMobile ? "8px 10px" : "12px 14px" }}>
               <div style={{
                 display: "grid",
-                gridTemplateColumns: `repeat(auto-fill, minmax(${isMobile ? 62 : 84}px, 1fr))`,
+                gridTemplateColumns: `repeat(auto-fill, minmax(${isMobile ? 74 : 96}px, 1fr))`,
                 gap: isMobile ? 5 : 8,
               }}>
                 {/* None option for optional categories */}
@@ -562,10 +575,10 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
                     onClick={() => selectVariant(activeCategory, undefined)}
                   >
                     <div style={chamferBox(6, {
-                      width: TILE, height: TILE,
+                      width: TILE + FRAME * 2, height: TILE + FRAME * 2,
                       display: "flex", alignItems: "center", justifyContent: "center",
-                      color: "#333344", fontSize: 17,
-                      border: "1px dashed #2a2a4a", 
+                      color: "#333344", fontSize: 20,
+                      border: "2px dashed #2a2a4a",
                     })}>∅</div>
                     <span style={{ color: !currentVariantId ? "#B7E928" : "#444466" }}>None</span>
                   </VariantCard>
@@ -586,30 +599,23 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
                       compact={isMobile}
                       onClick={() => selectVariant(activeCategory, v.id)}
                     >
-                      <div style={{ position: "relative", lineHeight: 0 }}>
-                        <ChromaPreview file={v.file} size={TILE} facingUp={activeCategory === "back"} />
-                        {/* Rarity as a bar along the top, not a word: the grid
-                            is already dense, and the colour is the same one
-                            the pack reveal uses. Only on items a pack can
-                            give — a free shirt has no rarity to speak of. */}
-                        {isPackItem(activeCategory, v.id) && (
-                          <span
-                            title={RARITY_LABEL[rarityOf(activeCategory, v.id)]}
-                            style={{
-                              position: "absolute", left: 4, right: 4, top: 0, height: 3,
-                              background: RARITY_COLOR[rarityOf(activeCategory, v.id)],
-                              opacity: locked ? 0.45 : 1,
-                            }}
-                          />
-                        )}
+                      <RarityFrame
+                        rarity={isPackItem(activeCategory, v.id) ? rarityOf(activeCategory, v.id) : null}
+                        size={TILE}
+                        dim={locked}
+                      >
+                        {/* Cropped: the grid shows the hat, not the character
+                            wearing it. Without this a hat is a dozen pixels in
+                            the middle of a tile and unreadable on a phone. */}
+                        <ChromaPreview file={v.file} size={TILE} facingUp={activeCategory === "back"} crop />
                         {locked && (
                           <span style={chamferBox(6, {
                             position: "absolute", inset: 0,
                             display: "flex", alignItems: "center", justifyContent: "center",
-                            background: "rgba(6,8,20,0.55)", 
-                          })}><LockIcon size={20} /></span>
+                            background: "rgba(6,8,20,0.55)",
+                          })}><LockIcon size={Math.round(TILE * 0.42)} /></span>
                         )}
-                      </div>
+                      </RarityFrame>
                       <span style={{
                         color: locked ? "#666688" : isSelected ? "#B7E928" : "#aaaacc",
                         lineHeight: 1.3,
@@ -688,6 +694,45 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
         <BoosterOverlay wallet={wallet} onClose={() => setBoosterOpen(false)} />
       )}
     </div>
+  );
+}
+
+/** Border width of a rarity frame, in px. The tile reserves it on both sides
+ *  so a legendary and a common are exactly the same size. */
+const FRAME = 2;
+
+/**
+ * The rarity, drawn as the frame AROUND an item instead of a line inside it.
+ *
+ * Colour, tint and glow all come from rarityTheme() — see
+ * game/collections/seasons.ts, the one place rarity colours are authored.
+ * `rarity: null` is an item no pack gives (a free shirt, a quest reward): it
+ * gets the same frame in neutral, so the grid stays a grid.
+ */
+function RarityFrame({ rarity, size, dim, children }: {
+  rarity: Rarity | null;
+  size: number;
+  dim?: boolean;
+  children: React.ReactNode;
+}) {
+  const theme = rarityTheme(rarity);
+  return (
+    <span style={{ display: "block", lineHeight: 0, filter: theme.glow === "transparent" || dim ? undefined : `drop-shadow(0 0 4px ${theme.glow})` }}>
+      <span
+        title={rarity ? RARITY_LABEL[rarity] : undefined}
+        style={chamferBox(6, {
+          position: "relative",
+          display: "block",
+          width: size + FRAME * 2,
+          height: size + FRAME * 2,
+          border: `${FRAME}px solid ${theme.color}`,
+          background: theme.fill,
+          opacity: dim ? 0.7 : 1,
+        })}
+      >
+        {children}
+      </span>
+    </span>
   );
 }
 
