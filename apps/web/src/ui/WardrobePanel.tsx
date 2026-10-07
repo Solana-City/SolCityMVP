@@ -693,6 +693,11 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
   );
 }
 
+/** Frame weight. Selected is deliberately double, so it reads as selected
+ *  before the eye has to work out which colour it is. */
+const BORDER = 2;
+const SELECTED_BORDER = 4;
+
 /**
  * One option in the grid. The card's own frame IS the rarity — colour and
  * tint come from rarityTheme() (game/collections/seasons.ts, the one place
@@ -723,11 +728,14 @@ function VariantCard({
     : isSelected ? "rgba(183,233,40,0.15)"
     : isFlashing ? "rgba(183,233,40,0.08)"
     : theme.fill;
+  // Selection is BOTH the colour and the weight. Colour alone has to compete
+  // with four rarity colours around it; a frame twice as thick does not.
+  const width = isSelected ? SELECTED_BORDER : BORDER;
   const baseBorder = hintFlashing
-    ? "2px solid rgba(255,215,0,0.6)"
-    : locked ? `2px solid ${theme.muted}`
-    : isSelected ? "2px solid rgba(183,233,40,0.7)"
-    : `2px solid ${theme.color}`;
+    ? `${BORDER}px solid rgba(255,215,0,0.6)`
+    : locked ? `${BORDER}px solid ${theme.muted}`
+    : isSelected ? `${width}px solid #B7E928`
+    : `${BORDER}px solid ${theme.color}`;
   return (
     <button
       onClick={onClick}
@@ -738,7 +746,9 @@ function VariantCard({
         flexDirection: "column",
         alignItems: "center",
         gap: compact ? 3 : 5,
-        padding: compact ? "5px 3px" : "8px 5px",
+        padding: isSelected
+          ? (compact ? "3px 1px" : "6px 3px")
+          : (compact ? "5px 3px" : "8px 5px"),
         background: baseBg,
         border: baseBorder,
         cursor: "pointer",
