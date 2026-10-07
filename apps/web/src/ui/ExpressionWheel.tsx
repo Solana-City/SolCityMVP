@@ -2,10 +2,9 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import {
-  EXPRESSIONS, type Expression,
-  LAYER_ORDER, getVariant, loadSavedLoadout, type Loadout, type LayerCategory,
-  DIRECTION_ROW, SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT,
+  EXPRESSIONS, type Expression, loadSavedLoadout, type Loadout,
 } from "@/game/config/paperDoll";
+import { drawAvatarHead } from "@/ui/AvatarHead";
 
 /**
  * GTA-style radial expression picker. Hold Q (desktop) to open a wheel of
@@ -19,117 +18,19 @@ import {
  * the wardrobe preview uses — so you see exactly what you'll look like.
  */
 
-const CHROMA_R = 215, CHROMA_G = 123, CHROMA_B = 186, CHROMA_TOL = 30;
 const LAST_KEY = "solcity:lastExpression";
-
-// Head crop within the 64px down-facing frame (x14..50, y0..36 — hat to neck).
-const HEAD_X = 14, HEAD_Y = 0, HEAD_W = 36, HEAD_H = 36;
-
-function removeChroma(ctx: CanvasRenderingContext2D, w: number, h: number) {
-  const d = ctx.getImageData(0, 0, w, h);
-  const px = d.data;
-  for (let i = 0; i < px.length; i += 4) {
-    if (
-      Math.abs(px[i]   - CHROMA_R) <= CHROMA_TOL &&
-      Math.abs(px[i+1] - CHROMA_G) <= CHROMA_TOL &&
-      Math.abs(px[i+2] - CHROMA_B) <= CHROMA_TOL
-    ) px[i+3] = 0;
-  }
-  ctx.putImageData(d, 0, 0);
-}
-
-/** Composites the player's head with `expressionFile` as the eyes, cropped. */
-function drawHead(canvas: HTMLCanvasElement, loadout: Loadout, expressionFile: string, size: number): void {
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return;
-  ctx.clearRect(0, 0, size, size);
-  ctx.imageSmoothingEnabled = false;
-  const rowY = DIRECTION_ROW.down * SPRITE_FRAME_HEIGHT;
-
-  // Layer files in render order; eyesFace is always the expression sheet.
-  const layerFiles: Array<{ cat: LayerCategory; file: string }> = [];
-  for (const cat of LAYER_ORDER) {
-    if (cat === "eyesFace") { layerFiles.push({ cat, file: expressionFile }); continue; }
-    const id = loadout[cat];
-    if (!id) continue;
-    const v = getVariant(cat, id);
-    if (v) layerFiles.push({ cat, file: v.file });
-  }
-
-  let loaded = 0;
-  const imgs: Array<{ img: HTMLImageElement; cat: LayerCategory }> = [];
-  const hatVariant = getVariant("hat", loadout.hat);
-
-  const draw = () => {
-    const offByCat = new Map<LayerCategory, HTMLCanvasElement>();
-    for (const { img, cat } of imgs) {
-      const off = document.createElement("canvas");
-      off.width = img.naturalWidth; off.height = img.naturalHeight;
-      // willReadFrequently: every one of these canvases is read back, first by
-      // removeChroma and then (for hair/hat) by the masking pass below. Without
-      // the hint the browser keeps the surface on the GPU and each getImageData
-      // pays a readback stall — expensive on the mobile Canvas2D renderer. The
-      // flag has to go on the FIRST getContext call for a canvas: later calls
-      // return the same context and silently ignore their options.
-      const oc = off.getContext("2d", { willReadFrequently: true })!;
-      oc.drawImage(img, 0, 0);
-      removeChroma(oc, img.naturalWidth, img.naturalHeight);
-      offByCat.set(cat, off);
-    }
-
-    // Hair ↔ hat masking (same rules as the wardrobe preview).
-    const hatOff = offByCat.get("hat");
-    const hairOff = offByCat.get("hair");
-    if (hatOff && hairOff && hatVariant?.hatCoverage === "suppress") {
-      hairOff.getContext("2d")!.clearRect(0, rowY, SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT);
-    } else if (hatOff && hairOff) {
-      const hatData = hatOff.getContext("2d")!.getImageData(0, rowY, SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT).data;
-      const hairCtx = hairOff.getContext("2d")!;
-      const hairData = hairCtx.getImageData(0, rowY, SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT);
-      if (hatVariant?.hatCoverage === "band") {
-        let masked = false;
-        for (let i = 0; i < hatData.length; i += 4) {
-          if (hatData[i + 3] > 10) { hairData.data[i + 3] = 0; masked = true; }
-        }
-        if (masked) hairCtx.putImageData(hairData, 0, rowY);
-      } else {
-        const cutoffs = new Array<number>(SPRITE_FRAME_WIDTH).fill(SPRITE_FRAME_HEIGHT);
-        for (let x = 0; x < SPRITE_FRAME_WIDTH; x++) {
-          for (let y = 0; y < SPRITE_FRAME_HEIGHT; y++) {
-            if (hatData[(y * SPRITE_FRAME_WIDTH + x) * 4 + 3] > 10) { cutoffs[x] = y; break; }
-          }
-        }
-        if (cutoffs.some(c => c < SPRITE_FRAME_HEIGHT)) {
-          for (let x = 0; x < SPRITE_FRAME_WIDTH; x++) {
-            for (let y = 0; y < cutoffs[x]; y++) hairData.data[(y * SPRITE_FRAME_WIDTH + x) * 4 + 3] = 0;
-          }
-          hairCtx.putImageData(hairData, 0, rowY);
-        }
-      }
-    }
-
-    ctx.clearRect(0, 0, size, size);
-    for (const { cat } of imgs) {
-      const off = offByCat.get(cat)!;
-      ctx.drawImage(off, HEAD_X, rowY + HEAD_Y, HEAD_W, HEAD_H, 0, 0, size, size);
-    }
-  };
-
-  for (const { cat, file } of layerFiles) {
-    const img = new Image();
-    img.src = `/assets/sprites/paperdoll/${file}`;
-    imgs.push({ img, cat });
-    img.onload = () => { loaded++; if (loaded === imgs.length) draw(); };
-    img.onerror = () => { loaded++; if (loaded === imgs.length) draw(); };
-  }
-}
 
 function HeadPreview({ loadout, expr, size, active }: {
   loadout: Loadout; expr: Expression; size: number; active: boolean;
 }) {
   const ref = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
-    if (ref.current) drawHead(ref.current, loadout, expr.file, size);
+    const canvas = ref.current;
+    if (!canvas) return;
+    // The head fills the node, so the backing store is the node's own size.
+    canvas.width = size;
+    canvas.height = size;
+    drawAvatarHead(canvas, loadout, { expressionFile: expr.file });
   }, [loadout, expr.file, size]);
   return (
     <canvas

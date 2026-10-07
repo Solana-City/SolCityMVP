@@ -1,0 +1,255 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import {
+  DIRECTION_ROW, LAYER_ORDER, SPRITE_FRAME_HEIGHT, SPRITE_FRAME_WIDTH,
+  getVariant, loadSavedLoadout, type LayerCategory, type Loadout,
+} from "@/game/config/paperDoll";
+import { octagonFrame, octagonFrameThin, chamferClip } from "@/ui/chamfer";
+import { devicePixelRatioSafe } from "@/ui/crispPixels";
+
+/**
+ * The player's OWN head, composited from their equipped paper-doll layers.
+ *
+ * This is the one place that draws it. The expression wheel shows the same
+ * head once per expression (with the expression sheet standing in for the
+ * eyes) and the HUD and profile show it as the player's portrait, so the
+ * compositing - chroma key, hair under hat masking, head crop - lives here
+ * instead of being copied per surface.
+ */
+
+const CHROMA_R = 215, CHROMA_G = 123, CHROMA_B = 186, CHROMA_TOL = 30;
+
+/** Head crop within the 64px down-facing frame (x14..50, y0..36 - hat to neck). */
+export const HEAD_X = 14, HEAD_Y = 0, HEAD_W = 36, HEAD_H = 36;
+
+function removeChroma(ctx: CanvasRenderingContext2D, w: number, h: number) {
+  const d = ctx.getImageData(0, 0, w, h);
+  const px = d.data;
+  for (let i = 0; i < px.length; i += 4) {
+    if (
+      Math.abs(px[i]   - CHROMA_R) <= CHROMA_TOL &&
+      Math.abs(px[i+1] - CHROMA_G) <= CHROMA_TOL &&
+      Math.abs(px[i+2] - CHROMA_B) <= CHROMA_TOL
+    ) px[i+3] = 0;
+  }
+  ctx.putImageData(d, 0, 0);
+}
+
+interface DrawOptions {
+  /**
+   * Sheet to draw as the eyes instead of the loadout's own face - the
+   * expression wheel passes one per node. Omitted: the player's own face.
+   */
+  expressionFile?: string;
+  /**
+   * Scale the head smoothly instead of nearest-neighbour. Same rule the rest
+   * of the interface follows (see useCrispPixelArt): nearest-neighbour is only
+   * right when a source pixel covers a whole number of device pixels, and when
+   * it does not, soft beats chewed.
+   */
+  smooth?: boolean;
+}
+
+/** Composites the head described by `loadout`, filling `canvas`. */
+export function drawAvatarHead(canvas: HTMLCanvasElement, loadout: Loadout, opts: DrawOptions = {}): void {
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.imageSmoothingEnabled = opts.smooth ?? false;
+  const rowY = DIRECTION_ROW.down * SPRITE_FRAME_HEIGHT;
+
+  const layerFiles: Array<{ cat: LayerCategory; file: string }> = [];
+  for (const cat of LAYER_ORDER) {
+    if (cat === "eyesFace" && opts.expressionFile) {
+      layerFiles.push({ cat, file: opts.expressionFile });
+      continue;
+    }
+    const id = loadout[cat];
+    if (!id) continue;
+    const v = getVariant(cat, id);
+    if (v) layerFiles.push({ cat, file: v.file });
+  }
+
+  let loaded = 0;
+  const imgs: Array<{ img: HTMLImageElement; cat: LayerCategory }> = [];
+  const hatVariant = getVariant("hat", loadout.hat);
+
+  const draw = () => {
+    const offByCat = new Map<LayerCategory, HTMLCanvasElement>();
+    for (const { img, cat } of imgs) {
+      if (!img.naturalWidth) continue;   // failed to load: skip that layer
+      const off = document.createElement("canvas");
+      off.width = img.naturalWidth; off.height = img.naturalHeight;
+      // willReadFrequently: every one of these canvases is read back, first by
+      // removeChroma and then (for hair/hat) by the masking pass below. Without
+      // the hint the browser keeps the surface on the GPU and each getImageData
+      // pays a readback stall - expensive on the mobile Canvas2D renderer. The
+      // flag has to go on the FIRST getContext call for a canvas: later calls
+      // return the same context and silently ignore their options.
+      const oc = off.getContext("2d", { willReadFrequently: true })!;
+      oc.drawImage(img, 0, 0);
+      removeChroma(oc, img.naturalWidth, img.naturalHeight);
+      offByCat.set(cat, off);
+    }
+
+    // Hair under hat masking. Three styles (LayerVariant.hatCoverage):
+    //   "full" (default) - per-column cutoff from the hat's own silhouette;
+    //   "band" - mask only where the band's own pixels are opaque, so the
+    //     crown above it stays visible;
+    //   "suppress" - a full head covering (Ninja): hide the hair outright
+    //     rather than leave a sliver showing past the mask's edges.
+    const hatOff = offByCat.get("hat");
+    const hairOff = offByCat.get("hair");
+    if (hatOff && hairOff && hatVariant?.hatCoverage === "suppress") {
+      hairOff.getContext("2d")!.clearRect(0, rowY, SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT);
+    } else if (hatOff && hairOff) {
+      const hatData = hatOff.getContext("2d")!.getImageData(0, rowY, SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT).data;
+      const hairCtx = hairOff.getContext("2d")!;
+      const hairData = hairCtx.getImageData(0, rowY, SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT);
+      if (hatVariant?.hatCoverage === "band") {
+        let masked = false;
+        for (let i = 0; i < hatData.length; i += 4) {
+          if (hatData[i + 3] > 10) { hairData.data[i + 3] = 0; masked = true; }
+        }
+        if (masked) hairCtx.putImageData(hairData, 0, rowY);
+      } else {
+        const cutoffs = new Array<number>(SPRITE_FRAME_WIDTH).fill(SPRITE_FRAME_HEIGHT);
+        for (let x = 0; x < SPRITE_FRAME_WIDTH; x++) {
+          for (let y = 0; y < SPRITE_FRAME_HEIGHT; y++) {
+            if (hatData[(y * SPRITE_FRAME_WIDTH + x) * 4 + 3] > 10) { cutoffs[x] = y; break; }
+          }
+        }
+        if (cutoffs.some(c => c < SPRITE_FRAME_HEIGHT)) {
+          for (let x = 0; x < SPRITE_FRAME_WIDTH; x++) {
+            for (let y = 0; y < cutoffs[x]; y++) hairData.data[(y * SPRITE_FRAME_WIDTH + x) * 4 + 3] = 0;
+          }
+          hairCtx.putImageData(hairData, 0, rowY);
+        }
+      }
+    }
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    for (const { cat } of imgs) {
+      const off = offByCat.get(cat);
+      if (!off) continue;
+      ctx.drawImage(off, HEAD_X, rowY + HEAD_Y, HEAD_W, HEAD_H, 0, 0, canvas.width, canvas.height);
+    }
+  };
+
+  for (const { cat, file } of layerFiles) {
+    const img = new Image();
+    img.src = `/assets/sprites/paperdoll/${file}`;
+    imgs.push({ img, cat });
+    img.onload = () => { loaded++; if (loaded === imgs.length) draw(); };
+    img.onerror = () => { loaded++; if (loaded === imgs.length) draw(); };
+  }
+}
+
+/**
+ * The saved loadout, kept current. Changing an outfit anywhere (the wardrobe,
+ * the hair specialist) announces it on the game bus, so a portrait is never
+ * left showing a look the player already took off.
+ */
+export function useLiveLoadout(gameRef: Phaser.Game | null): Loadout | null {
+  // Null until the first effect: localStorage is not readable while rendering
+  // on the server, and a portrait is better absent for a frame than wrong.
+  const [loadout, setLoadout] = useState<Loadout | null>(null);
+
+  useEffect(() => { setLoadout(loadSavedLoadout()); }, []);
+
+  useEffect(() => {
+    if (!gameRef) return;
+    const onLoadout = (next: Loadout) => setLoadout({ ...next });
+    gameRef.events.on("wardrobe:loadout", onLoadout);
+    return () => { gameRef.events.off("wardrobe:loadout", onLoadout); };
+  }, [gameRef]);
+
+  return loadout;
+}
+
+/**
+ * Ring weights the portrait can wear, and the corner the box is cut to so the
+ * fill behind the ring does not poke out of it.
+ */
+const FRAMES = {
+  thin: { ring: 4,  corner: 3.6, style: octagonFrameThin() },
+  1:    { ring: 9,  corner: 8,   style: octagonFrame(1) },
+  2:    { ring: 18, corner: 16,  style: octagonFrame(2) },
+} as const;
+
+/**
+ * The player's head inside the octagon frame.
+ *
+ * The head is 36 art pixels, so it is shown at a WHOLE multiple of that and
+ * centred in the ring, rather than stretched to whatever the box happens to
+ * be: a fractional size gives some rows of a pixel two screen pixels and
+ * their neighbours one, which is the tearing the HUD art was fixed for. What
+ * the head does not use is frame and fill, not mangled art.
+ *
+ * Pick `size` so the ring leaves at least 36px inside it, or the head will sit
+ * under the ring's edge: 44 with the thin ring, 54 with ring 1, 108 with 2.
+ */
+export function AvatarHeadFrame({
+  gameRef, size, frame = 1, title, fill = "rgba(8,12,32,0.95)",
+}: {
+  gameRef: Phaser.Game | null;
+  /** Total size including the frame. */
+  size: number;
+  /** Ring weight: "thin" is 4px, 1 a 9px ring, 2 the native 18px. */
+  frame?: keyof typeof FRAMES;
+  title?: string;
+  fill?: string;
+}) {
+  const loadout = useLiveLoadout(gameRef);
+  const ref = useRef<HTMLCanvasElement>(null);
+  // Read on the client only, and again if the window moves to another screen
+  // (a 100% and a 150% monitor side by side is common).
+  const [dpr, setDpr] = useState(1);
+  useEffect(() => {
+    const read = () => setDpr(devicePixelRatioSafe());
+    read();
+    window.addEventListener("resize", read);
+    return () => window.removeEventListener("resize", read);
+  }, []);
+
+  const { ring, corner, style } = FRAMES[frame];
+  const inside = size - 2 * ring;
+  // The head's size on the page, which stays put whatever the screen is: a
+  // layout that moved with the pixel ratio is the mistake useCrispPixelArt
+  // was written to undo.
+  const headCss = HEAD_W * Math.max(1, Math.floor(inside / HEAD_W));
+  // ...while the canvas behind it is at the screen's own resolution.
+  const px = Math.max(1, Math.round(headCss * dpr));
+  const whole = Math.abs(dpr - Math.round(dpr)) < 0.01;
+
+  useEffect(() => {
+    const canvas = ref.current;
+    if (!canvas || !loadout) return;
+    canvas.width = px;
+    canvas.height = px;
+    drawAvatarHead(canvas, loadout, { smooth: !whole });
+  }, [loadout, px, whole]);
+
+  return (
+    <span
+      title={title}
+      style={{
+        position: "relative", display: "flex", flexShrink: 0,
+        alignItems: "center", justifyContent: "center",
+        width: size, height: size, background: fill,
+        clipPath: chamferClip(corner),
+      }}
+    >
+      <canvas
+        ref={ref}
+        style={{
+          display: "block", width: headCss, height: headCss,
+          imageRendering: "pixelated",
+        }}
+      />
+      {/* The ring last, so it sits over the art the way the photo frame did. */}
+      <span aria-hidden="true" style={{ ...style, position: "absolute", inset: 0, pointerEvents: "none" }} />
+    </span>
+  );
+}
