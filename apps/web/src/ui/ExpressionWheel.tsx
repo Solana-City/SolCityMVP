@@ -201,6 +201,16 @@ export default function ExpressionWheel({ gameRef }: { gameRef: Phaser.Game | nu
     return () => window.removeEventListener("solcity:openExpressionWheel", onOpenEvent);
   }, [openWheel]);
 
+  // The mobile rail swaps its emoji button for a close button while the wheel
+  // is up, so it needs to hear when that is, and to be able to ask for a close.
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent("solcity:expressionWheelState", { detail: { open } }));
+  }, [open]);
+  useEffect(() => {
+    window.addEventListener("solcity:closeExpressionWheel", closeWheel);
+    return () => window.removeEventListener("solcity:closeExpressionWheel", closeWheel);
+  }, [closeWheel]);
+
   // Desktop aim: mouse angle from center → highlighted head (dead zone in the middle).
   const onPointerMove = useCallback((e: React.PointerEvent) => {
     if (isTouch) return;

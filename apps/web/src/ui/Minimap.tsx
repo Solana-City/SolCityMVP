@@ -380,7 +380,14 @@ function CompactMap({ host, mobile, corners, bare, onOpen, onCollapse }: {
           position: "absolute", inset: 0, padding: 0, cursor: "pointer",
           border: "none", borderRadius: 0, overflow: "hidden",
           background: "#001D3A",
-          boxShadow: "0 6px 24px rgba(0,0,0,0.5)",
+          // The frame art is chamfered, so on a phone the square navy backing
+          // stuck out past its diagonal corners. Cut it at 18px, a hair under
+          // the frame stroke, so the cut hides behind the stroke instead of
+          // showing a stair-step of backing along it. (The shadow goes with
+          // the clip, which would have cut it anyway.)
+          ...(mobile
+            ? { clipPath: chamferClip(18) }
+            : { boxShadow: "0 6px 24px rgba(0,0,0,0.5)" }),
           WebkitTapHighlightColor: "transparent", touchAction: "manipulation",
           ...feelStyle(openFeel, { pressScale: 0.98 }),
         }}
@@ -508,7 +515,6 @@ function FullMap({ host, onClose }: { host: MinimapHost; onClose: () => void }) 
   const [enabled, setEnabled] = useState<Set<MinimapCategory>>(() => new Set(CATEGORY_ORDER));
   const [selected, setSelected] = useState<string | null>(null);
   const [hover, setHover] = useState<{ point: MinimapPoint; x: number; y: number } | null>(null);
-  const [listOpen, setListOpen] = useState(false);
   const [counts, setCounts] = useState<Record<MinimapCategory, number>>(
     () => Object.fromEntries(CATEGORY_ORDER.map((c) => [c, 0])) as Record<MinimapCategory, number>,
   );
@@ -759,7 +765,6 @@ function FullMap({ host, onClose }: { host: MinimapHost; onClose: () => void }) 
     setSelected(p.id);
     setHover(null);
     focus(p);
-    if (narrow) setListOpen(false);
   };
 
   const toggle = (cat: MinimapCategory) => {
@@ -780,10 +785,10 @@ function FullMap({ host, onClose }: { host: MinimapHost; onClose: () => void }) 
     }
     for (const list of byCat.values()) list.sort((a, b) => a.name.localeCompare(b.name));
     return byCat;
-    // Recomputed when the list opens or filters change; positions come from
+    // Recomputed when filters change; positions come from
     // the live snapshot at click time via pointsRef.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [host, listOpen, enabled, counts]);
+  }, [host, enabled, counts]);
 
   // The selected card tracks its marker as the view glides or the NPC walks.
   const [, setTick] = useState(0);
@@ -794,16 +799,15 @@ function FullMap({ host, onClose }: { host: MinimapHost; onClose: () => void }) 
   }, [selected]);
   const selectedPoint = selected ? pointsRef.current.find((p) => p.id === selected) ?? null : null;
 
-  const listToggleFeel = useButtonFeel();
   const fastTravelFeel = useButtonFeel();
   const centerFeel = useButtonFeel();
   const zoomInFeel = useButtonFeel();
   const zoomOutFeel = useButtonFeel();
 
   const legend = (
-    <div style={{ display: "flex", flexDirection: narrow ? "row" : "column", gap: 6, flexWrap: narrow ? "nowrap" : "wrap", overflowX: narrow ? "auto" : "visible" }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 6, flexWrap: "wrap" }}>
       {CATEGORY_ORDER.map((cat) => (
-        <LegendCategoryButton key={cat} cat={cat} on={enabled.has(cat)} count={counts[cat]} narrow={narrow} onClick={() => toggle(cat)} />
+        <LegendCategoryButton key={cat} cat={cat} on={enabled.has(cat)} count={counts[cat]} narrow={false} onClick={() => toggle(cat)} />
       ))}
     </div>
   );
@@ -853,22 +857,17 @@ function FullMap({ host, onClose }: { host: MinimapHost; onClose: () => void }) 
           <span style={{ fontFamily: PIXEL_FONT, fontSize: narrow ? 11 : 14, color: "#B7E928", letterSpacing: 1 }}>SOLANA CITY MAP</span>
           {!narrow && <span style={{ fontFamily: PIXEL_FONT, fontSize: 7, color: "#64748b" }}>Drag to move · scroll to zoom · click a marker</span>}
           <div style={{ flex: 1 }} />
-          {narrow && (
-            <button onClick={() => setListOpen((v) => !v)} {...listToggleFeel.handlers} style={hdrBtn(listOpen, listToggleFeel)}>{listOpen ? "MAP" : "LIST"}</button>
-          )}
           <CloseButton onClick={onClose} label="Close map" />
         </div>
 
-        {narrow && <div style={{ padding: "8px 10px 0" }}>{legend}</div>}
-
         <div style={{ flex: 1, minHeight: 0, display: "flex", gap: 0 }}>
-          {!narrow && (
-            <aside style={{ width: 250, flexShrink: 0, borderRight: "1px solid rgba(183,233,40,0.18)", padding: 12, overflowY: "auto", display: "flex", flexDirection: "column", gap: 14 }}>
-              {legend}
-              <div style={{ height: 1, background: "rgba(183,233,40,0.18)" }} />
-              {placeList}
-            </aside>
-          )}
+          {/* The same side list on every screen. On a phone it is a little
+              narrower and scrolls, but it is always there: no LIST/MAP toggle. */}
+          <aside style={{ width: narrow ? 200 : 250, flexShrink: 0, borderRight: "1px solid rgba(183,233,40,0.18)", padding: narrow ? 8 : 12, overflowY: "auto", display: "flex", flexDirection: "column", gap: 14 }}>
+            {legend}
+            <div style={{ height: 1, background: "rgba(183,233,40,0.18)" }} />
+            {placeList}
+          </aside>
 
           <div ref={wrapRef} style={{ position: "relative", flex: 1, minWidth: 0, margin: narrow ? 8 : 0, clipPath: narrow ? chamferClip(10) : "none", overflow: "hidden" }}>
             <canvas
@@ -920,12 +919,6 @@ function FullMap({ host, onClose }: { host: MinimapHost; onClose: () => void }) 
               <button onClick={() => zoomBy(1.4)} {...zoomInFeel.handlers} style={{ ...ctrlBtn, ...feelStyle(zoomInFeel) }} aria-label="Zoom in">+</button>
               <button onClick={() => zoomBy(1 / 1.4)} {...zoomOutFeel.handlers} style={{ ...ctrlBtn, ...feelStyle(zoomOutFeel) }} aria-label="Zoom out">−</button>
             </div>
-
-            {narrow && listOpen && (
-              <div style={{ position: "absolute", inset: 0, background: "rgba(8,10,22,0.96)", overflowY: "auto", padding: 12 }}>
-                {placeList}
-              </div>
-            )}
           </div>
         </div>
       </div>
@@ -1010,16 +1003,6 @@ function Portrait({ point, size }: { point: MinimapPoint; size: number }) {
       <canvas ref={ref} style={{ maxWidth: "100%", maxHeight: "100%", display: "block", imageRendering: "pixelated" }} />
     </span>
   );
-}
-
-function hdrBtn(active: boolean, feel?: Pick<ButtonFeel, "hover" | "pressed">): React.CSSProperties {
-  return chamferBox(6, {
-    fontFamily: PIXEL_FONT, fontSize: 7, color: active ? "#0a0a14" : "#cbd5e1",
-    background: active ? "#B7E928" : "rgba(255,255,255,0.06)",
-    border: "1px solid rgba(255,255,255,0.14)",
-    padding: "6px 9px", cursor: "pointer",
-    ...(feel ? feelStyle(feel) : null),
-  });
 }
 
 const ctrlBtn: React.CSSProperties = chamferBox(8, {

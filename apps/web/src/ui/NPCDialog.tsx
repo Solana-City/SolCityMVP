@@ -268,9 +268,11 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
         style={chamferBox(14, {
           fontFamily:   '"Press Start 2P", monospace',
           background:   "rgba(8,8,24,0.96)",
-          border:       `1px solid ${color}55`,
-          borderTop:    `3px solid ${color}`,
-          padding:      "12px 14px 14px",
+          // One border on every side. A separate borderTop used to sit over the
+          // painted outline and read as a thicker top edge; 3px all round keeps
+          // the content where it was (3 + 12 = the old 1 + 14 at the sides).
+          border:       `3px solid ${color}`,
+          padding:      "12px 12px 12px",
           backdropFilter: "blur(8px)",
           cursor:       isLastLine && doneTyping ? "default" : "pointer",
         })}

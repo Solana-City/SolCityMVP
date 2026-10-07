@@ -55,7 +55,7 @@ const ExpressionWheel     = dynamic(() => import("@/ui/ExpressionWheel"),     { 
 const Minimap             = dynamic(() => import("@/ui/Minimap"),             { ssr: false });
 
 import ErrorBoundary from "@/ui/ErrorBoundary";
-import { chamferBox, avatarFrame, avatarPhoto } from "@/ui/chamfer";
+import { chamferBox, chamferClip, avatarFrame, avatarPhoto } from "@/ui/chamfer";
 import { OPEN_DM_EVENT } from "@/game/chat/dmEvents";
 import { OPEN_CALENDAR_EVENT } from "@/game/daily/calendarEvents";
 import { DM_UNREAD_EVENT, SEND_TOKENS_EVENT } from "@/game/chat/dmEvents";
@@ -87,6 +87,12 @@ export default function Home() {
   useWheelZoom(!isTouch);
   const [keysOpen, setKeysOpen] = useKeysCard(!isTouch);
   const [hudHidden, setHudHidden] = useState(false);
+  const [wheelOpen, setWheelOpen] = useState(false);
+  useEffect(() => {
+    const onState = (e: Event) => setWheelOpen(!!(e as CustomEvent<{ open: boolean }>).detail?.open);
+    window.addEventListener("solcity:expressionWheelState", onState);
+    return () => window.removeEventListener("solcity:expressionWheelState", onState);
+  }, []);
   const [activeNPC, setActiveNPC] = useState<NPCDefinition | null>(null);
   const [activeAction, setActiveAction] = useState<NPCAction | null>(null);
   const [activeMiniGame, setActiveMiniGame] = useState<{ id: string; context: MiniGameContext } | null>(null);
@@ -499,14 +505,16 @@ export default function Home() {
                chat so the small screen never stacks multiple windows. */
             <>
               <div style={{
-                position: "fixed", zIndex: 20,
+                // Above the wheel's backdrop (45) while it is open, so the button
+                // that closes it stays visible and tappable.
+                position: "fixed", zIndex: wheelOpen ? 46 : 20,
                 top: "max(env(safe-area-inset-top, 0px), 12px)",
                 left: "max(env(safe-area-inset-left, 0px), 12px)",
                 display: "flex", flexDirection: "column", gap: 6,
               }}>
                 <MobilePanelToggle iconSrc="/assets/ui/icon_quests.png" label="Find someone" active={mobilePanel === "hunt"} onClick={() => toggleMobilePanel("hunt")} />
                 <MobilePanelToggle iconSrc="/assets/ui/ico_chat.png" label="Chat" active={chatOpen} onClick={toggleMobileChat} dot={unreadDms > 0} />
-                <ExpressionToggle />
+                <ExpressionToggle open={wheelOpen} />
               </div>
               {mobilePanel !== null && (
                 /* Full-screen transparent backdrop — tap anywhere outside the panel to close */
@@ -585,7 +593,9 @@ export default function Home() {
 
                 {walletSectionOpen && (
                   <>
-                    <Framed width={9}>
+                    {/* Navy backing cut to the frame art's own chamfer (8px at this
+                        scale), so its square corners do not show past the diagonals. */}
+                    <Framed width={9} style={{ background: "#061A3A", clipPath: chamferClip(8) }}>
                       <div style={{ padding: "4px 8px" }}>
                         <WalletBar layout="panel" />
                       </div>
@@ -705,6 +715,25 @@ export default function Home() {
   );
 }
 
+/** The lime outline round an active rail button, cut with the same chamfer as the
+    rest of the HUD: one clip-path with two octagons, filled between them only. */
+function ActiveRing() {
+  const c = 9, t = 2;
+  const ci = +(c - t * 0.586).toFixed(2); // keeps the diagonal the same thickness as the sides
+  const oct = (i: number, k: number) =>
+    `${i + k}px ${i}px, calc(100% - ${i + k}px) ${i}px, calc(100% - ${i}px) ${i + k}px, calc(100% - ${i}px) calc(100% - ${i + k}px), calc(100% - ${i + k}px) calc(100% - ${i}px), ${i + k}px calc(100% - ${i}px), ${i}px calc(100% - ${i + k}px), ${i}px ${i + k}px`;
+  return (
+    <span
+      aria-hidden
+      style={{
+        position: "absolute", inset: 4, pointerEvents: "none",
+        background: "rgba(183,233,40,0.85)",
+        clipPath: `polygon(evenodd, ${oct(0, c)}, ${oct(t, ci)})`,
+      }}
+    />
+  );
+}
+
 function MobilePanelToggle({ iconSrc, label, active, onClick, dot }: {
   iconSrc: string; label: string; active: boolean; onClick: () => void;
   /** A direct message is waiting and the panel is closed. */
@@ -725,17 +754,11 @@ function MobilePanelToggle({ iconSrc, label, active, onClick, dot }: {
       }}
     >
       <img
-        src={iconSrc}
+        src={active ? "/assets/ui/icon_cross.png" : iconSrc}
         width={32} height={32} alt={label} draggable={false}
         style={{ imageRendering: "pixelated", position: "relative" }}
       />
-      {active && (
-        <span style={{
-          position: "absolute", inset: 6, borderRadius: 7,
-          boxShadow: "0 0 0 2px rgba(183,233,40,0.75)",
-          pointerEvents: "none",
-        }} />
-      )}
+      {active && <ActiveRing />}
       {dot && (
         <span style={{
           position: "absolute", top: 2, right: 2, width: 9, height: 9, borderRadius: "50%",
@@ -750,11 +773,11 @@ function MobilePanelToggle({ iconSrc, label, active, onClick, dot }: {
 /** Rail button (below Chat) that opens the expression wheel on touch.
     Same chrome as MobilePanelToggle with the pixel-art ico_emoji; the wheel
     isn't a panel, so it just fires the open event. */
-function ExpressionToggle() {
+function ExpressionToggle({ open }: { open: boolean }) {
   return (
     <button
-      onClick={() => window.dispatchEvent(new Event("solcity:openExpressionWheel"))}
-      title="Expressions"
+      onClick={() => window.dispatchEvent(new Event(open ? "solcity:closeExpressionWheel" : "solcity:openExpressionWheel"))}
+      title={open ? "Close expressions" : "Expressions"}
       style={{
         position: "relative",
         width: 44, height: 44, padding: 0,
@@ -762,13 +785,15 @@ function ExpressionToggle() {
         cursor: "pointer", flexShrink: 0,
         display: "flex", alignItems: "center", justifyContent: "center",
         WebkitTapHighlightColor: "transparent",
+        filter: open ? "brightness(1.45)" : "none",
       }}
     >
       <img
-        src="/assets/ui/ico_emoji.png"
+        src={open ? "/assets/ui/icon_cross.png" : "/assets/ui/ico_emoji.png"}
         width={32} height={32} alt="Expressions" draggable={false}
         style={{ imageRendering: "pixelated", position: "relative" }}
       />
+      {open && <ActiveRing />}
     </button>
   );
 }
