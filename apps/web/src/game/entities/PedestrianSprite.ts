@@ -437,21 +437,38 @@ export class PedestrianSprite {
     const dist = Math.hypot(dx, dy);
     const msLeft = DETERMINISTIC_STEP_MS - (now % DETERMINISTIC_STEP_MS);
 
+    // The outgoing tween is killed before the next one starts. Two tweens on
+    // the same container both writing x and y fight each other, and the loser
+    // shows as a stutter.
+    this.scene.tweens.killTweensOf(container);
+
     if (dist > 1) {
       const dir: Direction = Math.abs(dx) >= Math.abs(dy)
         ? (dx > 0 ? "right" : "left")
         : (dy > 0 ? "down" : "up");
       this.lastDir = dir;
       this.avatar.walk(dir);
+      // No onComplete stopping the animation. Phaser updates timers before
+      // tweens within a frame, and this tween's duration is the same msLeft
+      // the step timer waits — so the timer would start the NEXT step and its
+      // walk animation, and only then would the finishing tween's onComplete
+      // run and stop it. The citizen then slid along, moving but mid-stride
+      // frozen, until some later step happened to restart the animation. That
+      // is the "sometimes walks, sometimes glides" of it.
+      //
+      // Nothing is needed there anyway: whichever step comes next decides for
+      // itself whether to walk or stand, below.
       this.scene.tweens.add({
         targets: container,
         x: to.x, y: to.y,
         duration: Math.max(16, msLeft),
         ease: "Linear",
-        onComplete: () => { if (this.deterministic) this.showIdleFrame(); },
       });
     } else {
-      this.showIdleFrame();
+      // avatar.idle(), not the local showIdleFrame(): that one stops the
+      // animations behind AvatarSprite's back, leaving its isWalking and
+      // walkSynced flags describing a walk that is no longer running.
+      this.avatar.idle();
     }
 
     this.detTimer = this.scene.time.delayedCall(msLeft, () => this.runDeterministicStep(false));
