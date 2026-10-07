@@ -420,10 +420,6 @@ const NPC_SEEDS: NPCSeed[] = [
     role: "Solana Mobile",
     // On the walkway in front of the energy plant (BuildGenericEnergy, cols
     // 102-111 / rows 22-33). Row 34 is the first walkable row below it.
-    // TODO: swap spriteKey and the highlight sheet when the Seeker art lands.
-    // Placeholder is the default player sheet (main_char, Solana cap): 4
-    // directions by 4 walk frames, so he animates. Builder.png is a single
-    // 6-frame row with no direction rows and stands frozen.
     tileX: 106,
     tileY: 34,
     dialog: [
@@ -437,7 +433,7 @@ const NPC_SEEDS: NPCSeed[] = [
       { img: "/assets/ui/controller.png", label: "NO PHONE NEEDED" },
     ],
     action: { type: "link", label: "See the Seeker", url: "https://solanamobile.com/seeker" },
-    spriteKey: "avatar-player",
+    spriteKey: "Seeker Lover",
   },
   {
     id: "ore-miner",
