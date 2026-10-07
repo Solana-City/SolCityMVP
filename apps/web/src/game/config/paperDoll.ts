@@ -189,8 +189,11 @@ export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
     { id: "hat_black",  name: "Black Hat",  textureKey: "pd-hat-hat_black",  file: "hat/hat_black.png" },
     { id: "hat_red",    name: "Red Hat",    textureKey: "pd-hat-hat_red",    file: "hat/hat_red.png" },
     { id: "red_belt",   name: "Red Bandana",textureKey: "pd-hat-red_belt",   file: "hat/red_belt.png", hatCoverage: "band" },
-    { id: "city_cap",   name: "City Cap",   textureKey: "pd-hat-city_cap",   file: "hat/city_cap.png" },
-    { id: "turkish_head", name: "Turkish Hat", textureKey: "pd-hat-turkish_head", file: "hat/turkish_head.png" },
+    // Earned from NPCs, so unlockVia keeps both out of the booster pool.
+    { id: "city_cap",   name: "City Cap",   textureKey: "pd-hat-city_cap",   file: "hat/city_cap.png",
+      unlockVia: "quest", unlockHint: "Make a donation in the city" },
+    { id: "turkish_head", name: "Turkish Hat", textureKey: "pd-hat-turkish_head", file: "hat/turkish_head.png",
+      unlockVia: "quest", unlockHint: "Get a new look from the Hair Specialist" },
     // Superteam Brasil set — earned, never dropped by a booster (see unlockVia).
     { id: "STB_cap", name: "Superteam Brasil Cap", textureKey: "pd-hat-STB_cap",
       file: "hat/STB_cap.png", unlockVia: "quest", unlockHint: "Win a round of Kite Clash" },

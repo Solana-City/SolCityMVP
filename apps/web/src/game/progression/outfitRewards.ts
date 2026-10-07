@@ -33,6 +33,11 @@ const REWARDS = {
   // Seeker Lover's gifts, for holding SKR: the hat for any amount at all, the
   // backpack for holding a real position.
   skrHolder: { category: "hat", id: "Seeker_hat", name: "Seeker Hat" },
+  // The Hair Specialist's, for sitting through a cut that lands.
+  turkishHat: { category: "hat", id: "turkish_head", name: "Turkish Hat" },
+  // Waiting on the donation NPC. The variant exists, so this one is live the
+  // moment something calls onDonation().
+  cityCap: { category: "hat", id: "city_cap", name: "City Cap" },
   // Waiting on its art and on the threshold below. grant() skips a reward whose
   // variant is missing, so this stays inert until both land.
   skrBackpack: { category: "back", id: "Seeker_backpack", name: "Seeker Backpack" },
@@ -64,6 +69,9 @@ const KUKA_ID = "kuka";
 
 /** Mini-game whose win grants the cap. */
 const KITE_CLASH_ID = "kite-clash";
+
+/** The ST Turkey chair: finishing a cut grants the Turkish Hat. */
+const HAIR_SPECIALIST_ID = "hair-specialist";
 
 /**
  * The ST Brasil crew, met for the Brazil shirt: the three who were always on
@@ -130,8 +138,19 @@ export function hasMetStbrCrew(): boolean {
  * is where the result and the wallet both are.
  */
 export function onMiniGameFinished(miniGameId: string, success: boolean): void {
-  if (miniGameId !== KITE_CLASH_ID || !success) return;
-  grant(REWARDS.kiteClash);
+  if (!success) return;
+  if (miniGameId === KITE_CLASH_ID) grant(REWARDS.kiteClash);
+  // A cut that lands, which is what the specialist reports as success. A miss
+  // leaves the chair free to try again and earns nothing.
+  if (miniGameId === HAIR_SPECIALIST_ID) grant(REWARDS.turkishHat);
+}
+
+/**
+ * A donation made in the city. Nothing calls this yet: the donation NPC is not
+ * in, and this is the seam it will use.
+ */
+export function onDonation(): void {
+  grant(REWARDS.cityCap);
 }
 
 /**
