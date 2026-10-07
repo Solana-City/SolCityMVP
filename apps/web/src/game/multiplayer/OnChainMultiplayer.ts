@@ -151,6 +151,10 @@ const packDirection = (dir: number, walking: boolean, buffed: boolean): number =
 // Floor for the leading-edge sends (turns and stops). Short enough that a
 // corner reads as instant, long enough that it can't become a tx firehose.
 const POS_EVENT_MIN_MS = 150;
+// Module-level, not rebuilt per call: sendInput runs on every scene frame and
+// used to allocate this map before its own early return, so a standing player
+// still handed the collector ~60 short-lived objects a second.
+const DIR_NUM: Record<string, number> = { down: 0, left: 1, right: 2, up: 3 };
 // Re-write the current position after this long without any on-chain write,
 // so a standing player stays inside everyone else's freshness window.
 const HEARTBEAT_MS = 30_000;
@@ -569,7 +573,7 @@ export class OnChainMultiplayer {
   sendInput(x: number, y: number, direction: string, isWalking: boolean, buffed = false): void {
     const roundX = Math.round(x);
     const roundY = Math.round(y);
-    const dirNum = ({ down: 0, left: 1, right: 2, up: 3 } as Record<string, number>)[direction] ?? 0;
+    const dirNum = DIR_NUM[direction] ?? 0;
 
     // Skip if nothing actually changed — avoids flooding with idle updates
     if (
