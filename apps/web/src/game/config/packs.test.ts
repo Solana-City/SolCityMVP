@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
-  PACKS, RARITY_ORDER, CURRENT_SEASON, rollPack, rarityOf, seasonRarityCounts, seasonOf,
+  PACKS, RARITY_ORDER, CURRENT_SEASON, rollPack, rarityOf, seasonRarityCounts, seasonOf, isPackItem,
 } from "./packs";
-import { getBoosterPool } from "./paperDoll";
+import { getBoosterPool, isFreeInShippedGame } from "./paperDoll";
 import { boosterIndexTable } from "./boosterPool";
 import { SEASONS, CURRENT_SEASON as OPEN_SEASON, seasonLabel } from "@/game/collections/seasons";
 
@@ -102,5 +102,24 @@ describe("outfit packs", () => {
   it("reads an unlisted item as common", () => {
     expect(rarityOf("hat", "Crown")).toBe("legendary");
     expect(rarityOf("hat", "not-an-item")).toBe("common");
+  });
+
+  it("only marks as a pack item what a pack can actually hand over", () => {
+    // The wardrobe draws a rarity frame on whatever isPackItem() says drops.
+    // getBoosterPool() is frozen at POOL_V1_FREE for on-chain index stability,
+    // so it still lists items that have become free since — and every one of
+    // those would show the player a rarity they can never open.
+    for (const { category, variant } of getBoosterPool()) {
+      if (!isFreeInShippedGame(category, variant.id)) continue;
+      expect(isPackItem(category, variant.id), `${category}:${variant.id}`).toBe(false);
+    }
+  });
+
+  it("gives no hairstyle a rarity: hair is free, like the bases and faces", () => {
+    for (const { category, variant } of getBoosterPool()) {
+      if (category !== "hair") continue;
+      expect(isPackItem(category, variant.id), variant.id).toBe(false);
+      expect(rarityOf(category, variant.id), variant.id).toBe("common");
+    }
   });
 });

@@ -41,21 +41,32 @@ const RARITY_TABLE: Partial<Record<Rarity, Partial<Record<LayerCategory, string[
   rare: {
     hat: ["Viking_hat", "Vizard_hat", "Pirate"],
     accessory: ["Golden_ring", "Pirate"],
-    hair: ["Avatar"],
   },
   uncommon: {
     hat: ["Cylinder", "Straw_hat"],
-    hair: ["Afro", "Anime", "Magawk_blue", "Magawk_green", "Magawk_red"],
     back: ["backpack_red"],
   },
 };
 
-/** Items a pack can actually give: rarity means nothing on a free shirt or a
- *  quest reward, so the wardrobe only marks the ones that drop. */
+/**
+ * Items a pack can actually give: rarity means nothing on a free shirt or a
+ * quest reward, so the wardrobe only marks the ones that drop.
+ *
+ * The free filter matters and is easy to miss. getBoosterPool() is built from
+ * POOL_V1_FREE, which is frozen because the pool is index-stable on chain —
+ * it still CONTAINS items that have become free since, and rollPack skips
+ * them at draw time. Asking the pool alone marked every hairstyle as a rarity
+ * the player could never actually open, which is the whole of what hair is:
+ * free to everyone, like the bases and the faces.
+ */
 let packKeys: Set<string> | null = null;
 export function isPackItem(category: LayerCategory, id: string): boolean {
   if (!packKeys) {
-    packKeys = new Set(getBoosterPool().map((p) => unlockKeyOf(p.category, p.variant.id)));
+    packKeys = new Set(
+      getBoosterPool()
+        .filter((p) => !isFreeInShippedGame(p.category, p.variant.id))
+        .map((p) => unlockKeyOf(p.category, p.variant.id)),
+    );
   }
   return packKeys.has(unlockKeyOf(category, id));
 }
