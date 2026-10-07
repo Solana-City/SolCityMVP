@@ -468,8 +468,9 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
             flexDirection: "column",
             alignItems: "stretch",
             background: "rgba(0,0,0,0.2)",
-            // Taller than a sideways phone: scroll rather than cut the tabs off.
-            overflowY: "auto", minHeight: 0,
+            // The preview and its buttons stay put; only the tab list below
+            // them scrolls (see the tabs container).
+            overflow: "hidden", minHeight: 0,
           }}>
             <div style={{ display: "flex", justifyContent: "center", padding: isMobile ? "8px 8px 4px" : short ? "8px 12px 4px" : "14px 12px 8px", flexShrink: 0 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
@@ -502,8 +503,11 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
               </PreviewTool>
             </div>
 
-            {/* Tabs: labelled list on desktop, a 4x2 icon grid on a phone. */}
+            {/* Tabs: labelled list on desktop, a 4x2 icon grid on a phone. The one
+                part of this column that scrolls, when the list is taller than
+                what is left under the preview. */}
             <div style={{
+              flex: 1, minHeight: 0, overflowY: "auto", overscrollBehavior: "contain",
               display: isMobile ? "grid" : "flex",
               gridTemplateColumns: isMobile ? "repeat(4, 1fr)" : undefined,
               flexDirection: "column",
