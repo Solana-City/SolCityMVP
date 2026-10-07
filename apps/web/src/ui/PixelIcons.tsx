@@ -20,7 +20,8 @@ const FRAME_PX = 64;
 
 export const ICON = {
   trophy: `${UI}/icon2_trophy.png`,
-  tasks: `${UI}/icon_tasks1.png`,  hunt: `${UI}/icon_quests2.png`,
+  tasks: `${UI}/icon_tasks1.png`,
+  hunt: `${UI}/icon_quests2.png`,
   wardrobe: `${UI}/icon_wardrob1.png`,
   chat: `${UI}/ico_chat.png`,
   emote: `${UI}/ico_emoji.png`,
@@ -388,15 +389,15 @@ export const ACHIEVEMENT_ART: Record<string, { sheet?: string; img?: string; str
   "first-transfer": { sheet: "send-npc.png" },
   "streak-3": { img: `${UI}/attention_yellow.png` },
   "met-sol": { sheet: "Sol.png" },
-  "met-everyone": { img: `${UI}/ico_chat.png` },
+  "met-everyone": { img: `${UI}/icon_chat2.png` },
   "trader-10": { sheet: "Jupiter Joe.png" },
   "streak-7": { img: `${UI}/attention_yellow.png` },
   "score-1000": { img: ICON.trophy },
 
   // Talking
-  "social-5": { img: `${UI}/ico_chat.png` },
-  "social-10": { img: `${UI}/ico_chat.png` },
-  "social-20": { img: `${UI}/ico_chat.png` },
+  "social-5": { img: `${UI}/icon_chat2.png` },
+  "social-10": { img: `${UI}/icon_chat2.png` },
+  "social-20": { img: `${UI}/icon_chat2.png` },
 
   // Trading
   "trader-25": { sheet: "Jupiter Joe.png" },
@@ -447,11 +448,11 @@ export const ACHIEVEMENT_ART: Record<string, { sheet?: string; img?: string; str
   "mechs-pvp-25": { img: `${UI}/icon2_leaderboard.png` },
 
   // Reactions
-  "express-10": { img: ICON.emote },
+  "express-10": { img: `${UI}/icon_emoji2.png` },
 
   // Coming back
-  "streak-14": { img: `${UI}/icon_calendar.png` },
-  "streak-30": { img: `${UI}/icon_calendar.png` },
+  "streak-14": { img: `${UI}/icon_calendar1.png` },
+  "streak-30": { img: `${UI}/icon_calendar1.png` },
 
   // Points
   "score-100": { img: ICON.trophy },

@@ -691,7 +691,7 @@ function FriendsTab({ gameRef }: { gameRef: Phaser.Game | null }) {
       )}
 
       <div>
-        <SectionTitle icon={ICON.trophy} label="FRIENDS" count={friends?.length ?? 0} />
+        <SectionTitle icon="/assets/ui/icon_friends.png" label="FRIENDS" count={friends?.length ?? 0} />
         {friends === null ? (
           <Card><div style={{ fontSize: 8, color: MUTED }}>Reading the chain...</div></Card>
         ) : friends.length === 0 ? (
