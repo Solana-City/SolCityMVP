@@ -3,7 +3,6 @@ import { progressionBus } from "@/game/progression/progressionBus";
 export interface PlayerProfile {
   wallet: string | null;
   displayName: string;
-  pfp: string | null;
   outfitId: string;
   score: number;
   swapCount: number;
@@ -109,11 +108,6 @@ export class ProfileManager {
     this.save();
   }
 
-  setPfp(url: string | null): void {
-    this.profile.pfp = url;
-    this.save();
-  }
-
   setOutfit(outfitId: string): void {
     this.profile.outfitId = outfitId;
     this.save();
@@ -184,7 +178,7 @@ export class ProfileManager {
   /**
    * Wipes all progression state — score, counters, visited NPCs, unlocked
    * achievements, unlocked outfits (except default). Keeps wallet address,
-   * display name, and PFP so the player isn't fully reset.
+   * display name and wallet so the player isn't fully reset.
    *
    * Primarily for dev / demo use. Exposed via a visible button in
    * ProfilePanel so testing achievements from scratch doesn't require
@@ -219,7 +213,6 @@ export class ProfileManager {
     const defaults: PlayerProfile = {
       wallet: null,
       displayName: "Citizen",
-      pfp: null,
       outfitId: "default",
       score: 0,
       swapCount: 0,
@@ -238,7 +231,13 @@ export class ProfileManager {
       if (raw) {
         // Merge with defaults so older stored profiles gain the new
         // fields without wiping existing progress.
-        return { ...defaults, ...JSON.parse(raw) };
+        const stored = { ...defaults, ...JSON.parse(raw) } as PlayerProfile & { pfp?: unknown };
+        // The uploaded profile picture is gone (the portrait is the player's
+        // own character now). Old saves hold it as a data URL, which is the
+        // biggest thing in here by far, so drop it on the way in and the next
+        // save writes the profile without it.
+        delete stored.pfp;
+        return stored;
       }
     } catch {}
     return defaults;

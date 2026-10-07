@@ -136,18 +136,6 @@ export function octagonFrame(scale: 1 | 2): CSSProperties {
   };
 }
 
-/** Avatar in the octagon frame; `size` is the total size including the frame. */
-export function avatarFrame(scale: 1 | 2, size: number): CSSProperties {
-  return { ...octagonFrame(scale), width: size, height: size };
-}
-
-/** Background that puts the photo under the whole frame, or a plain fill. */
-export function avatarPhoto(src: string | null, fill = "rgba(8,12,32,0.95)"): CSSProperties {
-  return src
-    ? { background: `url("${src}") center / cover no-repeat border-box, ${fill}` }
-    : { background: fill };
-}
-
 /** The thin (4px) frame4 ring, for cards nested inside a window. Trims its own background to the octagon. */
 export function octagonFrameThin(): CSSProperties {
   return {

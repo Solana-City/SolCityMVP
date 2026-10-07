@@ -1,7 +1,7 @@
 "use client";
 
 import { AchievementIcon, LockIcon, SpeakerIcon, MusicIcon, PixelImg, ICON, CloseButton } from "@/ui/PixelIcons";
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import type { PlayerProfile } from "@/game/config/profileManager";
@@ -15,7 +15,8 @@ import { OPEN_CALENDAR_EVENT, STREAK_EVENT, CHECKIN_STALLED_EVENT, type StreakVi
 import { soundManager } from "@/game/audio/SoundManager";
 import { musicManager } from "@/game/audio/MusicManager";
 import { dmsOffPref, setDmsOffPref } from "@/game/chat/dmEvents";
-import { chamferBox, octagonFrame, avatarFrame, avatarPhoto, octagonFrameThin } from "@/ui/chamfer";
+import { chamferBox, octagonFrame, octagonFrameThin } from "@/ui/chamfer";
+import { AvatarHeadFrame } from "@/ui/AvatarHead";
 import { KeysRows } from "@/ui/KeysCard";
 import { useButtonFeel, feelStyle } from "@/ui/useButtonFeel";
 import { PublicKey } from "@solana/web3.js";
@@ -44,10 +45,8 @@ interface ProfilePanelProps {
 
 export default function ProfilePanel({ gameRef, isOpen, onClose }: ProfilePanelProps) {
   const [profile, setProfile] = useState<PlayerProfile | null>(null);
-  const [manager, setManager] = useState<ProfileManager | null>(null);
   const [panelTab, setPanelTab] = useState<PanelTab>("profile");
   const [copied, setCopied] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const viewport = useViewportBox();
   const { connected } = useWallet();
   const { setVisible: openWalletModal } = useWalletModal();
@@ -59,7 +58,6 @@ export default function ProfilePanel({ gameRef, isOpen, onClose }: ProfilePanelP
       if (scene) {
         const pm = scene.registry.get("profileManager") as ProfileManager | undefined;
         if (pm) {
-          setManager(pm);
           setProfile(pm.get());
           pm.onChange((p) => setProfile({ ...p }));
           clearInterval(check);
@@ -68,19 +66,6 @@ export default function ProfilePanel({ gameRef, isOpen, onClose }: ProfilePanelP
     }, 200);
     return () => clearInterval(check);
   }, [gameRef]);
-
-  const handlePfpUpload = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (!file || !manager) return;
-      const reader = new FileReader();
-      reader.onload = () => {
-        manager.setPfp(reader.result as string);
-      };
-      reader.readAsDataURL(file);
-    },
-    [manager]
-  );
 
   useEffect(() => {
     if (!isOpen) return;
@@ -136,27 +121,10 @@ export default function ProfilePanel({ gameRef, isOpen, onClose }: ProfilePanelP
 
         {/* Header: avatar + name, wallet */}
         <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap", paddingRight: 40 }}>
-          <div
-            className="relative cursor-pointer"
-            style={{ flexShrink: 0 }}
-            onClick={() => fileInputRef.current?.click()}
-          >
-            <div style={{
-              ...avatarFrame(2, 96),
-              ...avatarPhoto(profile.pfp),
-              display: "flex", alignItems: "center", justifyContent: "center",
-              color: GREEN, fontSize: 22, position: "relative",
-            }}>
-              {!profile.pfp && profile.displayName[0]?.toUpperCase()}
-              <div
-                className="absolute inset-0 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity"
-                style={{ background: "rgba(0,0,0,0.6)", fontSize: 8, color: "#fff" }}
-              >
-                edit
-              </div>
-            </div>
-            <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handlePfpUpload} />
-          </div>
+          {/* The player's own face, wearing what they have on right now.
+              Changing it is the wardrobe's job, so this is a portrait and not
+              a button. */}
+          <AvatarHeadFrame gameRef={gameRef} size={108} frame={2} />
 
           <div style={{ minWidth: 0 }}>
             <div style={{ fontSize: 22, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 280 }}>

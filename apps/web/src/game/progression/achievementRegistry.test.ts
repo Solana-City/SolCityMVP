@@ -22,7 +22,6 @@ import type { PlayerProfile } from "@/game/config/profileManager";
 const EMPTY: PlayerProfile = {
   wallet: null,
   displayName: "Citizen",
-  pfp: null,
   outfitId: "default",
   score: 0,
   swapCount: 0,

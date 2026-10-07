@@ -55,7 +55,8 @@ const ExpressionWheel     = dynamic(() => import("@/ui/ExpressionWheel"),     { 
 const Minimap             = dynamic(() => import("@/ui/Minimap"),             { ssr: false });
 
 import ErrorBoundary from "@/ui/ErrorBoundary";
-import { chamferBox, chamferClip, avatarFrame, avatarPhoto } from "@/ui/chamfer";
+import { AvatarHeadFrame } from "@/ui/AvatarHead";
+import { chamferBox, chamferClip } from "@/ui/chamfer";
 import { OPEN_DM_EVENT } from "@/game/chat/dmEvents";
 import { OPEN_CALENDAR_EVENT } from "@/game/daily/calendarEvents";
 import { DM_UNREAD_EVENT, SEND_TOKENS_EVENT } from "@/game/chat/dmEvents";
@@ -563,7 +564,7 @@ export default function Home() {
                  touch the wallet. */
               <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                  <PfpButton gameRef={game} size={40} onClick={() => setProfileOpen(true)} />
+                  <ProfileButton gameRef={game} size={44} frame="thin" onClick={() => setProfileOpen(true)} />
                   <WardrobeButton size={30} onClick={() => setWardrobeOpen(true)} />
                   <CalendarButton size={30} />
                   <HudIconBtn
@@ -623,7 +624,7 @@ export default function Home() {
                 <Framed width={9}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, padding: 4 }}>
                     <span style={{ display: "block", flexShrink: 0 }}>
-                      <PfpButton gameRef={game} size={52} onClick={() => setProfileOpen(true)} />
+                      <ProfileButton gameRef={game} size={54} onClick={() => setProfileOpen(true)} />
                     </span>
                     <span style={{ display: "flex", gap: 4, flexShrink: 0, marginLeft: "auto" }}>
                       <WardrobeButton size={34} onClick={() => setWardrobeOpen(true)} />
@@ -898,50 +899,28 @@ function HudIconBtn({ size, src, onClick, title, overlay, dot, ...aria }: {
   );
 }
 
-function PfpButton({ gameRef, onClick, size = 40 }: {
-  gameRef: Phaser.Game | null; onClick: () => void; size?: number;
+/**
+ * Opens the profile. The face on it is the player's own, wearing whatever they
+ * have equipped right now - the same composited head the expression wheel
+ * shows. It used to be an uploadable picture, which nothing but the uploader
+ * ever saw: it was not published anywhere, so it told other players nothing
+ * and told this one something they already knew.
+ */
+function ProfileButton({ gameRef, onClick, size, frame }: {
+  gameRef: Phaser.Game | null;
+  onClick: () => void;
+  size: number;
+  frame?: "thin" | 1 | 2;
 }) {
-  const [pfp, setPfp] = useState<string | null>(null);
-  const [initial, setInitial] = useState("C");
-
-  useEffect(() => {
-    if (!gameRef) return;
-    const check = setInterval(() => {
-      const scene = gameRef.scene.getScene("CityScene");
-      if (scene) {
-        const pm = scene.registry.get("profileManager") as any;
-        if (pm) {
-          const p = pm.get();
-          setPfp(p.pfp);
-          setInitial(p.displayName[0]?.toUpperCase() ?? "C");
-          pm.onChange((prof: any) => {
-            setPfp(prof.pfp);
-            setInitial(prof.displayName[0]?.toUpperCase() ?? "C");
-          });
-          clearInterval(check);
-        }
-      }
-    }, 200);
-    return () => clearInterval(check);
-  }, [gameRef]);
-
   return (
     <button
       onClick={onClick}
       className="cursor-pointer transition-transform hover:scale-105 active:scale-95"
-      style={{
-        ...avatarFrame(1, size),
-        ...avatarPhoto(pfp),
-        padding: 0,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-      }}
+      style={{ padding: 0, border: "none", background: "none", display: "block", flexShrink: 0 }}
       title="Profile [P]"
+      aria-label="Profile"
     >
-      {!pfp && (
-        <span style={{ color: "#B7E928", fontSize: size >= 48 ? "16px" : "13px", fontWeight: "bold" }}>{initial}</span>
-)}
+      <AvatarHeadFrame gameRef={gameRef} size={size} frame={frame} />
     </button>
   );
 }
