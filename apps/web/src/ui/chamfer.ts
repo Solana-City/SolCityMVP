@@ -18,6 +18,53 @@ export function chamferRectPoints(x: number, y: number, w: number, h: number, c:
 
 const SQRT2 = Math.SQRT2;
 
+type RGBA = [number, number, number, number];
+
+function parseColor(input: string): RGBA | null {
+  const c = input.trim();
+  let m = c.match(/^#([0-9a-f]{3,4})$/i);
+  if (m) {
+    const h = m[1];
+    const [r, g, b, a] = [...h].map((x) => parseInt(x + x, 16));
+    return [r, g, b, h.length === 4 ? a / 255 : 1];
+  }
+  m = c.match(/^#([0-9a-f]{6})([0-9a-f]{2})?$/i);
+  if (m) {
+    const n = parseInt(m[1], 16);
+    return [(n >> 16) & 255, (n >> 8) & 255, n & 255, m[2] ? parseInt(m[2], 16) / 255 : 1];
+  }
+  m = c.match(/^rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)(?:[\s,/]+([\d.]+%?))?\s*\)$/i);
+  if (m) {
+    const a = m[4] === undefined ? 1 : m[4].endsWith("%") ? parseFloat(m[4]) / 100 : parseFloat(m[4]);
+    return [parseFloat(m[1]), parseFloat(m[2]), parseFloat(m[3]), a];
+  }
+  return null;
+}
+
+/** What shows behind a chamfered box when nothing opaque is known. */
+const FALLBACK_BACKDROP = "#0b0e1c";
+
+/**
+ * The same colour as an opaque one: `color` laid over `over`.
+ *
+ * The outline of a chamfered box is several overlapping layers (four edge
+ * strips and a diagonal per corner), and where translucent layers overlap their
+ * alpha adds up, so the corners came out brighter than the sides. A solid
+ * colour has nothing to add up. Anything this cannot read (a var(), a name) is
+ * returned untouched.
+ */
+export function solidColor(color: string, over?: string): string {
+  const fg = parseColor(color);
+  if (!fg || fg[3] >= 1) return color;
+  let base = parseColor(over ?? FALLBACK_BACKDROP) ?? parseColor(FALLBACK_BACKDROP)!;
+  if (base[3] < 1) {
+    const under = parseColor(FALLBACK_BACKDROP)!;
+    base = [0, 1, 2].map((i) => base[i] * base[3] + under[i] * (1 - base[3])).concat(1) as RGBA;
+  }
+  const out = [0, 1, 2].map((i) => Math.round(fg[i] * fg[3] + base[i] * (1 - fg[3])));
+  return `rgb(${out[0]},${out[1]},${out[2]})`;
+}
+
 function parseBorder(border: unknown): { w: number; c: string } | null {
   if (typeof border !== "string") return null;
   const m = border.trim().match(/^([\d.]+)px\s+(?:solid|dashed|dotted)\s+(.+)$/);
@@ -64,7 +111,12 @@ export function chamferBox(corner: number, style: CSSProperties): CSSProperties 
   const b = parseBorder(style.border);
   if (!b) return { ...style, clipPath };
 
-  const { w, c } = b;
+  const { w } = b;
+  // The element's own background, if it is a plain colour: the outline is
+  // blended over it (see solidColor).
+  const bgOf = (style.background ?? style.backgroundColor) as string | undefined;
+  const bgColor = bgOf ? splitTop(bgOf).find((p) => !isImage(p)) : undefined;
+  const c = solidColor(b.c, bgColor);
   const col = `var(--cbc, ${c})`;
   const line = `linear-gradient(${col}, ${col})`;
   // The diagonal stroke covers x + y in [corner, corner + reach].
