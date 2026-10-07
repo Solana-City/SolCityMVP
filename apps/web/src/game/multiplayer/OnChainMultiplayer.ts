@@ -284,6 +284,13 @@ export class OnChainMultiplayer {
    * pushed it forward again — the slide-freeze-jump players saw.
    */
   private lastSlot = new Map<string, number>();
+  /**
+   * Last bytes the discovery sweep saw for each PDA, so an account that has
+   * not changed since the previous sweep is not parsed again. Keyed by PDA
+   * because that is all the sweep knows before decoding. Bounded by the
+   * number of accounts ever delegated, a few hundred bytes each.
+   */
+  private lastDiscoveryBytes = new Map<string, Buffer>();
   /** Changed states applied per source since the last [mp] log line. */
   private readsByPush = 0;
   private readsByPoll = 0;
@@ -481,6 +488,7 @@ export class OnChainMultiplayer {
     }
     this.accountSubs.clear();
     this.lastSlot.clear();
+    this.lastDiscoveryBytes.clear();
     this.setOnline(false);
 
     // Remove the program-wide and chat-log subscriptions — leaking these
@@ -2008,6 +2016,22 @@ export class OnChainMultiplayer {
     try {
       const buf = Buffer.from(data);
       if (buf.length < 83) return; // 8 + 32 + 33 + 4 + 4 + 4 (min)
+
+      // The ER's getProgramAccounts hands back every account ever delegated to
+      // the rollup, not the players currently in the city — observed 27 of them
+      // with two people actually online. The other 25 are frozen: identical
+      // bytes every five seconds, parsed in full (two base58 encodes among
+      // them) only to be dropped by the freshness gate further down.
+      //
+      // Deliberately scoped to the discovery sweep, which is the only caller
+      // that passes no slot. The 500ms poll and the websocket push both carry
+      // one, and skipping those would leave lastSlot behind and weaken the
+      // out-of-order guard that depends on it.
+      if (slot === undefined) {
+        const seen = this.lastDiscoveryBytes.get(pda);
+        if (seen && seen.length === buf.length && buf.equals(seen)) return;
+        this.lastDiscoveryBytes.set(pda, Buffer.from(buf));
+      }
 
       let offset = 8; // skip 8-byte Anchor discriminator
 
