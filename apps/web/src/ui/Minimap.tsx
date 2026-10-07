@@ -316,7 +316,18 @@ function CompactMap({ host, mobile, corners, bare, onOpen, onCollapse }: {
     c.height = D * dpr;
     const R = D / 2;
     let raf = 0;
+    // The corner map used to redraw at the display's full rate, which on an
+    // idle player meant 60 identical 176px frames a second: a snapshot
+    // allocation, a full clear, every landmark and NPC marker re-plotted and a
+    // fresh radial gradient, all to produce the picture already on screen.
+    // Nothing here reads as choppy at 20: the YOU dot crosses a 176px disc
+    // slowly, and the pulse is a slow breath.
+    const MIN_FRAME_MS = 1000 / 20;
+    let lastDraw = -Infinity;
     const loop = (t: number) => {
+      raf = requestAnimationFrame(loop);
+      if (t - lastDraw < MIN_FRAME_MS) return;
+      lastDraw = t;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       const snap = host.snapshot();
       const me = snap.player ?? { x: host.worldW / 2, y: host.worldH / 2 };
@@ -357,7 +368,7 @@ function CompactMap({ host, mobile, corners, bare, onOpen, onCollapse }: {
       ctx.fillStyle = g;
       ctx.fillRect(0, 0, D, D);
       ctx.restore();
-      raf = requestAnimationFrame(loop);
+      // (reschedule happens at the top of the loop, before the rate gate)
     };
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
