@@ -76,10 +76,31 @@ const OPPOSITE: Record<Direction, Direction> = {
 };
 
 const INTERACT_RANGE = TILE_SIZE * 2;
-/** One clock step for the hunted citizen — matches the NPCs' 4s cadence. */
-const DETERMINISTIC_STEP_MS = 4_000;
-/** How far it may drift from the district spot the round anchored it to. */
-const DETERMINISTIC_RADIUS = TILE_SIZE * 1.5;
+/**
+ * One clock step for the hunted citizen. Half the NPCs' 4s cadence: the
+ * meander below covers a fixed distance per step, so the step length is what
+ * sets its walking speed, and 2s lands it at ~22px/s — inside the 22-30 band
+ * the rest of the crowd walks at. Shorter steps also mean shorter straight
+ * legs between samples, so the curve reads as walking rather than as a series
+ * of corners.
+ */
+const DETERMINISTIC_STEP_MS = 2_000;
+/**
+ * How far the hunted citizen may drift from the district spot the round
+ * anchored it to. The meander below spans about 1.5x this on each axis, so
+ * three tiles here gives it roughly a nine-tile square to stroll — enough to
+ * read as someone going about their day, small enough that the district on
+ * the hunt card stays an honest clue.
+ */
+const DETERMINISTIC_RADIUS = TILE_SIZE * 3;
+/**
+ * Two turn rates per axis, deliberately not multiples of each other, so the
+ * path never settles into a visible loop. Sized so the distance covered in
+ * one step works out around 22-30 px/s — the same band the ordinary crowd
+ * walks at, so the target does not stand out by moving differently.
+ */
+const DETERMINISTIC_RATE_A = 0.55;
+const DETERMINISTIC_RATE_B = 0.9;
 /** A destination is "crowded" when this many peds already stand near it. */
 const CROWD_LIMIT = 4;
 const CROWD_RADIUS = TILE_SIZE * 2.5;
@@ -144,7 +165,8 @@ export class PedestrianSprite {
    */
   private leash: Phaser.Geom.Rectangle | null = null;
   /** Set only on the hunted citizen — see setDeterministicWander. */
-  private deterministic: { x: number; y: number; seed: number } | null = null;
+  private deterministic:
+    { x: number; y: number; px: number; py: number; qx: number; qy: number } | null = null;
   private detTimer: Phaser.Time.TimerEvent | null = null;
 
   constructor(
@@ -344,27 +366,45 @@ export class PedestrianSprite {
       // is a citizen standing somewhere else on your screen than on mine.
       body.setImmovable(true);
     }
-    this.deterministic = { x: origin.x, y: origin.y, seed: slotSeed >>> 0 };
-    this.runDeterministicStep(true);
-  }
-
-  /** Where the hunted citizen stands at a given wall-clock step. */
-  private deterministicTarget(step: number): { x: number; y: number } {
-    const d = this.deterministic!;
-    // mulberry32 over (round slot, step index) — identical on every client.
-    let s = (d.seed ^ Math.imul(step, 0x9e3779b9)) >>> 0;
-    const rnd = (): number => {
+    // Four starting phases drawn once from the round slot, so each round sends
+    // the citizen off on a different path from the same anchor — and the same
+    // different path in every browser.
+    let s = (slotSeed >>> 0) ^ 0x9e3779b9;
+    const phase = (): number => {
       s += 0x6D2B79F5;
       let t = Math.imul(s ^ (s >>> 15), 1 | s);
       t ^= t + Math.imul(t ^ (t >>> 7), 61 | t);
-      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      return (((t ^ (t >>> 14)) >>> 0) / 4294967296) * Math.PI * 2;
     };
-    const angle = rnd() * Math.PI * 2;
-    // Just over half the steps are a stand-still, so the citizen reads as
-    // someone loitering rather than pacing a circle.
-    const dist = rnd() < 0.55 ? 0 : (0.3 + rnd() * 0.7) * DETERMINISTIC_RADIUS;
-    let x = d.x + Math.cos(angle) * dist;
-    let y = d.y + Math.sin(angle) * dist;
+    this.deterministic = {
+      x: origin.x, y: origin.y,
+      px: phase(), py: phase(), qx: phase(), qy: phase(),
+    };
+    this.runDeterministicStep(true);
+  }
+
+  /**
+   * Where the hunted citizen stands at a given wall-clock step.
+   *
+   * Two sine waves per axis, at rates that are not multiples of each other.
+   * The first draft picked an unrelated random point per step and stood still
+   * on more than half of them, which is why the citizen read as stuck
+   * twitching on the spot: consecutive steps had nothing to do with each
+   * other, so the only safe amplitude was a tiny one. A continuous curve has
+   * no such problem — neighbouring steps are inherently close — so it can
+   * cover real ground and still never jump.
+   *
+   * Still a pure function of (seed, step): O(1), no accumulated state, and
+   * identical on every client, which is the whole point.
+   */
+  private deterministicTarget(step: number): { x: number; y: number } {
+    const d = this.deterministic!;
+    const a = step * DETERMINISTIC_RATE_A;
+    const b = step * DETERMINISTIC_RATE_B;
+    let x = d.x + DETERMINISTIC_RADIUS
+      * (Math.sin(d.px + a) + 0.5 * Math.sin(d.qx + b));
+    let y = d.y + DETERMINISTIC_RADIUS
+      * (Math.cos(d.py + a) + 0.5 * Math.cos(d.qy + b));
     // The district leash still wins: it is the promise the hunt card makes
     // about where to look, and it is the same rectangle on every client.
     if (this.leash) {
