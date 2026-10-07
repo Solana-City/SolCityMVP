@@ -64,6 +64,8 @@ export const RARITY_COLOR: Record<Rarity, string> = {
 export interface RarityTheme {
   /** The line itself: border, label text, odds bar. */
   color: string;
+  /** The same line on a tile that is locked or otherwise stood down. */
+  muted: string;
   /** Behind the item, so the frame is not a lone outline. */
   fill: string;
   /** For a drop-shadow on the rarities worth lighting up. */
@@ -82,10 +84,14 @@ const RARITY_WEIGHT: Record<Rarity, { fill: string; glow: string }> = {
   legendary: { fill: "22", glow: "88" },
 };
 
+/** One step down for every rarity: a locked item still says what it is. */
+const MUTED = "55";
+
 /** An item with no rarity at all (a free shirt, a quest reward). Same shape,
  *  so a grid can frame every tile without asking whether it drops. */
 export const UNRANKED_THEME: RarityTheme = {
   color: "rgba(255,255,255,0.10)",
+  muted: "rgba(255,255,255,0.04)",
   fill: "rgba(255,255,255,0.02)",
   glow: "transparent",
   label: "",
@@ -94,6 +100,7 @@ export const UNRANKED_THEME: RarityTheme = {
 const RARITY_THEME: Record<Rarity, RarityTheme> = Object.fromEntries(
   RARITY_ORDER.map((r) => [r, {
     color: RARITY_COLOR[r],
+    muted: alpha(RARITY_COLOR[r], MUTED),
     fill: alpha(RARITY_COLOR[r], RARITY_WEIGHT[r].fill),
     glow: alpha(RARITY_COLOR[r], RARITY_WEIGHT[r].glow),
     label: RARITY_LABEL[r],

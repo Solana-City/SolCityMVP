@@ -574,12 +574,11 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
                     compact={isMobile}
                     onClick={() => selectVariant(activeCategory, undefined)}
                   >
-                    <div style={chamferBox(6, {
-                      width: TILE + FRAME * 2, height: TILE + FRAME * 2,
+                    <div style={{
+                      width: TILE, height: TILE,
                       display: "flex", alignItems: "center", justifyContent: "center",
-                      color: "#333344", fontSize: 20,
-                      border: "2px dashed #2a2a4a",
-                    })}>∅</div>
+                      color: "#333344", fontSize: 22,
+                    }}>∅</div>
                     <span style={{ color: !currentVariantId ? "#B7E928" : "#444466" }}>None</span>
                   </VariantCard>
                 )}
@@ -597,13 +596,10 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
                       locked={locked}
                       hintFlashing={hintFlashing}
                       compact={isMobile}
+                      rarity={isPackItem(activeCategory, v.id) ? rarityOf(activeCategory, v.id) : null}
                       onClick={() => selectVariant(activeCategory, v.id)}
                     >
-                      <RarityFrame
-                        rarity={isPackItem(activeCategory, v.id) ? rarityOf(activeCategory, v.id) : null}
-                        size={TILE}
-                        dim={locked}
-                      >
+                      <div style={{ position: "relative", lineHeight: 0 }}>
                         {/* Cropped: the grid shows the hat, not the character
                             wearing it. Without this a hat is a dozen pixels in
                             the middle of a tile and unreadable on a phone. */}
@@ -615,7 +611,7 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
                             background: "rgba(6,8,20,0.55)",
                           })}><LockIcon size={Math.round(TILE * 0.42)} /></span>
                         )}
-                      </RarityFrame>
+                      </div>
                       <span style={{
                         color: locked ? "#666688" : isSelected ? "#B7E928" : "#aaaacc",
                         lineHeight: 1.3,
@@ -697,71 +693,46 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
   );
 }
 
-/** Border width of a rarity frame, in px. The tile reserves it on both sides
- *  so a legendary and a common are exactly the same size. */
-const FRAME = 2;
-
 /**
- * The rarity, drawn as the frame AROUND an item instead of a line inside it.
+ * One option in the grid. The card's own frame IS the rarity — colour and
+ * tint come from rarityTheme() (game/collections/seasons.ts, the one place
+ * rarity colours are authored), so there is no second box drawn inside it.
  *
- * Colour, tint and glow all come from rarityTheme() — see
- * game/collections/seasons.ts, the one place rarity colours are authored.
- * `rarity: null` is an item no pack gives (a free shirt, a quest reward): it
- * gets the same frame in neutral, so the grid stays a grid.
+ * `rarity: null` is an item no pack gives (a free shirt, a quest reward) and
+ * keeps the neutral frame the grid has always had.
+ *
+ * Selection still wins the frame while it lasts: only one tile per category
+ * is selected, and losing its rarity colour for as long as it is worn beats
+ * making "which one am I wearing" a guess.
  */
-function RarityFrame({ rarity, size, dim, children }: {
-  rarity: Rarity | null;
-  size: number;
-  dim?: boolean;
-  children: React.ReactNode;
-}) {
-  const theme = rarityTheme(rarity);
-  return (
-    <span style={{ display: "block", lineHeight: 0, filter: theme.glow === "transparent" || dim ? undefined : `drop-shadow(0 0 4px ${theme.glow})` }}>
-      <span
-        title={rarity ? RARITY_LABEL[rarity] : undefined}
-        style={chamferBox(6, {
-          position: "relative",
-          display: "block",
-          width: size + FRAME * 2,
-          height: size + FRAME * 2,
-          border: `${FRAME}px solid ${theme.color}`,
-          background: theme.fill,
-          opacity: dim ? 0.7 : 1,
-        })}
-      >
-        {children}
-      </span>
-    </span>
-  );
-}
-
 function VariantCard({
-  isSelected, isFlashing, locked = false, hintFlashing = false, compact = false, onClick, children,
+  isSelected, isFlashing, locked = false, hintFlashing = false, compact = false, rarity = null, onClick, children,
 }: {
   compact?: boolean;
   isSelected: boolean;
   isFlashing: boolean;
   locked?: boolean;
   hintFlashing?: boolean;
+  rarity?: Rarity | null;
   onClick: () => void;
   children: React.ReactNode;
 }) {
+  const theme = rarityTheme(rarity);
   const baseBg = locked
     ? "rgba(255,255,255,0.015)"
     : isSelected ? "rgba(183,233,40,0.15)"
     : isFlashing ? "rgba(183,233,40,0.08)"
-    : "rgba(255,255,255,0.02)";
+    : theme.fill;
   const baseBorder = hintFlashing
     ? "2px solid rgba(255,215,0,0.6)"
-    : locked ? "2px solid rgba(255,255,255,0.04)"
+    : locked ? `2px solid ${theme.muted}`
     : isSelected ? "2px solid rgba(183,233,40,0.7)"
-    : "2px solid rgba(255,255,255,0.05)";
+    : `2px solid ${theme.color}`;
   return (
     <button
       onClick={onClick}
       data-sfx={locked ? undefined : "outfit"}
-      title={locked ? "Locked" : undefined}
+      title={[rarity ? RARITY_LABEL[rarity] : "", locked ? "Locked" : ""].filter(Boolean).join(" · ") || undefined}
       style={chamferBox(10, {
         display: "flex",
         flexDirection: "column",
@@ -788,8 +759,8 @@ function VariantCard({
       }}
       onMouseLeave={e => {
         if (!isSelected && !locked) {
-          e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.02)";
-          e.currentTarget.style.setProperty("--cbc", "rgba(255,255,255,0.05)");
+          e.currentTarget.style.backgroundColor = theme.fill;
+          e.currentTarget.style.setProperty("--cbc", theme.color);
         }
         e.currentTarget.style.transform = isFlashing || hintFlashing ? "scale(1.04)" : "scale(1)";
       }}
