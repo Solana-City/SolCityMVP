@@ -802,7 +802,8 @@ export class CityScene extends Phaser.Scene {
         this.network?.sessionId ?? "local",
         this.profile.get().displayName,
         text,
-        color
+        color,
+        this.walletAddress ?? undefined,
       );
 
       this.showBubble(this.avatar, text, color);
@@ -823,7 +824,7 @@ export class CityScene extends Phaser.Scene {
       // over the trader instead of a chat line.
       const trade = decodeTrade(raw);
       if (trade) {
-        this.chat.addMessage("city", shown, shown, tradeLogLine(trade), TRADE_COLOR);
+        this.chat.addMessage("city", shown, shown, tradeLogLine(trade), TRADE_COLOR, wallet);
         const trader = wallet ? this.remotePlayers.get(wallet) : undefined;
         if (trader) new TradeBubble(this, trader.getContainer(), trade);
         return;
@@ -832,13 +833,13 @@ export class CityScene extends Phaser.Scene {
       const claim = decodeClaim(raw);
       if (claim) {
         if (wallet) recordClaim(wallet, claim);
-        this.chat.addMessage("city", shown, shown, claimLogLine(claim), TRADE_COLOR);
+        this.chat.addMessage("city", shown, shown, claimLogLine(claim), TRADE_COLOR, wallet);
         return;
       }
       // A modified client can still write a link on-chain: mask it on arrival.
       const text = maskLinks(raw);
       const color = getChannelColor("city");
-      this.chat.addMessage("city", shown, shown, text, color);
+      this.chat.addMessage("city", shown, shown, text, color, wallet);
       // Float the message over the sender's avatar, if they're in view.
       const avatar = wallet ? this.remotePlayers.get(wallet) : undefined;
       if (avatar) this.showBubble(avatar, text, color);

@@ -5,6 +5,15 @@ export interface ChatMessage {
   channel: ChatChannel;
   senderSessionId: string;
   senderName: string;
+  /**
+   * Who said it, as a wallet, when that is known.
+   *
+   * `senderSessionId` cannot answer this: for a message off the chain it is
+   * set to the name being SHOWN, and for the system line it is "system". The
+   * wallet is what a profile card is opened with, so it travels on its own.
+   * Absent on system lines, and on anything that reached us without one.
+   */
+  senderWallet?: string;
   text: string;
   timestamp: number;
   color?: string;
@@ -91,7 +100,8 @@ export class ChatManager {
     senderSessionId: string,
     senderName: string,
     text: string,
-    color?: string
+    color?: string,
+    senderWallet?: string,
   ): ChatMessage {
     const msg: ChatMessage = {
       id: `msg-${++this.counter}`,
@@ -101,6 +111,7 @@ export class ChatManager {
       text,
       timestamp: Date.now(),
       color,
+      senderWallet,
     };
 
     this.log.push(msg);

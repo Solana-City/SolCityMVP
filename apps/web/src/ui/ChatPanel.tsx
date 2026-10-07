@@ -145,7 +145,7 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
         requestNames([m.from]);
         const name = cachedName(m.from) ?? short(m.from);
         const ch = chatManager.ensureDM(m.from, name);
-        chatManager.addMessage(ch, m.from, name, maskLinks(m.text), DM_COLOR);
+        chatManager.addMessage(ch, m.from, name, maskLinks(m.text), DM_COLOR, m.from);
       });
       client.start();
       dmRef.current = client;
@@ -157,6 +157,11 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
       dmRef.current = null;
     };
   }, [gameRef, myWallet, chatManager]);
+
+  /** Opens a player's card, the same one clicking them in the street opens. */
+  const openCard = useCallback((wallet: string, name: string) => {
+    gameRef?.events.emit("player:cardOpen", { wallet, displayName: cachedName(wallet) ?? name });
+  }, [gameRef]);
 
   const openPeer = useCallback((wallet: string, name?: string) => {
     if (!chatManager) return;
@@ -207,7 +212,7 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
       setBusy(false);
       if (!res.ok) { setNotice(res.message); return; }
       const me = cachedName(myWallet) ?? short(myWallet);
-      chatManager?.addMessage(`dm:${dmPeer}`, myWallet, me, text, SELF_COLOR);
+      chatManager?.addMessage(`dm:${dmPeer}`, myWallet, me, text, SELF_COLOR, myWallet);
       setInput("");
       return;
     }
@@ -470,9 +475,12 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
           )}
           {messages.map((msg) => (
             <div key={msg.id} className="leading-relaxed mb-0.5" style={{ fontSize: 8, overflowWrap: "anywhere", wordBreak: "break-word" }}>
-              <span style={{ color: msg.color || channelColor }}>
-                {msg.senderName}
-              </span>
+              <SenderName
+                name={msg.senderName}
+                wallet={msg.senderWallet}
+                color={msg.color || channelColor}
+                onOpen={openCard}
+              />
               <span style={{ color: "#444455" }}>{"> "}</span>
               <span style={{ color: "#d6d6e8" }}>{msg.text}</span>
             </div>
@@ -587,6 +595,44 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
         )}
       </div>
     </div>
+  );
+}
+
+/**
+ * A name in the log, which opens that player's card when there is a wallet
+ * behind it.
+ *
+ * The same card clicking the player in the street opens, through the same
+ * event, so there is one way for the city to show somebody and not two. A
+ * system line and anything that arrived without a wallet stay plain text:
+ * underlining something that does nothing is the complaint the dialogue
+ * highlight cards already earned.
+ */
+function SenderName({ name, wallet, color, onOpen }: {
+  name: string;
+  wallet?: string;
+  color: string;
+  onOpen: (wallet: string, name: string) => void;
+}) {
+  const [hover, setHover] = useState(false);
+  if (!wallet) return <span style={{ color }}>{name}</span>;
+  return (
+    <button
+      onClick={() => onOpen(wallet, name)}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      title={`Open ${name}'s profile`}
+      style={{
+        // A name, not a button: no frame, no padding, no background. The only
+        // thing that marks it is the cursor, and an underline under the
+        // pointer.
+        font: "inherit", color, background: "none", border: "none",
+        padding: 0, margin: 0, cursor: "pointer", lineHeight: "inherit",
+        textDecoration: hover ? "underline" : "none",
+      }}
+    >
+      {name}
+    </button>
   );
 }
 
