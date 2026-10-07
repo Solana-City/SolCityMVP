@@ -31,7 +31,22 @@ interface PhaserGameProps {
  * Arcade physics is unaffected: it runs fixedStep with a catch-up loop, so it
  * keeps taking ~60 steps a second regardless of how often we draw.
  */
-const ACTIVE_FPS_LIMIT = 240;
+/**
+ * 65, not 60, and not "uncapped".
+ *
+ * Uncapped means the display's rate, and on a 144Hz monitor this game was
+ * measured rendering at 111-141fps — paying well over twice the per-frame
+ * cost (thousands of batched quads each time) for frames nobody can see in
+ * slow-moving pixel art. That was the bulk of the CPU while walking.
+ *
+ * The limiter accumulates delta and resets it to zero after each callback,
+ * so the achieved rate is the display's rate divided by a whole number. A
+ * limit of exactly 60 on a 60Hz display sits right on that boundary and
+ * risks dropping every other frame (30fps). Sitting just above it is safe
+ * and lands well on every common panel:
+ *   60Hz -> 60    90Hz -> 45    120Hz -> 60    144Hz -> 48
+ */
+const ACTIVE_FPS_LIMIT = 65;
 const IDLE_FPS_LIMIT = 30;
 const IDLE_AFTER_MS = 10_000;
 
@@ -87,9 +102,7 @@ export default function PhaserGame({ onGameReady }: PhaserGameProps) {
       // literally nothing. With it, the limited stepper re-reads _limitRate
       // every frame and the idle throttle below works.
       //
-      // 240 rather than 60 because the limiter discards the surplus delta
-      // (`this.delta = 0` after each callback), so a limit equal to the
-      // display's own rate drops roughly every other frame and judders.
+      // It is also a real cap now — see ACTIVE_FPS_LIMIT for why 65.
       fps: { limit: ACTIVE_FPS_LIMIT },
       physics: {
         default: "arcade",
