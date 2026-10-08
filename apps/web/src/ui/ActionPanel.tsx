@@ -7,6 +7,10 @@ import type { NPCAction } from "@/game/config/npcRegistry";
 import type { EarnListing, EarnListingType } from "@/game/solana/superteamEarn";
 import { transactionLog } from "@/game/telemetry/transactionLog";
 import { profileManager } from "@/game/config/profileManager";
+import {
+  SEND_TOKENS, DEFAULT_SEND_TOKEN, getSendToken, explorerUrl,
+  type SendToken,
+} from "@/game/solana/sendTokens";
 import { ProtocolIntroGate, type IntroSpec } from "@/ui/ProtocolIntro";
 import CityGuide from "@/ui/CityGuide";
 import MagicBlockHub from "@/ui/MagicBlockHub";
@@ -41,19 +45,19 @@ const EARN_INTRO: IntroSpec = {
   ],
 };
 
-/** Steve Sends: what a transfer is, before the send form. */
+/** Jupiter Cat: what a transfer is, before the send form. */
 const TRANSFER_INTRO: IntroSpec = {
   id: "transfer",
   title: "HOW SENDING WORKS",
   nodes: [
     { sheet: "main_char.png", label: "YOU" },
-    { sheet: "send-npc.png", label: "STEVE" },
+    { sheet: "Jupiter Joe.png", label: "JUPITER" },
     { sheet: "Kuka.png", label: "FRIEND" },
   ],
   steps: [
+    { title: "PICK", line: "Choose the token. Practice SOL costs nothing to play with.", edge: 0, chip: "SOL" },
     { title: "ADDRESS", line: "Paste your friend's wallet address.", edge: 1 },
-    { title: "AMOUNT", line: "Choose how much SOL to send.", edge: 0, chip: "SOL" },
-    { title: "SEND", line: "Sign and it arrives in seconds. The transfer is public on-chain.", edge: 1, chip: "SOL" },
+    { title: "SEND", line: "Sign and it arrives in seconds. Anyone can look the transfer up.", edge: 1, chip: "USDC" },
   ],
 };
 
@@ -215,8 +219,8 @@ export default function ActionPanel({ action, onClose }: ActionPanelProps) {
           {action.type === "tutor" && <CloseButton onClick={onClose} style={{ position: "absolute", top: 16, right: 16 }} />}
 
           {action.type === "tutor"           && <TutorPanel           onClose={onClose} />}
-          {action.type === "swap"            && <ProtocolIntroGate spec={SWAP_INTRO}><SwapPanel onClose={onClose} /></ProtocolIntroGate>}
-          {action.type === "transfer"        && <ProtocolIntroGate spec={TRANSFER_INTRO}><TransferPanel onClose={onClose} to={action.recipient} toName={action.recipientName} /></ProtocolIntroGate>}
+          {action.type === "swap"            && <JupiterPanel onClose={onClose} tab="swap" />}
+          {action.type === "transfer"        && <JupiterPanel onClose={onClose} tab="send" to={action.recipient} toName={action.recipientName} />}
           {action.type === "bounties"        && <ProtocolIntroGate spec={EARN_INTRO}><BountiesPanel onClose={onClose} /></ProtocolIntroGate>}
           {action.type === "private-payment" && (
             <MagicBlockHub onClose={onClose}><PrivatePaymentPanel onClose={onClose} /></MagicBlockHub>
@@ -255,8 +259,8 @@ export default function ActionPanel({ action, onClose }: ActionPanelProps) {
         {action.type === "tutor" && <CloseButton onClick={onClose} style={{ position: "absolute", top: 16, right: 16 }} />}
 
         {action.type === "tutor"           && <TutorPanel           onClose={onClose} />}
-        {action.type === "swap"            && <ProtocolIntroGate spec={SWAP_INTRO}><SwapPanel onClose={onClose} /></ProtocolIntroGate>}
-        {action.type === "transfer"        && <ProtocolIntroGate spec={TRANSFER_INTRO}><TransferPanel onClose={onClose} to={action.recipient} toName={action.recipientName} /></ProtocolIntroGate>}
+        {action.type === "swap"            && <JupiterPanel onClose={onClose} tab="swap" />}
+        {action.type === "transfer"        && <JupiterPanel onClose={onClose} tab="send" to={action.recipient} toName={action.recipientName} />}
         {action.type === "bounties"        && <ProtocolIntroGate spec={EARN_INTRO}><BountiesPanel onClose={onClose} /></ProtocolIntroGate>}
         {action.type === "private-payment" && (
             <MagicBlockHub onClose={onClose}><PrivatePaymentPanel onClose={onClose} /></MagicBlockHub>
@@ -272,9 +276,68 @@ export default function ActionPanel({ action, onClose }: ActionPanelProps) {
   );
 }
 
+// ── Jupiter Cat: swap and send under one roof ─────────────────────────
+
+type JupiterTab = "swap" | "send";
+
+/**
+ * Jupiter Cat does both jobs now, so the two forms live behind one pair of
+ * tabs rather than two NPCs on opposite sides of the city.
+ *
+ * Each tab keeps its own intro gate: the ids are unchanged, so a player who
+ * already dismissed the swap walkthrough still gets the sending one the first
+ * time they open SEND, and neither comes back twice.
+ */
+function JupiterPanel({ onClose, tab: initialTab, to, toName }: {
+  onClose: () => void;
+  tab: JupiterTab;
+  to?: string;
+  toName?: string;
+}) {
+  // Opened from a player's card, SEND is the point, so it starts there.
+  const [tab, setTab] = useState<JupiterTab>(initialTab);
+  const tabs = <PanelTabs tab={tab} onTab={setTab} />;
+
+  return tab === "swap"
+    ? <ProtocolIntroGate spec={SWAP_INTRO}><SwapPanel onClose={onClose} tabs={tabs} /></ProtocolIntroGate>
+    : <ProtocolIntroGate spec={TRANSFER_INTRO}><TransferPanel onClose={onClose} to={to} toName={toName} tabs={tabs} /></ProtocolIntroGate>;
+}
+
+function PanelTabs({ tab, onTab }: { tab: JupiterTab; onTab: (t: JupiterTab) => void }) {
+  return (
+    <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
+      <PanelTab label="SWAP" active={tab === "swap"} onClick={() => onTab("swap")} />
+      <PanelTab label="SEND" active={tab === "send"} onClick={() => onTab("send")} />
+    </div>
+  );
+}
+
+function PanelTab({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
+  const feel = useButtonFeel();
+  return (
+    <button
+      onClick={onClick}
+      {...feel.handlers}
+      style={chamferBox(6, {
+        flex: 1,
+        padding: "8px 0",
+        background: active ? PROTOCOLS_COLOR : "#12122a",
+        color: active ? "#000" : "#777788",
+        border: active ? "none" : "1px solid rgba(255,255,255,0.06)",
+        cursor: active ? "default" : "pointer",
+        fontFamily: '"Press Start 2P", monospace',
+        fontSize: "7px",
+        ...(active ? null : feelStyle(feel)),
+      })}
+    >
+      {label}
+    </button>
+  );
+}
+
 // ── Swap Panel (Jupiter Swap V2: /order + /execute) ───────────────────
 
-function SwapPanel({ onClose }: { onClose: () => void }) {
+function SwapPanel({ onClose, tabs }: { onClose: () => void; tabs?: React.ReactNode }) {
   const { connected, publicKey, signTransaction } = useWallet();
   const [inputToken,  setInputToken]  = useState("SOL");
   const [outputToken, setOutputToken] = useState("USDC");
@@ -409,6 +472,7 @@ function SwapPanel({ onClose }: { onClose: () => void }) {
   return (
     <>
       <PanelTitleBar title="TOKEN SWAP" onClose={onClose} color={PROTOCOLS_COLOR} logo={<ProtocolLogo sheet="Jupiter Joe.png" />} />
+      {tabs}
 
       {/* ⚠️ mainnet note */}
       <div style={{ fontSize: "7px", color: "#555566", marginBottom: 12, textAlign: "center" }}>
@@ -461,11 +525,26 @@ function SwapPanel({ onClose }: { onClose: () => void }) {
 
 // ── Transfer Panel ────────────────────────────────────────────────────
 
-function TransferPanel({ onClose, to, toName }: { onClose: () => void; to?: string; toName?: string }) {
+/**
+ * Sending, for every token the city knows about.
+ *
+ * The catalog in sendTokens.ts carries a cluster per entry, because the game
+ * itself runs on devnet while USDC, USDT, SKR and the rest only exist on
+ * mainnet. SOL appears twice on purpose. The line under the recipient is the
+ * only thing standing between practice money and real money, so it says which
+ * one is loaded in plain words and the confirm button repeats it.
+ */
+function TransferPanel({ onClose, to, toName, tabs }: {
+  onClose: () => void;
+  to?: string;
+  toName?: string;
+  tabs?: React.ReactNode;
+}) {
   const { connected, publicKey, sendTransaction } = useWallet();
   const { connection } = useConnection();
   // Opened from a player's card: their wallet is already in the box.
   const [recipient, setRecipient] = useState(to ?? "");
+  const [tokenId, setTokenId] = useState(DEFAULT_SEND_TOKEN.id);
   const [amount, setAmount] = useState("0.01");
   const [status, setStatus] = useState<"idle" | "sending" | "done" | "error">("idle");
   const [result, setResult] = useState<{ signature?: string; error?: string } | null>(null);
@@ -473,9 +552,13 @@ function TransferPanel({ onClose, to, toName }: { onClose: () => void; to?: stri
   const retryFeel = useButtonFeel();
   const sendFeel = useButtonFeel();
 
+  const token = getSendToken(tokenId) ?? DEFAULT_SEND_TOKEN;
+  const real = token.cluster === "mainnet";
+
   const handleSend = useCallback(async () => {
     if (!publicKey || !recipient || !amount) return;
-    const { buildSolTransfer, isValidAddress } = await import("@/game/solana/transfer");
+    const { isValidAddress } = await import("@/game/solana/transfer");
+    const { buildSendTransfer, sendTokenLabel } = await import("@/game/solana/sendTokens");
     const { PublicKey } = await import("@solana/web3.js");
 
     if (!isValidAddress(recipient)) { setResult({ error: "Invalid Solana address" }); setStatus("error"); return; }
@@ -485,14 +568,25 @@ function TransferPanel({ onClose, to, toName }: { onClose: () => void; to?: stri
     setStatus("sending");
     const logEntry = transactionLog.record({
       kind: "transfer",
+      // Both clusters are the base layer; the label carries which one it was.
       layer: "base",
-      label: `Send ${amount} SOL → ${recipient.slice(0, 4)}…${recipient.slice(-4)}`,
+      label: `Send ${amount} ${sendTokenLabel(token)} to ${recipient.slice(0, 4)}…${recipient.slice(-4)}`,
       status: "pending",
     });
     try {
-      const tx = await buildSolTransfer(connection, publicKey, new PublicKey(recipient), parsed);
-      const sig = await sendTransaction(tx, connection);
-      await connection.confirmTransaction(sig, "confirmed");
+      // The amount goes in as typed: buildSendTransfer converts it without a
+      // float, so 0.1 is exactly 0.1 and not the nearest double.
+      const { tx, connection: conn } = await buildSendTransfer({
+        token,
+        devnetConnection: connection,
+        from: publicKey,
+        to: new PublicKey(recipient),
+        amount,
+      });
+      // A mainnet send goes out over the catalog's own failover connection,
+      // not the game's devnet one, so the adapter is handed `conn` either way.
+      const sig = await sendTransaction(tx, conn);
+      await conn.confirmTransaction(sig, "confirmed");
       setResult({ signature: sig });
       setStatus("done");
       transactionLog.markConfirmed(logEntry.id, sig);
@@ -503,17 +597,17 @@ function TransferPanel({ onClose, to, toName }: { onClose: () => void; to?: stri
       setStatus("error");
       transactionLog.markFailed(logEntry.id, err.message ?? "transfer failed");
     }
-  }, [publicKey, recipient, amount, connection, sendTransaction]);
+  }, [publicKey, recipient, amount, connection, sendTransaction, token]);
 
   if (status === "done" && result?.signature) {
     return (
       <>
-        <PanelTitleBar title="SEND SOL" onClose={onClose} color={PROTOCOLS_COLOR} logo={<ProtocolLogo sheet="send-npc.png" />} />
+        <PanelTitleBar title="SEND TOKENS" onClose={onClose} color={PROTOCOLS_COLOR} logo={<ProtocolLogo sheet="Jupiter Joe.png" />} />
         <div className="text-center py-6">
           <div style={{ fontSize: 22, color: "#B7E928" }}>OK</div>
           <div style={{ fontFamily: '"Press Start 2P", monospace', fontSize: "8px", color: "#B7E928", marginTop: 8 }}>TRANSFER SENT</div>
-          <div style={{ fontSize: "9px", color: "#888899", marginTop: 8 }}>{amount} SOL sent</div>
-          <a href={`https://explorer.solana.com/tx/${result.signature}?cluster=devnet`} target="_blank" rel="noopener noreferrer"
+          <div style={{ fontSize: "9px", color: "#888899", marginTop: 8 }}>{amount} {token.symbol} sent</div>
+          <a href={explorerUrl(result.signature, token.cluster)} target="_blank" rel="noopener noreferrer"
             style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 5, marginTop: 8, fontSize: "9px", color: "#14F0C6" }}>
             View on Explorer <ExternalLinkIcon size={9} color="#14F0C6" />
           </a>
@@ -526,7 +620,7 @@ function TransferPanel({ onClose, to, toName }: { onClose: () => void; to?: stri
   if (status === "error" && result) {
     return (
       <>
-        <PanelTitleBar title="SEND SOL" onClose={onClose} color={PROTOCOLS_COLOR} logo={<ProtocolLogo sheet="send-npc.png" />} />
+        <PanelTitleBar title="SEND TOKENS" onClose={onClose} color={PROTOCOLS_COLOR} logo={<ProtocolLogo sheet="Jupiter Joe.png" />} />
         <div className="text-center py-6">
           <div style={{ fontSize: "9px", color: "#ff4444", marginBottom: 12 }}>{result.error}</div>
           <button onClick={() => { setStatus("idle"); setResult(null); }} {...retryFeel.handlers} style={btnStyle("#333344", "#888899", retryFeel)} className="px-4 py-2">Try again</button>
@@ -537,26 +631,64 @@ function TransferPanel({ onClose, to, toName }: { onClose: () => void; to?: stri
 
   return (
     <>
-      <PanelTitleBar title="SEND SOL" onClose={onClose} color={PROTOCOLS_COLOR} logo={<ProtocolLogo sheet="send-npc.png" />} />
+      <PanelTitleBar title="SEND TOKENS" onClose={onClose} color={PROTOCOLS_COLOR} logo={<ProtocolLogo sheet="Jupiter Joe.png" />} />
+      {tabs}
+
+      <SendTokenBox token={token} onTokenChange={(id) => { setTokenId(id); setResult(null); }}>
+        <input type="text" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.01"
+          style={{ background: "transparent", color: "#fff", border: "none", fontSize: 15, fontFamily: "monospace", width: "100%", outline: "none", fontWeight: "bold" }} />
+      </SendTokenBox>
+
       <InputBox label={toName ? `Recipient (${toName})` : "Recipient address"}>
         <input type="text" value={recipient} onChange={(e) => setRecipient(e.target.value)}
           placeholder="Paste Solana address…"
           style={{ background: "transparent", color: "#fff", border: "none", fontSize: 9, fontFamily: "monospace", width: "100%", outline: "none" }} />
       </InputBox>
-      <InputBox label="Amount (SOL)">
-        <input type="text" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.01"
-          style={{ background: "transparent", color: "#fff", border: "none", fontSize: 15, fontFamily: "monospace", width: "100%", outline: "none", fontWeight: "bold" }} />
-      </InputBox>
-      <div style={{ fontSize: "7px", color: "#555566", marginTop: 4, marginBottom: 12, textAlign: "center" }}>
-        Transfers on devnet · requires devnet SOL
+
+      <div style={{ fontSize: "7px", color: real ? "#FFD700" : "#555566", marginTop: 4, marginBottom: 12, textAlign: "center" }}>
+        {real
+          ? `${token.symbol} on mainnet. Real money leaves your wallet.`
+          : "Practice SOL on devnet. Costs you nothing."}
       </div>
+
       <div className="flex gap-2">
         <button onClick={handleSend} disabled={!connected || status === "sending" || !recipient || !amount}
           {...sendFeel.handlers} style={btnStyle(connected ? "#14F0C6" : "#333344", connected ? "#000" : "#666677", sendFeel)} className="flex-1 py-2.5">
-          {!connected ? "CONNECT WALLET FIRST" : status === "sending" ? "SENDING…" : "SEND"}
+          {!connected ? "CONNECT WALLET FIRST"
+            : status === "sending" ? "SENDING…"
+            : real ? `SEND REAL ${token.symbol}` : "SEND PRACTICE SOL"}
         </button>
       </div>
     </>
+  );
+}
+
+/**
+ * The amount box with the token picker in its corner. Separate from the swap
+ * panel's TokenBox because the options here are catalog entries, not bare
+ * symbols: two of them read "SOL" and only the cluster tells them apart.
+ */
+function SendTokenBox({ token, onTokenChange, children }: {
+  token: SendToken;
+  onTokenChange: (id: string) => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <div style={chamferBox(8, { background: "#12122a", border: "1px solid rgba(255,255,255,0.04)", padding: 12, marginBottom: 8 })}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+        <span style={{ fontSize: "8px", color: "#555566" }}>Amount</span>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          {token.logo && <img src={token.logo} alt={token.symbol} style={{ width: 18, height: 18, borderRadius: "50%" }} />}
+          <select value={token.id} onChange={(e) => onTokenChange(e.target.value)}
+            style={chamferBox(4, { background: "#1a1a3a", color: "#B7E928", border: "1px solid rgba(183,233,40,0.2)", padding: "2px 6px", fontSize: "9px", cursor: "pointer", outline: "none" })}>
+            {SEND_TOKENS.map(t => (
+              <option key={t.id} value={t.id}>{t.symbol} · {t.note}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+      {children}
+    </div>
   );
 }
 
