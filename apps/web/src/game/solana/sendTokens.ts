@@ -110,6 +110,21 @@ export function mainnetConnection(): Connection {
 // ── Building the transfer ────────────────────────────────────────────────────
 
 /**
+ * What the player typed, as a plain decimal string.
+ *
+ * A comma becomes a dot, because half this city types "0,5" and the exact
+ * converter splits on "." alone: left as it is, that reaches BigInt and throws
+ * a syntax error at somebody who typed their amount perfectly correctly.
+ * Returns null when the text is not a number at all, so the caller can say so
+ * in its own words.
+ */
+export function normalizeAmount(input: string): string | null {
+  const cleaned = input.trim().replace(",", ".");
+  if (!/^\d*\.?\d*$/.test(cleaned) || cleaned === "" || cleaned === ".") return null;
+  return cleaned;
+}
+
+/**
  * The transaction for one entry in the catalog, on that entry's own cluster.
  *
  * `devnetConnection` is the game's own (failover) devnet connection, passed in
@@ -127,7 +142,10 @@ export async function buildSendTransfer(args: {
   const { token, devnetConnection, from, to, amount } = args;
   const connection = token.cluster === "devnet" ? devnetConnection : mainnetConnection();
 
-  const raw = BigInt(toSmallestUnit(amount, token.decimals));
+  const clean = normalizeAmount(amount);
+  if (clean === null) throw new Error("That is not an amount.");
+
+  const raw = BigInt(toSmallestUnit(clean, token.decimals));
   // A below-one-unit amount (0.0000001 USDC) truncates to zero, which would
   // otherwise send nothing and still charge a fee.
   if (raw <= BigInt(0)) throw new Error("Amount is too small to send.");

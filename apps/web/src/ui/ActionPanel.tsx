@@ -558,12 +558,14 @@ function TransferPanel({ onClose, to, toName, tabs }: {
   const handleSend = useCallback(async () => {
     if (!publicKey || !recipient || !amount) return;
     const { isValidAddress } = await import("@/game/solana/transfer");
-    const { buildSendTransfer, sendTokenLabel } = await import("@/game/solana/sendTokens");
+    const { buildSendTransfer, sendTokenLabel, normalizeAmount } = await import("@/game/solana/sendTokens");
     const { PublicKey } = await import("@solana/web3.js");
 
     if (!isValidAddress(recipient)) { setResult({ error: "Invalid Solana address" }); setStatus("error"); return; }
-    const parsed = parseFloat(amount);
-    if (isNaN(parsed) || parsed <= 0) { setResult({ error: "Invalid amount" }); setStatus("error"); return; }
+    // Same normalizing the builder does, so "0,5" is not rejected here and
+    // then accepted there (or the other way round).
+    const clean = normalizeAmount(amount);
+    if (clean === null || parseFloat(clean) <= 0) { setResult({ error: "Invalid amount" }); setStatus("error"); return; }
 
     setStatus("sending");
     const logEntry = transactionLog.record({
