@@ -525,6 +525,14 @@ pub mod sol_city {
         // or set in the player's unlock snapshot — otherwise the write is
         // rejected, so peers can never see a cosmetic this wallet never earned.
         for part in loadout.split('|') {
+            let key = part.split('=').next().unwrap_or("");
+            // "c" is the hair colour swatch, not a catalog item. Every swatch
+            // is free to everyone, so there is nothing to check against the
+            // unlock snapshot — and its value is a palette id, not an index,
+            // so parsing it as one would reject the whole outfit.
+            if key == "c" || key == "hairColor" {
+                continue;
+            }
             let val = match part.split('=').nth(1) {
                 Some(v) if !v.is_empty() => v,
                 _ => continue, // empty slot / no value = nothing worn there
