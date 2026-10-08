@@ -233,9 +233,11 @@ export default function Home() {
   // player already filled in as the recipient and the full token list.
   useEffect(() => {
     const onSend = (e: Event) => {
-      const { wallet, name } = (e as CustomEvent<{ wallet: string; name?: string }>).detail ?? {};
+      const { wallet, name, token } = (e as CustomEvent<{ wallet: string; name?: string; token?: string }>).detail ?? {};
       if (!wallet) return;
-      setActiveAction({ type: "transfer", label: "Send tokens", recipient: wallet, recipientName: name });
+      // `token` is set by the Donation Manager, who needs real SOL rather than
+      // the practice default. Unset everywhere else, which keeps that default.
+      setActiveAction({ type: "transfer", label: "Send tokens", recipient: wallet, recipientName: name, token });
     };
     window.addEventListener(SEND_TOKENS_EVENT, onSend);
     return () => window.removeEventListener(SEND_TOKENS_EVENT, onSend);

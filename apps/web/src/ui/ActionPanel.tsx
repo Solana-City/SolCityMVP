@@ -22,6 +22,7 @@ import PegRiskPanel from "@/ui/PegRiskPanel";
 import CloakPanel from "@/ui/CloakPanel";
 import OreMinePanel from "@/ui/OreMinePanel";
 import TokenScanPanel from "@/ui/TokenScanPanel";
+import DonationPanel from "@/ui/DonationPanel";
 import { backdropClose } from "@/ui/backdrop";
 import { useViewportBox, overlayBox } from "@/ui/useViewportBox";
 import { useButtonFeel, feelStyle, type ButtonFeel } from "@/ui/useButtonFeel";
@@ -220,7 +221,7 @@ export default function ActionPanel({ action, onClose }: ActionPanelProps) {
 
           {action.type === "tutor"           && <TutorPanel           onClose={onClose} />}
           {action.type === "swap"            && <JupiterPanel onClose={onClose} tab="swap" />}
-          {action.type === "transfer"        && <JupiterPanel onClose={onClose} tab="send" to={action.recipient} toName={action.recipientName} />}
+          {action.type === "transfer"        && <JupiterPanel onClose={onClose} tab="send" to={action.recipient} toName={action.recipientName} token={action.token} />}
           {action.type === "bounties"        && <ProtocolIntroGate spec={EARN_INTRO}><BountiesPanel onClose={onClose} /></ProtocolIntroGate>}
           {action.type === "private-payment" && (
             <MagicBlockHub onClose={onClose}><PrivatePaymentPanel onClose={onClose} /></MagicBlockHub>
@@ -231,6 +232,9 @@ export default function ActionPanel({ action, onClose }: ActionPanelProps) {
           {action.type === "token-scan"      && <ProtocolIntroGate spec={TOKEN_SCAN_INTRO}><TokenScanPanel onClose={onClose} /></ProtocolIntroGate>}
           {action.type === "private-transfer" && <ProtocolIntroGate spec={CLOAK_INTRO}><CloakPanel onClose={onClose} /></ProtocolIntroGate>}
           {action.type === "ore-mine"        && <ProtocolIntroGate spec={ORE_INTRO}><OreMinePanel onClose={onClose} /></ProtocolIntroGate>}
+          {/* No intro gate: the panel leads with what a donation is, which is
+              the only thing a walkthrough would have said. */}
+          {action.type === "donation"       && <DonationPanel onClose={onClose} />}
         </div>
       </div>
     );
@@ -260,7 +264,7 @@ export default function ActionPanel({ action, onClose }: ActionPanelProps) {
 
         {action.type === "tutor"           && <TutorPanel           onClose={onClose} />}
         {action.type === "swap"            && <JupiterPanel onClose={onClose} tab="swap" />}
-        {action.type === "transfer"        && <JupiterPanel onClose={onClose} tab="send" to={action.recipient} toName={action.recipientName} />}
+        {action.type === "transfer"        && <JupiterPanel onClose={onClose} tab="send" to={action.recipient} toName={action.recipientName} token={action.token} />}
         {action.type === "bounties"        && <ProtocolIntroGate spec={EARN_INTRO}><BountiesPanel onClose={onClose} /></ProtocolIntroGate>}
         {action.type === "private-payment" && (
             <MagicBlockHub onClose={onClose}><PrivatePaymentPanel onClose={onClose} /></MagicBlockHub>
@@ -271,6 +275,9 @@ export default function ActionPanel({ action, onClose }: ActionPanelProps) {
           {action.type === "token-scan"      && <ProtocolIntroGate spec={TOKEN_SCAN_INTRO}><TokenScanPanel onClose={onClose} /></ProtocolIntroGate>}
           {action.type === "private-transfer" && <ProtocolIntroGate spec={CLOAK_INTRO}><CloakPanel onClose={onClose} /></ProtocolIntroGate>}
           {action.type === "ore-mine"        && <ProtocolIntroGate spec={ORE_INTRO}><OreMinePanel onClose={onClose} /></ProtocolIntroGate>}
+          {/* No intro gate: the panel leads with what a donation is, which is
+              the only thing a walkthrough would have said. */}
+          {action.type === "donation"       && <DonationPanel onClose={onClose} />}
       </div>
     </div>
   );
@@ -288,11 +295,13 @@ type JupiterTab = "swap" | "send";
  * already dismissed the swap walkthrough still gets the sending one the first
  * time they open SEND, and neither comes back twice.
  */
-function JupiterPanel({ onClose, tab: initialTab, to, toName }: {
+function JupiterPanel({ onClose, tab: initialTab, to, toName, token }: {
   onClose: () => void;
   tab: JupiterTab;
   to?: string;
   toName?: string;
+  /** Which send-catalog entry to open on. See NPCAction.token. */
+  token?: string;
 }) {
   // Opened from a player's card, SEND is the point, so it starts there.
   const [tab, setTab] = useState<JupiterTab>(initialTab);
@@ -300,7 +309,7 @@ function JupiterPanel({ onClose, tab: initialTab, to, toName }: {
 
   return tab === "swap"
     ? <ProtocolIntroGate spec={SWAP_INTRO}><SwapPanel onClose={onClose} tabs={tabs} /></ProtocolIntroGate>
-    : <ProtocolIntroGate spec={TRANSFER_INTRO}><TransferPanel onClose={onClose} to={to} toName={toName} tabs={tabs} /></ProtocolIntroGate>;
+    : <ProtocolIntroGate spec={TRANSFER_INTRO}><TransferPanel onClose={onClose} to={to} toName={toName} token={token} tabs={tabs} /></ProtocolIntroGate>;
 }
 
 function PanelTabs({ tab, onTab }: { tab: JupiterTab; onTab: (t: JupiterTab) => void }) {
@@ -534,17 +543,23 @@ function SwapPanel({ onClose, tabs }: { onClose: () => void; tabs?: React.ReactN
  * only thing standing between practice money and real money, so it says which
  * one is loaded in plain words and the confirm button repeats it.
  */
-function TransferPanel({ onClose, to, toName, tabs }: {
+function TransferPanel({ onClose, to, toName, token: initialToken, tabs }: {
   onClose: () => void;
   to?: string;
   toName?: string;
+  /** Opens on this catalog entry instead of the practice default. */
+  token?: string;
   tabs?: React.ReactNode;
 }) {
   const { connected, publicKey, signTransaction, sendTransaction } = useWallet();
   const { connection } = useConnection();
   // Opened from a player's card: their wallet is already in the box.
   const [recipient, setRecipient] = useState(to ?? "");
-  const [tokenId, setTokenId] = useState(DEFAULT_SEND_TOKEN.id);
+  // A caller that names a token gets it, as long as it is one we actually
+  // have; anything unknown falls back to practice money rather than guessing.
+  const [tokenId, setTokenId] = useState(
+    initialToken && getSendToken(initialToken) ? initialToken : DEFAULT_SEND_TOKEN.id,
+  );
   const [amount, setAmount] = useState("0.01");
   const [status, setStatus] = useState<"idle" | "sending" | "done" | "error">("idle");
   const [result, setResult] = useState<{ signature?: string; error?: string } | null>(null);
