@@ -3,8 +3,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { PNG } from "pngjs";
 import {
-  HAIR_COLORS, STYLE_DEFAULT_COLOR, buildHairSwaps, hairColorOf,
-  isDefaultHairColor, recolorHair,
+  HAIR_COLORS, STYLE_DEFAULT_COLOR, buildHairSwaps, hairColorAtIndex,
+  hairColorIndex, hairColorOf, isDefaultHairColor, recolorHair,
 } from "./hairPalette";
 import { getEnabledVariants } from "./paperDoll";
 
@@ -86,6 +86,24 @@ describe("hair palette", () => {
         expect(stop, `${c.id} ${stop}`).toMatch(/^#[0-9a-f]{6}$/);
       }
     }
+  });
+
+  it("round-trips a swatch through its wire index", () => {
+    for (const c of HAIR_COLORS) {
+      expect(hairColorAtIndex(hairColorIndex(c.id)), c.id).toBe(c.id);
+    }
+    // Unknown on the way in means "as drawn", never a crash or a wrong colour.
+    expect(hairColorIndex("not-a-swatch")).toBe(-1);
+    expect(hairColorAtIndex(999)).toBeUndefined();
+  });
+
+  it("keeps the wire index of every swatch that already shipped", () => {
+    // The index IS what peers broadcast. Reordering HAIR_COLORS recolours the
+    // hair of everyone already wearing a swatch past the edit, so this pins
+    // the order the way the booster pool pins its own: append only.
+    expect(HAIR_COLORS.slice(0, 7).map((c) => c.id)).toEqual([
+      "black", "raven", "brown", "chestnut", "blue", "green", "red",
+    ]);
   });
 
   it("actually repaints every style it is given", () => {

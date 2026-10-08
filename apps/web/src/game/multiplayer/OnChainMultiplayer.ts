@@ -34,11 +34,34 @@ const LOADOUT_KEY_ABBR: Record<string, string> = {
 const LOADOUT_ABBR_KEY: Record<string, string> = Object.fromEntries(
   Object.entries(LOADOUT_KEY_ABBR).map(([full, abbr]) => [abbr, full]),
 );
+/**
+ * Fixed emit order, hair colour LAST.
+ *
+ * The program caps this at 120 bytes with cap_bytes, which truncates the END,
+ * and a full 8-layer outfit already runs over that (see HAIR_COLOR_SPEC.md,
+ * "Known issue"). Object key order used to decide what fell off the cliff.
+ * Pinning the order makes the colour the first casualty instead of a layer:
+ * losing it renders the style as drawn, where losing the hat renders no hat.
+ */
+const LOADOUT_EMIT_ORDER: (keyof Loadout)[] = [
+  "skin", "eyesFace", "pants", "tshirt", "back", "accessory", "hair", "hat", "hairColor",
+];
+
 function encodeLoadout(l: Loadout): string {
-  return Object.entries(l)
-    .filter(([, v]) => v)
-    .map(([k, v]) => `${LOADOUT_KEY_ABBR[k] ?? k}=${v}`)
-    .join("|");
+  const out: string[] = [];
+  for (const k of LOADOUT_EMIT_ORDER) {
+    const v = l[k];
+    if (!v) continue;
+    // The swatch goes as its palette index: "c=13" rather than "c=chestnut" is
+    // six bytes that would otherwise push a layer past the cap.
+    if (k === "hairColor") {
+      const i = hairColorIndex(v);
+      if (i >= 0) out.push(`c=${i}`);
+      continue;
+    }
+    out.push(`${LOADOUT_KEY_ABBR[k] ?? k}=${v}`);
+  }
+  return out.join("|");
 }
 function decodeLoadout(s: string): Loadout {
   const out: Loadout = {};
@@ -47,7 +70,15 @@ function decodeLoadout(s: string): Loadout {
     if (i === -1) continue;
     const rawK = part.slice(0, i), v = part.slice(i + 1);
     const k = LOADOUT_ABBR_KEY[rawK] ?? rawK; // short key → full; full stays full
-    if (k && v) (out as Record<string, string>)[k] = v;
+    if (!k || !v) continue;
+    if (k === "hairColor") {
+      // Numeric is what we send. A swatch id is accepted too: it is what the
+      // first build to carry colour broadcast, and a peer may still be on it.
+      const byIndex = /^\d+$/.test(v) ? hairColorAtIndex(Number(v)) : v;
+      if (byIndex) out.hairColor = byIndex;
+      continue;
+    }
+    (out as Record<string, string>)[k] = v;
   }
   // A peer on an older build still broadcasts Brown_hair or a coloured Magawk,
   // which are no longer wardrobe entries. Without this they render as no hair
@@ -86,6 +117,7 @@ import { BASE_RPC_PRIMARY, resilientBaseFetch } from "../solana/baseRpc";
 import { setHuntFromChain, clearHuntFromChain } from "../minigames/whereIsNPC/WhereIsNPCGame";
 import { transactionLog } from "../telemetry/transactionLog";
 import { migrateHairColor, type Loadout } from "../config/paperDoll";
+import { hairColorAtIndex, hairColorIndex } from "../config/hairPalette";
 
 // ── Endpoints ──────────────────────────────────────────────────────────
 

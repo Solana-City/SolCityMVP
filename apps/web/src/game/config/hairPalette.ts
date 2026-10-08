@@ -94,6 +94,25 @@ export const HAIR_COLORS: HairColor[] = [
 const BY_ID = new Map(HAIR_COLORS.map((c) => [c.id, c]));
 
 /**
+ * The swatch's position in HAIR_COLORS, which is what goes on the WIRE.
+ *
+ * The loadout string is capped at 120 bytes on chain and a full outfit already
+ * runs close to it, so "c=13" instead of "c=chestnut" is not golf: it is six
+ * bytes that would otherwise push a layer off the end.
+ *
+ * APPEND-ONLY, for the same reason the booster pool is. Reordering HAIR_COLORS
+ * recolours the hair of everyone already wearing a swatch past the edit.
+ */
+export function hairColorIndex(id: string | undefined): number {
+  return id ? HAIR_COLORS.findIndex((c) => c.id === id) : -1;
+}
+
+/** Wire value back to a swatch id. Unknown index = the colour as drawn. */
+export function hairColorAtIndex(i: number): string | undefined {
+  return HAIR_COLORS[i]?.id;
+}
+
+/**
  * The swatch each sheet was DRAWN in. A style worn at its own default
  * resolves to a no-op, so the original texture is used as is.
  *
