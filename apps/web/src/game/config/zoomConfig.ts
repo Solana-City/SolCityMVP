@@ -87,9 +87,20 @@ export function computeRenderDpr(): number {
   // scales 1.0x/2.0x — i.e. no zoom-out at all — while mobile (dpr 2) reaches
   // 0.5x. Forcing dpr 2 unlocks 0.5x..2.5x on desktop too; the default (~1.0x)
   // is unchanged. Mobile (Canvas2D) keeps its real dpr to bound fill cost.
-  const isTouch = typeof window !== "undefined"
+  // Rounded to a whole number on touch, where it used to be whatever the
+  // device reported (1.5 and 1.75 are both common). The camera zoom is
+  // viewScale * 2 * dpr, and Phaser only rounds draw positions when that zoom
+  // is an INTEGER (Camera.preRender: renderRoundPixels). A fractional dpr
+  // makes an integer zoom impossible at almost every step, which on the Canvas
+  // renderer phones use shows as a seam between every tile — so the dpr has to
+  // be whole before the ladder below can offer anything safe.
+  return isTouchPointer() ? Math.min(2, Math.max(1, Math.round(raw))) : Math.max(raw, 2);
+}
+
+/** Phones and tablets — the devices PhaserGame puts on the Canvas renderer. */
+function isTouchPointer(): boolean {
+  return typeof window !== "undefined"
     && window.matchMedia("(pointer: coarse)").matches;
-  return isTouch ? raw : Math.max(raw, 2);
 }
 
 /**
@@ -116,6 +127,28 @@ export function getValidZooms(): number[] {
   const zooms = VIEW_SCALES
     .filter((v) => !cssWidth || cssWidth / v / TILE_PX <= MAX_TILES_ACROSS)
     .map((v) => v * 2 * dpr);
+
+  // On the Canvas renderer only, drop every step whose camera zoom is not a
+  // whole number.
+  //
+  // Phaser turns off render-time pixel rounding when the zoom is fractional
+  // (Camera.preRender sets renderRoundPixels from Number.isInteger(zoom)), so
+  // every tile is then drawn at a fractional position. WebGL covers the seam;
+  // Canvas2D rounds each drawImage on its own and leaves a sliver of the
+  // background between them — the black grid over every tile, at the widest
+  // zooms, that phones have been showing.
+  //
+  // Desktop is left alone on purpose: it renders through WebGL, has never had
+  // the artefact, and filtering there would cost zoom steps for nothing.
+  //
+  // With the dpr rounded above this leaves 0.5/0.75/1/1.5/2 at dpr 2 and
+  // 0.5/1/1.5/2 at dpr 1 — the default (0.5) survives on both. If some future
+  // ladder left nothing at all, the unfiltered list is better than a zoom
+  // control with no options in it.
+  if (isTouchPointer()) {
+    const whole = zooms.filter((z) => Number.isInteger(z));
+    if (whole.length > 0) return whole;
+  }
   // Never leave the control with nothing to offer.
   return zooms.length > 0 ? zooms : [VIEW_SCALES[VIEW_SCALES.length - 1] * 2 * dpr];
 }
