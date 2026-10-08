@@ -23,6 +23,9 @@ import { isVariantUnlocked, unlockItem } from "@/game/config/wardrobeUnlocks";
 import { RARITY_LABEL, isPackItem, rarityOf, rarityTheme, type Rarity } from "@/game/config/packs";
 import { progressionBus } from "@/game/progression/progressionBus";
 import BoosterOverlay from "@/ui/BoosterOverlay";
+import {
+  HAIR_COLORS, defaultColorFor, recolorHairCanvas,
+} from "@/game/config/hairPalette";
 import { chamferBox, solidColor } from "@/ui/chamfer";
 import ChamferGlow from "@/ui/ChamferGlow";
 import { useViewportBox, overlayBox } from "@/ui/useViewportBox";
@@ -88,6 +91,12 @@ function AvatarPreview({ loadout, facing = "down", scale = 3 }: { loadout: Loado
         const oc = off.getContext("2d", { willReadFrequently: true })!;
         oc.drawImage(img, 0, 0);
         removeChroma(oc, img.naturalWidth, img.naturalHeight);
+        // Before the hat masking below reads it: the swatch has to resolve
+        // against the whole sheet, or a hat covering most of one shade would
+        // flip which tone counts as the main one.
+        if (cat === "hair") {
+          recolorHairCanvas(oc, img.naturalWidth, img.naturalHeight, loadout.hairColor);
+        }
         offByCategory.set(cat, off);
       }
 
@@ -171,7 +180,14 @@ function AvatarPreview({ loadout, facing = "down", scale = 3 }: { loadout: Loado
   );
 }
 
-export function ChromaPreview({ file, size, facingUp, crop }: { file: string; size: number; facingUp?: boolean; crop?: boolean }) {
+export function ChromaPreview({ file, size, facingUp, crop, hairColor }: {
+  file: string;
+  size: number;
+  facingUp?: boolean;
+  crop?: boolean;
+  /** Set on hair tiles so the grid shows the style in the colour being worn. */
+  hairColor?: string;
+}) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   // Backpacks are barely visible from the front (just the strap tops) —
   // show the "up" (back) row instead so items are actually distinguishable
@@ -194,6 +210,7 @@ export function ChromaPreview({ file, size, facingUp, crop }: { file: string; si
       const oc = off.getContext("2d", { willReadFrequently: true })!;
       oc.drawImage(img, 0, 0);
       removeChroma(oc, img.naturalWidth, img.naturalHeight);
+      if (hairColor) recolorHairCanvas(oc, img.naturalWidth, img.naturalHeight, hairColor);
       if (!crop) {
         ctx.drawImage(off, 0, rowY, SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT, 0, 0, size, size);
         return;
@@ -225,7 +242,7 @@ export function ChromaPreview({ file, size, facingUp, crop }: { file: string; si
       const sy = topLeft((y0 + y1 + 1) / 2, SPRITE_FRAME_HEIGHT);
       ctx.drawImage(off, sx, rowY + sy, side, side, 0, 0, size, size);
     };
-  }, [file, size, rowY, crop]);
+  }, [file, size, rowY, crop, hairColor]);
   return (
     <canvas
       ref={canvasRef}
@@ -276,6 +293,7 @@ function randomLoadout(wallet: string | null): Loadout {
     if (OPTIONAL.includes(cat) && Math.random() < 0.4) continue;
     out[cat] = variants[Math.floor(Math.random() * variants.length)].id;
   }
+  out.hairColor = HAIR_COLORS[Math.floor(Math.random() * HAIR_COLORS.length)].id;
   return out;
 }
 
@@ -370,6 +388,12 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
     setTimeout(() => setFlash(null), 600);
   }, [wallet]);
 
+  const selectHairColor = useCallback((colorId: string) => {
+    setLoadout(prev => ({ ...prev, hairColor: colorId }));
+    setFlash(`hairColor:${colorId}`);
+    setTimeout(() => setFlash(null), 600);
+  }, []);
+
   const handleRandom = useCallback(() => {
     const next = randomLoadout(wallet);
     setLoadout(next);
@@ -394,10 +418,16 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
   }, [gameRef, original, onClose]);
 
   const variants = getEnabledVariants(activeCategory);
+  // The colour the worn style is actually drawn in: an explicit pick, else the
+  // swatch its own sheet uses. Every hair tile in the grid previews in this, so
+  // picking a colour recolours the whole row at once.
+  const wornHairColor = loadout.hairColor ?? defaultColorFor(loadout.hair);
   // The item art, not the card. It is drawn CROPPED to the item itself (a hat
   // is a dozen pixels at the top of a 64px character frame), so this is the
   // size the hat actually gets — which is why it can be this big.
   const TILE = isMobile ? 52 : 68;
+  /** Twenty swatches have to fit a phone without pushing the styles off screen. */
+  const SWATCH = isMobile ? 22 : 26;
   const currentVariantId = loadout[activeCategory];
   const showPackTile = !NO_PACKS.includes(activeCategory)
     && variants.some((v) => isPackItem(activeCategory, v.id));
@@ -591,6 +621,45 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
               </span>
             </div>
 
+            {/* Colour, on the hair tab only: a row of swatches, no labels and
+                no explaining, because the grid under it repaints as you pick
+                and that says it better than a sentence would. */}
+            {activeCategory === "hair" && loadout.hair && (
+              <div style={{
+                display: "flex", flexWrap: "wrap", gap: isMobile ? 5 : 6,
+                padding: isMobile ? "8px 10px 0" : "10px 14px 0",
+              }}>
+                {HAIR_COLORS.map(c => {
+                  const picked = wornHairColor === c.id;
+                  return (
+                    <button
+                      key={c.id}
+                      onClick={() => selectHairColor(c.id)}
+                      data-sfx="outfit"
+                      title={c.name}
+                      aria-label={c.name}
+                      aria-pressed={picked}
+                      style={chamferBox(4, {
+                        width: SWATCH, height: SWATCH,
+                        padding: 0,
+                        // The swatch IS the colour, so it is drawn as the ramp
+                        // it will paint: main, with the shading stop under it.
+                        background: `linear-gradient(160deg, ${c.main} 0%, ${c.main} 62%, ${c.shadow} 62%, ${c.shadow} 100%)`,
+                        border: picked ? "3px solid #B7E928" : "2px solid rgba(255,255,255,0.14)",
+                        cursor: "pointer",
+                        transition: "transform 0.1s, border-color 0.15s",
+                        transform: picked ? "scale(1.12)" : "scale(1)",
+                      })}
+                      onMouseEnter={e => { if (!picked) e.currentTarget.style.transform = "scale(1.1)"; }}
+                      onMouseLeave={e => { e.currentTarget.style.transform = picked ? "scale(1.12)" : "scale(1)"; }}
+                      onPointerDown={e => { e.currentTarget.style.transform = "scale(0.94)"; }}
+                      onPointerUp={e => { e.currentTarget.style.transform = picked ? "scale(1.12)" : "scale(1.1)"; }}
+                    />
+                  );
+                })}
+              </div>
+            )}
+
             {/* Grid */}
             {/* Small tiles so a whole category fits without scrolling (scroll
                 stays only as a fallback on very short screens). */}
@@ -637,7 +706,13 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
                         {/* Cropped: the grid shows the hat, not the character
                             wearing it. Without this a hat is a dozen pixels in
                             the middle of a tile and unreadable on a phone. */}
-                        <ChromaPreview file={v.file} size={TILE} facingUp={activeCategory === "back"} crop />
+                        <ChromaPreview
+                          file={v.file}
+                          size={TILE}
+                          facingUp={activeCategory === "back"}
+                          crop
+                          hairColor={activeCategory === "hair" ? wornHairColor : undefined}
+                        />
                         {locked && (
                           <span style={chamferBox(6, {
                             position: "absolute", inset: 0,

@@ -237,3 +237,24 @@ export function applyHairSwaps(data: Uint8ClampedArray, swaps: ColorSwap[]): voi
 export function recolorHair(data: Uint8ClampedArray, colorId: string | undefined): void {
   applyHairSwaps(data, buildHairSwaps(data, hairColorOf(colorId)));
 }
+
+/**
+ * Repaints a chroma-cleared hair sheet already drawn on a 2D context.
+ *
+ * The shared entry point for the DOM previews (wardrobe, portrait, the "where
+ * is" card), which each decode the PNG themselves rather than going through
+ * Phaser. Reads nothing back when the swatch is the colour the sheet was drawn
+ * in, so the default costs one scan and no upload.
+ */
+export function recolorHairCanvas(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+  colorId: string | undefined,
+): void {
+  const img = ctx.getImageData(0, 0, w, h);
+  const swaps = buildHairSwaps(img.data, hairColorOf(colorId));
+  if (swaps.length === 0) return;
+  applyHairSwaps(img.data, swaps);
+  ctx.putImageData(img, 0, 0);
+}
