@@ -356,15 +356,40 @@ export class AvatarSprite {
   setLayer(category: LayerCategory, variantId: string | undefined): void {
     if (this.currentLoadout[category] === variantId) return;
     this.currentLoadout = { ...this.currentLoadout, [category]: variantId };
-    this.destroyLayers();
-    this.buildLayers();
+    this.rebuildLayers();
   }
 
   /** Replaces the entire loadout at once. */
   setLoadout(loadout: Loadout): void {
     this.currentLoadout = { ...loadout };
-    this.destroyLayers();
+    this.rebuildLayers();
+  }
+
+  /**
+   * Rebuilds every layer for the current loadout, keeping the derived hair
+   * texture alive across the swap.
+   *
+   * These two used to tear down and then rebuild, which freed the hair texture
+   * before asking for it again. Most outfit changes do not touch the hair
+   * combination at all — the key is (hair, colour, hat, coverage), so picking a
+   * different t-shirt leaves it identical — and the wardrobe previews live, on
+   * every click. So each click dropped the refcount to zero, destroyed the
+   * texture AND its four registered walk animations, then repainted the whole
+   * 256x256 sheet pixel by pixel and registered them all again, to arrive back
+   * at what was already there. On the Canvas renderer phones use, that is a
+   * visible hitch on the one interaction the wardrobe exists for.
+   *
+   * Holding the old key across the rebuild means an unchanged combination goes
+   * 1 -> 2 -> 1 refs and is never torn down. A changed one still reaches zero
+   * and is freed, just afterwards instead of before. Releasing last and
+   * unconditionally also covers the case where the new outfit has no hair layer
+   * at all, which a "suppress" hat does.
+   */
+  private rebuildLayers(): void {
+    const prevHair = this.derivedHairKey;
+    this.destroyLayers(false);
     this.buildLayers();
+    releaseHairTexture(this.scene, prevHair);
   }
 
   getLoadout(): Loadout {
@@ -727,7 +752,12 @@ export class AvatarSprite {
   /** Set only when the hair layer is drawn from a derived texture we must release. */
   private derivedHairKey: string | null = null;
 
-  private destroyLayers(): void {
+  /**
+   * `releaseHair` false hands the derived hair texture to the caller to free
+   * AFTER it has rebuilt — see rebuildLayers. Teardown passes nothing and
+   * frees it here as usual.
+   */
+  private destroyLayers(releaseHair = true): void {
     for (const sprite of this.layerSprites.values()) {
       this.container.remove(sprite);
       sprite.destroy();
@@ -746,7 +776,7 @@ export class AvatarSprite {
     }
     releaseSilhouetteTexture(this.scene, this.shadowTextureKey);
     this.shadowTextureKey = null;
-    releaseHairTexture(this.scene, this.derivedHairKey);
+    if (releaseHair) releaseHairTexture(this.scene, this.derivedHairKey);
     this.derivedHairKey = null;
   }
 
