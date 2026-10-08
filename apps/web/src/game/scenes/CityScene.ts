@@ -26,7 +26,8 @@ const NPC_DEEP_LINKS: Record<string, string> = {
   stocks: "stocks-broker",
   jupiter: "swap-npc",
   swap: "swap-npc",
-  send: "send-npc",
+  // Sending moved in with Jupiter Cat, so ?at=send goes to him now.
+  send: "swap-npc",
   earn: "pratik",
   magicblock: "magic-man",
   mechs: "mech-handler",

@@ -108,7 +108,7 @@ export const TRACKS: AchievementTrack[] = [
     icon: "🦋",
     unit: "",
     metric: (p) =>
-      ["sol-guide", "swap-npc", "send-npc", "pratik", "magic-man", "kuka", "bk-indies", "mr-bananas", "sushi-man"]
+      ["sol-guide", "swap-npc", "pratik", "magic-man", "kuka", "bk-indies", "mr-bananas", "sushi-man"]
         .every((id) => p.visitedNPCs.includes(id)) ? 1 : 0,
     levels: [{ at: 1, title: "Social Butterfly", tier: "rare" }],
   },
@@ -133,7 +133,7 @@ export const TRACKS: AchievementTrack[] = [
   {
     id: "transfers",
     title: "Sending",
-    description: "Send with Steve Sends.",
+    description: "Send a token with Jupiter Cat.",
     icon: "📨",
     unit: "sends",
     art: "sender-10",

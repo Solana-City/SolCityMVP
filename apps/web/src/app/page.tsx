@@ -229,8 +229,8 @@ export default function Home() {
     return () => { game.events.off("player:cardOpen", handler); };
   }, [game]);
 
-  // "Send tokens" on a player's card: the same transfer panel Steve opens,
-  // with that player already filled in as the recipient.
+  // "Send tokens" on a player's card: Jupiter Cat's send tab, with that
+  // player already filled in as the recipient and the full token list.
   useEffect(() => {
     const onSend = (e: Event) => {
       const { wallet, name } = (e as CustomEvent<{ wallet: string; name?: string }>).detail ?? {};

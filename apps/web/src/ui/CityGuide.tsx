@@ -193,8 +193,9 @@ function useSteps(touch: boolean): Step[] {
       line: "These citizens run real Solana apps. Each one shows you how before you use it.",
       scene: (
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center" }}>
-          <Role sheet="Jupiter Joe.png" label="SWAP" color="#B7E928" />
-          <Role sheet="send-npc.png" label="SEND" color="#14F0C6" />
+          {/* One card, because Jupiter Cat does both jobs now. "SWAP/SEND"
+              is as wide as the "FOOD CART" label below, and Label is nowrap. */}
+          <Role sheet="Jupiter Joe.png" label="SWAP/SEND" color="#B7E928" />
           <Role sheet="Pratik.png" label="EARN" color="#9945FF" />
           <Role sheet="Magic Man.png" label="PRIVATE" color="#c026d3" />
         </div>

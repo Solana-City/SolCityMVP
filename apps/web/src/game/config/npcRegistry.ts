@@ -166,8 +166,7 @@ const NPC_SEEDS: NPCSeed[] = [
     id: "sol-guide",
     name: "Sol",
     role: "City Guide",
-    // Central fountain plaza, three tiles down the path from the spawn steps
-    // (where Steve Sends used to stand).
+    // Central fountain plaza, three tiles down the path from the spawn steps.
     tileX: 78,
     tileY: 43,
     dialog: [
@@ -239,33 +238,25 @@ const NPC_SEEDS: NPCSeed[] = [
   {
     id: "swap-npc",
     name: "Jupiter Cat",
-    role: "Token Swap",
+    role: "Swap and Send",
     // On the sidewalk in front of the Jupiter building (BuildJupiter,
     // cols 91-101 / rows 17-32).
     tileX: 96,
     tileY: 32,
     dialog: [
-      "Want a different token? I can swap it for you.",
-      "Pick what you have and what you want. Jupiter finds the best price.",
+      "Want a different token, or need to send one to a friend?",
+      "I do both. Swap at the best price Jupiter can find, or send SOL, USDC, USDT and more.",
     ],
+    // Opens on the swap tab; the send tab is one tap away inside the panel,
+    // and a player's card opens the same panel straight on send.
     action: { type: "swap", label: "Open swap" },
     spriteKey: "Jupiter Joe",
   },
-  {
-    id: "send-npc",
-    name: "Steve Sends",
-    role: "Send Tokens",
-    // In front of the Solana City building (BuildSolanaCity, cols 73-83 /
-    // rows 47-59); findNpcSpawn steps down to the first walkable row.
-    tileX: 78,
-    tileY: 59,
-    dialog: [
-      "Need to send SOL to a friend?",
-      "Paste their address, pick the amount, and it arrives in seconds.",
-    ],
-    action: { type: "transfer", label: "Send tokens" },
-    spriteKey: "avatar-send-npc",
-  },
+  // Steve Sends stood in front of the Solana City building (BuildSolanaCity,
+  // cols 73-83 / rows 47-59) at tile 78,59 until sending moved in with
+  // Jupiter Cat. The spot is kept clear for the donation NPC, and his sprite
+  // sheet (send-npc.png) stays in /assets/sprites for whoever gets it next:
+  // the UI still draws it for the send icon and the "first transfer" badge.
   {
     id: "pratik",
     name: "Pratik",
