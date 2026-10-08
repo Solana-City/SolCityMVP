@@ -137,6 +137,14 @@ const derivedHair = new Map<string, DerivedHair>();
 /** Tones per hair sheet. Depends on the sheet alone, so it survives colour changes. */
 const hairToneCache = new Map<string, number[]>();
 
+/**
+ * Combinations that turned out to need no derived texture after all: a hat
+ * whose silhouette never actually covers this hair, worn in the colour the
+ * sheet was drawn in. Without this the pixels get read and scanned again on
+ * every rebuild to reach the same conclusion.
+ */
+const hairNoOp = new Set<string>();
+
 function hairTonesFor(scene: Phaser.Scene, hairTextureKey: string): number[] {
   const hit = hairToneCache.get(hairTextureKey);
   if (hit) return hit;
@@ -181,6 +189,7 @@ function acquireHairTexture(
   if (!hat && swaps.length === 0) return hairTextureKey;
 
   const cacheKey = `${hairTextureKey}--${colorId ?? "as-drawn"}--${hat ?? "bare"}--${hatCoverage}`;
+  if (hairNoOp.has(cacheKey)) return hairTextureKey;
   const live = derivedHair.get(cacheKey);
   if (live && scene.textures.exists(cacheKey)) { live.refs++; return cacheKey; }
 
@@ -229,8 +238,12 @@ function acquireHairTexture(
   // main one and invert the ramp.
   applyHairSwaps(data, swaps);
 
-  // Nothing to mask and nothing to repaint — don't hold a copy of the original.
-  if (!masked && swaps.length === 0) return hairTextureKey;
+  // Nothing to mask and nothing to repaint — don't hold a copy of the original,
+  // and remember it so the next rebuild doesn't scan its way here again.
+  if (!masked && swaps.length === 0) {
+    hairNoOp.add(cacheKey);
+    return hairTextureKey;
+  }
 
   ctx.putImageData(imageData, 0, 0);
 
