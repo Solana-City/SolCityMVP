@@ -540,7 +540,7 @@ function TransferPanel({ onClose, to, toName, tabs }: {
   toName?: string;
   tabs?: React.ReactNode;
 }) {
-  const { connected, publicKey, sendTransaction } = useWallet();
+  const { connected, publicKey, signTransaction, sendTransaction } = useWallet();
   const { connection } = useConnection();
   // Opened from a player's card: their wallet is already in the box.
   const [recipient, setRecipient] = useState(to ?? "");
@@ -583,9 +583,18 @@ function TransferPanel({ onClose, to, toName, tabs }: {
         to: new PublicKey(recipient),
         amount,
       });
-      // A mainnet send goes out over the catalog's own failover connection,
-      // not the game's devnet one, so the adapter is handed `conn` either way.
-      const sig = await sendTransaction(tx, conn);
+      // Sign only, then send it ourselves over `conn`, which is this token's
+      // own cluster. Phantom's sendTransaction overrides the adapter's and
+      // hands the transaction to the wallet's signAndSendTransaction, which
+      // broadcasts on whatever network the wallet happens to be set to and
+      // uses our connection for nothing but the blockhash. That would send
+      // mainnet USDC over a devnet wallet setting and fail, or worse pick the
+      // cluster the player did not choose. Signing involves no network, so
+      // this keeps the cluster ours. (The sendTransaction fallback is for
+      // wallets that only ever sign-and-send; it is the old behaviour.)
+      const sig = signTransaction
+        ? await conn.sendRawTransaction((await signTransaction(tx)).serialize())
+        : await sendTransaction(tx, conn);
       await conn.confirmTransaction(sig, "confirmed");
       setResult({ signature: sig });
       setStatus("done");
@@ -597,7 +606,7 @@ function TransferPanel({ onClose, to, toName, tabs }: {
       setStatus("error");
       transactionLog.markFailed(logEntry.id, err.message ?? "transfer failed");
     }
-  }, [publicKey, recipient, amount, connection, sendTransaction, token]);
+  }, [publicKey, recipient, amount, connection, signTransaction, sendTransaction, token]);
 
   if (status === "done" && result?.signature) {
     return (
