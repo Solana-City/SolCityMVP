@@ -19,6 +19,9 @@ import {
   DEFAULT_LOADOUT,
   getVariant,
 } from "../config/paperDoll";
+import {
+  applyHairSwaps, hairColorOf, readHairTones, swapsForTones,
+} from "../config/hairPalette";
 
 /** Reads a loaded texture's pixel data onto a throwaway canvas once. */
 function readTexturePixels(scene: Phaser.Scene, textureKey: string): { data: Uint8ClampedArray; w: number; h: number } | null {
@@ -108,17 +111,48 @@ function getHatOpaqueMask(scene: Phaser.Scene, hatTextureKey: string): { mask: U
   return result;
 }
 
-// Cache: `${hairTextureKey}--${hatTextureKey}--${coverage}` -> derived,
-// capped-hair texture key.
-const cappedHairTextureCache = new Map<string, string>();
+// ── Derived hair textures ───────────────────────────────────────────────────
+//
+// A hair layer on screen may differ from its sheet in two ways: a hat erases
+// part of it, and a colour swatch repaints it. Both produce a texture Phaser
+// has to own, and the combinations multiply (styles x colours x hats), so two
+// things keep that from turning into hundreds of megabytes of canvas:
+//
+//   1. NOTHING is derived unless it has to be. A style in the colour it was
+//      drawn in, with no hat over it, renders straight off the original
+//      texture. That is the common case and it allocates zero.
+//   2. What IS derived is REFERENCE COUNTED and freed when the last character
+//      wearing it is destroyed — the same contract as the shadow silhouettes
+//      above, and for the same reason: this cache used to be an unbounded Map
+//      that only ever grew, and a crowd of pedestrians walks a lot of it.
+//
+// Masking and recolouring happen in ONE pass over the pixels rather than
+// chaining two derived textures, so a hat plus a colour still costs one.
+
+interface DerivedHair { refs: number }
+
+/** `${hair}--${colour}--${hat}--${coverage}` -> liveness of that derived texture. */
+const derivedHair = new Map<string, DerivedHair>();
+
+/** Tones per hair sheet. Depends on the sheet alone, so it survives colour changes. */
+const hairToneCache = new Map<string, number[]>();
+
+function hairTonesFor(scene: Phaser.Scene, hairTextureKey: string): number[] {
+  const hit = hairToneCache.get(hairTextureKey);
+  if (hit) return hit;
+  const pixels = readTexturePixels(scene, hairTextureKey);
+  const tones = pixels ? readHairTones(pixels.data) : [];
+  hairToneCache.set(hairTextureKey, tones);
+  return tones;
+}
 
 /**
- * Returns a texture key for the hair sheet with the equipped hat's coverage
- * erased from it, so hair doesn't show where a hat/headband should hide it.
- * Generates the derived texture once per (hair, hat) pair and reuses it
- * after; returns the original hairTextureKey unchanged if the hat has no
- * measurable coverage (e.g. its texture failed to load) or no hat is
- * equipped.
+ * The texture to draw a hair layer with, accounting for the hat over it and
+ * the colour chosen for it.
+ *
+ * Returns `hairTextureKey` itself when neither applies, in which case there is
+ * nothing to release. Any OTHER key returned is reference counted and must be
+ * handed to releaseHairTexture when the sprite goes away.
  *
  * Two coverage styles (LayerVariant.hatCoverage, default "full"):
  *   "full" — a cap/helmet/crown that encloses the top of the head. Erases
@@ -129,23 +163,26 @@ const cappedHairTextureCache = new Map<string, string>();
  *     ONLY exactly where the band's own pixels are opaque, leaving the
  *     crown above it and everything below it untouched.
  */
-function getHairTextureFor(
+function acquireHairTexture(
   scene: Phaser.Scene,
   hairTextureKey: string,
+  colorId: string | undefined,
   hatTextureKey: string | undefined,
   // "suppress" is handled by the caller (skips the hair layer outright) —
   // never actually reaches here, but accepted in the type since callers
   // pass a hat variant's hatCoverage straight through.
   hatCoverage: "full" | "band" | "suppress" = "full",
 ): string {
-  if (!hatTextureKey || !scene.textures.exists(hatTextureKey)) return hairTextureKey;
+  const hat = hatTextureKey && scene.textures.exists(hatTextureKey) ? hatTextureKey : undefined;
 
-  const cacheKey = `${hairTextureKey}--capped--${hatTextureKey}--${hatCoverage}`;
-  if (cappedHairTextureCache.has(cacheKey)) return cappedHairTextureCache.get(cacheKey)!;
-  if (scene.textures.exists(cacheKey)) {
-    cappedHairTextureCache.set(cacheKey, cacheKey);
-    return cacheKey;
-  }
+  // Resolved before any pixel is read: an empty swap list means the sheet is
+  // already the requested colour, which is what makes the default free.
+  const swaps = swapsForTones(hairTonesFor(scene, hairTextureKey), hairColorOf(colorId));
+  if (!hat && swaps.length === 0) return hairTextureKey;
+
+  const cacheKey = `${hairTextureKey}--${colorId ?? "as-drawn"}--${hat ?? "bare"}--${hatCoverage}`;
+  const live = derivedHair.get(cacheKey);
+  if (live && scene.textures.exists(cacheKey)) { live.refs++; return cacheKey; }
 
   const hairPixels = readTexturePixels(scene, hairTextureKey);
   if (!hairPixels) return hairTextureKey;
@@ -162,16 +199,16 @@ function getHairTextureFor(
 
   let masked = false;
 
-  if (hatCoverage === "band") {
-    const hatMask = getHatOpaqueMask(scene, hatTextureKey);
+  if (hat && hatCoverage === "band") {
+    const hatMask = getHatOpaqueMask(scene, hat);
     if (hatMask) {
       const n = Math.min(hatMask.mask.length, w * h);
       for (let i = 0; i < n; i++) {
         if (hatMask.mask[i]) { data[i * 4 + 3] = 0; masked = true; }
       }
     }
-  } else {
-    const bands = getHatColumnCutoffs(scene, hatTextureKey);
+  } else if (hat) {
+    const bands = getHatColumnCutoffs(scene, hat);
     if (bands.some(cutoffs => cutoffs.some(c => c < SPRITE_FRAME_HEIGHT))) {
       for (let band = 0; band < SPRITE_ROWS && band < bands.length; band++) {
         const rowStart = band * SPRITE_FRAME_HEIGHT;
@@ -187,21 +224,48 @@ function getHairTextureFor(
     }
   }
 
-  if (!masked) {
-    cappedHairTextureCache.set(cacheKey, hairTextureKey);
-    return hairTextureKey; // nothing to mask against — skip generating a derived texture
-  }
+  // After the mask, never before: the tones were taken from the WHOLE sheet,
+  // so a hat covering most of one shade cannot flip which tone counts as the
+  // main one and invert the ramp.
+  applyHairSwaps(data, swaps);
+
+  // Nothing to mask and nothing to repaint — don't hold a copy of the original.
+  if (!masked && swaps.length === 0) return hairTextureKey;
 
   ctx.putImageData(imageData, 0, 0);
 
+  if (scene.textures.exists(cacheKey)) scene.textures.remove(cacheKey);
   const newTex = scene.textures.addCanvas(cacheKey, canvas);
   (Phaser.Textures.Parsers as any).SpriteSheet(
     newTex, 0, 0, 0, w, h,
     { frameWidth: SPRITE_FRAME_WIDTH, frameHeight: SPRITE_FRAME_HEIGHT }
   );
 
-  cappedHairTextureCache.set(cacheKey, cacheKey);
+  derivedHair.set(cacheKey, { refs: 1 });
   return cacheKey;
+}
+
+/** Drops one reference; frees the texture once no character wears it. */
+function releaseHairTexture(scene: Phaser.Scene, key: string | null): void {
+  if (!key) return;
+  const entry = derivedHair.get(key);
+  if (!entry) return; // an original sheet, or already freed
+  entry.refs--;
+  if (entry.refs > 0) return;
+  derivedHair.delete(key);
+  try {
+    // The walk animations registered against this texture MUST die with it:
+    // they live in the global AnimationManager holding its frames, and
+    // registerAnimations skips any key that already exists. Re-acquiring the
+    // same hair later would reuse an animation pointing at a DESTROYED
+    // texture, which crashes the next walk().
+    for (const dir of ["down", "left", "right", "up"]) {
+      scene.anims.remove(`${key}-walk-${dir}`);
+    }
+    scene.textures.remove(key);
+  } catch {
+    // Scene teardown may have already destroyed the managers.
+  }
 }
 
 /**
@@ -547,12 +611,19 @@ export class AvatarSprite {
       // wrong for something meant to enclose the whole head.
       if (category === "hair" && hatVariant?.hatCoverage === "suppress") continue;
 
-      // Hair is otherwise capped to the equipped hat's coverage so it
-      // doesn't show where the hat should hide it (see getHairTextureFor
-      // for the two remaining styles — a full cap vs. a forehead-only band).
+      // Hair is otherwise capped to the equipped hat's coverage so it doesn't
+      // show where the hat should hide it, and repainted to the chosen swatch
+      // (see acquireHairTexture — one pass for both, and nothing derived at
+      // all for a bare head in the colour the sheet was drawn in).
       const textureKey = category === "hair"
-        ? getHairTextureFor(this.scene, variant.textureKey, hatVariant?.textureKey, hatVariant?.hatCoverage)
+        ? acquireHairTexture(
+            this.scene, variant.textureKey, this.currentLoadout.hairColor,
+            hatVariant?.textureKey, hatVariant?.hatCoverage,
+          )
         : variant.textureKey;
+      if (category === "hair" && textureKey !== variant.textureKey) {
+        this.derivedHairKey = textureKey;
+      }
 
       resolved.push({ category, textureKey });
     }
@@ -640,6 +711,9 @@ export class AvatarSprite {
     this.registerAnimations(silhouette.key);
   }
 
+  /** Set only when the hair layer is drawn from a derived texture we must release. */
+  private derivedHairKey: string | null = null;
+
   private destroyLayers(): void {
     for (const sprite of this.layerSprites.values()) {
       this.container.remove(sprite);
@@ -659,6 +733,8 @@ export class AvatarSprite {
     }
     releaseSilhouetteTexture(this.scene, this.shadowTextureKey);
     this.shadowTextureKey = null;
+    releaseHairTexture(this.scene, this.derivedHairKey);
+    this.derivedHairKey = null;
   }
 
   private registerAnimations(textureKey: string): void {
