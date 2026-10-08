@@ -3,7 +3,7 @@ import type { Loadout } from "./paperDoll";
 import type { BuffId } from "../buffs/playerBuffs";
 
 export interface NPCAction {
-  type: "tutor" | "swap" | "transfer" | "bounties" | "link" | "placeholder" | "private-payment" | "minigame" | "stock-exchange" | "peg-risk" | "token-scan" | "private-transfer" | "speed-buff" | "pet" | "ore-mine";
+  type: "tutor" | "swap" | "transfer" | "bounties" | "link" | "placeholder" | "private-payment" | "minigame" | "stock-exchange" | "peg-risk" | "token-scan" | "private-transfer" | "speed-buff" | "pet" | "ore-mine" | "donation";
   label: string;
   url?: string;
   miniGameId?: string;
@@ -14,6 +14,12 @@ export interface NPCAction {
   recipient?: string;
   /** That player's name, to show instead of the raw address. */
   recipientName?: string;
+  /**
+   * Which entry of the send catalog the transfer opens on (see sendTokens.ts).
+   * The donation flow sets it, because a donation paid in practice devnet SOL
+   * would reach nobody. Defaults to practice SOL when unset.
+   */
+  token?: string;
 }
 
 /** A picture + a word or two, shown on an NPC's last dialog line. */
@@ -259,11 +265,29 @@ const NPC_SEEDS: NPCSeed[] = [
     action: { type: "swap", label: "Open swap" },
     spriteKey: "Jupiter Joe",
   },
-  // Steve Sends stood in front of the Solana City building (BuildSolanaCity,
-  // cols 73-83 / rows 47-59) at tile 78,59 until sending moved in with
-  // Jupiter Cat. The spot is kept clear for the donation NPC, and his sprite
-  // sheet (send-npc.png) stays in /assets/sprites for whoever gets it next:
-  // the UI still draws it for the send icon and the "first transfer" badge.
+  {
+    id: "donation-manager",
+    name: "Donation Manager",
+    role: "Support the Project",
+    // The corner Steve Sends left when sending moved in with Jupiter Cat:
+    // in front of the Solana City building (BuildSolanaCity, cols 73-83 /
+    // rows 47-59); findNpcSpawn steps down to the first walkable row.
+    tileX: 78,
+    tileY: 59,
+    dialog: [
+      "Hi! I look after the wallet that keeps this city getting built.",
+      "Anything you send there is a donation to the team. It is not a purchase, and it buys you nothing in the game.",
+      {
+        text: "Give if you want to support the work. The board shows who has.",
+        accent: "Donations buy nothing. No items, no advantages.",
+      },
+    ],
+    action: { type: "donation", label: "Open donations" },
+    spriteKey: "Donation Manager",
+  },
+  // Steve Sends's sprite sheet (send-npc.png) stays in /assets/sprites for
+  // whoever gets it next: the UI still draws it for the send icon and the
+  // "first transfer" badge.
   {
     id: "pratik",
     name: "Pratik",

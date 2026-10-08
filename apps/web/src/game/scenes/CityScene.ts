@@ -33,6 +33,8 @@ const NPC_DEEP_LINKS: Record<string, string> = {
   mechs: "mech-handler",
   kite: "kite-pro",
   guide: "sol-guide",
+  donate: "donation-manager",
+  donations: "donation-manager",
 };
 import { NPCSprite } from "../entities/NPCSprite";
 import { NPC_REGISTRY } from "../config/npcRegistry";
