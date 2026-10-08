@@ -1746,6 +1746,7 @@ export class CityScene extends Phaser.Scene {
         color: 0x9945FF,
         dialog: ["You already found me this round! Wait for someone new to appear."],
         action: { type: "placeholder", label: "Got it!" },
+        loadout: target.loadout,
       });
       return true;
     }
@@ -1799,6 +1800,9 @@ export class CityScene extends Phaser.Scene {
       color: 0xFFD700,
       dialog: [line],
       action: { type: "placeholder", label: "Nice!" },
+      // No sheet of their own: the dialog portrait is drawn from the same
+      // layers the crowd wears, so the face in the box is the one just found.
+      loadout: target.loadout,
     });
     return true;
   }

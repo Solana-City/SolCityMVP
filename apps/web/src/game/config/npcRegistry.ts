@@ -1,4 +1,5 @@
 import { npcCategory, CATEGORY_META } from "../minimap/categories";
+import type { Loadout } from "./paperDoll";
 import type { BuffId } from "../buffs/playerBuffs";
 
 export interface NPCAction {
@@ -74,6 +75,12 @@ export interface NPCDefinition {
    * Points to a spritesheet (same format as the player: 64×64 frames).
    */
   spriteKey?: string;
+  /**
+   * A paper-doll look, for a speaker who has no sheet of their own: the
+   * citizen the Find Someone hunt puts in the crowd is assembled from layers
+   * like the player, so their dialog portrait is drawn the same way.
+   */
+  loadout?: Loadout;
   /**
    * Optional second sheet, swapped in while this NPC is walking and swapped
    * back on arrival. Same 64×64 walk-grid contract as `spriteKey`.

@@ -2,7 +2,7 @@
 
 import { useCallback } from "react";
 import type { NPCDefinition } from "@/game/config/npcRegistry";
-import { CROPS, PortraitBox, removeChroma } from "@/ui/AvatarPortrait";
+import { CROPS, PortraitBox, drawAvatarPortrait, removeChroma } from "@/ui/AvatarPortrait";
 
 /**
  * An NPC's face for the dialog they open, cut from the sprite that is already
@@ -13,6 +13,10 @@ import { CROPS, PortraitBox, removeChroma } from "@/ui/AvatarPortrait";
  * first frame of the sheet - the standing, player-facing one on a walk grid,
  * and frame 0 of an idle loop otherwise.
  *
+ * A speaker with no sheet of their own - the citizen the hunt hides in the
+ * crowd - carries a paper-doll loadout instead, and is drawn from the layers
+ * exactly as the player's own portrait is.
+ *
  * Anchoring: the sheets are a 64px grid with the character standing on the
  * bottom edge, so the bust is the top 52 rows of the LAST 64. On a 64px frame
  * that is just the top of the frame; on a taller one (Kite Pro's sheet is 97
@@ -20,8 +24,13 @@ import { CROPS, PortraitBox, removeChroma } from "@/ui/AvatarPortrait";
  * still lands on the character.
  */
 
-/** Where an NPC's sheet is served from (see BootScene, which loads the same). */
+/**
+ * Where an NPC's sheet is served from (see BootScene, which loads the same).
+ * The player's sheet is the one key whose file is not named after it, and it
+ * is what an NPC with no sheet of its own falls back to.
+ */
 function sheetUrl(spriteKey: string): string {
+  if (spriteKey === "avatar-player") return "/assets/sprites/main_char.png";
   const file = spriteKey.startsWith("avatar-") ? spriteKey.slice("avatar-".length) : spriteKey;
   return `/assets/sprites/${encodeURIComponent(file)}.png`;
 }
@@ -73,12 +82,16 @@ export default function NPCPortrait({ npc, size, border = 2 }: {
   /** Border width, to match the dialog box this stands on. */
   border?: number;
 }) {
+  const loadout = npc.loadout;
   const draw = useCallback(
-    (canvas: HTMLCanvasElement, smooth: boolean) => drawNPCBust(canvas, npc, smooth),
+    (canvas: HTMLCanvasElement, smooth: boolean) => {
+      if (loadout) return drawAvatarPortrait(canvas, loadout, { crop: "bust", smooth });
+      return drawNPCBust(canvas, npc, smooth);
+    },
     // The sheet and its frame size are all the drawing reads, and both are
     // fixed per NPC, so the identity of the definition object does not matter.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [npc.id],
+    [npc.id, loadout],
   );
   // The frame is the NPC's category colour, the same one the dialog box is
   // outlined in and the minimap guide lists them under, so the portrait reads
