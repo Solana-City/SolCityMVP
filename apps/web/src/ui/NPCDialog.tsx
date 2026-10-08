@@ -46,7 +46,6 @@ function accentAt(line: NPCDialogLine | undefined): number {
 
 export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
   const [lineIndex, setLineIndex]         = useState(0);
-  const [portraitVisible, setPortraitVisible] = useState(false);
   const [displayText, setDisplayText]     = useState("");
   const [isTyping, setIsTyping]           = useState(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -59,7 +58,6 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
   // Reset when NPC changes
   useEffect(() => {
     setLineIndex(0);
-    setPortraitVisible(!!npc?.portrait);
     if (npc) profileManager.visitNPC(npc.id, npc.name);
   }, [npc?.id]);
 
@@ -279,14 +277,7 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
       >
         {/* Header: portrait + name/role + close */}
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
-          {portraitVisible && (
-            <NPCPortrait
-              npc={npc}
-              size={52}
-              variant="avatar"
-              onError={() => setPortraitVisible(false)}
-            />
-          )}
+          <NPCPortrait npc={npc} size={60} frame="thin" />
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{
               fontFamily:    '"Press Start 2P", monospace',
@@ -386,38 +377,15 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
       className="fixed left-1/2 -translate-x-1/2 z-30 w-full max-w-2xl px-4"
       style={{ fontFamily: '"Press Start 2P", monospace', bottom: "96px" }}
     >
-      <div className={`flex items-end ${portraitVisible ? "gap-5" : ""}`}>
-        {portraitVisible && (
-          <div className="mb-2 flex-shrink-0">
-            <NPCPortrait
-              npc={npc}
-              size={160}
-              variant="frame"
-              onError={() => setPortraitVisible(false)}
-            />
-          </div>
-        )}
+      <div>
+        {/* The speaker, standing on the box above their own name. Overlapping
+            it by a couple of pixels is what makes them stand ON the box
+            rather than hover over it. */}
+        <div style={{ marginLeft: 14, marginBottom: -2, width: "fit-content" }}>
+          <NPCPortrait npc={npc} size={122} />
+        </div>
 
-        <ChamferGlow className="relative flex-1" glow={`drop-shadow(0 0 16px ${color}40)`}>
-          {/* Bubble arrow pointing at portrait. It sits outside the clipped
-              box below, so the chamfer does not cut it off. */}
-          {portraitVisible && (
-            <>
-              <div className="absolute" style={{
-                left: -12, bottom: 36, width: 0, height: 0,
-                borderTop: "10px solid transparent",
-                borderBottom: "10px solid transparent",
-                borderRight: `12px solid ${color}`,
-              }} aria-hidden />
-              <div className="absolute" style={{
-                left: -9, bottom: 36, width: 0, height: 0,
-                borderTop: "10px solid transparent",
-                borderBottom: "10px solid transparent",
-                borderRight: "12px solid rgba(8,8,24,0.96)",
-                zIndex: 1,
-              }} aria-hidden />
-            </>
-          )}
+        <ChamferGlow className="relative" glow={`drop-shadow(0 0 16px ${color}40)`}>
         <div
           className="relative"
           onClick={onBubbleClick}
