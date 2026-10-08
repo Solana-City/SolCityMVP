@@ -261,6 +261,9 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
           zIndex:       30,
         }}
       >
+        <div style={{ marginLeft: 12, marginBottom: -3, width: "fit-content" }}>
+          <NPCPortrait npc={npc} size={58} border={3} />
+        </div>
       <div
         onClick={onBubbleClick}
         style={chamferBox(14, {
@@ -275,9 +278,9 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
           cursor:       isLastLine && doneTyping ? "default" : "pointer",
         })}
       >
-        {/* Header: portrait + name/role + close */}
+        {/* Header: name/role + close. The speaker stands above it, on the
+            box's top edge, the same way as on desktop. */}
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
-          <NPCPortrait npc={npc} size={58} border={3} />
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{
               fontFamily:    '"Press Start 2P", monospace',
