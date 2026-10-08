@@ -14,7 +14,15 @@ import { LayerCategory, getBoosterPool } from "./paperDoll";
 // order. This order MUST match the program's view of the pool. Rule: APPEND-ONLY
 // — never reorder or remove a booster item, or every index shifts. Bump
 // POOL_VERSION and keep both sides in sync when the pool changes.
-export const POOL_VERSION = 1;
+//
+// VERSION 2 (hair colour): Magawk_green and Magawk_red left the variant list
+// when colour became its own axis, which shifts every index after them. That
+// is normally forbidden. It is safe exactly once, here, because these indices
+// have never been deployed — same reasoning as Cap_Sol leaving the pool on
+// 2026-09-21 (see REDEPLOY_CHECKLIST.md). After the player_v3 redeploy writes
+// them to chain, a removal renumbers cosmetics wallets already own, and the
+// append-only rule is absolute again.
+export const POOL_VERSION = 2;
 
 /** The booster pool as an ordered, index-stable list (index = on-chain bit). */
 export function boosterIndexTable(): { category: LayerCategory; id: string; name: string; file: string }[] {

@@ -105,8 +105,16 @@ export const DIRECTION_ROW: Record<Direction, number> = {
   left: 3,
 };
 
-/** A player's full layer selection. Missing/undefined = no layer rendered for that slot. */
-export type Loadout = Partial<Record<LayerCategory, string>>;
+/**
+ * A player's full layer selection. Missing/undefined = no layer rendered for
+ * that slot.
+ *
+ * `hairColor` is NOT a layer: it is a swatch id from game/config/hairPalette,
+ * applied to whichever hairstyle is worn. Undefined means "as the sheet was
+ * drawn", which is the common case and the one that renders straight off the
+ * original texture with nothing derived.
+ */
+export type Loadout = Partial<Record<LayerCategory, string>> & { hairColor?: string };
 
 export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
   back: [
@@ -155,22 +163,29 @@ export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
     { id: "Trader_shades", name: "Trader Shades", textureKey: "pd-accessory-Trader_shades",
       file: "accessory/Trader_shades.png", unlockVia: "quest", unlockHint: "Trade your first stock at Stocklana" },
   ],
+  // STYLES ONLY — the colour is a separate axis (game/config/hairPalette.ts),
+  // so a style is listed once and worn in any of the twenty swatches.
+  //
+  // Brown_hair, Magawk_green and Magawk_red used to live here as their own
+  // entries. They were the SAME sheets as Black_hair and Magawk_blue with two
+  // hexes changed, which the palette now does at runtime and hairPalette.test
+  // pins pixel for pixel, so keeping them would have been three wardrobe tiles
+  // showing a colour the player can already pick. loadSavedLoadout migrates
+  // anyone who had one on. The names dropped their colour for the same reason:
+  // "Black Hair" is wrong the moment it can be pink.
   hair: [
-    { id: "Avatar",      name: "Avatar",      textureKey: "pd-hair-Avatar",      file: "hair/Avatar.png" },
-    { id: "Black_hair",  name: "Black Hair",  textureKey: "pd-hair-Black_hair",  file: "hair/Black_hair.png" },
-    { id: "Brown_hair",  name: "Brown Hair",  textureKey: "pd-hair-Brown_hair",  file: "hair/Brown_hair.png" },
+    { id: "Avatar",      name: "Avatar",     textureKey: "pd-hair-Avatar",      file: "hair/Avatar.png" },
+    { id: "Black_hair",  name: "Short Hair", textureKey: "pd-hair-Black_hair",  file: "hair/Black_hair.png" },
     // Re-enabled: AvatarSprite.ts's hair masking now clips per column against
     // the hat's own silhouette (not just a single row-wide cutoff), which
     // handles hair wider than the hat too, not only taller.
-    { id: "Afro",        name: "Afro",        textureKey: "pd-hair-Afro",        file: "hair/Afro.png" },
-    { id: "Anime",       name: "Anime",       textureKey: "pd-hair-Anime",       file: "hair/Anime.png" },
-    { id: "Magawk_blue", name: "Magawk Blue", textureKey: "pd-hair-Magawk_blue", file: "hair/Magawk_blue.png" },
-    { id: "Magawk_green",name: "Magawk Green",textureKey: "pd-hair-Magawk_green",file: "hair/Magawk_green.png" },
-    { id: "Magawk_red",  name: "Magawk Red",  textureKey: "pd-hair-Magawk_red",  file: "hair/Magawk_red.png" },
-    { id: "black_long",  name: "Long Black Hair", textureKey: "pd-hair-black_long", file: "hair/black_long.png" },
+    { id: "Afro",        name: "Afro",       textureKey: "pd-hair-Afro",        file: "hair/Afro.png" },
+    { id: "Anime",       name: "Anime",      textureKey: "pd-hair-Anime",       file: "hair/Anime.png" },
+    { id: "Magawk_blue", name: "Mohawk",     textureKey: "pd-hair-Magawk_blue", file: "hair/Magawk_blue.png" },
+    { id: "black_long",  name: "Long Hair",  textureKey: "pd-hair-black_long",  file: "hair/black_long.png" },
     // Facial hair rides the hair slot, so a beard and a hairstyle cannot be
     // worn at the same time. That is the slot's shape, not a choice made here.
-    { id: "brown_beard", name: "Brown Beard", textureKey: "pd-hair-brown_beard", file: "hair/brown_beard.png" },
+    { id: "brown_beard", name: "Beard",      textureKey: "pd-hair-brown_beard", file: "hair/brown_beard.png" },
   ],
   hat: [
     // Earned, not boxed: the reward for a 7-day check-in streak. Moved out of
@@ -386,6 +401,33 @@ export function getAllLayerVariants(): { category: LayerCategory; variant: Layer
   );
 }
 
+/**
+ * Hair styles that were their own entry until colour became its own axis.
+ * Each maps to the style that absorbed it plus the swatch that reproduces it,
+ * which hairPalette.test checks is pixel-identical to the sheet that was
+ * deleted — so a returning player sees the same hair, not a different one.
+ *
+ * Applied to loadouts arriving from the NETWORK too: another device may still
+ * be on an older build and broadcast the old id.
+ */
+const RETIRED_HAIR: Record<string, { hair: string; hairColor: string }> = {
+  Brown_hair:   { hair: "Black_hair",  hairColor: "brown" },
+  Magawk_green: { hair: "Magawk_blue", hairColor: "green" },
+  Magawk_red:   { hair: "Magawk_blue", hairColor: "red" },
+};
+
+/** Rewrites a retired hairstyle in place. Safe to call on any loadout. */
+export function migrateHairColor(loadout: Loadout): Loadout {
+  const moved = loadout.hair ? RETIRED_HAIR[loadout.hair] : undefined;
+  if (moved) {
+    loadout.hair = moved.hair;
+    // An explicit colour already on the loadout wins: the player chose it on a
+    // newer build, and the retired id is only telling us what it used to be.
+    loadout.hairColor = loadout.hairColor ?? moved.hairColor;
+  }
+  return loadout;
+}
+
 const STORAGE_KEY = "solcity:loadout";
 
 export function saveLoadout(loadout: Loadout): void {
@@ -404,6 +446,7 @@ export function loadSavedLoadout(): Loadout {
       // Nya/Sleepy became expressions, not selectable faces — anyone who had
       // one saved as their static face falls back to Happy so they keep a face.
       if (loadout.eyesFace === "Nya" || loadout.eyesFace === "Sleepy") loadout.eyesFace = "Happy";
+      migrateHairColor(loadout);
       return loadout;
     }
   } catch {}
