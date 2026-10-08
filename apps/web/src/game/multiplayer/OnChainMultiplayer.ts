@@ -26,6 +26,10 @@ const EXPR_PREFIX = "solcity-expr:"; // solcity-expr:<wallet>:<textureKey>
 const LOADOUT_KEY_ABBR: Record<string, string> = {
   skin: "s", hair: "h", eyesFace: "e", tshirt: "t",
   pants: "p", hat: "H", accessory: "a", back: "b",
+  // Not a layer: the hair swatch (game/config/hairPalette.ts). Omitted
+  // entirely when the style is worn in the colour it was drawn in, which is
+  // the common case, so the usual loadout does not get longer.
+  hairColor: "c",
 };
 const LOADOUT_ABBR_KEY: Record<string, string> = Object.fromEntries(
   Object.entries(LOADOUT_KEY_ABBR).map(([full, abbr]) => [abbr, full]),
@@ -45,7 +49,10 @@ function decodeLoadout(s: string): Loadout {
     const k = LOADOUT_ABBR_KEY[rawK] ?? rawK; // short key → full; full stays full
     if (k && v) (out as Record<string, string>)[k] = v;
   }
-  return out;
+  // A peer on an older build still broadcasts Brown_hair or a coloured Magawk,
+  // which are no longer wardrobe entries. Without this they render as no hair
+  // at all, so the rewrite happens on the way in, not just on our own save.
+  return migrateHairColor(out);
 }
 import {
   ConnectionMagicRouter,
@@ -78,7 +85,7 @@ import {
 import { BASE_RPC_PRIMARY, resilientBaseFetch } from "../solana/baseRpc";
 import { setHuntFromChain, clearHuntFromChain } from "../minigames/whereIsNPC/WhereIsNPCGame";
 import { transactionLog } from "../telemetry/transactionLog";
-import type { Loadout } from "../config/paperDoll";
+import { migrateHairColor, type Loadout } from "../config/paperDoll";
 
 // ── Endpoints ──────────────────────────────────────────────────────────
 
