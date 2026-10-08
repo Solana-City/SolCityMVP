@@ -1,5 +1,7 @@
 import { Connection, PublicKey, Transaction } from "@solana/web3.js";
 
+import { mainnetConnection } from "./mainnetRpc";
+
 import { toSmallestUnit } from "./jupiterSwap";
 import { buildSolTransfer, buildSplTransfer } from "./transfer";
 
@@ -67,44 +69,6 @@ export function getSendToken(id: string): SendToken | undefined {
 /** What to call a token in a log line or a receipt, cluster included. */
 export function sendTokenLabel(token: SendToken): string {
   return token.cluster === "devnet" ? `${token.symbol} (devnet)` : token.symbol;
-}
-
-// ── Mainnet connection ───────────────────────────────────────────────────────
-
-/**
- * Helius first (the project's key, as on devnet in baseRpc), the public
- * endpoint behind it: api.mainnet-beta throttles browsers, so on its own it
- * fails exactly when a player is trying to send.
- */
-const MAINNET_RPCS: readonly string[] = [
-  "https://mainnet.helius-rpc.com/?api-key=92175bf8-4484-4c09-a60a-4d08ee821058",
-  "https://api.mainnet-beta.solana.com",
-];
-
-/** Tries each endpoint in order, keeping the reason if they all refuse. */
-const failoverFetch: typeof fetch = async (input, init) => {
-  let problem = "no endpoint answered";
-  for (const url of MAINNET_RPCS) {
-    try {
-      const res = await fetch(url, init);
-      // A 403 or 429 from a public endpoint is a refusal, not an answer.
-      if (res.ok) return res;
-      problem = `${new URL(url).host} replied ${res.status}`;
-    } catch (err) {
-      problem = err instanceof Error ? err.message : String(err);
-    }
-  }
-  throw new Error(problem);
-};
-
-let mainnet: Connection | null = null;
-/** The failover mainnet connection, shared by every real send. */
-export function mainnetConnection(): Connection {
-  mainnet ??= new Connection(MAINNET_RPCS[0], {
-    commitment: "confirmed",
-    fetch: failoverFetch,
-  });
-  return mainnet;
 }
 
 // ── Building the transfer ────────────────────────────────────────────────────
