@@ -2,7 +2,7 @@
 
 import { useCallback } from "react";
 import type { NPCDefinition } from "@/game/config/npcRegistry";
-import { CROPS, PortraitBox, removeChroma, type FrameWeight } from "@/ui/AvatarPortrait";
+import { CROPS, PortraitBox, removeChroma } from "@/ui/AvatarPortrait";
 
 /**
  * An NPC's face for the dialog they open, cut from the sprite that is already
@@ -66,11 +66,12 @@ function drawNPCBust(canvas: HTMLCanvasElement, npc: NPCDefinition, smooth: bool
   return () => { cancelled = true; };
 }
 
-export default function NPCPortrait({ npc, size, frame = 1 }: {
+export default function NPCPortrait({ npc, size, border = 2 }: {
   npc: NPCDefinition;
-  /** Total size including the frame. 70 shows the bust at 1x, 122 at 2x. */
+  /** Total size including the border: 52 of bust per whole step, plus it. */
   size: number;
-  frame?: FrameWeight;
+  /** Border width, to match the dialog box this stands on. */
+  border?: number;
 }) {
   const draw = useCallback(
     (canvas: HTMLCanvasElement, smooth: boolean) => drawNPCBust(canvas, npc, smooth),
@@ -79,5 +80,16 @@ export default function NPCPortrait({ npc, size, frame = 1 }: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [npc.id],
   );
-  return <PortraitBox size={size} source={CROPS.bust.w} frame={frame} draw={draw} />;
+  // The frame is the NPC's category colour, the same one the dialog box is
+  // outlined in and the minimap guide lists them under, so the portrait reads
+  // as part of the box it stands on rather than a second frame beside it. The
+  // fill is the box's own background for the same reason.
+  const color = `#${npc.color.toString(16).padStart(6, "0")}`;
+  return (
+    <PortraitBox
+      size={size} source={CROPS.bust.w} draw={draw}
+      frame={{ color, width: border }}
+      fill="rgba(8,8,24,0.96)"
+    />
+  );
 }

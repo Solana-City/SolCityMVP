@@ -1,12 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import {
   DIRECTION_ROW, LAYER_ORDER, SPRITE_FRAME_HEIGHT, SPRITE_FRAME_WIDTH,
   getVariant, loadSavedLoadout, type LayerCategory, type Loadout,
 } from "@/game/config/paperDoll";
 import { recolorHairCanvas } from "@/game/config/hairPalette";
-import { octagonFrame, octagonFrameThin, chamferClip } from "@/ui/chamfer";
+import { octagonFrame, octagonFrameThin, chamferBox, chamferClip } from "@/ui/chamfer";
 import { devicePixelRatioSafe } from "@/ui/crispPixels";
 
 /**
@@ -209,6 +209,20 @@ const FRAMES = {
 export type FrameWeight = keyof typeof FRAMES;
 
 /**
+ * A flat border in a colour of the caller's choosing, instead of the octagon
+ * art. For a picture that belongs to something else already on screen - an
+ * NPC's portrait over their dialog box, which takes the colour of their map
+ * category - so the two read as one surface rather than two frames.
+ */
+export interface TintedFrame {
+  color: string;
+  /** Border width. Default 2, as the desktop dialog box uses. */
+  width?: number;
+  /** Chamfer. Defaults to an eighth of the box, capped at the box's own 12. */
+  corner?: number;
+}
+
+/**
  * A picture of somebody in the octagon frame, at a size that keeps it crisp.
  *
  * The art has a size of its own - 52 pixels of bust, 36 of head - so it is
@@ -235,8 +249,11 @@ export function PortraitBox({
   source: number;
   /** Null while the subject is unknown, which leaves the frame empty. */
   draw: ((canvas: HTMLCanvasElement, smooth: boolean) => void | (() => void)) | null;
-  /** Ring weight: "thin" is 4px, 1 a 9px ring, 2 the native 18px. */
-  frame?: FrameWeight;
+  /**
+   * Ring weight ("thin" is 4px, 1 a 9px ring, 2 the native 18px), or a flat
+   * border in a given colour.
+   */
+  frame?: FrameWeight | TintedFrame;
   title?: string;
   fill?: string;
 }) {
@@ -251,7 +268,9 @@ export function PortraitBox({
     return () => window.removeEventListener("resize", read);
   }, []);
 
-  const { ring, corner, style } = FRAMES[frame];
+  const tint = typeof frame === "object" ? frame : null;
+  const art  = tint ? null : FRAMES[frame as FrameWeight];
+  const ring = tint ? (tint.width ?? 2) : art!.ring;
   const inside = size - 2 * ring;
   // The picture's size on the page, which stays put whatever the screen is: a
   // layout that moved with the pixel ratio is the mistake useCrispPixelArt
@@ -271,15 +290,23 @@ export function PortraitBox({
     return draw(canvas, smooth);
   }, [draw, px, smooth]);
 
+  // The art ring is an overlay, because it has to sit OVER the picture the way
+  // the photo frame it replaced did. A tinted border is drawn by chamferBox,
+  // which keeps the border's space - so the picture is centred inside it and
+  // never under it.
+  const layout: CSSProperties = {
+    position: "relative", display: "flex", flexShrink: 0,
+    alignItems: "center", justifyContent: "center",
+    width: size, height: size,
+  };
   return (
     <span
       title={title}
-      style={{
-        position: "relative", display: "flex", flexShrink: 0,
-        alignItems: "center", justifyContent: "center",
-        width: size, height: size, background: fill,
-        clipPath: chamferClip(corner),
-      }}
+      style={tint
+        ? chamferBox(tint.corner ?? Math.min(12, Math.round(size / 8)), {
+            ...layout, background: fill, border: `${ring}px solid ${tint.color}`,
+          })
+        : { ...layout, background: fill, clipPath: chamferClip(art!.corner) }}
     >
       <canvas
         ref={ref}
@@ -288,8 +315,9 @@ export function PortraitBox({
           imageRendering: "pixelated",
         }}
       />
-      {/* The ring last, so it sits over the art the way the photo frame did. */}
-      <span aria-hidden="true" style={{ ...style, position: "absolute", inset: 0, pointerEvents: "none" }} />
+      {art && (
+        <span aria-hidden="true" style={{ ...art.style, position: "absolute", inset: 0, pointerEvents: "none" }} />
+      )}
     </span>
   );
 }
@@ -311,7 +339,7 @@ export function AvatarPortrait({
   size: number;
   /** How much of the character to show. Default: the bust. */
   crop?: CropName;
-  frame?: FrameWeight;
+  frame?: FrameWeight | TintedFrame;
   title?: string;
   fill?: string;
 }) {

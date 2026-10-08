@@ -277,7 +277,7 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
       >
         {/* Header: portrait + name/role + close */}
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
-          <NPCPortrait npc={npc} size={60} frame="thin" />
+          <NPCPortrait npc={npc} size={58} border={3} />
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{
               fontFamily:    '"Press Start 2P", monospace',
@@ -382,7 +382,7 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
             it by a couple of pixels is what makes them stand ON the box
             rather than hover over it. */}
         <div style={{ marginLeft: 14, marginBottom: -2, width: "fit-content" }}>
-          <NPCPortrait npc={npc} size={122} />
+          <NPCPortrait npc={npc} size={108} />
         </div>
 
         <ChamferGlow className="relative" glow={`drop-shadow(0 0 16px ${color}40)`}>
