@@ -2,6 +2,7 @@ import * as Phaser from "phaser";
 import { AvatarSprite } from "./AvatarSprite";
 import { TILE_SIZE } from "../config/constants";
 import { getEnabledVariants, type Loadout, DIRECTION_ROW, SPRITE_COLS } from "../config/paperDoll";
+import { CROWD_HAIR_COLORS } from "../config/hairPalette";
 
 // Fast seeded PRNG (mulberry32)
 function mulberry32(seed: number) {
@@ -30,16 +31,23 @@ export function makePedestrianLoadout(seed: number): Loadout {
   const eyesFace = rng() < 0.90
     ? "Happy"
     : pick(getEnabledVariants("eyesFace").filter(v => v.id !== "Happy"), rng).id;
-  // Avatar hair (blue arrow) is very rare — 2% of hair picks. The 3 Magawk
-  // colors are treated as one rare 6%-total bucket rather than 3 slots in
-  // the common pool — otherwise having 3 color variants of the same
-  // hairstyle made mohawks collectively as common as a whole extra
-  // hairstyle, so they felt overrepresented in a crowd.
+  // Avatar hair (blue arrow) is very rare — 2% of hair picks. The mohawk is
+  // its own rare 6% bucket rather than a slot in the common pool: it used to
+  // be three colour variants, which made mohawks collectively as common as a
+  // whole extra hairstyle and overrepresented in a crowd. It is one style now
+  // (colour moved to its own axis), and the bucket keeps the same rarity.
   const mohawks = getEnabledVariants("hair").filter(h => h.id.startsWith("Magawk"));
   const commonHair = getEnabledVariants("hair").filter(h => h.id !== "Avatar" && !h.id.startsWith("Magawk"));
   const hair = rng() < 0.02 ? "Avatar"
     : rng() < 0.06 ? pick(mohawks, rng).id
     : pick(commonHair, rng).id;
+  // Most of the crowd keeps the colour its sheet was drawn in, which renders
+  // off the original texture and costs nothing. The rest draw from a small set
+  // of naturals: a street of mint and pink mohawks stops reading as a city,
+  // and each off-default colour is a derived texture held for as long as that
+  // pedestrian lives.
+  const hairColor = rng() < 0.35 ? pick(CROWD_HAIR_COLORS, rng) : undefined;
+
   const tshirt   = pick(getEnabledVariants("tshirt"), rng).id;
   const pants    = pick(getEnabledVariants("pants"),  rng).id;
 
@@ -59,7 +67,7 @@ export function makePedestrianLoadout(seed: number): Loadout {
   // 25% chance of a backpack/jetpack — only some pedestrians wear one
   const back = rng() < 0.25 ? pick(getEnabledVariants("back"), rng).id : undefined;
 
-  return { skin, eyesFace, hair, tshirt, pants, hat, accessory, back };
+  return { skin, eyesFace, hair, hairColor, tshirt, pants, hat, accessory, back };
 }
 
 type Direction = "up" | "down" | "left" | "right";

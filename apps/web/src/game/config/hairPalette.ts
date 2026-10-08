@@ -112,6 +112,19 @@ export const STYLE_DEFAULT_COLOR: Record<string, string> = {
 
 export const DEFAULT_HAIR_COLOR = "black";
 
+/**
+ * The swatches a random citizen may be generated with.
+ *
+ * Deliberately a small set of naturals, for two reasons. A crowd of mint and
+ * pink mohawks stops reading as a city, and every colour a pedestrian wears
+ * that is NOT the one its sheet was drawn in costs a derived texture that has
+ * to live as long as that pedestrian does. Most of the crowd is left as drawn,
+ * which costs nothing at all (see PedestrianSprite).
+ */
+export const CROWD_HAIR_COLORS: string[] = [
+  "black", "raven", "brown", "chestnut", "ginger", "blonde", "silver",
+];
+
 export function hairColorOf(id: string | undefined): HairColor {
   return (id ? BY_ID.get(id) : undefined) ?? BY_ID.get(DEFAULT_HAIR_COLOR)!;
 }
