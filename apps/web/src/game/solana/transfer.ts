@@ -3,7 +3,6 @@ import {
   PublicKey,
   Transaction,
   SystemProgram,
-  LAMPORTS_PER_SOL,
 } from "@solana/web3.js";
 import {
   getAssociatedTokenAddress,
@@ -13,17 +12,18 @@ import {
 } from "@solana/spl-token";
 
 /**
- * Builds a SOL transfer transaction.
- * Returns a Transaction ready to be signed by the wallet adapter.
+ * Builds a native SOL transfer.
+ *
+ * The amount arrives already in lamports: the caller converts from what the
+ * player typed, so a decimal string never becomes a float on the way here and
+ * 0.1 is 100000000 lamports rather than whatever the nearest double rounds to.
  */
 export async function buildSolTransfer(
   connection: Connection,
   from: PublicKey,
   to: PublicKey,
-  amountSol: number
+  lamports: bigint
 ): Promise<Transaction> {
-  const lamports = Math.round(amountSol * LAMPORTS_PER_SOL);
-
   const tx = new Transaction().add(
     SystemProgram.transfer({
       fromPubkey: from,
@@ -40,23 +40,32 @@ export async function buildSolTransfer(
 }
 
 /**
- * Builds an SPL token transfer transaction.
- * Automatically creates the recipient's ATA if it doesn't exist.
+ * Builds an SPL token transfer, creating the recipient's token account when
+ * they do not have one yet (the sender pays that rent, as they must).
+ *
+ * `amount` is in the mint's smallest unit, for the same reason as above.
  */
 export async function buildSplTransfer(
   connection: Connection,
   from: PublicKey,
   to: PublicKey,
   mint: PublicKey,
-  amount: number,
-  decimals: number
+  amount: bigint
 ): Promise<Transaction> {
   const fromAta = await getAssociatedTokenAddress(mint, from);
   const toAta = await getAssociatedTokenAddress(mint, to);
 
   const tx = new Transaction();
 
-  // Check if recipient ATA exists, create if not
+  // No account for this mint means no balance either. Saying so here beats
+  // letting the chain reject the transfer with an error nobody can read.
+  try {
+    await getAccount(connection, fromAta);
+  } catch {
+    throw new Error("You don't hold this token yet.");
+  }
+
+  // The recipient's account has to exist before anything can land in it.
   try {
     await getAccount(connection, toAta);
   } catch {
@@ -65,10 +74,8 @@ export async function buildSplTransfer(
     );
   }
 
-  const rawAmount = BigInt(Math.round(amount * 10 ** decimals));
-
   tx.add(
-    createTransferInstruction(fromAta, toAta, from, rawAmount)
+    createTransferInstruction(fromAta, toAta, from, amount)
   );
 
   const { blockhash } = await connection.getLatestBlockhash();
