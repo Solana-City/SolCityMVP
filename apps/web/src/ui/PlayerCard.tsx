@@ -13,7 +13,7 @@ import { useWallet } from "@solana/wallet-adapter-react";
 import { PublicKey } from "@solana/web3.js";
 import { levelsFromMask } from "@/game/social/profilePublisher";
 import { TRACKS, TIER_COLORS, levelName } from "@/game/progression/achievementRegistry";
-import { AchievementIcon } from "@/ui/PixelIcons";
+import { AchievementIcon, CloseButton } from "@/ui/PixelIcons";
 import { runFriendAction, type FriendAction } from "@/game/social/friendActions";
 import { standingWith, type FriendStanding } from "@/game/social/friends";
 
@@ -27,10 +27,10 @@ const FRIEND_BUTTON: Record<Exclude<FriendStanding, "self">, {
   color: string;
   border: string;
 }> = {
-  none:            { label: "ADD FRIEND",     action: "invite",  color: "#14F195", border: "rgba(20,241,149,0.45)" },
+  none:            { label: "ADD FRIEND",     action: "invite",  color: "#14F0C6", border: "rgba(20,240,198,0.7)" },
   "invited-them":  { label: "INVITE SENT",    action: "cancel",  color: "#8a8aa7", border: "rgba(138,138,167,0.4)" },
   "invited-me":    { label: "ACCEPT FRIEND",  action: "accept",  color: "#FFD700", border: "rgba(255,215,0,0.5)"  },
-  friends:         { label: "FRIENDS",        action: null,      color: "#14F195", border: "rgba(20,241,149,0.45)" },
+  friends:         { label: "FRIENDS",        action: null,      color: "#14F0C6", border: "rgba(20,240,198,0.7)" },
 };
 
 /**
@@ -109,7 +109,6 @@ export default function PlayerCard({ gameRef, wallet, displayName, myWallet, onC
     }
   };
 
-  const closeFeel = useButtonFeel();
   const copyFeel = useButtonFeel();
   const friendFeel = useButtonFeel();
   const sendFeel = useButtonFeel();
@@ -121,6 +120,13 @@ export default function PlayerCard({ gameRef, wallet, displayName, myWallet, onC
   const name = nickname || displayName || player?.displayName || short;
   const isSelf = wallet === myWallet;
   const best = player?.streakBest ?? 0;
+
+  const CYAN = "#14F0C6";
+  const cta = (extra: React.CSSProperties) => ({
+    width: "100%", padding: "11px 0",
+    fontFamily: '"Press Start 2P", monospace', fontSize: 8, letterSpacing: 1,
+    cursor: "pointer", ...extra,
+  });
 
   return (
     <div
@@ -134,163 +140,214 @@ export default function PlayerCard({ gameRef, wallet, displayName, myWallet, onC
       <style>{`@keyframes pcFade { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }`}</style>
       <div
         style={{
-          width: 280,
-          background: "rgba(10,12,24,0.94)",
+          width: "min(640px, 94vw)",
+          maxHeight: "96%", overflowY: "auto",
+          background: "#061A3A",
           borderWidth: 20, borderStyle: "solid", borderColor: "transparent",
           borderImage: 'url(/assets/branding/ui/frame-panel-test.png) 64 fill / 20px / 0 round',
           imageRendering: "pixelated",
           boxShadow: "0 12px 48px rgba(0,0,0,0.55)",
           fontFamily: '"Press Start 2P", monospace',
           color: "#d0d0f0",
-          padding: "18px 20px",
+          padding: "0 16px 16px",
           animation: "pcFade 0.15s ease",
         }}
       >
-        {/* Who this is: their character wearing what they have on right now.
-            The loadout rides along with their position, so it is as current
-            as the sprite the player just clicked in the city. */}
-        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
-          <AvatarPortrait loadout={player?.loadout ?? null} size={70} />
-          <span style={{
-            fontFamily: '"Press Start 2P", monospace', fontSize: 8, color: "#B7E928",
-            flex: 1, minWidth: 0, lineHeight: 1.6, overflowWrap: "anywhere",
-          }}>
-            {name}
-          </span>
-          <button onClick={onClose} {...closeFeel.handlers} style={{ background: "none", border: "none", color: "#14F0C6", fontSize: 13, cursor: "pointer", alignSelf: "flex-start", ...feelStyle(closeFeel) }}>
-            ×
-          </button>
+        {/* Title bar */}
+        <div style={{
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+          padding: "10px 0", borderBottom: "1px solid rgba(20,240,198,0.6)",
+        }}>
+          <span style={{ fontSize: 13, color: CYAN, letterSpacing: 2 }}>PLAYER PROFILE</span>
+          <CloseButton onClick={onClose} size={24} />
         </div>
 
-        {/* Wallet + copy */}
-        <div style={{ fontSize: 7, color: "#555577", marginBottom: 5 }}>
-          WALLET{isSelf ? " (you)" : ""}
-        </div>
-        <div style={chamferBox(8, {
-          display: "flex", alignItems: "center", gap: 8,
-          background: "rgba(255,255,255,0.03)", padding: "8px 10px",
-        })}>
-          <span style={{ fontSize: 9, color: "#9a9ad0", flex: 1, minWidth: 0 }}>{short}</span>
-          <button
-            onClick={copyWallet}
-            {...copyFeel.handlers}
-            style={chamferBox(6, {
-              fontFamily: '"Press Start 2P", monospace', fontSize: 7,
-              color: copied ? "#B7E928" : "#14F0C6",
-              background: "rgba(20,240,198,0.12)",
-              border: "1px solid rgba(20,240,198,0.3)",
-              padding: "5px 8px", cursor: "pointer", flexShrink: 0,
-              ...feelStyle(copyFeel),
-            })}
-            title="Copy wallet address"
-          >
-            {copied ? "Copied" : "Copy"}
-          </button>
-        </div>
+        <div style={{ display: "flex", flexWrap: "wrap", marginTop: 14 }}>
+          {/* Who this is: their character wearing what they have on right now,
+              then the name and, right under it, the wallet. The loadout rides
+              along with their position, so it is as current as the sprite the
+              player just clicked in the city. */}
+          <div style={{ flex: "1 1 250px", minWidth: 0, paddingRight: 16 }}>
+            <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
+              <AvatarPortrait loadout={player?.loadout ?? null} size={84} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{
+                  fontSize: 14, color: "#B7E928", lineHeight: 1.5, overflowWrap: "anywhere",
+                }}>
+                  {name}
+                </div>
+                <div style={{ fontSize: 7, color: "#8fa0d0", margin: "8px 0 4px" }}>
+                  WALLET{isSelf ? " (you)" : ""}
+                </div>
+                <div style={chamferBox(8, {
+                  display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8,
+                  background: "rgba(255,255,255,0.05)", padding: "5px 6px 5px 10px",
+                })}>
+                  <span style={{ fontSize: 9, color: "#aab6e8" }}>{short}</span>
+                  <button
+                    onClick={copyWallet}
+                    {...copyFeel.handlers}
+                    style={chamferBox(6, {
+                      fontFamily: '"Press Start 2P", monospace', fontSize: 7,
+                      color: copied ? "#B7E928" : CYAN,
+                      background: "rgba(20,240,198,0.1)",
+                      border: "1px solid rgba(20,240,198,0.7)",
+                      padding: "5px 8px", cursor: "pointer", flexShrink: 0,
+                      ...feelStyle(copyFeel),
+                    })}
+                    title="Copy wallet address"
+                  >
+                    {copied ? "Copied" : "Copy"}
+                  </button>
+                </div>
+              </div>
+            </div>
 
-        <div style={{ display: "flex", gap: 8, margin: "12px 0 4px" }}>
-          <Stat label="Score" value={player?.score ?? 0} color="#B7E928" />
-          <Stat label="Streak" value={player?.streakCurrent ?? 0} color="#FFD700"
-            hint={best > 0 ? `best ${best}` : undefined} />
-        </div>
+            <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
+              <Stat label="Score" value={player?.score ?? 0} color="#B7E928" />
+              <Stat label="Streak" value={player?.streakCurrent ?? 0} color="#B7E928"
+                hint={best > 0 ? `best ${best}` : undefined} />
+            </div>
 
-        <Badges indices={player?.achievements} />
+            <Badges indices={player?.achievements} />
 
-        {!isSelf && standing !== "self" && (
-          <button
-            onClick={() => void onFriend()}
-            disabled={friendBusy || FRIEND_BUTTON[standing].action === null}
-            {...friendFeel.handlers}
-            style={chamferBox(8, {
-              width: "100%", marginTop: 10, padding: "11px 0",
-              fontFamily: '"Press Start 2P", monospace', fontSize: 7, letterSpacing: 1,
-              color: FRIEND_BUTTON[standing].color,
-              background: "rgba(255,255,255,0.03)",
-              border: `1px solid ${FRIEND_BUTTON[standing].border}`,
-              cursor: FRIEND_BUTTON[standing].action ? "pointer" : "default",
-              opacity: friendBusy ? 0.6 : 1,
-              ...feelStyle(friendFeel),
-            })}
-          >
-            {friendBusy ? "..." : FRIEND_BUTTON[standing].label}
-          </button>
-        )}
-
-        {friendNote && (
-          <div style={{ fontSize: 6, color: "#FFD700", lineHeight: 1.6, marginTop: 8 }}>
-            {friendNote}
+            {isSelf && (
+              <div style={{ fontSize: 7, color: "#6f7fb0", lineHeight: 1.6, marginTop: 12 }}>
+                Score, streak and badges are shared live.
+              </div>
+            )}
           </div>
-        )}
 
-        {!isSelf && (
-          <button
-            onClick={() => {
-              window.dispatchEvent(new CustomEvent(SEND_TOKENS_EVENT, { detail: { wallet, name } }));
-              onClose();
-            }}
-            {...sendFeel.handlers}
-            style={chamferBox(8, {
-              width: "100%", marginTop: 10, padding: "11px 0",
-              fontFamily: '"Press Start 2P", monospace', fontSize: 7, letterSpacing: 1,
-              color: "#14F0C6", background: "rgba(20,240,198,0.1)",
-              border: "1px solid rgba(20,240,198,0.45)", cursor: "pointer",
-              ...feelStyle(sendFeel),
-})}
-          >
-            SEND TOKENS
-          </button>
-        )}
+          {/* What you can do with them */}
+          {!isSelf && (
+            <div style={{
+              flex: "1.1 1 270px", minWidth: 0, paddingLeft: 16,
+              borderLeft: "1px solid rgba(20,240,198,0.45)",
+              display: "flex", flexDirection: "column", gap: 8,
+            }}>
+              <div style={{ fontSize: 9, color: "#aab6e8", letterSpacing: 1 }}>INTERACT</div>
 
-        {!isSelf && flags.chat && (
-          <button
-            onClick={() => {
-              window.dispatchEvent(new CustomEvent(OPEN_DM_EVENT, { detail: { wallet, name } }));
-              onClose();
-            }}
-            {...messageFeel.handlers}
-            style={chamferBox(8, {
-              width: "100%", marginTop: 10, padding: "11px 0",
-              fontFamily: '"Press Start 2P", monospace', fontSize: 7, letterSpacing: 1,
-              color: "#FFD700", background: "rgba(255,215,0,0.1)",
-              border: "1px solid rgba(255,215,0,0.45)", cursor: "pointer",
-              ...feelStyle(messageFeel),
-            })}
-          >
-            MESSAGE
-          </button>
-        )}
+              {flags.chat && (
+                <button
+                  onClick={() => {
+                    window.dispatchEvent(new CustomEvent(OPEN_DM_EVENT, { detail: { wallet, name } }));
+                    onClose();
+                  }}
+                  {...messageFeel.handlers}
+                  style={chamferBox(8, cta({
+                    color: CYAN, background: "rgba(20,240,198,0.08)",
+                    border: "2px solid rgba(20,240,198,0.75)",
+                    ...feelStyle(messageFeel),
+                  }))}
+                >
+                  MESSAGE
+                </button>
+              )}
 
-        {!isSelf && flags.duels && (
-          <button
-            onClick={() => {
-              track("duel", "invite", { value: 1, label: "challenged a player" });
-              window.dispatchEvent(new CustomEvent(DUEL_INVITE_EVENT, {
-                detail: { kind: "challenge", opponent: wallet, name: displayName || player?.displayName },
-              }));
-              onClose();
-            }}
-            {...battleFeel.handlers}
-            style={chamferBox(8, {
-              width: "100%", marginTop: 10, padding: "11px 0",
-              fontFamily: '"Press Start 2P", monospace', fontSize: 7, letterSpacing: 1,
-              color: "#04140c", background: "linear-gradient(135deg, #B7E928, #0db876)",
-              border: "none", cursor: "pointer",
-              ...feelStyle(battleFeel),
-            })}
-          >
-            MECH BATTLE
-          </button>
-        )}
+              <div style={{ display: "flex", gap: 8 }}>
+                {standing !== "self" && (
+                  <button
+                    onClick={() => void onFriend()}
+                    disabled={friendBusy || FRIEND_BUTTON[standing].action === null}
+                    {...friendFeel.handlers}
+                    style={chamferBox(8, cta({
+                      flex: 1, minWidth: 0,
+                      color: FRIEND_BUTTON[standing].color,
+                      background: "rgba(20,240,198,0.08)",
+                      border: `2px solid ${FRIEND_BUTTON[standing].border}`,
+                      cursor: FRIEND_BUTTON[standing].action ? "pointer" : "default",
+                      opacity: friendBusy ? 0.6 : 1,
+                      ...feelStyle(friendFeel),
+                    }))}
+                  >
+                    {friendBusy ? "..." : FRIEND_BUTTON[standing].label}
+                  </button>
+                )}
+                <button
+                  onClick={() => {
+                    window.dispatchEvent(new CustomEvent(SEND_TOKENS_EVENT, { detail: { wallet, name } }));
+                    onClose();
+                  }}
+                  {...sendFeel.handlers}
+                  style={chamferBox(8, cta({
+                    flex: 1, minWidth: 0,
+                    color: CYAN, background: "rgba(20,240,198,0.08)",
+                    border: "2px solid rgba(20,240,198,0.75)",
+                    ...feelStyle(sendFeel),
+                  }))}
+                >
+                  SEND TOKENS
+                </button>
+              </div>
 
-        <div style={{ fontSize: 7, color: "#3a3a5a", lineHeight: 1.5, marginTop: 10 }}>
-          {isSelf
-            ? "Score, streak and badges are shared live."
-            : flags.duels
-              ? "A friendly Sol Mechs duel, 3v3. Nothing is at stake and no rating moves."
-              : "Duels are off right now."}
+              {friendNote && (
+                <div style={{ fontSize: 6, color: "#FFD700", lineHeight: 1.6 }}>
+                  {friendNote}
+                </div>
+              )}
+
+              <div style={chamferBox(10, {
+                background: "rgba(255,255,255,0.03)",
+                border: "2px solid rgba(20,240,198,0.35)",
+                padding: "10px 12px 12px",
+                display: "flex", flexDirection: "column", gap: 8,
+              })}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <SwordsIcon size={28} />
+                  <span style={{ fontSize: 9, color: "#cfe6ff", letterSpacing: 1 }}>FRIENDLY DUEL</span>
+                </div>
+                <div style={{ fontSize: 7, color: "#8fa0d0", lineHeight: 1.7 }}>
+                  {flags.duels
+                    ? "A friendly Sol Mechs duel, 3v3. Nothing is at stake and no rating moves."
+                    : "Duels are off right now."}
+                </div>
+                {flags.duels && (
+                  <button
+                    onClick={() => {
+                      track("duel", "invite", { value: 1, label: "challenged a player" });
+                      window.dispatchEvent(new CustomEvent(DUEL_INVITE_EVENT, {
+                        detail: { kind: "challenge", opponent: wallet, name: displayName || player?.displayName },
+                      }));
+                      onClose();
+                    }}
+                    {...battleFeel.handlers}
+                    style={chamferBox(8, cta({
+                      color: "#04140c", background: "#B7E928", border: "none",
+                      fontWeight: 700,
+                      ...feelStyle(battleFeel),
+                    }))}
+                  >
+                    MECH BATTLE
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
+  );
+}
+
+/** Two crossed swords, drawn on a pixel grid (there is no such sprite in the build). */
+function SwordsIcon({ size = 28 }: { size?: number }) {
+  const px: Array<[number, number, string]> = [];
+  const sword = (flip: boolean) => {
+    const X = (x: number) => (flip ? 15 - x : x);
+    for (let t = 4; t <= 13; t++) {
+      px.push([X(t), 14 - t, "#bfeeff"]);          // blade
+      if (t < 13) px.push([X(t + 1), 14 - t, "#4aa8d8"]); // its shaded edge
+    }
+    px.push([X(2), 10, "#e0a030"], [X(3), 11, "#e0a030"], [X(4), 12, "#e0a030"]); // guard
+    px.push([X(2), 12, "#9a5a20"], [X(1), 13, "#9a5a20"]);                         // grip
+    px.push([X(0), 14, "#e0a030"], [X(1), 14, "#e0a030"]);                         // pommel
+  };
+  sword(true);
+  sword(false);
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" shapeRendering="crispEdges" style={{ display: "block", flexShrink: 0 }}>
+      {px.map(([x, y, fill], i) => <rect key={i} x={x} y={y} width={1} height={1} fill={fill} />)}
+    </svg>
   );
 }
 
@@ -300,11 +357,13 @@ function Stat({ label, value, color, hint }: {
   return (
     <div style={chamferBox(8, {
       flex: 1, minWidth: 0,
-      background: "rgba(255,255,255,0.03)", padding: "8px 10px",
+      background: "rgba(255,255,255,0.04)",
+      border: "1px solid rgba(20,240,198,0.3)",
+      padding: "9px 12px 10px",
     })}>
-      <div style={{ fontSize: 7, color: "#555577" }}>{label}</div>
-      <div style={{ fontSize: 11, color, fontWeight: 600 }}>{value}</div>
-      {hint && <div style={{ fontSize: 5, color: "#555577", marginTop: 2 }}>{hint}</div>}
+      <div style={{ fontSize: 8, color: "#aab6e8" }}>{label}</div>
+      <div style={{ fontSize: 16, color, marginTop: 8 }}>{value}</div>
+      {hint && <div style={{ fontSize: 6, color: "#6f7fb0", marginTop: 4 }}>{hint}</div>}
     </div>
   );
 }
