@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   DIRECTION_ROW, LAYER_ORDER, SPRITE_FRAME_HEIGHT, SPRITE_FRAME_WIDTH,
   getVariant, loadSavedLoadout, type LayerCategory, type Loadout,
 } from "@/game/config/paperDoll";
+import { recolorHairCanvas } from "@/game/config/hairPalette";
 import { octagonFrame, octagonFrameThin, chamferClip } from "@/ui/chamfer";
 import { devicePixelRatioSafe } from "@/ui/crispPixels";
 
@@ -41,7 +42,8 @@ export const CROPS = {
 
 export type CropName = keyof typeof CROPS;
 
-function removeChroma(ctx: CanvasRenderingContext2D, w: number, h: number) {
+/** Drops the magenta the sheets are keyed on. */
+export function removeChroma(ctx: CanvasRenderingContext2D, w: number, h: number) {
   const d = ctx.getImageData(0, 0, w, h);
   const px = d.data;
   for (let i = 0; i < px.length; i += 4) {
@@ -111,6 +113,11 @@ export function drawAvatarPortrait(canvas: HTMLCanvasElement, loadout: Loadout, 
       const oc = off.getContext("2d", { willReadFrequently: true })!;
       oc.drawImage(img, 0, 0);
       removeChroma(oc, img.naturalWidth, img.naturalHeight);
+      // Before the hat masking below: the swatch resolves against the whole
+      // sheet, so a hat hiding most of one shade cannot invert the ramp.
+      if (cat === "hair") {
+        recolorHairCanvas(oc, img.naturalWidth, img.naturalHeight, loadout.hairColor);
+      }
       offByCat.set(cat, off);
     }
 
@@ -199,37 +206,37 @@ const FRAMES = {
   2:    { ring: 18, corner: 16,  style: octagonFrame(2) },
 } as const;
 
+export type FrameWeight = keyof typeof FRAMES;
+
 /**
- * The player's character inside the octagon frame: the picture that stands
- * for them in the HUD and at the top of their profile.
+ * A picture of somebody in the octagon frame, at a size that keeps it crisp.
  *
- * The art is 52 pixels of bust (see CROPS), so it is shown at a WHOLE
- * multiple of that and centred in the ring, rather than stretched to whatever
- * the box happens to be: a fractional size gives some rows of a pixel two
- * screen pixels and their neighbours one, which is the tearing the HUD art
- * was fixed for. What the picture does not use is frame and fill, not mangled
- * art. A box too small for even 1x shrinks it smoothly instead, since it is
- * blowing art UP unevenly that chews it.
+ * The art has a size of its own - 52 pixels of bust, 36 of head - so it is
+ * shown at a WHOLE multiple of that and centred in the ring, rather than
+ * stretched to whatever the box happens to be: a fractional size gives some
+ * rows of a pixel two screen pixels and their neighbours one, which is the
+ * tearing the HUD art was fixed for. What the picture does not use is frame
+ * and fill, not mangled art. A box too small for even 1x shrinks it smoothly
+ * instead, since it is blowing art UP unevenly that chews it.
  *
- * So pick `size` to leave the crop room inside the ring: for the bust that is
- * 60 with the thin ring, 70 with ring 1, 88 with ring 2.
+ * So pick `size` to leave the art room inside the ring: for the 52px bust
+ * that is 60 with the thin ring, 70 with ring 1, 88 with ring 2, and double
+ * the art for 2x.
+ *
+ * `draw` fills the canvas it is handed, and may return a teardown for art
+ * that is still loading when the subject changes.
  */
-export function AvatarPortrait({
-  loadout, size, crop = "bust", frame = 1, title, fill = "rgba(8,12,32,0.95)",
+export function PortraitBox({
+  size, source, draw, frame = 1, title, fill = "rgba(8,12,32,0.95)",
 }: {
-  /**
-   * Whose character this is. The player's own comes from useLiveLoadout;
-   * another player's rides along with their position (OnChainPlayer.loadout).
-   * Null leaves the frame empty rather than showing a stand-in wearing
-   * something they are not.
-   */
-  loadout: Loadout | null;
   /** Total size including the frame. */
   size: number;
-  /** How much of the character to show. Default: the bust. */
-  crop?: CropName;
+  /** The art's own size in pixels: what the whole-number scaling is measured in. */
+  source: number;
+  /** Null while the subject is unknown, which leaves the frame empty. */
+  draw: ((canvas: HTMLCanvasElement, smooth: boolean) => void | (() => void)) | null;
   /** Ring weight: "thin" is 4px, 1 a 9px ring, 2 the native 18px. */
-  frame?: keyof typeof FRAMES;
+  frame?: FrameWeight;
   title?: string;
   fill?: string;
 }) {
@@ -245,7 +252,6 @@ export function AvatarPortrait({
   }, []);
 
   const { ring, corner, style } = FRAMES[frame];
-  const source = CROPS[crop].w;
   const inside = size - 2 * ring;
   // The picture's size on the page, which stays put whatever the screen is: a
   // layout that moved with the pixel ratio is the mistake useCrispPixelArt
@@ -259,11 +265,11 @@ export function AvatarPortrait({
 
   useEffect(() => {
     const canvas = ref.current;
-    if (!canvas || !loadout) return;
+    if (!canvas || !draw) return;
     canvas.width = px;
     canvas.height = px;
-    drawAvatarPortrait(canvas, loadout, { crop, smooth });
-  }, [loadout, crop, px, smooth]);
+    return draw(canvas, smooth);
+  }, [draw, px, smooth]);
 
   return (
     <span
@@ -285,5 +291,40 @@ export function AvatarPortrait({
       {/* The ring last, so it sits over the art the way the photo frame did. */}
       <span aria-hidden="true" style={{ ...style, position: "absolute", inset: 0, pointerEvents: "none" }} />
     </span>
+  );
+}
+
+/**
+ * The player's own character, for the HUD button and their profile.
+ */
+export function AvatarPortrait({
+  loadout, size, crop = "bust", frame = 1, title, fill,
+}: {
+  /**
+   * Whose character this is. The player's own comes from useLiveLoadout;
+   * another player's rides along with their position (OnChainPlayer.loadout).
+   * Null leaves the frame empty rather than showing a stand-in wearing
+   * something they are not.
+   */
+  loadout: Loadout | null;
+  /** Total size including the frame. */
+  size: number;
+  /** How much of the character to show. Default: the bust. */
+  crop?: CropName;
+  frame?: FrameWeight;
+  title?: string;
+  fill?: string;
+}) {
+  const draw = useCallback(
+    (canvas: HTMLCanvasElement, smooth: boolean) => {
+      if (loadout) drawAvatarPortrait(canvas, loadout, { crop, smooth });
+    },
+    [loadout, crop],
+  );
+  return (
+    <PortraitBox
+      size={size} source={CROPS[crop].w} frame={frame} title={title} fill={fill}
+      draw={loadout ? draw : null}
+    />
   );
 }

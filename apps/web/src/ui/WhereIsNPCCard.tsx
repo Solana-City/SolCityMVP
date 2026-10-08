@@ -11,6 +11,7 @@ import {
   LAYER_ORDER, getVariant,
   SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT, type Loadout,
 } from "@/game/config/paperDoll";
+import { recolorHairCanvas } from "@/game/config/hairPalette";
 import { incrementQuest } from "@/game/quests/QuestManager";
 import { useNicknames, shortWallet } from "@/ui/useNicknames";
 import { fetchBoard, invalidateBoard, type BoardRow } from "@/game/leaderboards/boards";
@@ -126,6 +127,10 @@ function MiniAvatar({ loadout, size = 64 }: { loadout: Loadout; size?: number })
             0, 0, SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT,
           );
           removeChroma(oc, SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT);
+          // Before maskHairWithHat reads it back.
+          if (cat === "hair") {
+            recolorHairCanvas(oc, SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT, loadout.hairColor);
+          }
           resolve({ cat, frame: off });
         };
         img.onerror = () => resolve(null);
