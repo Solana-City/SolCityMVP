@@ -141,18 +141,18 @@ function luma(r: number, g: number, b: number): number {
 /** One source colour and what it becomes. */
 export interface ColorSwap { r: number; g: number; b: number; nr: number; ng: number; nb: number }
 
+/** Above this many distinct tones a sheet is not flat pixel art and is left alone. */
+const MAX_TONES = 8;
+
 /**
- * Works out what to replace, for one sheet in one colour.
+ * The distinct opaque colours in a sheet, packed as 0xRRGGBB, most common
+ * first. This depends only on the SHEET, never on the chosen colour, so the
+ * caller can scan a texture once and reuse the result for all twenty swatches.
  *
- * Scans the sheet's distinct opaque colours (two, or three on the beard),
- * takes the most common as the main tone, and sorts the rest into highlight or
- * shadow by whether they are lighter or darker than it.
- *
- * Returns an EMPTY list when the swap would change nothing. That is the signal
- * not to derive a texture at all, and it is the common case: every style worn
- * in the colour it was drawn in lands here.
+ * Returns an empty list for art with more tones than a flat pixel-art sheet
+ * should have: recolouring that would be guesswork, so it is left as drawn.
  */
-export function buildHairSwaps(data: Uint8ClampedArray, color: HairColor): ColorSwap[] {
+export function readHairTones(data: Uint8ClampedArray): number[] {
   // Art this flat has two tones, so a small array beats a Map and keeps the
   // scan allocation-free.
   const keys: number[] = [];
@@ -162,20 +162,32 @@ export function buildHairSwaps(data: Uint8ClampedArray, color: HairColor): Color
     const k = (data[i] << 16) | (data[i + 1] << 8) | data[i + 2];
     const at = keys.indexOf(k);
     if (at === -1) {
-      // A sheet with many tones is not one this palette understands, and
-      // recolouring it would be guesswork. Leave it exactly as drawn.
       if (keys.length === MAX_TONES) return [];
       keys.push(k);
       counts.push(1);
     } else counts[at]++;
   }
-  if (keys.length === 0) return [];
+  return keys
+    .map((k, i) => ({ k, n: counts[i] }))
+    .sort((a, b) => b.n - a.n)
+    .map((e) => e.k);
+}
 
-  let mainAt = 0;
-  for (let i = 1; i < keys.length; i++) if (counts[i] > counts[mainAt]) mainAt = i;
+const unpack = (k: number): [number, number, number] => [(k >> 16) & 255, (k >> 8) & 255, k & 255];
 
-  const unpack = (k: number): [number, number, number] => [(k >> 16) & 255, (k >> 8) & 255, k & 255];
-  const [mr, mg, mb] = unpack(keys[mainAt]);
+/**
+ * Resolves a sheet's tones onto one swatch: the most common tone takes `main`,
+ * and the rest take `highlight` or `shadow` by whether they are lighter or
+ * darker than it.
+ *
+ * Returns an EMPTY list when the swap would change nothing. That is the signal
+ * not to derive a texture at all, and it is the common case: every style worn
+ * in the colour it was drawn in lands here.
+ */
+export function swapsForTones(tones: number[], color: HairColor): ColorSwap[] {
+  if (tones.length === 0) return [];
+
+  const [mr, mg, mb] = unpack(tones[0]);
   const mainLuma = luma(mr, mg, mb);
 
   const main = parseHex(color.main);
@@ -184,17 +196,19 @@ export function buildHairSwaps(data: Uint8ClampedArray, color: HairColor): Color
 
   const swaps: ColorSwap[] = [];
   let changed = false;
-  for (let i = 0; i < keys.length; i++) {
-    const [r, g, b] = unpack(keys[i]);
-    const to = i === mainAt ? main : luma(r, g, b) > mainLuma ? highlight : shadow;
+  for (let i = 0; i < tones.length; i++) {
+    const [r, g, b] = unpack(tones[i]);
+    const to = i === 0 ? main : luma(r, g, b) > mainLuma ? highlight : shadow;
     if (to[0] !== r || to[1] !== g || to[2] !== b) changed = true;
     swaps.push({ r, g, b, nr: to[0], ng: to[1], nb: to[2] });
   }
   return changed ? swaps : [];
 }
 
-/** Above this many distinct tones a sheet is not flat pixel art and is left alone. */
-const MAX_TONES = 8;
+/** Scan and resolve in one go, for a caller holding a sheet it will not reuse. */
+export function buildHairSwaps(data: Uint8ClampedArray, color: HairColor): ColorSwap[] {
+  return swapsForTones(readHairTones(data), color);
+}
 
 /**
  * Applies the swaps in place. One linear pass, and with two or three entries
