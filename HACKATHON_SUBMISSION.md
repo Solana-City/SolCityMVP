@@ -85,6 +85,50 @@ still needs emails and screenshots.
 | Oct 11 | Submit |
 | Oct 12 | Deadline. Buffer, not a work day |
 
+## Audited again on 2026-10-09 (three days left)
+
+What closed since the 10-06 audit, checked against the tree and not the plan:
+
+- **ORE was taken, and it works.** The claim office runs end to end, a finished
+  round is read back, and the helmet is earned by striking ORE rather than by
+  staking a claim. The ORE Miner stands east of the Remedi building.
+- **The Seeker gift delivers.** `Seeker_hat.png` landed on 10-07, the variant is
+  in `paperDoll.ts` with `unlockVia: "quest"` (so it is out of the pack pool),
+  and `outfitRewards.skrHolder` grants it to a wallet holding SKR. The open item
+  from 10-06 is closed. A backpack is prepared and still waiting on art.
+- **A Seeker sizing pass** went in on 10-07.
+
+### Still open, and every one of them is the user's
+
+| Need | State today |
+|---|---|
+| **Real keystore** | Still nothing. `build.gradle.kts` reads `WEB_SHELL_SIGNING_STORE_FILE/_PASSWORD/_KEY_ALIAS`, none of them are set in `gradle.properties`, so `hasReleaseSigning` is false and a release build comes out unsigned. This is the one hard blocker left |
+| **Devnet or mainnet** for the judged build | Open. Recommendation unchanged: devnet |
+| **Eligible countries** | Open. Decides whether the USDC prize exists for this team |
+| **Contact and support email** | `dapp-store/config.yaml` lines 21-22 still read REPLACE_WITH. Needed to publish, not to submit |
+
+### The freeze has not happened
+
+The header of this file says the code and APK freeze is 10-10; the section
+below says web deploys freeze from 10-06. **86 commits landed between 10-06 and
+today**, including a twenty-colour hair system, a Player Profile redesign, the
+swap and send panels merged behind one pair of tabs, a donations NPC, and
+**Steve Sends retiring from the city on 10-08**.
+
+That matters more here than it would anywhere else, because the APK loads the
+live site: the judged app is whatever is deployed when a judge opens it, which
+can be weeks after submission.
+
+Two things to check before the freeze, in this order:
+
+1. **Does the demo video still match the city?** It was recorded on 10-02.
+   Steve Sends was a named NPC then and is gone now; swap and send have moved.
+   If the video shows either, it now contradicts what a judge will see. Either
+   re-record the affected shots or accept the mismatch knowingly.
+2. **Install the signed release APK and play a full loop against production**
+   once the keystore exists. The R8 build was proven with a throwaway key; it
+   has never been played through signed with the real one.
+
 ## Open on 2026-10-06
 
 - **The Seeker gift delivers nothing.** The art never landed, and grant() skips a
