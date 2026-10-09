@@ -246,14 +246,22 @@ export default function ConnectScreen() {
         @media (max-width: 820px) {
           .sc-root { flex-direction: column-reverse; }
           .sc-side { width: 100%; min-width: 0; flex: 1; }
-          .sc-hero { flex: 0 0 30vh; }
+          /* Per cent of this flex container, NOT 30vh.
+             .sc-root is position: fixed; inset: 0, so it is exactly as tall as
+             the VISIBLE viewport — but vh on iOS Safari means the viewport as
+             it would be with the browser chrome retracted, which is taller. The
+             hero was therefore sized against one box and placed in a shorter
+             one: measured on an iPad it took 42% of what you could actually
+             see, and squeezed the panel underneath into the rest. A percentage
+             resolves against the container itself and cannot drift from it. */
+          .sc-hero { flex: 0 0 30%; }
         }
       `}</style>
 
       <div className="sc-side" ref={sideRef} style={{ background: "#07152E" }}>
         <div className="sc-side-fit" ref={fitRef} style={{
           fontFamily: PX,
-          padding: "clamp(20px, 5vh, 56px) clamp(20px, 3.2vw, 56px)",
+          padding: "clamp(20px, 5svh, 56px) clamp(20px, 3.2vw, 56px)",
           display: "flex", flexDirection: "column", justifyContent: "space-between", gap: 24,
           boxSizing: "border-box",
         }}>
@@ -289,7 +297,7 @@ export default function ConnectScreen() {
                 style={chamferBox(10, {
                   width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 16,
                   fontFamily: PX, fontSize: "clamp(9px, 1vw, 14px)", letterSpacing: 1,
-                  padding: "clamp(16px, 2.4vh, 24px) 24px",
+                  padding: "clamp(16px, 2.4svh, 24px) 24px",
                   background: "#B7E928", color: "#0a1a14", border: "none", cursor: "pointer",
                   transition: "transform 0.1s",
                 })}
@@ -317,7 +325,7 @@ export default function ConnectScreen() {
               style={chamferBox(10, {
                 width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 14,
                 fontFamily: PX, fontSize: "clamp(8px, 0.9vw, 12px)", letterSpacing: 1,
-                padding: "clamp(14px, 2.2vh, 22px) 24px",
+                padding: "clamp(14px, 2.2svh, 22px) 24px",
                 background: "transparent", color: "#fff", border: "2px solid #14F0C6", cursor: "pointer",
                 transition: "background-color 0.15s, transform 0.08s",
               })}
