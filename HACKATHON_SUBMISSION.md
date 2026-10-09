@@ -51,10 +51,63 @@ Firebase exists, it can come back.
 
 | Need | Why it blocks |
 |---|---|
-| **Keystore password** | The release APK was proven with a throwaway key. The real one must be created once, and kept, because losing it means the dApp Store listing can never be updated |
+| **Keystore wiring** | The keystore itself exists (user, 2026-10-09). What is missing is the three Gradle properties that make the build use it, which hold the passwords and so cannot be set from here. See "Signing the release APK" |
 | **Devnet or mainnet for the judged build** | Recommendation: devnet |
 | **Eligible countries list** | Decides whether the USDC prize exists for this team at all |
 | **Contact and support email** | `dapp-store/config.yaml` still has REPLACE_WITH placeholders, needed only for publishing |
+
+## Signing the release APK
+
+The keystore exists: `C:\Users\mazza\solcity-release.keystore`, created
+before 10-09. It is outside the repo on purpose and must stay there.
+
+`app/build.gradle.kts` only signs when it can see all three of
+`WEB_SHELL_SIGNING_STORE_FILE`, `WEB_SHELL_SIGNING_STORE_PASSWORD` and
+`WEB_SHELL_SIGNING_KEY_ALIAS` (`hasReleaseSigning`). With any of them missing it
+builds the release unsigned, quietly, which is what a release build does today.
+
+The two passwords can also come from the environment. The store path and the
+alias cannot: they are read with `findProperty` only. So they go in the
+**user-level** Gradle properties, never in the repo:
+
+`C:\Users\mazza\.gradle\gradle.properties` (create the file):
+
+```properties
+WEB_SHELL_SIGNING_STORE_FILE=C:/Users/mazza/solcity-release.keystore
+WEB_SHELL_SIGNING_KEY_ALIAS=<the alias>
+WEB_SHELL_SIGNING_STORE_PASSWORD=<the store password>
+WEB_SHELL_SIGNING_KEY_PASSWORD=<the key password, if it differs>
+```
+
+Forward slashes even on Windows: a backslash is an escape in a properties file.
+
+To read the alias back out of the keystore, which prompts for the password:
+
+```
+keytool -list -keystore C:/Users/mazza/solcity-release.keystore
+```
+
+Then, with the Android SDK on the path:
+
+```
+cd apps/android
+./gradlew assembleRelease
+```
+
+The APK lands in `apps/android/app/build/outputs/apk/release/`. Confirm it is
+really signed, and with the right key, before it goes anywhere:
+
+```
+"$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs app-release.apk
+```
+
+`ANDROID_HOME` is not set in this shell; the SDK is at
+`C:\Users\mazza\AppData\Local\Android\Sdk`. Gradle needs it too, through
+that variable or a `local.properties` with `sdk.dir`.
+
+**Keep the keystore and both passwords in a password manager today.** Losing
+them does not cost a rebuild, it costs the listing: the dApp Store will never
+accept an update signed by a different key.
 
 ## The freeze matters more than usual
 
