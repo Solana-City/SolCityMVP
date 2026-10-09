@@ -243,7 +243,15 @@ export default function ConnectScreen() {
         }
         .sc-hero { flex: 1; min-width: 0; background: url(/assets/branding/city-hero.webp) center / cover no-repeat; image-rendering: pixelated; }
         .sc-hero > * { pointer-events: none; }
-        @media (max-width: 820px) {
+        /* Stacking is for PORTRAIT, not merely for "narrow".
+           The test used to be max-width alone, so anything under 820px wide
+           stacked — including the shapes that are short and wide: a phone or
+           tablet in landscape, and the Seeker webshell with its chrome. Those
+           have the least height to spare, and stacking spends a third of it on
+           a hero strip before the panel gets any, which is what left the login
+           squeezed. They are also the shapes the desktop layout suits best, so
+           they keep it: hero beside the panel, as on a monitor. */
+        @media (max-width: 820px) and (orientation: portrait) {
           .sc-root { flex-direction: column-reverse; }
           .sc-side { width: 100%; min-width: 0; flex: 1; }
           /* Per cent of this flex container, NOT 30vh.
