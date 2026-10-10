@@ -41,6 +41,7 @@ const TILESET_KEYS = [
   "SCBuildStoklana",
   "SCBuildRemedi",
   "SCBuildSTVN",
+  "SCBuildProtocols",
 ];
 
 // The new map is small enough (135×115) to serve both platforms — no separate
