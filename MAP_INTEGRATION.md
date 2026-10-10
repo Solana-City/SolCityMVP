@@ -130,3 +130,68 @@ change.
 - [ ] No invisible walls on open ground and no walk-through solid buildings.
 - [ ] Spawn (col 78, row 38 — the fountain plaza) lands on open ground.
 - [ ] New-zone NPCs appear at the right tiles and are interactable.
+
+---
+
+## Animated buildings (prepared, not yet placed)
+
+The Seeker building replaces the energy plant and arrives with an animation.
+The asset is ready; nothing in the game references it yet, because the building
+is not on the map.
+
+### The asset
+
+`public/assets/sprites/buildings/SCBuildSEEKER.png`, made from the artist's
+strip with:
+
+```bash
+node apps/web/scripts/pack-animation-sheet.mjs "<...>/SCBuildSEEKER-Sheet.png" buildings/SCBuildSEEKER
+```
+
+| | |
+|---|---|
+| Frames | **87** |
+| Frame | **72 x 103** |
+| Grid | 28 x 4, read left to right then down, which is the order Phaser's `generateFrameNumbers` walks |
+| Sheet | 2016 x 412 |
+| Draw offset | x **60**, y **86** inside the artist's original 192 x 192 frame |
+
+The offset matters when the building is positioned: the art was cropped out of
+a mostly empty 192px frame, so anchoring to the crop puts it 60px left and 86px
+up from where the uncropped frame would have placed it.
+
+### Why it had to be repacked
+
+The strip the artist exports is one row: 87 frames of 192px is **16704px wide**.
+WebGL refuses any texture wider than `MAX_TEXTURE_SIZE`, which is 16384 on a
+good desktop GPU and 8192 or 4096 on a lot of phones. That strip does not render
+slowly, it does not render at all. Repacking is a requirement, not a tidy-up.
+
+Every one of the 87 frames turned out to have an identical content box, so the
+crop cannot shift the animation. That is checked on every run and the script
+says so; if a future sheet reports more than one box, do not use the crop.
+
+### What it costs
+
+| | |
+|---|---|
+| Texture memory | **3.2 MB** packed, against 12.2 MB for the strip |
+| CPU per frame | One animation step and a UV change. Nothing measurable for a single building |
+| Draw calls | One, and only while it is on screen |
+
+It does not undo the culling pass. `CityScene` already hides sparse layers,
+pedestrians, NPCs and containers once they leave the camera, and the building
+should go in alongside them so it stops drawing off screen.
+
+One caveat worth knowing: Phaser keeps advancing an animation on a sprite that
+is merely invisible. Culling saves the draw, not the tick. For one building the
+tick is noise, but if it ever becomes a row of them, pause the animation when
+culling rather than only hiding it.
+
+### Still to decide when the building lands
+
+- **Frame rate.** 87 frames at 12fps is a 7.25s loop. The artist's intended
+  speed is not recorded anywhere.
+- **Whether it loops** or plays once on approach.
+- **Where the Seeker Lover stands.** He is at (106, 34) in front of the energy
+  plant the Seeker building replaces, so he moves with it.
