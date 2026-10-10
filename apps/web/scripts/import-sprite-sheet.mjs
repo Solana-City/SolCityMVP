@@ -13,6 +13,11 @@
 // The background colour is sampled from the top-left pixel. Pixel art has no
 // anti-aliasing, so an exact match is normally right; the small tolerance below
 // catches a sheet that was saved through a lossy step on the way here.
+//
+// NOT for paperdoll skin sheets. The chroma key (215,123,186) can equal a pink
+// skin tone, and the flat pass below would punch holes through the character.
+// Those need the flood fill in scripts/key-sprite-sheets.mjs, which is also
+// what the runtime does for them.
 
 import { Jimp, intToRGBA } from "jimp";
 import { mkdirSync } from "node:fs";
