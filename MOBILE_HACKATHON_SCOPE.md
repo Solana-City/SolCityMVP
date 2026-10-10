@@ -90,8 +90,15 @@ product call, not a technical one.
 | Sep 24-29 | W3 touch-first pass, W4 haptics wiring |
 | Sep 29 - Oct 3 | W5 push (Firebase project, token routes, triggers) |
 | Oct 3-5 | W7 cross-play hardening, demo rehearsal, SKR if chosen |
-| **Oct 6** | **Freeze web deploys and the APK** |
+| **Oct 6** | (was: freeze. Reversed on 10-10, see below) |
 | Oct 6-7 | Video, deck, submission. Oct 8 is buffer, not a work day |
+
+### No freeze (2026-10-10)
+
+The freeze this document planned for was reversed by the owner: both hackathons
+count continued development after submission, so the city keeps shipping through
+judging. `HACKATHON_SUBMISSION.md` carries the rule that replaced it, which is
+about pushing work that has been run on a device rather than about not pushing.
 
 ### Open items for the user
 
