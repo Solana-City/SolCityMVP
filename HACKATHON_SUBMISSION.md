@@ -1,7 +1,8 @@
 # CLOCK IN submission checklist
 
-Deadline **2026-10-12**, extended from 10-08. Code and APK freeze **2026-10-10**.
-Audited 2026-10-06.
+Deadline **2026-10-12**, extended from 10-08. **No freeze**: the judges of both
+hackathons count continued development after submission, so the city keeps
+shipping (owner, 2026-10-10). Audited 2026-10-06.
 
 This file is the single source of truth for submission status. The plan and the
 reasoning live in `MOBILE_HACKATHON_SCOPE.md`; this is only what is done and what
@@ -109,16 +110,23 @@ that variable or a `local.properties` with `sdk.dir`.
 them does not cost a rebuild, it costs the listing: the dApp Store will never
 accept an update signed by a different key.
 
-## The freeze matters more than usual
+## Shipping during judging
 
-The APK loads the live site, so **the judged app is whatever is deployed at the
-moment a judge opens it**, which can be weeks after submission. A broken deploy
-during judging breaks the submission, and the demo video will no longer match
-what they see.
+There is no freeze. Both hackathons treat continued development as a signal, so
+work carries on through judging, and that is the owner's call (2026-10-10).
 
-Freeze web deploys from 10-06 until the results are announced. Anything urgent in
-that window should be weighed against the fact that it ships straight into the
-hands of the judges.
+The hazard the freeze was guarding against does not go away with it: the APK
+loads the live site, so **the judged app is whatever is deployed at the moment a
+judge opens it**, which can be weeks after submission. A broken deploy during
+judging breaks the submission itself, not just the web.
+
+So the rule changes shape rather than disappearing. Through judging:
+
+- Push work that has been **run on a device**, not work that only typechecks.
+- Treat a change to boot, wallet connect, or the claim flows as higher stakes
+  than a new NPC or a sprite: those are the paths a judge walks first.
+- A change that cannot be tested before it is needed is better held until it
+  can be.
 
 ## Not required by the deadline
 
@@ -134,7 +142,7 @@ still needs emails and screenshots.
 | Oct 3 | Seeker Lover, SKR balance read on mainnet, gift wired |
 | Oct 6 | Decide the Seeker gift (art, or reserve an existing hat) and ORE |
 | Oct 7-9 | ORE, if taken. Otherwise install the release APK and play a full loop |
-| Oct 10 | **Freeze**, and it stays frozen through judging |
+| Oct 10 | Development continues; no freeze |
 | Oct 11 | Submit |
 | Oct 12 | Deadline. Buffer, not a work day |
 
@@ -160,27 +168,22 @@ What closed since the 10-06 audit, checked against the tree and not the plan:
 | **Eligible countries** | Open. Decides whether the USDC prize exists for this team |
 | **Contact and support email** | `dapp-store/config.yaml` lines 21-22 still read REPLACE_WITH. Needed to publish, not to submit |
 
-### The freeze has not happened
+### The city kept shipping, which is now the plan
 
-The header of this file says the code and APK freeze is 10-10; the section
-below says web deploys freeze from 10-06. **86 commits landed between 10-06 and
-today**, including a twenty-colour hair system, a Player Profile redesign, the
-swap and send panels merged behind one pair of tabs, a donations NPC, and
-**Steve Sends retiring from the city on 10-08**.
+**86 commits landed between 10-06 and 10-09**, including a twenty-colour hair
+system, a Player Profile redesign, the swap and send panels merged behind one
+pair of tabs, a donations NPC, and **Steve Sends retiring from the city on
+10-08**. That was drift against the old plan; as of 10-10 it is the plan.
 
-That matters more here than it would anywhere else, because the APK loads the
-live site: the judged app is whatever is deployed when a judge opens it, which
-can be weeks after submission.
-
-Two things to check before the freeze, in this order:
+Two things still want checking, in this order:
 
 1. **Does the demo video still match the city?** It was recorded on 10-02.
    Steve Sends was a named NPC then and is gone now; swap and send have moved.
    If the video shows either, it now contradicts what a judge will see. Either
    re-record the affected shots or accept the mismatch knowingly.
 2. **Install the signed release APK and play a full loop against production**
-   once the keystore exists. The R8 build was proven with a throwaway key; it
-   has never been played through signed with the real one.
+   once the signing properties are set. The R8 build was proven with a throwaway
+   key; it has never been played through signed with the real one.
 
 ## Open on 2026-10-06
 
