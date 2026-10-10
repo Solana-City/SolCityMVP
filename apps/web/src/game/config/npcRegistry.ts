@@ -440,10 +440,13 @@ const NPC_SEEDS: NPCSeed[] = [
     id: "seeker-lover",
     name: "Seeker Lover",
     role: "Solana Mobile",
-    // On the walkway in front of the energy plant (BuildGenericEnergy, cols
-    // 102-111 / rows 22-33). Row 34 is the first walkable row below it.
-    tileX: 106,
-    tileY: 34,
+    // At the door of the Seeker building (BuildSeeker, cols 104-111 / rows
+    // 25-32), which replaced the energy plant he used to stand in front of.
+    // tileY is the row ABOVE the one he stands on: findNpcSpawn starts its
+    // scan at tileY + 1, so 32 here puts him on row 33, the first row below
+    // the building.
+    tileX: 108,
+    tileY: 32,
     dialog: [
       "Hi! I'm Seeker Lover. That phone changed how I live in this city.",
       "You don't need the device to take my gift. Hold SKR in your wallet and it's yours.",
