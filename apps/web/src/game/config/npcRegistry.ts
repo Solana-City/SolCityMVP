@@ -462,8 +462,7 @@ const NPC_SEEDS: NPCSeed[] = [
     name: "ORE Miner",
     role: "ORE",
     // North sidewalk, east of the Remedi building (BuildRemedi, cols 103-113),
-    // where the pavement still runs. Placeholder spot while the claim office is
-    // built. TODO: a mining district, and his own sprite.
+    // where the pavement still runs. TODO: a mining district of his own.
     tileX: 118,
     tileY: 18,
     dialog: [
@@ -477,7 +476,10 @@ const NPC_SEEDS: NPCSeed[] = [
       { img: "/assets/ui/icon_wallet.png", label: "REAL SOL" },
     ],
     action: { type: "ore-mine", label: "See the board" },
-    spriteKey: "avatar-player",
+    spriteKey: "ORE Miner",
+    // Idle loop rather than a walk grid: one row of six 64x64 frames, the same
+    // shape the Mole uses. He stands at his office and swings a pick.
+    spriteAnimation: { frameWidth: 64, frameHeight: 64, frameCount: 6 },
   },
   {
     id: "mr-bananas",
