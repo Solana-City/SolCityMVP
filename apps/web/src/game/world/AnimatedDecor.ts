@@ -7,7 +7,9 @@
  * and one animation, is placed from a line of config here, and moves with a
  * number instead of a map export.
  *
- * Contract per item: a single row of `frameCount` frames, all the same size,
+ * Contract per item: `frameCount` frames of the same size, as a row or as a
+ * grid read left to right then down, which is the order
+ * `generateFrameNumbers` walks,
  * with the character's/prop's feet at the BOTTOM of the frame (origin 0.5, 1),
  * so `tileY` is the row the prop stands on. Pink chroma (215,123,186) must be
  * cleared to alpha in the file, like every other sprite sheet in the repo.
@@ -181,6 +183,39 @@ export const ANIMATED_DECOR: AnimatedDecorDef[] = [
     // cell under the foot, and y-sorted rather than always-on-top. Nothing
     // of the tower reaches this far east, so nothing can paint over it.
     blocks: true,
+    ySort: true,
+  },
+  {
+    // The Seeker building's screen (BuildSeeker, cols 104-111 / rows 25-32).
+    //
+    // The placement is arithmetic, not an eye match. The building footprint is
+    // exactly 192x192, the size of one frame in the artist's original strip, so
+    // the animation lines up by construction. pack-animation-sheet.mjs cropped
+    // the art out of that frame from (60, 86) at 72x103, and every frame shared
+    // that box, so the crop moved nothing. Building corner (2496, 600) plus the
+    // crop puts the content at x 2556..2628, y 686..789: centre x 2592, bottom
+    // y 789, which is this tile plus the offsets below.
+    //
+    // Scale is 1, not the 0.5 the character sheets use: this art is drawn at
+    // map resolution, where 192 source px are the building's 8 tiles.
+    key: "decor-seeker-screen",
+    file: "assets/sprites/buildings/SCBuildSEEKER.png",
+    frameWidth: 72,
+    frameHeight: 103,
+    frameCount: 87,
+    // TODO: the artist's intended speed is not recorded anywhere. 12fps makes
+    // the 87 frames a 7.25s loop; this is the one number to tune.
+    frameRate: 12,
+    tileX: 107,
+    tileY: 32,
+    offsetX: 12,
+    offsetY: -3,
+    scale: 1,
+    // No `blocks`: the building already has its own collision, and stamping a
+    // cell here would add a stray one in front of the door.
+    //
+    // y-sorted so a player standing south of the building walks in front of
+    // the screen, and the depth lands on the building's own bottom row.
     ySort: true,
   },
 ];
