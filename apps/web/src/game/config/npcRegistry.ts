@@ -464,10 +464,12 @@ const NPC_SEEDS: NPCSeed[] = [
     id: "ore-miner",
     name: "ORE Miner",
     role: "ORE",
-    // North sidewalk, east of the Remedi building (BuildRemedi, cols 103-113),
-    // where the pavement still runs. TODO: a mining district of his own.
-    tileX: 118,
-    tileY: 18,
+    // In front of his own building now (BuildOre, cols 113-120 / rows 39-45),
+    // on the left of the platform. Only the pit in the middle collides, so the
+    // apron around it is walkable. tileY is the row ABOVE the one he stands
+    // on: findNpcSpawn scans from tileY + 1, so 45 puts him on row 46.
+    tileX: 114,
+    tileY: 45,
     dialog: [
       "(WIP) I'm still setting up the claim office, but you can look around.",
       "ORE runs a board of 25 squares. Miners put SOL on squares, and when the round closes the board pays out.",
