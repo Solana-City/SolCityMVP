@@ -193,8 +193,29 @@ export default function PhaserGame({ onGameReady }: PhaserGameProps) {
     // A hidden TAB needs nothing from us — the browser stops delivering
     // animation frames, so the loop stops on its own.
     let lastInput = performance.now();
-    let focused = typeof document !== "undefined" ? document.hasFocus() : true;
     let currentFps = 0;
+
+    /**
+     * Read live, never cached, and overridden by recent input.
+     *
+     * This used to be a boolean seeded from document.hasFocus() at mount and
+     * updated only by the focus/blur events. Both halves could strand it: at
+     * mount the focus is often still in the address bar, or the tab opened in
+     * the background, so it started false — and `focus` only fires on a
+     * TRANSITION, so if the window was never really blurred the event never
+     * came and the flag stayed false for the rest of the session. The game
+     * then sat at the unfocused rate, 15fps, while the player walked around,
+     * which is both the stutter and the slow-feeling moves: the scene update
+     * that reads input and calls sendInput runs on that same loop.
+     *
+     * Recent input wins over hasFocus() because an embedded page can report
+     * false while the player is plainly driving it — the Android WebView and
+     * any iframe among them.
+     */
+    const isFocused = (): boolean => {
+      if (performance.now() - lastInput < 1_000) return true;
+      return typeof document === "undefined" || document.hasFocus();
+    };
     const applyFps = (fps: number) => {
       const loop = gameRef.current?.loop as
         (Phaser.Core.TimeStep & { _limitRate: number }) | undefined;
@@ -203,7 +224,7 @@ export default function PhaserGame({ onGameReady }: PhaserGameProps) {
       loop._limitRate = 1000 / fps;
     };
     const desiredFps = () => {
-      if (!focused) return BLUR_FPS_LIMIT;
+      if (!isFocused()) return BLUR_FPS_LIMIT;
       return performance.now() - lastInput > IDLE_AFTER_MS
         ? IDLE_FPS_LIMIT : ACTIVE_FPS_LIMIT;
     };
@@ -214,10 +235,11 @@ export default function PhaserGame({ onGameReady }: PhaserGameProps) {
       applyFps(fps);
     };
     const onInput = () => { lastInput = performance.now(); syncFps(); };
-    const onFocus = () => { focused = true; lastInput = performance.now(); syncFps(); };
-    const onBlur = () => { focused = false; syncFps(); };
-    window.addEventListener("focus", onFocus);
-    window.addEventListener("blur", onBlur);
+    // Nothing to store — these only ask for an immediate re-read instead of
+    // waiting out the one-second tick below.
+    const onFocusChange = () => syncFps();
+    window.addEventListener("focus", onFocusChange);
+    window.addEventListener("blur", onFocusChange);
     const idleWatch = window.setInterval(syncFps, 1_000);
     // Capture phase, because the React panels and the touch joystick stop
     // plenty of these from bubbling to window.
@@ -240,8 +262,8 @@ export default function PhaserGame({ onGameReady }: PhaserGameProps) {
     return () => {
       observer.disconnect();
       window.clearInterval(idleWatch);
-      window.removeEventListener("focus", onFocus);
-      window.removeEventListener("blur", onBlur);
+      window.removeEventListener("focus", onFocusChange);
+      window.removeEventListener("blur", onFocusChange);
       for (const ev of INPUT_EVENTS) {
         window.removeEventListener(ev, onInput, { capture: true });
       }
