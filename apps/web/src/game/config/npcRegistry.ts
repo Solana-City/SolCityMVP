@@ -318,6 +318,29 @@ const NPC_SEEDS: NPCSeed[] = [
     spriteKey: "Vibhu",
   },
   {
+    id: "colosseum-supporter",
+    name: "Colosseum Supporter",
+    role: "Colosseum Hackathons",
+    // Eight tiles east of Vibhu, in the same open northeast block. The strip
+    // stays clear out to col 131; 132 and beyond is the map edge. Placeholder,
+    // like his neighbour. tileY is the row ABOVE the one he stands on.
+    tileX: 128,
+    tileY: 18,
+    dialog: [
+      "Colosseum runs the hackathons where a lot of Solana's best projects started.",
+      {
+        text: "Hundreds of teams build in a few weeks, and the best of them end up in the hall of fame.",
+        accent: "Go and see what they shipped.",
+      },
+    ],
+    action: {
+      type: "link",
+      label: "See the Hall of Fame",
+      url: "https://colosseum.com/arena/hackathon/hall-of-fame?hackathon=frontier",
+    },
+    spriteKey: "Cesar",
+  },
+  {
     id: "pratik",
     name: "Pratik",
     role: "Superteam Earn",
