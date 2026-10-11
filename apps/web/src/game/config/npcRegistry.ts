@@ -312,7 +312,7 @@ const NPC_SEEDS: NPCSeed[] = [
     ],
     action: {
       type: "link",
-      label: "Get BP26 tickets for 25% off!",
+      label: "Get 25% off on BP26!",
       url: "https://bp26-vibhu.com/go/mazzabreno?v=2",
     },
     spriteKey: "Vibhu",
