@@ -342,9 +342,6 @@ export class PedestrianManager {
       const current = this.pedestrians[i];
       if (this.isOnScreen(current.x, current.y)) continue;
 
-      this.pedGroup.remove(current.getContainer());
-      current.destroy();
-
       // Canonical per-index appearance (same seed as the initial spawn) so
       // pedestrian index `i` looks identical on every client — that's what lets
       // the shared hunt's target citizen match city-wide even after rotations.
@@ -353,12 +350,30 @@ export class PedestrianManager {
       const speed   = SPEED_BANDS[Math.floor(Math.random() * SPEED_BANDS.length)];
       const { col, row } = this.pickSpawnTile();
 
+      // Built BEFORE the one it replaces is retired, and the order is the
+      // whole point.
+      //
+      // The seed is the index, so the replacement's appearance is identical to
+      // the one going away — the same hair texture and the same shadow
+      // silhouette, both refcounted and shared by key. Destroying first took
+      // those refs to zero, which threw the textures away along with the four
+      // walk animations registered against each, and the very next line built
+      // them again from scratch: a 256x256 getImageData, a pixel pass for the
+      // colour swaps, and a fresh canvas texture, per pedestrian.
+      //
+      // Up to a quarter of the crowd rotates at once, on one tick, with no
+      // staggering — so that landed as a stall every ROTATION_BATCH_MS, and it
+      // stalled the whole main thread, which is also what sends position
+      // transactions. Acquiring first means the refcount goes 1 -> 2 -> 1 and
+      // nothing is rebuilt at all.
       const newPed = new PedestrianSprite(
         this.scene,
         col * TILE_SIZE + TILE_SIZE / 2,
         row * TILE_SIZE + TILE_SIZE / 2,
         loadout, speed, this.pedCtx, i,
       );
+      this.pedGroup.remove(current.getContainer());
+      current.destroy();
       this.pedGroup.add(newPed.getContainer());
       this.pedestrians[i] = newPed;
     }
