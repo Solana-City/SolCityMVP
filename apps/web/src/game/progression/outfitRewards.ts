@@ -49,10 +49,15 @@ const REWARDS = {
   // the spriter delivers, and if it turns out to be something other than a
   // helmet, these two fields are the whole edit.
   oreMiner: { category: "hat", id: "Miner_helmet", name: "Miner Helmet" },
+  // Vibhu's gift, for opening his Breakpoint 2026 link.
+  breakpoint: { category: "tshirt", id: "Shirt_Solana", name: "Solana Shirt" },
 } as const;
 
 /** NPC who checks SKR and hands over the gifts. */
 const SEEKER_LOVER_ID = "seeker-lover";
+
+/** NPC whose link earns the Solana shirt. */
+const VIBHU_ID = "vibhu";
 
 /**
  * How much SKR earns the backpack. Still to be decided, and null until it is:
@@ -151,6 +156,20 @@ export function onMiniGameFinished(miniGameId: string, success: boolean): void {
  */
 export function onDonation(): void {
   grant(REWARDS.cityCap);
+}
+
+/**
+ * A player took an NPC's outbound link.
+ *
+ * Vibhu's earns the Solana shirt. The reward is for TAKING the link, not for
+ * buying anything: nothing here can see whether a ticket was bought, and
+ * pretending otherwise would promise something the city cannot check.
+ *
+ * Called for every link NPC, so adding another giveaway is one line here
+ * rather than a new call site in the page.
+ */
+export function onNpcLinkOpened(npcId: string | undefined): void {
+  if (npcId === VIBHU_ID) grant(REWARDS.breakpoint);
 }
 
 /**

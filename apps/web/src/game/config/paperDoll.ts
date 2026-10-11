@@ -156,6 +156,10 @@ export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
       file: "tshirt/STB_shirt.png", unlockVia: "quest", unlockHint: "Talk to Kuka" },
     { id: "Brazilian_shirt", name: "Brazil Shirt", textureKey: "pd-tshirt-Brazilian_shirt",
       file: "tshirt/Brazilian_shirt.png", unlockVia: "quest", unlockHint: "Meet Kuka, Kite Pro, the Caramel Dog and every builder at a stand" },
+    // Vibhu's gift, for opening his Breakpoint 2026 link. Earned by taking the
+    // link, not by buying anything: nothing checks whether a ticket was bought.
+    { id: "Shirt_Solana", name: "Solana Shirt", textureKey: "pd-tshirt-Shirt_Solana",
+      file: "tshirt/Shirt_Solana.png", unlockVia: "quest", unlockHint: "Open Vibhu's Breakpoint link" },
   ],
   accessory: [
     { id: "Golden_ring", name: "Golden Ring", textureKey: "pd-accessory-Golden_ring", file: "accessory/Golden_ring.png" },

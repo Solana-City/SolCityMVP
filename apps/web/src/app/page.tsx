@@ -288,7 +288,15 @@ export default function Home() {
       return;
     }
     if (action.type === "link") {
-      if (action.url) window.open(action.url, "_blank", "noopener,noreferrer");
+      if (action.url) {
+        window.open(action.url, "_blank", "noopener,noreferrer");
+        // Taking the link is what earns the reward, where an NPC gives one.
+        // Granted on opening, not on any purchase: the city cannot see what
+        // happens on the other side and must not pretend to.
+        void import("@/game/progression/outfitRewards")
+          .then((m) => m.onNpcLinkOpened(npc?.id))
+          .catch(() => { /* a missing reward must never break the link */ });
+      }
       game?.events.emit("npc:close");
       return;
     }
