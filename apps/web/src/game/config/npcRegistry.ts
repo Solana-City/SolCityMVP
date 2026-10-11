@@ -289,6 +289,35 @@ const NPC_SEEDS: NPCSeed[] = [
   // whoever gets it next: the UI still draws it for the send icon and the
   // "first transfer" badge.
   {
+    id: "vibhu",
+    name: "Vibhu",
+    role: "Breakpoint 2026",
+    // Parked in the open northeast block, east of the Hair Specialist and
+    // north of the ORE Miner, on ground that is clear for a dozen tiles
+    // around. Temporary: he is to be moved once his pitch has a home.
+    // tileY is the row ABOVE the one he stands on (findNpcSpawn scans down
+    // from tileY + 1), so he stands on row 19.
+    tileX: 120,
+    tileY: 18,
+    dialog: [
+      {
+        text: "I'm Vibhu, the biggest promoter of Solana Breakpoint 2026!\nUse my code and you get 25% off your tickets to Breakpoint 2026.",
+        accent: "BP26-VIBHU",
+      },
+      "Use this link to get this exclusive Solana T-shirt on Solana City.\nSee you in London!",
+    ],
+    highlights: [
+      { label: "25% OFF" },
+      { label: "SOLANA SHIRT" },
+    ],
+    action: {
+      type: "link",
+      label: "Get BP26 tickets for 25% off!",
+      url: "https://bp26-vibhu.com/go/mazzabreno?v=2",
+    },
+    spriteKey: "Vibhu",
+  },
+  {
     id: "pratik",
     name: "Pratik",
     role: "Superteam Earn",
