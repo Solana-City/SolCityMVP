@@ -208,11 +208,9 @@ const NPC_SEEDS: NPCSeed[] = [
     id: "vietnamese-barista",
     name: "Vietnamese Barista",
     role: "Superteam Vietnam",
-    // The open plot between the Superteam Earn tent (solid to col 100) and the
-    // greenhouse block the food cart sits against (solid from col 106), so he
-    // stands on the same row as Pratik and the Sushi Man, halfway between the
-    // two. Cols 101-105 north of him are clear for the coffee shop art.
-    tileX: 103,
+    // In front of the coffee shop (BuildSTVN, cols 107-113 / rows 38-44), a
+    // tile left of its centre, on the same row as Pratik and the Sushi Man.
+    tileX: 109,
     tileY: 44,
     dialog: [
       "Xin chao! Welcome to the coffee shop, brought over by Superteam Vietnam.",
@@ -292,13 +290,13 @@ const NPC_SEEDS: NPCSeed[] = [
     id: "vibhu",
     name: "Vibhu",
     role: "Breakpoint 2026",
-    // Parked in the open northeast block, east of the Hair Specialist and
-    // north of the ORE Miner, on ground that is clear for a dozen tiles
-    // around. Temporary: he is to be moved once his pitch has a home.
-    // tileY is the row ABOVE the one he stands on (findNpcSpawn scans down
-    // from tileY + 1), so he stands on row 19.
-    tileX: 120,
-    tileY: 18,
+    // In front of his Breakpoint 26 stand (BuildStandBP26, cols 88-95 / rows
+    // 38-43), centered on it: the middle falls on the boundary between cols 91
+    // and 92, hence the half-tile nudge. tileY is the row ABOVE the one he
+    // stands on (findNpcSpawn scans down from tileY + 1), so he stands on 44.
+    tileX: 91,
+    tileY: 43,
+    offsetX: 12,
     dialog: [
       {
         text: "I'm Vibhu, the biggest promoter of Solana Breakpoint 2026!\nUse my code and you get 25% off your tickets to Breakpoint 2026.",
@@ -344,8 +342,8 @@ const NPC_SEEDS: NPCSeed[] = [
     id: "pratik",
     name: "Pratik",
     role: "Superteam Earn",
-    // In front of the Superteam Earn tent (BuildSTEarn, cols 89-95 / rows 38-44).
-    tileX: 92,
+    // In front of the Superteam Earn tent (BuildSTEarn, cols 98-104 / rows 38-44).
+    tileX: 101,
     tileY: 44,
     dialog: [
       "Want to get paid to build on Solana?",
@@ -434,11 +432,11 @@ const NPC_SEEDS: NPCSeed[] = [
     id: "hair-specialist",
     name: "Hair Specialist",
     role: "Superteam Turkey",
-    // At the door of the Remedi building (BuildRemedi, cols 103-113 / rows
-    // 12-20), centered on its entrance; findNpcSpawn steps down to row 21,
+    // At the door of the Remedi building (BuildRemedi, cols 113-123 / rows
+    // 24-32), centered on its entrance; findNpcSpawn steps down to row 33,
     // the carpet in front of the doors.
-    tileX: 108,
-    tileY: 20,
+    tileX: 118,
+    tileY: 32,
     dialog: [
       "Merhaba! I'm the Hair Specialist, visiting from Superteam Turkey.",
       "Hairstyles fly by fast. Tap at the right moment to land one on your head!",
@@ -516,12 +514,13 @@ const NPC_SEEDS: NPCSeed[] = [
     id: "ore-miner",
     name: "ORE Miner",
     role: "ORE",
-    // In front of his own building now (BuildOre, cols 113-120 / rows 39-45),
-    // on the left of the platform. Only the pit in the middle collides, so the
-    // apron around it is walkable. tileY is the row ABOVE the one he stands
-    // on: findNpcSpawn scans from tileY + 1, so 45 puts him on row 46.
-    tileX: 114,
-    tileY: 45,
+    // In front of his own building (BuildOre, cols 117-124 / rows 38-45), on
+    // the left of the platform. Its body is solid down to row 43; row 46 below
+    // is the top of the Keep Green machine, whose art would cover him, so he
+    // stands on the platform's front edge. tileY is the row ABOVE the one he
+    // stands on: findNpcSpawn scans from tileY + 1, so 44 puts him on row 45.
+    tileX: 118,
+    tileY: 44,
     dialog: [
       "(WIP) I'm still setting up the claim office, but you can look around.",
       "ORE runs a board of 25 squares. Miners put SOL on squares, and when the round closes the board pays out.",

@@ -266,6 +266,15 @@ export class SparseLayer implements CityLayer {
     return this.objects.reduce((d, o) => Math.min(d, o.depth), Infinity);
   }
 
+  /** Pull every object that would draw deeper than `max` back to it. */
+  capDepth(max: number): void {
+    for (const o of this.objects) {
+      if (o.depth <= max) continue;
+      o.depth = max;
+      for (const p of o.parts) p.blitter.setDepth(max);
+    }
+  }
+
   /** The most faded object's alpha: exact for a one-object layer. */
   get alpha(): number {
     return this.objects.reduce((a, o) => Math.min(a, o.alpha), 1);

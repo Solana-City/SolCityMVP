@@ -294,6 +294,12 @@ export class CityScene extends Phaser.Scene {
     // world/AnimatedDecor, REPLACED_MAP_LAYERS) and y-sorts off its own pole
     // foot, so the player walks in front of a flag from the south and behind
     // it from the north instead of always under it.
+    // [layer, layer it must stay behind]: pairs whose Tiled order the y-sort
+    // above would otherwise reverse. Leaf names, applied after every depth is set.
+    const SORT_BEHIND: Array<[string, string]> = [
+      ["VegetationPalmsCave", "BuildDungeousMoles"],
+    ];
+
     const ABOVE_HEAD_PREFIXES = [
       "DecorBilboard", "DecorPalmBridge", "DecorSTBrUmbrella", "DecorSolanaUmbrella",
     ];
@@ -502,6 +508,16 @@ export class CityScene extends Phaser.Scene {
         this.sparseLayers.push(sparse);
       }
     }
+    // Keep the artist's stacking for the pairs in SORT_BEHIND. Each prop sorts by
+    // its own foot, and a cave palm's foot can sit rows south of the mine mouth,
+    // which put its crown over the D&M sign the artist drew in front of it.
+    const leafOf = (l: CityLayer) => l.layer.name.slice(l.layer.name.lastIndexOf("/") + 1);
+    for (const [behind, front] of SORT_BEHIND) {
+      const under = allLayers.find((l) => leafOf(l) === behind);
+      const over = allLayers.find((l) => leafOf(l) === front);
+      if (under instanceof SparseLayer && over) under.capDepth(over.depth - 0.5);
+    }
+
     // ── Static layers, drawn once ─────────────────────────────────────
     // Ground and never-fading buildings sit below everything that moves and
     // never change, so their pixels are baked once into chunk textures instead
