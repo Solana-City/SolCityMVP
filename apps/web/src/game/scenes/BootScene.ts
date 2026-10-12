@@ -42,6 +42,7 @@ const TILESET_KEYS = [
   "SCBuildRemedi",
   "SCBuildSTVN",
   "SCBuildProtocols",
+  "SCBuildColosseum",
 ];
 
 // The new map is small enough (135×115) to serve both platforms — no separate

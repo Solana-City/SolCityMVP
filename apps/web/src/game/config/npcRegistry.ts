@@ -319,11 +319,13 @@ const NPC_SEEDS: NPCSeed[] = [
     id: "colosseum-supporter",
     name: "Colosseum Supporter",
     role: "Colosseum Hackathons",
-    // Eight tiles east of Vibhu, in the same open northeast block. The strip
-    // stays clear out to col 131; 132 and beyond is the map edge. Placeholder,
-    // like his neighbour. tileY is the row ABOVE the one he stands on.
-    tileX: 128,
-    tileY: 18,
+    // In front of the Colosseum hall (BuildColosseum, cols 104-117 / rows
+    // 9-21, solid from row 14), centered on it: the middle falls on the
+    // boundary between cols 110 and 111, hence the half-tile nudge. tileY is
+    // the row ABOVE the one he stands on, so he stands on row 22.
+    tileX: 110,
+    tileY: 21,
+    offsetX: 12,
     dialog: [
       "Colosseum runs the hackathons where a lot of Solana's best projects started.",
       {

@@ -75,4 +75,11 @@ export const LANDMARK_LAYERS: Record<string, string> = {
   BuildDungeousMoles: "Dungeous Moles",
   BuildStocklana: "Stocklana",
   BuildRemedi: "Remedi",
+  BuildSeeker: "Seeker",
+  BuildOre: "ORE",
+  BuildSTVN: "Coffee Shop",
+  BuildStandBP26: "Breakpoint 26",
+  BuildColosseum: "Colosseum",
+  BuildStandCloack: "Cloak",
+  BuildMonkeDaoStand: "Banana Stand",
 };
