@@ -21,11 +21,6 @@ export interface AnimatedDecorDef {
   key: string;
   /** Path under /public. */
   file: string;
-  /**
-   * Another item's `key`, to play that item's sheet and animation instead of
-   * loading `file` again: one flag, planted in two places.
-   */
-  sheet?: string;
   frameWidth: number;
   frameHeight: number;
   frameCount: number;
@@ -149,21 +144,24 @@ export const ANIMATED_DECOR: AnimatedDecorDef[] = [
     ySort: true,
   },
   {
-    // The same Solana flag on the east side of the Breakpoint 26 stand
-    // (BuildStandBP26, cols 88-95 / rows 38-43): the pole's foot on col 96,
-    // on the stand's bottom row, and the cloth flying out over col 97, in the
-    // gap before the Superteam Earn tent (solid from col 98).
+    // Solana flag on the east side of the Breakpoint 26 stand (BuildStandBP26,
+    // cols 88-95 / rows 38-43): the pole's foot on col 96, on the stand's
+    // bottom row, and the cloth flying out over col 97, in the gap before the
+    // Superteam Earn tent (solid from col 98).
+    //
+    // The same sheet geometry as the Turkey and Vietnam poles (78x183, 4
+    // frames, a 2x draw, so scale 0.5), the foot at source x 6-18: tile 96 plus
+    // offsetX 13 stands it on tile 96, the cell `blocks` stamps.
     key: "flag-solana-bp26",
-    sheet: "flag-solana",
-    file: "assets/sprites/decor/flag_solana.png",
-    frameWidth: 48,
-    frameHeight: 96,
-    frameCount: 6,
+    file: "assets/sprites/decor/flag_solana_bp26.png",
+    frameWidth: 78,
+    frameHeight: 183,
+    frameCount: 4,
     frameRate: 6,
     tileX: 96,
     tileY: 43,
-    offsetX: 12,
-    scale: 1,
+    offsetX: 13,
+    scale: 0.5,
     blocks: true,
     ySort: true,
   },
@@ -258,7 +256,6 @@ export const REPLACED_MAP_LAYERS: ReadonlySet<string> = new Set([
 /** Call from BootScene.preload. */
 export function preloadAnimatedDecor(scene: Phaser.Scene): void {
   for (const d of ANIMATED_DECOR) {
-    if (d.sheet) continue;
     scene.load.spritesheet(d.key, d.file, { frameWidth: d.frameWidth, frameHeight: d.frameHeight });
   }
 }
@@ -276,28 +273,27 @@ export function createAnimatedDecor(
 ): () => void {
   const sprites: Phaser.GameObjects.Sprite[] = [];
   for (const d of ANIMATED_DECOR) {
-    const tex = d.sheet ?? d.key;
-    if (!scene.textures.exists(tex)) {
-      console.warn(`[AnimatedDecor] texture "${tex}" not loaded`);
+    if (!scene.textures.exists(d.key)) {
+      console.warn(`[AnimatedDecor] texture "${d.key}" not loaded`);
       continue;
     }
-    if (!scene.anims.exists(`${tex}-loop`)) {
+    if (!scene.anims.exists(`${d.key}-loop`)) {
       scene.anims.create({
-        key: `${tex}-loop`,
-        frames: scene.anims.generateFrameNumbers(tex, { start: 0, end: d.frameCount - 1 }),
+        key: `${d.key}-loop`,
+        frames: scene.anims.generateFrameNumbers(d.key, { start: 0, end: d.frameCount - 1 }),
         frameRate: d.frameRate,
         repeat: -1,
       });
     }
     const baseY = (d.tileY + 1) * TILE_SIZE;
     const sprite = scene.add
-      .sprite(d.tileX * TILE_SIZE + TILE_SIZE / 2 + (d.offsetX ?? 0), baseY + (d.offsetY ?? 0), tex)
+      .sprite(d.tileX * TILE_SIZE + TILE_SIZE / 2 + (d.offsetX ?? 0), baseY + (d.offsetY ?? 0), d.key)
       .setOrigin(0.5, 1)
       .setScale(d.scale)
       // A y-sorted prop follows the same rule as a y-sorted layer: depth is
       // the world Y where it meets the ground.
       .setDepth(d.ySort ? baseY : foregroundDepth);
-    sprite.anims.play(`${tex}-loop`);
+    sprite.anims.play(`${d.key}-loop`);
     sprites.push(sprite);
 
     // Only ever written into the invisible merged volume — stamping a cell
