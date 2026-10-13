@@ -42,7 +42,7 @@ import {
   type ActionResult,
 } from "@/game/solana/oreActions";
 import { squaresToMask } from "@/game/solana/oreInstructions";
-import { PanelTitleBar } from "@/ui/PixelIcons";
+import { PanelTitleBar, ProtocolLogo } from "@/ui/PixelIcons";
 import {
   cityClaims,
   getShareClaims,
@@ -161,6 +161,12 @@ export default function OreMinePanel({ onClose }: { onClose: () => void }) {
   const owesCheckpoint = board ? needsCheckpoint(miner, board) : false;
   const total = picked.length * perSquare;
   const canSign = Boolean(publicKey && signTransaction);
+  // A phone held sideways is ~400px tall: squares of the board would eat all
+  // of it, so they go wide and short there.
+  const flat = typeof window !== "undefined" && window.innerHeight <= 520;
+  // The round's numbers sit in a strip across the top whenever the window is
+  // wide (a desktop, a phone held sideways), stacked when it is not.
+  const strip = flat || (typeof window !== "undefined" && window.innerWidth >= 900);
 
   const toggle = (square: number) =>
     setPicked((p) => (p.includes(square) ? p.filter((s) => s !== square) : [...p, square]));
@@ -210,9 +216,9 @@ export default function OreMinePanel({ onClose }: { onClose: () => void }) {
 
   return (
     <div style={{ fontFamily: '"Press Start 2P", monospace', color: "#e6e6f0" }}>
-      <PanelTitleBar title="ORE CLAIM OFFICE" color={ACCENT} onClose={onClose} />
+      <PanelTitleBar title="ORE CLAIM OFFICE" color={ACCENT} onClose={onClose} logo={<ProtocolLogo sheet="ORE Miner.png" sheetWidth={384} sheetHeight={64} />} />
 
-      <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ padding: "6px 4px 4px", display: "flex", flexDirection: "column", gap: 14 }}>
         <div style={{ fontSize: 8, color: WARN, lineHeight: 1.7 }}>
           ORE runs on Solana mainnet. Real SOL, not the city&apos;s test money.
         </div>
@@ -229,7 +235,15 @@ export default function OreMinePanel({ onClose }: { onClose: () => void }) {
         )}
 
         {board && (
+          // Two columns when the window is wide (a phone held sideways), one
+          // when it is not: the board beside what you do with it, instead of
+          // one long scroll.
           <>
+          {/* The numbers that move: a strip across the top when the screen is
+              short, stacked above the board when it is not. */}
+          <div style={strip
+            ? { display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14, alignItems: "end" }
+            : { display: "flex", flexDirection: "column", gap: 14 }}>
             <Row label="ROUND" value={`#${board.roundId.toString()}`} />
             <div>
               <Row
@@ -253,11 +267,16 @@ export default function OreMinePanel({ onClose }: { onClose: () => void }) {
               value={`${(Number(board.productionCostEma) / LAMPORTS).toFixed(3)} SOL`}
             />
 
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))", gap: 14, alignItems: "start" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
             {result && <Result result={result} />}
 
-            <Grid mine={mine} city={city?.squares} picked={picked} onPick={toggle} />
+            <Grid mine={mine} city={city?.squares} picked={picked} onPick={toggle} flat={flat} />
             <CityLine citizens={city?.citizens ?? 0} />
+          </div>
 
+          <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
             {!canSign ? (
               <div style={{ fontSize: 9, color: DIM }}>Connect a wallet to stake a claim.</div>
             ) : (
@@ -347,6 +366,8 @@ export default function OreMinePanel({ onClose }: { onClose: () => void }) {
                 {notice.text}
               </div>
             )}
+          </div>
+          </div>
           </>
         )}
       </div>
@@ -485,12 +506,13 @@ function Row({ label, value }: { label: string; value: string }) {
 
 /** The 25 squares: the player's own, the city's crowd, and the current pick. */
 function Grid({
-  mine, city, picked, onPick,
+  mine, city, picked, onPick, flat,
 }: {
   mine: bigint[];
   city?: CitySquare[];
   picked: number[];
   onPick: (square: number) => void;
+  flat?: boolean;
 }) {
   return (
     <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 4 }}>
@@ -504,7 +526,7 @@ function Grid({
             onClick={() => onPick(i + 1)}
             style={{
               position: "relative",
-              aspectRatio: "1",
+              aspectRatio: flat ? "1.6" : "1",
               padding: 0,
               cursor: "pointer",
               border: `1px solid ${isPicked ? "#fff" : taken ? ACCENT : crowd > 0 ? `${ACCENT}66` : "rgba(255,255,255,0.12)"}`,

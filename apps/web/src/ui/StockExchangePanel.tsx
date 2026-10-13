@@ -250,7 +250,7 @@ export default function StockExchangePanel({ onClose }: { onClose: () => void })
       )}
 
       {/* Stock grid */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(165px, 1fr))", gap: 8 }}>
         {list.map((s) => {
           const q = market.quotes[s.mint];
           const h = holdings?.stocks[s.mint];

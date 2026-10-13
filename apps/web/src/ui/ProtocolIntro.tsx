@@ -9,11 +9,12 @@
  * link above the panel. Each NPC opts in by wrapping its panel in
  * <ProtocolIntroGate>, so removing one tutorial is removing one wrapper.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { track } from "@/game/telemetry/track";
 import { chamferBox, octagonFrame, chamferRectPoints } from "@/ui/chamfer";
 import { UI_ACCENT } from "@/ui/PixelIcons";
 import { useButtonFeel, feelStyle } from "@/ui/useButtonFeel";
+import { HowItWorksContext, useRoomyTitleRow } from "@/ui/howItWorks";
 
 const PIXEL = '"Press Start 2P", monospace';
 /** Matches ChatGuide/Profile's NEXT-style action button, so every "next
@@ -218,23 +219,29 @@ export function ProtocolIntroGate({ spec, children }: { spec: IntroSpec; childre
   useEffect(() => {
     if (open) track("tutorial", spec.id, { value: 1, label: "opened" });
   }, [open, spec.id]);
+  const roomy = useRoomyTitleRow();
+  const [claimed, setClaimed] = useState(false);
+  const slot = useMemo(
+    () => ({ inlineButton: roomy ? <HowItWorksButton inline onClick={() => setOpen(true)} /> : null, claim: setClaimed }),
+    [roomy],
+  );
   if (open) return <IntroCards spec={spec} onDone={done} />;
   return (
-    <>
-      <HowItWorksButton onClick={() => setOpen(true)} />
+    <HowItWorksContext.Provider value={slot}>
+      {!(roomy && claimed) && <HowItWorksButton onClick={() => setOpen(true)} />}
       {children}
-    </>
+    </HowItWorksContext.Provider>
   );
 }
 
-function HowItWorksButton({ onClick }: { onClick: () => void }) {
+function HowItWorksButton({ onClick, inline }: { onClick: () => void; inline?: boolean }) {
   const feel = useButtonFeel();
   return (
     <button
       onClick={onClick}
       {...feel.handlers}
       style={chamferBox(6, {
-        display: "block", marginLeft: "auto", marginBottom: 6,
+        display: "block", flexShrink: 0, ...(inline ? null : { marginLeft: "auto", marginBottom: 6 }),
         background: "transparent", border: `1px solid ${UI_ACCENT}66`, color: UI_ACCENT,
         padding: "4px 7px", cursor: "pointer", fontFamily: PIXEL, fontSize: 7,
         ...feelStyle(feel),

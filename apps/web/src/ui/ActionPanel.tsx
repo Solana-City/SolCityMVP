@@ -24,6 +24,7 @@ import OreMinePanel from "@/ui/OreMinePanel";
 import TokenScanPanel from "@/ui/TokenScanPanel";
 import DonationPanel from "@/ui/DonationPanel";
 import { backdropClose } from "@/ui/backdrop";
+import { useRoomyTitleRow } from "@/ui/howItWorks";
 import { useViewportBox, overlayBox } from "@/ui/useViewportBox";
 import { useButtonFeel, feelStyle, type ButtonFeel } from "@/ui/useButtonFeel";
 
@@ -167,6 +168,12 @@ interface ActionPanelProps {
   onClose: () => void;
 }
 
+/** Windows with a list or a board to lay out get more room on a desktop screen. */
+const WIDE_ON_DESKTOP: Partial<Record<NPCAction["type"], number>> = {
+  "stock-exchange": 780,
+  "ore-mine": 720,
+};
+
 export default function ActionPanel({ action, onClose }: ActionPanelProps) {
   const [isTouch, setIsTouch] = useState(false);
   // Anchored to the VISIBLE viewport: with the browser's address bar showing,
@@ -192,92 +199,64 @@ export default function ActionPanel({ action, onClose }: ActionPanelProps) {
 
   if (!action) return null;
 
-  // ── Mobile: bottom-sheet ────────────────────────────────────────────────
-  if (isTouch) {
-    return (
-      <div className="z-40 flex items-end justify-center" style={overlayBox(viewport)}>
-        <div
-          className="absolute inset-0"
-          style={{ background: "rgba(6,10,20,0.55)" }}
-          {...backdropClose(onClose)}
-        />
-        <div
-          className="relative w-full rounded-t-2xl"
-          style={{
-            background: "rgba(10,10,30,0.98)",
-            border: "1px solid rgba(183,233,40,0.25)",
-            borderBottom: "none",
-            fontFamily: '"Press Start 2P", monospace',
-            maxHeight: "100%",
-            overflowY: "auto",
-            maxWidth: 480,
-            padding: "16px 16px 0",
-            paddingBottom: "max(env(safe-area-inset-bottom, 16px), 20px)",
-          }}
-        >
-          {/* Drag handle */}
-          <div style={{ width: 40, height: 4, borderRadius: 2, background: "rgba(183,233,40,0.35)", margin: "0 auto 16px" }} />
-          {action.type === "tutor" && <CloseButton onClick={onClose} style={{ position: "absolute", top: 16, right: 16 }} />}
+  // One window for every NPC app, on a phone as on the desktop: the same
+  // chamfered frame, centred. It used to be a bottom sheet with no frame, which
+  // on a phone held sideways (the Seeker is 915x412) left a 480px column with a
+  // scroll bar down the middle of a screen twice that wide.
+  const viewH = viewport?.height ?? (typeof window === "undefined" ? 0 : window.innerHeight);
+  const short = isTouch && viewH > 0 && viewH <= 520;
+  const landscape = typeof window !== "undefined" && window.innerWidth > window.innerHeight;
+  const frame = isTouch ? (short ? 12 : 14) : 20;
+  const content = (
+    <>
+      {action.type === "tutor" && <CloseButton onClick={onClose} style={{ position: "absolute", top: isTouch ? 8 : 16, right: isTouch ? 8 : 16 }} />}
 
-          {action.type === "tutor"           && <TutorPanel           onClose={onClose} />}
-          {action.type === "swap"            && <JupiterPanel onClose={onClose} tab="swap" />}
-          {action.type === "transfer"        && <JupiterPanel onClose={onClose} tab="send" to={action.recipient} toName={action.recipientName} token={action.token} />}
-          {action.type === "bounties"        && <ProtocolIntroGate spec={EARN_INTRO}><BountiesPanel onClose={onClose} /></ProtocolIntroGate>}
-          {action.type === "private-payment" && (
-            <MagicBlockHub onClose={onClose}><PrivatePaymentPanel onClose={onClose} /></MagicBlockHub>
-          )}
-          {action.type === "stock-exchange"  && <ProtocolIntroGate spec={STOCK_INTRO}><StockExchangePanel onClose={onClose} /></ProtocolIntroGate>}
-          {/* ST Brasil stands: the project's own public API behind the button. */}
-          {action.type === "peg-risk"        && <ProtocolIntroGate spec={PEG_RISK_INTRO}><PegRiskPanel onClose={onClose} /></ProtocolIntroGate>}
-          {action.type === "token-scan"      && <ProtocolIntroGate spec={TOKEN_SCAN_INTRO}><TokenScanPanel onClose={onClose} /></ProtocolIntroGate>}
-          {action.type === "private-transfer" && <ProtocolIntroGate spec={CLOAK_INTRO}><CloakPanel onClose={onClose} /></ProtocolIntroGate>}
-          {action.type === "ore-mine"        && <ProtocolIntroGate spec={ORE_INTRO}><OreMinePanel onClose={onClose} /></ProtocolIntroGate>}
-          {/* No intro gate: the panel leads with what a donation is, which is
-              the only thing a walkthrough would have said. */}
-          {action.type === "donation"       && <DonationPanel onClose={onClose} />}
-        </div>
-      </div>
-    );
-  }
+      {action.type === "tutor"           && <TutorPanel           onClose={onClose} />}
+      {action.type === "swap"            && <JupiterPanel onClose={onClose} tab="swap" />}
+      {action.type === "transfer"        && <JupiterPanel onClose={onClose} tab="send" to={action.recipient} toName={action.recipientName} token={action.token} />}
+      {action.type === "bounties"        && <ProtocolIntroGate spec={EARN_INTRO}><BountiesPanel onClose={onClose} /></ProtocolIntroGate>}
+      {action.type === "private-payment" && (
+        <MagicBlockHub onClose={onClose}><PrivatePaymentPanel onClose={onClose} /></MagicBlockHub>
+      )}
+      {action.type === "stock-exchange"  && <ProtocolIntroGate spec={STOCK_INTRO}><StockExchangePanel onClose={onClose} /></ProtocolIntroGate>}
+      {/* ST Brasil stands: the project's own public API behind the button. */}
+      {action.type === "peg-risk"        && <ProtocolIntroGate spec={PEG_RISK_INTRO}><PegRiskPanel onClose={onClose} /></ProtocolIntroGate>}
+      {action.type === "token-scan"      && <ProtocolIntroGate spec={TOKEN_SCAN_INTRO}><TokenScanPanel onClose={onClose} /></ProtocolIntroGate>}
+      {action.type === "private-transfer" && <ProtocolIntroGate spec={CLOAK_INTRO}><CloakPanel onClose={onClose} /></ProtocolIntroGate>}
+      {action.type === "ore-mine"        && <ProtocolIntroGate spec={ORE_INTRO}><OreMinePanel onClose={onClose} /></ProtocolIntroGate>}
+      {/* No intro gate: the panel leads with what a donation is, which is
+          the only thing a walkthrough would have said. */}
+      {action.type === "donation"       && <DonationPanel onClose={onClose} />}
+    </>
+  );
 
-  // ── Desktop: centered modal ─────────────────────────────────────────────
   return (
-    <div className="z-40 flex items-center justify-center" style={overlayBox(viewport)}>
+    <div className="z-40 flex items-center justify-center" style={{ ...overlayBox(viewport), padding: isTouch ? 6 : 0 }}>
       <div
         className="absolute inset-0"
         style={{ background: "rgba(6,10,20,0.6)" }}
         {...backdropClose(onClose)}
       />
       <div
-        className="relative p-6 w-full max-w-md"
+        className={`relative w-full npc-app${short ? " npc-app--short" : ""}`}
         style={{
+          // A phone held sideways has the width for a roomier window, and
+          // wants it: the forms stack tall, so width is what keeps them short.
+          maxWidth: isTouch ? (landscape ? 600 : 480) : WIDE_ON_DESKTOP[action.type] ?? 512,
+          padding: isTouch ? (short ? "4px 6px" : "10px 8px") : 24,
           background: "rgba(10,10,30,0.97)",
-          borderWidth: 20, borderStyle: "solid", borderColor: "transparent",
-          borderImage: 'url(/assets/branding/ui/frame-panel-test.png) 64 fill / 20px / 0 round',
+          borderWidth: frame, borderStyle: "solid", borderColor: "transparent",
+          borderImage: `url(/assets/branding/ui/frame-panel-test.png) 64 fill / ${frame}px / 0 round`,
           imageRendering: "pixelated",
           fontFamily: '"Press Start 2P", monospace',
-          maxHeight: "90dvh",
+          maxHeight: isTouch ? "100%" : "90dvh",
           overflowY: "auto",
         }}
       >
-        {action.type === "tutor" && <CloseButton onClick={onClose} style={{ position: "absolute", top: 16, right: 16 }} />}
-
-        {action.type === "tutor"           && <TutorPanel           onClose={onClose} />}
-        {action.type === "swap"            && <JupiterPanel onClose={onClose} tab="swap" />}
-        {action.type === "transfer"        && <JupiterPanel onClose={onClose} tab="send" to={action.recipient} toName={action.recipientName} token={action.token} />}
-        {action.type === "bounties"        && <ProtocolIntroGate spec={EARN_INTRO}><BountiesPanel onClose={onClose} /></ProtocolIntroGate>}
-        {action.type === "private-payment" && (
-            <MagicBlockHub onClose={onClose}><PrivatePaymentPanel onClose={onClose} /></MagicBlockHub>
-          )}
-        {action.type === "stock-exchange"  && <ProtocolIntroGate spec={STOCK_INTRO}><StockExchangePanel onClose={onClose} /></ProtocolIntroGate>}
-          {/* ST Brasil stands: the project's own public API behind the button. */}
-          {action.type === "peg-risk"        && <ProtocolIntroGate spec={PEG_RISK_INTRO}><PegRiskPanel onClose={onClose} /></ProtocolIntroGate>}
-          {action.type === "token-scan"      && <ProtocolIntroGate spec={TOKEN_SCAN_INTRO}><TokenScanPanel onClose={onClose} /></ProtocolIntroGate>}
-          {action.type === "private-transfer" && <ProtocolIntroGate spec={CLOAK_INTRO}><CloakPanel onClose={onClose} /></ProtocolIntroGate>}
-          {action.type === "ore-mine"        && <ProtocolIntroGate spec={ORE_INTRO}><OreMinePanel onClose={onClose} /></ProtocolIntroGate>}
-          {/* No intro gate: the panel leads with what a donation is, which is
-              the only thing a walkthrough would have said. */}
-          {action.type === "donation"       && <DonationPanel onClose={onClose} />}
+        {short && (
+          <style>{`.npc-app--short .mb-topics { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; }`}</style>
+        )}
+        {content}
       </div>
     </div>
   );
@@ -989,6 +968,7 @@ function PrivatePaymentPanel({ onClose }: { onClose: () => void }) {
   const connectFeel = useButtonFeel();
   const backFeel = useButtonFeel();
   const howFeel = useButtonFeel();
+  const roomyRow = useRoomyTitleRow();
   const showBalanceFeel = useButtonFeel();
   const showAmountFeel = useButtonFeel();
   const emptyDepositFeel = useButtonFeel();
@@ -1107,7 +1087,7 @@ function PrivatePaymentPanel({ onClose }: { onClose: () => void }) {
   if (!connected) {
     return (
       <>
-        <PanelHeader color={FUCHSIA} title="PRIVATE TRANSFER" />
+        <PanelHeader color={FUCHSIA} title="PRIVATE TRANSFER" onClose={onClose} />
         <ClusterToggle cluster={cluster} onChange={setCluster} />
         <PrivateFlow active="deposit" />
         <div style={{ textAlign: "center", padding: "4px 0 12px", color: "#b9b9cc", fontSize: 8 }}>
@@ -1121,7 +1101,7 @@ function PrivatePaymentPanel({ onClose }: { onClose: () => void }) {
   if (status === "authenticating") {
     return (
       <>
-        <PanelHeader color={FUCHSIA} title="PRIVATE TRANSFER" />
+        <PanelHeader color={FUCHSIA} title="PRIVATE TRANSFER" onClose={onClose} />
         <ClusterToggle cluster={cluster} onChange={setCluster} disabled />
         <div style={{ textAlign: "center", padding: "32px 0" }}>
           <div style={{ fontSize: 8, color: "#888899", marginBottom: 8 }}>Authenticating with wallet…</div>
@@ -1135,7 +1115,7 @@ function PrivatePaymentPanel({ onClose }: { onClose: () => void }) {
     const isWithdraw = lastAction === "withdraw";
     return (
       <>
-        <PanelHeader color={FUCHSIA} title="PRIVATE TRANSFER" />
+        <PanelHeader color={FUCHSIA} title="PRIVATE TRANSFER" onClose={onClose} />
         <div style={{ textAlign: "center", padding: "24px 0" }}>
           <div style={{ fontSize: 20, color: FUCHSIA, marginBottom: 8 }}>{isWithdraw ? "◇" : "◈"}</div>
           <div style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 7, color: FUCHSIA, marginBottom: 12 }}>
@@ -1155,17 +1135,21 @@ function PrivatePaymentPanel({ onClose }: { onClose: () => void }) {
 
   return (
     <>
-      <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
-        <div style={{ flex: 1 }}><PanelHeader color={FUCHSIA} title="PRIVATE TRANSFER" /></div>
-        <button
-          onClick={() => setIntroOpen(true)}
-          title="How it works"
-          {...howFeel.handlers}
-          style={chamferBox(6, { background: "transparent", border: `1px solid ${FUCHSIA}66`, color: FUCHSIA, padding: "4px 7px", cursor: "pointer", fontFamily: '"Press Start 2P", monospace', fontSize: 7, marginRight: 22, ...feelStyle(howFeel) })}
-        >
-          ? HOW
-        </button>
-      </div>
+      <PanelHeader
+        color={FUCHSIA}
+        title="PRIVATE TRANSFER"
+        onClose={onClose}
+        extra={
+          <button
+            onClick={() => setIntroOpen(true)}
+            title="How it works"
+            {...howFeel.handlers}
+            style={chamferBox(6, { background: "transparent", border: `1px solid ${FUCHSIA}66`, color: FUCHSIA, padding: "4px 7px", cursor: "pointer", fontFamily: '"Press Start 2P", monospace', fontSize: 7, ...feelStyle(howFeel) })}
+          >
+            {roomyRow ? "? HOW IT WORKS" : "? HOW"}
+          </button>
+        }
+      />
       <ClusterToggle cluster={cluster} onChange={setCluster} />
 
       {/* Private balance */}
@@ -1312,11 +1296,14 @@ function PrivatePaymentPanel({ onClose }: { onClose: () => void }) {
   );
 }
 
-function PanelHeader({ title, color }: { title: string; color: string }) {
+/** The private transfer's title row: Magic Man's logo, the title, and the close button like every other app window. */
+function PanelHeader({ title, color, onClose, extra }: {
+  title: string; color: string; onClose: () => void; extra?: React.ReactNode;
+}) {
   return (
     <div style={{ marginBottom: 12 }}>
-      <h3 style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 8, color, margin: 0 }}>{title}</h3>
-      <div style={{ fontSize: 7, color: "#444455", marginTop: 4 }}>MagicBlock Private Ephemeral Rollup</div>
+      <PanelTitleBar title={title} onClose={onClose} color={color} logo={<ProtocolLogo sheet="Magic Man.png" />} extra={extra} style={{ marginBottom: 4 }} />
+      <div style={{ fontSize: 7, color: "#444455" }}>MagicBlock Private Ephemeral Rollup</div>
     </div>
   );
 }
@@ -1410,7 +1397,7 @@ function PrivateFlow({ active, onPick, big }: {
     </g>
   );
   return (
-    <svg viewBox="0 0 320 160" style={{ width: "100%", height: "auto", display: "block", marginBottom: big ? 4 : 10 }}>
+    <svg viewBox="0 0 320 160" style={{ width: "100%", maxWidth: 340, height: "auto", display: "block", margin: `0 auto ${big ? 4 : 10}px` }}>
       <defs>
         <marker id="pf-arrow-on" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
           <path d="M 0 0 L 10 5 L 0 10 z" fill={F} />

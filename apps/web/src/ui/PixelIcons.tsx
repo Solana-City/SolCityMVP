@@ -4,6 +4,7 @@ import { useState } from "react";
 
 import { chamferBox } from "@/ui/chamfer";
 import { useButtonFeel, feelStyle } from "@/ui/useButtonFeel";
+import { useHowItWorksSlot } from "@/ui/howItWorks";
 
 /**
  * Pixel-art icons for HUD panels, from sprites already in the build.
@@ -126,6 +127,8 @@ export function PanelTitleBar({
   extra?: React.ReactNode;
   style?: React.CSSProperties;
 }) {
+  // On a short screen the protocol gate lends its "? HOW IT WORKS" link to the title row.
+  const howItWorks = useHowItWorksSlot();
   return (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 14, ...style }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
@@ -139,6 +142,7 @@ export function PanelTitleBar({
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
         {extra}
+        {howItWorks}
         <CloseButton onClick={onClose} color={color} />
       </div>
     </div>

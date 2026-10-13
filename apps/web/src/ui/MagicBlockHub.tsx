@@ -19,6 +19,26 @@ import { CATEGORY_META } from "@/game/minimap/categories";
 import { track } from "@/game/telemetry/track";
 import { chamferBox } from "@/ui/chamfer";
 import { useButtonFeel, feelStyle, type ButtonFeel } from "@/ui/useButtonFeel";
+import { ProtocolIntroGate, type IntroSpec } from "@/ui/ProtocolIntro";
+
+/** Hover on a card reads clearly even on its dark, translucent fill. */
+const CARD_HOVER = { hoverBrightness: 1.6 } as const;
+
+/** Magic Man: what MagicBlock is, before the hub. */
+const MAGICBLOCK_INTRO: IntroSpec = {
+  id: "magicblock",
+  title: "HOW MAGICBLOCK WORKS",
+  nodes: [
+    { sheet: "main_char.png", label: "YOU" },
+    { sheet: "Magic Man.png", label: "MAGICBLOCK" },
+    { sheet: "send-npc.png", label: "FRIEND" },
+  ],
+  steps: [
+    { title: "FAST", line: "This city runs on MagicBlock's Ephemeral Rollups: Solana speed, Solana security.", edge: 0 },
+    { title: "PRIVATE", line: "Deposit USDC, send it where nobody can read it, withdraw whenever you want.", edge: 1, chip: "USDC" },
+    { title: "BUILD", line: "Pick a topic to see how builders use rollups and verifiable randomness.", edge: 0 },
+  ],
+};
 
 const PIXEL = '"Press Start 2P", monospace';
 const MAGENTA = "#c026d3";
@@ -117,7 +137,7 @@ export default function MagicBlockHub({ children, onClose }: MagicBlockHubProps)
   }
 
   return (
-    <>
+    <ProtocolIntroGate spec={MAGICBLOCK_INTRO}>
       <header style={{ marginBottom: 14 }}>
         <PanelTitleBar title="MAGIC MAN" onClose={onClose} color={PROTOCOLS_COLOR} logo={<ProtocolLogo sheet="Magic Man.png" />} style={{ marginBottom: 0 }} />
         <p style={{ fontSize: 9, color: "#8a8aa7", margin: "8px 0 0", lineHeight: 1.7 }}>
@@ -126,7 +146,7 @@ export default function MagicBlockHub({ children, onClose }: MagicBlockHubProps)
       </header>
 
       <div style={eyebrow}>DO IT HERE</div>
-      <button onClick={() => { track("protocol-open", "magicblock-private"); setArea("private"); }} {...privateFeel.handlers} style={{ ...actionCard, ...feelStyle(privateFeel) }}>
+      <button onClick={() => { track("protocol-open", "magicblock-private"); setArea("private"); }} {...privateFeel.handlers} style={{ ...actionCard, ...feelStyle(privateFeel, CARD_HOVER) }}>
         <span style={{ fontFamily: PIXEL, fontSize: 9, color: MAGENTA }}>PRIVATE TRANSFER</span>
         <span style={{ fontSize: 9, color: "#9a9ad0", lineHeight: 1.6 }}>
           Deposit, send USDC nobody can read, withdraw.
@@ -135,13 +155,13 @@ export default function MagicBlockHub({ children, onClose }: MagicBlockHubProps)
       </button>
 
       <div style={{ ...eyebrow, marginTop: 16 }}>BUILD WITH IT</div>
-      <div style={{ display: "grid", gap: 8 }}>
+      <div className="mb-topics" style={{ display: "grid", gap: 8 }}>
         {TOPICS.map((t) => (
           <TopicCardButton key={t.id} topic={t} onClick={() => { track("tutorial", `magicblock-${t.id}`, { value: 1, label: "opened" }); setArea(t.id); }} />
         ))}
       </div>
 
-      <a
+      <FeelAnchor
         href={QUICKSTART}
         target="_blank"
         rel="noopener noreferrer"
@@ -150,8 +170,8 @@ export default function MagicBlockHub({ children, onClose }: MagicBlockHubProps)
       >
         DEVELOPER QUICKSTART
         <ExternalLinkIcon size={9} color={docsLink.color as string} />
-      </a>
-    </>
+      </FeelAnchor>
+    </ProtocolIntroGate>
   );
 }
 
@@ -177,7 +197,7 @@ function TopicView({ topic }: { topic: Topic }) {
         <p style={{ fontSize: 9, color: "#9a9ad0", margin: "6px 0 0", lineHeight: 1.7 }}>{topic.inTheCity}</p>
       </div>
 
-      <a
+      <FeelAnchor
         href={topic.docs}
         target="_blank"
         rel="noopener noreferrer"
@@ -186,15 +206,21 @@ function TopicView({ topic }: { topic: Topic }) {
       >
         READ THE DOCS
         <ExternalLinkIcon size={9} color={topic.color} />
-      </a>
+      </FeelAnchor>
     </>
   );
+}
+
+/** A docs link that answers the pointer like every other button. */
+function FeelAnchor({ style, ...rest }: React.AnchorHTMLAttributes<HTMLAnchorElement>) {
+  const feel = useButtonFeel();
+  return <a {...rest} {...feel.handlers} style={{ ...style, ...feelStyle(feel, CARD_HOVER) }} />;
 }
 
 function BackRow({ onBack }: { onBack: () => void }) {
   const feel = useButtonFeel();
   return (
-    <button onClick={onBack} {...feel.handlers} style={{ ...backButton, ...feelStyle(feel) }}>
+    <button onClick={onBack} {...feel.handlers} style={{ ...backButton, ...feelStyle(feel, CARD_HOVER) }}>
       {"< BACK"}
     </button>
   );
@@ -203,7 +229,7 @@ function BackRow({ onBack }: { onBack: () => void }) {
 function TopicCardButton({ topic, onClick }: { topic: Topic; onClick: () => void }) {
   const feel = useButtonFeel();
   return (
-    <button onClick={onClick} {...feel.handlers} style={{ ...topicCard(topic.color), ...feelStyle(feel) }}>
+    <button onClick={onClick} {...feel.handlers} style={{ ...topicCard(topic.color), ...feelStyle(feel, CARD_HOVER) }}>
       <span style={{ fontFamily: PIXEL, fontSize: 8, color: topic.color }}>{topic.label}</span>
       <span style={{ fontSize: 9, color: "#8a8aa7" }}>{topic.tagline}</span>
     </button>

@@ -12,6 +12,7 @@
  */
 import { useState } from "react";
 import { CLOAK_APP, CLOAK_DOCS, CLOAK_FEES, CLOAK_LIVE, withdrawFee } from "@/lib/cloak/privateSend";
+import { chamferBox } from "@/ui/chamfer";
 import { PanelTitleBar, ProtocolLogo, SiteLinkButton } from "@/ui/PixelIcons";
 import { CATEGORY_META } from "@/game/minimap/categories";
 
@@ -40,15 +41,19 @@ export default function CloakPanel({ onClose }: { onClose: () => void }) {
         <div style={{ fontSize: 7, color: "#555566" }}>Private transfers, live on mainnet</div>
       </div>
 
+      {/* Two columns when the window is wide (a phone held sideways): the
+          flow beside the form, one long scroll otherwise. */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))", gap: 14, alignItems: "start" }}>
       {/* The flow, as three cards rather than a paragraph. */}
+      <div>
       {FLOW.map((f, i) => (
         <div
           key={f.step}
-          style={{
+          style={chamferBox(8, {
             display: "flex", gap: 10, alignItems: "flex-start", marginBottom: 6,
             background: "#12122a", border: "1px solid rgba(255,255,255,0.04)",
-            borderRadius: 8, padding: "10px 11px",
-          }}
+            padding: "10px 11px",
+          })}
         >
           <span style={{
             width: 20, height: 20, flexShrink: 0, borderRadius: "50%",
@@ -61,9 +66,11 @@ export default function CloakPanel({ onClose }: { onClose: () => void }) {
           </div>
         </div>
       ))}
+      </div>
 
+      <div>
       {/* What it would cost, with Cloak's published numbers. */}
-      <div style={{ background: "#12122a", border: "1px solid rgba(255,255,255,0.04)", borderRadius: 8, padding: 12, marginTop: 10 }}>
+      <div style={chamferBox(8, { background: "#12122a", border: "1px solid rgba(255,255,255,0.04)", padding: 12 })}>
         <div style={{ fontSize: 8, color: "#555566", marginBottom: 6 }}>Amount to shield (SOL)</div>
         <input
           type="number"
@@ -89,15 +96,17 @@ export default function CloakPanel({ onClose }: { onClose: () => void }) {
       </div>
 
       {/* Why the signing happens over there and not here. */}
-      <div style={{
+      <div style={chamferBox(8, {
         background: "rgba(139,124,246,0.08)", border: `1px solid ${VIOLET}44`,
-        borderRadius: 8, padding: "10px 11px", marginTop: 10,
-      }}>
+        padding: "10px 11px", marginTop: 10,
+      })}>
         <div style={{ fontSize: 7, color: "#ccccdd", lineHeight: 1.8 }}>
           {CLOAK_LIVE
             ? "Sign a private send right here."
             : "Cloak's proofs are signed against mainnet, and Solana City runs on devnet, so the last step happens on Cloak itself. Everything above is their live model, not a mock."}
         </div>
+      </div>
+      </div>
       </div>
 
       <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 14 }}>
@@ -110,7 +119,7 @@ export default function CloakPanel({ onClose }: { onClose: () => void }) {
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <div style={{ background: "#12122a", border: "1px solid rgba(255,255,255,0.04)", borderRadius: 8, padding: "10px 11px" }}>
+    <div style={chamferBox(8, { background: "#12122a", border: "1px solid rgba(255,255,255,0.04)", padding: "10px 11px" })}>
       <div style={{ fontSize: 6, color: "#555566", marginBottom: 6 }}>{label}</div>
       <div style={{ fontSize: 9, color: "#ccccdd", fontFamily: "monospace" }}>{value}</div>
     </div>

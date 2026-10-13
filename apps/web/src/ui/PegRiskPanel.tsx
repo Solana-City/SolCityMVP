@@ -9,6 +9,7 @@
  * cold, the card says so instead of dressing an old number up as a quote.
  */
 import { useEffect, useMemo, useState } from "react";
+import { chamferBox } from "@/ui/chamfer";
 import type { PegAsset } from "@/app/api/peg-risk/route";
 import { PanelTitleBar, ProtocolLogo, SiteLinkButton } from "@/ui/PixelIcons";
 import { CATEGORY_META } from "@/game/minimap/categories";
@@ -121,11 +122,11 @@ export default function PegRiskPanel({ onClose }: { onClose: () => void }) {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search USDC, jitoSOL…"
-            style={{
+            style={chamferBox(8, {
               width: "100%", background: "#12122a", border: "1px solid rgba(255,255,255,0.06)",
-              borderRadius: 8, padding: "10px 12px", color: "#fff", fontSize: 9,
+              padding: "10px 12px", color: "#fff", fontSize: 9,
               fontFamily: "monospace", outline: "none", marginBottom: 10,
-            }}
+            })}
           />
 
           {listError && <Note>{listError}</Note>}
@@ -154,13 +155,13 @@ function AssetPickButton({ asset, onClick }: { asset: PegAsset; onClick: () => v
     <button
       onClick={onClick}
       {...feel.handlers}
-      style={{
+      style={chamferBox(8, {
         display: "flex", alignItems: "center", gap: 7, minWidth: 0,
         background: "#12122a", border: "1px solid rgba(255,255,255,0.06)",
-        borderRadius: 8, padding: "9px 10px", cursor: "pointer",
+        padding: "9px 10px", cursor: "pointer",
         fontFamily: "inherit", textAlign: "left",
         ...feelStyle(feel),
-      }}
+      })}
     >
       <span style={{
         width: 8, height: 8, borderRadius: "50%", flexShrink: 0,
@@ -198,10 +199,10 @@ function ReadingCard({ asset, reading, loading, onBack }: {
         ◂ BACK
       </button>
 
-      <div style={{
-        background: "#12122a", border: `1px solid ${color}55`, borderRadius: 10,
+      <div style={chamferBox(10, {
+        background: "#12122a", border: `1px solid ${color}55`,
         padding: 14, textAlign: "center",
-      }}>
+      })}>
         <div style={{ fontSize: 8, color: "#8888aa" }}>{asset.symbol}</div>
         <div style={{ fontSize: 14, color, margin: "10px 0 6px" }}>
           {loading ? "READING…" : (STATE_WORD[state] ?? state)}
@@ -229,7 +230,7 @@ function ReadingCard({ asset, reading, loading, onBack }: {
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <div style={{ background: "#12122a", border: "1px solid rgba(255,255,255,0.04)", borderRadius: 8, padding: "10px 11px" }}>
+    <div style={chamferBox(8, { background: "#12122a", border: "1px solid rgba(255,255,255,0.04)", padding: "10px 11px" })}>
       <div style={{ fontSize: 6, color: "#555566", marginBottom: 6 }}>{label}</div>
       <div style={{ fontSize: 9, color: "#ccccdd", fontFamily: "monospace" }}>{value}</div>
     </div>

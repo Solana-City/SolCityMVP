@@ -9,6 +9,7 @@
  * signal is not the same as safe.
  */
 import { useState } from "react";
+import { chamferBox } from "@/ui/chamfer";
 import type { TokenScan } from "@/app/api/token-scan/route";
 import { PanelTitleBar, ProtocolLogo, SiteLinkButton } from "@/ui/PixelIcons";
 import { CATEGORY_META } from "@/game/minimap/categories";
@@ -59,7 +60,7 @@ export default function TokenScanPanel({ onClose }: { onClose: () => void }) {
         <div style={{ fontSize: 7, color: "#555566" }}>Token risk, free read</div>
       </div>
 
-      <div style={{ background: "#12122a", border: "1px solid rgba(255,255,255,0.04)", borderRadius: 8, padding: 12, marginBottom: 8 }}>
+      <div style={chamferBox(8, { background: "#12122a", border: "1px solid rgba(255,255,255,0.04)", padding: 12, marginBottom: 8 })}>
         <div style={{ fontSize: 8, color: "#555566", marginBottom: 6 }}>Mint address</div>
         <input
           type="text"
@@ -78,13 +79,13 @@ export default function TokenScanPanel({ onClose }: { onClose: () => void }) {
         onClick={run}
         disabled={loading || !mint.trim()}
         {...scanFeel.handlers}
-        style={{
-          width: "100%", padding: "13px 0", borderRadius: 8, fontFamily: "inherit",
+        style={chamferBox(8, {
+          width: "100%", padding: "13px 0", fontFamily: "inherit",
           fontSize: 8, color: mint.trim() ? "#fff" : "#666677",
           background: mint.trim() ? RED : "#12122a",
           border: "none", cursor: mint.trim() && !loading ? "pointer" : "default",
           ...(mint.trim() && !loading ? feelStyle(scanFeel) : null),
-        }}
+        })}
       >
         {loading ? "SCANNING…" : "SCAN"}
       </button>
@@ -104,10 +105,10 @@ function Verdict({ scan }: { scan: TokenScan }) {
   const color = LEVEL_COLOR[scan.riskLevel] ?? LEVEL_COLOR.UNKNOWN;
   return (
     <div style={{ marginTop: 10 }}>
-      <div style={{
-        background: "#12122a", border: `1px solid ${color}55`, borderRadius: 10,
+      <div style={chamferBox(10, {
+        background: "#12122a", border: `1px solid ${color}55`,
         padding: 14, textAlign: "center",
-      }}>
+      })}>
         <div style={{ fontSize: 8, color: "#8888aa" }}>{scan.symbol ?? "UNLISTED"}</div>
         <div style={{ fontSize: 14, color, margin: "10px 0 8px" }}>{scan.riskLevel} RISK</div>
         {scan.riskScore !== null && (
@@ -130,11 +131,11 @@ function Verdict({ scan }: { scan: TokenScan }) {
           {scan.factors.map((f) => (
             <div
               key={`${f.severity}-${f.detail}`}
-              style={{
+              style={chamferBox(8, {
                 display: "flex", alignItems: "center", gap: 8, marginTop: 6,
                 background: "#12122a", border: "1px solid rgba(255,255,255,0.04)",
-                borderRadius: 8, padding: "9px 10px",
-              }}
+                padding: "9px 10px",
+              })}
             >
               <span style={{
                 width: 8, height: 8, borderRadius: "50%", flexShrink: 0,
@@ -155,7 +156,7 @@ function Verdict({ scan }: { scan: TokenScan }) {
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <div style={{ background: "#12122a", border: "1px solid rgba(255,255,255,0.04)", borderRadius: 8, padding: "10px 11px" }}>
+    <div style={chamferBox(8, { background: "#12122a", border: "1px solid rgba(255,255,255,0.04)", padding: "10px 11px" })}>
       <div style={{ fontSize: 6, color: "#555566", marginBottom: 6 }}>{label}</div>
       <div style={{ fontSize: 9, color: "#ccccdd", fontFamily: "monospace" }}>{value}</div>
     </div>
