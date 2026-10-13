@@ -173,17 +173,6 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
   const color       = `#${npc.color.toString(16).padStart(6, "0")}`;
   // Only worth offering while there is still text between here and the action.
   const showSkip    = npc.dialog.length > 1 && !isLastLine;
-  const skipStyle: React.CSSProperties = chamferBox(6, {
-    background: "transparent",
-    border: `1px solid ${color}66`,
-    color,
-    fontFamily: '"Press Start 2P", monospace',
-    fontSize: "7px",
-    padding: "5px 8px",
-    cursor: "pointer",
-    flexShrink: 0,
-    whiteSpace: "nowrap",
-  });
 
   /** Illustrative info, on the last line once it has typed out. No frame or
    *  button-shaped chip around these: they aren't clickable, and boxing them
@@ -227,16 +216,16 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
 
   /** Dot row showing progress through dialog lines */
   const Dots = () => (
-    <div style={{ display: "flex", gap: 5, alignItems: "center" }}>
+    <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
       {npc.dialog.map((_, i) => (
         <div
           key={i}
           style={{
-            width:        i === lineIndex ? 8 : 6,
-            height:       i === lineIndex ? 8 : 6,
+            width:        10,
+            height:       10,
             background:   i === lineIndex ? color
                         : i < lineIndex   ? `${color}66`
-                                          : "#2a2a3a",
+                                          : "#3a4060",
             transition: "all 0.2s",
           }}
         />
@@ -244,9 +233,172 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
     </div>
   );
 
-  // ── Mobile layout ─────────────────────────────────────────────────────────
-  // Positioned at the bottom (classic RPG style). Portrait shown as compact
-  // avatar. Larger text and touch targets than the previous pill design.
+  // One layout for both screens, as in the design: the speaker's face inside
+  // the box, in its own frame, beside the name, the words and the controls.
+  // Desktop is the roomy version (a big portrait on the left, everything else
+  // in a column); a phone puts a small portrait on the header row and lets the
+  // text run the full width underneath.
+  const actionButton = (
+    <button
+      onClick={(e) => { e.stopPropagation(); onAction(npc.action); }}
+      {...actionFeel.handlers}
+      style={chamferBox(8, {
+        background:  color,
+        border:      "none",
+        color:       "#000",
+        fontFamily:  '"Press Start 2P", monospace',
+        fontSize: isTouch ? "7px" : "8px",
+        padding:     isTouch ? "9px 16px" : "10px 20px",
+        cursor:      "pointer",
+        fontWeight:  "bold",
+        touchAction: "manipulation",
+        display: "flex", alignItems: "center", gap: 6,
+        flexShrink: 0,
+        ...feelStyle(actionFeel),
+      })}
+    >
+      {npc.action.label.toUpperCase()}
+      {npc.action.type === "link" && <ExternalLinkIcon size={8} color="#000" />}
+    </button>
+  );
+  const skipButton = showSkip ? (
+    <button
+      onClick={(e) => { e.stopPropagation(); skipToEnd(); }}
+      {...skipFeel.handlers}
+      style={chamferBox(8, {
+        background: "transparent",
+        border: `2px solid ${color}`,
+        color,
+        fontFamily: '"Press Start 2P", monospace',
+        fontSize: isTouch ? "7px" : "8px",
+        padding: isTouch ? "8px 12px" : "9px 14px",
+        cursor: "pointer",
+        flexShrink: 0,
+        whiteSpace: "nowrap",
+        touchAction: "manipulation",
+        ...feelStyle(skipFeel),
+      })}
+      title={isTouch ? undefined : "Skip to the end [Tab]"}
+      aria-label="Skip dialog"
+    >
+      {"SKIP >>"}{!isTouch && <span style={{ opacity: 0.7 }}> [TAB]</span>}
+    </button>
+  ) : null;
+  const hint = (
+    <span style={{
+      display: "block",
+      fontSize: isTouch ? "8px" : "8px",
+      color: "#5f6684",
+      whiteSpace: "nowrap",
+      overflow: "hidden",
+      textOverflow: "ellipsis",
+      animation: isTouch && doneTyping ? "tapPulse 1.4s ease-in-out infinite" : "none",
+    }}>
+      {isTyping ? "..." : isTouch
+        ? (isLastLine ? "" : "Tap to continue")
+        : isLastLine ? "[E/Space] Action · [ESC] Close" : "[E/Space] Continue · [ESC] Close"}
+    </span>
+  );
+  const footer = (
+    <div style={{
+      display: "flex", alignItems: "center", gap: isTouch ? 10 : 16, marginTop: "auto",
+      borderTop: `1px solid ${color}20`, paddingTop: isTouch ? 10 : 12,
+    }}>
+      <Dots />
+      <div style={{ flex: 1, minWidth: 0 }}>{hint}</div>
+      {isLastLine && doneTyping ? actionButton : skipButton}
+    </div>
+  );
+  const nameBlock = (
+    <div style={{ flex: 1, minWidth: 0 }}>
+      <div style={{
+        fontFamily: '"Press Start 2P", monospace',
+        fontSize: isTouch ? "10px" : "14px",
+        color,
+        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+        marginBottom: isTouch ? 5 : 7,
+      }}>
+        {npc.name}
+      </div>
+      <div style={{ fontSize: isTouch ? "8px" : "10px", color: "#5f6684" }}>{npc.role}</div>
+    </div>
+  );
+  const closeButton = (
+    <CloseButton
+      onClick={(e) => { e.stopPropagation(); onClose(); }}
+      label="Close dialog" color={color}
+      size={isTouch ? 24 : 28}
+      style={{ touchAction: "manipulation", alignSelf: "flex-start" }}
+    />
+  );
+  /** The quiet line under the name and the one above the controls. */
+  const divider = <div style={{ height: 1, background: `${color}2a`, marginTop: isTouch ? 10 : 12 }} />;
+  const words = (
+    <p style={{
+      fontSize: isTouch ? "10px" : "12px",
+      color: "#e4e6f4",
+      margin: isTouch ? "10px 0 12px" : "12px 0 12px",
+      lineHeight: 1.7,
+      minHeight: isTouch ? "3.4em" : "3.4em",
+      whiteSpace: "pre-line",
+    }}>
+      <Spoken />
+    </p>
+  );
+
+  const box = (
+    <div
+      onClick={onBubbleClick}
+      style={chamferBox(isTouch ? 14 : 16, {
+        fontFamily:   '"Press Start 2P", monospace',
+        background:   "rgba(8,8,24,0.96)",
+        border:       `3px solid ${color}`,
+        padding:      isTouch ? "12px 12px 12px" : "18px 20px 16px",
+        backdropFilter: "blur(8px)",
+        cursor:       isLastLine && doneTyping ? "default" : "pointer",
+      })}
+    >
+      {isTouch ? (
+        <>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <NPCPortrait npc={npc} size={60} border={3} />
+            {nameBlock}
+            {closeButton}
+          </div>
+          {divider}
+          {words}
+          <Highlights compact />
+          {footer}
+        </>
+      ) : (
+        <div style={{ display: "flex", gap: 20, alignItems: "stretch" }}>
+          <div style={{ flexShrink: 0 }}><NPCPortrait npc={npc} size={116} border={3} /></div>
+          <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", minHeight: 116 }}>
+            <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
+              {nameBlock}
+              {closeButton}
+            </div>
+            {divider}
+            {words}
+            <Highlights compact />
+            {footer}
+          </div>
+        </div>
+      )}
+
+      <style jsx>{`
+        @keyframes tapPulse {
+          0%, 100% { opacity: 0.4; }
+          50%       { opacity: 1; }
+        }
+        @keyframes cursorBlink {
+          0%, 100% { opacity: 0.5; }
+          50%       { opacity: 0; }
+        }
+      `}</style>
+    </div>
+  );
+
   if (isTouch) {
     return (
       <ChamferGlow
@@ -261,240 +413,19 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
           zIndex:       30,
         }}
       >
-        <div style={{ marginLeft: 12, marginBottom: -3, width: "fit-content" }}>
-          <NPCPortrait npc={npc} size={58} border={3} />
-        </div>
-      <div
-        onClick={onBubbleClick}
-        style={chamferBox(14, {
-          fontFamily:   '"Press Start 2P", monospace',
-          background:   "rgba(8,8,24,0.96)",
-          // One border on every side. A separate borderTop used to sit over the
-          // painted outline and read as a thicker top edge; 3px all round keeps
-          // the content where it was (3 + 12 = the old 1 + 14 at the sides).
-          border:       `3px solid ${color}`,
-          padding:      "12px 12px 12px",
-          backdropFilter: "blur(8px)",
-          cursor:       isLastLine && doneTyping ? "default" : "pointer",
-        })}
-      >
-        {/* Header: name/role + close. The speaker stands above it, on the
-            box's top edge, the same way as on desktop. */}
-        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{
-              fontFamily:    '"Press Start 2P", monospace',
-              fontSize: "9px",
-              color,
-              overflow:      "hidden",
-              textOverflow:  "ellipsis",
-              whiteSpace:    "nowrap",
-              marginBottom:  3,
-            }}>
-              {npc.name}
-            </div>
-            <div style={{ fontSize: "8px", color: "#5a5a72" }}>{npc.role}</div>
-          </div>
-          <CloseButton onClick={(e) => { e.stopPropagation(); onClose(); }} label="Close dialog" color={color} size={18} style={{ touchAction: "manipulation" }} />
-        </div>
-
-        {/* Dialog text */}
-        <p style={{
-          fontSize: "10px",
-          color:      "#d0d0e8",
-          margin:     "0 0 12px",
-          lineHeight: 1.65,
-          minHeight:  "3.3em",
-          whiteSpace: "pre-line",
-        }}>
-          <Spoken />
-        </p>
-
-        <Highlights compact />
-
-        {/* Footer: progress dots + continue hint / action button */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <Dots />
-          {isLastLine && doneTyping ? (
-            <button
-              onClick={(e) => { e.stopPropagation(); onAction(npc.action); }}
-              {...actionFeel.handlers}
-              style={chamferBox(8, {
-                background:  color,
-                border:      "none",
-                color:       "#000",
-                fontFamily:  '"Press Start 2P", monospace',
-                fontSize: "7px",
-                padding:     "9px 16px",
-                cursor:      "pointer",
-                fontWeight:  "bold",
-                touchAction: "manipulation",
-                display: "flex", alignItems: "center", gap: 6,
-                ...feelStyle(actionFeel),
-              })}
-            >
-              {npc.action.label.toUpperCase()}
-              {npc.action.type === "link" && <ExternalLinkIcon size={8} color="#000" />}
-            </button>
-          ) : (
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <span style={{
-                fontSize: "8px",
-                color:     "#3a3a52",
-                animation: doneTyping ? "tapPulse 1.4s ease-in-out infinite" : "none",
-              }}>
-                {doneTyping ? "tap to continue ▶" : "..."}
-              </span>
-              {showSkip && (
-                <button
-                  onClick={(e) => { e.stopPropagation(); skipToEnd(); }}
-                  {...skipFeel.handlers}
-                  style={{ ...skipStyle, padding: "8px 10px", touchAction: "manipulation", ...feelStyle(skipFeel) }}
-                  aria-label="Skip dialog"
-                >
-                  {"SKIP >>"}
-                </button>
-              )}
-            </div>
-          )}
-        </div>
-
-        <style jsx>{`
-          @keyframes tapPulse {
-            0%, 100% { opacity: 0.3; }
-            50%       { opacity: 0.9; }
-          }
-          @keyframes cursorBlink {
-            0%, 100% { opacity: 0.5; }
-            50%       { opacity: 0; }
-          }
-        `}</style>
-      </div>
+        {box}
       </ChamferGlow>
     );
   }
 
-  // ── Desktop layout ────────────────────────────────────────────────────────
   return (
     <div
-      className="fixed left-1/2 -translate-x-1/2 z-30 w-full max-w-2xl px-4"
+      className="fixed left-1/2 -translate-x-1/2 z-30 w-full max-w-3xl px-4"
       style={{ fontFamily: '"Press Start 2P", monospace', bottom: "96px" }}
     >
-      <div>
-        {/* The speaker, standing on the box above their own name. Overlapping
-            it by a couple of pixels is what makes them stand ON the box
-            rather than hover over it. */}
-        <div style={{ marginLeft: 14, marginBottom: -2, width: "fit-content" }}>
-          <NPCPortrait npc={npc} size={108} />
-        </div>
-
-        <ChamferGlow className="relative" glow={`drop-shadow(0 0 16px ${color}40)`}>
-        <div
-          className="relative"
-          onClick={onBubbleClick}
-          style={chamferBox(12, {
-            background:     "rgba(8,8,24,0.96)",
-            border:         `2px solid ${color}`,
-            backdropFilter: "blur(6px)",
-            cursor:         isLastLine && doneTyping ? "default" : "pointer",
-          })}
-        >
-
-          {/* Header */}
-          <div style={{ padding: "14px 16px 0" }}>
-            <div className="flex items-center gap-3">
-              <div className="flex-1 min-w-0">
-                <div style={{
-                  fontFamily:   '"Press Start 2P", monospace',
-                  fontSize: "11px",
-                  color,
-                  marginBottom: 4,
-                }}>
-                  {npc.name}
-                </div>
-                <div style={{ fontSize: "8px", color: "#5a5a72" }}>{npc.role}</div>
-              </div>
-              <CloseButton onClick={(e) => { e.stopPropagation(); onClose(); }} label="Close dialog" color={color} size={18} />
-            </div>
-          </div>
-
-          {/* Divider */}
-          <div style={{ height: 1, background: `${color}2a`, margin: "10px 16px" }} />
-
-          {/* Dialog text */}
-          <p style={{
-            fontSize: "11px",
-            color:      "#d0d0e8",
-            lineHeight: 1.7,
-            minHeight:  "3.4em",
-            margin:     0,
-            padding:    "0 16px 14px",
-            whiteSpace: "pre-line",
-          }}>
-            <Spoken />
-          </p>
-
-          <Highlights />
-
-          {/* Footer */}
-          <div style={{
-            display:        "flex",
-            justifyContent: "space-between",
-            alignItems:     "center",
-            padding:        "10px 16px 14px",
-            borderTop:      `1px solid ${color}20`,
-          }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-              <Dots />
-              <span style={{ fontSize: "8px", color: "#3a3a52" }}>
-                {isTyping ? "..." : isLastLine
-                  ? "[E/Space] Action · [ESC] Close"
-                  : "[E/Space] Continue · [ESC] Close"}
-              </span>
-            </div>
-            {showSkip && (
-              <button
-                onClick={(e) => { e.stopPropagation(); skipToEnd(); }}
-                {...skipFeel.handlers}
-                style={{ ...skipStyle, ...feelStyle(skipFeel) }}
-                title="Skip to the end [Tab]"
-                aria-label="Skip dialog"
-              >
-                {"SKIP >>"} <span style={{ opacity: 0.6 }}>[TAB]</span>
-              </button>
-            )}
-            {isLastLine && doneTyping && (
-              <button
-                onClick={(e) => { e.stopPropagation(); onAction(npc.action); }}
-                {...actionFeel.handlers}
-                style={chamferBox(8, {
-                  background:  color,
-                  border:      "none",
-                  color:       "#000",
-                  fontFamily:  '"Press Start 2P", monospace',
-                  fontSize: "7px",
-                  padding:     "10px 20px",
-                  cursor:      "pointer",
-                  fontWeight:  "bold",
-                  display: "flex", alignItems: "center", gap: 6,
-                  ...feelStyle(actionFeel),
-                })}
-              >
-                {npc.action.label.toUpperCase()}
-                {npc.action.type === "link" && <ExternalLinkIcon size={8} color="#000" />}
-              </button>
-            )}
-          </div>
-
-          <style jsx>{`
-            @keyframes cursorBlink {
-              0%, 100% { opacity: 0.5; }
-              50%       { opacity: 0; }
-            }
-          `}</style>
-        </div>
-        </ChamferGlow>
-      </div>
+      <ChamferGlow className="relative" glow={`drop-shadow(0 0 16px ${color}40)`}>
+        {box}
+      </ChamferGlow>
     </div>
   );
 }
