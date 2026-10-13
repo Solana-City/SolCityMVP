@@ -10,13 +10,14 @@
  * (GUIDE_SEEN_KEY) and any time from Sol at the fountain.
  */
 import { useEffect, useState } from "react";
+import { ProtocolLogo } from "@/ui/PixelIcons";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import { getMinimapHost } from "@/game/minimap/MinimapHost";
 import { Bust } from "@/game/minigames/sol-mechs/SquadPortraits";
 import { PRESET_BUILDS } from "@/game/solmechs/data/catalog";
 import { track } from "@/game/telemetry/track";
-import { chamferBox } from "@/ui/chamfer";
+import { chamferBox, chamferClip } from "@/ui/chamfer";
 import ChamferGlow from "@/ui/ChamferGlow";
 import { useButtonFeel, feelStyle } from "@/ui/useButtonFeel";
 
@@ -93,7 +94,7 @@ function Role({ sheet, img, node, label, color }: { sheet?: string; img?: string
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
       <div style={chamferBox(10, {
         width: 58, height: 58, display: "flex", alignItems: "center", justifyContent: "center",
-        background: `${color}1f`, boxShadow: `inset 0 0 0 2px ${color}88`,
+        background: `${color}1f`, border: `2px solid ${color}88`, boxSizing: "border-box",
       })}>
         {node ?? (sheet ? <Citizen sheet={sheet} size={52} /> : img ? <Img src={img} h={40} /> : null)}
       </div>
@@ -102,8 +103,11 @@ function Role({ sheet, img, node, label, color }: { sheet?: string; img?: string
   );
 }
 
-/** A circular crop of the real minimap around the fountain. */
-function MapPreview({ size = 92 }: { size?: number }) {
+/**
+ * A crop of the real minimap around the fountain, framed the way the corner map
+ * is: the octagon with its chamfered frame art, not a circle.
+ */
+function MapPreview({ size = 112 }: { size?: number }) {
   const [src, setSrc] = useState<string | null>(null);
   useEffect(() => {
     const host = getMinimapHost();
@@ -121,15 +125,22 @@ function MapPreview({ size = 92 }: { size?: number }) {
     setSrc(c.toDataURL());
   }, [size]);
   return (
-    <div style={{
-      width: size, height: size, borderRadius: "50%", overflow: "hidden", flexShrink: 0,
-      border: "3px solid rgba(183,233,40,0.7)", background: "#0b3a5c",
-      boxShadow: "0 0 0 1px rgba(183,233,40,0.3)", position: "relative",
-    }}>
-      {src && <img src={src} alt="" draggable={false} style={{ width: "100%", height: "100%", display: "block" }} />}
+    <div style={{ position: "relative", width: size, height: size, flexShrink: 0, background: "#001D3A", clipPath: chamferClip(18) }}>
+      {src && (
+        <img src={src} alt="" draggable={false} style={{
+          width: "100%", height: "100%", display: "block",
+          clipPath: "polygon(16px 0, calc(100% - 16px) 0, 100% 16px, 100% calc(100% - 16px), calc(100% - 16px) 100%, 16px 100%, 0 calc(100% - 16px), 0 16px)",
+        }} />
+      )}
       <span style={{
         position: "absolute", left: "50%", top: "50%", width: 10, height: 10, borderRadius: "50%",
         transform: "translate(-50%, -50%)", background: GREEN, border: "2px solid #fff",
+      }} />
+      <div aria-hidden style={{
+        position: "absolute", inset: 0, pointerEvents: "none",
+        borderWidth: 18, borderStyle: "solid", borderColor: "transparent",
+        borderImage: "url(/assets/branding/ui/frame-map-test.png) 18 / 18px / 0 round",
+        imageRendering: "pixelated",
       }} />
     </div>
   );
@@ -149,7 +160,7 @@ function useSteps(touch: boolean): Step[] {
       scene: (
         <div style={{ display: "flex", alignItems: "flex-end", gap: 14 }}>
           <Citizen sheet="Sol.png" size={96} />
-          <Img src="/assets/branding/icon.png" h={56} style={{ marginBottom: 16 }} />
+          <Img src={`${UI}/IconLogoSC-transparent.png`} h={64} style={{ marginBottom: 8 }} />
         </div>
       ),
     },
@@ -160,9 +171,11 @@ function useSteps(touch: boolean): Step[] {
         <div style={{ display: "flex", alignItems: "center", gap: 22 }}>
           <Citizen sheet="main_char.png" size={80} />
           {touch ? (
-            <div style={{ position: "relative", width: 76, height: 76 }}>
-              <Img src={`${UI}/controller_bg.png`} h={76} style={{ position: "absolute", inset: 0 }} />
-              <Img src={`${UI}/controller.png`} h={34} style={{ position: "absolute", left: 33, top: 21 }} />
+            // The same art the game's own controls use (MobileControls): the pad
+            // at 100 with its 44 cross centred on it, scaled to fit the card.
+            <div style={{ position: "relative", width: 92, height: 92, display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <Img src={`${UI}/controller_bg2.png`} h={92} style={{ position: "absolute", inset: 0, opacity: 0.9 }} />
+              <Img src={`${UI}/controller2.png`} h={40} />
             </div>
           ) : (
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 26px)", gap: 5, justifyItems: "center" }}>
@@ -184,7 +197,13 @@ function useSteps(touch: boolean): Step[] {
             <Img src={`${UI}/attention_green.png`} h={28} />
             <Citizen sheet="Jupiter Joe.png" size={80} />
           </div>
-          {touch ? <Img src={`${UI}/btn_act.png`} h={62} /> : <div style={{ transform: "scale(1.6)" }}><Key>E</Key></div>}
+          {touch ? (
+            // The ACT button as the game draws it: its base and its face, same size, stacked.
+            <div style={{ position: "relative", width: 80, height: 80 }}>
+              <Img src={`${UI}/btn_act_bg2.png`} h={80} style={{ position: "absolute", inset: 0 }} />
+              <Img src={`${UI}/btn_act2.png`} h={80} style={{ position: "absolute", inset: 0 }} />
+            </div>
+          ) : <div style={{ transform: "scale(1.6)" }}><Key>E</Key></div>}
         </div>
       ),
     },
@@ -215,11 +234,11 @@ function useSteps(touch: boolean): Step[] {
     {
       title: "FIND YOUR WAY",
       line: touch
-        ? "Tap the round map to see every citizen and place."
-        : "Click the round map, or press M, to see every citizen and place.",
+        ? "Tap the map to see every citizen and place."
+        : "Click the map, or press M, to see every citizen and place.",
       scene: (
         <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
-          <MapPreview size={96} />
+          <MapPreview size={touch ? 96 : 112} />
           {!touch && <div style={{ transform: "scale(1.5)" }}><Key>M</Key></div>}
         </div>
       ),
@@ -287,16 +306,17 @@ export default function CityGuide({ onDone }: { onDone: () => void }) {
   return (
     <>
       <div style={{ display: "flex", alignItems: "center", marginBottom: 10 }}>
-        <h3 style={{ fontFamily: PIXEL, fontSize: 8, color: GREEN, margin: 0 }}>CITY GUIDE</h3>
-        <span style={{ marginLeft: "auto", marginRight: 26, fontFamily: PIXEL, fontSize: 7, color: "#555566" }}>
+        <ProtocolLogo sheet="Sol.png" size={24} />
+        <h3 style={{ fontFamily: PIXEL, fontSize: 8, color: GREEN, margin: "0 0 0 8px" }}>CITY GUIDE</h3>
+        <span style={{ marginLeft: "auto", marginRight: touch ? 38 : 26, fontFamily: PIXEL, fontSize: 7, color: "#555566" }}>
           {i + 1}/{steps.length}
         </span>
       </div>
 
       <div key={i} className="sg-step" style={chamferBox(10, {
-        height: touch ? 118 : 150, display: "flex", alignItems: "center", justifyContent: "center",
+        height: touch ? 124 : 150, display: "flex", alignItems: "center", justifyContent: "center",
         background: "radial-gradient(circle at 50% 60%, rgba(183,233,40,0.12), rgba(10,10,30,0) 70%), #0d0d22",
-        border: "1px solid rgba(183,233,40,0.18)", overflow: "hidden", padding: 8,
+        border: "2px solid rgba(183,233,40,0.3)", overflow: "hidden", padding: 8,
       })}>
         {step.scene}
       </div>
@@ -327,7 +347,7 @@ export default function CityGuide({ onDone }: { onDone: () => void }) {
           onClick={() => setI((n) => Math.max(0, n - 1))}
           {...backFeel.handlers}
           style={chamferBox(8, {
-            background: "transparent", border: "1px solid #333344", color: "#888899",
+            background: "transparent", border: "2px solid #3a3a52", color: "#888899",
             padding: "9px 12px", cursor: "pointer", fontFamily: PIXEL, fontSize: 7,
             visibility: i === 0 ? "hidden" : "visible",
             ...feelStyle(backFeel),
