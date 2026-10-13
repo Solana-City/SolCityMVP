@@ -12,6 +12,8 @@ import { useCallback, useEffect, useRef, useState, type CSSProperties } from "re
 import type { MiniGameComponentProps } from "../types";
 import { CloseButton, ExternalLinkIcon } from "@/ui/PixelIcons";
 import { useButtonFeel, feelStyle, type ButtonFeel } from "@/ui/useButtonFeel";
+import { chamferBox, chamferClip } from "@/ui/chamfer";
+import { CATEGORY_META } from "@/game/minimap/categories";
 import {
   LAYER_ORDER,
   DIRECTION_ROW,
@@ -30,7 +32,10 @@ import { track } from "../../telemetry/track";
 const REMEDI_URL = "https://superteamtr.remedifinance.com/";
 
 const FONT = '"Press Start 2P", monospace';
-const ACCENT = "#E30A17";
+/** A mini-game's window wears the map legend's "Mini-games" colour, like the rest of the games. */
+const ACCENT = CATEGORY_META.games.color;
+/** Text on top of ACCENT (and on the green "saved" button): dark, so it reads. */
+const ON_ACCENT = "#1a1405";
 const CHROMA_R = 215, CHROMA_G = 123, CHROMA_B = 186, CHROMA_TOL = 30;
 
 /** Stage size in sprite pixels; the character stands in the middle. */
@@ -274,12 +279,11 @@ export default function HairSpecialist({ onResult, onClose }: MiniGameComponentP
       style={{ background: "rgba(6,10,20,0.9)", fontFamily: FONT, padding: 8, touchAction: "manipulation" }}
     >
       <div
-        style={{
+        style={chamferBox(14, {
           width: "min(560px, 100%)",
           maxHeight: "100%",
           background: "#141a2b",
           border: `3px solid ${ACCENT}`,
-          borderRadius: 12,
           padding: "10px 12px 12px",
           position: "relative",
           color: "#fff",
@@ -287,9 +291,9 @@ export default function HairSpecialist({ onResult, onClose }: MiniGameComponentP
           display: "flex",
           flexDirection: "column",
           alignItems: "center",
-        }}
+        })}
       >
-        <CloseButton onClick={onClose} size={20} style={{ position: "absolute", top: 4, right: 4 }} />
+        <CloseButton onClick={onClose} size={20} color={ACCENT} style={{ position: "absolute", top: 8, right: 10 }} />
         <div style={{ color: ACCENT, fontSize: 12, marginBottom: 6 }}>HAIR SPECIALIST</div>
         <div style={{ color: "#9AA4B2", fontSize: 8, marginBottom: 8, minHeight: 10 }}>
           {r ? landed!.hair.variant.name : touch ? "Tap when a hair is on your head!" : "Press E when a hair is on your head!"}
@@ -305,7 +309,7 @@ export default function HairSpecialist({ onResult, onClose }: MiniGameComponentP
             position: "relative",
             width: "min(100%, calc((100dvh - 150px) * 3.25))",
             background: "#0b1020",
-            borderRadius: 8,
+            clipPath: chamferClip(8),
             cursor: "pointer",
             touchAction: "none",
             userSelect: "none",
@@ -336,7 +340,7 @@ export default function HairSpecialist({ onResult, onClose }: MiniGameComponentP
             <>
               <button onClick={again} {...againFeel.handlers} style={btn("#2a3350", touch, againFeel)}>AGAIN</button>
               {landed.rating !== "miss" && (
-                <button onClick={keep} disabled={kept} {...(kept ? null : keepFeel.handlers)} style={{ ...btn(kept ? "#14F195" : ACCENT, touch, kept ? undefined : keepFeel), color: kept ? "#0b1020" : "#fff" }}>
+                <button onClick={keep} disabled={kept} {...(kept ? null : keepFeel.handlers)} style={btn(kept ? "#14F195" : ACCENT, touch, kept ? undefined : keepFeel)}>
                   {kept ? "SAVED!" : "KEEP IT"}
                 </button>
               )}
@@ -365,25 +369,24 @@ export default function HairSpecialist({ onResult, onClose }: MiniGameComponentP
           style={{ background: "rgba(6,10,20,0.75)", padding: 8 }}
         >
           <div
-            style={{
+            style={chamferBox(14, {
               width: "min(520px, 100%)",
               maxHeight: "100%",
               overflowY: "auto",
               background: "#141a2b",
               border: `3px solid ${ACCENT}`,
-              borderRadius: 12,
               padding: 14,
               color: "#fff",
               display: "flex",
               gap: 12,
               alignItems: "flex-start",
-            }}
+            })}
           >
             <canvas
               ref={portraitRef}
               width={FW}
               height={FH}
-              style={{ width: 72, height: 72, flexShrink: 0, imageRendering: "pixelated", background: "#0b1020", borderRadius: 8 }}
+              style={{ width: 72, height: 72, flexShrink: 0, imageRendering: "pixelated", background: "#0b1020", clipPath: chamferClip(8) }}
             />
             <div style={{ flex: 1, textAlign: "left" }}>
               <div style={{ color: ACCENT, fontSize: 11, marginBottom: 8 }}>TURKISH HAIRLINES</div>
@@ -395,7 +398,7 @@ export default function HairSpecialist({ onResult, onClose }: MiniGameComponentP
               </p>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 <button onClick={openRemedi} {...remediFeel.handlers} style={{ ...btn(ACCENT, touch, remediFeel), display: "flex", alignItems: "center", gap: 6 }}>
-                  VISIT REMEDI <ExternalLinkIcon size={9} color="#fff" />
+                  VISIT REMEDI <ExternalLinkIcon size={9} color={ON_ACCENT} />
                 </button>
                 <button onClick={() => setPitch(false)} {...keepPlayingFeel.handlers} style={btn("#2a3350", touch, keepPlayingFeel)}>KEEP PLAYING</button>
               </div>
@@ -408,15 +411,15 @@ export default function HairSpecialist({ onResult, onClose }: MiniGameComponentP
 }
 
 function btn(bg: string, big = false, feel?: Pick<ButtonFeel, "hover" | "pressed">): CSSProperties {
-  return {
+  // The bright fills (the game colour, the green "saved") take dark text.
+  const bright = bg === ACCENT || bg === "#14F195";
+  return chamferBox(8, {
     background: bg,
-    color: "#fff",
+    color: bright ? ON_ACCENT : "#fff",
     fontFamily: FONT,
     fontSize: big ? 12 : 11,
     padding: big ? "12px 22px" : "10px 16px",
-    borderRadius: 8,
     border: "2px solid rgba(0,0,0,0.4)",
-    boxShadow: "0 3px 0 rgba(0,0,0,0.45)",
     ...(feel ? feelStyle(feel) : null),
-  };
+  });
 }
