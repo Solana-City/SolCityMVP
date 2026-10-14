@@ -95,6 +95,23 @@ pub const BOOSTER_PRICE_LAMPORTS: u64 = 25_000_000;
 /// Treasury that receives pack payments (the game wallet).
 pub const TREASURY: Pubkey = pubkey!("9592QS34mPUwqA7sPAkug1kcuFddjn59QPQMzzCgKhEp");
 
+/// Co-signs a quest or NPC reward, so the program is not taking the claimer's
+/// word for having earned it.
+///
+/// This does not make a reward trustless, and it is not pretending to: the
+/// facts a quest depends on (an NPC met, a mini-game won) reach the chain
+/// through session-signed writes, which the client authors. What it does is
+/// bound the trust to one key instead of leaving the instruction open to
+/// anyone, which is what it was.
+///
+/// ⚠️ TODO BEFORE DEPLOY: this currently points at the treasury, which is also
+/// the program's upgrade authority. This key has to sign from a server, and a
+/// server is the last place that key belongs. Generate a dedicated keypair
+/// that holds no funds and has no authority anywhere else, put its pubkey
+/// here, and keep the secret in the server environment only. Losing it costs
+/// quest rewards until an upgrade; losing the treasury key costs the program.
+pub const REWARD_AUTHORITY: Pubkey = pubkey!("9592QS34mPUwqA7sPAkug1kcuFddjn59QPQMzzCgKhEp");
+
 /// MagicBlock VRF program.
 pub const VRF_PROGRAM_ID: Pubkey = pubkey!("Vrf1RNUjXmQGjmQrQLvJHs9SNkvDJEsRVFPkfSQUwGz");
 /// Default base-layer oracle queue.
@@ -231,6 +248,8 @@ pub enum SolCityError {
     InvalidQuestItem,
     #[msg("This unlock account belongs to another wallet")]
     WrongUnlockOwner,
+    #[msg("Quest rewards must be co-signed by the game")]
+    NotRewardAuthority,
     #[msg("Callback not signed by the VRF program identity")]
     InvalidVrfIdentity,
     #[msg("Too far from the ball to kick it")]
@@ -1320,11 +1339,18 @@ pub mod sol_city {
         Ok(())
     }
 
-    /// Grants a quest / NPC-collection reward outfit — free, once per wallet
-    /// (the bit is idempotent, so re-claiming is a no-op). Wallet-signed (one
-    /// prompt on completion). `index` must be in the reserved quest-free block;
-    /// booster items are out of range, so this can't mint paid items for free.
-    /// The client gates which index behind which completed quest.
+    /// Grants a quest / NPC-collection reward outfit, free, once per wallet.
+    ///
+    /// Once per wallet is structural, not a check: the grant ORs a bit that is
+    /// already set, so a replay changes nothing and cannot hand out a second
+    /// copy. Turning that bit into a tradable asset is gated separately, by
+    /// `minted`, so selling an item cannot be followed by minting it again.
+    ///
+    /// Signed by BOTH the player and the game. The index alone was the only
+    /// gate before, with the condition checked in the client, which meant any
+    /// wallet could claim all sixteen quest items by calling this directly.
+    /// `index` must still be in the reserved quest-free block, so a paid
+    /// booster item can never come through here.
     pub fn claim_free_outfit(ctx: Context<ClaimFreeOutfit>, index: u16) -> Result<()> {
         require!(index < QUEST_FREE_SLOTS, SolCityError::InvalidQuestItem);
         let unlocks = &mut ctx.accounts.unlock_state;
@@ -1337,6 +1363,8 @@ pub mod sol_city {
     pub fn init_unlock_state(ctx: Context<InitUnlockState>) -> Result<()> {
         let unlocks = &mut ctx.accounts.unlock_state;
         unlocks.authority = ctx.accounts.authority.key();
+        unlocks.bits = [0u8; UNLOCK_BITS];
+        unlocks.minted = [0u8; UNLOCK_BITS];
         unlocks.pending = false;
         unlocks.pending_pool_count = 0;
         Ok(())
@@ -1866,6 +1894,10 @@ pub struct ClaimFreeOutfit<'info> {
         constraint = unlock_state.authority == authority.key() @ SolCityError::WrongUnlockOwner,
     )]
     pub unlock_state: Account<'info, UnlockState>,
+    /// The game, confirming this wallet earned the item. Without it the
+    /// instruction granted any quest reward to anyone who asked.
+    #[account(address = REWARD_AUTHORITY @ SolCityError::NotRewardAuthority)]
+    pub reward_authority: Signer<'info>,
 }
 
 /// Creates a wallet's UnlockState, once. Separate from the instructions that
@@ -1891,8 +1923,21 @@ pub struct InitUnlockState<'info> {
 pub struct UnlockState {
     /// Wallet that owns these unlocks.
     pub authority: Pubkey,
-    /// Bitset of unlocked booster-pool indices (1 bit per index).
+    /// Bitset of unlocked booster-pool indices (1 bit per index). This is
+    /// permission: it says what this wallet may wear.
     pub bits: [u8; UNLOCK_BITS],
+    /// Bitset of indices already turned into an asset by this wallet.
+    ///
+    /// Separate from `bits` because they answer different questions: `bits` is
+    /// permission and survives a sale, this is "an asset for this index has
+    /// already been minted to this wallet once". Any future mint path must
+    /// refuse an index that is already set here, or a player could mint, sell,
+    /// and mint again from the same unlock.
+    ///
+    /// Carried now, with no writer yet, because the account is created for the
+    /// first time in this redeploy: adding the field later costs a migration
+    /// for every wallet that exists by then. See COLLECTIBLES_SPEC.md.
+    pub minted: [u8; UNLOCK_BITS],
     /// A pack has been paid for and is awaiting the VRF callback.
     pub pending: bool,
     /// Index space for the pending draw (client getBoosterPool length).
