@@ -62,6 +62,7 @@ const DISC = {
   initializeHunt:          ixDiscriminator("initialize_hunt"),
   claimFind:               ixDiscriminator("claim_find"),
   expireRound:             ixDiscriminator("expire_round"),
+  initUnlockState:         ixDiscriminator("init_unlock_state"),
   openBooster:             ixDiscriminator("open_booster"),
   publishProfileSession:   ixDiscriminator("publish_profile_session"),
   sendFriendRequest:       ixDiscriminator("send_friend_request"),
@@ -469,10 +470,37 @@ export function buildExpireRoundIx(cranker: PublicKey, round: number): Transacti
 }
 
 /**
+ * Builds `init_unlock_state()` — creates this wallet's UnlockState PDA.
+ *
+ * It exists as its own instruction so that nothing else in the program creates
+ * an account: `open_booster` and `claim_free_outfit` both require the PDA to be
+ * there already, which is what keeps conditional initialisation out of the
+ * program entirely.
+ *
+ * Send it once per wallet, before the first pack or quest reward, and only when
+ * `deriveUnlockPDA(wallet)` has no account. A second call fails, by design.
+ */
+export function buildInitUnlockStateIx(authority: PublicKey): TransactionInstruction {
+  const [unlockPda] = deriveUnlockPDA(authority);
+  return new TransactionInstruction({
+    programId: SOL_CITY_PROGRAM_ID,
+    keys: [
+      { pubkey: authority,               isSigner: true,  isWritable: true },
+      { pubkey: unlockPda,               isSigner: false, isWritable: true },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+    ],
+    data: DISC.initUnlockState,
+  });
+}
+
+/**
  * Builds `open_booster(pool_count: u16, client_seed: [u8;32])` — pays the pack
  * price to the treasury and requests MagicBlock VRF. Wallet-signed on base
  * devnet. Args are Anchor-packed: u16 LE + 32 raw seed bytes (a fixed array has
  * no length prefix).
+ *
+ * The UnlockState PDA must already exist: send `buildInitUnlockStateIx` first,
+ * in the same transaction, when the wallet has never opened a pack.
  *
  * ⚠️ ACCOUNTS: the Rust struct is [payer, unlock_state, treasury, oracle_queue,
  * system_program] PLUS the accounts the `#[vrf]` macro appends (the VRF program
