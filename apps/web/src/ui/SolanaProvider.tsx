@@ -6,10 +6,13 @@ import {
   WalletProvider,
 } from "@solana/wallet-adapter-react";
 import { WalletModalProvider } from "@solana/wallet-adapter-react-ui";
-import {
-  PhantomWalletAdapter,
-  SolflareWalletAdapter,
-} from "@solana/wallet-adapter-wallets";
+// Imported per adapter, not from `@solana/wallet-adapter-wallets`. The
+// meta-package depends on every adapter it knows, so it pulled the whole
+// Trezor stack (and @stellar/stellar-sdk, axios, lodash) into a game that
+// offers Phantom and Solflare. Two direct deps instead keep the bundle and
+// the advisory surface to what is actually on screen.
+import { PhantomWalletAdapter } from "@solana/wallet-adapter-phantom";
+import { SolflareWalletAdapter } from "@solana/wallet-adapter-solflare";
 import "@solana/wallet-adapter-react-ui/styles.css";
 
 import { BASE_RPC_PRIMARY, resilientBaseFetch } from "@/game/solana/baseRpc";
