@@ -2,6 +2,7 @@ import * as Phaser from "phaser";
 import { SimpleSprite } from "../entities/SimpleSprite";
 import { cropTileLayers } from "../world/cropMap";
 import { AvatarSprite } from "../entities/AvatarSprite";
+import { STAR_FRAME_SIZE, STAR_SHEET, STAR_TEXTURE_KEY } from "../entities/HuntFoundFx";
 import { NPC_REGISTRY } from "../config/npcRegistry";
 import { getAllLayerVariants, EXPRESSIONS, SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT } from "../config/paperDoll";
 import { preloadAnimatedDecor } from "../world/AnimatedDecor";
@@ -138,6 +139,14 @@ export class BootScene extends Phaser.Scene {
     for (const { variant } of getAllLayerVariants()) {
       AvatarSprite.loadSpriteSheet(this, variant.textureKey, `assets/sprites/paperdoll/${variant.file}`);
     }
+
+    // The star over a found citizen (entities/HuntFoundFx). Keyed in the file
+    // by scripts/import-sprite-sheet.mjs, and not on any of the chroma lists
+    // create() walks, so nothing touches it at runtime.
+    this.load.spritesheet(STAR_TEXTURE_KEY, STAR_SHEET, {
+      frameWidth: STAR_FRAME_SIZE,
+      frameHeight: STAR_FRAME_SIZE,
+    });
 
     // Expression face sheets — same paper-doll format, own texture keys.
     for (const expr of EXPRESSIONS) {

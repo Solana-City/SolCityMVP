@@ -1,5 +1,6 @@
 import * as Phaser from "phaser";
 import { AvatarSprite } from "./AvatarSprite";
+import { playFoundStar } from "./HuntFoundFx";
 import { TILE_SIZE } from "../config/constants";
 import { getEnabledVariants, type Loadout, DIRECTION_ROW, SPRITE_COLS } from "../config/paperDoll";
 import { CROWD_HAIR_COLORS } from "../config/hairPalette";
@@ -525,19 +526,9 @@ export class PedestrianSprite {
     this.isMoving = false;
     this.showIdleFrame();
 
-    const baseScale = container.scaleX;
-    this.scene.tweens.add({
-      targets: container,
-      scaleX: baseScale * 1.4, scaleY: baseScale * 1.4,
-      duration: 120,
-      yoyo: true,
-      repeat: 2,
-      ease: "Sine.easeInOut",
-      onComplete: () => {
-        container.setScale(baseScale); // guarantee correct scale after tween
-        this.scheduleNextMove();
-      },
-    });
+    // A drawn star over the head, not a body that changes size: see
+    // entities/HuntFoundFx for why the pulse went.
+    playFoundStar(this.scene, this.avatar, () => this.scheduleNextMove());
   }
 
   /** Idle facing the direction the pedestrian was last walking — never
