@@ -1081,8 +1081,16 @@ fn apply_rating(winner: &mut LadderEntry, loser: &mut LadderEntry, now: i64) {
     let gain = k_factor(winner) * weight * (SCALE - e_winner) / (SCALE * SCALE);
     let drop = k_factor(loser) * weight * e_loser / (SCALE * SCALE);
 
-    winner.rating = (winner_rating as i64 + gain).max(RATING_FLOOR as i64) as i32;
-    loser.rating = (loser_rating as i64 - drop).max(RATING_FLOOR as i64) as i32;
+    // Clamped at both ends, not just the floor: `as i32` truncates silently in
+    // Rust, and `overflow-checks` does not cover a cast. The ceiling is i32's
+    // own range rather than a gameplay number, so it changes no rating anyone
+    // can reach and only makes the cast provably lossless.
+    const RATING_CAST_MIN: i64 = RATING_FLOOR as i64;
+    const RATING_CAST_MAX: i64 = i32::MAX as i64;
+    winner.rating =
+        (winner_rating as i64 + gain).clamp(RATING_CAST_MIN, RATING_CAST_MAX) as i32;
+    loser.rating =
+        (loser_rating as i64 - drop).clamp(RATING_CAST_MIN, RATING_CAST_MAX) as i32;
 
     winner.wins = winner.wins.saturating_add(1);
     loser.losses = loser.losses.saturating_add(1);
