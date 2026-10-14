@@ -229,6 +229,8 @@ pub enum SolCityError {
     ItemNotUnlocked,
     #[msg("Not a claimable quest-reward item")]
     InvalidQuestItem,
+    #[msg("This unlock account belongs to another wallet")]
+    WrongUnlockOwner,
     #[msg("Callback not signed by the VRF program identity")]
     InvalidVrfIdentity,
     #[msg("Too far from the ball to kick it")]
@@ -257,7 +259,7 @@ fn cap_bytes(s: String, max: usize) -> String {
     }
     let mut end = max;
     while end > 0 && !s.is_char_boundary(end) {
-        end -= 1;
+        end = end.saturating_sub(1);
     }
     s[..end].to_string()
 }
@@ -1223,9 +1225,6 @@ pub mod sol_city {
         {
             let unlocks = &mut ctx.accounts.unlock_state;
             require!(!unlocks.pending, SolCityError::BoosterPending);
-            if unlocks.authority == Pubkey::default() {
-                unlocks.authority = ctx.accounts.payer.key();
-            }
             unlocks.pending = true;
             unlocks.pending_pool_count = pool_count;
         }
@@ -1300,7 +1299,12 @@ pub mod sol_city {
             let lo = randomness[cursor + 1] as u16;
             // Draw a booster-subset index in [0, n); its lockable bit sits after
             // the reserved quest-free block so quest bits never shift.
-            let bit = QUEST_FREE_SLOTS + ((hi << 8) | lo) % n;
+            // Bounded by the require! in open_booster, which refuses a pool
+            // that would not fit the bitset. Checked anyway, so a bad bound
+            // returns a named error instead of a panic.
+            let bit = QUEST_FREE_SLOTS
+                .checked_add(((hi << 8) | lo) % n)
+                .ok_or(SolCityError::InvalidPoolCount)?;
             if !picks.contains(&bit) {
                 picks.push(bit);
                 let byte = (bit / 8) as usize;
@@ -1308,7 +1312,7 @@ pub mod sol_city {
                     unlocks.bits[byte] |= 1u8 << (bit % 8) as u8;
                 }
             }
-            cursor += 1;
+            cursor = cursor.saturating_add(1);
         }
 
         unlocks.pending = false;
@@ -1324,10 +1328,17 @@ pub mod sol_city {
     pub fn claim_free_outfit(ctx: Context<ClaimFreeOutfit>, index: u16) -> Result<()> {
         require!(index < QUEST_FREE_SLOTS, SolCityError::InvalidQuestItem);
         let unlocks = &mut ctx.accounts.unlock_state;
-        if unlocks.authority == Pubkey::default() {
-            unlocks.authority = ctx.accounts.authority.key();
-        }
         unlocks.bits[(index / 8) as usize] |= 1u8 << (index % 8) as u8;
+        Ok(())
+    }
+
+    /// Creates the caller's UnlockState. Called once per wallet, before the
+    /// first pack or quest reward; a second call fails, which is the point.
+    pub fn init_unlock_state(ctx: Context<InitUnlockState>) -> Result<()> {
+        let unlocks = &mut ctx.accounts.unlock_state;
+        unlocks.authority = ctx.accounts.authority.key();
+        unlocks.pending = false;
+        unlocks.pending_pool_count = 0;
         Ok(())
     }
 
@@ -1800,12 +1811,14 @@ pub struct PlayerState {
 pub struct OpenBooster<'info> {
     #[account(mut)]
     pub payer: Signer<'info>,
+    // Must already exist: `init_unlock_state` creates it. Nothing is created
+    // conditionally here, so this instruction can never create or re-create an
+    // account; the one place that can is a single explicit `init`.
     #[account(
-        init_if_needed,
-        payer = payer,
-        space = 8 + UnlockState::INIT_SPACE,
+        mut,
         seeds = [UNLOCKS_SEED, payer.key().as_ref()],
         bump,
+        constraint = unlock_state.authority == payer.key() @ SolCityError::WrongUnlockOwner,
     )]
     pub unlock_state: Account<'info, UnlockState>,
     /// CHECK: address-checked against TREASURY in the instruction body.
@@ -1845,8 +1858,25 @@ pub struct CallbackOpenBooster<'info> {
 pub struct ClaimFreeOutfit<'info> {
     #[account(mut)]
     pub authority: Signer<'info>,
+    // Must already exist: see the note on OpenBooster.
     #[account(
-        init_if_needed,
+        mut,
+        seeds = [UNLOCKS_SEED, authority.key().as_ref()],
+        bump,
+        constraint = unlock_state.authority == authority.key() @ SolCityError::WrongUnlockOwner,
+    )]
+    pub unlock_state: Account<'info, UnlockState>,
+}
+
+/// Creates a wallet's UnlockState, once. Separate from the instructions that
+/// write to it, so none of them can create an account: this explicit `init` is
+/// the only path that can, and it fails loudly if one already exists.
+#[derive(Accounts)]
+pub struct InitUnlockState<'info> {
+    #[account(mut)]
+    pub authority: Signer<'info>,
+    #[account(
+        init,
         payer = authority,
         space = 8 + UnlockState::INIT_SPACE,
         seeds = [UNLOCKS_SEED, authority.key().as_ref()],
