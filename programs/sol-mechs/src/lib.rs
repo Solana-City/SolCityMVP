@@ -640,7 +640,7 @@ pub mod sol_mechs {
 
         refill_energy(e, now);
         require!(e.energy >= ENERGY_COST_PER_MATCH, MechError::NoEnergy);
-        e.energy -= ENERGY_COST_PER_MATCH;
+        e.energy = e.energy.saturating_sub(ENERGY_COST_PER_MATCH);
 
         let mut q = ctx.accounts.queue.load_mut()?;
         require!((q.len as usize) < QUEUE_CAP, MechError::QueueFull);
@@ -651,7 +651,7 @@ pub mod sol_mechs {
             _pad: [0; 4],
             enqueued_at: now,
         };
-        q.len += 1;
+        q.len = q.len.saturating_add(1);
         e.queued = true;
         Ok(())
     }
@@ -904,8 +904,12 @@ pub mod sol_mechs {
         pool.deposited = pool.deposited.saturating_add(to_pool);
 
         let e = &mut ctx.accounts.entry;
-        e.packs_today += 1;
-        e.energy = (e.energy + ENERGY_PACK_SIZE).min(ENERGY_MAX_BANKED);
+        e.packs_today = e.packs_today.saturating_add(1);
+        // Saturating BEFORE the clamp, not after: the old form added first, so
+        // the ceiling could never have caught an energy value near the type's
+        // own maximum. Nothing can reach that today, and it should not depend
+        // on every other writer keeping the number small.
+        e.energy = e.energy.saturating_add(ENERGY_PACK_SIZE).min(ENERGY_MAX_BANKED);
         Ok(())
     }
 
@@ -977,7 +981,7 @@ fn count_recent(recent: &[Pubkey; RECENT], len: u8, who: &Pubkey) -> u32 {
     let mut n = 0;
     for i in 0..(len as usize).min(RECENT) {
         if recent[i] == *who {
-            n += 1;
+            n = n.saturating_add(1);
         }
     }
     n
@@ -988,11 +992,11 @@ fn push_recent(e: &mut LadderEntry, who: Pubkey) -> bool {
     let mut i = (e.recent_len as usize).min(RECENT - 1);
     while i > 0 {
         e.recent[i] = e.recent[i - 1];
-        i -= 1;
+        i = i.saturating_sub(1);
     }
     e.recent[0] = who;
     if (e.recent_len as usize) < RECENT {
-        e.recent_len += 1;
+        e.recent_len = e.recent_len.saturating_add(1);
     }
     !known
 }
@@ -1003,10 +1007,13 @@ fn find_ticket(q: &MatchQueue, who: &Pubkey) -> Option<usize> {
 
 fn remove_ticket(q: &mut MatchQueue, who: &Pubkey) {
     if let Some(i) = find_ticket(q, who) {
-        let last = q.len as usize - 1;
+        // find_ticket only answers Some when the queue is non-empty, so the
+        // decrement is sound; saturating says so without relying on the reader
+        // knowing that.
+        let last = (q.len as usize).saturating_sub(1);
         q.tickets[i] = q.tickets[last];
         q.tickets[last] = Ticket::default();
-        q.len -= 1;
+        q.len = q.len.saturating_sub(1);
     }
 }
 
