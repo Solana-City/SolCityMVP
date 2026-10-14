@@ -15,6 +15,7 @@ here. One deploy ships:
 | 2 | `record_swap_session` / `record_transfer_session` (bounty variant dropped 2026-09-21: nothing records bounties) | in lib.rs |
 | 5 | Outfit boxes: `open_booster` + `callback_open_booster` (MagicBlock VRF) | in lib.rs |
 | 5 | `claim_free_outfit` (quest / NPC reward items, free, once per wallet) | in lib.rs |
+| 13 | `init_unlock_state`: the only instruction that creates an UnlockState (added 2026-10-15, for the Brazilian mainnet-subsidy track) | in lib.rs |
 | 5 | Wardrobe enforcement: `player_v3` + `unlocked` snapshot + `sync_unlocks` + enforcing `update_look_session` | in lib.rs |
 | 6 | Beach football: `BallState` PDA + `initialize_ball` / `kick_ball_session` / `delegate_ball` (added 2026-09-30) | in lib.rs |
 | 7 | Public profile: `achievements: [u8; 32]` + `streak_current` / `streak_best` on `PlayerState` + `publish_profile_session` (added 2026-10-01) | in lib.rs |
@@ -31,8 +32,27 @@ here. One deploy ships:
 player PDA on next connect and on-chain scores start from zero (devnet test
 phase). Unlocks live in `UnlockState`, which does not reset.
 
+**Security pass for the mainnet-subsidy track (2026-10-15):**
+
+That track rejects a program with conditional account creation or raw
+arithmetic without reading further, so both are gone:
+
+- `OpenBooster` and `ClaimFreeOutfit` no longer create their account. They take
+  it as `mut` and add a constraint tying its stored authority to the signer.
+  `init_unlock_state` is the single explicit `init`, and it fails if the account
+  exists. The feature flag that allowed the old pattern is off in `Cargo.toml`.
+- `ClaimFreeOutfit` therefore **drops `system_program`** from its accounts; it
+  no longer CPIs into it.
+- Every raw `+=`/`-=` in both programs is now checked or saturating.
+
+**Client step this adds:** before the first `open_booster` or
+`claim_free_outfit` for a wallet, read `deriveUnlockPDA(wallet)`; if there is no
+account, prepend `buildInitUnlockStateIx(wallet)` in the same transaction. The
+builder is in `instructions.ts`; the prepend is not wired yet, because the
+booster flow is still waiting on the deployed IDL for its VRF accounts.
+
 **Build notes:**
-- `Cargo.toml` needs only `anchor-lang` (`init-if-needed`). Playground builds a
+- `Cargo.toml` needs only `anchor-lang`, with no feature flags. Playground builds a
   fixed crate list and `ephemeral-vrf-sdk` is NOT on it, so the VRF request is a
   hand-rolled CPI (same approach as `delegate`), laid out from
   ephemeral-vrf-sdk 0.17.0.
