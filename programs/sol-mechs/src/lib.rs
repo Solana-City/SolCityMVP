@@ -1299,7 +1299,9 @@ pub struct DelegateDuelist<'info> {
     /// CHECK: address verified by seeds; stored authority checked in the body
     #[account(mut, seeds = [DUELIST_SEED, authority.key().as_ref()], bump)]
     pub duelist: UncheckedAccount<'info>,
-    /// CHECK: this program's id, required by the delegation CPI
+    /// CHECK: this program's id, required by the delegation CPI. Pinned by
+    /// address: `delegate_pda` names `crate::ID` in the account metas.
+    #[account(address = crate::ID)]
     pub owner_program: UncheckedAccount<'info>,
     /// CHECK: ["buffer", duelist] under this program
     #[account(mut)]
@@ -1310,7 +1312,10 @@ pub struct DelegateDuelist<'info> {
     /// CHECK: ["delegation-metadata", duelist] under the delegation program
     #[account(mut)]
     pub delegation_metadata: UncheckedAccount<'info>,
-    /// CHECK: MagicBlock delegation program
+    /// CHECK: MagicBlock delegation program, pinned by address. Never read
+    /// here: the CPI target is the `DELEGATION_PROGRAM_ID` constant. It is in
+    /// this struct so the transaction carries the account.
+    #[account(address = DELEGATION_PROGRAM_ID)]
     pub delegation_program: UncheckedAccount<'info>,
     pub system_program: Program<'info, System>,
 }
@@ -1337,7 +1342,9 @@ pub struct DelegateLobby<'info> {
     /// CHECK: address verified by seeds
     #[account(mut, seeds = [LOBBY_SEED], bump)]
     pub lobby: UncheckedAccount<'info>,
-    /// CHECK: this program's id, required by the delegation CPI
+    /// CHECK: this program's id, required by the delegation CPI. Pinned by
+    /// address: `delegate_pda` names `crate::ID` in the account metas.
+    #[account(address = crate::ID)]
     pub owner_program: UncheckedAccount<'info>,
     /// CHECK: ["buffer", lobby] under this program
     #[account(mut)]
@@ -1348,7 +1355,10 @@ pub struct DelegateLobby<'info> {
     /// CHECK: ["delegation-metadata", lobby] under the delegation program
     #[account(mut)]
     pub delegation_metadata: UncheckedAccount<'info>,
-    /// CHECK: MagicBlock delegation program
+    /// CHECK: MagicBlock delegation program, pinned by address. Never read
+    /// here: the CPI target is the `DELEGATION_PROGRAM_ID` constant. It is in
+    /// this struct so the transaction carries the account.
+    #[account(address = DELEGATION_PROGRAM_ID)]
     pub delegation_program: UncheckedAccount<'info>,
     pub system_program: Program<'info, System>,
 }

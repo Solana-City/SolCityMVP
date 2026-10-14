@@ -1517,7 +1517,10 @@ pub struct DelegatePlayer<'info> {
         bump,
     )]
     pub player: UncheckedAccount<'info>,
-    /// CHECK: our own program ID, used by the delegation CPI to verify PDA ownership
+    /// CHECK: our own program ID, used by the delegation CPI to verify PDA
+    /// ownership. Pinned by address: the CPI below names `crate::ID` in the
+    /// account metas, so anything else here could only fail deeper in.
+    #[account(address = crate::ID)]
     pub owner_program: UncheckedAccount<'info>,
     /// CHECK: delegate buffer PDA — seeds ["buffer", player.key()], owned by this program
     #[account(mut)]
@@ -1528,7 +1531,10 @@ pub struct DelegatePlayer<'info> {
     /// CHECK: delegation metadata PDA — ["delegation-metadata", player.key()], owned by delegation program
     #[account(mut)]
     pub delegation_metadata: UncheckedAccount<'info>,
-    /// CHECK: MagicBlock delegation program
+    /// CHECK: MagicBlock delegation program, pinned by address. Never read
+    /// here: the CPI target is the `DELEGATION_PROGRAM_ID` constant. It is in
+    /// this struct so the transaction carries the account.
+    #[account(address = DELEGATION_PROGRAM_ID)]
     pub delegation_program: UncheckedAccount<'info>,
     pub system_program: Program<'info, System>,
 }
@@ -1597,7 +1603,10 @@ pub struct DelegateBall<'info> {
     /// CHECK: PDA verified via seeds; zeroed and reassigned in the instruction body
     #[account(mut, seeds = [BALL_SEED], bump)]
     pub ball: UncheckedAccount<'info>,
-    /// CHECK: our own program ID, used by the delegation CPI to verify PDA ownership
+    /// CHECK: our own program ID, used by the delegation CPI to verify PDA
+    /// ownership. Pinned by address: the CPI below names `crate::ID` in the
+    /// account metas, so anything else here could only fail deeper in.
+    #[account(address = crate::ID)]
     pub owner_program: UncheckedAccount<'info>,
     /// CHECK: delegate buffer PDA — seeds ["buffer", ball.key()], owned by this program
     #[account(mut)]
@@ -1608,7 +1617,10 @@ pub struct DelegateBall<'info> {
     /// CHECK: delegation metadata PDA — ["delegation-metadata", ball.key()], owned by delegation program
     #[account(mut)]
     pub delegation_metadata: UncheckedAccount<'info>,
-    /// CHECK: MagicBlock delegation program
+    /// CHECK: MagicBlock delegation program, pinned by address. Never read
+    /// here: the CPI target is the `DELEGATION_PROGRAM_ID` constant. It is in
+    /// this struct so the transaction carries the account.
+    #[account(address = DELEGATION_PROGRAM_ID)]
     pub delegation_program: UncheckedAccount<'info>,
     pub system_program: Program<'info, System>,
 }
