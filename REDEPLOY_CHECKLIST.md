@@ -14,7 +14,7 @@ here. One deploy ships:
 |---|------|--------|
 | 2 | `record_swap_session` / `record_transfer_session` (bounty variant dropped 2026-09-21: nothing records bounties) | in lib.rs |
 | 5 | Outfit boxes: `open_booster` + `callback_open_booster` (MagicBlock VRF) | in lib.rs |
-| 5 | `claim_free_outfit` (quest / NPC reward items, free, once per wallet) | in lib.rs |
+| 5 | ~~`claim_free_outfit`~~ | **pulled 2026-10-15**, see below |
 | 13 | `init_unlock_state`: the only instruction that creates an UnlockState (added 2026-10-15, for the Brazilian mainnet-subsidy track) | in lib.rs |
 | 5 | Wardrobe enforcement: `player_v3` + `unlocked` snapshot + `sync_unlocks` + enforcing `update_look_session` | in lib.rs |
 | 6 | Beach football: `BallState` PDA + `initialize_ball` / `kick_ball_session` / `delegate_ball` (added 2026-09-30) | in lib.rs |
@@ -45,28 +45,24 @@ arithmetic without reading further, so both are gone:
   no longer CPIs into it.
 - Every raw `+=`/`-=` in both programs is now checked or saturating.
 
-**Quest rewards are co-signed now (2026-10-15).** `claim_free_outfit` checked
-only that the index sat in the quest block; the condition itself was checked in
-the client, so any wallet could claim all sixteen items by calling the
-instruction directly. It now also takes `reward_authority`, a second signer
-pinned to `REWARD_AUTHORITY`.
+**`claim_free_outfit` is OUT of this deploy (2026-10-15).** It granted any
+index in the quest block to whoever called it: the condition was checked in the
+client, so any wallet could claim all sixteen items. A co-signer would close
+that and needs a server to hold the key, which this project does not have and
+does not want, and the key it would have held was the upgrade authority. No
+on-chain gate replaces it, because the facts a quest rests on are written by
+session-signed instructions the client authors.
 
-Two things follow, and neither is optional:
-
-1. **A dedicated key.** The constant points at the treasury today, which is also
-   the upgrade authority. That key has to sign from a server. Generate a
-   keypair that holds nothing and controls nothing else, put its pubkey in the
-   constant, and keep the secret in the server environment. Do this BEFORE the
-   deploy: the constant is compiled in.
-2. **A server route that co-signs.** The browser cannot produce this signature.
-   The route is where the quest condition is actually checked, which is the
-   point of the change.
+Nothing regressed: no client ever called it, and quest rewards are local
+unlocks today. `QUEST_FREE_SLOTS` stays reserved so the bit layout does not
+move when the instruction returns. The decision it waits on is question 5 in
+`COLLECTIBLES_SPEC.md`.
 
 `UnlockState` also gains `minted: [u8; 32]`, a ledger of indices already turned
 into an asset, so a future mint path cannot let a player mint, sell, and mint
 again from the same unlock. It has no writer yet and is carried now because the
 account is created for the first time in this redeploy; adding it later is a
-migration. See `COLLECTIBLES_SPEC.md`.
+migration.
 
 **Client step this adds:** before the first `open_booster` or
 `claim_free_outfit` for a wallet, read `deriveUnlockPDA(wallet)`; if there is no
