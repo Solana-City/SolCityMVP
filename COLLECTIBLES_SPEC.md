@@ -65,7 +65,10 @@ Open: whether a pack that is opened by its buyer ever becomes an asset at all,
 or whether "buy and open now" skips the mint entirely and only "buy sealed"
 mints. The second is cheaper and makes the common path free.
 
-## Compressed or not: the number and the catch
+## Compressed, decided
+
+**Decided 2026-10-15: compressed.** The numbers below are why, and the rest of
+this section is what that costs, which is real and is not money.
 
 Measured against live rent, not estimated:
 
@@ -98,10 +101,23 @@ So the trade is: cNFT costs almost nothing to mint and makes the in-game
 permission sync depend on an indexer and on proof plumbing. Core costs about
 $0.26 an item and makes it a single account read.
 
-**Open decision.** A reasonable split, if one is wanted: packs and
-mass-distributed cosmetics as cNFTs, where volume is the point and the sync can
-be batched; anything rare or ceremonial as Core, where the per-item cost is
-noise against its value. This doubles the code paths, which is its own cost.
+### What choosing compressed commits us to
+
+- **A DAS indexer in the critical path.** Helius answers "what does this wallet
+  own" and supplies the proof. It lags a few seconds behind a transfer, so a
+  buyer who syncs immediately may be told they own nothing.
+- **A canopy, not an option.** Without one the proof is 14 nodes and does not
+  fit comfortably. Canopy 10 makes it 4, and takes the tree from 0.16 to 0.49
+  SOL per 16,384 assets. Still 80x under Core.
+- **Fixed capacity per tree.** Depth 14 is 16,384 assets, forever. Either size
+  it for the whole life of the collection or plan several trees, and then the
+  sync has to know which tree an item came from.
+- **The heaviest code in the design lands in the program**, as a CPI into
+  account compression. That is the part a mainnet-readiness review reads
+  closest.
+- **Soulbound needs checking.** Core has a plugin for it. Whether Bubblegum
+  offers the same has to be confirmed before anything is promised, and it
+  matters for the open question below about quest items.
 
 ## Who pays, and when
 
@@ -117,6 +133,29 @@ The same logic applies to packs, and it is worth deciding deliberately: a pack
 that mints five assets on open burns 41% of a 0.03 SOL pack in rent at Core
 prices, for items most players will never list. Minting on demand keeps the
 margin and spends only where someone actually wants to trade.
+
+## Items given by NPCs: the provisional measure
+
+**Taken 2026-10-15.** `claim_free_outfit` is out of the queued redeploy. Not
+gated, not co-signed: removed.
+
+The reasoning, in order:
+
+1. The hole was entitlement, not duplication. Receiving the same item twice was
+   already impossible; claiming sixteen items nobody earned was not.
+2. A co-signer closes it and needs a server to hold the key. There is no server
+   here by design, and the key it would hold was the program's upgrade
+   authority.
+3. No on-chain gate replaces it. The facts a quest rests on are written by
+   session-signed instructions the client authors, so the program cannot tell a
+   real claim from an invented one.
+4. Nothing called the instruction. Quest rewards are local unlocks today and
+   stay exactly as they were.
+
+So the cost of waiting is zero and the cost of shipping it is a finding in a
+review. `QUEST_FREE_SLOTS` stays reserved so the bit layout does not move when
+it comes back, and `minted` stays so whatever grants it later cannot be minted
+twice.
 
 ## Items given by NPCs, and conditions per item
 
@@ -145,13 +184,58 @@ Append-only is not a style choice here: `BOOSTER_SPEC` already fixed the pool
 order for the same reason. An index that moves invalidates everything already
 granted against it.
 
-## Open decisions, collected
+## Open decisions
 
-1. cNFT or Core, or both, per the trade above.
-2. Whether "buy and open now" mints a pack asset at all.
-3. Which gate `claim_free_outfit` gets, and whether that lands in the queued
-   redeploy or a later one.
-4. Whether `sync_unlocks` is permissionless.
-5. Royalties: a percentage, and who receives it.
-6. Whether a season closing freezes its collection, and what that means for
-   items already in wallets.
+Split by when they have to be answered. Nothing here blocks the hackathon:
+none of this path is wired to a client today.
+
+### Blocks the first mint
+
+**1. Tree size.** Depth 14 holds 16,384 assets forever, depth 17 holds 131,072.
+The tree is paid once and cannot grow. Sizing it for one season is cheap and
+means several trees later, each of which the sync has to recognise.
+
+**2. Canopy depth.** Sets how much of each proof the chain already holds, so it
+sets how big a sync transaction is. Canopy 10 at depth 14 means 4 proof nodes
+and 0.49 SOL for the tree.
+
+**3. Who pays the mint.** The decision taken was: the player, when they choose
+to turn an unlock into an asset. Worth confirming against the alternative,
+which is the treasury paying so items arrive already tradable, at 0.0000302 SOL
+each with the canopy above.
+
+**4. Whether "buy and open now" mints a pack asset at all.** Minting a sealed
+pack only to burn it seconds later is rent round-tripped for nothing. Skipping
+it makes the common path cheaper and means only "buy sealed" mints.
+
+### Blocks quest and NPC items becoming assets
+
+**5. How entitlement is proved without a server.** The open question, and the
+reason `claim_free_outfit` is out of the redeploy. Three answers, none free:
+
+- **Soulbound for earned items.** Faking a quest then yields something
+  unsellable, so the exploit stops paying. Costs the "everything is tradable"
+  goal, and needs Bubblegum to support it.
+- **Only trustless conditions.** Holding a token, holding an NFT, elapsed time:
+  the program can check all of these by itself. Covers the Seeker Hat today.
+  Does not cover "talked to Kuka" or "won a round", because that happens on the
+  player's device.
+- **Make the facts themselves trustworthy.** Mini-game results and NPC visits
+  would have to reach the chain in a way the client cannot forge. That is a
+  different project, not a gate.
+
+**6. Whether `sync_unlocks` is permissionless.** If anyone may refresh anyone's
+bits, a buyer can clear the seller's permission themselves. If not, a seller
+keeps wearing what they sold until they choose to sync.
+
+### Can wait
+
+**7. Royalties.** A percentage, and who receives it. Affects the asset size and
+therefore the per-item rent.
+
+**8. What closing a season does to its collection**, and to items already in
+wallets.
+
+**9. Whether rare items get Core instead**, where the per-item cost is noise
+against their value and the sync is one account read. Buys simplicity for some
+items at the price of two code paths.
