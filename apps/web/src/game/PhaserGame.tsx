@@ -139,12 +139,38 @@ export default function PhaserGame({ onGameReady }: PhaserGameProps) {
       // every frame and the idle throttle below works.
       //
       // It is also a real cap now — see ACTIVE_FPS_LIMIT for why 65.
-      fps: { limit: ACTIVE_FPS_LIMIT },
+      // `min` tightens how far a single long frame may be stretched. Phaser
+      // clamps a frame's delta to 1000/minFps, and the default minFps of 5
+      // allows a 200ms step — which, with the variable-step physics below,
+      // would advance a walking character about 32px in one go, further than
+      // a 24px tile and so potentially through a wall. 20 caps the step at
+      // 50ms, around 8px. Below that the game runs in slow motion, which is
+      // the right failure for a device that cannot keep up.
+      fps: { limit: ACTIVE_FPS_LIMIT, min: 20 },
       physics: {
         default: "arcade",
         arcade: {
           gravity: { x: 0, y: 0 },
           debug: false,
+          // Step with the real frame delta instead of a fixed 60Hz.
+          //
+          // Fixed-step physics advances the world 60 times a second while the
+          // game draws ~72, so roughly one drawn frame in six repeats the
+          // position of the one before it. Measured on the live site: 16 of 99
+          // frames identical, in an irregular pattern. That single stalled
+          // frame, scattered unevenly through smooth motion, is what reads as
+          // the character trembling as it walks.
+          //
+          // Stepping on the real delta gives every drawn frame a new position,
+          // whatever rate the display runs at, so the motion matches what is
+          // actually on screen.
+          //
+          // Nothing depends on the fixed step for correctness: the football
+          // has no arcade body, the hunted citizen is driven by the wall
+          // clock, and the crowd is local decoration. Collision separation now
+          // runs once per drawn frame, which at 72fps is more often than the
+          // 60 it had.
+          fixedStep: false,
         },
       },
       // Explicitly keep keyboard enabled even on mobile — CityScene guards all
