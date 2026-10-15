@@ -302,7 +302,7 @@ const NPC_SEEDS: NPCSeed[] = [
         text: "I'm Vibhu, the biggest promoter of Solana Breakpoint 2026!\nUse my code and you get 25% off your tickets to Breakpoint 2026.",
         accent: "BP26-VIBHU",
       },
-      "Use this link to get this exclusive Solana T-shirt on Solana City.\nSee you in London!",
+      "Use this link to get this exclusive Solana T-shirt on SolanaCity.\nSee you in London!",
     ],
     highlights: [
       { label: "25% OFF" },

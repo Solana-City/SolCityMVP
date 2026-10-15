@@ -836,7 +836,7 @@ export class CityScene extends Phaser.Scene {
 
     // Chat system
     this.chat = new ChatManager();
-    this.chat.addSystemMessage("Welcome to The Solana City");
+    this.chat.addSystemMessage("Welcome to SolanaCity");
     this.registry.set("chatManager", this.chat);
 
     // Listen for chat input from React UI

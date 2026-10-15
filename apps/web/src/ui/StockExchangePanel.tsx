@@ -176,7 +176,7 @@ export default function StockExchangePanel({ onClose }: { onClose: () => void })
         }
       />
       {IS_DEVNET && (
-        <span style={{ fontSize: 5, padding: "3px 5px", borderRadius: 5, background: "rgba(20,240,198,0.14)", color: "#14F0C6" }}>DEVNET TEST</span>
+        <span style={{ fontSize: 8, padding: "3px 5px", borderRadius: 5, background: "rgba(20,240,198,0.14)", color: "#14F0C6" }}>DEVNET TEST</span>
       )}
       <div style={{ fontSize: 6, color: MUTED, marginBottom: 12, lineHeight: 1.6 }}>
         Real stocks as Solana tokens. Trade 24/7.
@@ -263,7 +263,7 @@ export default function StockExchangePanel({ onClose }: { onClose: () => void })
         })}
       </div>
 
-      <div style={{ marginTop: 12, fontSize: 5, color: "#555a70", lineHeight: 1.6 }}>
+      <div style={{ marginTop: 12, fontSize: 8, color: "#555a70", lineHeight: 1.6 }}>
         {IS_DEVNET ? "Devnet test tokens. No real value." : "Mainnet via Jupiter. Not for US persons."}
       </div>
     </div>
@@ -442,7 +442,7 @@ function TradeView(props: {
       )}
 
       {/* Issuer badge */}
-      <div style={{ fontSize: 5, color: isPreIpo(stock) ? "#14F0C6" : MUTED, marginBottom: 12 }}>
+      <div style={{ fontSize: 8, color: isPreIpo(stock) ? "#14F0C6" : MUTED, marginBottom: 12 }}>
         {issuerLine(stock)}
       </div>
 
@@ -666,7 +666,7 @@ function BasketView(props: {
         </div>
         <div style={{ textAlign: "right", flexShrink: 0 }}>
           <div style={{ fontSize: 8, color: avg == null ? MUTED : moveColor(avg) }}>{avg == null ? "..." : pct(avg)}</div>
-          <div style={{ fontSize: 5, color: MUTED, marginTop: 4 }}>24H AVG</div>
+          <div style={{ fontSize: 8, color: MUTED, marginTop: 4 }}>24H AVG</div>
         </div>
       </div>
       <div style={{ marginBottom: 12 }}><LogoStack stocks={stocks} size={30} /></div>
@@ -682,12 +682,12 @@ function BasketView(props: {
               <BasketLegToggle onClick={() => setOpen(isOpen ? null : s.mint)}>
                 <StockLogo stock={s} size={22} />
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontFamily: PIXEL, fontSize: 7, color: "#fff" }}>{s.ticker}</div>
-                  <div style={{ fontFamily: PIXEL, fontSize: 5, color: MUTED, marginTop: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.name}</div>
+                  <div style={{ fontFamily: PIXEL, fontSize: 8, color: "#fff" }}>{s.ticker}</div>
+                  <div style={{ fontFamily: PIXEL, fontSize: 8, color: MUTED, marginTop: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.name}</div>
                 </div>
                 <div style={{ textAlign: "right", flexShrink: 0, fontFamily: PIXEL }}>
-                  <div style={{ fontSize: 6, color: "#fff" }}>{q ? usd(q.usdPrice) : "..."}</div>
-                  <div style={{ fontSize: 5, color: q ? moveColor(q.change24h) : MUTED, marginTop: 3 }}>{q ? pct(q.change24h) : ""}</div>
+                  <div style={{ fontSize: 8, color: "#fff" }}>{q ? usd(q.usdPrice) : "..."}</div>
+                  <div style={{ fontSize: 8, color: q ? moveColor(q.change24h) : MUTED, marginTop: 3 }}>{q ? pct(q.change24h) : ""}</div>
                 </div>
                 {leg ? (
                   <span style={{ width: 8, height: 8, borderRadius: "50%", flexShrink: 0, margin: "0 1px", background: legColor(leg.status) }} />
@@ -813,7 +813,7 @@ function StockLogo({ stock, size }: { stock: StockInfo; size: number }) {
     return (
       <div style={{
         width: size, height: size, borderRadius: "50%", background: stock.color, flexShrink: 0, display: "flex",
-        alignItems: "center", justifyContent: "center", fontFamily: PIXEL, fontSize: Math.max(5, size / 5), color: "#0b0f24",
+        alignItems: "center", justifyContent: "center", fontFamily: PIXEL, fontSize: Math.max(8, size / 5), color: "#0b0f24",
       }}>
         {stock.ticker.slice(0, 2)}
       </div>
@@ -905,12 +905,12 @@ function BasketCard({ basket, stocks, avg, onClick }: {
     })}>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontFamily: PIXEL, fontSize: 8, color: "#fff" }}>{basket.name.toUpperCase()}</div>
-        <div style={{ fontFamily: PIXEL, fontSize: 5, color: MUTED, marginTop: 4, lineHeight: 1.5 }}>{basket.tagline}</div>
+        <div style={{ fontFamily: PIXEL, fontSize: 8, color: MUTED, marginTop: 4, lineHeight: 1.5 }}>{basket.tagline}</div>
         <div style={{ marginTop: 8 }}><LogoStack stocks={stocks} size={18} /></div>
       </div>
       <div style={{ textAlign: "right", flexShrink: 0 }}>
-        <div style={{ fontFamily: PIXEL, fontSize: 7, color: avg == null ? MUTED : moveColor(avg) }}>{avg == null ? "..." : pct(avg)}</div>
-        <div style={{ fontFamily: PIXEL, fontSize: 5, color: MUTED, marginTop: 4 }}>{stocks.length} STOCKS</div>
+        <div style={{ fontFamily: PIXEL, fontSize: 8, color: avg == null ? MUTED : moveColor(avg) }}>{avg == null ? "..." : pct(avg)}</div>
+        <div style={{ fontFamily: PIXEL, fontSize: 8, color: MUTED, marginTop: 4 }}>{stocks.length} STOCKS</div>
       </div>
     </button>
   );
@@ -932,9 +932,9 @@ function StockGridCard({ stock, isMarket, quote, value, pnl, onClick }: {
         <div style={{ minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
             <span style={{ fontFamily: PIXEL, fontSize: 8, color: "#fff" }}>{stock.ticker}</span>
-            {isPreIpo(stock) && <span style={{ fontFamily: PIXEL, fontSize: 4, color: "#14F0C6", border: "1px solid #14F0C655", borderRadius: 3, padding: "1px 2px" }}>PRE</span>}
+            {isPreIpo(stock) && <span style={{ fontFamily: PIXEL, fontSize: 8, color: "#14F0C6", border: "1px solid #14F0C655", borderRadius: 3, padding: "1px 2px" }}>PRE</span>}
           </div>
-          <div style={{ fontFamily: PIXEL, fontSize: 5, color: MUTED, marginTop: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{stock.name}</div>
+          <div style={{ fontFamily: PIXEL, fontSize: 8, color: MUTED, marginTop: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{stock.name}</div>
         </div>
       </div>
       {isMarket ? (

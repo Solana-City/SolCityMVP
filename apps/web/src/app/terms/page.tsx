@@ -1,6 +1,6 @@
 export const metadata = {
-  title: "Terms of Service | The Solana City",
-  description: "Terms of Service for The Solana City",
+  title: "Terms of Service | SolanaCity",
+  description: "Terms of Service for SolanaCity",
 };
 
 export default function TermsPage() {
@@ -18,7 +18,7 @@ export default function TermsPage() {
     >
       <div style={{ marginBottom: 40 }}>
         <div style={{ color: "#9945FF", fontSize: 8, letterSpacing: 3, textTransform: "uppercase", marginBottom: 8 }}>
-          The Solana City
+          SolanaCity
         </div>
         <h1 style={{ color: "#ffffff", fontSize: 20, fontWeight: "bold", margin: 0 }}>
           Terms of Service
@@ -32,12 +32,12 @@ export default function TermsPage() {
 
         <section>
           <h2 style={{ color: "#ccccee", fontSize: 12, marginBottom: 12 }}>1. Acceptance</h2>
-          <p>By accessing or using The Solana City (&ldquo;Sol City&rdquo;, &ldquo;the Game&rdquo;), you agree to these Terms. If you do not agree, do not use the Game.</p>
+          <p>By accessing or using SolanaCity (&ldquo;the Game&rdquo;), you agree to these Terms. If you do not agree, do not use the Game.</p>
         </section>
 
         <section>
           <h2 style={{ color: "#ccccee", fontSize: 12, marginBottom: 12 }}>2. The Game</h2>
-          <p>Sol City is a browser-based multiplayer game where in-game actions correspond to real transactions on the Solana blockchain. You are solely responsible for any blockchain transactions you sign.</p>
+          <p>SolanaCity is a browser-based multiplayer game where in-game actions correspond to real transactions on the Solana blockchain. You are solely responsible for any blockchain transactions you sign.</p>
         </section>
 
         <section>
@@ -68,7 +68,7 @@ export default function TermsPage() {
 
         <section>
           <h2 style={{ color: "#ccccee", fontSize: 12, marginBottom: 12 }}>6. Intellectual Property</h2>
-          <p>All game assets, code, and branding are owned by The Solana City. You may not reproduce, distribute, or create derivative works without permission.</p>
+          <p>All game assets, code, and branding are owned by SolanaCity. You may not reproduce, distribute, or create derivative works without permission.</p>
         </section>
 
         <section>
@@ -97,7 +97,7 @@ export default function TermsPage() {
       </div>
 
       <div style={{ marginTop: 64, paddingTop: 24, borderTop: "1px solid rgba(153,69,255,0.15)", color: "#222244", fontSize: 8 }}>
-        © 2025 The Solana City. Built on Solana.
+        © 2025 SolanaCity. Built on Solana.
       </div>
     </div>
   );

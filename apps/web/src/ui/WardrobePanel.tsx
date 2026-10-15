@@ -29,6 +29,7 @@ import {
 import { chamferBox, solidColor } from "@/ui/chamfer";
 import ChamferGlow from "@/ui/ChamferGlow";
 import { useViewportBox, overlayBox } from "@/ui/useViewportBox";
+import { useEscape } from "@/ui/useEscape";
 
 const CHROMA_R = 215, CHROMA_G = 123, CHROMA_B = 186, CHROMA_TOL = 30;
 
@@ -416,6 +417,10 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
     gameRef?.events.emit("wardrobe:loadout", original);
     onClose();
   }, [gameRef, original, onClose]);
+  // Escape does what the X does: leaves, or asks first with changes unsaved.
+  // On the question itself it means KEEP EDITING, the safe answer.
+  useEscape(requestClose);
+  useEscape(() => setConfirmLeave(false), confirmLeave);
 
   const variants = getEnabledVariants(activeCategory);
   // The colour the worn style is actually drawn in: an explicit pick, else the
@@ -862,7 +867,7 @@ function PackTile({ tile, compact, onClick }: { tile: number; compact: boolean; 
         background: "rgba(183,233,40,0.07)",
         border: "2px dashed rgba(183,233,40,0.55)",
         color: "#B7E928", cursor: "pointer",
-        fontSize: compact ? 5 : 6, letterSpacing: 0.5, lineHeight: 1.3,
+        fontSize: 8, letterSpacing: 0.5, lineHeight: 1.3,
         fontFamily: '"Press Start 2P", monospace',
         ...feelStyle(feel),
       })}
@@ -952,7 +957,7 @@ function VariantCard({
         background: baseBg,
         border: baseBorder,
         cursor: "pointer",
-        fontSize: compact ? 5 : 6,
+        fontSize: 8,
         fontFamily: '"Press Start 2P", monospace',
         opacity: locked ? 0.6 : 1,
         transition: "background 0.15s, border-color 0.15s, transform 0.1s",

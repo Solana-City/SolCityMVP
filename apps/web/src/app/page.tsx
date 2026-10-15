@@ -578,7 +578,7 @@ export default function Home() {
                   <WardrobeButton size={30} onClick={() => setWardrobeOpen(true)} />
                   <CalendarButton size={30} />
                   <HudIconBtn
-                    size={30} src="/assets/ui/icon_map.png"
+                    size={30} src="/assets/ui/icon_hud_map.png"
                     onClick={() => setMapOpen((v) => !v)}
                     title="Minimap" aria-expanded={mapOpen} aria-controls="hud-map-preview"
                     aria-label={mapOpen ? "Hide minimap" : "Show minimap"}
@@ -640,7 +640,7 @@ export default function Home() {
                       <WardrobeButton size={34} onClick={() => setWardrobeOpen(true)} />
                       <CalendarButton size={34} />
                       <HudIconBtn
-                        size={34} src="/assets/ui/icon_map.png"
+                        size={34} src="/assets/ui/icon_hud_map.png"
                         onClick={() => setMapOpen((v) => !v)}
                         title="Minimap" aria-expanded={mapOpen} aria-controls="hud-map-preview"
                         aria-label={mapOpen ? "Hide minimap" : "Show minimap"}
@@ -854,10 +854,11 @@ function CalendarButton({ size = 30 }: { size?: number }) {
   }, []);
   return (
     <HudIconBtn
-      size={size} src="/assets/ui/icon_calendar.png" title="City calendar" aria-label="City calendar"
+      size={size} src="/assets/ui/icon_hud_calendar.png" title="City calendar" aria-label="City calendar"
       onClick={() => { window.dispatchEvent(new Event(OPEN_CALENDAR_EVENT)); setFresh(false); }}
+      // The date sits on the white page of the art: rows 26-51 of its 64.
       overlay={<span style={{
-        position: "absolute", left: 0, right: 0, top: "40%", height: "44%",
+        position: "absolute", left: 0, right: 0, top: "40.625%", height: "40.625%",
         display: "flex", alignItems: "center", justifyContent: "center",
         fontFamily: '"Press Start 2P", monospace', fontSize: Math.max(6, Math.round(size * 0.24)),
         color: "#0a1a2e", lineHeight: 1, pointerEvents: "none",

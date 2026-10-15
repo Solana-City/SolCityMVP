@@ -89,7 +89,7 @@ export const TRACKS: AchievementTrack[] = [
   {
     id: "citizens",
     title: "Meeting People",
-    description: "Talk to the citizens of Sol City.",
+    description: "Talk to the citizens of SolanaCity.",
     icon: "🗨️",
     unit: "citizens",
     art: "social-5",

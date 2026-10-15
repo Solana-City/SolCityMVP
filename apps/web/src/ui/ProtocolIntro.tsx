@@ -9,7 +9,7 @@
  * link above the panel. Each NPC opts in by wrapping its panel in
  * <ProtocolIntroGate>, so removing one tutorial is removing one wrapper.
  */
-import { useEffect, useMemo, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { track } from "@/game/telemetry/track";
 import { chamferBox, octagonFrame, chamferRectPoints } from "@/ui/chamfer";
 import { UI_ACCENT } from "@/ui/PixelIcons";
@@ -59,6 +59,14 @@ export interface IntroSpec {
 }
 
 const storageKey = (id: string) => `solcity:intro:${id}`;
+
+/**
+ * Told whether an intro is up, by the window the gate sits in. The intro
+ * floats on its own, so the window's frame is left empty behind it: a second
+ * frame peeking out round the card. The window drops its frame while this
+ * says so.
+ */
+export const IntroShowingContext = createContext<((showing: boolean) => void) | null>(null);
 
 function Flow({ spec, step }: { spec: IntroSpec; step: IntroStep }) {
   const n = spec.nodes.length;
@@ -219,6 +227,12 @@ export function ProtocolIntroGate({ spec, children }: { spec: IntroSpec; childre
   useEffect(() => {
     if (open) track("tutorial", spec.id, { value: 1, label: "opened" });
   }, [open, spec.id]);
+  const reportShowing = useContext(IntroShowingContext);
+  useEffect(() => {
+    if (!reportShowing) return;
+    reportShowing(open);
+    return () => reportShowing(false);
+  }, [open, reportShowing]);
   const roomy = useRoomyTitleRow();
   const [claimed, setClaimed] = useState(false);
   const slot = useMemo(

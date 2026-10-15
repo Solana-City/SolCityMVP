@@ -10,6 +10,7 @@ import { Citizen, Img } from "./CityGuide";
 import { track } from "@/game/telemetry/track";
 import { chamferBox, octagonFrame } from "@/ui/chamfer";
 import { useButtonFeel, feelStyle, type ButtonFeel } from "@/ui/useButtonFeel";
+import { useEscape } from "@/ui/useEscape";
 
 const PIXEL = '"Press Start 2P", monospace';
 const GREEN = "#B7E928";
@@ -84,8 +85,13 @@ const btn = (over: React.CSSProperties, feel?: Pick<ButtonFeel, "hover" | "press
   ...(feel ? feelStyle(feel) : null),
 });
 
-export default function GuestNotice({ onConnect, onPlay }: { onConnect: () => void; onPlay: () => void }) {
+export default function GuestNotice({ onConnect, onPlay, onCancel }: {
+  onConnect: () => void; onPlay: () => void;
+  /** Escape: back to the login screen, nothing chosen. */
+  onCancel: () => void;
+}) {
   const [i, setI] = useState(0);
+  useEscape(onCancel);
   const step = STEPS[i];
   const last = i === STEPS.length - 1;
   const playFeel = useButtonFeel();

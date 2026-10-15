@@ -298,11 +298,11 @@ export function PortraitBox({
 
   // A bare figure gets a dark outline traced round its silhouette (not a
   // frame: it follows the character's own edge). Four hard drop-shadows, one
-  // each way, stack into a solid outline about three quarters of a source
-  // pixel thick, which is what a hand-drawn pixel-art outline looks like.
+  // each way, stack into a solid outline. It is kept thin, about 0.4 of a
+  // source pixel (never under 0.75px), so it reads as an edge, not a border.
   const outline = bare
     ? (() => {
-        const t = Math.max(1, Math.round(scale * 0.75));
+        const t = Math.max(0.75, Math.round(scale * 0.4 * 100) / 100);
         const c = "#05060d";
         return `drop-shadow(${t}px 0 0 ${c}) drop-shadow(-${t}px 0 0 ${c}) drop-shadow(0 ${t}px 0 ${c}) drop-shadow(0 -${t}px 0 ${c})`;
       })()

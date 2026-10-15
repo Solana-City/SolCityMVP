@@ -19,6 +19,7 @@ import { CATEGORY_META, CATEGORY_ORDER, type MinimapCategory } from "@/game/mini
 import { chamferBox, chamferClip } from "@/ui/chamfer";
 import { PixelImg, CloseButton } from "@/ui/PixelIcons";
 import { useButtonFeel, feelStyle, type ButtonFeel } from "@/ui/useButtonFeel";
+import { useEscape } from "@/ui/useEscape";
 
 const PIXEL_FONT = '"Press Start 2P", monospace';
 const PANEL_BG = "rgba(8,10,22,0.72)";
@@ -81,7 +82,7 @@ function drawMarker(ctx: CanvasRenderingContext2D, cat: MinimapCategory, x: numb
   ctx.stroke();
   if (cat === "guide" && r >= 5) {
     ctx.fillStyle = "#1a1405";
-    ctx.font = `bold ${Math.round(r * 1.4)}px system-ui, sans-serif`;
+    ctx.font = MAP_LABEL_FONT;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.fillText("?", 0, r * 0.08);
@@ -244,13 +245,12 @@ export default function Minimap({ compact, corners, bare, iconOnly }: { compact?
       if (e.key === "m" || e.key === "M") {
         e.preventDefault();
         setOpenAndNotify(!open);
-      } else if (e.key === "Escape" && open) {
-        setOpenAndNotify(false);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [open, setOpenAndNotify]);
+  useEscape(() => setOpenAndNotify(false), open);
 
   const [collapsed, setCollapsed] = useState(false);
   useEffect(() => {
@@ -437,7 +437,7 @@ function CompactMap({ host, mobile, corners, bare, onOpen, onCollapse }: {
           {/* Label on the rim, north. */}
           <span style={{
             position: "absolute", left: "50%", top: -2, transform: "translateX(-50%)", pointerEvents: "none",
-            fontFamily: PIXEL_FONT, fontSize: mobile ? 5 : 6, color: "#e2e8f0", whiteSpace: "nowrap",
+            fontFamily: PIXEL_FONT, fontSize: 8, color: "#e2e8f0", whiteSpace: "nowrap",
             background: "rgba(8,10,22,0.92)", border: PANEL_BORDER, borderRadius: 6, padding: "3px 6px",
           }}>
             MAP{mobile ? "" : " [M]"}
@@ -864,7 +864,7 @@ function FullMap({ host, onClose }: { host: MinimapHost; onClose: () => void }) 
       onPointerDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
       style={{
         position: "fixed", inset: 0, zIndex: 60, background: "rgba(2,4,12,0.7)",
-        fontFamily: "system-ui, -apple-system, sans-serif",
+        fontFamily: PIXEL_FONT,
         display: "flex", alignItems: "center", justifyContent: "center",
         padding: narrow ? "max(env(safe-area-inset-top, 0px), 8px) 8px 8px" : 20,
       }}
@@ -881,7 +881,7 @@ function FullMap({ host, onClose }: { host: MinimapHost; onClose: () => void }) 
         {/* Header */}
         <div style={{ display: "flex", alignItems: "center", gap: 10, padding: narrow ? "8px 10px" : "12px 20px", borderBottom: "1px solid rgba(183,233,40,0.12)", background: "rgba(183,233,40,0.06)" }}>
           <PixelImg src="/assets/ui/icon2_map.png" size={narrow ? 18 : 22} />
-          <span style={{ fontFamily: PIXEL_FONT, fontSize: narrow ? 11 : 14, color: "#B7E928", letterSpacing: 1 }}>SOLANA CITY MAP</span>
+          <span style={{ fontFamily: PIXEL_FONT, fontSize: narrow ? 11 : 14, color: "#B7E928", letterSpacing: 1 }}>SOLANACITY MAP</span>
           {!narrow && <span style={{ fontFamily: PIXEL_FONT, fontSize: 7, color: "#64748b" }}>Drag to move · scroll to zoom · click a marker</span>}
           <div style={{ flex: 1 }} />
           <CloseButton onClick={onClose} label="Close map" />
@@ -1035,15 +1035,22 @@ function Portrait({ point, size }: { point: MinimapPoint; size: number }) {
 const ctrlBtn: React.CSSProperties = chamferBox(8, {
   width: 34, height: 34, cursor: "pointer",
   background: "rgba(8,10,22,0.9)", border: "1px solid rgba(183,233,40,0.35)",
-  color: "#e2e8f0", fontSize: 17, lineHeight: 1,
+  color: "#e2e8f0", fontSize: 16, lineHeight: 1,
   display: "flex", alignItems: "center", justifyContent: "center",
 });
 
+// Labels on the map are set in the city's pixel face like the rest of the
+// interface, at 8px: the size Press Start 2P is drawn for, so every glyph lands
+// on whole pixels instead of blurring between them.
+const MAP_LABEL_FONT = `8px ${PIXEL_FONT}`;
+
 function drawName(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, color = "#f1f5f9") {
   ctx.save();
-  ctx.font = "bold 11px system-ui, sans-serif";
+  ctx.font = MAP_LABEL_FONT;
   ctx.textAlign = "center";
   ctx.textBaseline = "top";
+  // Whole pixels, or the pixel face smears across two.
+  x = Math.round(x); y = Math.round(y);
   ctx.lineWidth = 3;
   ctx.strokeStyle = "rgba(4,6,14,0.9)";
   ctx.strokeText(text, x, y);
@@ -1059,10 +1066,11 @@ function drawTag(ctx: CanvasRenderingContext2D, text: string, x: number, y: numb
     return;
   }
   ctx.save();
-  ctx.font = "bold 10px system-ui, sans-serif";
+  ctx.font = MAP_LABEL_FONT;
+  x = Math.round(x); y = Math.round(y);
   const tw = ctx.measureText(text).width;
   const pw = tw + 12;
-  const ph = 17;
+  const ph = 16;
   ctx.fillStyle = "rgba(8,10,22,0.85)";
   ctx.strokeStyle = color;
   ctx.lineWidth = 1;
@@ -1073,6 +1081,6 @@ function drawTag(ctx: CanvasRenderingContext2D, text: string, x: number, y: numb
   ctx.fillStyle = "#f5f3ff";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.fillText(text, x, y + 0.5);
+  ctx.fillText(text, x, y + 1);
   ctx.restore();
 }

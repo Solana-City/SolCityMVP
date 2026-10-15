@@ -103,7 +103,7 @@ export default function CloakPanel({ onClose }: { onClose: () => void }) {
         <div style={{ fontSize: 7, color: "#ccccdd", lineHeight: 1.8 }}>
           {CLOAK_LIVE
             ? "Sign a private send right here."
-            : "Cloak's proofs are signed against mainnet, and Solana City runs on devnet, so the last step happens on Cloak itself. Everything above is their live model, not a mock."}
+            : "Cloak's proofs are signed against mainnet, and SolanaCity runs on devnet, so the last step happens on Cloak itself. Everything above is their live model, not a mock."}
         </div>
       </div>
       </div>

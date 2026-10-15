@@ -6,6 +6,7 @@ import { getEntry } from "@/game/minigames";
 import type { MiniGameContext, MiniGameResult } from "@/game/minigames";
 import { requestLeave, resetLeaveGuard } from "@/game/minigames/leaveGuard";
 import LeaveGameConfirm from "@/ui/LeaveGameConfirm";
+import { useEscape } from "@/ui/useEscape";
 
 // Module-level cache so React.lazy is called once per id — avoids Suspense re-triggering
 const _lazyCache = new Map<string, React.LazyExoticComponent<React.ComponentType<any>>>();
@@ -41,6 +42,10 @@ export default function MiniGameOverlay({
 
   // A stake belongs to a round, never to the next game the player opens.
   useEffect(() => resetLeaveGuard, [id]);
+
+  // Each game answers Escape itself; holding the top of the stack keeps a
+  // city panel left open underneath from closing on the same press.
+  useEscape(null);
 
   if (!GameComponent) {
     console.error(`[MiniGameOverlay] No mini-game registered with id "${id}"`);

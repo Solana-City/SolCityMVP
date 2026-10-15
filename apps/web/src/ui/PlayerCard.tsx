@@ -9,6 +9,7 @@ import { OPEN_DM_EVENT, SEND_TOKENS_EVENT } from "@/game/chat/dmEvents";
 import { chamferBox } from "@/ui/chamfer";
 import { AvatarPortrait } from "@/ui/AvatarPortrait";
 import { useButtonFeel, feelStyle } from "@/ui/useButtonFeel";
+import { useEscape } from "@/ui/useEscape";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { PublicKey } from "@solana/web3.js";
 import { levelsFromMask } from "@/game/social/profilePublisher";
@@ -53,6 +54,7 @@ export default function PlayerCard({ gameRef, wallet, displayName, myWallet, onC
   const [copied, setCopied] = useState(false);
   const flags = useFlags();
   const nickname = useNickname(wallet);
+  useEscape(onClose);
 
   const copyWallet = () => {
     if (!wallet) return;
@@ -419,7 +421,7 @@ function Badges({ indices }: { indices?: Set<number> }) {
             {level > 1 && (
               <span style={{
                 position: "absolute", right: -1, bottom: -2,
-                fontSize: 5, lineHeight: 1,
+                fontSize: 8, lineHeight: 1,
                 color: "#0b0e1c", background: TIER_COLORS[track.levels[level - 1]?.tier ?? "common"],
                 padding: "1px 2px",
               }}>{level}</span>

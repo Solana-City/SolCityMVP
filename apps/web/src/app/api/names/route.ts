@@ -17,7 +17,7 @@ const PROBLEM_TEXT: Record<NameProblem, string> = {
   reserved: "That name is reserved.",
   taken: "That name is taken.",
   locked: "That name is locked.",
-  "wallet-locked": "Your name was locked by the Solana City team.",
+  "wallet-locked": "Your name was locked by the SolanaCity team.",
 };
 
 /**

@@ -8,6 +8,7 @@ import { chamferBox } from "@/ui/chamfer";
 import ChamferGlow from "@/ui/ChamferGlow";
 import { CloseButton, ExternalLinkIcon } from "@/ui/PixelIcons";
 import { useButtonFeel, feelStyle } from "@/ui/useButtonFeel";
+import { useEscape } from "@/ui/useEscape";
 
 function useIsTouch() {
   const [isTouch, setIsTouch] = useState(false);
@@ -144,14 +145,11 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
         e.preventDefault();
         skipToEnd();
       }
-      if (e.key === "Escape") {
-        e.preventDefault();
-        onClose();
-      }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [npc, skipOrAdvance, skipToEnd, onClose]);
+  }, [npc, skipOrAdvance, skipToEnd]);
+  useEscape(onClose, !!npc);
 
   // Mobile ACT button doubles as the dialog key: while a dialog is open,
   // CityScene ignores touch:interact (interactionBlocked), so the press

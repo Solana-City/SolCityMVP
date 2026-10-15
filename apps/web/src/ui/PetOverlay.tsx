@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { PET_FRAMES, PET_FRAME_MS, PET_LOOPS, petSheetUrl } from "@/game/pet/petAssets";
 import { octagonFrame } from "@/ui/chamfer";
+import { useEscape } from "@/ui/useEscape";
 
 /**
  * The petting square: the Caramel Dog has nothing to say, so meeting it plays
@@ -38,6 +39,7 @@ export default function PetOverlay({ onClose }: { onClose: () => void }) {
    * differently from tapping it.
    */
   const pressedHere = useRef(false);
+  useEscape(onClose);
 
   useEffect(() => {
     const canvas = canvasRef.current;

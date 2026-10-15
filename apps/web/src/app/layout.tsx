@@ -3,14 +3,14 @@ import "./globals.css";
 import { ChunkReloadGuard } from "../ui/ChunkReloadGuard";
 
 export const metadata: Metadata = {
-  title: "The Solana City",
+  title: "SolanaCity",
   description:
     "A multiplayer 2D city where every interaction is a real Solana transaction",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "Sol City",
+    title: "SolanaCity",
   },
   other: {
     "mobile-web-app-capable": "yes",

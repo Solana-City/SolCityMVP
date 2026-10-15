@@ -12,6 +12,7 @@ import { ChromaPreview } from "@/ui/WardrobePanel";
 import { chamferBox } from "@/ui/chamfer";
 import ChamferGlow from "@/ui/ChamferGlow";
 import { useButtonFeel, feelStyle, type ButtonFeel } from "@/ui/useButtonFeel";
+import { useEscape } from "@/ui/useEscape";
 
 /**
  * Outfit packs — PREVIEW. Three packs, each with its own odds per rarity,
@@ -65,6 +66,8 @@ export default function BoosterOverlay({
   }, [wallet]);
 
   const backToPacks = () => { setPhase("choose"); setDrops([]); setPack(null); };
+  // Not mid-opening, same as the backdrop: the pack is already being granted.
+  useEscape(phase === "opening" ? null : onClose);
 
   return (
     <div
@@ -153,15 +156,15 @@ export default function BoosterOverlay({
                   {/* Cropped, same as the wardrobe grid: the reveal is about
                       the item, not the character it sits on. */}
                   <ChromaPreview file={d.file} size={60} facingUp={d.category === "back"} crop />
-                  <span style={{ fontSize: 6, color: "#e0d0ff", lineHeight: 1.3, textAlign: "center" }}>{d.name}</span>
-                  <span style={{ fontSize: 5, color: "#7a7aa0", letterSpacing: 0.5 }}>
+                  <span style={{ fontSize: 8, color: "#e0d0ff", lineHeight: 1.3, textAlign: "center" }}>{d.name}</span>
+                  <span style={{ fontSize: 8, color: "#7a7aa0", letterSpacing: 0.5 }}>
                     {CATEGORY_LABELS[d.category]}
                   </span>
-                  <span style={{ fontSize: 5, letterSpacing: 0.5, color: RARITY_COLOR[d.rarity] }}>
+                  <span style={{ fontSize: 8, letterSpacing: 0.5, color: RARITY_COLOR[d.rarity] }}>
                     {RARITY_LABEL[d.rarity]}
                   </span>
                   <span style={{
-                    fontSize: 5, letterSpacing: 0.5,
+                    fontSize: 8, letterSpacing: 0.5,
                     color: d.owned ? "#888" : "#B7E928",
                   }}>{d.owned ? "OWNED" : "NEW"}</span>
                 </div>
@@ -213,7 +216,7 @@ function PackCard({ pack, onOpen }: { pack: PackDef; onOpen: () => void }) {
                 width: `${pack.odds[r]}%`, background: RARITY_COLOR[r],
               }} />
             </span>
-            <span style={{ fontSize: 5, color: "#7a7aa0", width: 24, textAlign: "right" }}>
+            <span style={{ fontSize: 8, color: "#7a7aa0", width: 32, textAlign: "right" }}>
               {pack.odds[r]}%
             </span>
           </div>

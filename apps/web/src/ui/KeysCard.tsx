@@ -11,6 +11,7 @@
  */
 import { useEffect, useState } from "react";
 import { useButtonFeel, feelStyle } from "@/ui/useButtonFeel";
+import { useEscape } from "@/ui/useEscape";
 
 const SEEN_KEY = "solcity:keys-seen";
 
@@ -76,12 +77,7 @@ export function KeysRows() {
 }
 
 export default function KeysCard({ open, onClose }: { open: boolean; onClose: () => void }) {
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
+  useEscape(onClose, open);
   const closeFeel = useButtonFeel();
 
   if (!open) return null;
@@ -145,12 +141,22 @@ export function useKeysCard(enabled: boolean): [boolean, (open: boolean) => void
     if (!enabled) return;
     try {
       if (localStorage.getItem(SEEN_KEY)) return;
-      localStorage.setItem(SEEN_KEY, "1");
-      // After the city has drawn, so it lands on the game rather than on a
-      // loading screen.
-      const t = setTimeout(() => setOpen(true), 4000);
-      return () => clearTimeout(t);
-    } catch { /* private mode: the card is still one key away */ }
+    } catch { return; /* private mode: the card is still one key away */ }
+    // Counted from entering the city, not from the page loading: from the
+    // load, it opened behind the login screen and was already sitting there
+    // when Sol's tour came up over the city, so the two stacked the wrong way
+    // round and Escape closed the tour hidden under it first.
+    let t: ReturnType<typeof setTimeout> | null = null;
+    const onEnter = () => {
+      if (t) return;
+      try { localStorage.setItem(SEEN_KEY, "1"); } catch { /* still opens once */ }
+      t = setTimeout(() => setOpen(true), 4000);
+    };
+    window.addEventListener("solcity:entered-city", onEnter);
+    return () => {
+      window.removeEventListener("solcity:entered-city", onEnter);
+      if (t) clearTimeout(t);
+    };
   }, [enabled]);
 
   return [open, setOpen];

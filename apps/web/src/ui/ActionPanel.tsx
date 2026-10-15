@@ -11,7 +11,7 @@ import {
   SEND_TOKENS, DEFAULT_SEND_TOKEN, getSendToken, explorerUrl,
   type SendToken,
 } from "@/game/solana/sendTokens";
-import { ProtocolIntroGate, type IntroSpec } from "@/ui/ProtocolIntro";
+import { ProtocolIntroGate, IntroShowingContext, type IntroSpec } from "@/ui/ProtocolIntro";
 import CityGuide from "@/ui/CityGuide";
 import MagicBlockHub from "@/ui/MagicBlockHub";
 import StockExchangePanel from "@/ui/StockExchangePanel";
@@ -27,6 +27,7 @@ import { backdropClose } from "@/ui/backdrop";
 import { useRoomyTitleRow } from "@/ui/howItWorks";
 import { useViewportBox, overlayBox } from "@/ui/useViewportBox";
 import { useButtonFeel, feelStyle, type ButtonFeel } from "@/ui/useButtonFeel";
+import { useEscape } from "@/ui/useEscape";
 
 /** Every protocol NPC's app window uses the map legend's "Protocols" color. */
 const PROTOCOLS_COLOR = CATEGORY_META.defi.color;
@@ -189,13 +190,11 @@ export default function ActionPanel({ action, onClose }: ActionPanelProps) {
     return () => mq.removeEventListener("change", onChange);
   }, []);
 
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") { e.preventDefault(); onClose(); }
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [onClose]);
+  useEscape(onClose, !!action);
+
+  // A first-time intro floats over this window on its own card; the window's
+  // frame, empty behind it, is not drawn until the intro is done.
+  const [introShowing, setIntroShowing] = useState(false);
 
   if (!action) return null;
 
@@ -251,12 +250,16 @@ export default function ActionPanel({ action, onClose }: ActionPanelProps) {
           fontFamily: '"Press Start 2P", monospace',
           maxHeight: isTouch ? "100%" : "90dvh",
           overflowY: "auto",
+          // Nothing left to paint while the intro floats over it. Not
+          // visibility:hidden, which stops Chrome drawing the sprites in the
+          // intro's flow picture even though the card opts back in.
+          ...(introShowing ? { background: "none", borderImage: "none", borderWidth: 0, padding: 0 } : null),
         }}
       >
         {short && (
           <style>{`.npc-app--short .mb-topics { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; }`}</style>
         )}
-        {content}
+        <IntroShowingContext.Provider value={setIntroShowing}>{content}</IntroShowingContext.Provider>
       </div>
     </div>
   );

@@ -28,7 +28,7 @@ const CHAIN: `solana:${string}` =
   NETWORK === "mainnet" || NETWORK === "mainnet-beta" ? "solana:mainnet" : "solana:devnet";
 
 const APP_IDENTITY = {
-  name: "The Solana City",
+  name: "SolanaCity",
   uri:
     process.env.NEXT_PUBLIC_APP_URL ??
     (typeof window !== "undefined" ? window.location.origin : "https://solana.city"),

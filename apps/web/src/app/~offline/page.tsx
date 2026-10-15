@@ -39,7 +39,7 @@ export default function OfflinePage() {
             maxWidth: 300,
           }}
         >
-          Sol City requires a connection to the Solana network.
+          SolanaCity requires a connection to the Solana network.
           <br />
           Check your internet and try again.
         </div>

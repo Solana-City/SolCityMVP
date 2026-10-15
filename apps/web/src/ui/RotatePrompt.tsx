@@ -81,7 +81,7 @@ export default function RotatePrompt() {
           Rotate your device
         </div>
         <div style={{ color: "#444466", fontSize: 10, lineHeight: 1.6 }}>
-          Sol City is designed for landscape mode.
+          SolanaCity is designed for landscape mode.
           <br />
           Turn your phone sideways to play.
         </div>

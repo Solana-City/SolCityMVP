@@ -20,6 +20,7 @@ import { cachedName, requestNames } from "@/game/names/nameService";
 import { chamferBox, octagonFrame } from "@/ui/chamfer";
 import ChamferGlow from "@/ui/ChamferGlow";
 import { useButtonFeel, feelStyle } from "@/ui/useButtonFeel";
+import { useEscape } from "@/ui/useEscape";
 
 // ── Chroma key ────────────────────────────────────────────────────────────────
 const CHROMA_R = 215, CHROMA_G = 123, CHROMA_B = 186, CHROMA_TOL = 30;
@@ -176,6 +177,7 @@ function MiniAvatar({ loadout, size = 64 }: { loadout: Loadout; size?: number })
 
 // ── Leaderboard modal ─────────────────────────────────────────────────────────
 function LeaderboardModal({ onClose }: { onClose: () => void }) {
+  useEscape(onClose);
   // City-wide board, with this browser's own history as the fallback while it
   // loads (and if the store is unreachable).
   const [rows, setRows] = useState<BoardRow[] | null>(null);
@@ -607,11 +609,11 @@ function HuntHowTo({ loadout, isTouch, onClose }: { loadout: Loadout | null; isT
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "e" || e.key === "E" || e.key === "Enter" || e.key === "ArrowRight") { e.preventDefault(); if (last) onClose(); else setI((n) => n + 1); }
       else if (e.key === "ArrowLeft") { e.preventDefault(); setI((n) => Math.max(0, n - 1)); }
-      else if (e.key === "Escape") { e.preventDefault(); onClose(); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [last, onClose]);
+  useEscape(onClose);
 
   return (
     <div

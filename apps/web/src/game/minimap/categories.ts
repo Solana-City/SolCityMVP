@@ -58,7 +58,7 @@ export function npcCategory(npc: { id: string; action: NPCAction }): MinimapCate
  * listed (generic buildings, stands, decor) get no label.
  */
 export const LANDMARK_LAYERS: Record<string, string> = {
-  BuildSolanaCity: "Solana City",
+  BuildSolanaCity: "SolanaCity",
   DecorFountain: "Central Fountain",
   BuildJupiter: "Jupiter",
   BuildMagicBlock: "MagicBlock",

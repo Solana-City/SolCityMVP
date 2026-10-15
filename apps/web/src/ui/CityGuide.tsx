@@ -156,7 +156,7 @@ function useSteps(touch: boolean): Step[] {
   return [
     {
       title: "WELCOME",
-      line: "I'm Sol, your city guide. Here is Solana City in a few quick steps.",
+      line: "I'm Sol, your city guide. Here is SolanaCity in a few quick steps.",
       scene: (
         <div style={{ display: "flex", alignItems: "flex-end", gap: 14 }}>
           <Citizen sheet="Sol.png" size={96} />

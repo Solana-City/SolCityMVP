@@ -5,6 +5,7 @@ import {
   EXPRESSIONS, type Expression, loadSavedLoadout, type Loadout,
 } from "@/game/config/paperDoll";
 import { drawAvatarPortrait } from "@/ui/AvatarPortrait";
+import { useEscape } from "@/ui/useEscape";
 
 /**
  * GTA-style radial expression picker. Hold Q (desktop) to open a wheel of
@@ -70,6 +71,7 @@ export default function ExpressionWheel({ gameRef }: { gameRef: Phaser.Game | nu
   }, []);
 
   const closeWheel = useCallback(() => { setOpen(false); setActiveIndex(null); }, []);
+  useEscape(closeWheel, open);
 
   const repeatLast = useCallback(() => {
     let id: string | null = null;
@@ -88,7 +90,6 @@ export default function ExpressionWheel({ gameRef }: { gameRef: Phaser.Game | nu
       if (typing()) return;
       if ((e.key === "q" || e.key === "Q") && !e.repeat) { e.preventDefault(); openWheel(true); }
       else if (e.key === "r" || e.key === "R") { e.preventDefault(); repeatLast(); }
-      else if (e.key === "Escape" && open) { e.preventDefault(); closeWheel(); }
     };
     const onUp = (e: KeyboardEvent) => {
       if ((e.key === "q" || e.key === "Q") && open && openedByHold.current) {

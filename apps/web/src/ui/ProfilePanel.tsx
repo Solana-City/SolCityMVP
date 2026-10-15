@@ -36,6 +36,7 @@ const MUTED = "#7f88a8";
 type PanelTab = "profile" | "achievements" | "friends" | "keys" | "settings";
 const TABS: PanelTab[] = ["profile", "achievements", "friends", "keys", "settings"];
 import { useViewportBox, overlayBox } from "@/ui/useViewportBox";
+import { useEscape } from "@/ui/useEscape";
 
 interface ProfilePanelProps {
   gameRef: Phaser.Game | null;
@@ -68,14 +69,7 @@ export default function ProfilePanel({ gameRef, isOpen, onClose }: ProfilePanelP
     return () => clearInterval(check);
   }, [gameRef]);
 
-  useEffect(() => {
-    if (!isOpen) return;
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [isOpen, onClose]);
+  useEscape(onClose, isOpen);
 
   if (!isOpen || !profile) return null;
 

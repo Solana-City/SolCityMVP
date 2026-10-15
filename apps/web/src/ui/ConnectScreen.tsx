@@ -15,6 +15,8 @@ import { useButtonFeel, feelStyle } from "@/ui/useButtonFeel";
 
 /** The project's X account. */
 const X_URL = "https://x.com/PlaySolCity";
+/** The project's Discord server. */
+const DISCORD_URL = "https://discord.gg/8PZawABsTF";
 
 /**
  * A pixel-art social icon (64x64 art, frame included, drawn at half size). With `href` it is a
@@ -330,6 +332,20 @@ export default function ConnectScreen() {
              resolves against the container itself and cannot drift from it. */
           .sc-hero { flex: 0 0 30%; }
         }
+        /* A phone held sideways (~375-412px tall). The column used to fit by
+           shrinking to ~80%, which took its 8px text down to 6px. Tighter
+           spacing, a smaller logo and a slightly wider column let it fit at
+           full size instead, so 8px stays 8px. */
+        @media (max-height: 520px) and (orientation: landscape) {
+          .sc-side { min-width: 400px; }
+          .sc-side-fit { gap: 8px !important; padding: 12px 22px !important; }
+          .sc-logo { width: 150px !important; }
+          .sc-eyebrow { margin-bottom: 8px !important; }
+          .sc-lede { margin-top: 8px !important; }
+          .sc-ctas { gap: 8px !important; }
+          .sc-cta { padding-top: 10px !important; padding-bottom: 10px !important; }
+          .sc-foot { flex-wrap: wrap; row-gap: 6px; }
+        }
       `}</style>
 
       <div className="sc-side" ref={sideRef} style={{ background: "#07152E" }}>
@@ -340,26 +356,26 @@ export default function ConnectScreen() {
           boxSizing: "border-box",
         }}>
           <div>
-            <img src="/assets/branding/logo.png" alt="SolanaCity" draggable={false}
+            <img className="sc-logo" src="/assets/branding/logo.png" alt="SolanaCity" draggable={false}
               style={{ display: "block", width: "clamp(200px, 24vw, 380px)", maxWidth: "100%", height: "auto", imageRendering: "pixelated" }} />
-            <div style={{ marginTop: 10, fontSize: "clamp(6px, 0.72vw, 10px)", letterSpacing: 2, color: "#8FA6E6" }}>
+            <div style={{ marginTop: 10, fontSize: "clamp(8px, 0.72vw, 10px)", letterSpacing: 2, color: "#8FA6E6" }}>
               BUILD · PLAY · OWN · TOGETHER
             </div>
           </div>
 
           <div>
-            <div style={{ fontSize: "clamp(6px, 0.72vw, 10px)", letterSpacing: 2, color: "#14F0C6", marginBottom: 20 }}>
+            <div className="sc-eyebrow" style={{ fontSize: "clamp(8px, 0.72vw, 10px)", letterSpacing: 2, color: "#14F0C6", marginBottom: 20 }}>
               YOUR NEXT ADVENTURE
             </div>
             <div style={{ fontSize: "clamp(16px, 2.1vw, 30px)", lineHeight: 1.15, color: "#fff", textShadow: "3px 3px 0 rgba(0,0,0,0.35)" }}>
               Welcome to<br />SolanaCity
             </div>
-            <div style={{ marginTop: 22, fontSize: "clamp(6px, 0.72vw, 10px)", lineHeight: 1.9, color: "#8FA6E6" }}>
+            <div className="sc-lede" style={{ marginTop: 22, fontSize: "clamp(8px, 0.72vw, 10px)", lineHeight: 1.9, color: "#8FA6E6" }}>
               Explore the city. Meet your people.<br />Make yourself at home.
             </div>
           </div>
 
-          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <div className="sc-ctas" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
             <ChamferGlow
               glow="drop-shadow(0 0 12px rgba(183,233,40,0.35))"
               style={{ width: "100%", transition: "filter 0.15s" }}
@@ -368,6 +384,7 @@ export default function ConnectScreen() {
             >
               <button
                 onClick={openModal}
+                className="sc-cta"
                 style={chamferBox(10, {
                   width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 16,
                   fontFamily: PX, fontSize: "clamp(9px, 1vw, 14px)", letterSpacing: 1,
@@ -396,6 +413,7 @@ export default function ConnectScreen() {
 
             <button
               onClick={() => setGuestNotice(true)}
+              className="sc-cta"
               style={chamferBox(10, {
                 width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 14,
                 fontFamily: PX, fontSize: "clamp(8px, 0.9vw, 12px)", letterSpacing: 1,
@@ -414,12 +432,12 @@ export default function ConnectScreen() {
               </svg>
             </button>
 
-            <div style={{ textAlign: "center", fontSize: "clamp(6px, 0.62vw, 9px)", lineHeight: 1.8, color: "#6F88C8" }}>
+            <div style={{ textAlign: "center", fontSize: "clamp(8px, 0.62vw, 9px)", lineHeight: 1.8, color: "#6F88C8" }}>
               Start exploring. Connect your wallet later.
             </div>
           </div>
 
-          <div style={{ display: "flex", alignItems: "center", gap: 14, fontSize: "clamp(6px, 0.62vw, 9px)" }}>
+          <div className="sc-foot" style={{ display: "flex", alignItems: "center", gap: 14, fontSize: "clamp(8px, 0.62vw, 9px)" }}>
             {/* A status, not a control: a lit square and the word, no frame. A
                 chamfered outline read as a button next to the icons below. */}
             <span style={{ display: "inline-flex", alignItems: "center", gap: 7, color: "#FFD700", letterSpacing: 1 }}>
@@ -431,7 +449,7 @@ export default function ConnectScreen() {
             <span style={{ width: 1, height: 22, background: "rgba(143,166,230,0.35)" }} />
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <SocialIcon src="/assets/ui/icon_x.png" label="SolanaCity on X" href={X_URL} />
-              <SocialIcon src="/assets/ui/icon_discord.png" label="Discord" />
+              <SocialIcon src="/assets/ui/icon_discord.png" label="SolanaCity on Discord" href={DISCORD_URL} />
             </div>
           </div>
         </div>
@@ -464,6 +482,7 @@ export default function ConnectScreen() {
         <GuestNotice
           onPlay={() => { setGuestNotice(false); setDismissed(true); }}
           onConnect={() => { setGuestNotice(false); openModal(); }}
+          onCancel={() => setGuestNotice(false)}
         />
       )}
     </div>

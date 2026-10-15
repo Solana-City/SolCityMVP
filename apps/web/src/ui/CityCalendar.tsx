@@ -165,7 +165,7 @@ export default function CityCalendar({ cellHeight = 22, showLegend = true, maxRo
       {/* Legend */}
       {showLegend && <div style={{ display: "flex", justifyContent: "center", gap: 10, marginTop: 6 }}>
         {(Object.keys(KIND) as Kind[]).map((k) => (
-          <span key={k} style={{ display: "flex", alignItems: "center", gap: 4, fontFamily: PIXEL, fontSize: 5, color: "#64748b" }}>
+          <span key={k} style={{ display: "flex", alignItems: "center", gap: 4, fontFamily: PIXEL, fontSize: 8, color: "#64748b" }}>
             <span style={{ width: 5, height: 5, borderRadius: "50%", background: KIND[k].color }} />
             {KIND[k].label}
           </span>

@@ -14,6 +14,7 @@ import { checkName, claimName } from "@/game/names/nameService";
 import { LockIcon, CloseButton } from "@/ui/PixelIcons";
 import { chamferBox } from "@/ui/chamfer";
 import { useButtonFeel, feelStyle } from "@/ui/useButtonFeel";
+import { useEscape } from "@/ui/useEscape";
 
 const PIX = '"Press Start 2P", monospace';
 const RULE = /^[A-Za-z][A-Za-z0-9_]{2,15}$/;
@@ -30,6 +31,8 @@ export default function NicknameModal({ wallet, current, forced, onDone }: {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const seq = useRef(0);
+  // Same as the X, which a forced pick does not have either.
+  useEscape(() => onDone(null), !forced);
 
   // Live check, debounced.
   useEffect(() => {
@@ -135,7 +138,7 @@ export default function NicknameModal({ wallet, current, forced, onDone }: {
         })}>
           <span style={{ flexShrink: 0, marginTop: 1 }}><LockIcon size={14} color="#fca5a5" /></span>
           <span style={{ fontSize: 7, color: "#fca5a5", lineHeight: 1.7 }}>
-            Offensive names are not allowed. The Solana City team can remove them and apply a name lock.
+            Offensive names are not allowed. The SolanaCity team can remove them and apply a name lock.
           </span>
         </div>
 

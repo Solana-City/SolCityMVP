@@ -1,6 +1,6 @@
 {
-  "name": "The Solana City",
-  "short_name": "Sol City",
+  "name": "SolanaCity",
+  "short_name": "SolanaCity",
   "description": "A multiplayer 2D city where every interaction is a real Solana transaction",
   "start_url": "/",
   "display": "standalone",

@@ -84,6 +84,6 @@ export async function privateSend(_req: PrivateSendRequest): Promise<PrivateSend
     ok: false,
     error: CLOAK_LIVE
       ? "Cloak is enabled but the SDK is not installed in this build."
-      : "Cloak signs on mainnet; Solana City is on devnet.",
+      : "Cloak signs on mainnet; SolanaCity is on devnet.",
   };
 }
