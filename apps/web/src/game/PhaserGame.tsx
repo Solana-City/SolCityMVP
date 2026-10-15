@@ -32,21 +32,36 @@ interface PhaserGameProps {
  * keeps taking ~60 steps a second regardless of how often we draw.
  */
 /**
- * 65, not 60, and not "uncapped".
+ * 75, not 60, and not "uncapped".
  *
  * Uncapped means the display's rate, and on a 144Hz monitor this game was
  * measured rendering at 111-141fps — paying well over twice the per-frame
  * cost (thousands of batched quads each time) for frames nobody can see in
  * slow-moving pixel art. That was the bulk of the CPU while walking.
  *
- * The limiter accumulates delta and resets it to zero after each callback,
- * so the achieved rate is the display's rate divided by a whole number. A
- * limit of exactly 60 on a 60Hz display sits right on that boundary and
- * risks dropping every other frame (30fps). Sitting just above it is safe
- * and lands well on every common panel:
- *   60Hz -> 60    90Hz -> 45    120Hz -> 60    144Hz -> 48
+ * But the limiter accumulates delta and resets it to zero after each
+ * callback, so the rate it achieves is the display's rate divided by a WHOLE
+ * NUMBER — and which whole number is decided by where the gate falls. This
+ * started at 65, whose gate is 15.38ms: a 143Hz panel delivers frames 6.99ms
+ * apart, so two are skipped before the third clears the gate and the game
+ * draws at 143/3, measured at 48fps. Smooth is not what that looks like next
+ * to the 141 it used to run at, and it was reported as the game catching
+ * while walking.
+ *
+ * 75 puts the gate at 13.33ms, which a second frame clears on any panel from
+ * 143Hz up, so those draw at half their rate instead of a third:
+ *   60Hz -> 60    90Hz -> 45    120Hz -> 60    143Hz -> 71    144Hz -> 72
+ *
+ * Not 72, which would be the obvious round choice: its gate is 13.89ms and a
+ * 144Hz frame arrives at 13.889ms — the boundary itself, where jitter decides
+ * each frame individually and the pacing comes out uneven. 75 clears it with
+ * room.
+ *
+ * This does give back some of the saving on high-refresh screens: 71fps
+ * against 48 is about half as much work again. That is the trade asked for —
+ * the heat budget was never worth a game that reads as stuttering.
  */
-const ACTIVE_FPS_LIMIT = 65;
+const ACTIVE_FPS_LIMIT = 75;
 /**
  * 31, not 30, for exactly the reason ACTIVE_FPS_LIMIT is 65 and not 60 — this
  * one was wrong on the first pass.
