@@ -527,22 +527,40 @@ export class CityScene extends Phaser.Scene {
     if (!legacyTiles) {
       const overhead = new Set<CityLayer>(this.overheadLayers);
       const statics = this.sparseLayers.filter((l) => !overhead.has(l));
-      const liveStaticTilemap = allLayers.some((l) =>
-        l instanceof Phaser.Tilemaps.TilemapLayer && l.visible && !overhead.has(l));
-      // The bake draws at the highest static depth, which is only right while
-      // every fading / y-sorted layer sits above that (today: 110 vs 552). A
-      // map edit that breaks it gets the unbaked, per-layer path instead.
       const maxStatic = Math.max(-Infinity, ...statics.map((l) => l.depth));
       const minOverhead = Math.min(Infinity, ...this.overheadLayers.map((l) => l.depth));
+
+      // Bake what sits BELOW the lowest fading layer, rather than all or
+      // nothing.
+      //
+      // The bake draws as one grid at the highest depth among the layers it is
+      // given, so it may only contain layers with nothing fading or y-sorting
+      // between them. That used to be checked across the whole static set, and
+      // one fading layer anywhere inside the range disabled the bake for the
+      // entire map — which is what the city is doing today, with a fading layer
+      // at depth 432 inside a static range reaching 2760. Every ground tile is
+      // then drawn individually, every frame, which is exactly the cost this
+      // exists to remove.
+      //
+      // Splitting at that layer keeps the ordering guarantee and recovers most
+      // of the win, since the ground is the bulk of it and sits at the bottom.
+      // Whatever is above the split stays as blitters, drawing in the same
+      // order relative to the fading layer as before.
+      const bakeable = statics.filter((l) => l.depth < minOverhead);
+      // Only a tilemap BELOW the split would be reordered by baking around it;
+      // one above is untouched either way.
+      const liveStaticTilemap = allLayers.some((l) =>
+        l instanceof Phaser.Tilemaps.TilemapLayer && l.visible
+        && !overhead.has(l) && l.depth < minOverhead);
       if (minOverhead <= maxStatic) {
-        console.warn(`[CityScene] static bake skipped: a fading layer (depth ${minOverhead}) sits inside the static range (up to ${maxStatic})`);
+        console.log(`[CityScene] fading layer at depth ${minOverhead} splits the static range (up to ${maxStatic}) — baking the ${bakeable.length} layers below it`);
       }
-      if (!liveStaticTilemap && minOverhead > maxStatic) {
-        this.bakedGround = bakeStaticLayers(this, statics);
+      if (!liveStaticTilemap && bakeable.length > 0) {
+        this.bakedGround = bakeStaticLayers(this, bakeable);
         if (this.bakedGround) {
           const baked = this.bakedGround;
           this.onTeardown(() => baked.destroy());
-          console.log(`[CityScene] baked ${statics.length} static layers (${baked.tiles.toLocaleString()} tiles) into ${baked.chunks} chunk textures`);
+          console.log(`[CityScene] baked ${bakeable.length} of ${statics.length} static layers (${baked.tiles.toLocaleString()} tiles) into ${baked.chunks} chunk textures`);
         }
       }
     }
