@@ -11,6 +11,72 @@ import { chamferBox } from "@/ui/chamfer";
 import ChamferGlow from "@/ui/ChamferGlow";
 import { MusicIcon } from "@/ui/PixelIcons";
 import { musicManager } from "@/game/audio/MusicManager";
+import { useButtonFeel, feelStyle } from "@/ui/useButtonFeel";
+
+/** The project's X account. */
+const X_URL = "https://x.com/PlaySolCity";
+
+/**
+ * A pixel-art social icon (64x64 art, frame included, drawn at half size). With `href` it is a
+ * link; without, a button that says "SOON" in a small tip for a moment, for a
+ * network the project is not on yet.
+ */
+function SocialIcon({ src, label, href }: { src: string; label: string; href?: string }) {
+  const feel = useButtonFeel();
+  const [tip, setTip] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
+
+  const glyph = (
+    <img src={src} alt="" draggable={false}
+      style={{ display: "block", width: 32, height: 32, imageRendering: "pixelated" }} />
+  );
+  const style: React.CSSProperties = {
+    display: "block", padding: 0, border: "none", background: "none", lineHeight: 0,
+    cursor: "pointer", WebkitTapHighlightColor: "transparent", touchAction: "manipulation",
+    ...feelStyle(feel),
+    // The shared hover is a 15% brightening, which a small teal glyph hardly
+    // shows. These get a lit-up hover with a glow, and keep the press dip.
+    ...(feel.hover && !feel.pressed
+      ? { filter: "brightness(1.6) drop-shadow(0 0 5px rgba(20,240,198,0.9))" }
+      : null),
+  };
+  if (href) {
+    return (
+      <a href={href} target="_blank" rel="noopener noreferrer" aria-label={label} title={label}
+        {...feel.handlers} style={style}>
+        {glyph}
+      </a>
+    );
+  }
+  return (
+    <span style={{ position: "relative", display: "block" }}>
+      <button
+        aria-label={`${label} (coming soon)`}
+        title={`${label}: soon`}
+        {...feel.handlers}
+        onClick={() => {
+          setTip(true);
+          if (timer.current) clearTimeout(timer.current);
+          timer.current = setTimeout(() => setTip(false), 1600);
+        }}
+        style={style}
+      >
+        {glyph}
+      </button>
+      {tip && (
+        <span role="status" style={chamferBox(5, {
+          position: "absolute", bottom: "calc(100% + 8px)", left: "50%", transform: "translateX(-50%)",
+          padding: "5px 8px", whiteSpace: "nowrap", pointerEvents: "none", lineHeight: 1,
+          background: "#07152E", border: "2px solid #14F0C6", color: "#14F0C6",
+          fontFamily: '"Press Start 2P", monospace', fontSize: 7, letterSpacing: 1,
+        })}>
+          SOON
+        </span>
+      )}
+    </span>
+  );
+}
 
 /**
  * useLayoutEffect measures, so it has to run before the browser paints or the
@@ -354,9 +420,19 @@ export default function ConnectScreen() {
           </div>
 
           <div style={{ display: "flex", alignItems: "center", gap: 14, fontSize: "clamp(6px, 0.62vw, 9px)" }}>
-            <span style={chamferBox(6, { border: "2px solid #FFD700", color: "#FFD700", padding: "8px 14px", letterSpacing: 1 })}>DEVNET</span>
+            {/* A status, not a control: a lit square and the word, no frame. A
+                chamfered outline read as a button next to the icons below. */}
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 7, color: "#FFD700", letterSpacing: 1 }}>
+              <span aria-hidden style={{ width: 7, height: 7, background: "#FFD700", boxShadow: "0 0 6px rgba(255,215,0,0.7)" }} />
+              DEVNET
+            </span>
             <span style={{ width: 1, height: 22, background: "rgba(143,166,230,0.35)" }} />
             <span style={{ color: "#6F88C8" }}>A Solana social RPG</span>
+            <span style={{ width: 1, height: 22, background: "rgba(143,166,230,0.35)" }} />
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <SocialIcon src="/assets/ui/icon_x.png" label="SolanaCity on X" href={X_URL} />
+              <SocialIcon src="/assets/ui/icon_discord.png" label="Discord" />
+            </div>
           </div>
         </div>
       </div>
