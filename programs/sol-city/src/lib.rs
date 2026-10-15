@@ -343,6 +343,10 @@ fn schedule_magic_commit<'info>(
 #[program]
 pub mod sol_city {
     use super::*;
+    // `DISCRIMINATOR` on the generated `instruction::*` types comes from this
+    // trait, and the prelude does not bring it in. `open_booster` reads it to
+    // tell the VRF oracle which instruction to call back.
+    use anchor_lang::Discriminator;
 
     pub fn initialize_player(ctx: Context<InitializePlayer>, display_name: String) -> Result<()> {
         let player = &mut ctx.accounts.player;
