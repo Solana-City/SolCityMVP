@@ -45,6 +45,9 @@ const FRAME_MS = 75;
  */
 const MIN_HEIGHT_FILL = 0.55;
 
+/** How far past the panel's width a whole-number scale may reach before the exact fit is used. */
+const MAX_OVERSHOOT = 1.12;
+
 /** Used only if the sheet's own sky colour can't be read: the page's own blue. */
 const SKY_FALLBACK = "#07152E";
 
@@ -100,8 +103,21 @@ export default function HeroSprite({ className }: { className?: string }) {
     const fit = () => {
       const { width, height } = box.getBoundingClientRect();
       if (width <= 0 || height <= 0) return;
+      // Fit the width, in whole steps so every source pixel is the same size...
+      const exact = width / frameW;
+      let widthScale = Math.ceil(exact);
+      // ...unless rounding UP would throw away too much of the art. A phone
+      // held sideways (an iPhone 11 Pro leaves ~470px for this panel) asks for
+      // 2.36x, and 3x is a 27% overshoot: it cropped the sides and pushed the
+      // floating logo off the top. There the exact fit wins, snapped to a whole
+      // number of DEVICE pixels, which on a 3x screen is a step far too fine to
+      // see as uneven pixels.
+      if (widthScale > exact * MAX_OVERSHOOT) {
+        const dpr = window.devicePixelRatio || 1;
+        widthScale = Math.max(1, Math.round(exact * dpr) / dpr);
+      }
       const scale = Math.max(
-        Math.ceil(width / frameW),
+        widthScale,
         Math.ceil((height * MIN_HEIGHT_FILL) / sheet.h),
       );
       layer.style.setProperty("--sc-hero-scale", String(scale));
