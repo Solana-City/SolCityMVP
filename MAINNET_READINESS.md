@@ -1,73 +1,82 @@
 # Mainnet readiness — Solana City
 
-Submitted for the Superteam Brasil mainnet-subsidy side track. Under 500 words.
+Submitted for the Superteam Brasil mainnet-subsidy side track. 471 words.
 
-## What is deployed, and where
+## DEPLOYED
 
-Devnet, both upgradeable, upgrade authority `9592QS34mPUwqA7sPAkug1kcuFddjn59QPQMzzCgKhEp`:
+Devnet. Both programs upgradeable, upgrade authority
+9592QS34mPUwqA7sPAkug1kcuFddjn59QPQMzzCgKhEp.
 
-| Program | ID | Scope |
-|---|---|---|
-| `sol-city` | `HPvDFVnruSXHwKKP44eUvRh8oYqBaHCeQbK1sKWT1aU2` | player state, wardrobe, hunt, beach ball, friends, VRF outfit boxes |
-| `sol-mechs` | `6sv4G2HuFdrcAFBRA2X4jTSRmZj2MJS5t66zRUqy5vxJ` | PvP lobby, commit-reveal rounds, ranked ladder |
+sol-city: HPvDFVnruSXHwKKP44eUvRh8oYqBaHCeQbK1sKWT1aU2. Player state, wardrobe,
+hunt, beach ball, friends, VRF outfit boxes.
 
-Both delegate their PDAs to MagicBlock Ephemeral Rollups. Gameplay writes are
-signed by a session key on the rollup, so a player moving, dressing or chatting
-sees no popup and pays no fee.
+sol-mechs: 6sv4G2HuFdrcAFBRA2X4jTSRmZj2MJS5t66zRUqy5vxJ. PvP lobby,
+commit-reveal rounds, ranked ladder. Redeployed 2026-10-15.
 
-## Security analysis
+Both delegate PDAs to MagicBlock Ephemeral Rollups. Gameplay writes are session
+key signed on the rollup: no wallet popup, no fee per action.
 
-A static audit commissioned through the Solana Mobile hackathon returned 203
-findings. All three criticals were npm advisories, not program code. We triaged
-every finding that touched the programs and fixed the real ones:
+## SECURITY ANALYSIS
 
-- **`init_if_needed` is gone.** `init_unlock_state` is the single explicit
-  `init` and fails if the account exists. The Anchor feature flag is off in
-  `Cargo.toml`.
-- **No unchecked arithmetic.** Every raw `+=`/`-=` is checked or saturating, and
-  `overflow-checks = true` in the release profile is the backstop. The last bare
-  cast (`as i32` on a ladder rating) is now clamped.
-- **CPI targets are pinned.** `owner_program` and `delegation_program` carry
-  `address =` constraints, as `magic_program`, `magic_context`, `vrf_program`
-  and `slot_hashes` already did.
-- **`claim_free_outfit` was pulled before it ever deployed.** It verified its
-  quest condition in the client, so any wallet could have claimed all sixteen
-  quest indices.
+Static audit through the Solana Mobile hackathon: 203 findings, 3 critical. All
+3 criticals were npm advisories, not program code. Program findings triaged and
+fixed:
 
-False positives we rejected are explained in the commit history, not silently
-dropped.
+init_if_needed removed. init_unlock_state is the only explicit init and fails if
+the account exists. The Anchor feature flag is off in Cargo.toml.
 
-## How accounts and CPIs are validated
+Every raw += and -= is now checked or saturating. overflow-checks = true in the
+release profile. The last bare cast, as i32 on a ladder rating, is clamped.
 
-Every PDA is seed-derived in its `#[derive(Accounts)]` struct. Each write is
-bound to a signer: directly through `has_one = authority`, or, on the rollup
-path, through `constraint = duelist.session == session.key()`, where the session
-key can only be set by an instruction that itself requires
-`has_one = authority` plus `authority: Signer`. Admin paths (`payout`,
-`resolve_dispute`) compare the signer against the stored `season.admin` before
-moving lamports. The undelegation callback accepts only a signer owned by the
-delegation program at its canonical PDA. Hand-rolled CPIs name hard-coded
-program ids in the instruction they build; they never dispatch to an account the
-caller chose.
+owner_program and delegation_program pinned with address constraints, matching
+magic_program, magic_context, vrf_program and slot_hashes.
 
-## Tests
+claim_free_outfit removed before it deployed. It verified its quest condition
+client side, so any wallet could have claimed all 16 quest indices.
 
-236 unit tests across 24 files (`npm test` from a clean clone), covering
-instruction encoding, PDA derivation, clock skew, chat filtering and game logic.
-Rust has no unit suite: this machine has no SBF or MSVC toolchain, so Solana
-Playground is the compiler of record and devnet is the integration test.
+Client dependencies: replacing the wallet-adapter meta package with the two
+adapters actually used removed 87 advisories, one of them critical.
 
-## Known gaps
+## ACCOUNT AND CPI VALIDATION
 
-- No Rust tests and no `anchor build --verifiable` output yet. Both are blocked
-  on local toolchain and Docker, which is the first thing the subsidy unblocks.
-- A queued redeploy is held: it would enable wardrobe enforcement while nothing
-  grants quest unlocks on chain. Documented as a blocker, not discovered late.
-- Mini-game scores are client-reported: on chain here means shared and
-  permanent, not verified.
+Every PDA is seed derived in its Accounts struct. Writes bind to a signer
+through has_one = authority, or on the rollup path through
+constraint = duelist.session == session.key(), where the session key is set only
+by an instruction requiring has_one = authority plus authority: Signer. Admin
+paths, payout and resolve_dispute, compare the signer against season.admin
+before moving lamports. The undelegation callback requires a signer owned by the
+delegation program at its canonical PDA. Hand rolled CPIs hard code the target
+program id and the account metas, so a caller cannot redirect them.
 
-## What remains before mainnet
+## TESTS
 
-Rust tests under LiteSVM, a verifiable build with its hash committed here, the
-queued redeploy resolved and exercised on devnet, then the same artifacts
-promoted to mainnet.
+236 unit tests across 24 files, run with npm test. Coverage: instruction
+encoding, PDA derivation, clock skew, chat filtering, game logic. Verified from
+a clean clone: npm install, npm run build and npm test all pass with no env
+file.
+
+No Rust tests, no LiteSVM, no Mollusk. The dev machine has no SBF or MSVC
+toolchain, so Solana Playground is the compiler and devnet is the integration
+environment. Both programs compile clean there.
+
+## KNOWN GAPS
+
+No Rust test suite.
+
+No anchor build --verifiable output. It needs Docker, not yet installed.
+
+One redeploy is prepared and held: it enables wardrobe enforcement while no
+instruction grants quest unlocks on chain. Recorded as a blocker in
+REDEPLOY_CHECKLIST.md.
+
+Mini-game scores are client reported. On chain here means shared and permanent,
+not verified.
+
+## BEFORE MAINNET
+
+Install the toolchain. Write Rust tests under LiteSVM. Produce a verifiable
+build and commit its hash with the program ID. Resolve the held redeploy and
+exercise it on devnet. Promote the same artifacts to mainnet.
+
+Deploy cost measured: 1,087 KB across both programs, 5.66 SOL rent at exact
+size, 11.32 SOL with the default 2x upgrade headroom.
