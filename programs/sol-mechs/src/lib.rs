@@ -978,7 +978,10 @@ fn tolerance(waited_secs: i64) -> i64 {
 }
 
 fn count_recent(recent: &[Pubkey; RECENT], len: u8, who: &Pubkey) -> u32 {
-    let mut n = 0;
+    // Annotated, not inferred: `saturating_add` is a method call, and method
+    // resolution runs before inference can settle the literal from the return
+    // type, so an unannotated `0` is an ambiguous `{integer}` here (E0689).
+    let mut n: u32 = 0;
     for i in 0..(len as usize).min(RECENT) {
         if recent[i] == *who {
             n = n.saturating_add(1);
