@@ -2327,6 +2327,35 @@ export class OnChainMultiplayer {
   ): Promise<void> {
     if (!this.wallet || !isProgramDeployed()) return;
     const sessionKey = this.sessionKeys.getSessionPublicKey();
+
+    // Ask the chain before writing on base, rather than trusting a flag that
+    // may not be set yet.
+    //
+    // useEphemeral starts false and is only decided part-way through
+    // startMagicBlockMultiplayer, which is async — while these writes have no
+    // such gate. The profile publisher fires about a second and a half after
+    // the scene mounts, and chat, expression and outfit writes can land
+    // whenever the player acts. Any of them arriving before that decision went
+    // to BASE, and a PDA that is already delegated (from this session or an
+    // earlier one — delegation outlives the tab) can only be written on the
+    // ER: the base write fails with AccountOwnedByWrongProgram, custom 3007.
+    // That is the "transactions that write on delegated accounts" MagicBlock
+    // reported seeing from us.
+    //
+    // The delegation record is read from base, where it always lives, so this
+    // answer is authoritative. A true answer also repairs the flag, so the
+    // lookup happens a handful of times at most; a false one is the genuine
+    // not-delegated case and costs one extra read on a path that is rare by
+    // construction.
+    if (!this.useEphemeral) {
+      try {
+        if (await this.isPdaDelegated(derivePlayerPDA(this.wallet)[0])) {
+          console.log("[Multiplayer] PDA is delegated — session write goes to the ER, not base");
+          this.useEphemeral = true;
+        }
+      } catch { /* unreachable base RPC — fall through and let the send decide */ }
+    }
+
     const conn = this.useEphemeral ? this.ephemeralConnection : this.baseConnection;
     const layer = this.useEphemeral ? "ephemeral" : "base";
     // Surface these ER writes in the ONCHAIN LOG too — each under its own kind
