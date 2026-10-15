@@ -751,8 +751,12 @@ export class CityScene extends Phaser.Scene {
     // every frame, so every step and every correction from the joystick threw
     // the whole city sideways; on a phone that reads as jitter. 0.16 settles
     // in about 200ms: the view trails a step behind and catches up, which is
-    // what makes walking feel smooth. `roundPixels` below keeps the art crisp
-    // while the scroll lands between pixels.
+    // what makes walking feel smooth. Whether the scroll is then snapped to
+    // whole pixels is decided by applyZoomSmoothing, from the zoom — it is
+    // right at a whole zoom and is what makes the character tremble at a
+    // fractional one. The `true` passed here is only an initial value; that
+    // call, a few lines down, has the last word and is re-run on every zoom
+    // change.
     this.cameras.main.startFollow(container, true, CAMERA_LERP, CAMERA_LERP);
     // Start ON the player: a fresh camera sits at 0,0 and would otherwise
     // glide across the map on the first frames.
@@ -760,7 +764,6 @@ export class CityScene extends Phaser.Scene {
     this.cameras.main.setZoom(loadZoom());
     this.applyZoomSmoothing(loadZoom());
     this.cameras.main.setBackgroundColor(0x061a2c);
-    this.cameras.main.roundPixels = true;
 
     // Input — keyboard plugin may be null on certain mobile browsers/configs;
     // guard every access so a missing keyboard doesn't crash CityScene.
@@ -1711,6 +1714,27 @@ export class CityScene extends Phaser.Scene {
     const isWhole = (n: number) => n >= 1 && Math.abs(n - Math.round(n)) < 0.01;
     canvas.style.imageRendering =
       isWhole(canvasPxPerSourcePx) && isWhole(devicePxPerSourcePx) ? "pixelated" : "auto";
+
+    // Snap the camera to whole pixels only when a whole pixel means something.
+    //
+    // Camera.preRender floors scrollX/scrollY whenever roundPixels is set, and
+    // it floors them in WORLD pixels regardless of zoom. At a whole zoom that
+    // is also a whole number of screen pixels, so the world and everything
+    // standing on it snap together and the art stays crisp — which is the
+    // reason this is on.
+    //
+    // At a fractional zoom it is not. A world pixel is 2.5 screen pixels at
+    // the 2.5 zoom a desktop defaults to, so the camera jumps in 2.5-pixel
+    // steps while the player it follows moves smoothly between them, and the
+    // gap between the two is a character that visibly trembles as it walks.
+    // Dropping the snap there costs nothing that was not already given up:
+    // these are exactly the zooms whose art is being smoothed by the line
+    // above, because they cannot be crisp either way.
+    //
+    // This was always true and became visible when the frame cap landed: the
+    // same wobble sampled 141 times a second reads as shimmer, and at 48 it
+    // reads as shaking.
+    this.cameras.main.roundPixels = isWhole(canvasPxPerSourcePx);
   }
 
   // ── "Where Is NPC?" hunt ──────────────────────────
