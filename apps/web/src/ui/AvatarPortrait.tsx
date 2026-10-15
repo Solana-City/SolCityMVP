@@ -253,7 +253,12 @@ export function PortraitBox({
    * Ring weight ("thin" is 4px, 1 a 9px ring, 2 the native 18px), or a flat
    * border in a given colour.
    */
-  frame?: FrameWeight | TintedFrame;
+  /**
+   * "bare" draws the character alone, with no frame and no fill, scaled to
+   * fill `size` exactly (fractionally if it has to) for a figure that stands
+   * on something else, like a speaker on top of their dialog box.
+   */
+  frame?: FrameWeight | TintedFrame | "bare";
   title?: string;
   fill?: string;
 }) {
@@ -268,19 +273,20 @@ export function PortraitBox({
     return () => window.removeEventListener("resize", read);
   }, []);
 
+  const bare = frame === "bare";
   const tint = typeof frame === "object" ? frame : null;
-  const art  = tint ? null : FRAMES[frame as FrameWeight];
-  const ring = tint ? (tint.width ?? 2) : art!.ring;
+  const art  = tint || bare ? null : FRAMES[frame as FrameWeight];
+  const ring = bare ? 0 : tint ? (tint.width ?? 2) : art!.ring;
   const inside = size - 2 * ring;
   // The picture's size on the page, which stays put whatever the screen is: a
   // layout that moved with the pixel ratio is the mistake useCrispPixelArt
   // was written to undo.
-  const scale = Math.floor(inside / source);
-  const artCss = scale >= 1 ? source * scale : inside;
+  const scale = bare ? inside / source : Math.floor(inside / source);
+  const artCss = bare || scale < 1 ? inside : source * scale;
   // ...while the canvas behind it is at the screen's own resolution.
   const px = Math.max(1, Math.round(artCss * dpr));
   const wholeDpr = Math.abs(dpr - Math.round(dpr)) < 0.01;
-  const smooth = scale < 1 || !wholeDpr;
+  const smooth = bare ? false : scale < 1 || !wholeDpr;
 
   useEffect(() => {
     const canvas = ref.current;
@@ -289,6 +295,18 @@ export function PortraitBox({
     canvas.height = px;
     return draw(canvas, smooth);
   }, [draw, px, smooth]);
+
+  // A bare figure gets a dark outline traced round its silhouette (not a
+  // frame: it follows the character's own edge). Four hard drop-shadows, one
+  // each way, stack into a solid outline about three quarters of a source
+  // pixel thick, which is what a hand-drawn pixel-art outline looks like.
+  const outline = bare
+    ? (() => {
+        const t = Math.max(1, Math.round(scale * 0.75));
+        const c = "#05060d";
+        return `drop-shadow(${t}px 0 0 ${c}) drop-shadow(-${t}px 0 0 ${c}) drop-shadow(0 ${t}px 0 ${c}) drop-shadow(0 -${t}px 0 ${c})`;
+      })()
+    : undefined;
 
   // The art ring is an overlay, because it has to sit OVER the picture the way
   // the photo frame it replaced did. A tinted border is drawn by chamferBox,
@@ -302,7 +320,9 @@ export function PortraitBox({
   return (
     <span
       title={title}
-      style={tint
+      style={bare
+        ? layout
+        : tint
         ? chamferBox(tint.corner ?? Math.min(12, Math.round(size / 8)), {
             ...layout, background: fill, border: `${ring}px solid ${tint.color}`,
           })
@@ -313,6 +333,7 @@ export function PortraitBox({
         style={{
           display: "block", width: artCss, height: artCss,
           imageRendering: "pixelated",
+          filter: outline,
         }}
       />
       {art && (

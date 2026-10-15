@@ -75,12 +75,14 @@ function drawNPCBust(canvas: HTMLCanvasElement, npc: NPCDefinition, smooth: bool
   return () => { cancelled = true; };
 }
 
-export default function NPCPortrait({ npc, size, border = 2 }: {
+export default function NPCPortrait({ npc, size, border = 2, bare = false }: {
   npc: NPCDefinition;
   /** Total size including the border: 52 of bust per whole step, plus it. */
   size: number;
   /** Border width, to match the dialog box this stands on. */
   border?: number;
+  /** The character alone, no frame or fill: it stands on the dialog box instead of sitting in it. */
+  bare?: boolean;
 }) {
   const loadout = npc.loadout;
   const draw = useCallback(
@@ -101,8 +103,8 @@ export default function NPCPortrait({ npc, size, border = 2 }: {
   return (
     <PortraitBox
       size={size} source={CROPS.bust.w} draw={draw}
-      frame={{ color, width: border }}
-      fill="rgba(8,8,24,0.96)"
+      frame={bare ? "bare" : { color, width: border }}
+      fill={bare ? "transparent" : "rgba(8,8,24,0.96)"}
     />
   );
 }

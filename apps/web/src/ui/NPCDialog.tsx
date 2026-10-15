@@ -301,26 +301,12 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
   );
   const footer = (
     <div style={{
-      display: "flex", alignItems: "center", gap: isTouch ? 10 : 16, marginTop: "auto",
+      display: "flex", alignItems: "center", gap: isTouch ? 10 : 16,
       borderTop: `1px solid ${color}20`, paddingTop: isTouch ? 10 : 12,
     }}>
       <Dots />
       <div style={{ flex: 1, minWidth: 0 }}>{hint}</div>
       {isLastLine && doneTyping ? actionButton : skipButton}
-    </div>
-  );
-  const nameBlock = (
-    <div style={{ flex: 1, minWidth: 0 }}>
-      <div style={{
-        fontFamily: '"Press Start 2P", monospace',
-        fontSize: isTouch ? "10px" : "14px",
-        color,
-        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-        marginBottom: isTouch ? 5 : 7,
-      }}>
-        {npc.name}
-      </div>
-      <div style={{ fontSize: isTouch ? "8px" : "10px", color: "#5f6684" }}>{npc.role}</div>
     </div>
   );
   const closeButton = (
@@ -346,58 +332,113 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
     </p>
   );
 
-  const box = (
-    <div
-      onClick={onBubbleClick}
-      style={chamferBox(isTouch ? 14 : 16, {
-        fontFamily:   '"Press Start 2P", monospace',
-        background:   "rgba(8,8,24,0.96)",
-        border:       `3px solid ${color}`,
-        padding:      isTouch ? "12px 12px 12px" : "18px 20px 16px",
-        backdropFilter: "blur(8px)",
-        cursor:       isLastLine && doneTyping ? "default" : "pointer",
-      })}
-    >
-      {isTouch ? (
-        <>
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <NPCPortrait npc={npc} size={60} border={3} />
-            {nameBlock}
+  // ── The stage layout ─────────────────────────────────────────────────────
+  // Read off the design's frame on its own: the top edge has two heights. Left
+  // of the name tab it runs LOW (a shoulder), with one small spike climbing to
+  // the full height and dropping straight back down (the speech-bubble tail);
+  // from the tab on to the far corner it runs HIGH.
+  //
+  // The speaker stands on the shoulder and is cut off at the waist BY the
+  // frame: they are BEHIND it, their lower edge hidden under the shoulder's
+  // border line, and the spike overlaps them. That is why the frame is drawn
+  // over the speaker rather than the other way round.
+  //
+  // A step cannot be made with chamferBox, so the frame is two clipped layers:
+  // the whole polygon in the border colour, and the same polygon inset by the
+  // border width in the box's fill. The speaker, the tab and the frame are
+  // siblings, because clip-path clips whatever pokes out of its element.
+  const sz       = isTouch ? 84 : 136;           // the speaker, drawn to this size
+  const D        = isTouch ? 11 : 16;            // how far the shoulder sits below the high edge
+  const hide     = isTouch ? 7 : 10;             // how much of the speaker is under the shoulder
+  const above    = sz - D - hide;                // the high edge's distance from the speaker's top
+  const padX     = isTouch ? 16 : 22;
+  const pillH    = isTouch ? 24 : 34;
+  const pillPadX = isTouch ? 10 : 14;
+  const pillTop  = isTouch ? -7 : -10;           // the tab pokes this far above the high edge
+  const C        = isTouch ? 12 : 16;            // corner cut
+  const B        = 3;                            // border
+  const xa       = padX + Math.round(sz * 0.24); // the spike: where its ramp starts...
+  const xb       = xa + D + 6;                   // ...and its straight drop
+  const pillLeft = padX + Math.round(sz * 0.9);
+  const step     = pillLeft + 12;                // where the edge goes from low to high, under the tab
+  const BOX_BG   = "rgba(8,8,24,0.96)";
+  const k        = 0.414 * B;                    // how far a 45-degree edge's inset vertex slides along
+  const px       = (n: number) => `${Math.round(n * 100) / 100}px`;
+  const pt       = (x: string, y: string) => `${x} ${y}`;
+  const R        = (n: number) => `calc(100% - ${px(n)})`;
+  const outer = [
+    pt("0", px(D + C)), pt(px(C), px(D)),
+    pt(px(xa), px(D)), pt(px(xa + D), "0"), pt(px(xb), "0"), pt(px(xb), px(D)),
+    pt(px(step), px(D)), pt(px(step), "0"),
+    pt(R(C), "0"), pt("100%", px(C)),
+    pt("100%", R(C)), pt(R(C), "100%"),
+    pt(px(C), "100%"), pt("0", R(C)),
+  ].join(", ");
+  const inner = [
+    pt(px(B), px(D + C + k)), pt(px(C + k), px(D + B)),
+    pt(px(xa + k), px(D + B)), pt(px(xa + D + k), px(B)), pt(px(xb - B), px(B)), pt(px(xb - B), px(D + B)),
+    pt(px(step + B), px(D + B)), pt(px(step + B), px(B)),
+    pt(R(C + k), px(B)), pt(R(B), px(C + k)),
+    pt(R(B), R(C + k)), pt(R(C + k), R(B)),
+    pt(px(C + k), R(B)), pt(px(B), R(C + k)),
+  ].join(", ");
+  const stageBox = (
+    <div style={{ position: "relative", paddingTop: above, fontFamily: '"Press Start 2P", monospace' }}>
+      {/* The speaker: BEHIND the frame, which is drawn over their waist. */}
+      <div style={{ position: "absolute", left: padX, top: 0, zIndex: 1, pointerEvents: "none" }}>
+        <NPCPortrait npc={npc} size={sz} bare />
+      </div>
+
+      <div
+        onClick={onBubbleClick}
+        style={{ position: "relative", zIndex: 2, cursor: isLastLine && doneTyping ? "default" : "pointer" }}
+      >
+        <div aria-hidden style={{ position: "absolute", inset: 0, background: color, clipPath: `polygon(${outer})` }} />
+        <div aria-hidden style={{ position: "absolute", inset: 0, background: BOX_BG, clipPath: `polygon(${inner})` }} />
+
+        <div style={{ position: "relative", padding: `${pillH + pillTop + 8}px ${padX + B}px ${(isTouch ? 12 : 16) + B}px` }}>
+          <div style={{
+            marginLeft: pillLeft - padX + pillPadX - B,
+            fontSize: isTouch ? "8px" : "10px", color: "#5f6684",
+            minHeight: isTouch ? 12 : 14,
+            paddingRight: isTouch ? 30 : 40,
+          }}>
+            {npc.role}
+          </div>
+          <div style={{ position: "absolute", top: isTouch ? 8 : 12, right: isTouch ? 12 : 16 }}>
             {closeButton}
           </div>
           {divider}
           {words}
           <Highlights compact />
           {footer}
-        </>
-      ) : (
-        <div style={{ display: "flex", gap: 20, alignItems: "stretch" }}>
-          <div style={{ flexShrink: 0 }}><NPCPortrait npc={npc} size={116} border={3} /></div>
-          <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", minHeight: 116 }}>
-            <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
-              {nameBlock}
-              {closeButton}
-            </div>
-            {divider}
-            {words}
-            <Highlights compact />
-            {footer}
-          </div>
         </div>
-      )}
+        <style jsx>{`
+          @keyframes tapPulse {
+            0%, 100% { opacity: 0.4; }
+            50%       { opacity: 1; }
+          }
+          @keyframes cursorBlink {
+            0%, 100% { opacity: 0.5; }
+            50%       { opacity: 0; }
+          }
+        `}</style>
+      </div>
 
-      <style jsx>{`
-        @keyframes tapPulse {
-          0%, 100% { opacity: 0.4; }
-          50%       { opacity: 1; }
-        }
-        @keyframes cursorBlink {
-          0%, 100% { opacity: 0.5; }
-          50%       { opacity: 0; }
-        }
-      `}</style>
+      {/* The name, on a tab across the step in the top edge. */}
+      <div style={chamferBox(8, {
+        position: "absolute", left: pillLeft, top: above + pillTop, zIndex: 3,
+        height: pillH, display: "flex", alignItems: "center", padding: `0 ${pillPadX}px`,
+        background: "#080818", border: `2px solid ${color}`, color,
+        fontFamily: '"Press Start 2P", monospace', fontSize: isTouch ? "11px" : "14px",
+        whiteSpace: "nowrap", maxWidth: `calc(100% - ${pillLeft + (isTouch ? 36 : 50)}px)`,
+        overflow: "hidden", textOverflow: "ellipsis", pointerEvents: "none",
+      })}>
+        {npc.name}
+      </div>
     </div>
   );
+  const content = stageBox;
 
   if (isTouch) {
     return (
@@ -413,7 +454,7 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
           zIndex:       30,
         }}
       >
-        {box}
+        {content}
       </ChamferGlow>
     );
   }
@@ -424,7 +465,7 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
       style={{ fontFamily: '"Press Start 2P", monospace', bottom: "96px" }}
     >
       <ChamferGlow className="relative" glow={`drop-shadow(0 0 16px ${color}40)`}>
-        {box}
+        {content}
       </ChamferGlow>
     </div>
   );
