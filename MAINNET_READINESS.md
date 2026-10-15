@@ -34,8 +34,8 @@ every finding that touched the programs and fixed the real ones:
   quest condition in the client, so any wallet could have claimed all sixteen
   quest indices.
 
-Findings we examined and rejected as false positives are explained in the commit
-history rather than silently dropped.
+False positives we rejected are explained in the commit history, not silently
+dropped.
 
 ## How accounts and CPIs are validated
 
@@ -63,8 +63,8 @@ Playground is the compiler of record and devnet is the integration test.
   on local toolchain and Docker, which is the first thing the subsidy unblocks.
 - A queued redeploy is held: it would enable wardrobe enforcement while nothing
   grants quest unlocks on chain. Documented as a blocker, not discovered late.
-- Mini-game scores are client-reported. On chain here means shared and
-  permanent, not verified, and we say so rather than overclaiming.
+- Mini-game scores are client-reported: on chain here means shared and
+  permanent, not verified.
 
 ## What remains before mainnet
 
