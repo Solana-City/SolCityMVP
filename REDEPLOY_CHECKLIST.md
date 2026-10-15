@@ -5,6 +5,45 @@ Deploy via **Solana Playground / beta.solpg.io**. Program ID
 `9592QS34mPUwqA7sPAkug1kcuFddjn59QPQMzzCgKhEp`. See `apps/web/DEPLOY_ANCHOR.md`
 for the Playground procedure.
 
+## BLOCKER — this deploy makes quest outfits unwearable (found 2026-10-16)
+
+**Do not open the window until this is decided.** It is a scope problem, not a
+timing one: waiting does not fix it.
+
+This deploy turns ON wardrobe enforcement and leaves OFF the only thing that
+could grant a quest item. The two cannot ship together:
+
+- `update_look_session` rejects any catalog index >= `FREE_ITEM_COUNT` (20)
+  whose bit is not set in `player.unlocked` (`lib.rs:554`, `ItemNotUnlocked`).
+- `player.unlocked` has exactly two writers: the zeroing at init (`lib.rs:369`)
+  and `sync_unlocks`, which copies `unlock_state.bits` (`lib.rs:567`).
+- `unlock_state.bits` is written only by `open_booster` / `callback_open_booster`
+  now that `claim_free_outfit` is out. **Nothing sets a quest bit.**
+- Quest rewards are granted by `unlockItem()`
+  (`game/config/wardrobeUnlocks.ts:89`), which writes **localStorage and
+  nothing else**.
+
+So after this deploy a player still earns and sees a quest outfit locally, and
+the on-chain write fails: the loadout never reaches the chain and no other
+player sees it. On two devices, which is how it gets demoed, it reads as broken.
+
+**Ten items are affected**, every one carrying `unlockVia: "quest"` in
+`paperDoll.ts`: Jetpack, STB_shirt, Brazilian_shirt, Shirt_Solana,
+Trader_shades, Cap_Sol, city_cap, turkish_head, STB_cap, Seeker_hat.
+
+Two ways out, and either is enough to unblock:
+
+1. **Decide question 5 in `COLLECTIBLES_SPEC.md`** and bring back a way to
+   grant a quest item that does not need a server. Note that `Seeker_hat` is
+   already trustless (hold the token), so the program could gate that one by
+   itself; the other nine rest on facts the client authors.
+2. **Keep quest items outside the enforced range for this deploy**, so
+   enforcement covers only booster items, which are the ones with economic
+   value and the only ones a forged unlock could monetise.
+
+Until one is chosen, holding the deploy is correct. Related: the demo value of
+these outfits during hackathon judging (owner, 2026-10-16).
+
 ## FINAL SCOPE (decided 2026-09-18, "option A")
 
 The Rust is **already applied** in `programs/sol-city/src/lib.rs`, not staged
@@ -51,10 +90,12 @@ does not want, and the key it would have held was the upgrade authority. No
 on-chain gate replaces it, because the facts a quest rests on are written by
 session-signed instructions the client authors.
 
-Nothing regressed: no client ever called it, and quest rewards are local
-unlocks today. `QUEST_FREE_SLOTS` stays reserved so the bit layout does not
-move when the instruction returns. The decision it waits on is question 5 in
-`COLLECTIBLES_SPEC.md`.
+Pulling it regressed nothing **on its own**: no client ever called it, and
+quest rewards are local unlocks today. It regresses in combination with the
+wardrobe enforcement this same deploy turns on, which is the BLOCKER at the top
+of this file: enforcement reads a bit that nothing now sets. `QUEST_FREE_SLOTS`
+stays reserved so the bit layout does not move when the instruction returns.
+The decision it waits on is question 5 in `COLLECTIBLES_SPEC.md`.
 
 `UnlockState` also gains `minted: [u8; 32]`, a ledger of indices already turned
 into an asset, so a future mint path cannot let a player mint, sell, and mint
@@ -823,10 +864,12 @@ stays behind `NEXT_PUBLIC_BOOSTER_ONCHAIN` until verified.
    (see FINAL SCOPE), so quest rewards stay local unlocks and the client does
    not change for them. `QUEST_FREE_SLOTS` stays reserved so the bit layout
    does not move when the instruction returns; the items that will claim those
-   slots are the five carrying `unlockVia: "quest"` today: STB_cap, STB_shirt,
-   Brazilian_shirt, Jetpack and Cap_Sol (7-day streak; moved out of the booster
-   pool on 2026-09-21, before the pool indices were ever deployed, so nothing
-   shifts).
+   slots are the ten carrying `unlockVia: "quest"` today: Jetpack, STB_shirt,
+   Brazilian_shirt, Shirt_Solana, Trader_shades, Cap_Sol, city_cap,
+   turkish_head, STB_cap and Seeker_hat (Cap_Sol is the 7-day streak; it moved
+   out of the booster pool on 2026-09-21, before the pool indices were ever
+   deployed, so nothing shifts). See the BLOCKER at the top: until it is
+   resolved, these ten cannot be worn on chain at all.
 5. **Beach football** (`world/BeachBall.ts` + `multiplayer/OnChainMultiplayer.ts`):
    - `deriveBallPDA()` (seed `["ball"]`) in `program.ts`, and a `BallState`
      decoder: `x u32, y u32, vx i16, vy i16, kicker Pubkey, kicked_at i64,
