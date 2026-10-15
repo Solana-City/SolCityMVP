@@ -37,12 +37,10 @@ phase). Unlocks live in `UnlockState`, which does not reset.
 That track rejects a program with conditional account creation or raw
 arithmetic without reading further, so both are gone:
 
-- `OpenBooster` and `ClaimFreeOutfit` no longer create their account. They take
-  it as `mut` and add a constraint tying its stored authority to the signer.
-  `init_unlock_state` is the single explicit `init`, and it fails if the account
-  exists. The feature flag that allowed the old pattern is off in `Cargo.toml`.
-- `ClaimFreeOutfit` therefore **drops `system_program`** from its accounts; it
-  no longer CPIs into it.
+- `OpenBooster` no longer creates its account. It takes it as `mut` and adds a
+  constraint tying its stored authority to the signer. `init_unlock_state` is
+  the single explicit `init`, and it fails if the account exists. The feature
+  flag that allowed the old pattern is off in `Cargo.toml`.
 - Every raw `+=`/`-=` in both programs is now checked or saturating.
 
 **`claim_free_outfit` is OUT of this deploy (2026-10-15).** It granted any
@@ -64,9 +62,8 @@ again from the same unlock. It has no writer yet and is carried now because the
 account is created for the first time in this redeploy; adding it later is a
 migration.
 
-**Client step this adds:** before the first `open_booster` or
-`claim_free_outfit` for a wallet, read `deriveUnlockPDA(wallet)`; if there is no
-account, prepend `buildInitUnlockStateIx(wallet)` in the same transaction. The
+**Client step this adds:** before the first `open_booster` for a wallet, read
+`deriveUnlockPDA(wallet)`; if there is no account, prepend `buildInitUnlockStateIx(wallet)` in the same transaction. The
 builder is in `instructions.ts`; the prepend is not wired yet, because the
 booster flow is still waiting on the deployed IDL for its VRF accounts.
 
@@ -769,8 +766,8 @@ needs a per-session counter rather than a commit call dropped into each handler.
 
 ## CLIENT changes (post-deploy — apply ONLY after the new program is live)
 
-Order: deploy program → verify → then push these together. Booster and
-free-outfit wiring stays behind `NEXT_PUBLIC_BOOSTER_ONCHAIN` until verified.
+Order: deploy program → verify → then push these together. Booster wiring
+stays behind `NEXT_PUBLIC_BOOSTER_ONCHAIN` until verified.
 
 1. **`game/solana/program.ts`**: `PLAYER_SEED` → `"player_v3"`. Add
    `unlocked: Uint8Array(32)` at the END of the `PlayerState` decoder (after
@@ -782,8 +779,8 @@ free-outfit wiring stays behind `NEXT_PUBLIC_BOOSTER_ONCHAIN` until verified.
      achievements. Nothing to change there.
 2. **`game/solana/instructions.ts`**: `DISC` + builders for
    `recordSwapSession`, `recordTransferSession`,
-   `syncUnlocks`, `claimFreeOutfit(index: u16)`, `openBooster(poolCount: u16,
-   clientSeed: [u8;32])`, taking the discriminators from the new IDL.
+   `syncUnlocks`, `openBooster(poolCount: u16, clientSeed: [u8;32])`, taking
+   the discriminators from the new IDL.
    `open_booster` accounts, in order: `payer` (w, signer), `unlock_state` (w),
    `treasury` (w), `oracle_queue` (w, `Cuj97ggrhhidhbu39TijNVqE74xvKJ69gDervRUXAxGh`),
    `program_identity` (PDA `["identity"]` of OUR program), `vrf_program`
@@ -819,14 +816,17 @@ free-outfit wiring stays behind `NEXT_PUBLIC_BOOSTER_ONCHAIN` until verified.
      missing: the snapshot stays zero and only free items are wearable.
    - Loadout broadcast: encode as `slot=<global catalog index>|...` and decode
      the same way on read. A name-based loadout is now REJECTED by the program.
-4. **Booster / free outfits** (behind the flag): `open_booster` → poll
+4. **Booster** (behind the flag): `open_booster` → poll
    `UnlockState.pending` until false / read `BoosterOpened` → reveal.
    `track("purchase", "outfit-box", { value: 25_000_000, wallet })` on success.
-   Quest rewards call `claim_free_outfit(index)`. Needs an APPEND-ONLY
-   quest-item index table (< 16 slots): today `unlockVia: "quest"` covers
-   STB_cap, STB_shirt, Brazilian_shirt, Jetpack and Cap_Sol (7-day streak;
-   moved out of the booster pool on 2026-09-21, before the pool indices were
-   ever deployed, so nothing shifts).
+   **No quest-reward wiring in this deploy.** `claim_free_outfit` was pulled
+   (see FINAL SCOPE), so quest rewards stay local unlocks and the client does
+   not change for them. `QUEST_FREE_SLOTS` stays reserved so the bit layout
+   does not move when the instruction returns; the items that will claim those
+   slots are the five carrying `unlockVia: "quest"` today: STB_cap, STB_shirt,
+   Brazilian_shirt, Jetpack and Cap_Sol (7-day streak; moved out of the booster
+   pool on 2026-09-21, before the pool indices were ever deployed, so nothing
+   shifts).
 5. **Beach football** (`world/BeachBall.ts` + `multiplayer/OnChainMultiplayer.ts`):
    - `deriveBallPDA()` (seed `["ball"]`) in `program.ts`, and a `BallState`
      decoder: `x u32, y u32, vx i16, vy i16, kicker Pubkey, kicked_at i64,
@@ -876,7 +876,6 @@ free-outfit wiring stays behind `NEXT_PUBLIC_BOOSTER_ONCHAIN` until verified.
 - [ ] Open a box: one payment popup, `pending` flips back, 5 bits set, same 5
       items revealed on both devices; 0.025 SOL landed in the treasury; the
       purchase shows in the dev panel Money section.
-- [ ] `claim_free_outfit` twice with the same index → no error, one bit.
 - [ ] **Ball, before the client work:** `simulateTransaction` a
       `kick_ball_session` on the ER touching BOTH the ball and a delegated
       player PDA. If it fails on account locations, take the Item 6 fallback.
