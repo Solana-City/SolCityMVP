@@ -513,8 +513,8 @@ export default function Home() {
           ) : (
             /* Mobile: icon rail — the hunt toggle. Chat and expressions sit
                beside the joystick instead (MobileControls below), under the
-               thumb. Panels open as overlays and are mutually exclusive with
-               the chat so the small screen never stacks multiple windows. */
+               thumb. The hunt panel is mutually exclusive with the chat so
+               the small screen never stacks multiple windows. */
             <>
               <div style={{
                 position: "fixed", zIndex: 20,
@@ -524,26 +524,21 @@ export default function Home() {
               }}>
                 <MobilePanelToggle iconSrc="/assets/ui/icon_quests.png" label="Find someone" active={mobilePanel === "hunt"} onClick={() => toggleMobilePanel("hunt")} />
               </div>
-              {mobilePanel !== null && (
-                /* Full-screen transparent backdrop — tap anywhere outside the panel to close */
+              {mobilePanel === "hunt" && (
+                /* A HUD piece beside its rail button rather than a modal: no
+                   backdrop, so the city stays playable while it is open. Its
+                   collapsed strip is meant to stay up while you search. */
                 <div
-                  style={{ position: "fixed", inset: 0, zIndex: 25 }}
-                  onClick={() => setMobilePanel(null)}
+                  style={{
+                    position: "fixed", zIndex: 20,
+                    top: "max(env(safe-area-inset-top, 0px), 12px)",
+                    // To the right of the icon rail (rail left + 44px width
+                    // + gap), including on notched phones where the rail
+                    // itself is pushed in by the safe-area inset.
+                    left: "calc(max(env(safe-area-inset-left, 0px), 12px) + 50px)",
+                  }}
                 >
-                  <div
-                    style={{
-                      position: "absolute",
-                      top: "max(env(safe-area-inset-top, 0px), 12px)",
-                      // To the right of the icon rail (rail left + 44px width
-                      // + gap), including on notched phones where the rail
-                      // itself is pushed in by the safe-area inset.
-                      left: "calc(max(env(safe-area-inset-left, 0px), 12px) + 50px)",
-                      maxHeight: "calc(100dvh - 24px)", overflowY: "auto",
-                    }}
-                    onClick={e => e.stopPropagation()}
-                  >
-                    {mobilePanel === "hunt" && <WhereIsNPCCard gameRef={game} wallet={walletAddress} />}
-                  </div>
+                  <WhereIsNPCCard gameRef={game} wallet={walletAddress} />
                 </div>
               )}
             </>

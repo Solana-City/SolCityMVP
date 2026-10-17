@@ -1,7 +1,7 @@
 "use client";
 
 import { PixelImg, ICON, RankBadge, CloseButton } from "@/ui/PixelIcons";
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, type CSSProperties, type ReactNode } from "react";
 import {
   getRoundIndex, getCitizenMsRemaining, CITIZEN_MS, recordFind, getMyScore,
   getLeaderboard, recordRoundWinner, getHuntWinner,
@@ -262,8 +262,8 @@ export default function WhereIsNPCCard({ gameRef, wallet }: Props) {
   // CityScene falls back to "guest" when no wallet is connected — match that
   // identifier here so score lookups and "you found it" checks line up.
   const effectiveWallet = wallet ?? "guest";
-  // Compact sizing on touch devices — the card opens as an overlay next to
-  // the icon rail and must not swallow the small game view.
+  // Touch gets its own layout (MobileHunt): wide and short beside the rail
+  // button, so it does not swallow the small game view.
   const [isTouch, setIsTouch] = useState(false);
   useEffect(() => {
     setIsTouch(window.matchMedia("(pointer: coarse)").matches);
@@ -374,6 +374,7 @@ export default function WhereIsNPCCard({ gameRef, wallet }: Props) {
         .hunt-btn:active { transform: scale(0.97); }
         .hunt-collapse { transition: color 0.15s ease; }
         .hunt-collapse:hover { color: #B7E928 !important; }
+        @keyframes huntIn { from { transform: translateX(-6px); opacity: 0 } to { transform: translateX(0); opacity: 1 } }
       `}</style>
 
       {showLeaderboard && <LeaderboardModal onClose={() => setShowLeaderboard(false)} />}
@@ -382,11 +383,19 @@ export default function WhereIsNPCCard({ gameRef, wallet }: Props) {
         <HuntHowTo loadout={targetLoadout} isTouch={isTouch} onClose={() => setShowInfo(false)} />
       )}
 
+      {isTouch ? (
+        <MobileHunt
+          collapsed={collapsed} onCollapse={setCollapsed}
+          loadout={targetLoadout} time={`${mm}:${ss}`} pct={pct}
+          score={wallet ? myScore : null} foundMsg={foundMsg} infoOpen={showInfo}
+          onInfo={() => setShowInfo(v => !v)} onLeaderboard={() => setShowLeaderboard(true)}
+        />
+      ) : (
       <div className="hunt-card" style={{
         borderWidth: 20, borderStyle: "solid", borderColor: "transparent",
         borderImage: 'url(/assets/branding/ui/frame-panel-test.png) 64 fill / 20px / 0 round',
         imageRendering: "pixelated",
-        width: isTouch ? 208 : 224,
+        width: 224,
         fontFamily: '"Press Start 2P", monospace',
         color: "#d0d0f0",
         overflow: "hidden",
@@ -394,7 +403,7 @@ export default function WhereIsNPCCard({ gameRef, wallet }: Props) {
         {/* Header */}
         <div style={{
           display: "flex", alignItems: "center", gap: 8,
-          padding: isTouch ? "8px 10px" : "11px 13px",
+          padding: "11px 13px",
           borderBottom: collapsed ? "none" : "1px solid rgba(183,233,40,0.1)",
           cursor: "pointer",
           userSelect: "none",
@@ -439,7 +448,7 @@ export default function WhereIsNPCCard({ gameRef, wallet }: Props) {
         </div>
 
         {!collapsed && (
-          <div style={{ padding: isTouch ? "9px 10px" : "23.5px 13px", display: "flex", flexDirection: "column", gap: isTouch ? 7 : 10 }}>
+          <div style={{ padding: "23.5px 13px", display: "flex", flexDirection: "column", gap: 10 }}>
             {/* Found banner */}
             {foundMsg && (
               <div style={chamferBox(8, {
@@ -462,15 +471,15 @@ export default function WhereIsNPCCard({ gameRef, wallet }: Props) {
                 })}>
                   <div style={chamferBox(10 - AVATAR_BORDER_W, {
                     background: "rgba(183,233,40,0.07)",
-                    padding: isTouch ? 6 : 8,
+                    padding: 8,
                   })}>
-                    <MiniAvatar loadout={targetLoadout} size={isTouch ? 60 : 88} />
+                    <MiniAvatar loadout={targetLoadout} size={88} />
                   </div>
                 </div>
               </div>
             ) : (
               <div style={{
-                height: isTouch ? 72 : 104, display: "flex", alignItems: "center", justifyContent: "center",
+                height: 104, display: "flex", alignItems: "center", justifyContent: "center",
                 fontSize: 9, color: "#3a3a5a",
               }}>
                 {foundMsg ? "New citizen incoming…" : "Loading…"}
@@ -485,14 +494,7 @@ export default function WhereIsNPCCard({ gameRef, wallet }: Props) {
                 </span>
                 <span style={{ fontSize: 8, color: "#6060aa" }}>next citizen</span>
               </div>
-              <div style={{ height: 3, background: "rgba(255,255,255,0.06)", borderRadius: 2 }}>
-                <div style={{
-                  height: "100%", width: `${pct}%`,
-                  background: "#B7E928",
-                  borderRadius: 2,
-                  transition: "width 1s linear",
-                }} />
-              </div>
+              <TimerBar pct={pct} />
             </div>
 
             {/* Score + leaderboard */}
@@ -509,7 +511,212 @@ export default function WhereIsNPCCard({ gameRef, wallet }: Props) {
           </div>
         )}
       </div>
+      )}
     </>
+  );
+}
+
+/** Time left on the current citizen, as a lime bar. */
+function TimerBar({ pct, height = 3 }: { pct: number; height?: number }) {
+  return (
+    <div style={{ height, background: "rgba(255,255,255,0.06)", borderRadius: 2 }}>
+      <div style={{
+        height: "100%", width: `${pct}%`,
+        background: "#B7E928",
+        borderRadius: 2,
+        transition: "width 1s linear",
+      }} />
+    </div>
+  );
+}
+
+// ── Mobile layout ─────────────────────────────────────────────────────────────
+
+/**
+ * The panel art drawn at half the desktop card's 20px, with a 5px layout
+ * border: content starts where the art's teal band ends instead of a whole
+ * band further in, which is what keeps the mobile panel short.
+ */
+const THIN_FRAME: CSSProperties = {
+  borderWidth: 5, borderStyle: "solid", borderColor: "transparent",
+  borderImage: "url(/assets/branding/ui/frame-panel-test.png) 64 fill / 10px / 0 round",
+  imageRendering: "pixelated",
+};
+
+/** A square button on the frame-button art, like the desktop card's header ones. */
+function FrameBtn({ size, title, onClick, children }: {
+  size: number; title: string; onClick: () => void; children: ReactNode;
+}) {
+  const feel = useButtonFeel();
+  return (
+    <button
+      onClick={(e) => { e.stopPropagation(); onClick(); }}
+      {...feel.handlers}
+      title={title} aria-label={title}
+      style={{
+        backgroundImage: "url(/assets/ui/icon_frame_btn.png)", backgroundSize: "100% 100%",
+        imageRendering: "pixelated", border: "none",
+        width: size, height: size, padding: 0, cursor: "pointer",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        flexShrink: 0,
+        ...feelStyle(feel),
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+/** The ▼ art turned to point left (collapse, toward the rail icon) or right (expand). */
+function Arrow({ dir }: { dir: "left" | "right" }) {
+  return <PixelImg src="/assets/ui/icon_down1.png" size={12} style={{ transform: `rotate(${dir === "left" ? 90 : -90}deg)` }} />;
+}
+
+/**
+ * The citizen to find, in the lime-ringed box. `small` is the strip's version:
+ * the whole figure at half size, in a 32px box. Halving keeps the pixels
+ * square (each CSS pixel is 2x2 of the sprite), and on a 2x phone screen
+ * every sprite pixel is still one device pixel.
+ */
+function HuntPortrait({ loadout, small = false }: { loadout: Loadout | null; small?: boolean }) {
+  const corner = small ? 6 : 10;
+  return (
+    <div style={chamferBox(corner, { padding: AVATAR_BORDER_W, background: "rgba(183,233,40,0.18)", flexShrink: 0 })}>
+      <div style={chamferBox(corner - AVATAR_BORDER_W, {
+        background: "rgba(183,233,40,0.07)",
+        width: small ? 32 : 64, height: small ? 32 : 64, padding: small ? 0 : 4, boxSizing: "content-box",
+        position: "relative", overflow: "hidden",
+        display: "flex", alignItems: "center", justifyContent: "center",
+      })}>
+        {!loadout ? (
+          <span style={{ fontSize: 8, color: "#3a3a5a" }}>...</span>
+        ) : small ? (
+          <div style={{ position: "absolute", left: 0, top: 0, transform: "scale(0.5)", transformOrigin: "0 0" }}>
+            <MiniAvatar loadout={loadout} />
+          </div>
+        ) : (
+          <MiniAvatar loadout={loadout} />
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Who found the last citizen (or that your claim did not count), along the
+ * bottom of the panel or the strip: the window grows by this one row while
+ * there is news, rather than a separate toast covering the city.
+ */
+function FoundBanner({ msg }: { msg: string }) {
+  return (
+    <div style={chamferBox(6, {
+      marginTop: 5, padding: "5px 6px",
+      background: "rgba(183,233,40,0.08)", border: "1px solid rgba(183,233,40,0.25)",
+      fontSize: 8, color: "#B7E928", textAlign: "center", lineHeight: 1.5,
+      overflowWrap: "anywhere",
+      animation: "slideUp 0.2s ease",
+    })}>
+      {msg}
+    </div>
+  );
+}
+
+/**
+ * Find Someone on a phone: the portrait on the left and everything else on
+ * its right, in one short panel beside the rail button, so the hunt costs the
+ * game view as little height as possible. The ◀ folds it toward the rail icon
+ * into a strip with just the citizen and the time left, which can stay up
+ * while you search; the › (or a tap on the strip) opens the full panel again.
+ */
+function MobileHunt({
+  collapsed, onCollapse, loadout, time, pct, score, foundMsg, infoOpen, onInfo, onLeaderboard,
+}: {
+  collapsed: boolean;
+  onCollapse: (collapsed: boolean) => void;
+  loadout: Loadout | null;
+  /** m:ss left on this citizen. */
+  time: string;
+  pct: number;
+  /** Citizens found, or null for a guest (no wallet, so nothing is counted). */
+  score: number | null;
+  foundMsg: string | null;
+  infoOpen: boolean;
+  onInfo: () => void;
+  onLeaderboard: () => void;
+}) {
+  if (collapsed) {
+    return (
+      <div
+        className="hunt-strip"
+        onClick={() => onCollapse(false)}
+        style={{
+          // A set width, so a long finder's name wraps inside the strip
+          // instead of stretching it sideways.
+          ...THIN_FRAME, padding: 3, width: 140, boxSizing: "border-box",
+          fontFamily: PIX, cursor: "pointer", userSelect: "none",
+          animation: "huntIn 0.15s ease",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <HuntPortrait loadout={loadout} small />
+          <div style={{ width: 48, display: "flex", flexDirection: "column", gap: 5 }}>
+            <span style={{ fontSize: 12, color: "#fff" }}>{time}</span>
+            <TimerBar pct={pct} height={4} />
+          </div>
+          <FrameBtn size={28} title="Expand" onClick={() => onCollapse(false)}>
+            <Arrow dir="right" />
+          </FrameBtn>
+        </div>
+        {foundMsg && <FoundBanner msg={foundMsg} />}
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="hunt-panel"
+      style={{
+        ...THIN_FRAME, padding: 5, width: 300, boxSizing: "border-box",
+        fontFamily: PIX, color: "#d0d0f0",
+        animation: "huntIn 0.15s ease",
+      }}
+    >
+      <div style={{ display: "flex", gap: 10 }}>
+        <HuntPortrait loadout={loadout} />
+        <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <PixelImg src={ICON.hunt} size={18} />
+            <span style={{ fontSize: 8, color: "#B7E928", flex: 1, whiteSpace: "nowrap" }}>FIND SOMEONE</span>
+            <FrameBtn size={24} title="How to play" onClick={onInfo}>
+              <span style={{
+                color: infoOpen ? "#B7E928" : "#9a9ab5",
+                fontFamily: "Georgia, serif", fontStyle: "italic", fontWeight: "bold", fontSize: 11, lineHeight: "12px",
+              }}>?</span>
+            </FrameBtn>
+            <FrameBtn size={24} title="Collapse" onClick={() => onCollapse(true)}>
+              <Arrow dir="left" />
+            </FrameBtn>
+          </div>
+
+          <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+            <span style={{ fontSize: 12, color: "#fff" }}>{time}</span>
+            <span style={{ fontSize: 8, color: "#6060aa" }}>NEXT CITIZEN</span>
+          </div>
+
+          <div style={{ display: "flex", alignItems: "flex-end", gap: 8 }}>
+            <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 6 }}>
+              <TimerBar pct={pct} height={4} />
+              {score !== null
+                ? <span style={{ fontSize: 8, color: "#B7E928" }}>★ {score} FOUND</span>
+                : <span style={{ fontSize: 8, color: "#3a3a5a" }}>CONNECT WALLET</span>}
+            </div>
+            <LeaderboardButton onClick={onLeaderboard} />
+          </div>
+        </div>
+      </div>
+
+      {foundMsg && <FoundBanner msg={foundMsg} />}
+    </div>
   );
 }
 
