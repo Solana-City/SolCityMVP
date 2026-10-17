@@ -471,16 +471,31 @@ export function AchievementIcon({ id, size = 28 }: { id: string; size?: number }
   return <PixelImg src={art?.img ?? ICON.trophy} size={size} />;
 }
 
-/** The calendar sprite with a date written on its white page. */
-export function CalendarDayIcon({ size, day }: { size: number; day: number | string }) {
+/**
+ * A calendar sprite with a date written on its white page. The default is the
+ * HUD's octagonal sprite; pass `src` and where its page sits (as a fraction of
+ * the sprite's height) to write on another one.
+ */
+export function CalendarDayIcon({
+  size, day, src = `${UI}/icon_calendar.png`, pageTop = 0.4, pageHeight = 0.44, fontScale = 0.24,
+}: {
+  size: number;
+  day: number | string;
+  src?: string;
+  /** Top of the white page, and its height, as fractions of the sprite's height. */
+  pageTop?: number;
+  pageHeight?: number;
+  /** Digit size as a fraction of the sprite's size. */
+  fontScale?: number;
+}) {
   return (
     <span style={{ position: "relative", display: "inline-block", width: size, height: size, flexShrink: 0 }}>
-      <img src={`${UI}/icon_calendar.png`} alt="" draggable={false}
+      <img src={src} alt="" draggable={false}
         style={{ width: "100%", height: "100%", imageRendering: "pixelated", display: "block" }} />
       <span style={{
-        position: "absolute", left: 0, right: 0, top: "40%", height: "44%",
+        position: "absolute", left: 0, right: 0, top: `${pageTop * 100}%`, height: `${pageHeight * 100}%`,
         display: "flex", alignItems: "center", justifyContent: "center",
-        fontFamily: '"Press Start 2P", monospace', fontSize: Math.max(6, Math.round(size * 0.24)),
+        fontFamily: '"Press Start 2P", monospace', fontSize: Math.max(6, Math.round(size * fontScale)),
         color: "#0a1a2e", lineHeight: 1, pointerEvents: "none",
       }}>{day}</span>
     </span>
