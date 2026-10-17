@@ -511,21 +511,18 @@ export default function Home() {
               <WhereIsNPCCard gameRef={game} wallet={walletAddress} />
             </div>
           ) : (
-            /* Mobile: single icon rail — hunt and chat toggles.
-               Panels open as overlays and are mutually exclusive with the
-               chat so the small screen never stacks multiple windows. */
+            /* Mobile: icon rail — the hunt toggle. Chat and expressions sit
+               beside the joystick instead (MobileControls below), under the
+               thumb. Panels open as overlays and are mutually exclusive with
+               the chat so the small screen never stacks multiple windows. */
             <>
               <div style={{
-                // Above the wheel's backdrop (45) while it is open, so the button
-                // that closes it stays visible and tappable.
-                position: "fixed", zIndex: wheelOpen ? 46 : 20,
+                position: "fixed", zIndex: 20,
                 top: "max(env(safe-area-inset-top, 0px), 12px)",
                 left: "max(env(safe-area-inset-left, 0px), 12px)",
                 display: "flex", flexDirection: "column", gap: 6,
               }}>
                 <MobilePanelToggle iconSrc="/assets/ui/icon_quests.png" label="Find someone" active={mobilePanel === "hunt"} onClick={() => toggleMobilePanel("hunt")} />
-                <MobilePanelToggle iconSrc="/assets/ui/ico_chat.png" label="Chat" active={chatOpen} onClick={toggleMobileChat} dot={unreadDms > 0} />
-                <ExpressionToggle open={wheelOpen} />
               </div>
               {mobilePanel !== null && (
                 /* Full-screen transparent backdrop — tap anywhere outside the panel to close */
@@ -691,7 +688,13 @@ export default function Home() {
               onClose={() => setPlayerCardTarget(null)}
             />
           )}
-          <MobileControls />
+          <MobileControls
+            raised={wheelOpen}
+            besideJoystick={[
+              <MobilePanelToggle key="chat" iconSrc="/assets/ui/ico_chat.png" label="Chat" active={chatOpen} onClick={toggleMobileChat} dot={unreadDms > 0} />,
+              <ExpressionToggle key="expressions" open={wheelOpen} />,
+            ]}
+          />
           <ExpressionWheel gameRef={game} />
           {flags.chat && (
             // Its own display:none, not unmounted: H hiding it should not
@@ -777,7 +780,7 @@ function MobilePanelToggle({ iconSrc, label, active, onClick, dot }: {
   );
 }
 
-/** Rail button (below Chat) that opens the expression wheel on touch.
+/** Button beside the joystick (after Chat) that opens the expression wheel on touch.
     Same chrome as MobilePanelToggle with the pixel-art ico_emoji; the wheel
     isn't a panel, so it just fires the open event. */
 function ExpressionToggle({ open }: { open: boolean }) {

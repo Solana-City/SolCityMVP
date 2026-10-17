@@ -36,8 +36,8 @@ const MOBILE_ROWS: Row[] = [
   { keys: ["Joystick"], what: "Walk (bottom left)" },
   { keys: ["ACT"], what: "Talk to whoever is next to you, or advance the chat" },
   { keys: ["Tap"], what: "Talk to any citizen you can see" },
-  { keys: ["Emoji"], what: "React: gm, heart, fire, lol, hmm, GG (top left rail)" },
-  { keys: ["Chat"], what: "Open chat, top left rail" },
+  { keys: ["Emoji"], what: "React: gm, heart, fire, lol, hmm, GG (beside the joystick)" },
+  { keys: ["Chat"], what: "Open chat, beside the joystick" },
   { keys: ["Avatar"], what: "Your profile (top right)" },
   { keys: ["Pinch"], what: "Zoom in and out" },
 ];

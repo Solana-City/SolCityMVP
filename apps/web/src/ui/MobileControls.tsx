@@ -1,10 +1,16 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
 const JOYSTICK_RADIUS = 34; // px — max thumb travel from center
 const PAD_PX = 100;   // the pad's art size at phone scale
 const THUMB_PX = 44;  // the cross that rides on it
+
+// Chat and expressions sit on an arc round the pad's upper right, where the
+// left thumb already is, rather than on a rail at the far end of the screen.
+// 40° apart at this radius keeps their 44px tap boxes from overlapping.
+const ARC_RADIUS = 80;         // px from the pad's center, at phone scale
+const ARC_ANGLES = [-48, -8];  // degrees per button; 0 = right of the pad, negative = up
 
 // Pixel-art control sprites (public/assets/ui). Rendered at 1x or 1.5x of
 // their native size so device-pixel scaling stays close to integer.
@@ -174,7 +180,24 @@ function SpriteButton({
 
 // ── Root ─────────────────────────────────────────────────────────────────────
 
-export default function MobileControls() {
+/**
+ * How far the controls stand off one screen edge. Phone: hard against the
+ * corners, which is where thumbs are on a device held in two hands. Tablet:
+ * pulled inboard and up, in percentages so it follows the screen instead of a
+ * fixed guess.
+ */
+function edge(side: "left" | "right" | "bottom", tablet: boolean): string {
+  const off = !tablet ? "20px" : side === "bottom" ? "9vh" : "7vw";
+  return `max(env(safe-area-inset-${side}, 0px), ${off})`;
+}
+
+export default function MobileControls({ besideJoystick, raised = false }: {
+  /** Buttons placed on the arc beside the joystick, in ARC_ANGLES order. */
+  besideJoystick?: ReactNode[];
+  /** Lift those buttons above the expression wheel's backdrop (z 45), so the
+      one that closes the wheel stays visible and tappable while it is open. */
+  raised?: boolean;
+}) {
   const [isTouch, setIsTouch] = useState(false);
   // A tablet is a touch screen whose SHORT side is big. The pads were placed
   // for a phone, in the far corners at 20px, which on a 1024x1366 iPad is
@@ -197,6 +220,7 @@ export default function MobileControls() {
 
   if (!isTouch) return null;
 
+  const scale = tablet ? 1.3 : 1;
   const handleInteract = () => {
     emitGame("touch:interact");
     if (typeof navigator.vibrate === "function") navigator.vibrate(18);
@@ -208,23 +232,14 @@ export default function MobileControls() {
       <div
         className="fixed z-30 bottom-0 left-0 right-0 flex justify-between items-end pointer-events-none"
         style={{
-          // Phone: hard against the corners, which is where thumbs are on a
-          // device held in two hands. Tablet: pulled inboard and up, in
-          // percentages so it follows the screen instead of a fixed guess.
-          paddingLeft: tablet
-            ? "max(env(safe-area-inset-left, 0px), 7vw)"
-            : "max(env(safe-area-inset-left, 0px), 20px)",
-          paddingRight: tablet
-            ? "max(env(safe-area-inset-right, 0px), 7vw)"
-            : "max(env(safe-area-inset-right, 0px), 20px)",
-          paddingBottom: tablet
-            ? "max(env(safe-area-inset-bottom, 0px), 9vh)"
-            : "max(env(safe-area-inset-bottom, 0px), 20px)",
+          paddingLeft: edge("left", tablet),
+          paddingRight: edge("right", tablet),
+          paddingBottom: edge("bottom", tablet),
         }}
       >
         {/* Left — joystick */}
         <div className="pointer-events-auto">
-          <Joystick scale={tablet ? 1.3 : 1} />
+          <Joystick scale={scale} />
         </div>
 
         {/* Right — ACT: interacts with NPCs and advances open dialogs */}
@@ -238,6 +253,41 @@ export default function MobileControls() {
           />
         </div>
       </div>
+
+      {/* The arc beside the joystick. A layer of its own, laid exactly over
+          the pad, rather than inside the bar: the bar's z-index caps anything
+          in it, and `raised` has to lift these buttons alone above the wheel. */}
+      {besideJoystick && besideJoystick.length > 0 && (
+        <div
+          className="fixed pointer-events-none"
+          style={{
+            zIndex: raised ? 46 : 30,
+            left: edge("left", tablet),
+            bottom: edge("bottom", tablet),
+            width: PAD_PX * scale,
+            height: PAD_PX * scale,
+          }}
+        >
+          {besideJoystick.map((button, i) => {
+            const a = ((ARC_ANGLES[i] ?? 0) * Math.PI) / 180;
+            // Whole pixels, so the pixel-art icons are not resampled.
+            const x = Math.round(Math.cos(a) * ARC_RADIUS * scale);
+            const y = Math.round(Math.sin(a) * ARC_RADIUS * scale);
+            return (
+              <div
+                key={i}
+                className="pointer-events-auto"
+                style={{
+                  position: "absolute", left: "50%", top: "50%",
+                  transform: `translate(-50%, -50%) translate(${x}px, ${y}px)`,
+                }}
+              >
+                {button}
+              </div>
+            );
+          })}
+        </div>
+      )}
     </>
   );
 }

@@ -71,7 +71,7 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
    * The input holding focus is the signal that the keyboard is up, and it is
    * the only one that works in both cases: when the window resizes for the
    * keyboard, the measured inset is 0 even though the space is now tiny, and
-   * the panel still has to drop its 156px gap or it lands off the top.
+   * the message list still has to shrink to it or the panel runs off the top.
    */
   const [typing, setTyping] = useState(false);
 
@@ -340,14 +340,17 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
         transform: isTouch ? "translateX(-50%)" : undefined,
         bottom: isTouch
           ? typing
-            // Typing: sit just above the keys. The 156px gap exists to clear
-            // the movement controls, which do not matter while typing.
+            // Typing: sit just above the keys.
             ? `${keyboard.inset + 8}px`
-            : "calc(env(safe-area-inset-bottom, 0px) + 156px)"
+            : "max(env(safe-area-inset-bottom, 0px), 12px)"
           : "16px",
-        // Centered above the thumb controls, so it can be wider than the old
-        // rail-anchored panel without creeping toward either one.
-        width: isTouch ? "min(320px, calc(100vw - 32px))" : "360px",
+        // On the bottom edge, centered between the thumb controls. The
+        // joystick and its chat/expression arc end ~151px past the left
+        // margin (20px, or the safe area); ACT takes less on the right.
+        // Centered, the panel has to clear that left span on both sides.
+        width: isTouch
+          ? "max(240px, min(320px, calc(100vw - 2 * (max(env(safe-area-inset-left, 0px), 20px) + 160px))))"
+          : "360px",
         fontFamily: '"Press Start 2P", monospace',
         borderWidth: 20,
         borderStyle: "solid",
