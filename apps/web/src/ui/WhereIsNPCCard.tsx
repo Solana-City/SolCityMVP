@@ -27,6 +27,9 @@ const CHROMA_R = 215, CHROMA_G = 123, CHROMA_B = 186, CHROMA_TOL = 30;
 
 const AVATAR_BORDER_W = 2;
 
+/** How long a phone shows who found the citizen before the window shrinks back. */
+const FOUND_NEWS_MS = 10_000;
+
 // clip-path alone cuts the corner off a rectangular `border` without leaving
 // a stroke along the new diagonal edge. Faking a chamfered outline instead
 // needs two stacked, independently-clipped layers: an outer one filled with
@@ -274,7 +277,11 @@ export default function WhereIsNPCCard({ gameRef, wallet }: Props) {
   const [targetLoadout, setTargetLoadout] = useState<Loadout | null>(null);
   const [myScore, setMyScore] = useState(0);
   const [msLeft, setMsLeft] = useState(getCitizenMsRemaining());
-  const [foundMsg, setFoundMsg] = useState<string | null>(null);
+  // With the time it was said, so the same line said twice (two lost claims
+  // in a row) still counts as news and restarts the phone's countdown.
+  const [found, setFound] = useState<{ msg: string; at: number } | null>(null);
+  const foundMsg = found?.msg ?? null;
+  const announce = useCallback((msg: string) => setFound({ msg, at: Date.now() }), []);
   const [round, setRound] = useState(getRoundIndex());
   const infoFeel = useButtonFeel();
   const collapseFeel = useButtonFeel();
@@ -292,13 +299,13 @@ export default function WhereIsNPCCard({ gameRef, wallet }: Props) {
       // chain with the finder on it, so the city can be told who got there
       // first, in the line the finder's own message already uses.
       const winner = getHuntWinner();
-      if (!winner) { setFoundMsg(null); return; }          // nobody found that one
+      if (!winner) { setFound(null); return; }             // nobody found that one
       if (winner === effectiveWallet) return;              // my own message stands
       requestNames([winner]);
-      setFoundMsg(`${cachedName(winner) ?? shortWallet(winner)} found them!`);
+      announce(`${cachedName(winner) ?? shortWallet(winner)} found them!`);
     }, 1000);
     return () => clearInterval(id);
-  }, [round, effectiveWallet]);
+  }, [round, effectiveWallet, announce]);
 
   useEffect(() => {
     if (!gameRef) return;
@@ -312,7 +319,7 @@ export default function WhereIsNPCCard({ gameRef, wallet }: Props) {
       // fallback while the name service answers, and for guests.
       requestNames([w]);
       const known = cachedName(w);
-      setFoundMsg(isMe ? `You found them! ★ ${newScore}` : `${known ?? shortWallet(w)} found them!`);
+      announce(isMe ? `You found them! ★ ${newScore}` : `${known ?? shortWallet(w)} found them!`);
       if (isMe) setMyScore(newScore);
       setTargetLoadout(null);
       // The game layer reset the per-citizen timer before firing this event,
@@ -321,7 +328,7 @@ export default function WhereIsNPCCard({ gameRef, wallet }: Props) {
     };
     // The press did not reach the chain, so it did not count and the citizen is
     // back. Said once, in the same spot the find message uses.
-    const onClaimLost = () => setFoundMsg("Did not count. Try again!");
+    const onClaimLost = () => announce("Did not count. Try again!");
     const onRoundCheck = () => {
       setMsLeft(getCitizenMsRemaining());
       gameRef.events.emit("whereIsNPC:requestTarget");
@@ -339,7 +346,7 @@ export default function WhereIsNPCCard({ gameRef, wallet }: Props) {
       gameRef.events.off("whereIsNPC:roundCheck", onRoundCheck);
       gameRef.events.off("whereIsNPC:targetInfo", onTargetInfo);
     };
-  }, [gameRef, effectiveWallet, round]);
+  }, [gameRef, effectiveWallet, round, announce]);
 
   // The player's own total follows them across devices; the local count is
   // what shows until the board answers, and for guests.
@@ -356,6 +363,16 @@ export default function WhereIsNPCCard({ gameRef, wallet }: Props) {
       .catch(() => undefined);
     return () => { cancelled = true; };
   }, [effectiveWallet, wallet, foundMsg]);
+
+  // On a phone the news is up for FOUND_NEWS_MS and then the panel or strip
+  // shrinks back; the desktop card keeps it until the round after.
+  const [newsUp, setNewsUp] = useState(false);
+  useEffect(() => {
+    setNewsUp(found !== null);
+    if (!found) return;
+    const id = setTimeout(() => setNewsUp(false), FOUND_NEWS_MS);
+    return () => clearTimeout(id);
+  }, [found]);
 
   const mm = Math.floor(msLeft / 60000);
   const ss = String(Math.floor((msLeft % 60000) / 1000)).padStart(2, "0");
@@ -387,7 +404,7 @@ export default function WhereIsNPCCard({ gameRef, wallet }: Props) {
         <MobileHunt
           collapsed={collapsed} onCollapse={setCollapsed}
           loadout={targetLoadout} time={`${mm}:${ss}`} pct={pct}
-          score={wallet ? myScore : null} foundMsg={foundMsg} infoOpen={showInfo}
+          score={wallet ? myScore : null} foundMsg={newsUp ? foundMsg : null} infoOpen={showInfo}
           onInfo={() => setShowInfo(v => !v)} onLeaderboard={() => setShowLeaderboard(true)}
         />
       ) : (
