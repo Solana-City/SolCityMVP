@@ -12,7 +12,7 @@ import { ChatBubble, BUBBLE_Y } from "../chat/ChatBubble";
 import { TradeBubble } from "../chat/TradeBubble";
 import { decodeTrade, encodeTrade, tradeLogLine, type TradeSide } from "../chat/tradeBroadcast";
 import { decodeClaim, encodeClaim, claimLogLine, recordClaim } from "../chat/claimBroadcast";
-import { BUFFS, MAX_SPEED_MULTIPLIER, isBuffActive, onBuffsChanged, speedMultiplier } from "../buffs/playerBuffs";
+import { BUFFS, MAX_SPEED_MULTIPLIER, activeBuff, activeBuffIndex, buffByIndex, onBuffsChanged, speedMultiplier, type BuffDefinition } from "../buffs/playerBuffs";
 
 /** Chat-log color for stock trade lines. */
 const TRADE_COLOR = "#FFB547";
@@ -724,12 +724,12 @@ export class CityScene extends Phaser.Scene {
     container.add(youLabel);
     this.avatar.attachLabel(youLabel);
 
-    // Buff badge: the coffee cup rides over the name while the Vietnamese
-    // Barista's buff runs. One buff exists, so one badge; when there is a
-    // second, this becomes a row read off activeBuffs().
-    const buffBadge = this.attachBuffBadge(this.avatar, isBuffActive("vietnamese-coffee"));
+    // Buff badge: the cup of whatever is running rides over the name. Buffs
+    // are exclusive, so it is one badge that swaps its picture rather than a
+    // row of them.
+    const buffBadge = this.attachBuffBadge(this.avatar, activeBuff()?.def ?? null);
     if (buffBadge) {
-      const offBuffs = onBuffsChanged(() => buffBadge.setVisible(isBuffActive("vietnamese-coffee")));
+      const offBuffs = onBuffsChanged(() => this.showBuffBadge(buffBadge, activeBuff()?.def ?? null));
       this.onTeardown(offBuffs);
     }
     const showOwnName = () => {
@@ -1616,7 +1616,7 @@ export class CityScene extends Phaser.Scene {
       this.avatar.y,
       this.currentDirection,
       direction !== null,
-      isBuffActive("vietnamese-coffee"),
+      activeBuffIndex(),
     );
 
     // The beach football. Everyone standing nearby, so it comes off them
@@ -1920,7 +1920,7 @@ export class CityScene extends Phaser.Scene {
     this.nameLabels.set(wallet, label);
 
     // Their buff badge, from the bit they packed into the direction byte.
-    const badge = this.attachBuffBadge(avatar, player.speedBuff === true);
+    const badge = this.attachBuffBadge(avatar, buffByIndex(player.buffIndex));
     if (badge) this.remoteBuffBadges.set(wallet, badge);
 
     // Clickable hit zone — opens this player's profile card in React.
@@ -1985,7 +1985,8 @@ export class CityScene extends Phaser.Scene {
 
     // Their buff badge. Only the senders that set the bit ever clear it, so a
     // client that predates it simply never shows one rather than flickering.
-    this.remoteBuffBadges.get(wallet)?.setVisible(player.speedBuff === true);
+    const remoteBadge = this.remoteBuffBadges.get(wallet);
+    if (remoteBadge) this.showBuffBadge(remoteBadge, buffByIndex(player.buffIndex));
 
     const container = avatar.getContainer();
     const dx = player.x - container.x;
@@ -2038,7 +2039,7 @@ export class CityScene extends Phaser.Scene {
       // 1.5x is the jitter headroom over a normal walk. A buffed sender is
       // genuinely covering more ground per sample, so the same headroom is
       // measured from their speed, not ours.
-      const cap = PLAYER_SPEED * (player.speedBuff ? MAX_SPEED_MULTIPLIER : 1) * 1.5;
+      const cap = PLAYER_SPEED * (player.buffIndex != null ? MAX_SPEED_MULTIPLIER : 1) * 1.5;
       if (sp > cap) { nvx *= cap / sp; nvy *= cap / sp; }
       vx = prevTarget.walking === false ? nvx : (vx + nvx) / 2;
       vy = prevTarget.walking === false ? nvy : (vy + nvy) / 2;
@@ -2240,23 +2241,33 @@ export class CityScene extends Phaser.Scene {
   }
 
   /**
-   * The coffee cup that rides over a buffed player's head, local or remote.
-   * Returns null when the art is not loaded, which is the only reason it
-   * would be missing.
+   * The cup that rides over a buffed player's head, local or remote. Returns
+   * null when no buff art is loaded at all, which is the only reason it would
+   * be missing.
    */
-  private attachBuffBadge(avatar: AvatarSprite, visible: boolean): Phaser.GameObjects.Image | null {
-    const { textureKey } = BUFFS["vietnamese-coffee"];
-    if (!this.textures.exists(textureKey)) return null;
+  private attachBuffBadge(avatar: AvatarSprite, buff: BuffDefinition | null): Phaser.GameObjects.Image | null {
+    // Any loaded buff texture will do to create the image with: the picture
+    // is set by showBuffBadge below, and swapped whenever the buff changes.
+    const seed = Object.values(BUFFS).find((b) => this.textures.exists(b.textureKey));
+    if (!seed) return null;
     // 0.375 of a 2x drawing is 1.5x its own pixels at the city's 2x camera
     // zoom: a regular 2-1-2-1 alternation rather than a clean doubling, which
     // is the price of a size between the two whole-pixel ones.
-    const badge = this.add.image(0, BUBBLE_Y, textureKey)
+    const badge = this.add.image(0, BUBBLE_Y, seed.textureKey)
       .setOrigin(0.5, 1)
       .setScale(0.375)
-      .setVisible(visible);
+      .setVisible(false);
     avatar.getContainer().add(badge);
     avatar.attachBadge(badge);
+    this.showBuffBadge(badge, buff);
     return badge;
+  }
+
+  /** Points a badge at the running buff's cup, or hides it when there is none. */
+  private showBuffBadge(badge: Phaser.GameObjects.Image, buff: BuffDefinition | null): void {
+    if (!buff || !this.textures.exists(buff.textureKey)) { badge.setVisible(false); return; }
+    badge.setTexture(buff.textureKey);
+    badge.setVisible(true);
   }
 
   /**
