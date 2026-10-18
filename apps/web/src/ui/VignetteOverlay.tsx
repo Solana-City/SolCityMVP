@@ -1,24 +1,26 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { PET_FRAMES, PET_FRAME_MS, PET_LOOPS, petSheetUrl } from "@/game/pet/petAssets";
+import { VIGNETTES, vignetteSheetUrl, type VignetteId } from "@/game/vignettes/vignettes";
 import { octagonFrame } from "@/ui/chamfer";
 import { useEscape } from "@/ui/useEscape";
 
 /**
- * The petting square: the Caramel Dog has nothing to say, so meeting it plays
- * the animation instead of opening a dialog. It loops a few times and closes
- * itself.
+ * The square in the middle of the screen that plays a vignette: petting the
+ * Caramel Dog, drinking DOM's tea. It loops a few times and closes itself.
  *
  * Drawn on a canvas rather than as a stepped CSS background because the frame
- * width is read off the image: the sheet is one row of PET_FRAMES frames at
- * whatever size the artist drew, and nothing here has to be told which.
+ * width is read off the image: a sheet is one row of frames at whatever size
+ * the artist drew, and nothing here has to be told which.
  */
 
 /** The framed square's inner size. The art is scaled to fit by whole pixels. */
 const BOX = 288;
 
-export default function PetOverlay({ onClose }: { onClose: () => void }) {
+export default function VignetteOverlay(
+  { id, onClose }: { id: VignetteId; onClose: () => void },
+) {
+  const vignette = VIGNETTES[id];
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [failed, setFailed] = useState(false);
   /**
@@ -51,7 +53,7 @@ export default function PetOverlay({ onClose }: { onClose: () => void }) {
     let cancelled = false;
 
     const image = new Image();
-    image.src = petSheetUrl();
+    image.src = vignetteSheetUrl(vignette);
 
     image.onerror = () => {
       // No art, no animation. Closing beats holding an empty square open.
@@ -60,7 +62,7 @@ export default function PetOverlay({ onClose }: { onClose: () => void }) {
 
     image.onload = () => {
       if (cancelled) return;
-      const fw = Math.floor(image.naturalWidth / PET_FRAMES);
+      const fw = Math.floor(image.naturalWidth / vignette.frames);
       const fh = image.naturalHeight;
       if (fw < 1 || fh < 1) { setFailed(true); return; }
 
@@ -76,10 +78,10 @@ export default function PetOverlay({ onClose }: { onClose: () => void }) {
       ctx.imageSmoothingEnabled = false;
 
       let step = 0;
-      const total = PET_FRAMES * PET_LOOPS;
+      const total = vignette.frames * vignette.loops;
 
       const draw = () => {
-        const frame = step % PET_FRAMES;
+        const frame = step % vignette.frames;
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.drawImage(
           image,
@@ -98,7 +100,7 @@ export default function PetOverlay({ onClose }: { onClose: () => void }) {
           return;
         }
         draw();
-      }, PET_FRAME_MS);
+      }, vignette.frameMs);
     };
 
     return () => {
@@ -107,7 +109,7 @@ export default function PetOverlay({ onClose }: { onClose: () => void }) {
       image.onload = null;
       image.onerror = null;
     };
-  }, [onClose]);
+  }, [onClose, vignette]);
 
   // A sheet that will not load closes on the next tick rather than mid-render.
   useEffect(() => {
