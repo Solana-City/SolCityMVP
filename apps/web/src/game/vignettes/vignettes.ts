@@ -68,11 +68,12 @@ export const VIGNETTES: Record<VignetteId, Vignette> = {
       Dark_brown: "tea_dark_brown_sheet.png",
     },
     defaultSheet: "tea_human_sheet.png",
-    // 904x113: eight square frames, the cup lifted and set back down. Two
-    // passes run about as long as the dog's four shorter ones.
+    // 904x113: eight square frames, the cup lifted, drunk from and set back
+    // down. That is one action with an end, not a cycle, so it plays once;
+    // running it twice read as the player drinking the same cup again.
     frames: 8,
     frameMs: 180,
-    loops: 2,
+    loops: 1,
   },
 };
 
