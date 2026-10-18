@@ -227,12 +227,18 @@ const NPC_SEEDS: NPCSeed[] = [
     id: "dom-tea",
     name: "DOM",
     role: "Tea Ceremony",
-    // Provisional: the open street north west of the food cart, on the band
-    // of clear road (rows 36-38) above the greenhouse block, which starts at
-    // row 39. Nothing is painted here yet, so he has the corner to himself
-    // until the ceremony gets a building.
-    tileX: 104,
-    tileY: 37,
+    // Provisional, north west of the food cart: the clear strip of cols 96-102
+    // that runs down the west side of the greenhouse block, on the last column
+    // before the buildings start.
+    //
+    // NOT the open band at rows 34-38 he stood on first. Those tiles are
+    // walkable, but the greenhouse is sliced as a full rectangle and paints
+    // its empty corners over them, and that layer's depth comes from its base
+    // row to the SOUTH, so it draws in front of anybody standing up there. He
+    // was in the city the whole time, behind a building. Here nothing is
+    // painted over the ground at all.
+    tileX: 102,
+    tileY: 40,
     dialog: [
       "I'm DOM. Welcome to my Tea Ceremony!",
       "Drinking tea gives you more energy, but without instability.",
