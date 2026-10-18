@@ -3,7 +3,7 @@ import type { Loadout } from "./paperDoll";
 import type { BuffId } from "../buffs/playerBuffs";
 
 export interface NPCAction {
-  type: "tutor" | "swap" | "transfer" | "bounties" | "link" | "placeholder" | "private-payment" | "minigame" | "stock-exchange" | "peg-risk" | "token-scan" | "private-transfer" | "speed-buff" | "pet" | "ore-mine" | "donation";
+  type: "tutor" | "swap" | "transfer" | "bounties" | "link" | "placeholder" | "private-payment" | "minigame" | "stock-exchange" | "peg-risk" | "token-scan" | "private-transfer" | "speed-buff" | "pet" | "ore-mine" | "donation" | "tea";
   label: string;
   url?: string;
   miniGameId?: string;
@@ -222,6 +222,30 @@ const NPC_SEEDS: NPCSeed[] = [
     ],
     action: { type: "speed-buff", label: "Try vietnamese coffee", buffId: "vietnamese-coffee" },
     spriteKey: "Vietnamese Barista",
+  },
+  {
+    id: "dom-tea",
+    name: "DOM",
+    role: "Tea Ceremony",
+    // Provisional: the open street north west of the food cart, on the band
+    // of clear road (rows 36-38) above the greenhouse block, which starts at
+    // row 39. Nothing is painted here yet, so he has the corner to himself
+    // until the ceremony gets a building.
+    tileX: 104,
+    tileY: 37,
+    dialog: [
+      "I'm DOM. Welcome to my Tea Ceremony!",
+      "Drinking tea gives you more energy, but without instability.",
+    ],
+    highlights: [
+      { label: "+40% SPEED" },
+      { label: "5 MINUTES" },
+    ],
+    action: { type: "tea", label: "Drink the tea" },
+    spriteKey: "DOM",
+    // Static animated, like Kite Pro: one row of 6 frames at 64x64, seated at
+    // the tea set, facing south, never wandering.
+    spriteAnimation: { frameWidth: 64, frameHeight: 64, frameCount: 6 },
   },
   {
     id: "kite-pro",

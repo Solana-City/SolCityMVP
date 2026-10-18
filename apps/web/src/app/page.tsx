@@ -47,7 +47,7 @@ const NicknameModal       = dynamic(() => import("@/ui/NicknameModal"),       { 
 const DuelInvite          = dynamic(() => import("@/ui/DuelInvite"),          { ssr: false });
 const CalendarPanel       = dynamic(() => import("@/ui/CalendarPanel"),       { ssr: false });
 const BuffBar             = dynamic(() => import("@/ui/BuffBar"),             { ssr: false });
-const PetOverlay          = dynamic(() => import("@/ui/PetOverlay"),          { ssr: false });
+const VignetteOverlay     = dynamic(() => import("@/ui/VignetteOverlay"),     { ssr: false });
 
 /** Sol Mechs duel invites: sent from a player card, answered from the city. */
 const DUEL_INVITE_EVENT = "solcity:solmechs-duel";
@@ -63,7 +63,8 @@ import { DM_UNREAD_EVENT, SEND_TOKENS_EVENT } from "@/game/chat/dmEvents";
 import { useCrispPixelArt } from "@/ui/useCrispPixelArt";
 import { useWheelZoom } from "@/ui/useWheelZoom";
 import KeysCard, { useKeysCard } from "@/ui/KeysCard";
-import { grantBuff } from "@/game/buffs/playerBuffs";
+import { grantBuff, type BuffId } from "@/game/buffs/playerBuffs";
+import type { VignetteId } from "@/game/vignettes/vignettes";
 
 function useIsTouch() {
   const [isTouch, setIsTouch] = useState(false);
@@ -201,7 +202,7 @@ export default function Home() {
         profileManager.visitNPC(npc.id, npc.name);
         profileManager.bump("dog-pets");
         track("protocol-open", npc.id, { label: npc.name });
-        setPetting(true);
+        setVignette({ id: "pet-caramel-dog" });
         return;
       }
       setActiveNPC(npc);
@@ -258,12 +259,18 @@ export default function Home() {
     return () => window.removeEventListener(OPEN_DM_EVENT, open);
   }, []);
 
-  /** The Caramel Dog's petting square is open. */
-  const [petting, setPetting] = useState(false);
-  const handlePettingClose = useCallback(() => {
-    setPetting(false);
+  /**
+   * The vignette square that is playing, and the buff it hands over when it
+   * finishes. DOM's tea is poured by the animation, not by the button, so the
+   * drink lands when the player has watched themselves take it.
+   */
+  const [vignette, setVignette] = useState<{ id: VignetteId; grant?: BuffId } | null>(null);
+  const handleVignetteClose = useCallback(() => {
+    const earned = vignette?.grant;
+    setVignette(null);
+    if (earned) grantBuff(earned);
     game?.events.emit("npc:close");
-  }, [game]);
+  }, [game, vignette]);
 
   const handleDialogClose = useCallback(() => {
     setActiveNPC(null);
@@ -298,6 +305,12 @@ export default function Home() {
           .catch(() => { /* a missing reward must never break the link */ });
       }
       game?.events.emit("npc:close");
+      return;
+    }
+    // DOM pours before he hands it over: the square plays, and the buff is
+    // granted when it closes. npc:close rides along with that, not with this.
+    if (action.type === "tea") {
+      setVignette({ id: "tea-ceremony", grant: "dom-tea" });
       return;
     }
     // A timed buff has no panel: the chip in the HUD and the badge over the
@@ -705,7 +718,7 @@ export default function Home() {
             <NicknameModal wallet={walletAddress} current={nickname.current} forced={nickname.forced} onDone={closeNickname} />
           )}
           <ActionPanel action={activeAction} onClose={handleActionClose} />
-          {petting && <PetOverlay onClose={handlePettingClose} />}
+          {vignette && <VignetteOverlay id={vignette.id} onClose={handleVignetteClose} />}
           <ProfilePanel gameRef={game} isOpen={profileOpen} onClose={() => setProfileOpen(false)} />
           {wardrobeOpen && (
             <WardrobePanel gameRef={game} onClose={() => setWardrobeOpen(false)} />
