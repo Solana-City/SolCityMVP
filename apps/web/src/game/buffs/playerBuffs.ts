@@ -1,8 +1,10 @@
 /**
  * Timed buffs the player picks up around the city.
  *
- * One is live today, the Vietnamese Barista's coffee, but the shape is a
- * registry so the next one has somewhere to go without another store.
+ * Two today, the Vietnamese Barista's coffee and DOM's tea, in a registry so
+ * the next one needs no new store. They are mutually exclusive: both are a
+ * drink that makes you quicker, so a second one replaces the first rather
+ * than stacking on it.
  *
  * A plain module singleton with a subscriber list: Phaser asks for the speed
  * multiplier every frame, React redraws the HUD timer, and neither has to know
@@ -13,7 +15,7 @@
  * else on a spare bit of the on-chain direction byte (see OnChainMultiplayer):
  * a player who is suddenly quicker should look quicker for a reason.
  */
-export type BuffId = "vietnamese-coffee";
+export type BuffId = "vietnamese-coffee" | "dom-tea";
 
 export interface BuffDefinition {
   id: BuffId;
@@ -42,7 +44,25 @@ export const BUFFS: Record<BuffId, BuffDefinition> = {
     textureKey: "buff-coffee",
     texturePath: "assets/ui/buff_coffee.png",
   },
+  "dom-tea": {
+    id: "dom-tea",
+    label: "TEA",
+    // Longer and gentler than the coffee on purpose: the two are meant to
+    // feel like a choice, not a ranking.
+    durationMs: 5 * 60_000,
+    speedMultiplier: 1.4,
+    iconUrl: "/assets/ui/buff_tea_frame.png",
+    textureKey: "buff-tea",
+    texturePath: "assets/ui/buff_tea.png",
+  },
 };
+
+/**
+ * The order the drinks are packed in on the wire (see OnChainMultiplayer):
+ * the index of a buff in this list is what rides out to other players, so
+ * their screen can draw the right cup. Append only; never reorder.
+ */
+export const BUFF_ORDER: BuffId[] = ["vietnamese-coffee", "dom-tea"];
 
 /**
  * The fastest any buff can make a player, for the remote interpolator: it
@@ -132,6 +152,10 @@ function startSweep(): void {
  */
 export function grantBuff(id: BuffId): void {
   load();
+  // One drink at a time. Coffee and tea pull in the same direction, so the
+  // new one cancels whatever was running instead of stacking with it, and
+  // the same clear is what makes a second coffee restart its three minutes.
+  expiries.clear();
   expiries.set(id, Date.now() + BUFFS[id].durationMs);
   save();
   emit();
@@ -146,6 +170,30 @@ export function isBuffActive(id: BuffId): boolean {
 export function buffRemainingMs(id: BuffId): number {
   load();
   return Math.max(0, (expiries.get(id) ?? 0) - Date.now());
+}
+
+/**
+ * The one buff running, or null. Buffs are exclusive, so this is what the
+ * badge over a player's head and the HUD chip both draw.
+ */
+export function activeBuff(): ActiveBuff | null {
+  return activeBuffs()[0] ?? null;
+}
+
+/** The wire index of the running buff, or null when none is. See BUFF_ORDER. */
+export function activeBuffIndex(): number | null {
+  const running = activeBuff();
+  if (!running) return null;
+  const index = BUFF_ORDER.indexOf(running.def.id);
+  return index < 0 ? null : index;
+}
+
+/** The buff a wire index names, or null for "no buff" and for an index a
+ *  newer client sent that this build does not know about yet. */
+export function buffByIndex(index: number | null | undefined): BuffDefinition | null {
+  if (index === null || index === undefined) return null;
+  const id = BUFF_ORDER[index];
+  return id ? BUFFS[id] : null;
 }
 
 export function activeBuffs(): ActiveBuff[] {
