@@ -227,18 +227,17 @@ const NPC_SEEDS: NPCSeed[] = [
     id: "dom-tea",
     name: "DOM",
     role: "Tea Ceremony",
-    // Provisional, north west of the food cart: the clear strip of cols 96-102
-    // that runs down the west side of the greenhouse block, on the last column
-    // before the buildings start.
+    // Provisional: the empty grass plot in the north west of the city, the one
+    // with the scattered bushes (GrassEmptyPlot / VegetationEmptyPlot), a
+    // couple of tiles west of the Sushi Man's cart.
     //
-    // NOT the open band at rows 34-38 he stood on first. Those tiles are
-    // walkable, but the greenhouse is sliced as a full rectangle and paints
-    // its empty corners over them, and that layer's depth comes from its base
-    // row to the SOUTH, so it draws in front of anybody standing up there. He
-    // was in the city the whole time, behind a building. Here nothing is
-    // painted over the ground at all.
-    tileX: 102,
-    tileY: 40,
+    // His first two spots were both derived from the food cart being at col
+    // 110, which it has not been for some time: it sits at col 43 now, so
+    // "north west of the Sushi Man" put him clear across the city. This is the
+    // spot the owner pointed at, and the tile is one of the few here carrying
+    // no vegetation of its own, so nothing is painted over him.
+    tileX: 33,
+    tileY: 19,
     dialog: [
       "I'm DOM. Welcome to my Tea Ceremony!",
       "Drinking tea gives you more energy, but without instability.",
