@@ -1,7 +1,7 @@
 import { LayerCategory, LayerVariant, isFreeItem, getBoosterPool } from "./paperDoll";
 import { progressionBus } from "@/game/progression/progressionBus";
 import { profileManager } from "@/game/config/profileManager";
-import { decodeUnlockState, unlockedIndices, BOOSTER_ONCHAIN } from "@/game/solana/program";
+import { decodeUnlockState, unlockedIndices, BOOSTER_ONCHAIN, QUEST_FREE_SLOTS } from "@/game/solana/program";
 
 /**
  * Per-wallet unlock registry for paper-doll wardrobe items.
@@ -69,8 +69,15 @@ export function setOnChainUnlocks(wallet: string, data: Uint8Array | null): void
   if (!st) return;
   const pool = getBoosterPool();
   const keys = new Set<string>();
-  for (const i of unlockedIndices(st.bits)) {
-    const e = pool[i];
+  for (const bit of unlockedIndices(st.bits)) {
+    // A set bit is NOT a pool index. callback_open_booster grants a pack item
+    // at `QUEST_FREE_SLOTS + poolIndex`, so the reserved quest block sits in
+    // front of the pool and has to come off. Reading the raw bit mapped every
+    // pack item to the one sixteen places earlier in the catalog, which nobody
+    // caught because nothing writes the quest block yet and no pack has ever
+    // been opened on chain.
+    if (bit < QUEST_FREE_SLOTS) continue; // quest reward, not a pool item
+    const e = pool[bit - QUEST_FREE_SLOTS];
     if (e) keys.add(unlockKeyOf(e.category, e.variant.id));
   }
   onchainUnlocks.set(wallet, keys);
