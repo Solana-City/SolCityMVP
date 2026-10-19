@@ -288,7 +288,7 @@ export default function Home() {
     // Daily quest hooks — triggered when player initiates the action
     if (walletAddress) {
       if (action.type === "swap")     incrementQuest(walletAddress, "swap_jupiter");
-      if (action.type === "transfer") incrementQuest(walletAddress, "send_steve");
+      if (action.type === "transfer") incrementQuest(walletAddress, "send_token");
     }
     if (action.type === "placeholder") {
       game?.events.emit("npc:close");

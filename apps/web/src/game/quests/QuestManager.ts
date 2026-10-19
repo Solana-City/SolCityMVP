@@ -42,9 +42,7 @@ export const DAILY_QUESTS: QuestDefinition[] = [
     rewardLabel: "200 pts",
   },
   {
-    // Sending belongs to Jupiter Cat now, but the id is a storage key for
-    // quest progress, so renaming it would reset everyone mid-quest.
-    id: "send_steve",
+    id: "send_token",
     title: "Token Sender",
     description: "Send a token with Jupiter Cat",
     target: 1,
