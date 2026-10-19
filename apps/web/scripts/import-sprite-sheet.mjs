@@ -63,6 +63,59 @@ console.log(`${name}.png  ${img.width}x${img.height}`);
 console.log(`background ${hex} cleared on ${pct}% of the sheet`);
 if (img.width % 64 === 0 && img.height % 64 === 0) {
   console.log(`grid ${img.width / 64} x ${img.height / 64} frames of 64px`);
+  checkGrid();
 } else {
   console.log("note: not a whole number of 64px frames, so it needs spriteAnimation in the registry");
+}
+
+/**
+ * Nothing above moves a frame: the sheet is read exactly as the artist drew
+ * it. Art whose rows sit a few pixels off the 64px grid therefore imports
+ * without a complaint and renders with a slice of one frame showing inside
+ * its neighbour, which is a miserable thing to work backwards from in the
+ * game (the Pumpkin Head arrived with its last two rows 3px high, so the top
+ * of a pumpkin turned up at the character's feet).
+ *
+ * The bands are runs of rows, or columns, that carry any ink at all. A band
+ * that crosses a frame edge means either art drawn off the grid or art that
+ * fills its frame edge to edge and has merged with the next one. Both are
+ * worth a human look, and neither can be told apart from here, so this warns
+ * and leaves the file alone.
+ */
+function checkGrid() {
+  const { data } = img.bitmap;
+  const bandsAlong = (axis) => {
+    const n = axis === "row" ? img.height : img.width;
+    const m = axis === "row" ? img.width : img.height;
+    const bands = [];
+    let start = -1;
+    for (let i = 0; i < n; i++) {
+      let inked = false;
+      for (let j = 0; j < m && !inked; j++) {
+        const x = axis === "row" ? j : i;
+        const y = axis === "row" ? i : j;
+        if (data[(y * img.width + x) * 4 + 3] > 10) inked = true;
+      }
+      if (inked && start < 0) start = i;
+      else if (!inked && start >= 0) { bands.push([start, i - 1]); start = -1; }
+    }
+    if (start >= 0) bands.push([start, n - 1]);
+    return bands;
+  };
+
+  let crossings = 0;
+  for (const axis of ["row", "column"]) {
+    for (const [s, e] of bandsAlong(axis)) {
+      if (Math.floor(s / 64) === Math.floor(e / 64)) continue;
+      crossings++;
+      console.warn(`warning: ink ${axis}s ${s}..${e} cross the frame edge at ${(Math.floor(s / 64) + 1) * 64}`);
+    }
+  }
+  if (crossings > 0) {
+    console.warn("The art is not inside its frames. Re-grid the source and import it again:");
+    console.warn("importing it as it stands puts part of every frame into the one before it.");
+    return;
+  }
+  const tops = bandsAlong("row").map(([s]) => s % 64);
+  console.log(`ink starts at y ${tops.join(", ")} of each frame row (hat/ sheets start at 5)`);
 }
