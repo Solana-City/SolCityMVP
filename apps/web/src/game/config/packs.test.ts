@@ -62,6 +62,27 @@ describe("outfit packs", () => {
     expect(drops).toHaveLength(allLegendary.size);
   });
 
+  it("falls DOWN first, never up, while anything below is left", () => {
+    // The direction, not just the count. A pack rolling nothing but RARE, in
+    // a season that holds fewer rares than the pack has slots, has to spend
+    // the overflow on uncommon and common. Reaching for a legendary instead
+    // would be paying out scarcity to cover a shortage, which is the bug this
+    // pins: before 2026-10-20 the ladder put legendary first for every rarity
+    // except legendary itself.
+    const counts = seasonRarityCounts();
+    const allRare = {
+      ...PACKS[0],
+      size: Math.max(PACKS[0].size, counts.rare + 2),
+      odds: { common: 0, uncommon: 0, rare: 100, legendary: 0 },
+    };
+    // Only meaningful while there is stock below rare to fall into.
+    expect(counts.uncommon + counts.common).toBeGreaterThan(0);
+
+    const drops = rollPack("test-wallet", allRare);
+    expect(drops.length).toBeGreaterThan(counts.rare); // the bucket did run dry
+    expect(drops.filter((d) => d.rarity === "legendary")).toHaveLength(0);
+  });
+
   it("never draws an item from another season", () => {
     for (const pack of PACKS) {
       for (const drop of rollPack("test-wallet", pack)) {

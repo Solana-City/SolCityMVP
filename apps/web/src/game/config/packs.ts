@@ -228,8 +228,25 @@ export function rollPack(
 
   for (let i = 0; i < pack.size; i++) {
     const wanted = rollRarity(pack.odds);
-    // The rolled rarity first, then down the ladder if it has nothing left.
-    const ladder = [wanted, ...RARITY_ORDER.filter((r) => r !== wanted).reverse()];
+    // The rolled rarity first, then DOWN the ladder, and only if there is
+    // nothing at all below it, up as a last resort.
+    //
+    // The direction is the whole point and it was wrong until 2026-10-20: the
+    // old line was `[wanted, ...RARITY_ORDER.filter(r => r !== wanted).reverse()]`,
+    // which for every rarity except legendary put LEGENDARY first. A pack that
+    // ran out of commons paid out a legendary, which is the opposite of
+    // scarcity and would have been baked into the program the moment it drew
+    // to match the client.
+    //
+    // Going up at all is a last resort rather than a refusal because a pack
+    // that hands over four pieces instead of five reads as broken; a common
+    // roll in a season with no commons left has nowhere else to go.
+    const at = RARITY_ORDER.indexOf(wanted);
+    const ladder = [
+      wanted,
+      ...RARITY_ORDER.slice(0, at).reverse(), // down first
+      ...RARITY_ORDER.slice(at + 1),          // up only if nothing below
+    ];
 
     let picked: (typeof pool)[number] | undefined;
     for (const rarity of ladder) {
