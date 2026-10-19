@@ -40,27 +40,41 @@ const TOLERANCE = 12;
 const img = await Jimp.read(source);
 const bg = intToRGBA(img.getPixelColor(0, 0));
 
+// A sheet that arrives already keyed has been through here before, or was
+// exported transparent. Knocking a background out of it a second time is not a
+// no-op: the sampled "colour" is a transparent pixel, which reads as black, so
+// the pass goes looking for black and eats the outlines the art is drawn with.
+// Nothing is gained either way, so the clearing pass is skipped and the file is
+// just moved into place. Import from the artist's original to key it.
+const alreadyKeyed = bg.a === 0;
+
 let cleared = 0;
-for (let y = 0; y < img.height; y++) {
-  for (let x = 0; x < img.width; x++) {
-    const p = intToRGBA(img.getPixelColor(x, y));
-    const near =
-      Math.abs(p.r - bg.r) <= TOLERANCE &&
-      Math.abs(p.g - bg.g) <= TOLERANCE &&
-      Math.abs(p.b - bg.b) <= TOLERANCE;
-    if (near) {
-      img.setPixelColor(0x00000000, x, y);
-      cleared++;
+if (!alreadyKeyed) {
+  for (let y = 0; y < img.height; y++) {
+    for (let x = 0; x < img.width; x++) {
+      const p = intToRGBA(img.getPixelColor(x, y));
+      const near =
+        Math.abs(p.r - bg.r) <= TOLERANCE &&
+        Math.abs(p.g - bg.g) <= TOLERANCE &&
+        Math.abs(p.b - bg.b) <= TOLERANCE;
+      if (near) {
+        img.setPixelColor(0x00000000, x, y);
+        cleared++;
+      }
     }
   }
 }
 
 await img.write(out);
 
-const hex = `#${[bg.r, bg.g, bg.b].map((v) => v.toString(16).padStart(2, "0")).join("")}`;
-const pct = ((100 * cleared) / (img.width * img.height)).toFixed(1);
 console.log(`${name}.png  ${img.width}x${img.height}`);
-console.log(`background ${hex} cleared on ${pct}% of the sheet`);
+if (alreadyKeyed) {
+  console.log("background already transparent, so nothing was keyed and the art is untouched");
+} else {
+  const hex = `#${[bg.r, bg.g, bg.b].map((v) => v.toString(16).padStart(2, "0")).join("")}`;
+  const pct = ((100 * cleared) / (img.width * img.height)).toFixed(1);
+  console.log(`background ${hex} cleared on ${pct}% of the sheet`);
+}
 if (img.width % 64 === 0 && img.height % 64 === 0) {
   console.log(`grid ${img.width / 64} x ${img.height / 64} frames of 64px`);
   checkGrid();
@@ -112,8 +126,10 @@ function checkGrid() {
     }
   }
   if (crossings > 0) {
-    console.warn("The art is not inside its frames. Re-grid the source and import it again:");
-    console.warn("importing it as it stands puts part of every frame into the one before it.");
+    console.warn("The art is not inside its frames: send it back to the spriter to be");
+    console.warn("re-exported on the grid. Imported as it stands, every frame carries a");
+    console.warn("slice of the one after it. Moving it here instead is rework that the");
+    console.warn("next version of the sheet would undo.");
     return;
   }
   const tops = bandsAlong("row").map(([s]) => s % 64);
