@@ -71,6 +71,10 @@ export class AchievementEngine {
     }
 
     for (const ach of ACHIEVEMENTS) {
+      // A retired track stays in the list so an already-published mask keeps
+      // decoding, but it is off the board: awarding it would toast a row the
+      // player cannot go and look at.
+      if (ach.retired) continue;
       if (this.unlocked.has(ach.id)) continue;
       if (!ach.check(profile)) continue;
 

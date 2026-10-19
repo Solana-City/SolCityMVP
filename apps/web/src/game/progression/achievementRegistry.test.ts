@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   ACHIEVEMENTS,
   BITS_PER_TRACK,
+  LIVE_TRACKS,
   TIER_COLORS,
   TRACKS,
   levelBitIndex,
@@ -75,6 +76,70 @@ describe("the tracks", () => {
   it("gives every level a tier with a colour", () => {
     for (const t of TRACKS) {
       for (const lv of t.levels) expect(TIER_COLORS[lv.tier], t.id).toBeTruthy();
+    }
+  });
+});
+
+describe("retiring a track", () => {
+  it("keeps it off the board", () => {
+    expect(LIVE_TRACKS.some((t) => t.id === "met-everyone")).toBe(false);
+    expect(LIVE_TRACKS.every((t) => !t.retired)).toBe(true);
+  });
+
+  it("leaves it in TRACKS, in place", () => {
+    // The whole reason retiring exists instead of deleting. A published mask
+    // is a set of bit positions handed out by TRACKS index, so a retired track
+    // has to keep sitting exactly where it was.
+    const i = TRACKS.findIndex((t) => t.id === "met-everyone");
+    expect(i).toBe(2);
+    expect(levelBitIndex(i, 1)).toBe(2 * BITS_PER_TRACK);
+  });
+
+  it("stops awarding its rungs", () => {
+    // The engine skips these, so a new player can never be toasted a row the
+    // profile panel will not show them.
+    const retired = ACHIEVEMENTS.filter((a) => a.trackId === "met-everyone");
+    expect(retired.length).toBeGreaterThan(0);
+    for (const a of retired) expect(a.retired, a.id).toBe(true);
+    for (const a of ACHIEVEMENTS.filter((a) => a.trackId !== "met-everyone")) {
+      expect(a.retired, a.id).toBe(false);
+    }
+  });
+
+  it("does not strand the name it was earned under", () => {
+    // "Social Butterfly" moved onto the citizens ladder rather than vanishing.
+    const citizens = TRACKS.find((t) => t.id === "citizens")!;
+    expect(citizens.levels.some((l) => l.title === "Social Butterfly")).toBe(true);
+  });
+});
+
+describe("what the board measures", () => {
+  /**
+   * Every live track has to be fed by something. A track reading a counter
+   * nothing ever bumps is a row that can only ever sit at level 0, which is
+   * exactly the kind of stale achievement this list keeps growing.
+   */
+  it("reads a metric that moves", () => {
+    const fed: Record<string, PlayerProfile> = {
+      "met-sol": { ...EMPTY, visitedNPCs: ["sol-guide"] },
+      citizens: { ...EMPTY, visitedNPCs: ["sol-guide"] },
+      swaps: { ...EMPTY, swapCount: 1 },
+      transfers: { ...EMPTY, transferCount: 1 },
+      streak: { ...EMPTY, streakBest: 3 },
+      score: { ...EMPTY, score: 100 },
+    };
+    const byCounter: Record<string, string> = {
+      stocks: "stocks-buys", hunt: "hunt-finds", ball: "ball-kicks", dog: "dog-pets",
+      expressions: "expressions", games: "minigame-plays", "game-wins": "minigame-wins",
+      kite: "kite-best", "mechs-pve": "mechs-pve-wins", "mechs-pvp": "mechs-pvp-wins",
+      ore: "ore-claims", "ore-strikes": "ore-won", quests: "quests-claimed",
+      wardrobe: "wardrobe-items", chat: "chat-sent", buffs: "buffs-taken",
+      "food-cart": "food-orders",
+    };
+    for (const t of LIVE_TRACKS) {
+      const profile = fed[t.id] ?? { ...EMPTY, counters: { [byCounter[t.id]]: 1e9 } };
+      expect(byCounter[t.id] ?? fed[t.id], `${t.id} is not in this test`).toBeTruthy();
+      expect(t.metric(profile), t.id).toBeGreaterThan(0);
     }
   });
 });

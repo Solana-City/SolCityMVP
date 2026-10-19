@@ -380,90 +380,64 @@ function StripIcon({ src, frames, size }: { src: string; frames: number; size: n
 }
 
 /**
- * Achievement id -> the art that stands for it: the citizen it is about, a
+ * Achievement track -> the art that stands for it: the citizen it is about, a
  * piece of the thing itself (the ball, a mech slot), or an interface icon.
  *
- * Tiers of the same activity deliberately share one picture. What separates
- * them is the tier colour on the title and the number in the description, and
- * three cards of the same ball reads as a set the way three different icons
- * never would.
+ * Every level of a track deliberately shares one picture. What separates them
+ * is the tier colour on the title and the number under the bar, and a row that
+ * keeps its icon as it levels reads as one thing getting better the way a new
+ * icon per rung never would.
+ *
+ * One entry per TRACK, keyed by the track's own id. It used to be keyed per
+ * threshold - "trader-10", "trader-25", "trader-50", all three pointing at the
+ * same sheet - from back when every number was its own achievement. Tracks
+ * replaced that, so most of those keys had nothing left reading them. A track
+ * that names no `art` looks itself up here, so a new track needs one line.
  */
 export const ACHIEVEMENT_ART: Record<string, { sheet?: string; img?: string; strip?: string; frames?: number }> = {
-  "first-swap": { sheet: "Jupiter Joe.png" },
-  "first-transfer": { sheet: "send-npc.png" },
-  "streak-3": { img: `${UI}/attention_yellow.png` },
+  // Getting to know the city
   "met-sol": { sheet: "Sol.png" },
+  "citizens": { img: `${UI}/icon_chat2.png` },
+  // Retired, and kept only so an old published mask still draws something.
   "met-everyone": { img: `${UI}/icon_chat2.png` },
-  "trader-10": { sheet: "Jupiter Joe.png" },
-  "streak-7": { img: `${UI}/attention_yellow.png` },
-  "score-1000": { img: ICON.trophy },
-
-  // Talking
-  "social-5": { img: `${UI}/icon_chat2.png` },
-  "social-10": { img: `${UI}/icon_chat2.png` },
-  "social-20": { img: `${UI}/icon_chat2.png` },
 
   // Trading
-  "trader-25": { sheet: "Jupiter Joe.png" },
-  "trader-50": { sheet: "Jupiter Joe.png" },
-  "sender-10": { sheet: "send-npc.png" },
+  "swaps": { sheet: "Jupiter Joe.png" },
+  // The send icon, NOT send-npc.png. That sheet is Steve Sends, who moved out
+  // when sending moved in with Jupiter Cat, and a badge wearing the face of a
+  // citizen who no longer lives here is just a stale achievement with art.
+  "transfers": { img: `${UI}/icon_send.png` },
+  "stocks": { sheet: "Stocks Broker.png" },
 
-  // ORE. TODO: placeholder, the same borrowed sheet the ORE Miner NPC is using
-  // until the spriter delivers, so the stand-in is obvious rather than subtle.
-  "ore": { sheet: "main_char.png" },
-
-  // Stocks
-  "stocks-1": { sheet: "Stocks Broker.png" },
-  "stocks-10": { sheet: "Stocks Broker.png" },
-  "stocks-50": { sheet: "Stocks Broker.png" },
-
-  // Find Someone
-  "hunt-1": { img: ICON.hunt },
-  "hunt-5": { img: ICON.hunt },
-  "hunt-25": { img: ICON.hunt },
-
-  // The beach football
-  "ball-1": { strip: "/assets/sprites/decor/ball_soccer.png", frames: 4 },
-  "ball-25": { strip: "/assets/sprites/decor/ball_soccer.png", frames: 4 },
-  "ball-100": { strip: "/assets/sprites/decor/ball_soccer.png", frames: 4 },
-
-  // The Caramel Dog
-  "dog-1": { sheet: "caramel-dog.png" },
-  "dog-10": { sheet: "caramel-dog.png" },
-  "dog-50": { sheet: "caramel-dog.png" },
+  // Out in the city
+  "hunt": { img: ICON.hunt },
+  "ball": { strip: "/assets/sprites/decor/ball_soccer.png", frames: 4 },
+  "dog": { sheet: "caramel-dog.png" },
+  "expressions": { img: `${UI}/icon_emoji2.png` },
+  "chat": { img: `${UI}/ico_chat.png` },
+  "buffs": { img: `${UI}/buff_coffee.png` },
 
   // Mini-games
-  "games-1": { img: `${UI}/controller.png` },
-  "games-10": { img: `${UI}/controller.png` },
-  "games-win-10": { img: `${UI}/controller.png` },
-  "games-50": { img: `${UI}/controller.png` },
-
-  // Kite Clash
-  "kite-1000": { img: `${UI}/icon_kite.png` },
-  "kite-5000": { img: `${UI}/icon_kite.png` },
-  "kite-10000": { img: `${UI}/icon_kite.png` },
+  "games": { img: `${UI}/controller.png` },
+  "game-wins": { img: `${UI}/controller2.png` },
+  "kite": { img: `${UI}/icon_kite.png` },
+  "food-cart": { img: "/assets/minigames/food-cart/salmon-nigiri.png" },
 
   // Sol Mechs
-  "mechs-pve-1": { img: "/assets/minigames/sol-mechs/ui/slotmini-matrix.png" },
-  "mechs-pve-10": { img: "/assets/minigames/sol-mechs/ui/slotmini-matrix.png" },
-  "mechs-pve-25": { img: "/assets/minigames/sol-mechs/ui/slotmini-matrix.png" },
-  "mechs-pvp-1": { img: `${UI}/icon2_leaderboard.png` },
-  "mechs-pvp-5": { img: `${UI}/icon2_leaderboard.png` },
-  "mechs-pvp-25": { img: `${UI}/icon2_leaderboard.png` },
-
-  // Reactions
-  "express-10": { img: `${UI}/icon_emoji2.png` },
+  "mechs-pve": { img: "/assets/minigames/sol-mechs/ui/slotmini-matrix.png" },
+  "mechs-pvp": { img: `${UI}/icon2_leaderboard.png` },
 
   // Coming back
-  "streak-14": { img: `${UI}/icon_calendar1.png` },
-  "streak-30": { img: `${UI}/icon_calendar1.png` },
+  "streak": { img: `${UI}/icon_calendar1.png` },
+  "score": { img: ICON.trophy },
+  "quests": { img: `${UI}/icon_tasks1.png` },
+  "wardrobe": { img: `${UI}/icon_wardrob1.png` },
 
-  // Points
-  "score-100": { img: ICON.trophy },
-  "score-500": { img: ICON.trophy },
-  "score-5000": { img: ICON.trophy },
+  // ORE, for both the claim office and the strikes. TODO: placeholder, the
+  // same borrowed sheet the ORE Miner NPC is using until the spriter delivers,
+  // so the stand-in is obvious rather than subtle.
+  "ore": { sheet: "main_char.png" },
 };
-
 export function AchievementIcon({ id, size = 28 }: { id: string; size?: number }) {
   const art = ACHIEVEMENT_ART[id];
   if (art?.sheet) return <CitizenIcon sheet={art.sheet} size={size} />;

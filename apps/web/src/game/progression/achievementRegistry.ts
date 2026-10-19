@@ -45,11 +45,24 @@ export interface AchievementTrack {
   /** Plural noun for the bar's caption: "41 / 50 pets". */
   unit: string;
   /**
-   * Key into ACHIEVEMENT_ART (ui/PixelIcons) when the sprite is filed under an
-   * older id than this track's. The art was always per family, so one key
-   * serves every level.
+   * Key into ACHIEVEMENT_ART (ui/PixelIcons) when the sprite is filed under
+   * another track's id. The art is per family, so one key serves every level.
+   * Left out means "the art filed under this track's own id".
    */
   art?: string;
+  /**
+   * Off the board, still in the bit layout.
+   *
+   * A track can never be DELETED: the bit block a published profile uses comes
+   * from the track's index, so dropping one relabels every achievement after it
+   * on every profile already on chain. Retiring is the removal that is safe —
+   * the block stays where it is, old masks keep decoding, and the row stops
+   * being shown and stops being awarded.
+   *
+   * Say why in a comment on the track. "The thing it measured is gone" is the
+   * only good reason; a track whose wording went stale should be reworded.
+   */
+  retired?: boolean;
 }
 
 /**
@@ -92,16 +105,25 @@ export const TRACKS: AchievementTrack[] = [
     description: "Talk to the citizens of SolanaCity.",
     icon: "🗨️",
     unit: "citizens",
-    art: "social-5",
     metric: (p) => p.visitedNPCs.length,
     levels: [
       { at: 1,  tier: "common" },
       { at: 5,  title: "Neighbourly", tier: "common" },
       { at: 10, title: "Known Around", tier: "rare" },
       { at: 20, title: "Everybody Knows You", tier: "epic" },
+      // Inherited from the retired met-everyone track below, as a number
+      // instead of a roster. 26 citizens stand in the city today, so 25 is
+      // "all but one you have not found yet" and, unlike a list, it does not
+      // take the badge back off a player the day a new NPC moves in.
+      { at: 25, title: "Social Butterfly", tier: "legendary" },
     ],
   },
   {
+    // RETIRED. It claimed "talk to every citizen" while checking a hardcoded
+    // eight of the twenty-six who live here, so it was both a lie and
+    // unmaintainable. Counting citizens is the `citizens` track's job, and
+    // "Social Butterfly" is a rung on it now.
+    retired: true,
     id: "met-everyone",
     title: "Social Butterfly",
     description: "Talk to every citizen.",
@@ -120,7 +142,6 @@ export const TRACKS: AchievementTrack[] = [
     description: "Swap with Jupiter Cat.",
     icon: "📈",
     unit: "swaps",
-    art: "trader-10",
     metric: (p) => p.swapCount,
     levels: [
       { at: 1,   title: "First Swap", tier: "common" },
@@ -136,7 +157,6 @@ export const TRACKS: AchievementTrack[] = [
     description: "Send a token with Jupiter Cat.",
     icon: "📨",
     unit: "sends",
-    art: "sender-10",
     metric: (p) => p.transferCount,
     levels: [
       { at: 1,  title: "First Transfer", tier: "common" },
@@ -150,7 +170,6 @@ export const TRACKS: AchievementTrack[] = [
     description: "Buy tokenized stocks.",
     icon: "🏦",
     unit: "buys",
-    art: "stocks-1",
     metric: (p) => tally(p, "stocks-buys"),
     levels: [
       { at: 1,   title: "Shareholder", tier: "common" },
@@ -167,7 +186,6 @@ export const TRACKS: AchievementTrack[] = [
     description: "Find the hunted citizen.",
     icon: "🔍",
     unit: "finds",
-    art: "hunt-1",
     metric: (p) => tally(p, "hunt-finds"),
     levels: [
       { at: 1,   title: "Sharp Eyes", tier: "common" },
@@ -182,7 +200,6 @@ export const TRACKS: AchievementTrack[] = [
     description: "Kick the ball on the beach.",
     icon: "⚽",
     unit: "kicks",
-    art: "ball-1",
     metric: (p) => tally(p, "ball-kicks"),
     levels: [
       { at: 1,    title: "First Touch", tier: "common" },
@@ -198,7 +215,6 @@ export const TRACKS: AchievementTrack[] = [
     description: "Pet the Caramel Dog.",
     icon: "🐕",
     unit: "pets",
-    art: "dog-1",
     metric: (p) => tally(p, "dog-pets"),
     levels: [
       { at: 1,   title: "Good Dog", tier: "common" },
@@ -215,7 +231,6 @@ export const TRACKS: AchievementTrack[] = [
     description: "Say it with your face.",
     icon: "😊",
     unit: "reactions",
-    art: "express-10",
     metric: (p) => tally(p, "expressions"),
     levels: [
       { at: 1,   tier: "common" },
@@ -232,7 +247,6 @@ export const TRACKS: AchievementTrack[] = [
     description: "Finish mini-games.",
     icon: "🎮",
     unit: "games",
-    art: "games-1",
     metric: (p) => tally(p, "minigame-plays"),
     levels: [
       { at: 1,   title: "Player One", tier: "common" },
@@ -247,7 +261,6 @@ export const TRACKS: AchievementTrack[] = [
     description: "Win mini-games.",
     icon: "🎮",
     unit: "wins",
-    art: "games-win-10",
     metric: (p) => tally(p, "minigame-wins"),
     levels: [
       { at: 1,   tier: "common" },
@@ -264,7 +277,6 @@ export const TRACKS: AchievementTrack[] = [
     description: "Score high in Kite Clash.",
     icon: "🪁",
     unit: "points",
-    art: "kite-1000",
     metric: (p) => tally(p, "kite-best"),
     levels: [
       { at: 1000,  title: "Off the Ground", tier: "common" },
@@ -281,7 +293,6 @@ export const TRACKS: AchievementTrack[] = [
     description: "Win Sol Mechs battles.",
     icon: "🤖",
     unit: "wins",
-    art: "mechs-pve-1",
     metric: (p) => tally(p, "mechs-pve-wins"),
     levels: [
       { at: 1,   title: "First Scrap", tier: "common" },
@@ -296,7 +307,6 @@ export const TRACKS: AchievementTrack[] = [
     description: "Win ranked Sol Mechs matches.",
     icon: "🎖️",
     unit: "wins",
-    art: "mechs-pvp-1",
     metric: (p) => tally(p, "mechs-pvp-wins"),
     levels: [
       { at: 1,   title: "Ranked Debut", tier: "rare" },
@@ -313,7 +323,6 @@ export const TRACKS: AchievementTrack[] = [
     description: "Check in day after day.",
     icon: "🗓️",
     unit: "days",
-    art: "streak-14",
     metric: (p) => p.streakBest ?? 0,
     levels: [
       { at: 3,   title: "Regular", tier: "common" },
@@ -329,7 +338,6 @@ export const TRACKS: AchievementTrack[] = [
     description: "Earn points anywhere in the city.",
     icon: "🏆",
     unit: "points",
-    art: "score-1000",
     metric: (p) => p.score,
     levels: [
       { at: 100,   title: "Getting Somewhere", tier: "common" },
@@ -358,7 +366,109 @@ export const TRACKS: AchievementTrack[] = [
       { at: 200, tier: "legendary" },
     ],
   },
+  {
+    // The other half of the claim office, and the half that is actually an
+    // achievement: ore-won was already being tallied by onOreWon() with
+    // nothing reading it. Staking is a bet, striking is a result.
+    id: "ore-strikes",
+    title: "Striking ORE",
+    description: "Win ORE out of a claim.",
+    icon: "💎",
+    unit: "strikes",
+    // Shares the claim office's placeholder until the miner sprite lands.
+    art: "ore",
+    metric: (p) => tally(p, "ore-won"),
+    levels: [
+      { at: 1,  title: "Pay Dirt", tier: "rare" },
+      { at: 5,  title: "Lucky Seam", tier: "epic" },
+      { at: 25, tier: "legendary" },
+    ],
+  },
+  {
+    id: "quests",
+    title: "Daily Quests",
+    description: "Claim the day's quests.",
+    icon: "📋",
+    unit: "quests",
+    metric: (p) => tally(p, "quests-claimed"),
+    levels: [
+      { at: 1,   title: "On the Board", tier: "common" },
+      { at: 10,  title: "Day Job", tier: "common" },
+      { at: 50,  title: "Never Misses", tier: "rare" },
+      { at: 150, tier: "epic" },
+      { at: 500, tier: "legendary" },
+    ],
+  },
+  {
+    id: "wardrobe",
+    title: "The Wardrobe",
+    description: "Collect things to wear.",
+    icon: "👕",
+    unit: "items",
+    metric: (p) => tally(p, "wardrobe-items"),
+    levels: [
+      { at: 1,  title: "Dressed Up", tier: "common" },
+      { at: 5,  title: "Options", tier: "common" },
+      { at: 15, title: "Walk-in Wardrobe", tier: "rare" },
+      { at: 30, title: "Collector", tier: "epic" },
+      { at: 60, tier: "legendary" },
+    ],
+  },
+  {
+    id: "chat",
+    title: "City Chat",
+    description: "Say something out loud in the city.",
+    icon: "💬",
+    unit: "messages",
+    metric: (p) => tally(p, "chat-sent"),
+    levels: [
+      { at: 1,   title: "Hello City", tier: "common" },
+      { at: 25,  title: "Chatty", tier: "common" },
+      { at: 100, title: "Local Voice", tier: "rare" },
+      { at: 500, tier: "epic" },
+    ],
+  },
+  {
+    id: "buffs",
+    title: "Pick-me-up",
+    description: "Take a coffee or a tea from the stands.",
+    icon: "☕",
+    unit: "rounds",
+    metric: (p) => tally(p, "buffs-taken"),
+    levels: [
+      { at: 1,   title: "First Sip", tier: "common" },
+      { at: 10,  title: "Regular Order", tier: "common" },
+      { at: 50,  title: "The Usual", tier: "rare" },
+      { at: 200, tier: "epic" },
+    ],
+  },
+  {
+    // Orders served, not rounds played: a run that fills four plates is four
+    // times the shift that one does, and minigame-plays already counts runs.
+    id: "food-cart",
+    title: "The Food Cart",
+    description: "Serve orders at the cart.",
+    icon: "🍣",
+    unit: "orders",
+    metric: (p) => tally(p, "food-orders"),
+    levels: [
+      { at: 1,   title: "First Order", tier: "common" },
+      { at: 25,  title: "Short Order Cook", tier: "common" },
+      { at: 100, title: "Cart Legend", tier: "rare" },
+      { at: 500, tier: "epic" },
+    ],
+  },
 ];
+
+/**
+ * The tracks the city shows: everything that is not retired.
+ *
+ * `TRACKS` stays whole and in order because the bit layout is indexed off it;
+ * the board reads this instead. Anything that paints a profile — the panel, a
+ * player's card — uses LIVE_TRACKS; anything that decodes or publishes a mask
+ * uses TRACKS.
+ */
+export const LIVE_TRACKS: AchievementTrack[] = TRACKS.filter((t) => !t.retired);
 
 // ── Reading a track ─────────────────────────────────────────────────────────
 
@@ -439,6 +549,12 @@ export interface AchievementDef {
   level: number;
   /** ACHIEVEMENT_ART key. */
   art: string;
+  /**
+   * Its track is retired. Kept in the list so a mask published before the
+   * retirement still decodes, and skipped by the engine so nobody is awarded
+   * or toasted a rung the city no longer shows.
+   */
+  retired: boolean;
   outfitReward?: string;
 }
 
@@ -458,6 +574,7 @@ export const ACHIEVEMENTS: AchievementDef[] = TRACKS.flatMap((track, trackIndex)
       trackId: track.id,
       level,
       art: track.art ?? track.id,
+      retired: track.retired === true,
     };
   }),
 );

@@ -7,7 +7,7 @@ import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import type { PlayerProfile } from "@/game/config/profileManager";
 import type { ProfileManager } from "@/game/config/profileManager";
 import {
-  TIER_COLORS, TRACKS, levelName, trackProgress,
+  TIER_COLORS, LIVE_TRACKS, levelName, trackProgress,
 } from "@/game/progression/achievementRegistry";
 import { fetchBoard } from "@/game/leaderboards/boards";
 import { DAILY_QUESTS, claimQuest, getQuestProgress, onQuestsChanged } from "@/game/quests/QuestManager";
@@ -486,9 +486,9 @@ function ProfileTab({ profile, wallet, onConnect }: {
  * are partway through.
  */
 function AchievementsTab({ profile }: { profile: PlayerProfile }) {
-  const rows = TRACKS.map((track) => ({ track, p: trackProgress(track, profile) }));
+  const rows = LIVE_TRACKS.map((track) => ({ track, p: trackProgress(track, profile) }));
   const levels = rows.reduce((n, r) => n + r.p.level, 0);
-  const total = TRACKS.reduce((n, t) => n + t.levels.length, 0);
+  const total = LIVE_TRACKS.reduce((n, t) => n + t.levels.length, 0);
 
   return (
     <div>
@@ -507,7 +507,7 @@ function AchievementsTab({ profile }: { profile: PlayerProfile }) {
 }
 
 function TrackCard({ track, progress }: {
-  track: (typeof TRACKS)[number];
+  track: (typeof LIVE_TRACKS)[number];
   progress: ReturnType<typeof trackProgress>;
 }) {
   const { level, value, next, fraction } = progress;

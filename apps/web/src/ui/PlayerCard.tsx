@@ -13,7 +13,7 @@ import { useEscape } from "@/ui/useEscape";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { PublicKey } from "@solana/web3.js";
 import { levelsFromMask } from "@/game/social/profilePublisher";
-import { TRACKS, TIER_COLORS, levelName } from "@/game/progression/achievementRegistry";
+import { LIVE_TRACKS, TIER_COLORS, levelName } from "@/game/progression/achievementRegistry";
 import { AchievementIcon, CloseButton } from "@/ui/PixelIcons";
 import { runFriendAction, type FriendAction } from "@/game/social/friendActions";
 import { standingWith, type FriendStanding } from "@/game/social/friends";
@@ -388,7 +388,7 @@ function Badges({ indices }: { indices?: Set<number> }) {
   if (!indices || indices.size === 0) return null;
 
   const levels = levelsFromMask(indices);
-  const earned = TRACKS
+  const earned = LIVE_TRACKS
     .map((track, i) => ({ track, level: levels.get(track.id) ?? 0, i }))
     .filter((r) => r.level > 0)
     .sort((a, b) => b.level - a.level || a.i - b.i);
