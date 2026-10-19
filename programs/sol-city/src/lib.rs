@@ -32,7 +32,15 @@ pub const PLAYER_SEED: &[u8] = b"player_v3";
 /// POOL_VERSION. Free additions bump this (+ POOL_VERSION); lockable additions
 /// just append and are safe.
 pub const FREE_ITEM_COUNT: u16 = 20;
-pub const POOL_VERSION: u16 = 1;
+// Bumped to 2 to match the client, which went there when Magawk_green and
+// Magawk_red left the variant list and shifted every index after them. That is
+// normally forbidden and was safe exactly once, because these indices have
+// never been written to chain. After this deploy does write them, a removal
+// renumbers cosmetics wallets already own and the append-only rule is absolute.
+//
+// Nothing reads this constant: it is a marker that both sides agree, so having
+// it disagree was worse than useless.
+pub const POOL_VERSION: u16 = 2;
 /// Reserved block (in the lockable space) for quest/NPC-collection reward
 /// outfits. Nothing grants these on chain yet: the instruction that did was
 /// pulled from this deploy because its condition could only be checked in the
