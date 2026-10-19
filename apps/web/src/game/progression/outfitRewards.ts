@@ -60,11 +60,20 @@ const SEEKER_LOVER_ID = "seeker-lover";
 const VIBHU_ID = "vibhu";
 
 /**
- * How much SKR earns the backpack. Still to be decided, and null until it is:
- * the hat is for holding any SKR at all, so the backpack has to mean something
- * more than that.
+ * How much SKR earns the backpack. The hat is for holding any SKR at all, so
+ * the backpack has to mean something more than that.
+ *
+ * 7,000 SKR, set 2026-10-19 to sit near $50 and to be a round number rather
+ * than a figure tracking a price to the cent. Quotes disagreed when this was
+ * chosen (Coinbase $0.0080, The Block $0.0065), so it lands somewhere between
+ * $45 and $56 and is deliberately not precise.
+ *
+ * Two things to know before changing it. The threshold is in TOKENS, so it
+ * drifts with the price: a 10x in SKR makes this a $500 item and a crash makes
+ * it trivial, which is accepted for a cosmetic. And `skrBalance` returns
+ * `uiAmount`, so this is whole SKR, not raw units.
  */
-const SKR_FOR_BACKPACK: number | null = null;
+const SKR_FOR_BACKPACK: number | null = 7_000;
 
 /** Best check-in streak that earns the Solana cap. */
 const STREAK_FOR_CAP = 7;
