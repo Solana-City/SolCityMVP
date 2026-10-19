@@ -354,8 +354,6 @@ export const TRACKS: AchievementTrack[] = [
     id: "ore",
     title: "The Claim Office",
     description: "Stake a claim on the ORE board.",
-    // TODO: placeholder icon, and no `art` key, until the spriter delivers the
-    // miner sprite. The track works without it; only the picture is missing.
     icon: "⛏️",
     unit: "claims",
     metric: (p) => tally(p, "ore-claims"),
@@ -375,7 +373,8 @@ export const TRACKS: AchievementTrack[] = [
     description: "Win ORE out of a claim.",
     icon: "💎",
     unit: "strikes",
-    // Shares the claim office's placeholder until the miner sprite lands.
+    // Shares the claim office's art: both tracks are the ORE Miner's business,
+    // and the art map is keyed per family rather than per track.
     art: "ore",
     metric: (p) => tally(p, "ore-won"),
     levels: [

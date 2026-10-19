@@ -433,10 +433,14 @@ export const ACHIEVEMENT_ART: Record<string, { sheet?: string; img?: string; str
   "quests": { img: `${UI}/icon_tasks1.png` },
   "wardrobe": { img: `${UI}/icon_wardrob1.png` },
 
-  // ORE, for both the claim office and the strikes. TODO: placeholder, the
-  // same borrowed sheet the ORE Miner NPC is using until the spriter delivers,
-  // so the stand-in is obvious rather than subtle.
-  "ore": { sheet: "main_char.png" },
+  // ORE, for both the claim office and the strikes: the ORE Miner's own sheet,
+  // which he already stands and swings a pick in.
+  //
+  // A strip, NOT a `sheet`. He is an idle loop - one row of six 64x64 frames,
+  // 384x64 in all - and CitizenIcon hardcodes a 4x4 walk grid, so it would
+  // squash him to a sixth of his height. StripIcon crops frame 0 of a
+  // horizontal strip, which is what this shape is.
+  "ore": { strip: "/assets/sprites/ORE Miner.png", frames: 6 },
 };
 export function AchievementIcon({ id, size = 28 }: { id: string; size?: number }) {
   const art = ACHIEVEMENT_ART[id];

@@ -313,8 +313,9 @@ const NPC_SEEDS: NPCSeed[] = [
     spriteKey: "Donation Manager",
   },
   // Steve Sends's sprite sheet (send-npc.png) stays in /assets/sprites for
-  // whoever gets it next: the UI still draws it for the send icon and the
-  // "first transfer" badge.
+  // whoever gets it next: the UI still draws it as the generic FRIEND avatar
+  // in the action panel and the MagicBlock hub. It is NO LONGER on the Sending
+  // achievement, which wears the send icon now that he has moved out.
   {
     id: "vibhu",
     name: "Vibhu",
