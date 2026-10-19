@@ -26,12 +26,22 @@ declare_id!("HPvDFVnruSXHwKKP44eUvRh8oYqBaHCeQbK1sKWT1aU2");
 // uses the same seed.
 pub const PLAYER_SEED: &[u8] = b"player_v3";
 
-/// Global cosmetic catalog split: indices [0, FREE_ITEM_COUNT) are free (skin,
-/// faces, starter basics); [FREE_ITEM_COUNT, N) are lockable (bit = idx - F in
-/// UnlockState/PlayerState.unlocked). MUST match the client's global table and
-/// POOL_VERSION. Free additions bump this (+ POOL_VERSION); lockable additions
-/// just append and are safe.
-pub const FREE_ITEM_COUNT: u16 = 20;
+/// Global cosmetic catalog split: indices [0, FREE_ITEM_COUNT) are free and
+/// never checked; [FREE_ITEM_COUNT, ..) are lockable (bit = idx - F in
+/// UnlockState / PlayerState.unlocked). MUST match the client's table.
+///
+/// **A reserved SIZE, not a count.** Twenty-six items occupy it today: every
+/// skin, face and hairstyle, the starter shirt and trousers, and one hat. The
+/// rest is slack for free items yet to be drawn, and slack costs nothing: the
+/// bit is `index - FREE_ITEM_COUNT`, so raising this moves where the bitset
+/// window starts rather than consuming any of it.
+///
+/// **Sized generously on purpose, because it can never move.** An item in the
+/// enforced range cannot become free later without changing its index, and an
+/// index that has been written to chain names a cosmetic in somebody's wallet.
+/// The owner's rule (2026-10-20): free at start and NPC rewards are not pack
+/// items, everything else is.
+pub const FREE_ITEM_COUNT: u16 = 64;
 // Bumped to 2 to match the client, which went there when Magawk_green and
 // Magawk_red left the variant list and shifted every index after them. That is
 // normally forbidden and was safe exactly once, because these indices have
@@ -40,16 +50,25 @@ pub const FREE_ITEM_COUNT: u16 = 20;
 //
 // Nothing reads this constant: it is a marker that both sides agree, so having
 // it disagree was worse than useless.
-pub const POOL_VERSION: u16 = 2;
-/// Reserved block (in the lockable space) for quest/NPC-collection reward
-/// outfits. Nothing grants these on chain yet: the instruction that did was
-/// pulled from this deploy because its condition could only be checked in the
-/// client (see the note where it used to be). The block stays reserved so the
-/// bit layout does not move when it returns. Booster items start AFTER it, so
-/// quest and booster bit indices never shift each other as either grows. Lockable bit layout:
-///   [0, QUEST_FREE_SLOTS)  → quest-free items
-///   [QUEST_FREE_SLOTS, …)  → booster items
-pub const QUEST_FREE_SLOTS: u16 = 16;
+pub const POOL_VERSION: u16 = 3;
+/// Reserved block, inside the lockable space, for quest and NPC reward outfits.
+/// Lockable bit layout:
+///   [0, QUEST_FREE_SLOTS)   → quest and NPC rewards
+///   [QUEST_FREE_SLOTS, ..)  → booster items
+///
+/// Nothing grants these on chain yet: the instruction that did was pulled from
+/// this deploy because its condition could only be checked in the client. The
+/// block stays reserved so the layout does not move when it returns.
+///
+/// **Also a reserved size.** Twelve items use it. It went from 16 to 128 on
+/// 2026-10-20, at the owner's call for "100+ to start", because more
+/// NPC-distributed items are planned and growing this later would shift every
+/// booster bit after it.
+///
+/// Unlike the free block, slack here is NOT free: it costs pack slots one for
+/// one. 128 reserved against 1024 bits leaves 896 for packs, which is the
+/// trade that was made deliberately.
+pub const QUEST_FREE_SLOTS: u16 = 128;
 /// First catalog index `update_look_session` actually checks. Everything below
 /// is either free or inside the quest block, and the quest block is not
 /// enforced while nothing on chain can grant it. A const expression, so an
@@ -102,7 +121,21 @@ pub const UNLOCKS_SEED: &[u8] = b"unlocks";
 /// index→item table (getBoosterPool order); the pool count per draw is passed
 /// per request and stored on the account, so the pool can grow without a
 /// redeploy (append-only, never reorder).
-pub const UNLOCK_BITS: usize = 32;
+/// Bytes in the unlock bitset: 128 gives 1024 bits, 128 reserved for quest and
+/// NPC rewards and **896 for pack items**, across every season, forever.
+///
+/// One bit is one DISTINCT catalog item, not one copy: supply lives in the
+/// drop table, not here. A wallet that opens three Crowns sets one bit.
+///
+/// Sized at the only free moment. It appears in three account layouts
+/// (UnlockState.bits, UnlockState.minted, PlayerState.unlocked) and both
+/// accounts are being created fresh by this deploy, so widening costs nothing
+/// today. Afterwards it costs a realloc and a migration of every wallet, with
+/// PlayerState undelegated from the rollup first.
+///
+/// If 896 is ever not enough, the escape is a second page keyed
+/// ["unlocks2", wallet] rather than resizing this one.
+pub const UNLOCK_BITS: usize = 128;
 /// Pieces granted per pack.
 pub const BOOSTER_PACK_SIZE: usize = 5;
 /// Price to open an outfit box (0.025 SOL, about $2.50 at $100/SOL).
@@ -379,7 +412,7 @@ pub mod sol_city {
         player.expression_at = 0;
         player.last_message = String::new();
         player.message_at = 0;
-        player.unlocked = [0u8; 32];
+        player.unlocked = [0u8; UNLOCK_BITS];
         player.last_active = Clock::get()?.unix_timestamp;
         player.created_at = Clock::get()?.unix_timestamp;
         Ok(())
@@ -589,7 +622,7 @@ pub mod sol_city {
             let lockable = (idx - FREE_ITEM_COUNT) as usize;
             let byte = lockable / 8;
             require!(
-                byte < 32 && (player.unlocked[byte] & (1u8 << (lockable % 8) as u8)) != 0,
+                byte < UNLOCK_BITS && (player.unlocked[byte] & (1u8 << (lockable % 8) as u8)) != 0,
                 SolCityError::ItemNotUnlocked
             );
         }
@@ -1832,7 +1865,7 @@ pub struct PlayerState {
     pub message_at: i64,
     /// Snapshot of UnlockState.bits, copied in at delegate/sync time so the ER's
     /// update_look_session can enforce cosmetics without a cross-cluster read.
-    pub unlocked: [u8; 32],
+    pub unlocked: [u8; UNLOCK_BITS],
     // ── The public profile (read off the same ER poll as position) ─────────
     /// Unlocked achievements, one bit per client registry index.
     ///

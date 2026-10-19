@@ -136,11 +136,14 @@ describe("outfit packs", () => {
     }
   });
 
-  it("gives no hairstyle a rarity: hair is free, like the bases and faces", () => {
+  it("keeps hair out of the pool entirely, not just out of the draw", () => {
+    // Hair used to sit in the pool and be skipped at draw time, which left
+    // every hairstyle holding an unlock bit and therefore mintable as an
+    // asset. The owner ruled on 2026-10-20 that items which arrive unlocked
+    // are never pack items, so hair moved into the chain's free block and the
+    // pool no longer contains any.
     for (const { category, variant } of getBoosterPool()) {
-      if (category !== "hair") continue;
-      expect(isPackItem(category, variant.id), variant.id).toBe(false);
-      expect(rarityOf(category, variant.id), variant.id).toBe("common");
+      expect(category, variant.id).not.toBe("hair");
     }
   });
 });

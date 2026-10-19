@@ -48,10 +48,10 @@ import {
  */
 
 /** Mirrors FREE_ITEM_COUNT in the program. A reserved size, not a count. */
-export const FREE_ITEM_COUNT = 20;
+export const FREE_ITEM_COUNT = 64;
 
 /** Mirrors QUEST_FREE_SLOTS in the program. Also a reserved size. */
-export const QUEST_FREE_SLOTS = 16;
+export const QUEST_FREE_SLOTS = 128;
 
 /** First index of the quest and NPC block. */
 export const QUEST_BLOCK_START = FREE_ITEM_COUNT;

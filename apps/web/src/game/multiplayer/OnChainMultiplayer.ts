@@ -111,7 +111,7 @@ import {
 } from "../solana/instructions";
 import {
   derivePlayerPDA, SOL_CITY_PROGRAM_ID, deriveHuntPDA, decodeHuntState,
-  achievementIndices, ACHIEVEMENT_BITS,
+  achievementIndices, ACHIEVEMENT_BITS, UNLOCK_BITS,
 } from "../solana/program";
 import { BASE_RPC_PRIMARY, resilientBaseFetch } from "../solana/baseRpc";
 import { setHuntFromChain, clearHuntFromChain } from "../minigames/whereIsNPC/WhereIsNPCGame";
@@ -2058,9 +2058,11 @@ export class OnChainMultiplayer {
         if (offset + 2 > buf.length) { offset = buf.length + 1; return 0; }
         const v = buf.readUInt16LE(offset); offset += 2; return v;
       };
-      readBytes(32);                                  // unlocked: the look
-                                                      // enforcer's snapshot,
-                                                      // not part of this view
+      // unlocked: the look enforcer's snapshot, not part of this view. The
+      // length has to track the program's UNLOCK_BITS, because every field
+      // after it is read at an offset from here: a stale number silently
+      // shifts achievements, streaks and game bests rather than failing.
+      readBytes(UNLOCK_BITS);
       const achievementBits = readBytes(ACHIEVEMENT_BITS);
       const streakCurrent = readU16();
       const streakBest    = readU16();

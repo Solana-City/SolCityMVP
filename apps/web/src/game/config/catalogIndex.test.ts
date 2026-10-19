@@ -18,8 +18,8 @@ import { boosterIndexTable } from "./boosterPool";
  */
 describe("the global catalog index", () => {
   it("mirrors the program's block constants", () => {
-    expect(FREE_ITEM_COUNT).toBe(20);
-    expect(QUEST_FREE_SLOTS).toBe(16);
+    expect(FREE_ITEM_COUNT).toBe(64);
+    expect(QUEST_FREE_SLOTS).toBe(128);
     expect(QUEST_BLOCK_START).toBe(FREE_ITEM_COUNT);
     expect(BOOSTER_BLOCK_START).toBe(FREE_ITEM_COUNT + QUEST_FREE_SLOTS);
   });
@@ -29,15 +29,18 @@ describe("the global catalog index", () => {
     expect(getQuestItems().length).toBeLessThanOrEqual(QUEST_FREE_SLOTS);
   });
 
-  it("leaves the free block's last slot empty, on purpose", () => {
-    // POOL_V1_FREE still names Brown_hair, which stopped existing when hair
-    // colour became its own axis, so nineteen items occupy twenty slots.
-    // Shrinking FREE_ITEM_COUNT instead would move every later block and
-    // renumber every booster item.
-    expect(getChainFreeItems()).toHaveLength(19);
-    expect(itemAtGlobalIndex(19)).toBeUndefined();
-    // And the hole is inside the free range, which the program never checks.
-    expect(19).toBeLessThan(FREE_ITEM_COUNT);
+  it("leaves slack at the end of each reserved block", () => {
+    // Both blocks are reserved SIZES, not populations: the slack is where
+    // future free items and future NPC rewards go. Spending it is appending;
+    // moving an item between blocks is not, because an index that has been
+    // written to chain names a cosmetic in somebody's wallet.
+    const free = getChainFreeItems().length;
+    const quest = getQuestItems().length;
+    expect(free).toBeLessThan(FREE_ITEM_COUNT);
+    expect(quest).toBeLessThan(QUEST_FREE_SLOTS);
+    // The first unused slot of each block really is empty.
+    expect(itemAtGlobalIndex(free)).toBeUndefined();
+    expect(itemAtGlobalIndex(QUEST_BLOCK_START + quest)).toBeUndefined();
   });
 
   it("round-trips every assigned index", () => {
@@ -89,6 +92,7 @@ describe("the global catalog index", () => {
       "hat:turkish_head",
       "hat:STB_cap",
       "hat:Seeker_hat",
+      "hat:Pumpkin_head",
     ]);
   });
 
@@ -101,7 +105,9 @@ describe("the global catalog index", () => {
       "eyesFace:Normal_red",
       "pants:Blue_pants", "pants:Grey_pants",
       "tshirt:Blue_tshirt", "tshirt:White_tshirt",
-      "hair:Black_hair",
+      "hair:Avatar", "hair:Black_hair", "hair:Afro", "hair:Anime",
+      "hair:Magawk_blue", "hair:black_long", "hair:brown_beard",
+      "hat:hat_black",
     ]);
   });
 });

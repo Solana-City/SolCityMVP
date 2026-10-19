@@ -22,7 +22,7 @@ import { LayerCategory, getBoosterPool } from "./paperDoll";
 // 2026-09-21 (see REDEPLOY_CHECKLIST.md). After the player_v3 redeploy writes
 // them to chain, a removal renumbers cosmetics wallets already own, and the
 // append-only rule is absolute again.
-export const POOL_VERSION = 2;
+export const POOL_VERSION = 3;
 
 /** The booster pool as an ordered, index-stable list (index = on-chain bit). */
 export function boosterIndexTable(): { category: LayerCategory; id: string; name: string; file: string }[] {

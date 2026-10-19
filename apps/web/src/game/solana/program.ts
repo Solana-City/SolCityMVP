@@ -123,7 +123,7 @@ export function deriveUnlockPDA(
   );
 }
 
-export const UNLOCK_BITS = 32; // bytes → 256 possible item indices
+export const UNLOCK_BITS = 128; // bytes -> 1024 bits: 128 quest, 896 pack
 
 /**
  * Bits reserved at the front of the unlock bitset for quest and NPC rewards,
@@ -135,7 +135,7 @@ export const UNLOCK_BITS = 32; // bytes → 256 possible item indices
  * yet, so bits below this are currently always zero, which is exactly why
  * reading them wrong went unnoticed.
  */
-export const QUEST_FREE_SLOTS = 16;
+export const QUEST_FREE_SLOTS = 128;
 
 export interface UnlockState {
   authority: PublicKey;

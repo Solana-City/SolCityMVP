@@ -236,7 +236,7 @@ export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
     // the event window, not a drop table that would need a redeploy.
     { id: "Pumpkin_head", name: "Pumpkin Head", textureKey: "pd-hat-Pumpkin_head",
       file: "hat/Pumpkin_head.png", hatCoverage: "suppress", unlockVia: "quest",
-      unlockHint: "Meet Jack O' Lantern at Halloween" },
+      unlockHint: "Carve a clean pumpkin for Jack O' Lantern" },
   ],
 };
 
@@ -357,17 +357,18 @@ const FREE_ITEMS: Partial<Record<LayerCategory, "*" | string[]>> = {
 };
 
 /**
- * The free set when the booster pool was fixed (POOL_VERSION 1). The pool is
- * index-stable on-chain, so it keeps being built from this list even though
- * more items are free now; the draw just skips the ones that are free.
+ * The free set the booster pool was ORIGINALLY fixed against (POOL_VERSION 1).
+ * Retired on 2026-10-20 and kept only as history.
+ *
+ * It was frozen in anticipation of a deploy that never happened, so when the
+ * owner ruled that hair is never a pack item, the freeze could be lifted
+ * exactly once, the same way POOL_VERSION 2 lifted it for the Magawk removal.
+ * The chain's free set is SHIPPED_FREE_ITEMS now, which is simply what the
+ * game already gives away.
+ *
+ * It also still named `Brown_hair`, which stopped existing when hair colour
+ * became its own axis, so it described nineteen items while claiming twenty.
  */
-const POOL_V1_FREE: Partial<Record<LayerCategory, "*" | string[]>> = {
-  skin: "*",
-  eyesFace: "*",
-  hair: ["Black_hair", "Brown_hair"],
-  tshirt: ["Blue_tshirt", "White_tshirt"],
-  pants: ["Blue_pants", "Grey_pants"],
-};
 
 function inSet(set: Partial<Record<LayerCategory, "*" | string[]>>, category: LayerCategory, id: string): boolean {
   const free = set[category];
@@ -408,20 +409,21 @@ export function unlockHintFor(variant: LayerVariant): string {
  *  quest/NPC. Shared by the client preview and (later) the on-chain VRF draw. */
 export function getBoosterPool(): { category: LayerCategory; variant: LayerVariant }[] {
   return getAllLayerVariants().filter(
-    ({ category, variant }) => !inSet(POOL_V1_FREE, category, variant.id) && !variant.unlockVia,
+    ({ category, variant }) => !inSet(SHIPPED_FREE_ITEMS, category, variant.id) && !variant.unlockVia,
   );
 }
 
 /**
- * The free items as the CHAIN counts them: the POOL_V1_FREE set, in
+ * The free items as the CHAIN counts them: the SHIPPED_FREE_ITEMS set, in
  * LAYER_ORDER, including anything currently disabled.
  *
  * Two things make this different from `isFreeItem`, and both matter because
  * this feeds a global index that becomes a bit on chain.
  *
- * It uses POOL_V1_FREE rather than FREE_ITEMS, because the chain's
- * FREE_ITEM_COUNT was fixed against the former and the latter has grown since
- * (every hairstyle and, while TEST_UNLOCK_ALL_HATS is on, every hat).
+ * It uses SHIPPED_FREE_ITEMS, not FREE_ITEMS, because the latter also honours
+ * TEST_UNLOCK_ALL_HATS, which is a testing switch rather than a decision. The
+ * shipped set is what the game actually gives away: every skin, face and
+ * hairstyle, the starter shirt and trousers, and one hat.
  *
  * It reads LAYER_VARIANTS directly rather than going through
  * getEnabledVariants, because disabling a variant must NOT renumber the items
@@ -431,7 +433,7 @@ export function getBoosterPool(): { category: LayerCategory; variant: LayerVaria
 export function getChainFreeItems(): { category: LayerCategory; variant: LayerVariant }[] {
   return LAYER_ORDER.flatMap((category) =>
     LAYER_VARIANTS[category]
-      .filter((variant) => inSet(POOL_V1_FREE, category, variant.id))
+      .filter((variant) => inSet(SHIPPED_FREE_ITEMS, category, variant.id))
       .map((variant) => ({ category, variant })),
   );
 }
