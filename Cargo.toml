@@ -4,6 +4,17 @@ members = [
 ]
 resolver = "2"
 
+# Pins the CLI that `solana-verify` builds with, so a verifiable build is
+# reproducible from this repo rather than from whatever the operator happens to
+# have on PATH. 4.3.0 is the floor for sBPFv3: 4.2.x compiles a hand-declared
+# syscall under `--arch v3` without complaint and then fails at runtime with
+# CallDepthExceeded, while 4.3.0 catches it at build time.
+#
+# Neither program declares a syscall by hand, so that particular trap cannot
+# fire here. The pin is for the next person, and for the verifiable build.
+[workspace.metadata.cli]
+solana = "4.3.0"
+
 [profile.release]
 overflow-checks = true
 lto = "fat"
