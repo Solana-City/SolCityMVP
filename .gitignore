@@ -38,3 +38,7 @@ pixel-polish/
 sprite-prep-and-portrait-restore/
 
 .claude/worktrees/
+
+# Internal working notes — kept outside the repo, never published
+REDEPLOY_CHECKLIST.md
+PROGRAM_PENDENCIES.md
