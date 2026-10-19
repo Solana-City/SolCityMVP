@@ -228,6 +228,15 @@ export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
     { id: "Seeker_hat", name: "Seeker Hat", textureKey: "pd-hat-Seeker_hat",
       file: "hat/Seeker_hat.png", unlockVia: "quest",
       unlockHint: "Hold SKR and talk to Seeker Lover" },
+    // The Halloween collectible, handed over by Jack O' Lantern. "suppress"
+    // rather than the default "full": a pumpkin encloses the whole head, and
+    // per-column masking would leave a sliver of a wide hairstyle showing past
+    // the pumpkin's edge. Earned, never boxed — unlockVia keeps it out of the
+    // booster pool, and it is off the season table on purpose: its scarcity is
+    // the event window, not a drop table that would need a redeploy.
+    { id: "Pumpkin_head", name: "Pumpkin Head", textureKey: "pd-hat-Pumpkin_head",
+      file: "hat/Pumpkin_head.png", hatCoverage: "suppress", unlockVia: "quest",
+      unlockHint: "Meet Jack O' Lantern at Halloween" },
   ],
 };
 

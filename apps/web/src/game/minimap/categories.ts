@@ -35,6 +35,9 @@ const CATEGORY_OVERRIDES: Partial<Record<string, MinimapCategory>> = {
   "cloak-vitin": "defi",
   "pegana-raffx": "defi",
   "dungeons-moles": "games",
+  // A "placeholder" action until the Halloween mini-games are built, but he is
+  // a games NPC on the legend from the day he lands, not a community link.
+  "jack-o-lantern": "games",
 };
 
 export function npcCategory(npc: { id: string; action: NPCAction }): MinimapCategory {

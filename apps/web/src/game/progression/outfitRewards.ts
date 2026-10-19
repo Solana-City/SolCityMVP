@@ -51,6 +51,10 @@ const REWARDS = {
   oreMiner: { category: "hat", id: "Miner_helmet", name: "Miner Helmet" },
   // Vibhu's gift, for opening his Breakpoint 2026 link.
   breakpoint: { category: "tshirt", id: "Shirt_Solana", name: "Solana Shirt" },
+  // The Halloween collectible. Handed over for meeting Jack O' Lantern while
+  // the Halloween mini-games are still being built: when one of them ships,
+  // this moves to onMiniGameFinished and the conversation stops granting it.
+  halloween: { category: "hat", id: "Pumpkin_head", name: "Pumpkin Head" },
 } as const;
 
 /** NPC who checks SKR and hands over the gifts. */
@@ -86,6 +90,9 @@ const KITE_CLASH_ID = "kite-clash";
 
 /** The ST Turkey chair: finishing a cut grants the Turkish Hat. */
 const HAIR_SPECIALIST_ID = "hair-specialist";
+
+/** The Halloween host, who hands over the Pumpkin Head. */
+const JACK_O_LANTERN_ID = "jack-o-lantern";
 
 /**
  * The ST Brasil crew, met for the Brazil shirt: the three who were always on
@@ -222,6 +229,7 @@ export function watchNpcConversations(): void {
   unsubscribe?.();
   const offVisits = progressionBus.on("npc-visited", (e) => {
     if (e.npcId === KUKA_ID) grant(REWARDS.kuka);
+    if (e.npcId === JACK_O_LANTERN_ID) grant(REWARDS.halloween);
     // Fire and forget: the dialog should never wait on a mainnet round trip.
     if (e.npcId === SEEKER_LOVER_ID) void grantSkrGift();
     // Checked on every visit, not just the last one: a wallet that had already

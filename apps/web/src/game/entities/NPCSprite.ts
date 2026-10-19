@@ -2,6 +2,7 @@ import * as Phaser from "phaser";
 import { TILE_SIZE } from "../config/constants";
 import { ChatBubble } from "../chat/ChatBubble";
 import { SimpleSprite, NPC_DIRECTION_ROW, PLAYER_DIRECTION_ROW, type Direction } from "./SimpleSprite";
+import { AvatarSprite } from "./AvatarSprite";
 import type { NPCDefinition } from "../config/npcRegistry";
 import { profileManager } from "../config/profileManager";
 import { progressionBus } from "../progression/progressionBus";
@@ -53,7 +54,14 @@ const ATTENTION_ALPHA_VISITED = 0.65;
 
 export class NPCSprite {
   private scene: Phaser.Scene;
-  private avatar: SimpleSprite;
+  /**
+   * The body under this NPC: its own sheet (SimpleSprite) or, for a speaker
+   * with no art of their own, the same paper-doll stack the player and the
+   * crowd are built from (AvatarSprite). Everything below drives the two
+   * through the part of their API that matches — walk, idle, face, height —
+   * and the handful of sheet-only calls are guarded where they are made.
+   */
+  private avatar: SimpleSprite | AvatarSprite;
   private exclamation: Phaser.GameObjects.Container;
   /** Pixel-art balloon sprite (preferred) — null when the texture is missing. */
   private exclamationImg: Phaser.GameObjects.Sprite | null = null;
@@ -111,6 +119,11 @@ export class NPCSprite {
     this.originX = x;
     this.originY = y;
 
+    // A paper-doll NPC: no sheet of its own, assembled from layers like the
+    // player. Checked before the sheet fallback below, so a loadout NPC never
+    // silently lands on "avatar-player" and shows up as a copy of the player.
+    const paperDoll = !def.spriteKey && !!def.loadout;
+
     const desiredKey = def.spriteKey ?? "avatar-player";
     const spriteKey = scene.textures.exists(desiredKey) ? desiredKey : "avatar-player";
     this.textureKey = spriteKey;
@@ -122,12 +135,17 @@ export class NPCSprite {
     const directionRow = spriteKey === "avatar-player" ? PLAYER_DIRECTION_ROW : NPC_DIRECTION_ROW;
 
     this.collisionLayers = collisionLayers ?? [];
-    this.avatar = new SimpleSprite(
-      scene, x, y, spriteKey, directionRow,
-      def.spriteAnimation?.frameCount,
-      def.spriteAnimation?.scale,
-      def.spriteAnimation?.blobOffsetX,
-    );
+    this.avatar = paperDoll
+      ? new AvatarSprite(scene, x, y, def.loadout)
+      : new SimpleSprite(
+          scene, x, y, spriteKey, directionRow,
+          def.spriteAnimation?.frameCount,
+          def.spriteAnimation?.scale,
+          def.spriteAnimation?.blobOffsetX,
+        );
+    if (def.bodyTint !== undefined && this.avatar instanceof AvatarSprite) {
+      this.avatar.setBodyTint(def.bodyTint);
+    }
 
     const container = this.getContainer();
     const colorHex = `#${def.color.toString(16).padStart(6, "0")}`;
@@ -289,8 +307,11 @@ export class NPCSprite {
     this.bubble = new ChatBubble(this.scene, this.getContainer(), text, "#ffffff", {
       bg: 0xffffff, bgAlpha: 1, outline: false, y: -(this.avatar.getVisualHeight() + 16), overlay: true,
     });
-    // The sheet that goes with the line: the builder throws an arm out.
-    if (this.def.spriteActionKey) this.avatar.poseFor(this.def.spriteActionKey, ACTION_HOLD_MS);
+    // The sheet that goes with the line: the builder throws an arm out. Only
+    // an NPC with its own art has a pose sheet to swap to.
+    if (this.def.spriteActionKey && this.avatar instanceof SimpleSprite) {
+      this.avatar.poseFor(this.def.spriteActionKey, ACTION_HOLD_MS);
+    }
   }
 
   checkProximity(playerX: number, playerY: number): boolean {
@@ -519,6 +540,10 @@ export class NPCSprite {
   private setSheet(key: string | undefined): void {
     if (!key || !this.def.spriteWalkKey) return;
     if (!this.scene.textures.exists(key)) return;
+    // A paper-doll NPC has no sheets to swap between: its look is the layer
+    // stack, and the walk/idle split SimpleSprite needs two textures for is
+    // already one animation per layer.
+    if (!(this.avatar instanceof SimpleSprite)) return;
     this.avatar.setTexture(key);
   }
 
