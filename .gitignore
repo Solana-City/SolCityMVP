@@ -39,6 +39,11 @@ sprite-prep-and-portrait-restore/
 
 .claude/worktrees/
 
-# Internal working notes — kept outside the repo, never published
+# Internal working notes - kept outside the repo, never published.
+# They live in SolCity-private/ next to the checkout. These entries are a
+# guard: sessions share this checkout, and a recreated file would otherwise
+# be committed straight back.
 REDEPLOY_CHECKLIST.md
 PROGRAM_PENDENCIES.md
+OPTIMIZATION_PLAN.md
+audit-review/
