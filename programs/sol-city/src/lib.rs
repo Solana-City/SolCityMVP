@@ -42,6 +42,11 @@ pub const POOL_VERSION: u16 = 1;
 ///   [0, QUEST_FREE_SLOTS)  → quest-free items
 ///   [QUEST_FREE_SLOTS, …)  → booster items
 pub const QUEST_FREE_SLOTS: u16 = 16;
+/// First catalog index `update_look_session` actually checks. Everything below
+/// is either free or inside the quest block, and the quest block is not
+/// enforced while nothing on chain can grant it. A const expression, so an
+/// overflow here would fail the build rather than wrap at runtime.
+pub const ENFORCED_FROM: u16 = FREE_ITEM_COUNT + QUEST_FREE_SLOTS;
 pub const BUFFER_SEED: &[u8] = b"buffer";
 /// Global "Find Someone" hunt state — one account for the whole city.
 ///
@@ -527,10 +532,30 @@ pub mod sol_city {
     /// "skin=Light|hair=Afro"). Others render the real avatar from the poll.
     pub fn update_look_session(ctx: Context<UpdatePlayerSession>, loadout: String) -> Result<()> {
         let player = &mut ctx.accounts.player;
-        // ENFORCE: the loadout is "slot=index|..." where each value is a global
-        // catalog index. A referenced item must be free (index < FREE_ITEM_COUNT)
-        // or set in the player's unlock snapshot — otherwise the write is
-        // rejected, so peers can never see a cosmetic this wallet never earned.
+        // ENFORCE, over the one range a forged unlock could monetise: the
+        // loadout is "slot=index|...", each value a global catalog index, and a
+        // BOOSTER item must be set in the player's unlock snapshot or the write
+        // is rejected. Peers can then never see a pack cosmetic this wallet
+        // never drew.
+        //
+        // TWO DELIBERATE HOLES, and together they mean this currently enforces
+        // NOTHING. Read both before "fixing" either.
+        //
+        //   1. A value that does not parse as a number is SKIPPED, not
+        //      rejected. The client still sends variant ids ("sk=Light"):
+        //      the global index table that WARDROBE_ONCHAIN.md Phase 2
+        //      specifies was never built. Rejecting a non-number would reject
+        //      every outfit from every player, so until that table ships this
+        //      loop sees nothing it can check.
+        //   2. The quest block, [FREE_ITEM_COUNT, ENFORCED_FROM), is skipped
+        //      outright. No instruction grants a quest bit on chain now that
+        //      claim_free_outfit is out, so enforcing it would make all ten
+        //      quest outfits unwearable.
+        //
+        // Both close by themselves, which is the whole reason this ships as a
+        // no-op instead of waiting: when the client sends indices, (1) stops
+        // matching and booster enforcement turns on with NO further deploy;
+        // when something grants quest bits, (2) is a one-line change.
         for part in loadout.split('|') {
             let key = part.split('=').next().unwrap_or("");
             // "c" is the hair colour swatch, not a catalog item. Every swatch
@@ -544,8 +569,13 @@ pub mod sol_city {
                 Some(v) if !v.is_empty() => v,
                 _ => continue, // empty slot / no value = nothing worn there
             };
-            let idx: u16 = val.parse().map_err(|_| error!(SolCityError::ItemNotUnlocked))?;
-            if idx < FREE_ITEM_COUNT {
+            // Hole (1): not a catalog index, so there is nothing to check.
+            let idx: u16 = match val.parse() {
+                Ok(i) => i,
+                Err(_) => continue,
+            };
+            // Free items, and hole (2), the quest block.
+            if idx < ENFORCED_FROM {
                 continue;
             }
             let lockable = (idx - FREE_ITEM_COUNT) as usize;
