@@ -121,6 +121,13 @@ export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
     { id: "Jetpack",         name: "Jetpack",        textureKey: "pd-back-Jetpack",         file: "back/Jetpack.png", unlockVia: "quest", unlockHint: "Quest reward" },
     { id: "backpack_brown",  name: "Brown Backpack", textureKey: "pd-back-backpack_brown",  file: "back/backpack_brown.png" },
     { id: "backpack_red",    name: "Red Backpack",   textureKey: "pd-back-backpack_red",    file: "back/backpack_red.png" },
+    // The Seeker Lover's second gift, for holding a real position rather than
+    // a single token. Appended, never inserted: position in this list is the
+    // index the program stores as a bit. unlockVia keeps it out of the booster
+    // pool, so the pool order is untouched and POOL_VERSION does not move.
+    { id: "Seeker_backpack", name: "Seeker Backpack", textureKey: "pd-back-Seeker_backpack",
+      file: "back/Seeker_backpack.png", unlockVia: "quest",
+      unlockHint: "Hold 7,000 SKR and talk to Seeker Lover" },
   ],
   skin: [
     { id: "Light",      name: "Light",      textureKey: "pd-skin-Light",      file: "skin/Light.png" },

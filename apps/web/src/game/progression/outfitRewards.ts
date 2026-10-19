@@ -38,8 +38,8 @@ const REWARDS = {
   // Waiting on the donation NPC. The variant exists, so this one is live the
   // moment something calls onDonation().
   cityCap: { category: "hat", id: "city_cap", name: "City Cap" },
-  // Waiting on its art and on the threshold below. grant() skips a reward whose
-  // variant is missing, so this stays inert until both land.
+  // Live since 2026-10-19: the art landed and the threshold below is set, which
+  // were the two things it was waiting on.
   skrBackpack: { category: "back", id: "Seeker_backpack", name: "Seeker Backpack" },
   // Earned by actually striking ORE, not by staking a claim: the helmet is a
   // trophy, not a receipt for turning up.
