@@ -88,14 +88,6 @@ export interface NPCDefinition {
    */
   loadout?: Loadout;
   /**
-   * Only read for a `loadout` NPC: paints every paper-doll layer except the
-   * hat in this colour, so the character reads as a silhouette while what
-   * they wear on their head keeps its own palette. There is no black clothing
-   * in the wardrobe, and this is cheaper than drawing a set: it is a multiply
-   * tint over the sheets already loaded.
-   */
-  bodyTint?: number;
-  /**
    * Optional second sheet, swapped in while this NPC is walking and swapped
    * back on arrival. Same 64×64 walk-grid contract as `spriteKey`.
    *
@@ -771,16 +763,14 @@ const NPC_SEEDS: NPCSeed[] = [
     // is built yet. "placeholder" rather than a "minigame" action pointing at
     // an id that does not exist, which would open nothing and log a warning.
     action: { type: "placeholder", label: "See you at Halloween" },
-    // No sheet of his own: a paper-doll stack painted black from the neck down
-    // (see bodyTint), with the Pumpkin Head as the only thing keeping its own
-    // colour. White is the base the tint sits on because it multiplies clean.
+    // No sheet of his own: a paper-doll stack, same as the player and the
+    // crowd, wearing the Pumpkin Head.
     loadout: {
       skin: "Light",
-      pants: "Grey_pants",
-      tshirt: "White_tshirt",
+      pants: "Red_short_pants",
+      tshirt: "Shirt_Solana",
       hat: "Pumpkin_head",
     },
-    bodyTint: 0x000000,
   },
 ];
 

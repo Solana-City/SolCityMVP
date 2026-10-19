@@ -312,8 +312,6 @@ export class AvatarSprite {
   private currentLoadout: Loadout;
   /** False while off camera — see setAwake. */
   private awake = true;
-  /** Multiply tint over every layer but the hat — see setBodyTint. */
-  private bodyTint: number | null = null;
   private isWalking = false;
   /** Every layer is already playing the walk for currentDirection. */
   private walkSynced = false;
@@ -584,27 +582,6 @@ export class AvatarSprite {
   }
 
   /**
-   * Paint every layer BUT the hat in one colour, so a character can be a
-   * silhouette wearing something that keeps its own palette. Jack O' Lantern
-   * is black from the neck down with a lit pumpkin on top; tinting the hat
-   * too would just give him a black sphere for a head.
-   *
-   * It is a multiply tint, not a swatch: no texture is derived and nothing is
-   * cached, which is why this is fine for a character whose look never
-   * changes. Survives a rebuild, so a later setLoadout keeps the colour.
-   *
-   * Pass null to clear it.
-   */
-  setBodyTint(color: number | null): void {
-    this.bodyTint = color;
-    for (const [category, sprite] of this.layerSprites) {
-      if (category === "hat") continue;
-      if (color === null) sprite.clearTint();
-      else sprite.setTint(color);
-    }
-  }
-
-  /**
    * Turn on the spot, no walk cycle. Unlike idle() this always lands on the
    * frame, because the caller is usually turning a standing character to face
    * someone who just walked up — there is no stride to stop first.
@@ -736,7 +713,6 @@ export class AvatarSprite {
       // active. Without this, changing outfit off camera would quietly put a
       // sleeping character back on the update list.
       if (!this.awake) sprite.setActive(false);
-      if (this.bodyTint !== null && category !== "hat") sprite.setTint(this.bodyTint);
       this.container.add(sprite);
       this.layerSprites.set(category, sprite);
       this.registerAnimations(textureKey);

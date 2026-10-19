@@ -143,9 +143,6 @@ export class NPCSprite {
           def.spriteAnimation?.scale,
           def.spriteAnimation?.blobOffsetX,
         );
-    if (def.bodyTint !== undefined && this.avatar instanceof AvatarSprite) {
-      this.avatar.setBodyTint(def.bodyTint);
-    }
 
     const container = this.getContainer();
     const colorHex = `#${def.color.toString(16).padStart(6, "0")}`;
