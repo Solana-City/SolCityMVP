@@ -310,13 +310,20 @@ export default function Home() {
     // DOM pours before he hands it over: the square plays, and the buff is
     // granted when it closes. npc:close rides along with that, not with this.
     if (action.type === "tea") {
+      profileManager.bump("buffs-taken");
       setVignette({ id: "tea-ceremony", grant: "dom-tea" });
       return;
     }
     // A timed buff has no panel: the chip in the HUD and the badge over the
     // player's head are the whole result, so close and let them feel it.
     if (action.type === "speed-buff") {
-      if (action.buffId) grantBuff(action.buffId);
+      // Coffee and DOM's tea share the Pick-me-up track: both are a round
+      // taken at a stand, and splitting them would be two rows measuring the
+      // same habit.
+      if (action.buffId) {
+        grantBuff(action.buffId);
+        profileManager.bump("buffs-taken");
+      }
       game?.events.emit("npc:close");
       return;
     }
@@ -378,6 +385,12 @@ export default function Home() {
       if (activeMiniGame.id === "kite-clash") profileManager.raise("kite-best", score);
       if (activeMiniGame.id === "sol-mechs" && result.success) {
         profileManager.bump(meta.mode === "ranked" ? "mechs-pvp-wins" : "mechs-pve-wins");
+      }
+      // The cart counts PLATES, which is what the shift was: a run that filled
+      // four orders is four times the run that filled one, and a failed run
+      // still fed whoever it fed before the timer went.
+      if (activeMiniGame.id === "food-cart" && typeof meta.completedOrders === "number") {
+        if (meta.completedOrders > 0) profileManager.bump("food-orders", meta.completedOrders);
       }
     }
     // Games with their own result screen (Sol Mechs) report the outcome as

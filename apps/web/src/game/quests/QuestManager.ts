@@ -1,5 +1,6 @@
 import { track } from "@/game/telemetry/track";
 import { invalidateBoard } from "@/game/leaderboards/boards";
+import { profileManager } from "@/game/config/profileManager";
 
 export interface QuestDefinition {
   id: string;
@@ -202,6 +203,10 @@ export function claimQuest(wallet: string, questId: string): number {
 
   pushQuest(wallet, questId, "claim", { points: def.points });
   invalidateBoard("quests");
+  // The Daily Quests achievement track. Counted on the CLAIM, not on the
+  // completion: a quest you finished and never came back for is not a day you
+  // turned up for.
+  profileManager.bump("quests-claimed");
 
   return def.points;
 }

@@ -1,5 +1,6 @@
 import { LayerCategory, LayerVariant, isFreeItem, getBoosterPool } from "./paperDoll";
 import { progressionBus } from "@/game/progression/progressionBus";
+import { profileManager } from "@/game/config/profileManager";
 import { decodeUnlockState, unlockedIndices, BOOSTER_ONCHAIN } from "@/game/solana/program";
 
 /**
@@ -101,6 +102,10 @@ export function unlockItem(
   try {
     localStorage.setItem(storageKey(wallet), JSON.stringify([...set]));
   } catch { /* ignore quota / private-mode */ }
+  // The Wardrobe achievement track. Bumped here rather than off the bus event,
+  // so the five a booster grants silently still count: the player owns them
+  // either way, and the reveal is only about how they were told.
+  profileManager.bump("wardrobe-items");
   if (!silent) {
     progressionBus.emit({ type: "outfit-unlocked", outfitId: key, outfitName: name ?? id });
   }

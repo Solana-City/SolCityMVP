@@ -861,6 +861,12 @@ export class CityScene extends Phaser.Scene {
 
       this.showBubble(this.avatar, text, color);
 
+      // The City Chat achievement track. Counted where the bubble goes up, not
+      // where the memo is sent: a line said while the rollup is down is still
+      // a line said in the city, and the other citizens read it off the local
+      // chat all the same.
+      this.profile.bump("chat-sent");
+
       if (this.network?.connected) {
         this.network.sendChat(text);
       }
