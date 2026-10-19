@@ -24,8 +24,9 @@ import { useEscape } from "@/ui/useEscape";
  * work listed in BOOSTER_SPEC.md under "Before the redeploy", and none of this
  * can take money until it lands. Reveal UX is final.
  *
- * Pack art is an animated strip (see SPRITE_REQUESTS.md). Until a pack's sheet
- * is drawn, its card falls back to the wardrobe icon rather than an empty box.
+ * Pack art is an animated strip (see the internal art-requests list). Until a
+ * pack's sheet is drawn, its card falls back to the wardrobe icon rather than
+ * an empty box.
  */
 export default function BoosterOverlay({
   wallet, onClose,

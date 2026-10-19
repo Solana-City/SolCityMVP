@@ -28,7 +28,7 @@
  *
  * Making the HUD crisp on those screens is a design change, not a runtime
  * one: the art is 32x32 and the panels ask for 20, 22, 24 and 26 CSS pixels.
- * See SPRITE_REQUESTS.md.
+ * See the internal art-requests list.
  */
 import { useEffect } from "react";
 import { devicePixelRatioSafe } from "./crispPixels";

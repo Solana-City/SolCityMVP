@@ -125,7 +125,8 @@ Two things to keep an eye on as seasons pile up:
 - **Preload.** `BootScene` loads every wardrobe sheet at startup. That is fine
   at ~40 items and is not fine at 300: by season 3 or 4 the boot should load
   the free set, what the wallet owns, and the open season, and fetch the rest
-  when a wardrobe tab is opened. Tracked as PK6 in `FEEDBACK_BACKLOG.md`.
+  when a wardrobe tab is opened. Tracked as PK6 in the internal playtest
+  backlog.
 - **Odds versus stock.** The odds mean nothing if a season's legendary bucket
   is empty; the draw falls DOWN the ladder and quietly hands out commons.
   `seasonRarityCounts(season)` is the check, and a test asserts it for the
@@ -157,9 +158,9 @@ nothing else in the city. It may not cost 210 points.
 ### Season trait, on the item as well as the pack
 A wardrobe item carries `season` (`LayerVariant.season`, absent = 1). The chain
 needs the same, because the season is what makes a collection time-limited:
-see "Outfit packs, rarities and seasons" in `FEEDBACK_BACKLOG.md` (PK4) for
-the decision: ONE collection, a `Season` trait on the metadata, and the drop
-table per season on the program.
+see "Outfit packs, rarities and seasons" (PK4) in the internal playtest
+backlog for the decision: ONE collection, a `Season` trait on the metadata,
+and the drop table per season on the program.
 
 ---
 

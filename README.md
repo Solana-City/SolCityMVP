@@ -82,7 +82,6 @@ main commits are listed here rather than left to a grep:
 | `d08710e` | Responsive pass: rail icons, centered chat, smaller action button |
 | `e000992` | Haptics through the native bridge |
 
-Scope and status: `MOBILE_HACKATHON_SCOPE.md` and `HACKATHON_SUBMISSION.md`.
 
 ## Getting started
 
