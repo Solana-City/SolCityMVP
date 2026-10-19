@@ -403,6 +403,42 @@ export function getBoosterPool(): { category: LayerCategory; variant: LayerVaria
   );
 }
 
+/**
+ * The free items as the CHAIN counts them: the POOL_V1_FREE set, in
+ * LAYER_ORDER, including anything currently disabled.
+ *
+ * Two things make this different from `isFreeItem`, and both matter because
+ * this feeds a global index that becomes a bit on chain.
+ *
+ * It uses POOL_V1_FREE rather than FREE_ITEMS, because the chain's
+ * FREE_ITEM_COUNT was fixed against the former and the latter has grown since
+ * (every hairstyle and, while TEST_UNLOCK_ALL_HATS is on, every hat).
+ *
+ * It reads LAYER_VARIANTS directly rather than going through
+ * getEnabledVariants, because disabling a variant must NOT renumber the items
+ * after it. An index that has been written to chain names a cosmetic in
+ * somebody's wallet; `enabled: false` hides an item, it does not free its slot.
+ */
+export function getChainFreeItems(): { category: LayerCategory; variant: LayerVariant }[] {
+  return LAYER_ORDER.flatMap((category) =>
+    LAYER_VARIANTS[category]
+      .filter((variant) => inSet(POOL_V1_FREE, category, variant.id))
+      .map((variant) => ({ category, variant })),
+  );
+}
+
+/**
+ * Every item reserved to a quest or an NPC, in LAYER_ORDER, disabled ones
+ * included. Same reasoning as above: the order is an on-chain index.
+ */
+export function getQuestItems(): { category: LayerCategory; variant: LayerVariant }[] {
+  return LAYER_ORDER.flatMap((category) =>
+    LAYER_VARIANTS[category]
+      .filter((variant) => !!variant.unlockVia)
+      .map((variant) => ({ category, variant })),
+  );
+}
+
 /** All (category, variant) pairs — used by BootScene to preload every
  *  spritesheet. Excludes disabled variants so their textures aren't even
  *  fetched. */
