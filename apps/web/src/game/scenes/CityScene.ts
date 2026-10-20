@@ -66,6 +66,7 @@ import { startMemStats } from "../telemetry/memStats";
 // shared with ZoomControl and the pinch-zoom hook.
 import { loadZoom, snapZoom, viewScale } from "../config/zoomConfig";
 import { hoverCursor } from "../config/cursors";
+import { setRequestSigner } from "../auth/signedPost";
 
 /**
  * Set on the Phaser.Game once CityScene.create() has registered its listeners.
@@ -980,6 +981,8 @@ export class CityScene extends Phaser.Scene {
     // On-chain multiplayer via MagicBlock Ephemeral Rollups
     this.network = new OnChainMultiplayer();
     this.registry.set("network", this.network);
+    // Quest and event writes are signed with the session key (/api/quests, /api/events).
+    setRequestSigner(() => this.network?.getSessionKeys().getSessionKey() ?? null);
 
     // A friend walking into the city is worth a toast, and costs nothing to
     // notice: the roster is already telling us about every arrival.

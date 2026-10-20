@@ -1,5 +1,7 @@
 import { track } from "@/game/telemetry/track";
 import { invalidateBoard } from "@/game/leaderboards/boards";
+import { questMessage } from "@/lib/auth/requestMessages";
+import { postSigned } from "@/game/auth/signedPost";
 import { profileManager } from "@/game/config/profileManager";
 
 export interface QuestDefinition {
@@ -127,14 +129,12 @@ function pushQuest(
   extra: Record<string, number>,
 ): void {
   if (!wallet || wallet === "guest" || typeof fetch === "undefined") return;
-  void fetch("/api/quests", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ wallet, questId, action, ...extra }),
-    keepalive: true,
+  // Signed by the session key, so progress and points are only written for the
+  // wallet that is actually playing.
+  void postSigned("/api/quests", wallet, (ts) => questMessage(action, wallet, questId, ts, extra), {
+    questId, action, ...extra,
   })
-    .then((r) => r.json())
-    .then((body) => mergeFromServer(wallet, body.quests))
+    .then((body) => { if (body) mergeFromServer(wallet, body.quests as Record<string, QuestProgress>); })
     .catch(() => undefined);
 }
 

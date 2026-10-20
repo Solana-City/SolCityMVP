@@ -3,7 +3,8 @@
  *
  * Fire and forget: a failed report must never interrupt play, so every call
  * swallows its errors and nothing awaits it. `keepalive` lets a report survive
- * the page being closed right after the action that caused it.
+ * the page being closed right after the action that caused it. Each report is
+ * signed with the session key (game/auth/signedPost.ts).
  *
  * What is sent: the wallet already visible to every player in the city, an
  * event kind from a fixed list, an id (protocol, NPC or mini-game) and a
@@ -14,6 +15,8 @@ export type TrackKind =
   | "latency" | "session" | "npc" | "chat" | "expression" | "purchase";
 
 import { ANALYTICS_ON, alwaysRecorded } from "@/lib/analytics/enabled";
+import { eventsMessage } from "@/lib/auth/requestMessages";
+import { postSigned } from "@/game/auth/signedPost";
 
 let currentWallet: string | null = null;
 
@@ -33,12 +36,10 @@ export function track(
   // always counts.
   if (!ANALYTICS_ON && !alwaysRecorded(kind, id)) return;
   try {
-    void fetch("/api/events", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ kind, id, wallet, value: opts.value, success: opts.success, label: opts.label }),
-      keepalive: true,
-    }).catch(() => undefined);
+    // Signed by the session key: these feed boards other players read.
+    const payload = JSON.stringify([{ kind, id, wallet, value: opts.value, success: opts.success, label: opts.label }]);
+    void postSigned("/api/events", wallet, (ts) => eventsMessage(wallet, ts, payload), { payload })
+      .catch(() => undefined);
   } catch {
     /* never let telemetry break the game */
   }
