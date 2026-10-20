@@ -237,6 +237,14 @@ export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
     { id: "Pumpkin_head", name: "Pumpkin Head", textureKey: "pd-hat-Pumpkin_head",
       file: "hat/Pumpkin_head.png", hatCoverage: "suppress", unlockVia: "quest",
       unlockHint: "Carve a clean pumpkin for Jack O' Lantern" },
+    // The Claim Office's trophy, for ORE actually struck rather than a claim
+    // staked. unlockVia keeps it out of the booster pool, like every other
+    // earned piece. The grant has existed in outfitRewards since the track was
+    // written and did nothing, because grant() skips a reward whose variant is
+    // missing and the sprite only arrived on 2026-10-20.
+    { id: "Miner_helmet", name: "Miner Helmet", textureKey: "pd-hat-Miner_helmet",
+      file: "hat/Miner_helmet.png", unlockVia: "quest",
+      unlockHint: "Win ORE out of a claim" },
   ],
 };
 
