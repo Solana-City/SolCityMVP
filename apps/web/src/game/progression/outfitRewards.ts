@@ -51,9 +51,8 @@ const REWARDS = {
   oreMiner: { category: "hat", id: "Miner_helmet", name: "Miner Helmet" },
   // Vibhu's gift, for opening his Breakpoint 2026 link.
   breakpoint: { category: "tshirt", id: "Shirt_Solana", name: "Solana Shirt" },
-  // The Halloween collectible. Handed over for meeting Jack O' Lantern while
-  // the Halloween mini-games are still being built: when one of them ships,
-  // this moves to onMiniGameFinished and the conversation stops granting it.
+  // The Halloween collectible: a clean carve at Jack O' Lantern's Pumpkin
+  // Carving (80% accuracy or better). Meeting him no longer hands it over.
   halloween: { category: "hat", id: "Pumpkin_head", name: "Pumpkin Head" },
 } as const;
 
@@ -91,8 +90,8 @@ const KITE_CLASH_ID = "kite-clash";
 /** The ST Turkey chair: finishing a cut grants the Turkish Hat. */
 const HAIR_SPECIALIST_ID = "hair-specialist";
 
-/** The Halloween host, who hands over the Pumpkin Head. */
-const JACK_O_LANTERN_ID = "jack-o-lantern";
+/** Jack O' Lantern's carving: a clean carve grants the Pumpkin Head. */
+const PUMPKIN_CARVING_ID = "pumpkin-carving";
 
 /**
  * The ST Brasil crew, met for the Brazil shirt: the three who were always on
@@ -164,6 +163,8 @@ export function onMiniGameFinished(miniGameId: string, success: boolean): void {
   // A cut that lands, which is what the specialist reports as success. A miss
   // leaves the chair free to try again and earns nothing.
   if (miniGameId === HAIR_SPECIALIST_ID) grant(REWARDS.turkishHat);
+  // The carving reports success only at or above the pass mark.
+  if (miniGameId === PUMPKIN_CARVING_ID) grant(REWARDS.halloween);
 }
 
 /**
@@ -229,7 +230,6 @@ export function watchNpcConversations(): void {
   unsubscribe?.();
   const offVisits = progressionBus.on("npc-visited", (e) => {
     if (e.npcId === KUKA_ID) grant(REWARDS.kuka);
-    if (e.npcId === JACK_O_LANTERN_ID) grant(REWARDS.halloween);
     // Fire and forget: the dialog should never wait on a mainnet round trip.
     if (e.npcId === SEEKER_LOVER_ID) void grantSkrGift();
     // Checked on every visit, not just the last one: a wallet that had already

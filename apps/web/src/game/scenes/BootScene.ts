@@ -9,6 +9,7 @@ import { preloadAnimatedDecor } from "../world/AnimatedDecor";
 import { preloadBeachBall } from "../world/BeachBall";
 import { ATTENTION_CATEGORIES, ATTENTION_FRAME_W, ATTENTION_FRAME_H } from "../entities/NPCSprite";
 import { BUFFS } from "../buffs/playerBuffs";
+import { PUMPKIN_TEXTURE, PUMPKIN_TEXTURE_PATH } from "../world/PumpkinField";
 
 // Background color used in the spriter's sheets — treated as transparent.
 const CHROMA_R = 215;
@@ -108,6 +109,10 @@ export class BootScene extends Phaser.Scene {
     for (const buff of Object.values(BUFFS)) {
       this.load.image(buff.textureKey, buff.texturePath);
     }
+
+    // The pumpkins of Jack O' Lantern's hunt. One flat image, not a sheet:
+    // it stands in the street and bobs, it never walks.
+    this.load.image(PUMPKIN_TEXTURE, PUMPKIN_TEXTURE_PATH);
 
     SimpleSprite.load(this, "avatar-player", "assets/sprites/main_char.png", 64, 64);
     // Flags and other props that wave in place (see world/AnimatedDecor).

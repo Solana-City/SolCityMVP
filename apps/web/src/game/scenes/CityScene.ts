@@ -51,6 +51,7 @@ import { publishMinimap } from "../minimap/MinimapHost";
 import { createStockExchange } from "../world/StockExchange";
 import { createAnimatedDecor, REPLACED_MAP_LAYERS } from "../world/AnimatedDecor";
 import { BeachBall, buildBeachMask, type BallBody, type BallKick } from "../world/BeachBall";
+import { PumpkinField } from "../world/PumpkinField";
 import { readLastPosition, saveLastPosition } from "../world/lastPosition";
 import { buildPhysicsLayer, mergeGroundRun } from "../world/mergeLayers";
 import { SparseLayer, SPARSE_MAX_TILES, GROUND_CHUNK_TILES, type CityLayer } from "../world/sparseLayer";
@@ -165,6 +166,8 @@ export class CityScene extends Phaser.Scene {
   private pedestrians!: PedestrianManager;
   /** The football on the ST Brasil sand — null until the beach is built. */
   private beachBall: BeachBall | null = null;
+  /** Jack O' Lantern's hunt, once a wallet is connected. See PumpkinField. */
+  private pumpkins: PumpkinField | null = null;
   /**
    * How fast each remote avatar was moving on the last frame, px/s, measured
    * off the same two samples the foot dust uses. The ball reads it to predict
@@ -1037,6 +1040,9 @@ export class CityScene extends Phaser.Scene {
         requestNames([walletAddress], true);
         showOwnName();
         this.profile.setWallet(walletAddress);
+        // Jack O' Lantern's five, which are picked per wallet, so they can
+        // only be put out once there is a wallet to pick them for.
+        this.spawnPumpkins(walletAddress);
         const displayName = this.profile.get().displayName;
         this.network.updateScore(this.profile.get().score);
 
@@ -1615,6 +1621,11 @@ export class CityScene extends Phaser.Scene {
     for (const npc of this.npcSprites) {
       npc.checkProximity(this.avatar.x, this.avatar.y);
     }
+
+    // Walking into one of Jack O' Lantern's pumpkins picks it up. The field
+    // says so itself, in the street and on the profile counter the quest card
+    // reads, so there is nothing to forward from here.
+    this.pumpkins?.update(this.avatar.x, this.avatar.y);
 
     // Sync position to server (always call — sendInput handles sim-log when not connected)
     this.network.sendInput(
@@ -2323,6 +2334,16 @@ export class CityScene extends Phaser.Scene {
       }
     }
     return null;
+  }
+
+  /**
+   * Puts this wallet's remaining pumpkins out. Safe to call again on a
+   * reconnect: the old field is torn down first, so a wallet switch never
+   * leaves the previous player's five standing in the street.
+   */
+  private spawnPumpkins(wallet: string): void {
+    this.pumpkins?.destroy();
+    this.pumpkins = new PumpkinField(this, wallet);
   }
 
   private findNpcSpawn(

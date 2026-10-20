@@ -27,7 +27,10 @@ export type Sfx =
   | "reward"     // score / outfit unlock
   | "achievement"// achievement unlocked (bigger than reward)
   | "victory"    // minigame won — brief triumphant sting
-  | "error";     // minigame lost / action failed
+  | "error"      // minigame lost / action failed
+  | "pop"        // pumpkin carving: a finished shape's piece pops out
+  | "tick"       // pumpkin carving: the accuracy meter counting up
+  | "ignite";    // pumpkin carving: the candle catches inside a clean carve
 
 const MUTE_KEY = "solcity:muted";
 const VOLUME_KEY = "solcity:volume";
@@ -42,6 +45,8 @@ class SoundManager {
   /** Guards footstep spam — the walk loop can call every frame. */
   private lastFootstepAt = 0;
   private footstepToggle = false;
+  /** Same guard for the carving knife, which is called per frame of a cut. */
+  private lastCarveAt = 0;
 
   constructor() {
     if (typeof window !== "undefined") {
@@ -258,7 +263,35 @@ class SoundManager {
       case "error":
         this.sweep({ from: 300, to: 120, dur: 0.28, type: "sawtooth", gain: 0.18 });
         break;
+      case "pop": {
+        // A wet "thok" as the piece comes free, pitched a touch at random.
+        const j = (Math.random() - 0.5) * 2;
+        this.noiseBurst({ dur: 0.05, gain: 0.12, freq: 380 + j * 40, q: 1.4 });
+        this.sweep({ from: 260 + j * 20, to: 110, dur: 0.12, type: "triangle", gain: 0.2 });
+        break;
+      }
+      case "tick":
+        this.tone({ freq: 1400, dur: 0.018, type: "square", gain: 0.05, attack: 0.001, release: 0.012 });
+        break;
+      case "ignite":
+        // Match strike, then the flame taking.
+        this.noiseBurst({ dur: 0.09, gain: 0.08, freq: 3200, q: 0.8 });
+        this.sweep({ from: 180, to: 520, dur: 0.45, type: "sine", gain: 0.12 });
+        break;
     }
+  }
+
+  /**
+   * Knife through pumpkin skin: a soft, throttled scrape. Called from the
+   * carving loop on every frame the knife moves, so it rate-limits itself the
+   * way playFootstep does.
+   */
+  playCarve(): void {
+    if (this.muted) return;
+    const now = typeof performance !== "undefined" ? performance.now() : Date.now();
+    if (now - this.lastCarveAt < 75) return;
+    this.lastCarveAt = now;
+    this.noiseBurst({ dur: 0.06, gain: 0.035, freq: 1500 + Math.random() * 700, q: 1.8 });
   }
 
   /**

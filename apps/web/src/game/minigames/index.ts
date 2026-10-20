@@ -4,6 +4,7 @@ import "./food-cart/manifest";
 import "./kite-clash/manifest";
 import "./sol-mechs/manifest";
 import "./hair-specialist/manifest";
+import "./pumpkin-carving/manifest";
 
 export { launch, getEntry, registerMiniGame } from "./registry";
 export type {

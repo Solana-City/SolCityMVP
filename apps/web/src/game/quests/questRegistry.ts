@@ -1,5 +1,6 @@
 import type { PlayerProfile } from "@/game/config/profileManager";
 import type { LayerCategory } from "@/game/config/paperDoll";
+import { FOUND_COUNTER, PUMPKINS_PER_HUNT } from "@/game/halloween/pumpkinHunt";
 
 /**
  * The quests the city actually has, as data.
@@ -91,6 +92,17 @@ const earns = (
   done: ({ owns }) => owns(category, itemId),
 });
 
+/**
+ * A tally on the profile reaching its mark. The counter is bumped by whatever
+ * owns the activity (the pumpkin hunt bumps its own), so this stays a reader
+ * like every other step here.
+ */
+const collects = (counter: string, target: number, label: string): QuestStep => ({
+  id: `count:${counter}:${target}`,
+  label,
+  done: ({ profile }) => (profile.counters?.[counter] ?? 0) >= target,
+});
+
 const streakOf = (days: number): QuestStep => ({
   id: `streak:${days}`,
   label: `Check in ${days} days in a row`,
@@ -120,6 +132,21 @@ const STBR_CREW: [string, string][] = [
 // ── The quests ──────────────────────────────────────────────────────────────
 
 export const QUESTS: QuestDef[] = [
+  {
+    // Halloween, in two halves: the city, then the knife. The middle step is
+    // the one that makes the carve cost something, which is the whole point
+    // of the hunt existing at all.
+    id: "halloween-pumpkin",
+    title: "Jack O' Lantern's Pumpkins",
+    blurb: "Find his pumpkins, then carve one clean.",
+    giver: "jack-o-lantern",
+    steps: [
+      talkTo("jack-o-lantern", "Meet Jack O' Lantern"),
+      collects(FOUND_COUNTER, PUMPKINS_PER_HUNT, `Find ${PUMPKINS_PER_HUNT} pumpkins in the city`),
+      earns("carve", "Carve one cleanly", "hat", "Pumpkin_head"),
+    ],
+    reward: { category: "hat", id: "Pumpkin_head", name: "Pumpkin Head" },
+  },
   {
     id: "stbr-crew",
     title: "The Superteam Brasil Crew",

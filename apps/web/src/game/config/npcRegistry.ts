@@ -757,12 +757,21 @@ const NPC_SEEDS: NPCSeed[] = [
     tileX: 130,
     tileY: 9,
     dialog: [
-      "Halloween came to Solana City. Play my games and the pumpkin is yours.",
+      "Halloween came to Solana City, and my pumpkins rolled off all over it.",
+      {
+        text: "Bring one back and you get one go at my knife.",
+        accent: "Carve the face clean and the Pumpkin Head is yours.",
+      },
     ],
-    // He is the host the Halloween mini-games will hang off, and none of them
-    // is built yet. "placeholder" rather than a "minigame" action pointing at
-    // an id that does not exist, which would open nothing and log a warning.
-    action: { type: "placeholder", label: "See you at Halloween" },
+    // The three beats of the quest, as chips on his last line. The walkthrough
+    // itself is the carving's how-to cards, which open on the first visit.
+    highlights: [
+      { label: "5 PUMPKINS" },
+      { label: "1 CARVE EACH" },
+      { label: "PUMPKIN HEAD" },
+    ],
+    // He hosts the Halloween mini-games. Pumpkin Carving is the first one in.
+    action: { type: "minigame", label: "Carve a pumpkin", miniGameId: "pumpkin-carving" },
     spriteKey: "Jack O Lantern",
     // Idle loop like Guarana and the stand builders: one row of frames at
     // 64x64, always facing south, never wanders. The file drops the
