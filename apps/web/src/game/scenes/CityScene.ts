@@ -1248,10 +1248,24 @@ export class CityScene extends Phaser.Scene {
 
     // G key — toggle collision debug overlay (desktop only)
     this.input.keyboard?.on("keydown-G", () => {
-      this.physics.world.drawDebug = !this.physics.world.drawDebug;
-      if (!this.physics.world.drawDebug) {
-        this.physics.world.debugGraphic?.clear();
+      // Not while the player is writing: a "g" in a chat message used to turn
+      // this on, and turning it on used to take the game down (below).
+      if (this.chatInputActive) return;
+      const world = this.physics.world;
+      if (world.drawDebug) {
+        world.drawDebug = false;
+        world.debugGraphic?.clear();
+        world.debugGraphic?.setVisible(false);
+        return;
       }
+      // Phaser only builds the debug graphic when `debug` is true in the game
+      // config, and it is false (see PhaserGame.tsx). Raising the flag without
+      // one meant the very next postUpdate called .clear() on undefined, which
+      // is a crash in the render loop: the game went to "Something went wrong"
+      // rather than drawing a single collision box.
+      if (!world.debugGraphic) world.createDebugGraphic();
+      world.debugGraphic.setVisible(true);
+      world.drawDebug = true;
     });
 
     // NPC interaction listener from React
