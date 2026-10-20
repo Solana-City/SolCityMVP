@@ -55,6 +55,7 @@ const ExpressionWheel     = dynamic(() => import("@/ui/ExpressionWheel"),     { 
 const Minimap             = dynamic(() => import("@/ui/Minimap"),             { ssr: false });
 
 import ErrorBoundary from "@/ui/ErrorBoundary";
+import Presence, { useLast } from "@/ui/Presence";
 import { AvatarPortrait, useLiveLoadout } from "@/ui/AvatarPortrait";
 import { chamferBox, chamferClip } from "@/ui/chamfer";
 import { OPEN_DM_EVENT } from "@/game/chat/dmEvents";
@@ -503,6 +504,11 @@ export default function Home() {
     }
   }, [game, sceneReadyTick, walletAddress]);
 
+  // What these windows were showing, kept while they play their exit.
+  const shownPlayerCard = useLast(playerCardTarget);
+  const shownNickname = useLast(nickname);
+  const shownWallet = useLast(walletAddress);
+
   return (
     <ErrorBoundary>
       {/* Seamless SW updates so a stale/broken cached build self-recovers. */}
@@ -550,11 +556,12 @@ export default function Home() {
               }}>
                 <MobilePanelToggle iconSrc="/assets/ui/icon_quests.png" label="Find someone" active={mobilePanel === "hunt"} onClick={() => toggleMobilePanel("hunt")} />
               </div>
-              {mobilePanel === "hunt" && (
-                /* A HUD piece beside its rail button rather than a modal: no
-                   backdrop, so the city stays playable while it is open. Its
-                   collapsed strip is meant to stay up while you search. */
+              <Presence show={mobilePanel === "hunt"}>
+                {/* A HUD piece beside its rail button rather than a modal: no
+                    backdrop, so the city stays playable while it is open. Its
+                    collapsed strip is meant to stay up while you search. */}
                 <div
+                  className="sc-pop"
                   style={{
                     position: "fixed", zIndex: 20,
                     top: "max(env(safe-area-inset-top, 0px), 12px)",
@@ -566,7 +573,7 @@ export default function Home() {
                 >
                   <WhereIsNPCCard gameRef={game} wallet={walletAddress} />
                 </div>
-              )}
+              </Presence>
             </>
           )}
 
@@ -614,11 +621,11 @@ export default function Home() {
                   </button>
                 </div>
 
-                {mapOpen && (
-                  <div id="hud-map-preview">
+                <Presence show={mapOpen}>
+                  <div id="hud-map-preview" className="sc-pop">
                     <Minimap bare compact="mobile" />
                   </div>
-                )}
+                </Presence>
 
                 {walletSectionOpen && (
                   <>
@@ -667,11 +674,11 @@ export default function Home() {
                   </div>
                 </Framed>
 
-                {mapOpen && (
-                  <div id="hud-map-preview" style={{ display: "flex", justifyContent: "center" }}>
+                <Presence show={mapOpen}>
+                  <div id="hud-map-preview" className="sc-pop" style={{ display: "flex", justifyContent: "center" }}>
                     <Minimap bare compact="desktop" />
                   </div>
-                )}
+                </Presence>
 
                 <Framed width={9}>
                   <div style={{ padding: "4px 8px" }}>
@@ -700,15 +707,17 @@ export default function Home() {
           <OfflineBadge />
           <ToastStack />
           <AudioBridge game={game} />
-          {playerCardTarget && (
-            <PlayerCard
-              gameRef={game}
-              wallet={playerCardTarget.wallet}
-              displayName={playerCardTarget.displayName}
-              myWallet={walletAddress}
-              onClose={() => setPlayerCardTarget(null)}
-            />
-          )}
+          <Presence show={playerCardTarget !== null}>
+            {shownPlayerCard && (
+              <PlayerCard
+                gameRef={game}
+                wallet={shownPlayerCard.wallet}
+                displayName={shownPlayerCard.displayName}
+                myWallet={walletAddress}
+                onClose={() => setPlayerCardTarget(null)}
+              />
+            )}
+          </Presence>
           <MobileControls
             raised={wheelOpen}
             besideJoystick={[
@@ -727,15 +736,17 @@ export default function Home() {
           )}
           <CalendarPanel gameRef={game} />
           <NPCDialog npc={activeNPC} onClose={handleDialogClose} onAction={handleAction} />
-          {nickname && walletAddress && (
-            <NicknameModal wallet={walletAddress} current={nickname.current} forced={nickname.forced} onDone={closeNickname} />
-          )}
+          <Presence show={nickname !== null && walletAddress !== null}>
+            {shownNickname && shownWallet && (
+              <NicknameModal wallet={shownWallet} current={shownNickname.current} forced={shownNickname.forced} onDone={closeNickname} />
+            )}
+          </Presence>
           <ActionPanel action={activeAction} onClose={handleActionClose} />
           {vignette && <VignetteOverlay id={vignette.id} onClose={handleVignetteClose} />}
           <ProfilePanel gameRef={game} isOpen={profileOpen} onClose={() => setProfileOpen(false)} />
-          {wardrobeOpen && (
+          <Presence show={wardrobeOpen}>
             <WardrobePanel gameRef={game} onClose={() => setWardrobeOpen(false)} />
-          )}
+          </Presence>
           {activeMiniGame && (
             <MiniGameOverlay
               id={activeMiniGame.id}

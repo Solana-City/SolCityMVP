@@ -21,6 +21,7 @@ import { chamferBox, octagonFrame } from "@/ui/chamfer";
 import ChamferGlow from "@/ui/ChamferGlow";
 import { useButtonFeel, feelStyle } from "@/ui/useButtonFeel";
 import { useEscape } from "@/ui/useEscape";
+import Presence from "@/ui/Presence";
 
 // ── Chroma key ────────────────────────────────────────────────────────────────
 const CHROMA_R = 215, CHROMA_G = 123, CHROMA_B = 186, CHROMA_TOL = 30;
@@ -204,15 +205,13 @@ function LeaderboardModal({ onClose }: { onClose: () => void }) {
       position: "fixed", inset: 0, zIndex: 200,
       display: "flex", alignItems: "center", justifyContent: "center",
       background: "rgba(0,0,0,0.65)", backdropFilter: "blur(6px)",
-      animation: "fadeIn 0.15s ease",
     }} onClick={e => e.target === e.currentTarget && onClose()}>
-      <div style={{
+      <div className="sc-pop" style={{
         ...octagonFrame(1),
         background: "#0b0e1c",
         minWidth: 320, maxWidth: "90vw",
         fontFamily: '"Press Start 2P", monospace', color: "#d0d0f0",
         overflow: "hidden",
-        animation: "slideUp 0.18s ease",
       }}>
         <div style={{
           padding: "16px 20px", background: "rgba(183,233,40,0.07)",
@@ -394,11 +393,13 @@ export default function WhereIsNPCCard({ gameRef, wallet }: Props) {
         @keyframes huntIn { from { transform: translateX(-6px); opacity: 0 } to { transform: translateX(0); opacity: 1 } }
       `}</style>
 
-      {showLeaderboard && <LeaderboardModal onClose={() => setShowLeaderboard(false)} />}
+      <Presence show={showLeaderboard}>
+        <LeaderboardModal onClose={() => setShowLeaderboard(false)} />
+      </Presence>
 
-      {showInfo && (
+      <Presence show={showInfo}>
         <HuntHowTo loadout={targetLoadout} isTouch={isTouch} onClose={() => setShowInfo(false)} />
-      )}
+      </Presence>
 
       {isTouch ? (
         <MobileHunt
@@ -841,11 +842,12 @@ function HuntHowTo({ loadout, isTouch, onClose }: { loadout: Loadout | null; isT
 
   return (
     <div
+      className="sc-fade"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
       style={{ position: "fixed", inset: 0, zIndex: 200, background: "rgba(4,6,16,0.6)", display: "flex", alignItems: "center", justifyContent: "center", padding: 12 }}
     >
       <style>{`@keyframes hunt-timer { from { width: 100%; } to { width: 4%; } } .hunt-timer-demo { animation: hunt-timer 3s linear infinite; }`}</style>
-      <div style={{
+      <div className="sc-pop" style={{
         ...octagonFrame(1),
         width: "min(400px, 100%)", maxHeight: "100%", overflowY: "auto", padding: 8,
         background: "#0c0f1e", fontFamily: PIX,

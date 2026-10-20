@@ -16,6 +16,7 @@ import { soundManager } from "@/game/audio/SoundManager";
 import { musicManager } from "@/game/audio/MusicManager";
 import { dmsOffPref, setDmsOffPref } from "@/game/chat/dmEvents";
 import { chamferBox, octagonFrame, octagonFrameThin } from "@/ui/chamfer";
+import Presence from "@/ui/Presence";
 import { AvatarPortrait, useLiveLoadout } from "@/ui/AvatarPortrait";
 import { KeysRows } from "@/ui/KeysCard";
 import { useButtonFeel, feelStyle } from "@/ui/useButtonFeel";
@@ -71,7 +72,7 @@ export default function ProfilePanel({ gameRef, isOpen, onClose }: ProfilePanelP
 
   useEscape(onClose, isOpen);
 
-  if (!isOpen || !profile) return null;
+  if (!profile) return null;
 
   const wallet = connected ? profile.wallet : null;
   const copyWallet = () => {
@@ -82,14 +83,15 @@ export default function ProfilePanel({ gameRef, isOpen, onClose }: ProfilePanelP
   };
 
   return (
+    <Presence show={isOpen}>
     <div className="z-50 flex items-center justify-center" style={overlayBox(viewport)}>
       <div
-        className="absolute inset-0"
+        className="absolute inset-0 sc-fade"
         style={{ background: "rgba(6,10,20,0.6)" }}
         onClick={onClose}
       />
       <div
-        className="relative w-full mx-4"
+        className="relative w-full mx-4 sc-pop"
         style={{
           ...octagonFrame(1),
           maxWidth: 760,
@@ -177,6 +179,7 @@ export default function ProfilePanel({ gameRef, isOpen, onClose }: ProfilePanelP
         </div>
       </div>
     </div>
+    </Presence>
   );
 }
 

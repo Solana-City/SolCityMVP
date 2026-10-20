@@ -20,6 +20,7 @@ import { chamferBox, chamferClip } from "@/ui/chamfer";
 import { PixelImg, CloseButton } from "@/ui/PixelIcons";
 import { useButtonFeel, feelStyle, type ButtonFeel } from "@/ui/useButtonFeel";
 import { useEscape } from "@/ui/useEscape";
+import Presence from "@/ui/Presence";
 
 const PIXEL_FONT = '"Press Start 2P", monospace';
 const PANEL_BG = "rgba(8,10,22,0.72)";
@@ -292,7 +293,10 @@ export default function Minimap({ compact, corners, bare, iconOnly }: { compact?
       )}
       {/* Portalled: the compact map lives inside the HUD's stacking context,
           which would otherwise keep the modal under the touch controls. */}
-      {open && createPortal(<FullMap host={host} onClose={() => setOpenAndNotify(false)} />, document.body)}
+      {createPortal(
+        <Presence show={open}><FullMap host={host} onClose={() => setOpenAndNotify(false)} /></Presence>,
+        document.body,
+      )}
     </>
   );
 }
@@ -861,6 +865,7 @@ function FullMap({ host, onClose }: { host: MinimapHost; onClose: () => void }) 
   return (
     <div
       data-city-map-open=""
+      className="sc-fade"
       onPointerDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
       style={{
         position: "fixed", inset: 0, zIndex: 60, background: "rgba(2,4,12,0.7)",
@@ -869,7 +874,7 @@ function FullMap({ host, onClose }: { host: MinimapHost; onClose: () => void }) 
         padding: narrow ? "max(env(safe-area-inset-top, 0px), 8px) 8px 8px" : 20,
       }}
     >
-      <div style={{
+      <div className="sc-pop" style={{
         width: "min(1180px, 100%)", height: narrow ? "100%" : "min(820px, 100%)",
         display: "flex", flexDirection: "column", overflow: "hidden",
         background: "rgba(8,10,22,0.95)",

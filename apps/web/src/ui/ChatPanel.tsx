@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import Presence from "@/ui/Presence";
 import type { ChatManager, ChatMessage, ChatChannel, DMChannel } from "@/game/chat/ChatManager";
 import { getChannelColor, getChannelLabel, SELF_COLOR } from "@/game/chat/ChatManager";
 import { EMOJI_REGISTRY, type EmojiDef } from "@/game/chat/EmojiSystem";
@@ -321,9 +322,6 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
     return () => document.removeEventListener("pointerdown", onDown, true);
   }, []);
 
-  // On mobile the parent controls visibility; on desktop always show
-  if (isTouch && !visible) return null;
-
   const channelColor = getChannelColor(activeChannel);
   const dmUnread = dmChannels.reduce((n, dm) => n + dm.unread, 0);
   const peerName = dmPeer ? (dmChannels.find((d) => d.sessionId === dmPeer)?.name ?? short(dmPeer)) : "";
@@ -331,10 +329,13 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
     ? "Say something..."
     : dmPeer ? `Message ${peerName}...` : "Nickname or wallet...";
 
+  // On mobile the parent controls visibility, and the window pops in and out
+  // with it; on desktop it is always there.
   return (
+    <Presence show={!isTouch || visible}>
     <div
       ref={rootRef}
-      className="fixed z-20"
+      className={isTouch ? "fixed z-20 sc-pop" : "fixed z-20"}
       style={{
         left: isTouch ? "50%" : "max(env(safe-area-inset-left, 0px), 16px)",
         transform: isTouch ? "translateX(-50%)" : undefined,
@@ -603,6 +604,7 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
         )}
       </div>
     </div>
+    </Presence>
   );
 }
 

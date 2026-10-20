@@ -80,11 +80,11 @@ export default function NicknameModal({ wallet, current, forced, onDone }: {
   const color = state.kind === "ok" ? "#B7E928" : state.kind === "bad" ? "#ff6b6b" : "#8b8ba7";
 
   return (
-    <div style={{
+    <div className="sc-fade" style={{
       position: "fixed", inset: 0, zIndex: 80, background: "rgba(4,6,16,0.82)",
       display: "flex", alignItems: "center", justifyContent: "center", padding: 12, fontFamily: PIX,
     }}>
-      <div style={{
+      <div className="sc-pop" style={{
         width: "min(400px, 100%)", maxHeight: "100%", overflowY: "auto", padding: 16,
         background: "#0c0f1e",
         borderWidth: 20, borderStyle: "solid", borderColor: "transparent",

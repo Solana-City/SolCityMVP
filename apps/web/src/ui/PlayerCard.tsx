@@ -139,8 +139,8 @@ export default function PlayerCard({ gameRef, wallet, displayName, myWallet, onC
       }}
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
-      <style>{`@keyframes pcFade { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }`}</style>
       <div
+        className="sc-pop"
         style={{
           width: "min(640px, 94vw)",
           maxHeight: "96%", overflowY: "auto",
@@ -152,7 +152,6 @@ export default function PlayerCard({ gameRef, wallet, displayName, myWallet, onC
           fontFamily: '"Press Start 2P", monospace',
           color: "#d0d0f0",
           padding: "0 16px 16px",
-          animation: "pcFade 0.15s ease",
         }}
       >
         {/* Title bar */}

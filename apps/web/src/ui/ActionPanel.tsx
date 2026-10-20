@@ -28,6 +28,7 @@ import { useRoomyTitleRow } from "@/ui/howItWorks";
 import { useViewportBox, overlayBox } from "@/ui/useViewportBox";
 import { useButtonFeel, feelStyle, type ButtonFeel } from "@/ui/useButtonFeel";
 import { useEscape } from "@/ui/useEscape";
+import Presence, { useLast } from "@/ui/Presence";
 
 /** Every protocol NPC's app window uses the map legend's "Protocols" color. */
 const PROTOCOLS_COLOR = CATEGORY_META.defi.color;
@@ -175,7 +176,20 @@ const WIDE_ON_DESKTOP: Partial<Record<NPCAction["type"], number>> = {
   "ore-mine": 720,
 };
 
+/**
+ * The window keeps drawing the last action while it plays its exit: `action`
+ * goes null the moment it is dismissed. It answers Escape only while open.
+ */
 export default function ActionPanel({ action, onClose }: ActionPanelProps) {
+  const shown = useLast(action);
+  return (
+    <Presence show={action !== null}>
+      {shown && <ActionPanelBody action={shown} closing={action === null} onClose={onClose} />}
+    </Presence>
+  );
+}
+
+function ActionPanelBody({ action, closing, onClose }: { action: NPCAction; closing: boolean; onClose: () => void }) {
   const [isTouch, setIsTouch] = useState(false);
   // Anchored to the VISIBLE viewport: with the browser's address bar showing,
   // a fixed inset-0 box hangs off the bottom of the screen and takes the sheet
@@ -190,13 +204,11 @@ export default function ActionPanel({ action, onClose }: ActionPanelProps) {
     return () => mq.removeEventListener("change", onChange);
   }, []);
 
-  useEscape(onClose, !!action);
+  useEscape(onClose, !closing);
 
   // A first-time intro floats over this window on its own card; the window's
   // frame, empty behind it, is not drawn until the intro is done.
   const [introShowing, setIntroShowing] = useState(false);
-
-  if (!action) return null;
 
   // One window for every NPC app, on a phone as on the desktop: the same
   // chamfered frame, centred. It used to be a bottom sheet with no frame, which
@@ -232,12 +244,12 @@ export default function ActionPanel({ action, onClose }: ActionPanelProps) {
   return (
     <div className="z-40 flex items-center justify-center" style={{ ...overlayBox(viewport), padding: isTouch ? 6 : 0 }}>
       <div
-        className="absolute inset-0"
+        className="absolute inset-0 sc-fade"
         style={{ background: "rgba(6,10,20,0.6)" }}
         {...backdropClose(onClose)}
       />
       <div
-        className={`relative w-full npc-app${short ? " npc-app--short" : ""}`}
+        className={`relative w-full npc-app sc-pop${short ? " npc-app--short" : ""}`}
         style={{
           // A phone held sideways has the width for a roomier window, and
           // wants it: the forms stack tall, so width is what keeps them short.

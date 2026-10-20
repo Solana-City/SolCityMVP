@@ -9,6 +9,7 @@ import ChamferGlow from "@/ui/ChamferGlow";
 import { CloseButton, ExternalLinkIcon } from "@/ui/PixelIcons";
 import { useButtonFeel, feelStyle } from "@/ui/useButtonFeel";
 import { useEscape } from "@/ui/useEscape";
+import Presence, { useLast } from "@/ui/Presence";
 
 function useIsTouch() {
   const [isTouch, setIsTouch] = useState(false);
@@ -45,7 +46,22 @@ function accentAt(line: NPCDialogLine | undefined): number {
   return line === undefined || typeof line === "string" ? -1 : line.text.length + 1;
 }
 
+/**
+ * The dialog keeps drawing the last NPC while it plays its exit (`closing`):
+ * `npc` goes null the moment it is dismissed. While closing it answers no key,
+ * no ACT press and no click, or the E that opens the next thing could fire this
+ * NPC's action a second time.
+ */
 export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
+  const shown = useLast(npc);
+  return (
+    <Presence show={npc !== null}>
+      {shown && <NPCDialogBody npc={shown} closing={npc === null} onClose={onClose} onAction={onAction} />}
+    </Presence>
+  );
+}
+
+function NPCDialogBody({ npc, closing, onClose, onAction }: NPCDialogProps & { npc: NPCDefinition; closing: boolean }) {
   const [lineIndex, setLineIndex]         = useState(0);
   const [displayText, setDisplayText]     = useState("");
   const [isTyping, setIsTyping]           = useState(false);
@@ -94,7 +110,7 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
 
   /** First tap/click skips animation; second advances to next line (or triggers action). */
   const skipOrAdvance = useCallback(() => {
-    if (!npc) return;
+    if (!npc || closing) return;
     if (isTyping) {
       if (timerRef.current) clearInterval(timerRef.current);
       timerRef.current = null;
@@ -107,12 +123,12 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
     } else {
       onAction(npc.action);
     }
-  }, [npc, lineIndex, isTyping, onAction]);
+  }, [npc, closing, lineIndex, isTyping, onAction]);
 
   /** Jump straight to the last line, fully shown, so the action is one click
    *  away. For players who already know what this NPC does. */
   const skipToEnd = useCallback(() => {
-    if (!npc) return;
+    if (!npc || closing) return;
     const last = npc.dialog.length - 1;
     if (timerRef.current) clearInterval(timerRef.current);
     timerRef.current = null;
@@ -123,7 +139,7 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
     }
     instantRef.current = true;
     setLineIndex(last);
-  }, [npc, lineIndex]);
+  }, [npc, closing, lineIndex]);
 
   /** Clicks on the bubble body only skip/advance text. On the last line the
    *  action fires from its own button (or E/ACT), never from a stray click
@@ -149,7 +165,7 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [npc, skipOrAdvance, skipToEnd]);
-  useEscape(onClose, !!npc);
+  useEscape(onClose, !closing);
 
   // Mobile ACT button doubles as the dialog key: while a dialog is open,
   // CityScene ignores touch:interact (interactionBlocked), so the press
@@ -163,8 +179,6 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
     bus.on("touch:interact", handler);
     return () => { bus.off("touch:interact", handler); };
   }, [npc, skipOrAdvance]);
-
-  if (!npc) return null;
 
   const isLastLine  = lineIndex >= npc.dialog.length - 1;
   const doneTyping  = !isTyping;
@@ -441,6 +455,7 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
   if (isTouch) {
     return (
       <ChamferGlow
+        className="sc-pop"
         glow={`drop-shadow(0 -4px 14px ${color}40)`}
         style={{
           position:     "fixed",
@@ -459,7 +474,7 @@ export default function NPCDialog({ npc, onClose, onAction }: NPCDialogProps) {
 
   return (
     <div
-      className="fixed left-1/2 -translate-x-1/2 z-30 w-full max-w-3xl px-4"
+      className="fixed left-1/2 -translate-x-1/2 z-30 w-full max-w-3xl px-4 sc-pop"
       style={{ fontFamily: '"Press Start 2P", monospace', bottom: "96px" }}
     >
       <ChamferGlow className="relative" glow={`drop-shadow(0 0 16px ${color}40)`}>

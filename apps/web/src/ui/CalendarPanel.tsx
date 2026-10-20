@@ -16,6 +16,7 @@ import { useCallback, useEffect, useState } from "react";
 import { chamferBox, octagonFrame } from "@/ui/chamfer";
 import { CloseButton, CalendarDayIcon } from "@/ui/PixelIcons";
 import ChamferGlow from "@/ui/ChamferGlow";
+import Presence from "@/ui/Presence";
 import nacl from "tweetnacl";
 import { useWallet } from "@solana/wallet-adapter-react";
 import type { OnChainMultiplayer, OnChainPlayer } from "@/game/multiplayer/OnChainMultiplayer";
@@ -199,13 +200,13 @@ export default function CalendarPanel({ gameRef }: { gameRef: Phaser.Game | null
     : (allTime ?? []).map((e) => ({ wallet: e.wallet, fallback: e.displayName, score: e.score }));
   const names = useNicknames(rows.slice(0, 50).map((r) => r.wallet));
 
-  if (!open) return null;
-
   const today = new Date();
   const myIndex = wallet ? rows.findIndex((r) => r.wallet === wallet) : -1;
 
   return (
+    <Presence show={open}>
     <div
+      className="sc-fade"
       onPointerDown={(e) => { if (e.target === e.currentTarget) close(); }}
       style={{
         ...overlayBox(viewport), zIndex: 60, display: "flex", alignItems: "center", justifyContent: "center",
@@ -213,7 +214,7 @@ export default function CalendarPanel({ gameRef }: { gameRef: Phaser.Game | null
       }}
     >
       <div
-        className="tc-in"
+        className="sc-pop"
         style={{
           width: layout.wide ? "min(780px, 100%)" : "min(420px, 100%)",
           // Sized to fit without scrolling; the scroll is only a safety net
@@ -293,11 +294,8 @@ export default function CalendarPanel({ gameRef }: { gameRef: Phaser.Game | null
           </div>
         </div>
       </div>
-      <style>{`
-        @keyframes tc-in { from { opacity: 0; transform: translateY(10px) scale(0.98); } to { opacity: 1; transform: none; } }
-        .tc-in { animation: tc-in .22s ease; }
-      `}</style>
     </div>
+    </Presence>
   );
 }
 
