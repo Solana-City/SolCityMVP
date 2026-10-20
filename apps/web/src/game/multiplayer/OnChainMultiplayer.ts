@@ -1943,7 +1943,7 @@ export class OnChainMultiplayer {
    *   [8]   last_active       i64
    *   [8]   created_at        i64
    *
-   * We read only authority, x, y, direction, display_name for the multiplayer view.
+   * We read authority, x, y, direction, display_name and score for the multiplayer view.
    */
   /**
    * `slot` is the rollup slot the data was read at. Reads that carry one (poll,
@@ -2018,8 +2018,11 @@ export class OnChainMultiplayer {
         ? null
         : ((rawDirection & DIR_BUFF_KIND) !== 0 ? 1 : 0);
 
-      // Skip outfit_id, score, swap_count, transfer_count, bounty_count
-      offset += 1 + 4 + 2 + 2 + 2;
+      // Skip outfit_id; read score (the card another player opens on this one
+      // shows it); skip swap_count, transfer_count, bounty_count.
+      offset += 1;
+      const score = buf.readUInt32LE(offset);
+      offset += 4 + 2 + 2 + 2;
 
       // last_active (i64 — read lower 4 bytes; fits in u32 until year 2106)
       const lastActiveLo = buf.readUInt32LE(offset);
@@ -2137,6 +2140,7 @@ export class OnChainMultiplayer {
       const updated = this.knownPlayers.get(walletStr);
       if (updated) {
         (updated as any)._onChainTs = onChainTs;
+        updated.score = score;
 
         // Loadout — apply on first sight AND on change (it's a persistent field).
         if (loadoutStr && loadoutStr !== (updated as any)._loadoutStr) {
