@@ -47,6 +47,22 @@ function useMinimapHost(): MinimapHost | null {
 // ── Markers ────────────────────────────────────────────────────────────────
 
 /** One shape per category, so the map still reads for colour-blind players. */
+/**
+ * The box a marker, pin or tag actually painted, in canvas CSS pixels.
+ *
+ * Hit-testing used to guess: a circle around an approximate centre, with a
+ * radius derived from the nominal pin height rather than from the art. NPC
+ * sprites are scaled by how much body they have, so that radius matched no
+ * drawn shape, and where NPCs stand close together the overlapping circles
+ * handed the card to whichever CENTRE was nearest rather than to the one
+ * under the cursor. What you point at is now what answers.
+ */
+interface Hit { id: string; x: number; y: number; w: number; h: number }
+
+/** A square box around a point marker, for the hit list. */
+const boxAround = (x: number, y: number, r: number): Omit<Hit, "id"> =>
+  ({ x: x - r * 1.3, y: y - r * 1.3, w: r * 2.6, h: r * 2.6 });
+
 function drawMarker(ctx: CanvasRenderingContext2D, cat: MinimapCategory, x: number, y: number, r: number) {
   const color = CATEGORY_META[cat].color;
   ctx.save();
@@ -97,10 +113,11 @@ function drawMarker(ctx: CanvasRenderingContext2D, cat: MinimapCategory, x: numb
  * reads without covering the character. `h` is the drawn body height.
  * Returns the body centre, for hit-testing.
  */
-function drawPin(ctx: CanvasRenderingContext2D, point: MinimapPoint, x: number, y: number, h: number, highlight = false) {
+function drawPin(ctx: CanvasRenderingContext2D, point: MinimapPoint, x: number, y: number, h: number, highlight = false): Omit<Hit, "id"> {
   if (!point.portrait) {
-    drawMarker(ctx, point.category, x, y, Math.max(3, h * 0.2));
-    return { x, y };
+    const r = Math.max(3, h * 0.2);
+    drawMarker(ctx, point.category, x, y, r);
+    return boxAround(x, y, r);
   }
   const color = CATEGORY_META[point.category].color;
   const img = point.portrait;
@@ -130,7 +147,8 @@ function drawPin(ctx: CanvasRenderingContext2D, point: MinimapPoint, x: number, 
   ctx.shadowBlur = 1.5;
   ctx.drawImage(img, x - dw / 2, y - dh + h * 0.04, dw, dh);
   ctx.restore();
-  return { x, y: y - dh / 2 };
+  // Exactly the rectangle drawImage was given, twice, above.
+  return { x: x - dw / 2, y: y - dh + h * 0.04, w: dw, h: dh };
 }
 
 /** You: a teal disc with a pulsing ring, always drawn last. */
@@ -179,6 +197,9 @@ function Swatch({ cat, size = 14 }: { cat: MinimapCategory; size?: number }) {
 // ── View math ───────────────────────────────────────────────────────────────
 
 interface View { cx: number; cy: number; zoom: number }
+
+/** Slack around a painted box, so a fingertip and a thin marker both land. */
+const GRAB = 3;
 
 /** Draw the map picture for a view: world (cx, cy) at the canvas centre, `zoom` CSS px per world px. */
 function drawBase(ctx: CanvasRenderingContext2D, host: MinimapHost, v: View, w: number, h: number) {
@@ -535,8 +556,12 @@ const MAX_ZOOM = 1.6;        // CSS px per world px
 function FullMap({ host, onClose }: { host: MinimapHost; onClose: () => void }) {
   const travel = (p: MinimapPoint) => {
     onClose();
+    // Read the destination NOW rather than from the card: a player walks, and
+    // the card may have been open a while. Landmarks and NPCs stand still, so
+    // for them this is the same point either way.
+    const live = pointsRef.current.find((q) => q.id === p.id) ?? p;
+    const to = live.travel ?? { x: live.x, y: live.y };
     // Let the modal unmount (and keyboard re-enable) before the scene fades.
-    const to = p.travel ?? { x: p.x, y: p.y };
     window.setTimeout(() => emitGame("player:teleport", to), 60);
   };
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -553,8 +578,12 @@ function FullMap({ host, onClose }: { host: MinimapHost; onClose: () => void }) 
   const viewRef = useRef<View | null>(null);
   const targetRef = useRef<View | null>(null);
   const pointsRef = useRef<MinimapPoint[]>([]);
-  /** Where each NPC pin head was drawn last frame, for hit-testing. */
-  const headsRef = useRef(new Map<string, { x: number; y: number }>());
+  /**
+   * What was painted last frame and where, in paint order: landmarks, then
+   * NPCs north to south, then players. Hit-testing reads it backwards, so
+   * whatever is drawn ON TOP is what a click lands on.
+   */
+  const hitsRef = useRef<Hit[]>([]);
   const enabledRef = useRef(enabled);
   enabledRef.current = enabled;
   const selectedRef = useRef(selected);
@@ -639,28 +668,30 @@ function FullMap({ host, onClose }: { host: MinimapHost; onClose: () => void }) 
       const showNames = v.zoom >= fitZoom() * 2.4;
 
       // Place labels first so markers sit on top of them.
+      const hits: Hit[] = [];
       if (on.has("landmark")) {
         for (const l of host.landmarks) {
           const p = toScreen(v, w, h, l.x, l.y);
-          drawTag(ctx, l.name, p.x, p.y, CATEGORY_META.landmark.color, v.zoom >= fitZoom() * 1.3);
+          const box = drawTag(ctx, l.name, p.x, p.y, CATEGORY_META.landmark.color, v.zoom >= fitZoom() * 1.3);
+          hits.push({ id: l.id, ...box });
         }
       }
       const bodyH = Math.max(26, Math.min(58, v.zoom * 115));
-      const heads = new Map<string, { x: number; y: number }>();
       for (const n of [...snap.npcs].sort((a, b) => a.y - b.y)) {
         if (!on.has(n.category)) continue;
         const p = toScreen(v, w, h, n.x, n.y);
         if (p.x < -40 || p.x > w + 40 || p.y < -40 || p.y > h + 40) continue;
-        heads.set(n.id, drawPin(ctx, n, p.x, p.y, bodyH, selectedRef.current === n.id));
+        hits.push({ id: n.id, ...drawPin(ctx, n, p.x, p.y, bodyH, selectedRef.current === n.id) });
         if (showNames || selectedRef.current === n.id) drawName(ctx, n.name, p.x, p.y + 5);
       }
-      headsRef.current = heads;
       for (const n of snap.players) {
         if (!on.has(n.category)) continue;
         const p = toScreen(v, w, h, n.x, n.y);
         drawMarker(ctx, n.category, p.x, p.y, r * 0.8);
+        hits.push({ id: n.id, ...boxAround(p.x, p.y, r * 0.8) });
         if (showNames || selectedRef.current === n.id) drawName(ctx, n.name, p.x, p.y + r + 3);
       }
+      hitsRef.current = hits;
       const sel = selectedRef.current && all.find((p) => p.id === selectedRef.current && !p.portrait);
       if (sel) {
         const p = toScreen(v, w, h, sel.x, sel.y);
@@ -688,21 +719,24 @@ function FullMap({ host, onClose }: { host: MinimapHost; onClose: () => void }) 
   /** Pinch start: finger spread, zoom, and the world point under the fingers' midpoint. */
   const pinchStart = useRef<{ dist: number; zoom: number; wx: number; wy: number } | null>(null);
 
+  /**
+   * Whatever was painted under (sx, sy), topmost first. Backwards through the
+   * paint order, so a player standing over an NPC answers before the NPC and
+   * an NPC standing on a landmark tag answers before the tag.
+   */
   const hitTest = useCallback((sx: number, sy: number): MinimapPoint | null => {
-    const v = viewRef.current;
-    if (!v) return null;
-    const r = Math.max(5, Math.min(9, v.zoom * 22)) + 6;
-    let best: { p: MinimapPoint; d: number } | null = null;
-    for (const p of pointsRef.current) {
-      if (!enabledRef.current.has(p.category)) continue;
-      const head = headsRef.current.get(p.id);
-      const s = head ?? toScreen(v, w, h, p.x, p.y);
-      const reach = head ? Math.max(26, Math.min(58, v.zoom * 115)) * 0.55 + 4 : r;
-      const d = Math.hypot(s.x - sx, s.y - sy);
-      if (d <= reach && (!best || d < best.d)) best = { p, d };
+    const hits = hitsRef.current;
+    const byId = pointsRef.current;
+    for (let i = hits.length - 1; i >= 0; i--) {
+      const b = hits[i];
+      // A couple of pixels of slack, for a fingertip and for the thin markers.
+      if (sx < b.x - GRAB || sx > b.x + b.w + GRAB) continue;
+      if (sy < b.y - GRAB || sy > b.y + b.h + GRAB) continue;
+      const p = byId.find((q) => q.id === b.id);
+      if (p && enabledRef.current.has(p.category)) return p;
     }
-    return best?.p ?? null;
-  }, [w, h]);
+    return null;
+  }, []);
 
   const local = (e: React.PointerEvent | React.WheelEvent) => {
     const rect = canvasRef.current!.getBoundingClientRect();
@@ -915,7 +949,10 @@ function FullMap({ host, onClose }: { host: MinimapHost; onClose: () => void }) 
 
             {card && (
               <div style={chamferBox(8, {
-                position: "absolute", pointerEvents: card.point.id === selected && card.point.category !== "players" ? "auto" : "none",
+                // Clickable only once it is the SELECTED card, since that is the
+                // one with a button on it. A card merely being hovered must not
+                // eat the pointer, or it would steal the drag that pans the map.
+                position: "absolute", pointerEvents: card.point.id === selected ? "auto" : "none",
                 left: Math.min(Math.max(card.x + 14, 8), Math.max(8, w - 220)),
                 top: Math.min(Math.max(card.y - 20, 8), Math.max(8, h - 120)),
                 maxWidth: 210, padding: "8px 10px", 
@@ -929,7 +966,12 @@ function FullMap({ host, onClose }: { host: MinimapHost; onClose: () => void }) 
                 <div style={{ fontFamily: PIXEL_FONT, fontSize: 6, color: "#8b93a7", marginTop: 5 }}>
                   {card.point.role ? `${card.point.role} · ` : ""}{CATEGORY_META[card.point.category].label}
                 </div>
-                {card.point.id === selected && card.point.category !== "players" && (
+                {/* Players too: the destination is wherever they are standing
+                    when the button is pressed, and the scene lands you on the
+                    nearest walkable tile beside it, same as any other target.
+                    Meeting someone used to mean reading their dot off the map
+                    and walking there. */}
+                {card.point.id === selected && (
                   <button
                     onClick={() => travel(card.point)}
                     {...fastTravelFeel.handlers}
@@ -1065,10 +1107,10 @@ function drawName(ctx: CanvasRenderingContext2D, text: string, x: number, y: num
 }
 
 /** A place label: a small pill with the name, or just a marker when zoomed far out. */
-function drawTag(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, color: string, withText: boolean) {
+function drawTag(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, color: string, withText: boolean): Omit<Hit, "id"> {
   if (!withText) {
     drawMarker(ctx, "landmark", x, y, 4);
-    return;
+    return boxAround(x, y, 4);
   }
   ctx.save();
   ctx.font = MAP_LABEL_FONT;
@@ -1088,4 +1130,5 @@ function drawTag(ctx: CanvasRenderingContext2D, text: string, x: number, y: numb
   ctx.textBaseline = "middle";
   ctx.fillText(text, x, y + 1);
   ctx.restore();
+  return { x: x - pw / 2, y: y - ph / 2, w: pw, h: ph };
 }
