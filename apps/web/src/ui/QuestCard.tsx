@@ -111,26 +111,30 @@ function QuestRow({ row, open, onToggle }: {
       border: `1px solid ${progress.complete ? "rgba(183,233,40,0.22)" : "rgba(255,255,255,0.06)"}`,
       padding: "6px 8px",
     })}>
+      {/* Every quest is a dropdown, one step or seven: the steps are the
+          detail, and a card that shows them all at once stops being a list. */}
       <div
-        onClick={multi ? onToggle : undefined}
+        onClick={onToggle}
         style={{
           display: "flex", alignItems: "center", gap: 6,
-          cursor: multi ? "pointer" : "default", userSelect: "none",
+          cursor: "pointer", userSelect: "none",
         }}
       >
         {progress.complete
           ? <PixelImg src={ICON.star} size={12} />
-          : <span style={{ fontSize: 8, color: HUD_MUTED, width: 12, textAlign: "center" }}>
-              {multi ? `${progress.done}/${progress.total}` : ""}
+          : <span style={{ fontSize: 7, color: HUD_MUTED, flexShrink: 0 }}>
+              {progress.done}/{progress.total}
             </span>}
         <span style={{
           flex: 1, minWidth: 0, fontSize: 7, lineHeight: 1.5,
           color: progress.complete ? HUD_ACCENT : HUD_TEXT,
           overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
         }}>{def.title}</span>
-        {multi && <Arrow dir={open ? "up" : "down"} />}
+        <Arrow dir={open ? "up" : "down"} />
       </div>
 
+      {/* A bar earns its row only when there is a middle to be in. On one step
+          it is a worse tick than the count already beside the title. */}
       {!progress.complete && multi && (
         <div style={{ marginTop: 5 }}><Bar pct={progress.done / progress.total} /></div>
       )}
@@ -140,12 +144,6 @@ function QuestRow({ row, open, onToggle }: {
           {progress.steps.map(({ step, done }) => (
             <Step key={step.id} label={step.label} done={done} />
           ))}
-        </div>
-      )}
-
-      {!open && !multi && !progress.complete && (
-        <div style={{ marginTop: 4, fontSize: 7, color: HUD_MUTED, lineHeight: 1.5 }}>
-          {def.steps[0].label}
         </div>
       )}
     </div>
@@ -168,10 +166,17 @@ function QuestList({ rows, wallet, maxHeight }: {
     <div style={{
       display: "flex", flexDirection: "column", gap: 5,
       maxHeight, overflowY: "auto", overflowX: "hidden",
-      // A touch target wider than the scrollbar on a phone, and no bar at all
-      // on desktop until it is needed.
-      scrollbarWidth: "thin",
-    }}>
+      // No scrollbar styling here on purpose. globals.css dresses every bar in
+      // the retro chrome already, and a `scrollbar-width` set inline would
+      // override the Firefox fallback it is careful about. The same file hides
+      // the bar entirely under (pointer: coarse), which leaves the phone with
+      // a clean swipe.
+      //
+      // pan-y so the swipe belongs to this list rather than being taken for a
+      // drag by whatever is underneath it.
+      touchAction: "pan-y",
+      WebkitOverflowScrolling: "touch",
+    } as CSSProperties}>
       {rows.map((row) => (
         <QuestRow
           key={row.def.id}
@@ -222,9 +227,20 @@ function Header({ done, total, collapsed, onCollapse, compact }: {
 
 export default function QuestCard({ wallet }: { wallet: string | null }) {
   const [isTouch, setIsTouch] = useState(false);
-  useEffect(() => setIsTouch(window.matchMedia("(pointer: coarse)").matches), []);
 
-  const [collapsed, setCollapsed] = useState(false);
+  // Collapsed to begin with on DESKTOP, where this card stacks under the hunt
+  // and two open panels can run past a short window. The hunt is the one that
+  // has to stay visible, because it is timed.
+  //
+  // On a phone the rail button already IS the collapse: the card only exists
+  // once it is tapped, so starting collapsed there would cost a second tap to
+  // see anything at all.
+  const [collapsed, setCollapsed] = useState(true);
+  useEffect(() => {
+    const touch = window.matchMedia("(pointer: coarse)").matches;
+    setIsTouch(touch);
+    if (touch) setCollapsed(false);
+  }, []);
   const rows = useQuestRows(wallet);
   const done = rows.filter((r) => r.progress.complete).length;
 
