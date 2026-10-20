@@ -41,6 +41,7 @@ const WardrobePanel       = dynamic(() => import("@/ui/WardrobePanel"),       { 
 const ConnectScreen       = dynamic(() => import("@/ui/ConnectScreen"),       { ssr: false });
 const SWUpdater           = dynamic(() => import("@/ui/SWUpdater"),            { ssr: false });
 const WhereIsNPCCard      = dynamic(() => import("@/ui/WhereIsNPCCard"),      { ssr: false });
+const QuestCard           = dynamic(() => import("@/ui/QuestCard"),           { ssr: false });
 const PlayerCard          = dynamic(() => import("@/ui/PlayerCard"),          { ssr: false });
 const AudioBridge         = dynamic(() => import("@/ui/AudioBridge"),         { ssr: false });
 const NicknameModal       = dynamic(() => import("@/ui/NicknameModal"),       { ssr: false });
@@ -111,7 +112,7 @@ export default function Home() {
   // wide on a phone screen, and most sessions never touch the wallet.
   const [walletSectionOpen, setWalletSectionOpen] = useState(false);
   const displayName = useDisplayName();
-  const [mobilePanel, setMobilePanel] = useState<"hunt" | null>(null);
+  const [mobilePanel, setMobilePanel] = useState<"hunt" | "quests" | null>(null);
   /** Last wallet state actually handed to Phaser; undefined = nothing sent yet. */
   const lastSentWalletRef = useRef<string | null | undefined>(undefined);
   // Chat hidden by default on touch devices, visible on desktop
@@ -183,7 +184,7 @@ export default function Home() {
 
   // Mobile panels and chat are mutually exclusive — the screen is too small
   // to stack overlays on top of the game view.
-  const toggleMobilePanel = useCallback((panel: "hunt") => {
+  const toggleMobilePanel = useCallback((panel: "hunt" | "quests") => {
     setChatOpen(false);
     setMobilePanel(v => (v === panel ? null : panel));
   }, []);
@@ -541,6 +542,7 @@ export default function Home() {
               display: "flex", flexDirection: "column", gap: 6,
             }}>
               <WhereIsNPCCard gameRef={game} wallet={walletAddress} />
+              <QuestCard wallet={walletAddress} />
             </div>
           ) : (
             /* Mobile: icon rail — the hunt toggle. Chat and expressions sit
@@ -555,6 +557,7 @@ export default function Home() {
                 display: "flex", flexDirection: "column", gap: 6,
               }}>
                 <MobilePanelToggle iconSrc="/assets/ui/icon_quests.png" label="Find someone" active={mobilePanel === "hunt"} onClick={() => toggleMobilePanel("hunt")} />
+                <MobilePanelToggle iconSrc="/assets/ui/icon_tasks1.png" label="Quests" active={mobilePanel === "quests"} onClick={() => toggleMobilePanel("quests")} />
               </div>
               <Presence show={mobilePanel === "hunt"}>
                 {/* A HUD piece beside its rail button rather than a modal: no
@@ -572,6 +575,20 @@ export default function Home() {
                   }}
                 >
                   <WhereIsNPCCard gameRef={game} wallet={walletAddress} />
+                </div>
+              </Presence>
+              <Presence show={mobilePanel === "quests"}>
+                {/* Beside the rail, like the hunt: a HUD piece rather than a
+                    modal, so the city stays playable while the list is open. */}
+                <div
+                  className="sc-pop"
+                  style={{
+                    position: "fixed", zIndex: 20,
+                    top: "max(env(safe-area-inset-top, 0px), 12px)",
+                    left: "calc(max(env(safe-area-inset-left, 0px), 12px) + 50px)",
+                  }}
+                >
+                  <QuestCard wallet={walletAddress} />
                 </div>
               </Presence>
             </>
