@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+import { authorizeSigned } from "@/lib/auth/requestAuth";
+import { questMessage, type QuestAction } from "@/lib/auth/requestMessages";
 import { advanceQuest, claimQuestPoints, readQuests, readMine } from "@/lib/boards";
 
 export const runtime = "nodejs";
@@ -19,18 +21,24 @@ export async function GET(req: NextRequest) {
 }
 
 /**
- * POST { wallet, questId, action: "increment" | "claim", target?, points? }
+ * POST { wallet, questId, action: "increment" | "claim", target?, points?,
+ *        sessionKey, ts, signature }
  *
- * Same trust level as the localStorage this replaces — a player can report
- * their own progress — but now it follows them across devices and everyone
- * sees the same board. Values are clamped in `lib/boards`.
+ * Signed by the session key over questMessage(...), so progress and points can
+ * only be written for the wallet that is actually playing (the same scheme as
+ * /api/checkin). Values are still clamped in `lib/boards`.
  */
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
-  const { wallet, questId, action, target, points } = body as Record<string, unknown>;
-  if (typeof wallet !== "string" || !WALLET_RE.test(wallet)) {
-    return NextResponse.json({ ok: false }, { status: 400 });
-  }
+  const { questId, action, target, points } = body as Record<string, unknown>;
+
+  const kind: QuestAction = action === "claim" ? "claim" : "increment";
+  const auth = await authorizeSigned(body as Record<string, unknown>, (w, ts) =>
+    questMessage(kind, w, String(questId ?? ""), ts, { target, points }),
+  );
+  if (!auth.ok) return NextResponse.json(auth.body, { status: auth.status });
+  const wallet = auth.wallet;
+
   if (typeof questId !== "string" || !QUEST_RE.test(questId)) {
     return NextResponse.json({ ok: false }, { status: 400 });
   }
