@@ -446,7 +446,7 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
       style={{ ...overlayBox(viewport), background: "rgba(0,0,0,0.7)", backdropFilter: "blur(4px)" }}
       onClick={e => e.target === e.currentTarget && requestClose()}
     >
-      <div style={{
+      <div className="sc-pop" style={{
         background: "#0b0e1c",
         ...(isMobile
           ? { border: "none" }

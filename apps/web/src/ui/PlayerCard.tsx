@@ -75,6 +75,21 @@ export default function PlayerCard({ gameRef, wallet, displayName, myWallet, onC
     const id = setInterval(() => setPlayer(network.getPlayer(wallet)), 2000);
     return () => clearInterval(id);
   }, [wallet, network]);
+  // The streak comes from the city's check-in record, the same one the calendar
+  // reads, so the card does not depend on the player having published it to
+  // chain (older accounts have no room for it). What was published stays as the
+  // fallback while this loads, and if the record cannot be reached.
+  const [streak, setStreak] = useState<{ current: number; best: number } | null>(null);
+  useEffect(() => {
+    if (!wallet) return;
+    let alive = true;
+    setStreak(null);
+    fetch(`/api/checkin?wallet=${encodeURIComponent(wallet)}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((body) => { if (alive && body?.streak) setStreak({ current: body.streak.current ?? 0, best: body.streak.best ?? 0 }); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [wallet]);
   const { signTransaction } = useWallet();
   const [standing, setStanding] = useState<FriendStanding>("none");
   const [friendBusy, setFriendBusy] = useState(false);
@@ -121,7 +136,8 @@ export default function PlayerCard({ gameRef, wallet, displayName, myWallet, onC
   const short = `${wallet.slice(0, 4)}…${wallet.slice(-4)}`;
   const name = nickname || displayName || player?.displayName || short;
   const isSelf = wallet === myWallet;
-  const best = player?.streakBest ?? 0;
+  const streakNow = streak?.current ?? player?.streakCurrent ?? 0;
+  const best = streak?.best ?? player?.streakBest ?? 0;
 
   const CYAN = "#14F0C6";
   const cta = (extra: React.CSSProperties) => ({
@@ -139,8 +155,8 @@ export default function PlayerCard({ gameRef, wallet, displayName, myWallet, onC
       }}
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
-      <style>{`@keyframes pcFade { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }`}</style>
       <div
+        className="sc-pop"
         style={{
           width: "min(640px, 94vw)",
           maxHeight: "96%", overflowY: "auto",
@@ -152,7 +168,6 @@ export default function PlayerCard({ gameRef, wallet, displayName, myWallet, onC
           fontFamily: '"Press Start 2P", monospace',
           color: "#d0d0f0",
           padding: "0 16px 16px",
-          animation: "pcFade 0.15s ease",
         }}
       >
         {/* Title bar */}
@@ -207,7 +222,7 @@ export default function PlayerCard({ gameRef, wallet, displayName, myWallet, onC
 
             <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
               <Stat label="Score" value={player?.score ?? 0} color="#B7E928" />
-              <Stat label="Streak" value={player?.streakCurrent ?? 0} color="#B7E928"
+              <Stat label="Streak" value={streakNow} color="#B7E928"
                 hint={best > 0 ? `best ${best}` : undefined} />
             </div>
 

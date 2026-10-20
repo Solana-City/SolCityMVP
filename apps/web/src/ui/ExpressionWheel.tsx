@@ -6,6 +6,7 @@ import {
 } from "@/game/config/paperDoll";
 import { drawAvatarPortrait } from "@/ui/AvatarPortrait";
 import { useEscape } from "@/ui/useEscape";
+import Presence from "@/ui/Presence";
 
 /**
  * GTA-style radial expression picker. Hold Q (desktop) to open a wheel of
@@ -132,13 +133,16 @@ export default function ExpressionWheel({ gameRef }: { gameRef: Phaser.Game | nu
     setActiveIndex(Math.round(norm / (Math.PI * 2) * EXPRESSIONS.length) % EXPRESSIONS.length);
   }, [isTouch]);
 
-  if (!open || !loadout) return null;
+  if (!loadout) return null;
 
   const N = EXPRESSIONS.length;
   const radius = isTouch ? 136 : 158;
   const node = isTouch ? 88 : 98;
 
+  // The dim and blur come and go at once, and only the heads animate: fading
+  // a full-screen backdrop-filter would re-blur the whole screen every frame.
   return (
+    <Presence show={open}>
     <div
       onPointerMove={onPointerMove}
       onClick={closeWheel} // click backdrop closes
@@ -164,6 +168,7 @@ export default function ExpressionWheel({ gameRef }: { gameRef: Phaser.Game | nu
         return (
           <div
             key={expr.id}
+            className="sc-pop"
             onClick={(e) => { e.stopPropagation(); trigger(expr); closeWheel(); }}
             onPointerEnter={() => !isTouch && setActiveIndex(i)}
             title={expr.name}
@@ -195,5 +200,6 @@ export default function ExpressionWheel({ gameRef }: { gameRef: Phaser.Game | nu
         );
       })}
     </div>
+    </Presence>
   );
 }

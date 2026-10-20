@@ -14,13 +14,14 @@ import {
 import { recolorHairCanvas } from "@/game/config/hairPalette";
 import { incrementQuest } from "@/game/quests/QuestManager";
 import { useNicknames, shortWallet } from "@/ui/useNicknames";
-import { fetchBoard, invalidateBoard, type BoardRow } from "@/game/leaderboards/boards";
+import { fetchBoard, invalidateBoard, type BoardResult } from "@/game/leaderboards/boards";
 import { track } from "@/game/telemetry/track";
 import { cachedName, requestNames } from "@/game/names/nameService";
 import { chamferBox, octagonFrame } from "@/ui/chamfer";
 import ChamferGlow from "@/ui/ChamferGlow";
 import { useButtonFeel, feelStyle } from "@/ui/useButtonFeel";
 import { useEscape } from "@/ui/useEscape";
+import Presence from "@/ui/Presence";
 
 // ── Chroma key ────────────────────────────────────────────────────────────────
 const CHROMA_R = 215, CHROMA_G = 123, CHROMA_B = 186, CHROMA_TOL = 30;
@@ -179,77 +180,141 @@ function MiniAvatar({ loadout, size = 64 }: { loadout: Loadout; size?: number })
 }
 
 // ── Leaderboard modal ─────────────────────────────────────────────────────────
-function LeaderboardModal({ onClose }: { onClose: () => void }) {
+/** One line of the board: place, name, finds. `you` lights it up. */
+function BoardRowView({ rank, name, count, you, compact, last, rowRef }: {
+  rank: number | null; name: string; count: number; you: boolean; compact: boolean; last?: boolean;
+  rowRef?: React.Ref<HTMLDivElement>;
+}) {
+  return (
+    <div ref={rowRef} style={{
+      display: "flex", alignItems: "center", gap: 12,
+      padding: compact ? "6px 8px" : "10px 10px",
+      borderBottom: last ? "none" : "1px solid rgba(183,233,40,0.07)",
+      ...(you ? { background: "rgba(183,233,40,0.14)", boxShadow: "inset 3px 0 0 #B7E928" } : null),
+    }}>
+      <span style={{ minWidth: 34, fontSize: you ? 9 : 7, color: you ? "#B7E928" : undefined }}>
+        {rank === null ? "—" : you && rank > 3 ? `#${rank}` : <RankBadge rank={rank} size={18} />}
+      </span>
+      <span style={{ flex: 1, minWidth: 0, fontSize: 9, color: you ? "#fff" : "#9090cc", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        {name}
+        {you && <span style={{ marginLeft: 8, fontSize: 7, color: "#B7E928" }}>YOU</span>}
+      </span>
+      <span style={{ fontSize: 7, color: "#B7E928", flexShrink: 0 }}>{count} ★</span>
+    </div>
+  );
+}
+
+/**
+ * The hunt's top 10 and where you stand. Your own line is lit wherever it is; a
+ * player outside the top 10 gets a line of their own under the list, with their
+ * exact place, which stays on screen while the list scrolls.
+ */
+function LeaderboardModal({ wallet, me, compact, onClose }: {
+  /** The connected wallet; null for a guest, who has no place on the city board. */
+  wallet: string | null;
+  /** The id this browser files its own finds under ("guest" without a wallet). */
+  me: string;
+  compact: boolean;
+  onClose: () => void;
+}) {
   useEscape(onClose);
   // City-wide board, with this browser's own history as the fallback while it
   // loads (and if the store is unreachable).
-  const [rows, setRows] = useState<BoardRow[] | null>(null);
+  const [board, setBoard] = useState<BoardResult | null>(null);
   useEffect(() => {
     let cancelled = false;
-    fetchBoard("hunt", { limit: 10, force: true })
+    fetchBoard("hunt", { wallet, limit: 10, force: true })
       // Only a board that ANSWERED replaces the local fallback. An empty answer
       // is still an answer: a city board that has just been cleared shows
       // nobody, rather than resurrecting this browser's own old scores.
-      .then((r) => { if (!cancelled && r.ok) setRows(r.rows); })
+      .then((r) => { if (!cancelled && r.ok) setBoard(r); })
       .catch(() => undefined);
     return () => { cancelled = true; };
-  }, []);
+  }, [wallet]);
 
-  const entries = rows
-    ? rows.map((r) => ({ wallet: r.wallet, display: r.name ?? shortWallet(r.wallet), count: r.value }))
-    : getLeaderboard(10);
-  const { display } = useNicknames(entries.map((e) => e.wallet));
+  const local = board ? null : getLeaderboard(100);
+  const entries = board
+    ? board.rows.map((r) => ({ wallet: r.wallet, display: r.name ?? shortWallet(r.wallet), count: r.value }))
+    : local!.slice(0, 10);
+  const myId = wallet ?? me;
+  const myIndex = entries.findIndex((e) => e.wallet === myId);
+
+  // Where I stand when I am not in the ten shown: the city's own answer, or
+  // this browser's list when the city did not answer.
+  let outside: { rank: number | null; count: number } | null = null;
+  if (myIndex < 0 && (wallet || !board)) {
+    if (board) outside = { rank: board.mine?.rank ?? null, count: board.mine?.value ?? 0 };
+    else {
+      const at = local!.findIndex((e) => e.wallet === myId);
+      outside = { rank: at < 0 ? null : at + 1, count: getMyScore(myId) };
+    }
+  }
+
+  const { display } = useNicknames(wallet ? [...entries.map((e) => e.wallet), wallet] : entries.map((e) => e.wallet));
+  const myName = wallet ? display(wallet, shortWallet(wallet)) : "YOU";
+
+  // The list scrolls on a small screen: bring my line into view when it is there.
+  const mineRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { mineRef.current?.scrollIntoView({ block: "nearest" }); }, [myIndex, board]);
+
   return (
     <div style={{
       position: "fixed", inset: 0, zIndex: 200,
       display: "flex", alignItems: "center", justifyContent: "center",
+      // A phone's own edges and notch, so the window is never cut off by them.
+      padding: "max(env(safe-area-inset-top, 0px), 8px) max(env(safe-area-inset-right, 0px), 8px) max(env(safe-area-inset-bottom, 0px), 8px) max(env(safe-area-inset-left, 0px), 8px)",
       background: "rgba(0,0,0,0.65)", backdropFilter: "blur(6px)",
-      animation: "fadeIn 0.15s ease",
     }} onClick={e => e.target === e.currentTarget && onClose()}>
-      <div style={{
+      <div className="sc-pop" style={{
         ...octagonFrame(1),
         background: "#0b0e1c",
-        minWidth: 320, maxWidth: "90vw",
+        width: "min(420px, 100%)", maxHeight: "100%",
+        display: "flex", flexDirection: "column",
         fontFamily: '"Press Start 2P", monospace', color: "#d0d0f0",
         overflow: "hidden",
-        animation: "slideUp 0.18s ease",
       }}>
         <div style={{
-          padding: "16px 20px", background: "rgba(183,233,40,0.07)",
-          borderBottom: "1px solid rgba(183,233,40,0.1)",
+          padding: compact ? "6px 12px" : "16px 20px", background: "rgba(183,233,40,0.07)",
+          borderBottom: "1px solid rgba(183,233,40,0.1)", flexShrink: 0,
           display: "flex", alignItems: "center", justifyContent: "space-between",
         }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <PixelImg src="/assets/ui/icon_leaderboard1.png" size={24} />
-            <span style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 12, color: "#B7E928", letterSpacing: 2 }}>
+            <PixelImg src="/assets/ui/icon_leaderboard1.png" size={compact ? 20 : 24} />
+            <span style={{ fontFamily: '"Press Start 2P", monospace', fontSize: compact ? 10 : 12, color: "#B7E928", letterSpacing: 2 }}>
               LEADERBOARD
             </span>
           </div>
           <CloseButton onClick={onClose} size={20} />
         </div>
-        <div style={{ padding: "8px 20px 18px" }}>
+
+        {/* The only part that scrolls: the header and my own line stay put. */}
+        <div style={{ flex: "1 1 auto", minHeight: 0, overflowY: "auto", padding: compact ? "4px 8px" : "8px 12px" }}>
           {entries.length === 0 ? (
             <div style={{ color: "#444466", fontSize: 9, padding: "20px 0", textAlign: "center" }}>
               No finds yet. Be the first!
             </div>
           ) : entries.map((e, i) => (
-            <div key={e.wallet} style={{
-              display: "flex", alignItems: "center", gap: 12,
-              padding: "10px 0",
-              borderBottom: i < entries.length - 1 ? "1px solid rgba(183,233,40,0.07)" : "none",
-            }}>
-              <span style={{
-                fontFamily: '"Press Start 2P", monospace', fontSize: 7,
-                color: i === 0 ? "#FFD700" : i === 1 ? "#c0c0cc" : i === 2 ? "#cd7f32" : "#333355",
-                minWidth: 24,
-              }}><RankBadge rank={i + 1} size={18} /></span>
-              <span style={{ flex: 1, fontSize: 9, color: "#9090cc" }}>{display(e.wallet, e.display)}</span>
-              <span style={{ fontFamily: '"Press Start 2P", monospace', fontSize: 7, color: "#B7E928" }}>
-                {e.count} ★
-              </span>
-            </div>
+            <BoardRowView
+              key={e.wallet} rank={i + 1} name={display(e.wallet, e.display)} count={e.count}
+              you={i === myIndex} compact={compact} last={i === entries.length - 1}
+              rowRef={i === myIndex ? mineRef : undefined}
+            />
           ))}
         </div>
+
+        {outside && (
+          <div style={{ flexShrink: 0, padding: compact ? "0 8px 6px" : "0 12px 12px", borderTop: "1px solid rgba(183,233,40,0.25)", background: "#0b0e1c" }}>
+            <div style={{ fontSize: 7, color: "#6060aa", padding: compact ? "4px 8px 0" : "8px 10px 2px" }}>
+              {outside.rank === null ? "NOT RANKED YET" : "YOUR PLACE"}
+            </div>
+            <BoardRowView rank={outside.rank} name={myName} count={outside.count} you compact={compact} last />
+          </div>
+        )}
+        {!wallet && board && (
+          <div style={{ flexShrink: 0, padding: "8px 12px", borderTop: "1px solid rgba(183,233,40,0.1)", fontSize: 7, color: "#6060aa", textAlign: "center", lineHeight: 1.6 }}>
+            CONNECT A WALLET TO GET A PLACE
+          </div>
+        )}
       </div>
     </div>
   );
@@ -394,11 +459,13 @@ export default function WhereIsNPCCard({ gameRef, wallet }: Props) {
         @keyframes huntIn { from { transform: translateX(-6px); opacity: 0 } to { transform: translateX(0); opacity: 1 } }
       `}</style>
 
-      {showLeaderboard && <LeaderboardModal onClose={() => setShowLeaderboard(false)} />}
+      <Presence show={showLeaderboard}>
+        <LeaderboardModal wallet={wallet} me={effectiveWallet} compact={isTouch} onClose={() => setShowLeaderboard(false)} />
+      </Presence>
 
-      {showInfo && (
+      <Presence show={showInfo}>
         <HuntHowTo loadout={targetLoadout} isTouch={isTouch} onClose={() => setShowInfo(false)} />
-      )}
+      </Presence>
 
       {isTouch ? (
         <MobileHunt
@@ -841,11 +908,12 @@ function HuntHowTo({ loadout, isTouch, onClose }: { loadout: Loadout | null; isT
 
   return (
     <div
+      className="sc-fade"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
       style={{ position: "fixed", inset: 0, zIndex: 200, background: "rgba(4,6,16,0.6)", display: "flex", alignItems: "center", justifyContent: "center", padding: 12 }}
     >
       <style>{`@keyframes hunt-timer { from { width: 100%; } to { width: 4%; } } .hunt-timer-demo { animation: hunt-timer 3s linear infinite; }`}</style>
-      <div style={{
+      <div className="sc-pop" style={{
         ...octagonFrame(1),
         width: "min(400px, 100%)", maxHeight: "100%", overflowY: "auto", padding: 8,
         background: "#0c0f1e", fontFamily: PIX,

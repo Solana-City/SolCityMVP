@@ -254,6 +254,24 @@ export async function ztop(key: string, limit = 10): Promise<{ member: string; s
     .slice(0, limit);
 }
 
+/**
+ * One member's place (1 is the top) and score in a sorted set, or null when it
+ * is not in it. Ordered as ztop orders, so the place agrees with the rows.
+ */
+export async function zrankOf(key: string, member: string): Promise<{ rank: number; score: number } | null> {
+  if (storeMode() === "redis") {
+    const [rank, score] = await Promise.all([
+      redis<number | null>(["ZREVRANK", key, member]),
+      redis<string | null>(["ZSCORE", key, member]),
+    ]);
+    return rank === null || score === null ? null : { rank: rank + 1, score: Number(score) };
+  }
+  const z = (memory.get(key) as Map<string, number> | undefined) ?? new Map<string, number>();
+  const sorted = [...z.entries()].sort((a, b) => b[1] - a[1]);
+  const index = sorted.findIndex(([m]) => m === member);
+  return index < 0 ? null : { rank: index + 1, score: sorted[index][1] };
+}
+
 /** Pushes onto the head of a capped list (a recent-activity feed). */
 export async function lpushCapped(key: string, value: string, cap: number): Promise<void> {
   if (storeMode() === "redis") {

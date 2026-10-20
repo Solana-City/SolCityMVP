@@ -12,6 +12,7 @@
 import { useEffect, useState } from "react";
 import { useButtonFeel, feelStyle } from "@/ui/useButtonFeel";
 import { useEscape } from "@/ui/useEscape";
+import Presence from "@/ui/Presence";
 
 const SEEN_KEY = "solcity:keys-seen";
 
@@ -80,15 +81,15 @@ export default function KeysCard({ open, onClose }: { open: boolean; onClose: ()
   useEscape(onClose, open);
   const closeFeel = useButtonFeel();
 
-  if (!open) return null;
-
   return (
+    <Presence show={open}>
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center"
+      className="fixed inset-0 z-50 flex items-center justify-center sc-fade"
       onClick={onClose}
       style={{ background: "rgba(6,10,20,0.6)" }}
     >
       <div
+        className="sc-pop"
         onClick={(e) => e.stopPropagation()}
         style={{
           background: "rgba(10,10,30,0.97)",
@@ -116,6 +117,7 @@ export default function KeysCard({ open, onClose }: { open: boolean; onClose: ()
         <KeysRows />
       </div>
     </div>
+    </Presence>
   );
 }
 
