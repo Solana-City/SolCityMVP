@@ -108,7 +108,7 @@ const JACK_O_LANTERN_ID = "jack-o-lantern";
  * new builder here as it lands, and keep the Brazilian_shirt unlockHint in
  * paperDoll.ts saying the same thing this list does.
  */
-const STBR_CREW = [
+export const STBR_CREW = [
   "kuka", "kite-pro", "caramel-dog",
   "pegana-raffx", "solsentry-crash", "dungeons-moles", "cloak-vitin",
 ];
