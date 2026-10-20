@@ -39,7 +39,7 @@ import { CarvingEngine } from "./CarvingEngine";
 import { soundManager } from "@/game/audio/SoundManager";
 import { track } from "@/game/telemetry/track";
 import { HowToPlay, readHowToSeen } from "./HowToPlay";
-import { attemptsLeft, spendAttempt, foundCount, PUMPKINS_PER_HUNT } from "@/game/halloween/pumpkinHunt";
+import { attemptsLeft, spendAttempt, foundToday, PUMPKINS_PER_HUNT } from "@/game/halloween/pumpkinHunt";
 
 const FONT = '"Press Start 2P", monospace';
 /** A mini-game's window wears the map legend's "Mini-games" colour, like the rest of the games. */
@@ -432,9 +432,11 @@ export default function PumpkinCarving({ onResult, onClose }: MiniGameComponentP
                 <div style={{ fontFamily: FONT, fontSize: 9, color: "#fff" }}>NO PUMPKIN</div>
                 <div style={{ fontFamily: FONT, fontSize: 8, color: "#b9b9cc", lineHeight: 1.7 }}>
                   Find one in the city to carve it.
+                  <br />
+                  {PUMPKINS_PER_HUNT} more turn up every day.
                 </div>
                 <div style={{ fontFamily: FONT, fontSize: 8, color: ACCENT }}>
-                  {`${Math.min(foundCount(), PUMPKINS_PER_HUNT)}/${PUMPKINS_PER_HUNT} FOUND`}
+                  {`${foundToday()}/${PUMPKINS_PER_HUNT} TODAY`}
                 </div>
               </div>
             )}

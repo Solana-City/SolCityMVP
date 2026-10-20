@@ -1,6 +1,7 @@
 import * as Phaser from "phaser";
 import { TILE_SIZE } from "../config/constants";
-import { PUMPKINS_PER_HUNT, foundCount, remainingSpots, takeSpot } from "../halloween/pumpkinHunt";
+import { PUMPKINS_PER_HUNT, foundToday, remainingSpots, takeSpot } from "../halloween/pumpkinHunt";
+import { todayKey } from "../quests/QuestManager";
 
 /**
  * The pumpkins of Jack O' Lantern's hunt, standing in the city.
@@ -32,14 +33,21 @@ export class PumpkinField {
   private readonly wallet: string;
   private standing: Standing[] = [];
   private destroyed = false;
+  /** The day these five belong to, so the next one can be noticed. */
+  private day = todayKey();
 
   constructor(scene: Phaser.Scene, wallet: string) {
     this.scene = scene;
     this.wallet = wallet;
+    this.place();
+  }
 
+  /** Stands up whatever is left of this day's five. */
+  private place(): void {
+    const { scene, wallet } = this;
     if (!scene.textures.exists(PUMPKIN_TEXTURE)) return;
 
-    for (const { spot, tileX, tileY } of remainingSpots(wallet)) {
+    for (const { spot, tileX, tileY } of remainingSpots(wallet, this.day)) {
       const x = tileX * TILE_SIZE + TILE_SIZE / 2;
       const y = tileY * TILE_SIZE + TILE_SIZE / 2;
       const sprite = scene.add.image(x, y, PUMPKIN_TEXTURE);
@@ -59,7 +67,7 @@ export class PumpkinField {
     }
   }
 
-  /** True when there is nothing left of this wallet's five in the city. */
+  /** True when there is nothing left of this wallet's five for today. */
   get empty(): boolean {
     return this.standing.length === 0;
   }
@@ -69,7 +77,18 @@ export class PumpkinField {
    * spot just picked up, so the scene can say so, or null.
    */
   update(px: number, py: number): number | null {
-    if (this.destroyed || this.standing.length === 0) return null;
+    if (this.destroyed) return null;
+    // Nothing left to find: the only thing that can change is the date. A
+    // player who is still in the city at midnight UTC should see the new five
+    // turn up, not have to reload to find out the event carried on.
+    if (this.standing.length === 0) {
+      const now = todayKey();
+      if (now !== this.day) {
+        this.day = now;
+        this.place();
+      }
+      return null;
+    }
     for (let i = 0; i < this.standing.length; i++) {
       const { spot, sprite } = this.standing[i];
       // Against the sprite's anchored foot rather than its bobbing middle, so
@@ -78,7 +97,7 @@ export class PumpkinField {
       // The store is asked first: it is what makes a pickup idempotent, and a
       // sprite removed for a pickup that did not count would be a pumpkin
       // gone for nothing.
-      if (!takeSpot(this.wallet, spot)) continue;
+      if (!takeSpot(this.wallet, spot, this.day)) continue;
       this.standing.splice(i, 1);
       this.scene.tweens.killTweensOf(sprite);
       this.popAndDestroy(sprite);
@@ -109,7 +128,7 @@ export class PumpkinField {
     const label = this.scene.add.text(
       x,
       y - 18,
-      `${Math.min(foundCount(), PUMPKINS_PER_HUNT)}/${PUMPKINS_PER_HUNT}`,
+      `${foundToday()}/${PUMPKINS_PER_HUNT}`,
       {
         fontFamily: '"Press Start 2P", monospace',
         fontSize: "8px",

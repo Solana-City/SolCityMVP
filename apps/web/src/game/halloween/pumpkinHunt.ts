@@ -8,11 +8,17 @@
  *
  * ── Where the pumpkins are ────────────────────────────────────────────────
  *
- * Five spots drawn from a fixed pool, picked by the WALLET rather than at
- * random: the same player finds them in the same places across a reload, and
- * two players do not find them in the same places as each other. Random per
- * session would move them under a player who went to fetch a friend, and one
- * fixed set of five would be posted somewhere within a day.
+ * Five spots drawn from a fixed pool, picked by the WALLET AND THE DAY rather
+ * than at random: the same player finds them in the same places all day and
+ * across a reload, two players do not find them in the same places as each
+ * other, and tomorrow everyone's five are somewhere else. Random per session
+ * would move them under a player who went to fetch a friend, and one fixed
+ * set per wallet would be posted somewhere within a day.
+ *
+ * Five a day, not five ever. A carve that slips costs a pumpkin, and running
+ * out should mean coming back tomorrow, not missing the event. Unspent ones
+ * carry over, because a pumpkin is a thing the player picked up and nothing
+ * takes it back out of their hands overnight.
  *
  * Nothing about this is shared, which is deliberate. A pumpkin you take is not
  * taken from the person standing next to you: the hat is meant to be earnable
@@ -21,8 +27,9 @@
  * ── Where the state lives ─────────────────────────────────────────────────
  *
  * Two stores, one module, so they cannot drift:
- *   • WHICH spots are already picked up, in localStorage against the wallet,
- *     the way the wardrobe keeps unlocks.
+ *   • WHICH spots are already picked up, in localStorage against the wallet
+ *     and the day, the way the wardrobe keeps unlocks. Yesterday's key is
+ *     simply never read again.
  *   • HOW MANY were found and spent, as profile counters, because that is
  *     what the quest registry and the achievements can read.
  *
@@ -30,8 +37,9 @@
  * the carving stays free practice. See `attemptsLeft`.
  */
 import { profileManager } from "@/game/config/profileManager";
+import { todayKey } from "@/game/quests/QuestManager";
 
-/** How many a player has to find. Also how many are out there at once. */
+/** How many are out there at once, and so how many a day is worth. */
 export const PUMPKINS_PER_HUNT = 5;
 
 /**
@@ -45,7 +53,7 @@ export const PUMPKINS_PER_HUNT = 5;
  * where the map happens to be most open.
  *
  * Append-only: `spotsFor` indexes into this, and reordering it would move
- * every player's pumpkins to somewhere they have already searched.
+ * every player's pumpkins mid-day to somewhere they have already searched.
  */
 export const SPAWN_POOL: readonly (readonly [number, number])[] = [
   [20, 14], [38, 14], [67, 14], [94, 14], [121, 14],
@@ -59,7 +67,7 @@ export const FOUND_COUNTER = "pumpkins-found";
 /** Spent on a carve, ever. Attempts left is the difference. */
 export const SPENT_COUNTER = "pumpkins-carved";
 
-const takenKey = (wallet: string) => `solcity:halloween:pumpkins:${wallet}`;
+const takenKey = (wallet: string, day: string) => `solcity:halloween:pumpkins:${day}:${wallet}`;
 
 /** FNV-1a over the wallet: a stable number to seed the pick with. */
 function hash(s: string): number {
@@ -83,11 +91,12 @@ function rng(seed: number): () => number {
 }
 
 /**
- * This wallet's five spots, as indices into SPAWN_POOL. A partial
- * Fisher-Yates over a copy of the pool's indices, so the five never repeat.
+ * This wallet's five spots for a given day, as indices into SPAWN_POOL. A
+ * partial Fisher-Yates over a copy of the pool's indices, so the five never
+ * repeat within a day.
  */
-export function spotsFor(wallet: string): number[] {
-  const next = rng(hash(wallet));
+export function spotsFor(wallet: string, day: string = todayKey()): number[] {
+  const next = rng(hash(`${wallet}:${day}`));
   const idx = SPAWN_POOL.map((_, i) => i);
   for (let i = 0; i < PUMPKINS_PER_HUNT; i++) {
     const j = i + Math.floor(next() * (idx.length - i));
@@ -96,19 +105,22 @@ export function spotsFor(wallet: string): number[] {
   return idx.slice(0, PUMPKINS_PER_HUNT);
 }
 
-function takenSet(wallet: string): Set<number> {
+function takenSet(wallet: string, day: string): Set<number> {
   try {
-    const raw = localStorage.getItem(takenKey(wallet));
+    const raw = localStorage.getItem(takenKey(wallet, day));
     return new Set<number>(raw ? JSON.parse(raw) : []);
   } catch {
     return new Set();
   }
 }
 
-/** The spots this wallet has not picked up yet, with their tiles. */
-export function remainingSpots(wallet: string): { spot: number; tileX: number; tileY: number }[] {
-  const taken = takenSet(wallet);
-  return spotsFor(wallet)
+/** Today's spots this wallet has not picked up yet, with their tiles. */
+export function remainingSpots(
+  wallet: string,
+  day: string = todayKey(),
+): { spot: number; tileX: number; tileY: number }[] {
+  const taken = takenSet(wallet, day);
+  return spotsFor(wallet, day)
     .filter((spot) => !taken.has(spot))
     .map((spot) => ({ spot, tileX: SPAWN_POOL[spot][0], tileY: SPAWN_POOL[spot][1] }));
 }
@@ -117,12 +129,12 @@ export function remainingSpots(wallet: string): { spot: number; tileX: number; t
  * Pick one up. Returns false when this spot was already taken, so a double
  * call (two frames of overlap, a reload mid-pickup) cannot pay twice.
  */
-export function takeSpot(wallet: string, spot: number): boolean {
-  const taken = takenSet(wallet);
+export function takeSpot(wallet: string, spot: number, day: string = todayKey()): boolean {
+  const taken = takenSet(wallet, day);
   if (taken.has(spot)) return false;
   taken.add(spot);
   try {
-    localStorage.setItem(takenKey(wallet), JSON.stringify([...taken]));
+    localStorage.setItem(takenKey(wallet, day), JSON.stringify([...taken]));
   } catch {
     // Storage blocked: the counter below still moves, so the carve is paid
     // for. Only which spot it came from is forgotten, and the pumpkin is
@@ -132,9 +144,15 @@ export function takeSpot(wallet: string, spot: number): boolean {
   return true;
 }
 
-/** How many this wallet has found, of PUMPKINS_PER_HUNT. */
-export function foundCount(): number {
-  return profileManager.counter(FOUND_COUNTER);
+/**
+ * How many of today's five this wallet has picked up, which is what the city
+ * and the carving show. The lifetime tally behind FOUND_COUNTER is what the
+ * quest reads, and it would say 12/5 by the weekend.
+ */
+export function foundToday(): number {
+  const wallet = profileManager.get().wallet;
+  if (!wallet) return 0;
+  return takenSet(wallet, todayKey()).size;
 }
 
 /**

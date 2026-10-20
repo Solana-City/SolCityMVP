@@ -53,7 +53,12 @@ export const DAILY_QUESTS: QuestDefinition[] = [
 
 // ── Storage helpers ───────────────────────────────────────────────────────────
 
-function todayKey(): string {
+/**
+ * The city's day, in UTC, which is what the daily quests reset on and what
+ * Jack O' Lantern's pumpkins come back on. Exported so there is one answer to
+ * "what day is it" rather than two that drift an hour apart.
+ */
+export function todayKey(): string {
   const d = new Date();
   return `${d.getUTCFullYear()}-${d.getUTCMonth()}-${d.getUTCDate()}`;
 }

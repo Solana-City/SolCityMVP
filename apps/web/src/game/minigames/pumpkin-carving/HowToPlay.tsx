@@ -142,7 +142,7 @@ export function HowToPlay({ accent, hat, touch, onDone }: { accent: string; hat:
   const steps = [
     {
       title: `FIND ${PUMPKINS_PER_HUNT} PUMPKINS`,
-      line: "They are hidden around the city. Walk into one to pick it up.",
+      line: `Hidden around the city. Walk into one to pick it up, and ${PUMPKINS_PER_HUNT} more turn up every day.`,
       scene: <HuntScene />,
     },
     {

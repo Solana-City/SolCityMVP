@@ -1,6 +1,11 @@
 import { describe, it, expect } from "vitest";
 import { PUMPKINS_PER_HUNT, SPAWN_POOL, spotsFor } from "./pumpkinHunt";
 
+/** Halloween, in the shape QuestManager.todayKey writes (month 0-based). */
+const DAY = "2026-9-31";
+/** The day after, for the reset. */
+const NEXT_DAY = "2026-10-1";
+
 /**
  * The pick is the only part of the hunt that is pure, and it is the part that
  * would be expensive to get wrong: a repeat means a player can never find five,
@@ -15,7 +20,7 @@ describe("pumpkinHunt.spotsFor", () => {
 
   it("gives five spots that exist in the pool", () => {
     for (const w of wallets) {
-      const spots = spotsFor(w);
+      const spots = spotsFor(w, DAY);
       expect(spots, w).toHaveLength(PUMPKINS_PER_HUNT);
       for (const s of spots) {
         expect(Number.isInteger(s), `${w} -> ${s}`).toBe(true);
@@ -27,20 +32,28 @@ describe("pumpkinHunt.spotsFor", () => {
 
   it("never gives the same spot twice", () => {
     for (const w of wallets) {
-      const spots = spotsFor(w);
+      const spots = spotsFor(w, DAY);
       expect(new Set(spots).size, w).toBe(spots.length);
     }
   });
 
   it("is the same every time, so a reload does not move them", () => {
     for (const w of wallets) {
-      expect(spotsFor(w)).toEqual(spotsFor(w));
+      expect(spotsFor(w, DAY)).toEqual(spotsFor(w, DAY));
     }
   });
 
   it("sends different wallets to different places", () => {
     const [a, b] = wallets;
-    expect(spotsFor(a)).not.toEqual(spotsFor(b));
+    expect(spotsFor(a, DAY)).not.toEqual(spotsFor(b, DAY));
+  });
+
+  it("moves them to new places the next day", () => {
+    // The whole point of the daily reset: a player who learned today's five
+    // has to hunt again tomorrow rather than walk a memorised round.
+    for (const w of wallets) {
+      expect(spotsFor(w, DAY), w).not.toEqual(spotsFor(w, NEXT_DAY));
+    }
   });
 
   it("has a pool big enough for the pick to be worth making", () => {
