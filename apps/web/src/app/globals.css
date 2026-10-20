@@ -178,6 +178,14 @@ canvas {
 @supports not selector(::-webkit-scrollbar) {
   * { scrollbar-color: #2c376c #0a0d22; scrollbar-width: thin; }
 }
+/* On a touch screen the bar only takes room from a small window (a styled
+   ::-webkit-scrollbar turns off the phone's own overlay bar and draws this one
+   at full width, arrows included) and nobody drags it. Scrolling by touch is
+   unchanged; only the bar is gone. */
+@media (pointer: coarse) {
+  * { scrollbar-width: none; }
+  *::-webkit-scrollbar { display: none; width: 0; height: 0; }
+}
 
 /* ── Pixel range slider: rectangular track, square thumb ─────────────── */
 input[type="range"].pixel-range {
