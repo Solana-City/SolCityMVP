@@ -582,38 +582,6 @@ export class AvatarSprite {
   }
 
   /**
-   * Turn on the spot, no walk cycle. Unlike idle() this always lands on the
-   * frame, because the caller is usually turning a standing character to face
-   * someone who just walked up — there is no stride to stop first.
-   *
-   * Part of the small surface NPCSprite drives (see SimpleSprite.face), so an
-   * NPC assembled from paper-doll layers behaves like one with its own sheet.
-   */
-  face(direction: Direction): void {
-    this.currentDirection = direction;
-    this.isWalking = false;
-    this.walkSynced = false;
-    const row = DIRECTION_ROW[direction];
-    for (const sprite of this.animatedSprites()) {
-      sprite.anims.stop();
-      sprite.setFrame(row * SPRITE_COLS);
-    }
-  }
-
-  /**
-   * How tall this character draws above its feet, in world pixels — what a
-   * name tag or a prompt is seated off (NPCSprite reads it the same way it
-   * reads SimpleSprite's).
-   *
-   * Measured off the ink rather than the frame: an outfit's sheet is 64px
-   * tall and most of the top is empty, so the frame height would park the
-   * name a long way above the head.
-   */
-  getVisualHeight(): number {
-    return -this.headTopY();
-  }
-
-  /**
    * Takes this character's sprites in and out of the scene's update list.
    *
    * Phaser reads `active` per entry, and the entries are these sprites — a

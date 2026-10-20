@@ -763,14 +763,12 @@ const NPC_SEEDS: NPCSeed[] = [
     // is built yet. "placeholder" rather than a "minigame" action pointing at
     // an id that does not exist, which would open nothing and log a warning.
     action: { type: "placeholder", label: "See you at Halloween" },
-    // No sheet of his own: a paper-doll stack, same as the player and the
-    // crowd, wearing the Pumpkin Head.
-    loadout: {
-      skin: "Light",
-      pants: "Red_short_pants",
-      tshirt: "Shirt_Solana",
-      hat: "Pumpkin_head",
-    },
+    spriteKey: "Jack O Lantern",
+    // Idle loop like Guarana and the stand builders: one row of frames at
+    // 64x64, always facing south, never wanders. The file drops the
+    // apostrophe so the URL stays plain ASCII; the name above is what
+    // players read.
+    spriteAnimation: { frameWidth: 64, frameHeight: 64, frameCount: 28 },
   },
 ];
 
