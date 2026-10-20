@@ -203,12 +203,29 @@ export default function PumpkinCarving({ onResult, onClose }: MiniGameComponentP
     setPhase("scoring");
   }, []);
 
+  /**
+   * Ends the gesture, wherever the end came from. The knife stops cutting and
+   * the canvas stops believing a finger is still down on it.
+   */
+  const endGesture = useCallback(() => {
+    pointerRef.current = null;
+    engineRef.current?.release();
+    if (loupeRef.current) loupeRef.current.style.display = "none";
+  }, []);
+
   const onDown = useCallback((e: ReactPointerEvent<HTMLCanvasElement>) => {
     e.preventDefault();
     const p = phaseRef.current;
-    if ((p !== "ready" && p !== "carving") || pointerRef.current !== null || howToRef.current) return;
+    if ((p !== "ready" && p !== "carving") || howToRef.current) return;
     // Nothing to carve. The panel over the pumpkin says where to get one.
     if (attemptsRef.current === 0) return;
+    // A second finger while one is already carving is ignored, as before.
+    if (pointerRef.current !== null && pointerRef.current !== e.pointerId) return;
+    // The SAME pointer pressing again can only mean the last gesture ended
+    // somewhere we never heard about: a screen snip, an alt-tab, the OS
+    // taking the pointer stream mid-stroke. Before this, that left a dead id
+    // in the ref and the knife never cut again for the rest of the carve.
+    if (pointerRef.current !== null) endGesture();
     e.currentTarget.setPointerCapture(e.pointerId);
     pointerRef.current = e.pointerId;
     const pt = toArt(e, e.currentTarget.getBoundingClientRect());
@@ -217,7 +234,7 @@ export default function PumpkinCarving({ onResult, onClose }: MiniGameComponentP
       placeLoupe(e.clientX, e.clientY);
       loupeRef.current.style.display = "block";
     }
-  }, []);
+  }, [endGesture]);
 
   const onMove = useCallback((e: ReactPointerEvent<HTMLCanvasElement>) => {
     // Hovering with a mouse moves the knife too; a second finger never does.
@@ -229,11 +246,25 @@ export default function PumpkinCarving({ onResult, onClose }: MiniGameComponentP
 
   const onUp = useCallback((e: ReactPointerEvent<HTMLCanvasElement>) => {
     if (pointerRef.current !== e.pointerId) return;
-    pointerRef.current = null;
-    engineRef.current?.release();
-    if (loupeRef.current) loupeRef.current.style.display = "none";
+    endGesture();
     if (e.pointerType !== "mouse") engineRef.current?.leave();
-  }, []);
+  }, [endGesture]);
+
+  /**
+   * The window losing the pointer stream ends the gesture too. A screen snip
+   * or an alt-tab mid-stroke sends no pointerup and no pointercancel to the
+   * canvas, and the carve that follows is not one the player is making.
+   */
+  useEffect(() => {
+    const stop = () => { if (pointerRef.current !== null) endGesture(); };
+    const onVisibility = () => { if (document.hidden) stop(); };
+    window.addEventListener("blur", stop);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.removeEventListener("blur", stop);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [endGesture]);
 
   // The one minute clock.
   useEffect(() => {
