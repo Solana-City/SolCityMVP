@@ -66,7 +66,13 @@ module.exports = withPWA({
   // service worker to the network and the browser's own HTTP cache. Range
   // requests (which is how <audio> seeks) also stay intact that way, where a
   // precached entry would have broken them.
-  publicExcludes: ["!noprecache/**/*", "!assets/audio/**/*"],
+  //
+  // Mini-game art is excluded for a different reason: the COUNT, not the
+  // bytes. It was 254 of the 625 precache URLs (205 of them tiny Sol Mechs
+  // parts, 0.7 MB in all), and every fresh install fetched every one of them,
+  // which Vercel bills as a request each. They load on demand instead, through
+  // the sc-sprites-v1 NetworkFirst rule below, and are cached from then on.
+  publicExcludes: ["!noprecache/**/*", "!assets/audio/**/*", "!assets/minigames/**/*"],
   disable: process.env.NODE_ENV === "development",
   reloadOnOnline: true,
   cacheOnFrontEndNav: true,
