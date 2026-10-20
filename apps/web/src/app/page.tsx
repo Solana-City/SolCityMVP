@@ -112,7 +112,9 @@ export default function Home() {
   // wide on a phone screen, and most sessions never touch the wallet.
   const [walletSectionOpen, setWalletSectionOpen] = useState(false);
   const displayName = useDisplayName();
-  const [mobilePanel, setMobilePanel] = useState<"hunt" | "quests" | null>(null);
+  // The two HUD cards on a phone. Each opens from its own rail button and they
+  // can both be up: they stack in one column (see below), never over each other.
+  const [mobilePanels, setMobilePanels] = useState({ hunt: false, quests: false });
   /** Last wallet state actually handed to Phaser; undefined = nothing sent yet. */
   const lastSentWalletRef = useRef<string | null | undefined>(undefined);
   // Chat hidden by default on touch devices, visible on desktop
@@ -182,14 +184,14 @@ export default function Home() {
     };
   }, []);
 
-  // Mobile panels and chat are mutually exclusive — the screen is too small
+  // The panels and the chat are mutually exclusive — the screen is too small
   // to stack overlays on top of the game view.
   const toggleMobilePanel = useCallback((panel: "hunt" | "quests") => {
     setChatOpen(false);
-    setMobilePanel(v => (v === panel ? null : panel));
+    setMobilePanels(v => ({ ...v, [panel]: !v[panel] }));
   }, []);
   const toggleMobileChat = useCallback(() => {
-    setMobilePanel(null);
+    setMobilePanels({ hunt: false, quests: false });
     setChatOpen(v => !v);
   }, []);
 
@@ -556,41 +558,40 @@ export default function Home() {
                 left: "max(env(safe-area-inset-left, 0px), 12px)",
                 display: "flex", flexDirection: "column", gap: 6,
               }}>
-                <MobilePanelToggle iconSrc="/assets/ui/icon_quests.png" label="Find someone" active={mobilePanel === "hunt"} onClick={() => toggleMobilePanel("hunt")} />
-                <MobilePanelToggle iconSrc="/assets/ui/icon_tasks1.png" label="Quests" active={mobilePanel === "quests"} onClick={() => toggleMobilePanel("quests")} />
+                <MobilePanelToggle iconSrc="/assets/ui/icon_quests.png" label="Find someone" active={mobilePanels.hunt} onClick={() => toggleMobilePanel("hunt")} />
+                <MobilePanelToggle iconSrc="/assets/ui/icon_tasks.png" label="Quests" active={mobilePanels.quests} onClick={() => toggleMobilePanel("quests")} />
               </div>
-              <Presence show={mobilePanel === "hunt"}>
-                {/* A HUD piece beside its rail button rather than a modal: no
-                    backdrop, so the city stays playable while it is open. Its
-                    collapsed strip is meant to stay up while you search. */}
-                <div
-                  className="sc-pop"
-                  style={{
-                    position: "fixed", zIndex: 20,
-                    top: "max(env(safe-area-inset-top, 0px), 12px)",
-                    // To the right of the icon rail (rail left + 44px width
-                    // + gap), including on notched phones where the rail
-                    // itself is pushed in by the safe-area inset.
-                    left: "calc(max(env(safe-area-inset-left, 0px), 12px) + 50px)",
-                  }}
-                >
-                  <WhereIsNPCCard gameRef={game} wallet={walletAddress} />
+              {/* The two cards in one column beside the rail, hunt first. The hunt's
+                  slot is never shorter than its rail button (44px), so with the
+                  hunt closed the quests open level with THEIR button, and with it
+                  open they sit under it, whatever size it is (open, folded, or
+                  with a notice). The column stops short of the joystick and the
+                  chat buttons; the quest list is what gives when it is too tall.
+                  Click-through everywhere but on the cards themselves. */}
+              <div style={{
+                position: "fixed", zIndex: 20,
+                top: "max(env(safe-area-inset-top, 0px), 12px)",
+                left: "calc(max(env(safe-area-inset-left, 0px), 12px) + 50px)",
+                maxHeight: "calc(100dvh - max(env(safe-area-inset-top, 0px), 12px) - 170px)",
+                display: "flex", flexDirection: "column", gap: 6,
+                pointerEvents: "none",
+              }}>
+                <div style={{ minHeight: 44, flex: "0 0 auto" }}>
+                  <Presence show={mobilePanels.hunt}>
+                    {/* A HUD piece rather than a modal: no backdrop, so the city
+                        stays playable while it is open. Its folded strip is meant
+                        to stay up while you search. */}
+                    <div className="sc-pop" style={{ pointerEvents: "auto" }}>
+                      <WhereIsNPCCard gameRef={game} wallet={walletAddress} />
+                    </div>
+                  </Presence>
                 </div>
-              </Presence>
-              <Presence show={mobilePanel === "quests"}>
-                {/* Beside the rail, like the hunt: a HUD piece rather than a
-                    modal, so the city stays playable while the list is open. */}
-                <div
-                  className="sc-pop"
-                  style={{
-                    position: "fixed", zIndex: 20,
-                    top: "max(env(safe-area-inset-top, 0px), 12px)",
-                    left: "calc(max(env(safe-area-inset-left, 0px), 12px) + 50px)",
-                  }}
-                >
-                  <QuestCard wallet={walletAddress} />
-                </div>
-              </Presence>
+                <Presence show={mobilePanels.quests}>
+                  <div className="sc-pop" style={{ pointerEvents: "auto", display: "flex", flexDirection: "column", minHeight: 0, flex: "0 1 auto" }}>
+                    <QuestCard wallet={walletAddress} />
+                  </div>
+                </Presence>
+              </div>
             </>
           )}
 

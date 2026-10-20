@@ -21,6 +21,8 @@ export const PIX = '"Press Start 2P", monospace';
 export const HUD_ACCENT = "#B7E928";
 export const HUD_MUTED = "#9a9ab5";
 export const HUD_TEXT = "#d0d0f0";
+/** The cyan a finished step takes, as the player card's CTAs do. */
+export const HUD_CYAN = "#14F0C6";
 
 /**
  * The desktop card's border: the panel art at its full 20px, which leaves

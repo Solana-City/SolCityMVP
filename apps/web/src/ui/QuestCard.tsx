@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo, useCallback, type CSSProperties } from "r
 import { PixelImg, ICON } from "@/ui/PixelIcons";
 import {
   PIX, PANEL_FRAME, THIN_FRAME, FrameBtn, Arrow,
-  HUD_ACCENT, HUD_MUTED, HUD_TEXT,
+  HUD_ACCENT, HUD_CYAN, HUD_MUTED, HUD_TEXT,
 } from "@/ui/hudFrame";
 import { chamferBox } from "@/ui/chamfer";
 import { profileManager } from "@/game/config/profileManager";
@@ -89,11 +89,11 @@ function Step({ label, done }: { label: string; done: boolean }) {
     <div style={{ display: "flex", alignItems: "center", gap: 6, lineHeight: 1.5 }}>
       <span style={{
         width: 6, height: 6, flexShrink: 0,
-        background: done ? HUD_ACCENT : "transparent",
+        background: done ? HUD_CYAN : "transparent",
         border: done ? "none" : `1px solid ${HUD_MUTED}`,
       }} />
       <span style={{
-        fontSize: 7, color: done ? HUD_ACCENT : HUD_MUTED,
+        fontSize: 7, color: done ? HUD_CYAN : HUD_MUTED,
         textDecoration: done ? "line-through" : "none",
       }}>{label}</span>
     </div>
@@ -165,7 +165,10 @@ function QuestList({ rows, wallet, maxHeight }: {
   return (
     <div style={{
       display: "flex", flexDirection: "column", gap: 5,
-      maxHeight, overflowY: "auto", overflowX: "hidden",
+      // minHeight 0 and a shrinking flex basis: on a phone the stack above the
+      // controls has a ceiling, and the list is what gives when the hunt card
+      // is also open.
+      maxHeight, minHeight: 0, flex: "0 1 auto", overflowY: "auto", overflowX: "hidden",
       // No scrollbar styling here on purpose. globals.css dresses every bar in
       // the retro chrome already, and a `scrollbar-width` set inline would
       // override the Firefox fallback it is careful about. The same file hides
@@ -204,7 +207,10 @@ function Header({ done, total, collapsed, onCollapse, compact }: {
         }),
       }}
     >
-      <PixelImg src={ICON.tasks} size={compact ? 18 : 26} />
+      {/* The phone's window wears the framed clipboard; the desktop card keeps its own. */}
+      {compact
+        ? <PixelImg src="/assets/ui/icon_tasks.png" size={24} />
+        : <PixelImg src={ICON.tasks} size={26} />}
       <span style={{
         fontFamily: PIX, fontSize: compact ? 8 : 7, color: HUD_ACCENT,
         letterSpacing: 0.5, flex: 1, lineHeight: 1.4, whiteSpace: "nowrap",
@@ -257,7 +263,7 @@ export default function QuestCard({ wallet }: { wallet: string | null }) {
           } as CSSProperties}
         >
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <PixelImg src={ICON.tasks} size={20} />
+            <PixelImg src="/assets/ui/icon_tasks.png" size={28} />
             <span style={{ flex: 1, fontSize: 10, color: "#fff" }}>{done}/{rows.length}</span>
             <FrameBtn size={28} title="Expand" onClick={toggle}>
               <Arrow dir="right" />
@@ -270,9 +276,11 @@ export default function QuestCard({ wallet }: { wallet: string | null }) {
       <div style={{
         ...THIN_FRAME, padding: 5, width: 300, boxSizing: "border-box",
         fontFamily: PIX, color: HUD_TEXT,
+        // A column that can shrink: see QuestList.
+        display: "flex", flexDirection: "column", minHeight: 0,
       } as CSSProperties}>
         <Header done={done} total={rows.length} collapsed={false} onCollapse={toggle} compact />
-        <div style={{ marginTop: 6 }}>
+        <div style={{ marginTop: 6, minHeight: 0, display: "flex", flexDirection: "column" }}>
           {/* Short enough that the city stays visible behind the panel. */}
           <QuestList rows={rows} wallet={wallet} maxHeight={200} />
         </div>
