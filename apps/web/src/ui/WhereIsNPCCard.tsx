@@ -20,6 +20,7 @@ import { cachedName, requestNames } from "@/game/names/nameService";
 import { chamferBox, octagonFrame } from "@/ui/chamfer";
 import ChamferGlow from "@/ui/ChamferGlow";
 import { useButtonFeel, feelStyle } from "@/ui/useButtonFeel";
+import { PIX, THIN_FRAME, FrameBtn, Arrow } from "@/ui/hudFrame";
 import { useEscape } from "@/ui/useEscape";
 import Presence from "@/ui/Presence";
 
@@ -616,45 +617,6 @@ function TimerBar({ pct, height = 3 }: { pct: number; height?: number }) {
 
 // ── Mobile layout ─────────────────────────────────────────────────────────────
 
-/**
- * The panel art drawn at half the desktop card's 20px, with a 5px layout
- * border: content starts where the art's teal band ends instead of a whole
- * band further in, which is what keeps the mobile panel short.
- */
-const THIN_FRAME: CSSProperties = {
-  borderWidth: 5, borderStyle: "solid", borderColor: "transparent",
-  borderImage: "url(/assets/branding/ui/frame-panel-test.png) 64 fill / 10px / 0 round",
-  imageRendering: "pixelated",
-};
-
-/** A square button on the frame-button art, like the desktop card's header ones. */
-function FrameBtn({ size, title, onClick, children }: {
-  size: number; title: string; onClick: () => void; children: ReactNode;
-}) {
-  const feel = useButtonFeel();
-  return (
-    <button
-      onClick={(e) => { e.stopPropagation(); onClick(); }}
-      {...feel.handlers}
-      title={title} aria-label={title}
-      style={{
-        backgroundImage: "url(/assets/ui/icon_frame_btn.png)", backgroundSize: "100% 100%",
-        imageRendering: "pixelated", border: "none",
-        width: size, height: size, padding: 0, cursor: "pointer",
-        display: "flex", alignItems: "center", justifyContent: "center",
-        flexShrink: 0,
-        ...feelStyle(feel),
-      }}
-    >
-      {children}
-    </button>
-  );
-}
-
-/** The ▼ art turned to point left (collapse, toward the rail icon) or right (expand). */
-function Arrow({ dir }: { dir: "left" | "right" }) {
-  return <PixelImg src="/assets/ui/icon_down1.png" size={12} style={{ transform: `rotate(${dir === "left" ? 90 : -90}deg)` }} />;
-}
 
 /**
  * The citizen to find, in the lime-ringed box. `small` is the strip's version:
@@ -831,8 +793,6 @@ function LeaderboardButton({ onClick }: { onClick: () => void }) {
 }
 
 // ── How to play (cards) ───────────────────────────────────────────────────────
-
-const PIX = '"Press Start 2P", monospace';
 
 function HuntKey({ label }: { label: string }) {
   return (
