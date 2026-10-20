@@ -1,6 +1,6 @@
 import type { PlayerProfile } from "@/game/config/profileManager";
 import type { LayerCategory } from "@/game/config/paperDoll";
-import { FOUND_COUNTER, PUMPKINS_PER_HUNT } from "@/game/halloween/pumpkinHunt";
+import { FOUND_COUNTER } from "@/game/halloween/pumpkinHunt";
 
 /**
  * The quests the city actually has, as data.
@@ -142,7 +142,11 @@ export const QUESTS: QuestDef[] = [
     giver: "jack-o-lantern",
     steps: [
       talkTo("jack-o-lantern", "Meet Jack O' Lantern"),
-      collects(FOUND_COUNTER, PUMPKINS_PER_HUNT, `Find ${PUMPKINS_PER_HUNT} pumpkins in the city`),
+      // One, not all five. A pumpkin is a try at the knife and the hat can be
+      // won on the first of them, so a step asking for five would sit unticked
+      // under a quest whose reward the player is already wearing. The five are
+      // how many are out there, which is the cushion for a carve that slips.
+      collects(FOUND_COUNTER, 1, "Find a pumpkin in the city"),
       earns("carve", "Carve one cleanly", "hat", "Pumpkin_head"),
     ],
     reward: { category: "hat", id: "Pumpkin_head", name: "Pumpkin Head" },
