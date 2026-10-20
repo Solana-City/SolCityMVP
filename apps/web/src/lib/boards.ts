@@ -22,7 +22,7 @@
  * rating) is on-chain and unaffected. Values are clamped so a forged report
  * cannot produce an absurd board.
  */
-import { hgetall, hset, storeMode, zincrby, ztop } from "@/lib/kv";
+import { hgetall, hset, storeMode, zincrby, zrankOf, ztop } from "@/lib/kv";
 import { namesFor } from "@/lib/names/nameStore";
 
 export const QUEST_POINTS_KEY = "lb:quest";
@@ -75,12 +75,13 @@ export async function readBoard(board: string, limit = 10): Promise<BoardRow[]> 
 
 /** One wallet's place and value on a board, without fetching the whole thing. */
 export async function readMine(board: string, wallet: string): Promise<{ value: number; rank: number | null }> {
-  const rows = await readBoard(board, 50);
-  const index = rows.findIndex((r) => r.wallet === wallet);
-  return {
-    value: index >= 0 ? rows[index].value : 0,
-    rank: index >= 0 ? index + 1 : null,
-  };
+  if (storeMode() === "off") return { value: 0, rank: null };
+  const key = boardKey(board);
+  if (!key) return { value: 0, rank: null };
+  // Asked of the store, not found in the top 50: a player in 73rd place has a
+  // place too, and the board shows it.
+  const mine = await zrankOf(key, wallet);
+  return { value: mine?.score ?? 0, rank: mine?.rank ?? null };
 }
 
 // ── Daily quests ───────────────────────────────────────────────────────────
