@@ -80,7 +80,14 @@ export default function SWUpdater() {
     }).catch(() => {});
 
     const check = () => registration?.update().catch(() => {});
-    const interval = setInterval(check, 60_000);
+    // Every check is a request to /sw.js, and Vercel counts each one: at a
+    // minute apart an open tab was 1,440 a day, a forgotten one included. An
+    // update is only ever applied when the tab leaves or the player clicks, so
+    // noticing it ten minutes late costs nothing, and a hidden tab does not
+    // look at all: coming back to it checks at once (onVisibility below).
+    const interval = setInterval(() => {
+      if (document.visibilityState === "visible") check();
+    }, 10 * 60_000);
 
     // Leaving the tab is the free moment: apply there, and the player comes
     // back to the new build with nothing having interrupted them.
