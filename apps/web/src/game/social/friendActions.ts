@@ -22,6 +22,13 @@ import { invalidateFriends } from "./friends";
  * which hangs on sendRawTransaction.
  */
 
+/**
+ * Off until the player_v3 redeploy. The deployed program has no friend
+ * instructions yet, and the client's player seed (player_v2) would not match
+ * the program's once it does. Flip this together with PLAYER_SEED.
+ */
+export const FRIENDS_ENABLED = false;
+
 export type FriendAction = "invite" | "accept" | "decline" | "cancel" | "remove";
 
 export type FriendResult =

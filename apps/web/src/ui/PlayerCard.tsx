@@ -15,7 +15,7 @@ import { PublicKey } from "@solana/web3.js";
 import { levelsFromMask } from "@/game/social/profilePublisher";
 import { LIVE_TRACKS, TIER_COLORS, levelName } from "@/game/progression/achievementRegistry";
 import { AchievementIcon, CloseButton } from "@/ui/PixelIcons";
-import { runFriendAction, type FriendAction } from "@/game/social/friendActions";
+import { FRIENDS_ENABLED, runFriendAction, type FriendAction } from "@/game/social/friendActions";
 import { standingWith, type FriendStanding } from "@/game/social/friends";
 
 /** The city opens Sol Mechs on this, with the player to duel. */
@@ -262,7 +262,7 @@ export default function PlayerCard({ gameRef, wallet, displayName, myWallet, onC
               )}
 
               <div style={{ display: "flex", gap: 8 }}>
-                {standing !== "self" && (
+                {FRIENDS_ENABLED && standing !== "self" && (
                   <button
                     onClick={() => void onFriend()}
                     disabled={friendBusy || FRIEND_BUTTON[standing].action === null}
