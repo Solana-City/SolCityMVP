@@ -750,12 +750,12 @@ const NPC_SEEDS: NPCSeed[] = [
     id: "jack-o-lantern",
     name: "Jack O' Lantern",
     role: "Halloween",
-    // The far north east corner: the street that runs along the top of the map
-    // ends at col 131, and row 9 is its northernmost walkable row (everything
-    // above is wall). findNpcSpawn stands him on tileY + 1, so row 9 here puts
-    // him on (130, 10) with walkable ground on all eight sides.
-    tileX: 130,
-    tileY: 9,
+    // In front of the big tombstone in the Halloween park (DecorHalloweenTomb01,
+    // cols 43-44, rows 41-43), which is two tiles wide, so he stands on the left
+    // of its two doorstep tiles. findNpcSpawn stands him on tileY + 1, so row 43
+    // here puts him on (43, 44): open grass, nothing painted or solid on it.
+    tileX: 43,
+    tileY: 43,
     dialog: [
       "Halloween came to Solana City, and my pumpkins rolled off all over it.",
       {
