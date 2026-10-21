@@ -544,7 +544,7 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
               <span style={{ color: "#444455" }}>{"> "}</span>
               {msg.subject && msg.text.startsWith(msg.subject.name) ? (
                 <>
-                  <SenderName name={msg.subject.name} wallet={msg.subject.wallet} color="#d6d6e8" onOpen={openCard} />
+                  <SenderName name={msg.subject.name} wallet={msg.subject.wallet} color={getChannelColor("city")} onOpen={openCard} />
                   <span style={{ color: "#d6d6e8" }}>{msg.text.slice(msg.subject.name.length)}</span>
                 </>
               ) : (
