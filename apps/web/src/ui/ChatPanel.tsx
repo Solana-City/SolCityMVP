@@ -17,8 +17,26 @@ import { useButtonFeel, feelStyle } from "@/ui/useButtonFeel";
 
 const DM_COLOR = "#FFD700";
 
-/** One tap sends one of these, as ordinary chat text. */
-const QUICK_MESSAGES = ["GM!", "GN!", "Hello!", "What is up?", "I love this city!"];
+/** One tap sends one of these, as ordinary chat text. The player can rewrite them. */
+const DEFAULT_QUICK_MESSAGES = ["GM!", "GN!", "Hello!", "What is up?", "I love this city!"];
+const QUICK_STORAGE_KEY = "solcity:quickMessages";
+const QUICK_MAX_LENGTH = 40;
+
+function loadQuickMessages(): string[] {
+  try {
+    const raw = window.localStorage.getItem(QUICK_STORAGE_KEY);
+    const parsed: unknown = raw ? JSON.parse(raw) : null;
+    if (Array.isArray(parsed) && parsed.length === DEFAULT_QUICK_MESSAGES.length
+        && parsed.every((m) => typeof m === "string")) {
+      return parsed.map((m: string) => m.slice(0, QUICK_MAX_LENGTH));
+    }
+  } catch { /* storage blocked or corrupt: the defaults will do */ }
+  return DEFAULT_QUICK_MESSAGES;
+}
+
+function saveQuickMessages(messages: string[]): void {
+  try { window.localStorage.setItem(QUICK_STORAGE_KEY, JSON.stringify(messages)); } catch { /* per-device nicety */ }
+}
 const BTN_FRAME = 'url(/assets/branding/ui/frame-btn.png) 18 fill / 4px / 0 round';
 /** Trims the element's own background to the frame's octagon (the frame's corners are transparent). */
 const BTN_CLIP = chamferClip(3.6);
@@ -52,6 +70,8 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
   const [isTouch, setIsTouch] = useState(false);
   const [isExpanded, setIsExpanded] = useState(true);
   const [showQuick, setShowQuick] = useState(false);
+  const [quickMessages, setQuickMessages] = useState<string[]>(DEFAULT_QUICK_MESSAGES);
+  const [editingQuick, setEditingQuick] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
   const guideFeel = useButtonFeel();
   const expandFeel = useButtonFeel();
@@ -191,6 +211,24 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
     setActiveChannel("city");
     chatManager?.setActiveChannel("city");
   }, [chatManager]);
+
+  // Read after mount so the server render and the first client render agree.
+  useEffect(() => { setQuickMessages(loadQuickMessages()); }, []);
+
+  const editQuick = useCallback((index: number, value: string) => {
+    if (containsLink(value)) { setNotice("Links are not allowed in chat."); return; }
+    setNotice(null);
+    setQuickMessages((prev) => {
+      const next = prev.map((m, i) => (i === index ? value.slice(0, QUICK_MAX_LENGTH) : m));
+      saveQuickMessages(next);
+      return next;
+    });
+  }, []);
+
+  const resetQuick = useCallback(() => {
+    setQuickMessages(DEFAULT_QUICK_MESSAGES);
+    saveQuickMessages(DEFAULT_QUICK_MESSAGES);
+  }, []);
 
   const handleSend = useCallback(async (quick?: string) => {
     const text = (quick ?? input).trim();
@@ -527,9 +565,37 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
             // No backdrop blur over the canvas, see the message log above.
           })}
         >
-          {QUICK_MESSAGES.map((text) => (
-            <QuickMessageButton key={text} text={text} disabled={busy} onPick={() => void handleSend(text)} />
-          ))}
+          {editingQuick ? (
+            <>
+              {quickMessages.map((text, i) => (
+                <input
+                  key={i}
+                  value={text}
+                  maxLength={QUICK_MAX_LENGTH}
+                  onChange={(e) => editQuick(i, e.target.value)}
+                  onFocus={handleFocus}
+                  onBlur={handleBlur}
+                  placeholder="Empty"
+                  className="px-2 outline-none"
+                  style={{
+                    height: 24, flex: "1 1 120px", minWidth: 0,
+                    background: "rgba(10,10,30,0.94)", color: "#d9d9ec",
+                    border: "1px solid rgba(183,233,40,0.3)",
+                    fontFamily: '"Press Start 2P", monospace', fontSize: 7,
+                  }}
+                />
+              ))}
+              <Chip label="RESET" active={false} onClick={resetQuick} />
+              <Chip label="DONE" active onClick={() => setEditingQuick(false)} />
+            </>
+          ) : (
+            <>
+              {quickMessages.filter((t) => t.trim()).map((text, i) => (
+                <QuickMessageButton key={i} text={text.trim()} disabled={busy} onPick={() => void handleSend(text)} />
+              ))}
+              <Chip label="EDIT" active={false} onClick={() => setEditingQuick(true)} />
+            </>
+          )}
         </div>
       )}
 
