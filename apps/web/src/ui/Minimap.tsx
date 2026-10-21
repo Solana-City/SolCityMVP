@@ -230,14 +230,32 @@ function toScreen(v: View, w: number, h: number, x: number, y: number) {
   return { x: (x - v.cx) * v.zoom + w / 2, y: (y - v.cy) * v.zoom + h / 2 };
 }
 
+/**
+ * The element's LAYOUT size, which is what the canvas must be drawn at.
+ *
+ * Read from the observer's own entry, not from getBoundingClientRect: that
+ * returns the TRANSFORMED rect, and the map opens inside a window that plays
+ * `.sc-pop`, a 220ms scale from 0.9 to none. The observer fires once, when the
+ * element first gets a box, which is now mid-animation, and a CSS transform
+ * changes nothing about the layout box, so it never fires again to correct
+ * the reading. The map then spent the rest of its life drawn for a viewport
+ * about a tenth smaller than the canvas it was stretched across: markers off
+ * their places, and the cursor (measured in real pixels) landing somewhere
+ * else again.
+ *
+ * contentRect is immune to all of that, and to whatever animation a window
+ * wears next.
+ */
 function useCanvasSize(ref: React.RefObject<HTMLElement>) {
   const [size, setSize] = useState({ w: 0, h: 0 });
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    const ro = new ResizeObserver(() => {
-      const r = el.getBoundingClientRect();
-      setSize({ w: Math.round(r.width), h: Math.round(r.height) });
+    const ro = new ResizeObserver(([entry]) => {
+      const box = entry.borderBoxSize?.[0];
+      const width = box ? box.inlineSize : entry.contentRect.width;
+      const height = box ? box.blockSize : entry.contentRect.height;
+      setSize({ w: Math.round(width), h: Math.round(height) });
     });
     ro.observe(el);
     return () => ro.disconnect();
