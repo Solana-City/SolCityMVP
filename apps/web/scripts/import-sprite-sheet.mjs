@@ -132,6 +132,15 @@ function checkGrid() {
     console.warn("next version of the sheet would undo.");
     return;
   }
-  const tops = bandsAlong("row").map(([s]) => s % 64);
-  console.log(`ink starts at y ${tops.join(", ")} of each frame row (hat/ sheets start at 5)`);
+  // Deliberately silent about where inside its frame the ink sits.
+  //
+  // This used to print "ink starts at y N of each frame row (hat/ sheets start
+  // at 5)", which read as a fault and was not one. A hat sits where it sits on
+  // the head: a crown rides high, a helmet lower, and the difference between
+  // two sheets is two drawings rather than a misalignment. Two sessions moved
+  // art to match that line, the Pumpkin Head (which then showed the player's
+  // scalp) and the Miner Helmet, and both had to be re-imported.
+  //
+  // The check above stays, because ink CROSSING a frame edge is a real defect:
+  // every frame then carries a slice of the next one.
 }
