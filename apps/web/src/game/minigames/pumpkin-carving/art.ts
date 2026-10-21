@@ -1,9 +1,15 @@
 /**
- * Pumpkin Carving: every pixel the game paints, in code, as placeholder art.
+ * Pumpkin Carving: every pixel the game paints, in code.
  *
- * When the real sheets land, `paintPumpkin` and `makeKnife` are the two
- * functions they replace. The hollows, the cuts and the glow are effects on
- * top of whatever pumpkin is underneath and can stay.
+ * This is the final art, not a stand-in. It was written as one, and the plan
+ * was for sheets to replace `paintPumpkin` and `makeKnife`, but Halloween is
+ * a short season and the owner called these good enough to ship (2026-10-21).
+ * Drawing rather than importing also keeps the carve honest: the hollows, the
+ * cuts and the candle are effects computed over the same shapes the scoring
+ * uses, so what the player sees is what the knife actually did.
+ *
+ * If a sheet ever does arrive, those two functions are still the seam, and
+ * everything below them works over whatever pumpkin is underneath.
  */
 import { ART, PATTERN, sampleOutline, type CarveScore } from "./pattern";
 

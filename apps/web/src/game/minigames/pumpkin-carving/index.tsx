@@ -10,8 +10,9 @@
  *
  * The knife is heavy (see KNIFE_SPEED): it cuts where its tip is, and the tip
  * trails a pointer that moves too fast. Each shape cut all the way round pops
- * its piece out. Placeholder art is painted in code (art.ts) until the sheets
- * exist. One fixed pattern, free attempts, instant retry.
+ * its piece out. Every pixel of it is painted in code (art.ts). One fixed
+ * pattern, one attempt per pumpkin found in the city (halloween/pumpkinHunt),
+ * instant retry while you still have one.
  *
  * Layout: the pumpkin and a side panel, side by side. The city runs landscape
  * on phones, so the pumpkin is sized off the screen HEIGHT and the panel sits
