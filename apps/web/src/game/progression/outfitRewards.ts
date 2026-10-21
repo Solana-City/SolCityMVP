@@ -48,7 +48,7 @@ const REWARDS = {
   // skips this until the variant exists in paperDoll.ts. One line changes when
   // the spriter delivers, and if it turns out to be something other than a
   // helmet, these two fields are the whole edit.
-  oreMiner: { category: "hat", id: "Miner_helmet", name: "Miner's Hat" },
+  oreMiner: { category: "hat", id: "Miner_hat", name: "Miner's Hat" },
   // Vibhu's gift, for opening his Breakpoint 2026 link.
   breakpoint: { category: "tshirt", id: "Shirt_Solana", name: "Solana Shirt" },
   // The Halloween collectible: a clean carve at Jack O' Lantern's Pumpkin

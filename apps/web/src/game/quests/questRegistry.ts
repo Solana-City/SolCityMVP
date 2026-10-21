@@ -236,8 +236,8 @@ export const QUESTS: QuestDef[] = [
     id: "ore-strike",
     title: "Strike ORE",
     blurb: "Staking a claim is a bet. Winning is the trophy.",
-    steps: [earns("strike", "Win ORE out of a claim", "hat", "Miner_helmet")],
-    reward: { category: "hat", id: "Miner_helmet", name: "Miner's Hat" },
+    steps: [earns("strike", "Win ORE out of a claim", "hat", "Miner_hat")],
+    reward: { category: "hat", id: "Miner_hat", name: "Miner's Hat" },
   },
 ];
 
