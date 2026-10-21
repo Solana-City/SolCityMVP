@@ -59,8 +59,6 @@ export default function AudioBridge({ game }: { game: Phaser.Game | null }) {
   }, []);
 
   // Game-bus events → SFX (minigame win/lose, dialog open, hunt found).
-  // Emote SFX lives in showEmoji() so both hotkey and chat-button paths
-  // cover it without doubling up on the delegated click.
   useEffect(() => {
     if (!game) return;
     const onDialog = () => soundManager.play("dialog");

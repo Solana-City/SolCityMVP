@@ -45,7 +45,6 @@ import { AchievementEngine } from "../progression/achievementEngine";
 import { startProfilePublisher } from "../social/profilePublisher";
 import { startFriendPresence } from "../social/friendPresence";
 import { onMiniGameFinished, onStockTraded, watchNpcConversations, stopWatchingNpcConversations } from "../progression/outfitRewards";
-import { showEmoji, EmojiDef } from "../chat/EmojiSystem";
 import { soundManager } from "../audio/SoundManager";
 import { publishMinimap } from "../minimap/MinimapHost";
 import { createStockExchange } from "../world/StockExchange";
@@ -934,18 +933,6 @@ export class CityScene extends Phaser.Scene {
       if (this.input.keyboard) {
         this.input.keyboard.enabled = !focused;
       }
-    });
-
-    // Emoji hotkeys (1-6) are disabled for now — the emotes are underused
-    // and lack final art, and freeing 1-6 keeps them clear for the
-    // expression wheel. The chat 🎭 picker still works via emoji:trigger.
-    // (setupEmojiKeys intentionally not called.)
-
-    // Emoji trigger from React UI button
-    this.onGameEvent("emoji:trigger", (emoji: EmojiDef) => {
-      track("expression", `emoji-${emoji.id}`, { label: emoji.symbol });
-      showEmoji(this, this.avatar.getContainer(), emoji);
-      this.chat.addMessage("city", "local", this.profile.get().displayName, emoji.symbol, emoji.color);
     });
 
     // Facial expression trigger from the React expressions picker. Swaps the

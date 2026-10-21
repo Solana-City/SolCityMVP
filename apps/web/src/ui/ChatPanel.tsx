@@ -4,7 +4,6 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import Presence from "@/ui/Presence";
 import type { ChatManager, ChatMessage, ChatChannel, DMChannel } from "@/game/chat/ChatManager";
 import { getChannelColor, getChannelLabel, SELF_COLOR } from "@/game/chat/ChatManager";
-import { EMOJI_REGISTRY, type EmojiDef } from "@/game/chat/EmojiSystem";
 import ChatGuide from "./ChatGuide";
 import { containsLink, maskLinks } from "@/game/chat/linkFilter";
 import { DMClient, OPEN_DM_EVENT, resolveRecipient } from "@/game/chat/dmClient";
@@ -17,6 +16,9 @@ import { chamferBox, chamferClip } from "@/ui/chamfer";
 import { useButtonFeel, feelStyle } from "@/ui/useButtonFeel";
 
 const DM_COLOR = "#FFD700";
+
+/** One tap sends one of these, as ordinary chat text. */
+const QUICK_MESSAGES = ["GM!", "GN!", "Hello!", "What is up?", "I love this city!"];
 const BTN_FRAME = 'url(/assets/branding/ui/frame-btn.png) 18 fill / 4px / 0 round';
 /** Trims the element's own background to the frame's octagon (the frame's corners are transparent). */
 const BTN_CLIP = chamferClip(3.6);
@@ -49,11 +51,11 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
   const [friendSet, setFriendSet] = useState<Set<string>>(new Set());
   const [isTouch, setIsTouch] = useState(false);
   const [isExpanded, setIsExpanded] = useState(true);
-  const [showEmojis, setShowEmojis] = useState(false);
+  const [showQuick, setShowQuick] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
   const guideFeel = useButtonFeel();
   const expandFeel = useButtonFeel();
-  const emojiToggleFeel = useButtonFeel();
+  const quickToggleFeel = useButtonFeel();
   const expressionToggleFeel = useButtonFeel();
   const sendFeel = useButtonFeel();
 
@@ -190,8 +192,8 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
     chatManager?.setActiveChannel("city");
   }, [chatManager]);
 
-  const handleSend = useCallback(async () => {
-    const text = input.trim();
+  const handleSend = useCallback(async (quick?: string) => {
+    const text = (quick ?? input).trim();
     if (!text || !gameRef || busy) return;
 
     // DM tab with no conversation open: the input is the "to" field.
@@ -222,13 +224,13 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
       if (!res.ok) { setNotice(res.message); return; }
       const me = cachedName(myWallet) ?? short(myWallet);
       chatManager?.addMessage(`dm:${dmPeer}`, myWallet, me, text, SELF_COLOR, myWallet);
-      setInput("");
+      if (quick === undefined) setInput("");
       return;
     }
 
     gameRef.events.emit("chat:send", text);
-    setInput("");
-    setShowEmojis(false);
+    if (quick === undefined) setInput("");
+    setShowQuick(false);
   }, [input, gameRef, busy, dmMode, dmPeer, myWallet, openPeer, chatManager]);
 
   // Reading direct messages: check the inbox often while the tab is open,
@@ -515,18 +517,18 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
         </div>
       )}
 
-      {/* Emoji bar */}
-      {showEmojis && (
+      {/* Quick messages: a tap sends the text through the normal chat path */}
+      {showQuick && !(dmMode && !dmPeer) && (
         <div
-          className="flex gap-1 p-1.5 mb-0.5"
+          className="flex flex-wrap gap-1 p-1.5 mb-0.5"
           style={chamferBox(6, {
             background: "rgba(10,10,30,0.92)",
             border: "1px solid rgba(183,233,40,0.2)",
-            // No backdrop blur over the canvas — see the message log above.
+            // No backdrop blur over the canvas, see the message log above.
           })}
         >
-          {EMOJI_REGISTRY.map((em) => (
-            <EmojiPickButton key={em.id} em={em} onPick={() => { gameRef?.events.emit("emoji:trigger", em); setShowEmojis(false); }} />
+          {QUICK_MESSAGES.map((text) => (
+            <QuickMessageButton key={text} text={text} disabled={busy} onPick={() => void handleSend(text)} />
           ))}
         </div>
       )}
@@ -543,21 +545,21 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
       {/* Input row */}
       <div className="flex gap-1">
         <button
-          onClick={() => { setShowEmojis(v => !v); }}
+          onClick={() => { setShowQuick(v => !v); }}
           className="cursor-pointer flex items-center justify-center"
-          {...emojiToggleFeel.handlers}
+          {...quickToggleFeel.handlers}
           style={{
             width: 32, height: 32, flexShrink: 0, padding: 0, background: "none", border: "none",
-            filter: showEmojis ? "brightness(1.3) drop-shadow(0 0 4px rgba(183,233,40,0.7))" : emojiToggleFeel.pressed ? "brightness(0.92)" : emojiToggleFeel.hover ? "brightness(1.15)" : "none",
-            transform: emojiToggleFeel.pressed ? "scale(0.92)" : "none",
+            filter: showQuick ? "brightness(1.3) drop-shadow(0 0 4px rgba(183,233,40,0.7))" : quickToggleFeel.pressed ? "brightness(0.92)" : quickToggleFeel.hover ? "brightness(1.15)" : "none",
+            transform: quickToggleFeel.pressed ? "scale(0.92)" : "none",
             transition: "filter 0.12s, transform 0.08s",
           }}
-          title="Emotes"
+          title="Quick messages"
         >
-          <img src="/assets/ui/icon_chat.png" width={32} height={32} alt="Emotes" draggable={false} style={{ imageRendering: "pixelated", display: "block" }} />
+          <img src="/assets/ui/icon_chat.png" width={32} height={32} alt="Quick messages" draggable={false} style={{ imageRendering: "pixelated", display: "block" }} />
         </button>
         <button
-          onClick={() => { window.dispatchEvent(new Event("solcity:openExpressionWheel")); setShowEmojis(false); }}
+          onClick={() => { window.dispatchEvent(new Event("solcity:openExpressionWheel")); setShowQuick(false); }}
           className="cursor-pointer flex items-center justify-center"
           {...expressionToggleFeel.handlers}
           style={{
@@ -671,30 +673,25 @@ function SenderName({ name, wallet, color, onOpen }: {
   );
 }
 
-function EmojiPickButton({ em, onPick }: { em: EmojiDef; onPick: () => void }) {
+function QuickMessageButton({ text, disabled, onPick }: { text: string; disabled: boolean; onPick: () => void }) {
   const feel = useButtonFeel();
   return (
     <button
-      // The emote itself makes a sound (in showEmoji); opt out of the
-      // generic UI click so they don't overlap.
-      data-sfx="off"
       onClick={onPick}
+      disabled={disabled}
       {...feel.handlers}
-      className="px-2 py-1 text-xs cursor-pointer"
+      className="px-2 py-1 cursor-pointer"
       style={chamferBox(4, {
-        background: `${em.color}15`,
-        color: em.color,
-        border: `1px solid ${em.color}30`,
+        background: "rgba(183,233,40,0.08)",
+        color: "#B7E928",
+        border: "1px solid rgba(183,233,40,0.3)",
         fontFamily: '"Press Start 2P", monospace',
         fontSize: "7px",
-        display: "flex",
-        alignItems: "center",
-        gap: 4,
+        opacity: disabled ? 0.6 : 1,
         ...feelStyle(feel),
       })}
-      title={`${em.label} [${em.key}]`}
     >
-      <span>{em.symbol}</span>
+      {text}
     </button>
   );
 }
