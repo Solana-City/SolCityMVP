@@ -242,7 +242,13 @@ export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
     // earned piece. The grant has existed in outfitRewards since the track was
     // written and did nothing, because grant() skips a reward whose variant is
     // missing and the sprite only arrived on 2026-10-20.
-    { id: "Miner_helmet", name: "Miner Helmet", textureKey: "pd-hat-Miner_helmet",
+    //
+    // Its ink starts at y2 of each frame row while the rest of hat/ starts at
+    // y5, and import-sprite-sheet.mjs says so every time it runs. That is the
+    // artist's choice, not a misalignment: a hat sits where it sits on the
+    // head, and this one rides higher. It was "corrected" down 3px once and
+    // the helmet came out wrong. Leave it.
+    { id: "Miner_helmet", name: "Miner's Hat", textureKey: "pd-hat-Miner_helmet",
       file: "hat/Miner_helmet.png", unlockVia: "quest",
       unlockHint: "Win ORE out of a claim" },
   ],
