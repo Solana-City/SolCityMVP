@@ -26,9 +26,26 @@ export interface AnimatedDecorDef {
   frameCount: number;
   /** Frames per second of the loop. */
   frameRate: number;
-  /** Tile the prop stands on: its bottom edge sits on the bottom of this tile. */
-  tileX: number;
-  tileY: number;
+  /**
+   * Tile the prop stands on: its bottom edge sits on the bottom of this tile.
+   * Required unless `fromLayer` says where the props are.
+   */
+  tileX?: number;
+  tileY?: number;
+  /**
+   * Name of a map layer (its leaf name) that holds this prop painted, and which
+   * is dropped from the map (REPLACED_MAP_LAYERS is built from these). One
+   * sprite stands wherever the layer has a painted tile whose tile below, in
+   * that layer, is empty: the foot of each prop. So a prop two tiles tall is
+   * painted as two stacked tiles and still becomes ONE sprite, standing on the
+   * lower one, and every copy of an identical prop can sit in the same layer;
+   * moving or adding one in Tiled moves or adds the sprite, with no change here.
+   * (Two props stacked directly on top of each other in the same layer would be
+   * read as one: keep those in separate layers.) The copies share the sheet,
+   * the animation and the texture, which is what keeps ten pumpkins no dearer
+   * than one.
+   */
+  fromLayer?: string;
   /** Source pixels to world pixels. 0.5 matches the character sheets. */
   scale: number;
   /** Nudge in world pixels, for art that does not land on a tile centre. */
@@ -241,6 +258,43 @@ export const ANIMATED_DECOR: AnimatedDecorDef[] = [
     // the screen, and the depth lands on the building's own bottom row.
     ySort: true,
   },
+  // ── Halloween ────────────────────────────────────────────────────
+  //
+  // Three props, each painted on a map layer of its own (every copy of it in
+  // the same layer) and replaced by sprites read off that layer, so they are
+  // placed in Tiled and not here. Every sheet is 24px frames at world resolution,
+  // so scale 1, and frame 0 is identical pixel for pixel to the painted tile(s)
+  // it replaces: the feet are on the tile's bottom edge, no offset. The artist
+  // set 150ms a frame, which is 1000/150 fps.
+  //
+  // Each is solid on its foot tile, as the painted tile was (SCHalloween's
+  // collision shapes), and y-sorted so the player passes in front of a pumpkin
+  // from the south and behind it from the north.
+  {
+    // Candle: 12 frames, one tile.
+    key: "decor-halloween-candle",
+    file: "assets/sprites/decor/halloween_candle.png",
+    frameWidth: 24, frameHeight: 24, frameCount: 12, frameRate: 1000 / 150,
+    fromLayer: "DecorHalloweenCandle",
+    scale: 1, blocks: true, ySort: true,
+  },
+  {
+    // Plain pumpkin: 3 frames, one tile (layer DecorHalloweenPumpkin02).
+    key: "decor-halloween-pumpkin",
+    file: "assets/sprites/decor/halloween_pumpkin4.png",
+    frameWidth: 24, frameHeight: 24, frameCount: 3, frameRate: 1000 / 150,
+    fromLayer: "DecorHalloweenPumpkin02",
+    scale: 1, blocks: true, ySort: true,
+  },
+  {
+    // Pumpkin with a candle: 3 frames, 24x36, two tiles tall; stands on the
+    // lower of them (layer DecorHalloweenPumpkinCandle).
+    key: "decor-halloween-pumpkin-candle",
+    file: "assets/sprites/decor/halloween_pumpkin3.png",
+    frameWidth: 24, frameHeight: 36, frameCount: 3, frameRate: 1000 / 150,
+    fromLayer: "DecorHalloweenPumpkinCandle",
+    scale: 1, blocks: true, ySort: true,
+  },
 ];
 
 /**
@@ -251,7 +305,35 @@ export const ANIMATED_DECOR: AnimatedDecorDef[] = [
  */
 export const REPLACED_MAP_LAYERS: ReadonlySet<string> = new Set([
   "DecorSolanaFlag", "DecorSTBrFlag", "DecorMonkeDaoFlag",
+  ...ANIMATED_DECOR.flatMap((d) => (d.fromLayer ? [d.fromLayer] : [])),
 ]);
+
+/** Where an item stands: its own tile, or the foot of each prop painted on its layer. */
+function placements(d: AnimatedDecorDef, map?: Phaser.Tilemaps.Tilemap): Array<{ tileX: number; tileY: number }> {
+  if (!d.fromLayer) return [{ tileX: d.tileX ?? 0, tileY: d.tileY ?? 0 }];
+  if (!map) {
+    console.warn(`[AnimatedDecor] "${d.key}" needs the map to read layer "${d.fromLayer}"`);
+    return [];
+  }
+  const out: Array<{ tileX: number; tileY: number }> = [];
+  // Tiled files can hold more than one layer under a name (and group paths
+  // prefix it), so every layer whose leaf name matches is read, one by one.
+  for (const layer of map.layers) {
+    if (layer.name.slice(layer.name.lastIndexOf("/") + 1) !== d.fromLayer) continue;
+    // The map is cropped to what each layer paints (world/cropMap), the margin
+    // moving into the layer's pixel offset: a cell's column is its place in the
+    // layer plus that offset, in tiles.
+    const originX = Math.round(layer.x / map.tileWidth);
+    const originY = Math.round(layer.y / map.tileHeight);
+    const painted = (x: number, y: number) => (layer.data[y]?.[x]?.index ?? 0) > 0;
+    for (let y = 0; y < layer.height; y++) {
+      for (let x = 0; x < layer.width; x++) {
+        if (painted(x, y) && !painted(x, y + 1)) out.push({ tileX: originX + x, tileY: originY + y });
+      }
+    }
+  }
+  return out;
+}
 
 /** Call from BootScene.preload. */
 export function preloadAnimatedDecor(scene: Phaser.Scene): void {
@@ -263,13 +345,15 @@ export function preloadAnimatedDecor(scene: Phaser.Scene): void {
 /**
  * Spawns every item. `foregroundDepth` is the city's above-the-player depth,
  * used by everything that is not `ySort`. `collision` is the city's merged
- * collision volume, where a `blocks` prop stamps its foot.
+ * collision volume, where a `blocks` prop stamps its foot. `map` is read for
+ * the items placed by `fromLayer`.
  * Returns a cleanup for the scene's shutdown.
  */
 export function createAnimatedDecor(
   scene: Phaser.Scene,
   foregroundDepth: number,
   collision?: Phaser.Tilemaps.TilemapLayer,
+  map?: Phaser.Tilemaps.Tilemap,
 ): () => void {
   const sprites: Phaser.GameObjects.Sprite[] = [];
   for (const d of ANIMATED_DECOR) {
@@ -285,25 +369,27 @@ export function createAnimatedDecor(
         repeat: -1,
       });
     }
-    const baseY = (d.tileY + 1) * TILE_SIZE;
-    const sprite = scene.add
-      .sprite(d.tileX * TILE_SIZE + TILE_SIZE / 2 + (d.offsetX ?? 0), baseY + (d.offsetY ?? 0), d.key)
-      .setOrigin(0.5, 1)
-      .setScale(d.scale)
-      // A y-sorted prop follows the same rule as a y-sorted layer: depth is
-      // the world Y where it meets the ground.
-      .setDepth(d.ySort ? baseY : foregroundDepth);
-    sprite.anims.play(`${d.key}-loop`);
-    sprites.push(sprite);
+    for (const at of placements(d, map)) {
+      const baseY = (at.tileY + 1) * TILE_SIZE;
+      const sprite = scene.add
+        .sprite(at.tileX * TILE_SIZE + TILE_SIZE / 2 + (d.offsetX ?? 0), baseY + (d.offsetY ?? 0), d.key)
+        .setOrigin(0.5, 1)
+        .setScale(d.scale)
+        // A y-sorted prop follows the same rule as a y-sorted layer: depth is
+        // the world Y where it meets the ground.
+        .setDepth(d.ySort ? baseY : foregroundDepth);
+      sprite.anims.play(`${d.key}-loop`);
+      sprites.push(sprite);
 
-    // Only ever written into the invisible merged volume — stamping a cell
-    // into a layer that IS drawn would paint a stray tile on the map.
-    if (d.blocks && collision && !collision.visible) {
-      // Any index does: the volume is never drawn, only collided against.
-      const cell = collision.putTileAt(1, d.tileX, d.tileY, false);
-      if (cell) {
-        cell.setCollision(true, true, true, true, false);
-        collision.calculateFacesAt(d.tileX, d.tileY);
+      // Only ever written into the invisible merged volume — stamping a cell
+      // into a layer that IS drawn would paint a stray tile on the map.
+      if (d.blocks && collision && !collision.visible) {
+        // Any index does: the volume is never drawn, only collided against.
+        const cell = collision.putTileAt(1, at.tileX, at.tileY, false);
+        if (cell) {
+          cell.setCollision(true, true, true, true, false);
+          collision.calculateFacesAt(at.tileX, at.tileY);
+        }
       }
     }
   }

@@ -235,6 +235,7 @@ export class CityScene extends Phaser.Scene {
       "SCBuildSTEarn", "SCBuildSolanaCity",
       "SCBuildSolMechs", "SCBuildDungeousMoles", "SCBuildStoklana",
       "SCBuildRemedi", "SCBuildSTVN", "SCBuildProtocols", "SCBuildColosseum",
+      "SCHalloween",
     ]
       .map(n => map.addTilesetImage(n, n))
       .filter((ts): ts is Phaser.Tilemaps.Tileset => ts !== null);
@@ -596,7 +597,7 @@ export class CityScene extends Phaser.Scene {
 
     // Waving props (the Superteam Turkey flag by the Remedi building): sprites,
     // not tiles, since Phaser does not play Tiled's tile animations.
-    const destroyDecor = createAnimatedDecor(this, FOREGROUND_DEPTH, this.collisionLayers[0]);
+    const destroyDecor = createAnimatedDecor(this, FOREGROUND_DEPTH, this.collisionLayers[0], map);
     this.onTeardown(destroyDecor);
 
     // The football on the ST Brasil beach. It runs its own simulation rather
