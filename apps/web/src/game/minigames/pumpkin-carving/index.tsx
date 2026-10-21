@@ -631,9 +631,22 @@ function AccuracyMeter({ value, final, passed, best }: { value: number; final: b
 }
 
 /** The Pumpkin Head, cut from its own paper-doll sheet. */
+/**
+ * The prize, cut to its own art rather than to a head.
+ *
+ * CROPS.head is a 36x36 box over the top of the frame, which fits a cap on a
+ * character. The Pumpkin Head is not a cap: it is 43 wide and 40 tall, so
+ * that box took three pixels off its left, four off its right and four off
+ * its chin, and the preview showed a pumpkin with the bottom sliced away.
+ *
+ * So the box comes from the art. The frame's opaque pixels are measured once
+ * it is keyed, and the square around them is what gets drawn, which stays
+ * right for whatever the spriter sends next and needs no number updated here.
+ */
 function HatIcon({ size }: { size: number }) {
   const ref = useRef<HTMLCanvasElement>(null);
-  const crop = CROPS.head;
+  /** Side of the square the art needs, in source pixels. */
+  const [side, setSide] = useState<number>(CROPS.head.w);
   useEffect(() => {
     const variant = getVariant(REWARD_CATEGORY, REWARD_ID);
     if (!variant) return;
@@ -647,20 +660,48 @@ function HatIcon({ size }: { size: number }) {
       const fctx = frame.getContext("2d", { willReadFrequently: true })!;
       fctx.drawImage(img, 0, DIRECTION_ROW.down * FH, FW, FH, 0, 0, FW, FH);
       removeChroma(fctx, FW, FH);
-      const ctx = ref.current?.getContext("2d");
+
+      // Where the ink actually is, after the chroma went.
+      const px = fctx.getImageData(0, 0, FW, FH).data;
+      let x0 = FW, y0 = FH, x1 = -1, y1 = -1;
+      for (let y = 0; y < FH; y++) {
+        for (let x = 0; x < FW; x++) {
+          if (px[(y * FW + x) * 4 + 3] < 10) continue;
+          if (x < x0) x0 = x;
+          if (x > x1) x1 = x;
+          if (y < y0) y0 = y;
+          if (y > y1) y1 = y;
+        }
+      }
+      if (x1 < 0) return; // an empty frame: nothing to show, nothing to size
+
+      // A square around it, with a pixel of air, kept inside the frame so the
+      // draw never reads past the edge.
+      const w = x1 - x0 + 1;
+      const h = y1 - y0 + 1;
+      const box = Math.min(FW, FH, Math.max(w, h) + 2);
+      const sx = Math.max(0, Math.min(FW - box, Math.round(x0 + w / 2 - box / 2)));
+      const sy = Math.max(0, Math.min(FH - box, Math.round(y0 + h / 2 - box / 2)));
+
+      setSide(box);
+      const canvas = ref.current;
+      if (!canvas) return;
+      // Written after the backing store is resized, which also clears it.
+      canvas.width = box;
+      canvas.height = box;
+      const ctx = canvas.getContext("2d");
       if (!ctx) return;
       ctx.imageSmoothingEnabled = false;
-      ctx.clearRect(0, 0, crop.w, crop.h);
-      ctx.drawImage(frame, crop.x, crop.y, crop.w, crop.h, 0, 0, crop.w, crop.h);
+      ctx.drawImage(frame, sx, sy, box, box, 0, 0, box, box);
     };
     img.src = `/assets/sprites/paperdoll/${variant.file}`;
     return () => { cancelled = true; };
-  }, [crop]);
+  }, []);
   return (
     <canvas
       ref={ref}
-      width={crop.w}
-      height={crop.h}
+      width={side}
+      height={side}
       style={{ width: size, height: size, flexShrink: 0, imageRendering: "pixelated", background: "#0b1020", clipPath: chamferClip(6) }}
     />
   );
