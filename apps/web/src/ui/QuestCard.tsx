@@ -207,10 +207,8 @@ function Header({ done, total, collapsed, onCollapse, compact }: {
         }),
       }}
     >
-      {/* The phone's window wears the framed clipboard; the desktop card keeps its own. */}
-      {compact
-        ? <PixelImg src="/assets/ui/icon_tasks.png" size={24} />
-        : <PixelImg src={ICON.tasks} size={26} />}
+      {/* icon_tasks1: a picture, not a button. The framed icon_tasks is the rail's button. */}
+      <PixelImg src={ICON.tasks} size={compact ? 18 : 26} />
       <span style={{
         fontFamily: PIX, fontSize: compact ? 8 : 7, color: HUD_ACCENT,
         letterSpacing: 0.5, flex: 1, lineHeight: 1.4, whiteSpace: "nowrap",
@@ -263,7 +261,7 @@ export default function QuestCard({ wallet }: { wallet: string | null }) {
           } as CSSProperties}
         >
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <PixelImg src="/assets/ui/icon_tasks.png" size={28} />
+            <PixelImg src={ICON.tasks} size={20} />
             <span style={{ flex: 1, fontSize: 10, color: "#fff" }}>{done}/{rows.length}</span>
             <FrameBtn size={28} title="Expand" onClick={toggle}>
               <Arrow dir="right" />
