@@ -30,21 +30,7 @@ import { chamferBox, solidColor } from "@/ui/chamfer";
 import ChamferGlow from "@/ui/ChamferGlow";
 import { useViewportBox, overlayBox } from "@/ui/useViewportBox";
 import { useEscape } from "@/ui/useEscape";
-
-const CHROMA_R = 215, CHROMA_G = 123, CHROMA_B = 186, CHROMA_TOL = 30;
-
-function removeChroma(ctx: CanvasRenderingContext2D, w: number, h: number) {
-  const d = ctx.getImageData(0, 0, w, h);
-  const px = d.data;
-  for (let i = 0; i < px.length; i += 4) {
-    if (
-      Math.abs(px[i]   - CHROMA_R) <= CHROMA_TOL &&
-      Math.abs(px[i+1] - CHROMA_G) <= CHROMA_TOL &&
-      Math.abs(px[i+2] - CHROMA_B) <= CHROMA_TOL
-    ) px[i+3] = 0;
-  }
-  ctx.putImageData(d, 0, 0);
-}
+import { removeChroma } from "@/ui/AvatarPortrait";
 
 type Facing = keyof typeof DIRECTION_ROW;
 /** Quarter turns, in the order the preview arrows walk through them. */
@@ -437,8 +423,15 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
   const showPackTile = !NO_PACKS.includes(activeCategory)
     && variants.some((v) => isPackItem(activeCategory, v.id));
 
-  // Reverse so topmost layer (hat) appears first in the tab list
-  const tabOrder = [...LAYER_ORDER].reverse() as LayerCategory[];
+  // Reverse so topmost layer (hat) appears first in the tab list, then Face
+  // moves up to sit right under Hair (it is drawn near the bottom of the stack
+  // but it is one of the first things a player wants to change).
+  const tabOrder = (() => {
+    const order = [...LAYER_ORDER].reverse() as LayerCategory[];
+    const rest: LayerCategory[] = order.filter((c) => c !== "eyesFace");
+    rest.splice(rest.indexOf("hair") + 1, 0, "eyesFace");
+    return rest;
+  })();
 
   return (
     <div

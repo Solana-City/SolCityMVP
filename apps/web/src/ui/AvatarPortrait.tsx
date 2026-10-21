@@ -42,10 +42,19 @@ export const CROPS = {
 
 export type CropName = keyof typeof CROPS;
 
-/** Drops the magenta the sheets are keyed on. */
+/**
+ * Drops the magenta the sheets are keyed on.
+ *
+ * Only for a sheet that still carries it, judged by the top-left pixel the way
+ * BootScene's hasChromaBackground does. A sheet exported with transparency has
+ * nothing to drop, and keying it anyway is not harmless: the tolerance is wide
+ * enough to take the Pinki skin's shadow tone (217,102,175) with it, which is
+ * the outline-like edge the other skins keep.
+ */
 export function removeChroma(ctx: CanvasRenderingContext2D, w: number, h: number) {
   const d = ctx.getImageData(0, 0, w, h);
   const px = d.data;
+  if (px[3] === 0) return;
   for (let i = 0; i < px.length; i += 4) {
     if (
       Math.abs(px[i]   - CHROMA_R) <= CHROMA_TOL &&
