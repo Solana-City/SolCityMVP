@@ -218,8 +218,11 @@ export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
     // Earned from NPCs, so unlockVia keeps both out of the booster pool.
     { id: "city_cap",   name: "City Cap",   textureKey: "pd-hat-city_cap",   file: "hat/city_cap.png",
       unlockVia: "quest", unlockHint: "Make a donation in the city" },
+    // "band": it sits on top of the head like any hat, so hair beside and below
+    // it stays. The default "full" erases hair from the top of the frame down
+    // to the hat's own ink, per column, which shaved the sides off.
     { id: "turkish_head", name: "Turkish Hat", textureKey: "pd-hat-turkish_head", file: "hat/turkish_head.png",
-      unlockVia: "quest", unlockHint: "Get a new look from the Hair Specialist" },
+      hatCoverage: "band", unlockVia: "quest", unlockHint: "Get a new look from the Hair Specialist" },
     // Superteam Brasil set — earned, never dropped by a booster (see unlockVia).
     { id: "STB_cap", name: "Superteam Brasil Cap", textureKey: "pd-hat-STB_cap",
       file: "hat/STB_cap.png", unlockVia: "quest", unlockHint: "Win a round of Kite Clash" },
