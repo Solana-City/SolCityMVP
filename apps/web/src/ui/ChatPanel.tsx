@@ -363,7 +363,11 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
   useEffect(() => {
     const onDown = (e: PointerEvent) => {
       if (rootRef.current?.contains(e.target as Node)) return;
-      if (document.activeElement === inputRef.current) inputRef.current?.blur();
+      const active = document.activeElement;
+      // The chat input, or one of the quick-message fields inside the panel.
+      if (active instanceof HTMLInputElement && (active === inputRef.current || rootRef.current?.contains(active))) {
+        active.blur();
+      }
       setShowGuide(false);
     };
     document.addEventListener("pointerdown", onDown, true);
@@ -573,6 +577,12 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
                   value={text}
                   maxLength={QUICK_MAX_LENGTH}
                   onChange={(e) => editQuick(i, e.target.value)}
+                  onKeyDown={(e) => {
+                    // Same as the chat input: keys typed here are text, not
+                    // movement (WASD) or interaction (space).
+                    if (e.key === "Escape") e.currentTarget.blur();
+                    e.stopPropagation();
+                  }}
                   onFocus={handleFocus}
                   onBlur={handleBlur}
                   placeholder="Empty"
