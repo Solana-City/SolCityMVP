@@ -174,6 +174,14 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
     setNotice(null);
   }, [chatManager]);
 
+  /** Closes a conversation and lands on the "who to message" prompt. */
+  const closePeer = useCallback((wallet: string) => {
+    chatManager?.closeDM(wallet);
+    setDmPeer(null);
+    setNotice(null);
+    setActiveChannel("city");
+  }, [chatManager]);
+
   const showDmPrompt = useCallback(() => {
     setDmMode(true);
     setDmPeer(null);
@@ -436,6 +444,9 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
             />
           ))}
           <Chip label="+ NEW" active={!dmPeer} onClick={() => { showDmPrompt(); inputRef.current?.focus(); }} />
+          {dmPeer && (
+            <Chip label="CLOSE" active={false} onClick={() => closePeer(dmPeer)} />
+          )}
         </div>
       )}
 
@@ -491,7 +502,14 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
                 onOpen={openCard}
               />
               <span style={{ color: "#444455" }}>{"> "}</span>
-              <span style={{ color: "#d6d6e8" }}>{msg.text}</span>
+              {msg.subject && msg.text.startsWith(msg.subject.name) ? (
+                <>
+                  <SenderName name={msg.subject.name} wallet={msg.subject.wallet} color="#d6d6e8" onOpen={openCard} />
+                  <span style={{ color: "#d6d6e8" }}>{msg.text.slice(msg.subject.name.length)}</span>
+                </>
+              ) : (
+                <span style={{ color: "#d6d6e8" }}>{msg.text}</span>
+              )}
             </div>
           ))}
         </div>

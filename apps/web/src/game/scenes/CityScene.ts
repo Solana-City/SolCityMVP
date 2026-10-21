@@ -1971,7 +1971,7 @@ export class CityScene extends Phaser.Scene {
 
     const now = Date.now();
     if (now - (this.recentJoins.get(wallet) ?? 0) > 30_000) {
-      this.chat.addSystemMessage(`${displayName} entered the city`);
+      this.chat.addSystemMessage(`${displayName} entered the city`, { wallet, name: displayName });
       this.recentJoins.set(wallet, now);
     }
   }

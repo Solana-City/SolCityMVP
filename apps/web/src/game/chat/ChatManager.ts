@@ -14,6 +14,8 @@ export interface ChatMessage {
    * Absent on system lines, and on anything that reached us without one.
    */
   senderWallet?: string;
+  /** On a system line: the player it names, whose name opens their profile. */
+  subject?: { wallet: string; name: string };
   text: string;
   timestamp: number;
   color?: string;
@@ -95,6 +97,18 @@ export class ChatManager {
     return key;
   }
 
+  /**
+   * Drops a conversation and its messages. A new message from that player
+   * opens it again, since the inbox hands each message over only once.
+   */
+  closeDM(sessionId: string): void {
+    const key: ChatChannel = `dm:${sessionId}`;
+    this.dmChannels.delete(key);
+    this.log = this.log.filter((m) => m.channel !== key);
+    if (this.activeChannel === key) this.activeChannel = "city";
+    this.notifyLogListeners();
+  }
+
   addMessage(
     channel: ChatChannel,
     senderSessionId: string,
@@ -131,8 +145,16 @@ export class ChatManager {
     return msg;
   }
 
-  addSystemMessage(text: string): void {
-    this.addMessage("city", "system", "System", text, "#9945FF");
+  /**
+   * `subject` is the player the line is about. When given, `text` must start
+   * with their name, and the panel makes that name open their profile.
+   */
+  addSystemMessage(text: string, subject?: { wallet: string; name: string }): void {
+    const msg = this.addMessage("city", "system", "System", text, "#9945FF");
+    if (subject) {
+      msg.subject = subject;
+      this.notifyLogListeners();
+    }
   }
 
   getVisibleLog(): ChatMessage[] {
