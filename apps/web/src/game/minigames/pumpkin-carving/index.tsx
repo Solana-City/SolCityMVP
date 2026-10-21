@@ -24,7 +24,7 @@ import { useLeaveStake } from "../leaveGuard";
 import { CloseButton, RankBadge } from "@/ui/PixelIcons";
 import { useButtonFeel, feelStyle, type ButtonFeel } from "@/ui/useButtonFeel";
 import { chamferBox, chamferClip } from "@/ui/chamfer";
-import { removeChroma, CROPS } from "@/ui/AvatarPortrait";
+import { removeChroma } from "@/ui/AvatarPortrait";
 import { CATEGORY_META } from "@/game/minimap/categories";
 import { fetchBoard, invalidateBoard, type BoardResult } from "@/game/leaderboards/boards";
 import { profileManager } from "@/game/config/profileManager";
@@ -646,8 +646,6 @@ function AccuracyMeter({ value, final, passed, best }: { value: number; final: b
  */
 function HatIcon({ size }: { size: number }) {
   const ref = useRef<HTMLCanvasElement>(null);
-  /** Side of the square the art needs, in source pixels. */
-  const [side, setSide] = useState<number>(CROPS.head.w);
   useEffect(() => {
     const variant = getVariant(REWARD_CATEGORY, REWARD_ID);
     if (!variant) return;
@@ -684,10 +682,13 @@ function HatIcon({ size }: { size: number }) {
       const sx = Math.max(0, Math.min(FW - box, Math.round(x0 + w / 2 - box / 2)));
       const sy = Math.max(0, Math.min(FH - box, Math.round(y0 + h / 2 - box / 2)));
 
-      setSide(box);
       const canvas = ref.current;
       if (!canvas) return;
-      // Written after the backing store is resized, which also clears it.
+      // The backing store is sized HERE and nowhere else. Sizing it through a
+      // React prop meant the re-render that followed rewrote the width
+      // attribute, and writing canvas.width clears the canvas: the drawing
+      // below was wiped a tick after it was made, and the panel showed an
+      // empty box. Resizing also clears, so this comes first.
       canvas.width = box;
       canvas.height = box;
       const ctx = canvas.getContext("2d");
@@ -701,8 +702,6 @@ function HatIcon({ size }: { size: number }) {
   return (
     <canvas
       ref={ref}
-      width={side}
-      height={side}
       style={{ width: size, height: size, flexShrink: 0, imageRendering: "pixelated", background: "#0b1020", clipPath: chamferClip(6) }}
     />
   );
