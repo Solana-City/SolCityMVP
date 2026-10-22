@@ -302,8 +302,15 @@ export class AvatarSprite {
   private scene: Phaser.Scene;
   private container: Phaser.GameObjects.Container;
   private layerSprites: Map<LayerCategory, Phaser.GameObjects.Sprite> = new Map();
-  /** Layers drawn from an effect sheet: they loop on their own, walking or not. */
-  private effectSprites: Set<Phaser.GameObjects.Sprite> = new Set();
+  /**
+   * Layers drawn from an effect sheet, with the cell each one shows now.
+   * They loop on their own, walking or not, and are NOT played through the
+   * animation manager: it advances one cell per tick and never catches up
+   * after a slow frame, so a loop on it drifts behind and looks like it
+   * freezes. tickEffects picks the cell from the clock instead.
+   */
+  private effectSprites: Map<Phaser.GameObjects.Sprite, { effect: NonNullable<LayerVariant["effect"]>; shown: number }> = new Map();
+  private effectsTicking = false;
   /** Single silhouette sprite mirrored under the feet — see characterShadow. */
   private shadowSprite: Phaser.GameObjects.Sprite | null = null;
   private shadowTextureKey: string | null = null;
@@ -556,6 +563,8 @@ export class AvatarSprite {
     this.isWalking = true;
     let synced = true;
     for (const sprite of this.animatedSprites()) {
+      // An effect is driven by the clock, not by the walk — see tickEffects.
+      if (this.effectSprites.has(sprite)) continue;
       const key = `${sprite.texture.key}-walk-${direction}`;
       const anim = this.scene.anims.get(key);
       if (!anim || anim.frames.length === 0) { synced = false; continue; }
@@ -692,8 +701,8 @@ export class AvatarSprite {
       if (!this.awake) sprite.setActive(false);
       this.container.add(sprite);
       this.layerSprites.set(category, sprite);
-      if (effect) this.effectSprites.add(sprite);
-      this.registerAnimations(textureKey, effect);
+      if (effect) this.effectSprites.set(sprite, { effect, shown: -1 });
+      else this.registerAnimations(textureKey);
     }
 
     this.buildShadow();
@@ -704,13 +713,29 @@ export class AvatarSprite {
     // Set initial idle frame
     const row = DIRECTION_ROW[this.currentDirection];
     for (const sprite of this.animatedSprites()) {
-      if (this.effectSprites.has(sprite)) {
-        sprite.anims.play(`${sprite.texture.key}-walk-${this.currentDirection}`);
-      } else {
-        sprite.setFrame(row * SPRITE_COLS);
+      if (!this.effectSprites.has(sprite)) sprite.setFrame(row * SPRITE_COLS);
+    }
+    if (this.effectSprites.size > 0 && !this.effectsTicking) {
+      this.effectsTicking = true;
+      this.scene.events.on(Phaser.Scenes.Events.UPDATE, this.tickEffects);
+    }
+    this.tickEffects();
+  }
+
+  /** Shows the cell of each effect layer that the clock says is current. */
+  private tickEffects = (): void => {
+    if (!this.awake) return;
+    const now = this.scene.time.now;
+    const row = DIRECTION_ROW[this.currentDirection];
+    for (const [sprite, fx] of this.effectSprites) {
+      const { frames, fps } = fx.effect;
+      const frame = row * frames + (Math.floor((now / 1000) * fps) % frames);
+      if (frame !== fx.shown) {
+        fx.shown = frame;
+        sprite.setFrame(frame);
       }
     }
-  }
+  };
 
   /**
    * One silhouette sprite composited from every equipped layer — the shadow
@@ -778,6 +803,10 @@ export class AvatarSprite {
     }
     this.layerSprites.clear();
     this.effectSprites.clear();
+    if (this.effectsTicking) {
+      this.effectsTicking = false;
+      this.scene.events.off(Phaser.Scenes.Events.UPDATE, this.tickEffects);
+    }
 
     if (this.shadowSprite) {
       this.container.remove(this.shadowSprite);
@@ -795,11 +824,8 @@ export class AvatarSprite {
     this.derivedHairKey = null;
   }
 
-  private registerAnimations(textureKey: string, effect?: LayerVariant["effect"]): void {
+  private registerAnimations(textureKey: string): void {
     const directions: Direction[] = ["down", "left", "right", "up"];
-    // A walk sheet has SPRITE_COLS cells per row; an effect sheet has its own
-    // count, and loops at its own speed.
-    const cols = effect?.frames ?? SPRITE_COLS;
 
     for (const dir of directions) {
       const row = DIRECTION_ROW[dir];
@@ -809,10 +835,10 @@ export class AvatarSprite {
         this.scene.anims.create({
           key: walkKey,
           frames: this.scene.anims.generateFrameNumbers(textureKey, {
-            start: row * cols,
-            end: row * cols + cols - 1,
+            start: row * SPRITE_COLS,
+            end: row * SPRITE_COLS + SPRITE_COLS - 1,
           }),
-          frameRate: effect?.fps ?? 8,
+          frameRate: 8,
           repeat: -1,
         });
       }
