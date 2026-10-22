@@ -63,6 +63,22 @@ export const VRF_QUEUE_DEVNET = new PublicKey(
   "Cuj97ggrhhidhbu39TijNVqE74xvKJ69gDervRUXAxGh"
 );
 
+/** MagicBlock's ephemeral VRF program, matching VRF_PROGRAM_ID in the Rust. */
+export const VRF_PROGRAM_ID = new PublicKey(
+  "Vrf1RNUjXmQGjmQrQLvJHs9SNkvDJEsRVFPkfSQUwGz"
+);
+
+/**
+ * This program's VRF identity PDA, seeds ["identity"], which signs the
+ * randomness request. The program derives the same one in OpenBooster.
+ */
+export function deriveVrfIdentityPDA(): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("identity")],
+    SOL_CITY_PROGRAM_ID,
+  );
+}
+
 /**
  * Derives the player state PDA for a given wallet.
  */

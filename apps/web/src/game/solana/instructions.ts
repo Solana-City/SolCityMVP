@@ -17,7 +17,7 @@
 import {
   PublicKey,
   SystemProgram,
-  TransactionInstruction,
+  TransactionInstruction, SYSVAR_SLOT_HASHES_PUBKEY,
 } from "@solana/web3.js";
 import {
   delegateBufferPdaFromDelegatedAccountAndOwnerProgram,
@@ -26,7 +26,8 @@ import {
 } from "@magicblock-labs/ephemeral-rollups-sdk";
 import {
   SOL_CITY_PROGRAM_ID, DELEGATION_PROGRAM_ID, derivePlayerPDA, deriveHuntPDA,
-  deriveUnlockPDA, VRF_QUEUE_DEVNET, deriveFriendshipPDA, deriveFriendRequestPDA,
+  deriveUnlockPDA, VRF_QUEUE_DEVNET, VRF_PROGRAM_ID, deriveVrfIdentityPDA,
+  deriveFriendshipPDA, deriveFriendRequestPDA,
   sortPair, ACHIEVEMENT_BITS,
 } from "./program";
 import { sha256 } from "@noble/hashes/sha256";
@@ -494,44 +495,47 @@ export function buildInitUnlockStateIx(authority: PublicKey): TransactionInstruc
 }
 
 /**
- * Builds `open_booster(pool_count: u16, client_seed: [u8;32])` — pays the pack
+ * Builds `open_booster(pool_count: u16, client_seed: [u8;32])` - pays the pack
  * price to the treasury and requests MagicBlock VRF. Wallet-signed on base
- * devnet. Args are Anchor-packed: u16 LE + 32 raw seed bytes (a fixed array has
- * no length prefix).
+ * devnet. Args are Anchor-packed: u16 LE then 32 raw seed bytes (a fixed array
+ * carries no length prefix).
  *
- * The UnlockState PDA must already exist: send `buildInitUnlockStateIx` first,
- * in the same transaction, when the wallet has never opened a pack.
+ * The UnlockState PDA must already exist, so send `buildInitUnlockStateIx`
+ * first, in the same transaction, when the wallet has never opened a pack.
  *
- * ⚠️ ACCOUNTS: the Rust struct is [payer, unlock_state, treasury, oracle_queue,
- * system_program] PLUS the accounts the `#[vrf]` macro appends (the VRF program
- * + its identity/queue plumbing). Those extra accounts and their ORDER come
- * from the DEPLOYED IDL — pass them via `vrfAccounts`. Until filled the ix is
- * incomplete and the tx will fail; that's the one post-deploy wiring step.
+ * ACCOUNTS: all eight are fixed and come from the Rust struct, in this order.
+ * This used to send five and leave a `vrfAccounts` hole to be filled "from the
+ * deployed IDL", on the assumption that the program used the `#[vrf]` macro
+ * and let it append its own plumbing. It does not: Solana Playground cannot
+ * build `ephemeral-vrf-sdk`, so the request is a hand-rolled CPI and every
+ * account is declared explicitly in `OpenBooster`. Nothing here waits on a
+ * deploy.
  */
 export function buildOpenBoosterIx(params: {
   payer: PublicKey;
   poolCount: number;
   clientSeed: Uint8Array; // exactly 32 bytes
   treasury: PublicKey;
-  vrfAccounts?: { pubkey: PublicKey; isSigner: boolean; isWritable: boolean }[];
 }): TransactionInstruction {
-  const { payer, poolCount, clientSeed, treasury, vrfAccounts = [] } = params;
+  const { payer, poolCount, clientSeed, treasury } = params;
   const seed = Buffer.alloc(32);
   Buffer.from(clientSeed).copy(seed, 0, 0, 32);
 
   const [unlockPda] = deriveUnlockPDA(payer);
+  const [vrfIdentity] = deriveVrfIdentityPDA();
   const data = Buffer.concat([DISC.openBooster, packU16LE(poolCount), seed]);
 
   return new TransactionInstruction({
     programId: SOL_CITY_PROGRAM_ID,
     keys: [
-      { pubkey: payer,                    isSigner: true,  isWritable: true },
-      { pubkey: unlockPda,                isSigner: false, isWritable: true },
-      { pubkey: treasury,                 isSigner: false, isWritable: true },
-      { pubkey: VRF_QUEUE_DEVNET,         isSigner: false, isWritable: true },
-      { pubkey: SystemProgram.programId,  isSigner: false, isWritable: false },
-      // #[vrf]-appended accounts — order per the deployed IDL:
-      ...vrfAccounts,
+      { pubkey: payer,                     isSigner: true,  isWritable: true  },
+      { pubkey: unlockPda,                 isSigner: false, isWritable: true  },
+      { pubkey: treasury,                  isSigner: false, isWritable: true  },
+      { pubkey: VRF_QUEUE_DEVNET,          isSigner: false, isWritable: true  },
+      { pubkey: vrfIdentity,               isSigner: false, isWritable: false },
+      { pubkey: VRF_PROGRAM_ID,            isSigner: false, isWritable: false },
+      { pubkey: SYSVAR_SLOT_HASHES_PUBKEY, isSigner: false, isWritable: false },
+      { pubkey: SystemProgram.programId,   isSigner: false, isWritable: false },
     ],
     data,
   });
