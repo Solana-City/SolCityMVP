@@ -118,7 +118,7 @@ export type Loadout = Partial<Record<LayerCategory, string>> & { hairColor?: str
 
 export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
   back: [
-    { id: "Jetpack",         name: "Jetpack",        textureKey: "pd-back-Jetpack",         file: "back/Jetpack.png", unlockVia: "quest", unlockHint: "Quest reward" },
+    { id: "Jetpack",         name: "Jetpack",        textureKey: "pd-back-Jetpack",         file: "back/Jetpack.png" },
     { id: "backpack_brown",  name: "Brown Backpack", textureKey: "pd-back-backpack_brown",  file: "back/backpack_brown.png" },
     { id: "backpack_red",    name: "Red Backpack",   textureKey: "pd-back-backpack_red",    file: "back/backpack_red.png" },
     // The Seeker Lover's second gift, for holding a real position rather than
@@ -216,8 +216,13 @@ export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
     { id: "hat_red",    name: "Red Hat",    textureKey: "pd-hat-hat_red",    file: "hat/hat_red.png" },
     { id: "red_belt",   name: "Red Bandana",textureKey: "pd-hat-red_belt",   file: "hat/red_belt.png", hatCoverage: "band" },
     // Earned from NPCs, so unlockVia keeps both out of the booster pool.
+    // The donation route was dropped on 2026-10-20: the Donation Manager and
+    // lib/donationWallet.ts both promise the player that donations buy nothing,
+    // and paying out an outfit for one makes that false. A replacement
+    // condition is still to be chosen, so the hint says what is true today
+    // rather than naming a route that no longer exists.
     { id: "city_cap",   name: "City Cap",   textureKey: "pd-hat-city_cap",   file: "hat/city_cap.png",
-      unlockVia: "quest", unlockHint: "Make a donation in the city" },
+      unlockVia: "quest", unlockHint: "Earned in the city" },
     { id: "turkish_head", name: "Turkish Hat", textureKey: "pd-hat-turkish_head", file: "hat/turkish_head.png",
       unlockVia: "quest", unlockHint: "Get a new look from the Hair Specialist" },
     // Superteam Brasil set — earned, never dropped by a booster (see unlockVia).

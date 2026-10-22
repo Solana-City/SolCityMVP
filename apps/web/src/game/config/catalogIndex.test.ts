@@ -84,7 +84,6 @@ describe("the global catalog index", () => {
       "tshirt:STB_shirt",
       "tshirt:Brazilian_shirt",
       "tshirt:Shirt_Solana",
-      "back:Jetpack",
       "back:Seeker_backpack",
       "accessory:Trader_shades",
       "hat:Cap_Sol",
