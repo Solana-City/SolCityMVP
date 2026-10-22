@@ -63,12 +63,16 @@ export default function DonationPanel({ onClose }: { onClose: () => void }) {
 
   // Hands the address to the send panel already filled in, on real mainnet
   // SOL: a donation paid in practice devnet SOL would reach nobody.
+  //
+  // No onClose here. The event sets the window's action to the transfer one,
+  // and this window IS that window, so closing it in the same click would
+  // batch with that write and null it: the send panel never opened. The event
+  // swaps what the frame draws, which is the close we want.
   const donate = useCallback(() => {
     window.dispatchEvent(new CustomEvent(SEND_TOKENS_EVENT, {
       detail: { wallet: DONATION_WALLET, name: "Project team", token: "sol" },
     }));
-    onClose();
-  }, [onClose]);
+  }, []);
 
   return (
     <div style={{ fontFamily: '"Press Start 2P", monospace' }}>
