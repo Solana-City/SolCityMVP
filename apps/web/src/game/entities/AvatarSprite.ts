@@ -661,7 +661,9 @@ export class AvatarSprite {
       const textureKey = category === "hair"
         ? acquireHairTexture(
             this.scene, variant.textureKey, this.currentLoadout.hairColor,
-            hatVariant?.textureKey, hatVariant?.hatCoverage,
+            // An effect floats over the head and hides nothing, so it casts no mask.
+            hatVariant?.effect ? undefined : hatVariant?.textureKey,
+            hatVariant?.effect ? undefined : hatVariant?.hatCoverage,
           )
         : variant.textureKey;
       if (category === "hair" && textureKey !== variant.textureKey) {

@@ -104,7 +104,7 @@ function AvatarPreview({ loadout, facing = "down", scale = 3 }: { loadout: Loado
       if (hatOff && hairOff && hatVariantVal?.hatCoverage === "suppress") {
         const hairCtx = hairOff.getContext("2d")!;
         hairCtx.clearRect(0, rowY, SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT);
-      } else if (hatOff && hairOff) {
+      } else if (hatOff && hairOff && !hatVariantVal?.effect) {
         const hatCtx = hatOff.getContext("2d")!;
         const hatData = hatCtx.getImageData(0, rowY, SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT).data;
         const hairCtx = hairOff.getContext("2d")!;

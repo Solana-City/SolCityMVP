@@ -140,7 +140,7 @@ export function drawAvatarPortrait(canvas: HTMLCanvasElement, loadout: Loadout, 
     const hairOff = offByCat.get("hair");
     if (hatOff && hairOff && hatVariant?.hatCoverage === "suppress") {
       hairOff.getContext("2d")!.clearRect(0, rowY, SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT);
-    } else if (hatOff && hairOff) {
+    } else if (hatOff && hairOff && !hatVariant?.effect) {
       const hatData = hatOff.getContext("2d")!.getImageData(0, rowY, SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT).data;
       const hairCtx = hairOff.getContext("2d")!;
       const hairData = hairCtx.getImageData(0, rowY, SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT);
