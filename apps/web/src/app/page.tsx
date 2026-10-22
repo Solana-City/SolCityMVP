@@ -240,8 +240,9 @@ export default function Home() {
     const onSend = (e: Event) => {
       const { wallet, name, token } = (e as CustomEvent<{ wallet: string; name?: string; token?: string }>).detail ?? {};
       if (!wallet) return;
-      // `token` is set by the Donation Manager, who needs real SOL rather than
-      // the practice default. Unset everywhere else, which keeps that default.
+      // `token` names a catalog entry to open on instead of the practice
+      // default. No caller sets it today (the Donation Manager has its own
+      // screen), and unset is what keeps that default.
       setActiveAction({ type: "transfer", label: "Send tokens", recipient: wallet, recipientName: name, token });
     };
     window.addEventListener(SEND_TOKENS_EVENT, onSend);
