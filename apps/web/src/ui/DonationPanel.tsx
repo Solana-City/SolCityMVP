@@ -247,7 +247,8 @@ function DonateScreen({ onBack, onClose }: { onBack: () => void; onClose: () => 
 
   const send = useCallback(async () => {
     if (!publicKey || !amount || !SOL) return;
-    const { buildSendTransfer, normalizeAmount } = await import("@/game/solana/sendTokens");
+    const { buildSendTransfer, normalizeAmount, sendAndConfirmTransfer, awaitTransfer } =
+      await import("@/game/solana/sendTokens");
     const { PublicKey } = await import("@solana/web3.js");
 
     const clean = normalizeAmount(amount);
@@ -265,7 +266,7 @@ function DonateScreen({ onBack, onClose }: { onBack: () => void; onClose: () => 
       status: "pending",
     });
     try {
-      const { tx, connection: conn } = await buildSendTransfer({
+      const { tx, connection: conn, lastValidBlockHeight } = await buildSendTransfer({
         token: SOL,
         devnetConnection: connection,
         from: publicKey,
@@ -275,10 +276,20 @@ function DonateScreen({ onBack, onClose }: { onBack: () => void; onClose: () => 
       // Sign here and send over the token's own cluster, for the reason the
       // send window gives: a wallet's own sign-and-send broadcasts on whatever
       // network the wallet is set to, and this one has to be mainnet.
-      const sig = signTransaction
-        ? await conn.sendRawTransaction((await signTransaction(tx)).serialize())
-        : await sendTransaction(tx, conn);
-      await conn.confirmTransaction(sig, "confirmed");
+      // Signed here and broadcast by us, which is also what lets the send be
+      // repeated until it lands. The wallet's own sign-and-send gives back a
+      // signature and no way to push it again.
+      let sig: string;
+      if (signTransaction) {
+        sig = await sendAndConfirmTransfer({
+          connection: conn,
+          signed: await signTransaction(tx),
+          lastValidBlockHeight,
+        });
+      } else {
+        sig = await sendTransaction(tx, conn);
+        await awaitTransfer(conn, sig, lastValidBlockHeight);
+      }
       setResult({ signature: sig });
       setStatus("done");
       transactionLog.markConfirmed(logEntry.id, sig);
@@ -409,8 +420,13 @@ function DonateScreen({ onBack, onClose }: { onBack: () => void; onClose: () => 
         SOL on mainnet. Real money leaves your wallet.
       </div>
 
+      {/* wordBreak, because an RPC error carries an 88-character signature
+          with no spaces in it and the window grew a scroll bar sideways. */}
       {status === "error" && result?.error && (
-        <div style={{ fontSize: 8, color: "#ff4444", textAlign: "center", marginBottom: 10, lineHeight: 1.6 }}>
+        <div style={{
+          fontSize: 8, color: "#ff4444", textAlign: "center", marginBottom: 10,
+          lineHeight: 1.6, wordBreak: "break-word", overflowWrap: "anywhere",
+        }}>
           {result.error}
         </div>
       )}

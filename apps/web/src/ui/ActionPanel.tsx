@@ -567,7 +567,8 @@ function TransferPanel({ onClose, to, toName, token: initialToken, tabs }: {
   const handleSend = useCallback(async () => {
     if (!publicKey || !recipient || !amount) return;
     const { isValidAddress } = await import("@/game/solana/transfer");
-    const { buildSendTransfer, sendTokenLabel, normalizeAmount } = await import("@/game/solana/sendTokens");
+    const { buildSendTransfer, sendTokenLabel, normalizeAmount, sendAndConfirmTransfer, awaitTransfer } =
+      await import("@/game/solana/sendTokens");
     const { PublicKey } = await import("@solana/web3.js");
 
     if (!isValidAddress(recipient)) { setResult({ error: "Invalid Solana address" }); setStatus("error"); return; }
@@ -587,7 +588,7 @@ function TransferPanel({ onClose, to, toName, token: initialToken, tabs }: {
     try {
       // The amount goes in as typed: buildSendTransfer converts it without a
       // float, so 0.1 is exactly 0.1 and not the nearest double.
-      const { tx, connection: conn } = await buildSendTransfer({
+      const { tx, connection: conn, lastValidBlockHeight } = await buildSendTransfer({
         token,
         devnetConnection: connection,
         from: publicKey,
@@ -603,10 +604,20 @@ function TransferPanel({ onClose, to, toName, token: initialToken, tabs }: {
       // cluster the player did not choose. Signing involves no network, so
       // this keeps the cluster ours. (The sendTransaction fallback is for
       // wallets that only ever sign-and-send; it is the old behaviour.)
-      const sig = signTransaction
-        ? await conn.sendRawTransaction((await signTransaction(tx)).serialize())
-        : await sendTransaction(tx, conn);
-      await conn.confirmTransaction(sig, "confirmed");
+      // Broadcast and waited on over HTTP, with the send repeated until it
+      // lands: confirmTransaction's websocket wait used to give up after 30
+      // seconds saying it did not know what had happened. See awaitTransfer.
+      let sig: string;
+      if (signTransaction) {
+        sig = await sendAndConfirmTransfer({
+          connection: conn,
+          signed: await signTransaction(tx),
+          lastValidBlockHeight,
+        });
+      } else {
+        sig = await sendTransaction(tx, conn);
+        await awaitTransfer(conn, sig, lastValidBlockHeight);
+      }
       setResult({ signature: sig });
       setStatus("done");
       transactionLog.markConfirmed(logEntry.id, sig);
