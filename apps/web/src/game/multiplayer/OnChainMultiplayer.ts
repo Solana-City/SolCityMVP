@@ -139,11 +139,39 @@ const ENDPOINTS = {
  *
  * `delegate` takes this key as an optional remaining account and writes it into
  * the delegation record, which turns the accident into the contract. Passing it
- * waits on the program redeploy (see REDEPLOY_CHECKLIST.md); the deployed build
- * ignores extra accounts and would keep writing None.
+ * waits on the program redeploy; the deployed build ignores extra accounts and
+ * would keep writing None.
+ *
+ * ── US, chosen 2026-10-22, and it is a GLOBAL choice ──────────────────────
+ *
+ * A transaction cannot span two validators, so everyone delegated elsewhere is
+ * in a different world: invisible to the discovery sweep, unable to kick the
+ * shared ball, unable to duel. One validator is one city.
+ *
+ * Three exist on devnet, measured from Asia with the handshake excluded:
+ *   devnet-as  MAS1Dt9qreoRMQ14YQuhg8UTZMMzDdKhmkZMECCzk57   ~95ms
+ *   devnet-us  MUS3hc9TCw4cGC12vHNoYcCGzJG1txjgQLZWVoeNHNd   ~278ms
+ *   devnet-eu  MEUGGrYPxKk17hCr7wpT6s8dtNokZj5U2L57vjYMS8e   ~315ms
+ *
+ * US wins on worst case, which is the only number that matters for a single
+ * shared world: no region is worse than ~280ms against ~315ms for either of
+ * the others. It is also the right answer for a Brazil-heavy player base,
+ * ~120ms against ~300ms on Asia.
+ *
+ * ── Changing this alone does NOTHING, and that is deliberate ──────────────
+ *
+ * Two other things have to move with it, on deploy day, in this order:
+ *   1. ENDPOINTS.ephemeral, which still points at devnet.magicblock.app (Asia).
+ *      Delegating to US while reading Asia means nobody sees anybody.
+ *   2. The call site, which does not pass this key yet.
+ *
+ * The endpoint is NOT safe to move early: PDAs already delegated with None
+ * live on Asia, and pointing reads at US would lose them until they are
+ * re-delegated. The player_v3 reset re-delegates everyone anyway, which is
+ * what makes deploy day the moment to do all three.
  */
 export const EPHEMERAL_VALIDATOR_IDENTITY =
-  "MAS1Dt9qreoRMQ14YQuhg8UTZMMzDdKhmkZMECCzk57";
+  "MUS3hc9TCw4cGC12vHNoYcCGzJG1txjgQLZWVoeNHNd";
 
 // Minimum byte length of a CURRENT-layout (player_v2) PlayerState account.
 // The v2 account is ~505 bytes (adds loadout/expression/chat over v1's 133).
