@@ -274,7 +274,7 @@ export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
     // sheet is 24 cells wide and the mask reads the first four as a walk.
     { id: "Halo", name: "Halo", textureKey: "pd-hat-Halo", file: "hat/Halo.png",
       hatCoverage: "band", unlockVia: "quest", unlockHint: "Test item",
-      effect: { frames: 24, fps: 20 } },
+      effect: { frames: 24, fps: 24 } },
   ],
 };
 
