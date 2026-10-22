@@ -93,6 +93,7 @@ describe("the global catalog index", () => {
       "hat:Seeker_hat",
       "hat:Pumpkin_head",
       "hat:Miner_hat",
+      "hat:Halo",
     ]);
   });
 

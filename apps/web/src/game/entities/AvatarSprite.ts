@@ -15,6 +15,7 @@ import {
   SPRITE_ROWS,
   LAYER_ORDER,
   LayerCategory,
+  LayerVariant,
   Loadout,
   DEFAULT_LOADOUT,
   getVariant,
@@ -301,6 +302,8 @@ export class AvatarSprite {
   private scene: Phaser.Scene;
   private container: Phaser.GameObjects.Container;
   private layerSprites: Map<LayerCategory, Phaser.GameObjects.Sprite> = new Map();
+  /** Layers drawn from an effect sheet: they loop on their own, walking or not. */
+  private effectSprites: Set<Phaser.GameObjects.Sprite> = new Set();
   /** Single silhouette sprite mirrored under the feet — see characterShadow. */
   private shadowSprite: Phaser.GameObjects.Sprite | null = null;
   private shadowTextureKey: string | null = null;
@@ -576,6 +579,8 @@ export class AvatarSprite {
     this.walkSynced = false;
     const row = DIRECTION_ROW[this.currentDirection];
     for (const sprite of this.animatedSprites()) {
+      // An effect keeps looping while the character stands still.
+      if (this.effectSprites.has(sprite)) continue;
       sprite.anims.stop();
       sprite.setFrame(row * SPRITE_COLS);
     }
@@ -637,7 +642,7 @@ export class AvatarSprite {
 
     // Resolved first, drawn second: the merge needs the whole stack before
     // any sprite exists.
-    const resolved: { category: LayerCategory; textureKey: string }[] = [];
+    const resolved: { category: LayerCategory; textureKey: string; effect?: LayerVariant["effect"] }[] = [];
 
     for (const category of LAYER_ORDER) {
       const variant = getVariant(category, this.currentLoadout[category]);
@@ -663,10 +668,12 @@ export class AvatarSprite {
         this.derivedHairKey = textureKey;
       }
 
-      resolved.push({ category, textureKey });
+      resolved.push({ category, textureKey, effect: variant.effect });
     }
+    // Effects are drawn last so they sit above every layer, a hat included.
+    resolved.sort((a, b) => Number(!!a.effect) - Number(!!b.effect));
 
-    for (const { category, textureKey } of resolved) {
+    for (const { category, textureKey, effect } of resolved) {
       const sprite = this.scene.add.sprite(0, FOOT_Y_LOCAL, textureKey);
       sprite.setOrigin(0.5, 1.0);
 
@@ -683,7 +690,8 @@ export class AvatarSprite {
       if (!this.awake) sprite.setActive(false);
       this.container.add(sprite);
       this.layerSprites.set(category, sprite);
-      this.registerAnimations(textureKey);
+      if (effect) this.effectSprites.add(sprite);
+      this.registerAnimations(textureKey, effect);
     }
 
     this.buildShadow();
@@ -694,7 +702,11 @@ export class AvatarSprite {
     // Set initial idle frame
     const row = DIRECTION_ROW[this.currentDirection];
     for (const sprite of this.animatedSprites()) {
-      sprite.setFrame(row * SPRITE_COLS);
+      if (this.effectSprites.has(sprite)) {
+        sprite.anims.play(`${sprite.texture.key}-walk-${this.currentDirection}`);
+      } else {
+        sprite.setFrame(row * SPRITE_COLS);
+      }
     }
   }
 
@@ -709,7 +721,7 @@ export class AvatarSprite {
     // does, and every pedestrian in the city reuses the one texture.
     const layerKeys = this.sharedShadow
       ? [getVariant("skin", DEFAULT_LOADOUT.skin)?.textureKey].filter((k): k is string => !!k)
-      : [...this.layerSprites.values()].map((s) => s.texture.key);
+      : [...this.layerSprites.values()].filter((s) => !this.effectSprites.has(s)).map((s) => s.texture.key);
     if (layerKeys.length === 0) return;
     const silhouette = acquireSilhouetteTexture(
       this.scene, layerKeys, SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT,
@@ -763,6 +775,7 @@ export class AvatarSprite {
       sprite.destroy();
     }
     this.layerSprites.clear();
+    this.effectSprites.clear();
 
     if (this.shadowSprite) {
       this.container.remove(this.shadowSprite);
@@ -780,8 +793,11 @@ export class AvatarSprite {
     this.derivedHairKey = null;
   }
 
-  private registerAnimations(textureKey: string): void {
+  private registerAnimations(textureKey: string, effect?: LayerVariant["effect"]): void {
     const directions: Direction[] = ["down", "left", "right", "up"];
+    // A walk sheet has SPRITE_COLS cells per row; an effect sheet has its own
+    // count, and loops at its own speed.
+    const cols = effect?.frames ?? SPRITE_COLS;
 
     for (const dir of directions) {
       const row = DIRECTION_ROW[dir];
@@ -791,10 +807,10 @@ export class AvatarSprite {
         this.scene.anims.create({
           key: walkKey,
           frames: this.scene.anims.generateFrameNumbers(textureKey, {
-            start: row * SPRITE_COLS,
-            end: row * SPRITE_COLS + SPRITE_COLS - 1,
+            start: row * cols,
+            end: row * cols + cols - 1,
           }),
-          frameRate: 8,
+          frameRate: effect?.fps ?? 8,
           repeat: -1,
         });
       }

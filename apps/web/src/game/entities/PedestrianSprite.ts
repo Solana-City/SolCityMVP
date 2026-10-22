@@ -56,7 +56,8 @@ export function makePedestrianLoadout(seed: number): Loadout {
   // rest of the pool (was uniform — Ninja stood out too often at ~1/13).
   const hat = (() => {
     if (rng() >= 0.50) return undefined;
-    const allHats = getEnabledVariants("hat");
+    // An effect sheet is animated art for the player, never a pedestrian's hat.
+    const allHats = getEnabledVariants("hat").filter(h => !h.effect);
     if (allHats.some(h => h.id === "Cap_blue") && rng() < 0.03) return "Cap_blue";
     if (allHats.some(h => h.id === "Ninja") && rng() < 0.04) return "Ninja";
     const commonHats = allHats.filter(h => h.id !== "Cap_blue" && h.id !== "Ninja");

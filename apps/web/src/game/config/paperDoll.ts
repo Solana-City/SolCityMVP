@@ -82,6 +82,14 @@ export interface LayerVariant {
    * stop being obtainable. See game/config/packs.ts.
    */
   season?: number;
+  /**
+   * Marks an animated EFFECT sheet (halo, flames, sparkles) instead of a walk
+   * sheet: still 64x64 cells and the same four direction rows, but each row
+   * holds `frames` cells that loop at `fps` on their own, walking or standing.
+   * It is drawn above every other layer and left out of the shadow.
+   * Never given to a pedestrian — see PedestrianSprite.
+   */
+  effect?: { frames: number; fps: number };
 }
 
 /**
@@ -258,6 +266,15 @@ export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
     { id: "Miner_hat", name: "Miner's Hat", textureKey: "pd-hat-Miner_hat",
       file: "hat/Miner_hat.png", unlockVia: "quest",
       unlockHint: "Win ORE out of a claim" },
+    // First animated effect sheet: 24 frames per direction row. A TEST item
+    // for the effect pipeline, not on sale: unlockVia keeps it out of the pool.
+    // It is a hat only because hat is the LAST category in the catalog, so it
+    // appends to the quest block instead of renumbering the hats after it.
+    // "band" so the hair mask erases only under the halo's own ink: the
+    // sheet is 24 cells wide and the mask reads the first four as a walk.
+    { id: "Halo", name: "Halo", textureKey: "pd-hat-Halo", file: "hat/Halo.png",
+      hatCoverage: "band", unlockVia: "quest", unlockHint: "Test item",
+      effect: { frames: 24, fps: 12 } },
   ],
 };
 
