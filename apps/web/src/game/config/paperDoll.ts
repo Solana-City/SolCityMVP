@@ -274,7 +274,10 @@ export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
     // sheet is 24 cells wide and the mask reads the first four as a walk.
     { id: "Halo", name: "Halo", textureKey: "pd-hat-Halo", file: "hat/Halo.png",
       hatCoverage: "band", unlockVia: "quest", unlockHint: "Test item",
-      effect: { frames: 24, fps: 24 } },
+      // 30, not the sheet's own 24: the loop idles at 31fps and runs at 60+
+      // otherwise, and an animation advances one cell per tick at most, so a
+      // rate that does not divide those unevenly holds some cells twice.
+      effect: { frames: 24, fps: 30 } },
   ],
 };
 
