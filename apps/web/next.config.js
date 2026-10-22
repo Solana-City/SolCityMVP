@@ -5,6 +5,22 @@ const nextConfig = {
   reactStrictMode: false,
   // Phaser 3 is CommonJS; transpiling it removes the ESM/CJS interop warning.
   transpilePackages: ["phaser"],
+  // Baseline response headers. A full Content-Security-Policy is left out on
+  // purpose: Phaser, the wallet adapters and the RPC hosts make it a project of
+  // its own, and a wrong one blanks the game. SAMEORIGIN stops another site
+  // from framing the city around a click; the game never frames itself.
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: [
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          { key: "X-Frame-Options", value: "SAMEORIGIN" },
+        ],
+      },
+    ];
+  },
   webpack: (config) => {
     // Polyfills for Solana/wallet-adapter packages in browser bundles.
     // crypto and stream are needed by @solana/web3.js; buffer by borsh.
