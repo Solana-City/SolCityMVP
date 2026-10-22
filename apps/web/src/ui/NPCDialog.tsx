@@ -29,7 +29,7 @@ const CHAR_DELAY = 22;
 interface NPCDialogProps {
   npc: NPCDefinition | null;
   onClose: () => void;
-  onAction: (action: NPCAction) => void;
+  onAction: (action: NPCAction, npc: NPCDefinition) => void;
 }
 
 /**
@@ -121,7 +121,7 @@ function NPCDialogBody({ npc, closing, onClose, onAction }: NPCDialogProps & { n
     if (lineIndex < npc.dialog.length - 1) {
       setLineIndex((i) => i + 1);
     } else {
-      onAction(npc.action);
+      onAction(npc.action, npc);
     }
   }, [npc, closing, lineIndex, isTyping, onAction]);
 
@@ -252,7 +252,7 @@ function NPCDialogBody({ npc, closing, onClose, onAction }: NPCDialogProps & { n
   // text run the full width underneath.
   const actionButton = (
     <button
-      onClick={(e) => { e.stopPropagation(); onAction(npc.action); }}
+      onClick={(e) => { e.stopPropagation(); onAction(npc.action, npc); }}
       {...actionFeel.handlers}
       style={chamferBox(8, {
         background:  color,
