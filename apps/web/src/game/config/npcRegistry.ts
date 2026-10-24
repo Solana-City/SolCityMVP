@@ -240,11 +240,16 @@ const NPC_SEEDS: NPCSeed[] = [
     id: "dombra-artist",
     name: "Dombra Artist",
     role: "Superteam Kazakhstan",
-    // PROVISIONAL: the empty grass plot in the north west, a few tiles from
-    // DOM, on a tile that carries no bush of its own. She moves to the yurt
-    // once the Superteam Kazakhstan area is drawn and placed on the map.
-    tileX: 30,
-    tileY: 22,
+    // At the yurt's door. BuildSTKZ runs cols 26-32 / rows 14-20, solid across
+    // its bottom three rows, so the south face is row 20 and she stands on the
+    // clear ground directly below it, centred on the seven columns.
+    //
+    // tileY is the row ABOVE the one she stands on: findNpcSpawn starts its
+    // scan at tileY + 1, so 20 here puts her on (29, 21). That also keeps her
+    // world Y below the yurt layer's, which is what draws her in FRONT of the
+    // doorway rather than behind the wall.
+    tileX: 29,
+    tileY: 20,
     // One page: the greeting in her own language, who she plays for, and the
     // invitation. Same shape as Kuka's, which is the other Superteam lead who
     // sends players to a timeline rather than into a panel.
