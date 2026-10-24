@@ -49,6 +49,9 @@ export const UNLOCKS_SEED = "unlocks";
 /** Seed of the one PackConfig account: what the city sells, and on what terms. */
 export const PACK_CONFIG_SEED = "pack_config";
 
+/** Seed of a season's drop table: ["season_drops", season as u16 LE]. */
+export const SEASON_DROPS_SEED = "season_drops";
+
 /**
  * Devnet USDC. The mint prices are denominated in lives on the config account,
  * not here; this is the one the client funds a test wallet with and the one
@@ -151,6 +154,23 @@ export function derivePackConfigPDA(): [PublicKey, number] {
   );
 }
 
+/**
+ * A season's drop table: which catalog indices it can drop, by rarity.
+ *
+ * One account per season because it has to stop changing when the season
+ * opens: the VRF callback reads it after the money is taken, so a table that
+ * could still be rewritten would resolve a pack against whatever the admin
+ * last wrote. See SeasonDrops in the program.
+ */
+export function deriveSeasonDropsPDA(season: number): [PublicKey, number] {
+  const seed = Buffer.alloc(2);
+  seed.writeUInt16LE(season, 0);
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from(SEASON_DROPS_SEED), seed],
+    SOL_CITY_PROGRAM_ID,
+  );
+}
+
 export function deriveUnlockPDA(
   wallet: PublicKey,
   programId: PublicKey = SOL_CITY_PROGRAM_ID
@@ -198,31 +218,33 @@ export interface UnlockState {
  * callback must not be able to fail: the money is gone by then. For the client
  * it means the reveal can show the odds the player actually bought, even if an
  * admin has since changed that pack.
+ *
+ * The index lists are NOT snapshotted, only the season that names them. They
+ * live in a SeasonDrops account that stops being writable when its season
+ * opens, so there is nothing to protect them from.
  */
 export interface PendingDraw {
   packId: number;
   size: number;
   /** Basis points per rarity, in RARITY_ORDER. Adds up to 10000. */
   weights: number[];
-  /** First catalog index of each rarity, for this pack's season. */
-  start: number[];
-  /** How many indices each rarity holds. Zero means the draw falls past it. */
-  len: number[];
+  /** The season whose drop table resolves this pack. */
+  season: number;
 }
 
 /**
  * Decodes an UnlockState account. Layout after the 8-byte discriminator:
  *   authority Pubkey(32) | owned Vec<u16> | minted Vec<u16> | pending bool(1)
- *   | draw PendingDraw(26)
+ *   | draw PendingDraw(12)
  *
- * PendingDraw is packId u8 | size u8 | weights [u16;4] | start [u16;4]
- * | len [u16;4]. Fixed arrays carry no length prefix.
+ * PendingDraw is packId u8 | size u8 | weights [u16;4] | season u16. A fixed
+ * array carries no length prefix.
  *
  * A Vec is Anchor-serialised as a 4-byte little-endian length then the items,
  * so the account's size follows what the wallet owns rather than how big the
  * catalog grew. It used to be two fixed bitsets over the whole catalog.
  */
-export const PENDING_DRAW_BYTES = 1 + 1 + RARITY_COUNT * 2 * 3;
+export const PENDING_DRAW_BYTES = 1 + 1 + RARITY_COUNT * 2 + 2;
 
 export function decodeUnlockState(data: Uint8Array): UnlockState | null {
   if (data.length < 8 + 32 + 4 + 4 + 1 + PENDING_DRAW_BYTES) return null;
@@ -248,18 +270,13 @@ export function decodeUnlockState(data: Uint8Array): UnlockState | null {
 
   const packId = buf.readUInt8(o); o += 1;
   const size = buf.readUInt8(o); o += 1;
-  const readRarityArray = (): number[] => {
-    const out: number[] = [];
-    for (let i = 0; i < RARITY_COUNT; i++) { out.push(buf.readUInt16LE(o)); o += 2; }
-    return out;
-  };
-  const weights = readRarityArray();
-  const start = readRarityArray();
-  const len = readRarityArray();
+  const weights: number[] = [];
+  for (let i = 0; i < RARITY_COUNT; i++) { weights.push(buf.readUInt16LE(o)); o += 2; }
+  const season = buf.readUInt16LE(o); o += 2;
 
   return {
     authority, owned, minted, pending,
-    draw: { packId, size, weights, start, len },
+    draw: { packId, size, weights, season },
   };
 }
 

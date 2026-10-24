@@ -27,7 +27,7 @@ import {
 import {
   SOL_CITY_PROGRAM_ID, DELEGATION_PROGRAM_ID, derivePlayerPDA, deriveHuntPDA,
   deriveUnlockPDA, VRF_QUEUE_DEVNET, VRF_PROGRAM_ID, deriveVrfIdentityPDA,
-  derivePackConfigPDA, USDC_MINT_DEVNET,
+  derivePackConfigPDA, deriveSeasonDropsPDA, USDC_MINT_DEVNET,
   deriveFriendshipPDA, deriveFriendRequestPDA,
   sortPair, ACHIEVEMENT_BITS,
 } from "./program";
@@ -510,6 +510,10 @@ export function buildInitUnlockStateIx(authority: PublicKey): TransactionInstruc
  * price, the size and the rarity ranges off PackConfig, so the only thing the
  * client still chooses is which pack.
  *
+ * `season` is the one on PackConfig.packs[].season, NOT the clock. A pack
+ * bought in season 1 and opened in season 3 is still a season 1 pack, and the
+ * program address-checks the drop table against it.
+ *
  * `treasuryTokenAccount` is the one named on PackConfig, and the program
  * checks it: pass what you read, not what you expect. Callers that already
  * fetched the config to show prices have it.
@@ -517,7 +521,7 @@ export function buildInitUnlockStateIx(authority: PublicKey): TransactionInstruc
  * The UnlockState PDA must already exist, so send `buildInitUnlockStateIx`
  * first, in the same transaction, when the wallet has never opened a pack.
  *
- * ACCOUNTS: all eleven are fixed and come from the Rust struct, in this order.
+ * ACCOUNTS: all twelve are fixed and come from the Rust struct, in this order.
  * This used to send five and leave a `vrfAccounts` hole to be filled "from the
  * deployed IDL", on the assumption that the program used the `#[vrf]` macro
  * and let it append its own plumbing. It does not: Solana Playground cannot
@@ -528,6 +532,8 @@ export function buildInitUnlockStateIx(authority: PublicKey): TransactionInstruc
 export function buildOpenBoosterIx(params: {
   payer: PublicKey;
   packId: number;
+  /** From PackConfig.packs[].season, not the clock. */
+  season: number;
   clientSeed: Uint8Array; // exactly 32 bytes
   /** From PackConfig.treasuryTokenAccount. The program address-checks it. */
   treasuryTokenAccount: PublicKey;
@@ -535,12 +541,13 @@ export function buildOpenBoosterIx(params: {
    *  associated account for devnet USDC. */
   buyerTokenAccount?: PublicKey;
 }): TransactionInstruction {
-  const { payer, packId, clientSeed, treasuryTokenAccount } = params;
+  const { payer, packId, season, clientSeed, treasuryTokenAccount } = params;
   const seed = Buffer.alloc(32);
   Buffer.from(clientSeed).copy(seed, 0, 0, 32);
 
   const [unlockPda] = deriveUnlockPDA(payer);
   const [configPda] = derivePackConfigPDA();
+  const [dropsPda] = deriveSeasonDropsPDA(season);
   const [vrfIdentity] = deriveVrfIdentityPDA();
   const buyerTokenAccount =
     params.buyerTokenAccount ??
@@ -553,6 +560,7 @@ export function buildOpenBoosterIx(params: {
       { pubkey: payer,                     isSigner: true,  isWritable: true  },
       { pubkey: unlockPda,                 isSigner: false, isWritable: true  },
       { pubkey: configPda,                 isSigner: false, isWritable: false },
+      { pubkey: dropsPda,                  isSigner: false, isWritable: false },
       { pubkey: buyerTokenAccount,         isSigner: false, isWritable: true  },
       { pubkey: treasuryTokenAccount,      isSigner: false, isWritable: true  },
       { pubkey: TOKEN_PROGRAM_ID,          isSigner: false, isWritable: false },
