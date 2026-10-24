@@ -145,7 +145,13 @@ pub const RARITY_COUNT: usize = 4;
 /// Packs the config can hold. Three exist; the rest is room to tune.
 pub const MAX_PACKS: usize = 8;
 /// Seasons the config can hold. At two to four a year this is a decade.
-pub const MAX_SEASONS: usize = 32;
+/// Seed of a season's drop table: ["season_drops", season as u16 LE].
+pub const SEASON_DROPS_SEED: &[u8] = b"season_drops";
+
+/// Most indices one rarity of one season may hold. Generous on purpose: a
+/// season is expected to run past three hundred items across all four, and the
+/// table is appended to as the art lands rather than written in one go.
+pub const MAX_SEASON_DROPS: usize = 2048;
 /// Basis points, so 0.5% legendary is expressible. Weights must sum to this.
 pub const WEIGHT_TOTAL: u16 = 10_000;
 
@@ -324,8 +330,14 @@ pub enum SolCityError {
     NotPackAdmin,
     #[msg("No room left in the pack table")]
     PackTableFull,
-    #[msg("No room left in the season table")]
-    SeasonTableFull,
+    #[msg("That season has already opened and its drop table is frozen")]
+    SeasonOpened,
+    #[msg("No such rarity")]
+    BadRarity,
+    #[msg("That rarity already holds as many indices as it can")]
+    DropsTooMany,
+    #[msg("That drop table does not belong to the season being drawn")]
+    WrongDropTable,
     #[msg("Rarity weights must add up to 10000 basis points")]
     BadWeights,
     #[msg("No pack with that id")]
@@ -1359,11 +1371,22 @@ pub mod sol_city {
         require!(def.size as usize <= BOOSTER_PACK_SIZE, SolCityError::InvalidPoolCount);
         require!(def.size > 0, SolCityError::InvalidPoolCount);
 
-        let ranges = *cfg.ranges(def.season).ok_or(SolCityError::UnknownSeason)?;
+        // The drop table has to be the one for this pack's season. Derived and
+        // compared rather than constrained in the Accounts struct, because the
+        // season is read off the config at runtime and a seeds constraint
+        // cannot see it.
+        let (expected, _) = Pubkey::find_program_address(
+            &[SEASON_DROPS_SEED, &def.season.to_le_bytes()],
+            &crate::ID,
+        );
+        require_keys_eq!(
+            ctx.accounts.drops.key(),
+            expected,
+            SolCityError::WrongDropTable
+        );
         // The season has to hold enough to fill the pack. Without this a pack
         // against an empty season would take the money and reveal nothing.
-        let supply: u32 = ranges.len.iter().map(|l| *l as u32).sum();
-        require!(supply >= def.size as u32, SolCityError::InvalidPoolCount);
+        require!(ctx.accounts.drops.total() >= def.size as usize, SolCityError::UnknownSeason);
 
         require_keys_eq!(
             ctx.accounts.treasury_token_account.key(),
@@ -1379,8 +1402,7 @@ pub mod sol_city {
                 pack_id,
                 size: def.size,
                 weights: def.weights,
-                start: ranges.start,
-                len: ranges.len,
+                season: def.season,
             };
         }
 
@@ -1457,11 +1479,21 @@ pub mod sol_city {
             caller_seed: client_seed,
             callback_program_id: crate::ID,
             callback_discriminator: instruction::CallbackOpenBooster::DISCRIMINATOR.to_vec(),
-            callback_accounts_metas: vec![VrfCallbackMeta {
-                pubkey: ctx.accounts.unlock_state.key(),
-                is_signer: false,
-                is_writable: true,
-            }],
+            callback_accounts_metas: vec![
+                VrfCallbackMeta {
+                    pubkey: ctx.accounts.unlock_state.key(),
+                    is_signer: false,
+                    is_writable: true,
+                },
+                // The season's drop table, read only. Named here so the
+                // callback gets the table that was in force at payment, and
+                // frozen by then because its season has opened.
+                VrfCallbackMeta {
+                    pubkey: ctx.accounts.drops.key(),
+                    is_signer: false,
+                    is_writable: false,
+                },
+            ],
             callback_args: vec![],
         }
         .serialize(&mut data)
@@ -1496,6 +1528,21 @@ pub mod sol_city {
         ctx: Context<CallbackOpenBooster>,
         randomness: [u8; 32],
     ) -> Result<()> {
+        // The table must be the one this pack was paid against. The oracle
+        // passes the accounts we named at request time, so this is a check on
+        // the oracle rather than on the buyer, and it is cheap enough to make
+        // anyway.
+        let (expected, _) = Pubkey::find_program_address(
+            &[SEASON_DROPS_SEED, &ctx.accounts.unlock_state.draw.season.to_le_bytes()],
+            &crate::ID,
+        );
+        require_keys_eq!(
+            ctx.accounts.drops.key(),
+            expected,
+            SolCityError::WrongDropTable
+        );
+
+        let drops = &ctx.accounts.drops;
         let unlocks = &mut ctx.accounts.unlock_state;
         let draw = unlocks.draw;
         let total: u32 = draw.weights.iter().map(|w| *w as u32).sum();
@@ -1552,15 +1599,13 @@ pub mod sol_city {
             let mut picked: Option<u16> = None;
             for rung in 0..rungs {
                 let r = ladder[rung];
-                let len = draw.len[r];
-                if len == 0 { continue; }
-                let offset = (roll(1 + rung) % len) as usize;
-                let probes = (len as usize).min(MAX_BUCKET_PROBES);
+                let list = &drops.drops[r];
+                if list.is_empty() { continue; }
+                let offset = (roll(1 + rung) as usize) % list.len();
+                let probes = list.len().min(MAX_BUCKET_PROBES);
                 let mut duplicate: Option<u16> = None;
                 for step in 0..probes {
-                    let index = draw.start[r]
-                        .checked_add(((offset + step) % len as usize) as u16)
-                        .ok_or(SolCityError::InvalidPoolCount)?;
+                    let index = list[(offset + step) % list.len()];
                     // No item twice in the same pack.
                     if picks.contains(&index) { continue; }
                     if duplicate.is_none() { duplicate = Some(index); }
@@ -1722,8 +1767,6 @@ pub mod sol_city {
         cfg.current_season = 1;
         cfg.packs = [PackDef::default(); MAX_PACKS];
         cfg.pack_count = 0;
-        cfg.seasons = [SeasonRanges::default(); MAX_SEASONS];
-        cfg.season_count = 0;
         Ok(())
     }
 
@@ -1749,36 +1792,107 @@ pub mod sol_city {
         Ok(())
     }
 
-    /// Adds a season's rarity ranges, or replaces those of a season that has
-    /// not opened yet.
+    /// Creates an empty drop table for a season that has not opened.
     ///
-    /// A closed season's ranges are never edited again, and the program
-    /// enforces that rather than trusting the operator: the indices inside
-    /// them name cosmetics that are in wallets by then.
-    pub fn upsert_season(ctx: Context<AdminPackConfig>, ranges: SeasonRanges) -> Result<()> {
-        // Every range must sit inside the enforced block and not run off the
-        // end of the index space. Checked once here rather than on every
-        // draw: the callback cannot afford to fail, so the bad range has to
-        // be refused at the only moment there is still somebody to tell.
-        for r in 0..RARITY_COUNT {
-            if ranges.len[r] == 0 { continue; }
-            require!(ranges.start[r] >= ENFORCED_FROM, SolCityError::InvalidPoolCount);
-            ranges.start[r]
-                .checked_add(ranges.len[r])
-                .ok_or(SolCityError::InvalidPoolCount)?;
+    /// Empty, because the table is filled by `append_season_drops` as the art
+    /// lands. Nobody has to know how many of each rarity a season will hold
+    /// before it is started, which is the whole reason this is a list and not
+    /// a range.
+    pub fn init_season_drops(ctx: Context<InitSeasonDrops>, season: u16) -> Result<()> {
+        require!(season > ctx.accounts.config.current_season, SolCityError::SeasonOpened);
+        let drops = &mut ctx.accounts.drops;
+        drops.season = season;
+        drops.drops = [Vec::new(), Vec::new(), Vec::new(), Vec::new()];
+        Ok(())
+    }
+
+    /// Adds catalog indices to one rarity of a season that has not opened.
+    ///
+    /// Append, and callable as often as needed: a transaction holds a few
+    /// hundred indices, a season holds more, and in practice the list is built
+    /// over weeks as items are drawn and named. The admin funds the bytes.
+    ///
+    /// The gate is `season > current_season`, which is what freezes a table
+    /// rather than a flag somebody has to remember to set. `set_current_season`
+    /// only moves forward, so a season that has opened can never be edited
+    /// again, and the pending pack pointing at it cannot be rewritten under.
+    pub fn append_season_drops(
+        ctx: Context<EditSeasonDrops>,
+        rarity: u8,
+        indices: Vec<u16>,
+    ) -> Result<()> {
+        require!(
+            ctx.accounts.drops.season > ctx.accounts.config.current_season,
+            SolCityError::SeasonOpened
+        );
+        let r = rarity as usize;
+        require!(r < RARITY_COUNT, SolCityError::BadRarity);
+
+        // Every index must name a slot the program actually enforces. Checked
+        // here because the callback cannot afford to: this is the last moment
+        // there is somebody to return an error to.
+        for index in indices.iter() {
+            require!(*index >= ENFORCED_FROM, SolCityError::InvalidPoolCount);
         }
 
-        let cfg = &mut ctx.accounts.config;
-        require!(ranges.season >= cfg.current_season, SolCityError::WrongSeason);
-
-        let count = cfg.season_count as usize;
-        if let Some(slot) = cfg.seasons[..count].iter_mut().find(|r| r.season == ranges.season) {
-            *slot = ranges;
-            return Ok(());
+        {
+            let drops = &ctx.accounts.drops;
+            require!(
+                drops.drops[r].len() + indices.len() <= MAX_SEASON_DROPS,
+                SolCityError::DropsTooMany
+            );
         }
-        require!(count < MAX_SEASONS, SolCityError::SeasonTableFull);
-        cfg.seasons[count] = ranges;
-        cfg.season_count = (count + 1) as u8;
+
+        // Grow first, funded by the admin, then write.
+        let needed = {
+            let drops = &ctx.accounts.drops;
+            let mut counts = [0usize; RARITY_COUNT];
+            for i in 0..RARITY_COUNT { counts[i] = drops.drops[i].len(); }
+            counts[r] += indices.len();
+            SeasonDrops::size_for(counts)
+        };
+        let info = ctx.accounts.drops.to_account_info();
+        if info.data_len() < needed {
+            let rent = SolanaRent::get()?;
+            let topup = rent.minimum_balance(needed).saturating_sub(info.lamports());
+            if topup > 0 {
+                invoke(
+                    &system_instruction::transfer(ctx.accounts.admin.key, info.key, topup),
+                    &[
+                        ctx.accounts.admin.to_account_info(),
+                        info.clone(),
+                        ctx.accounts.system_program.to_account_info(),
+                    ],
+                )?;
+            }
+            info.realloc(needed, false)?;
+        }
+
+        // Sorted and deduplicated, so the same index cannot be added twice and
+        // the list reads the same however it was built up.
+        let drops = &mut ctx.accounts.drops;
+        for index in indices {
+            if let Err(at) = drops.drops[r].binary_search(&index) {
+                drops.drops[r].insert(at, index);
+            }
+        }
+        Ok(())
+    }
+
+    /// Empties one rarity of a season that has not opened.
+    ///
+    /// Here because the rarities are still being decided: an item that turns
+    /// out to be rare rather than uncommon has to be able to move, and an
+    /// append-only list cannot move anything. The account keeps its size,
+    /// which costs nothing and saves funding the bytes again.
+    pub fn clear_season_drops(ctx: Context<EditSeasonDrops>, rarity: u8) -> Result<()> {
+        require!(
+            ctx.accounts.drops.season > ctx.accounts.config.current_season,
+            SolCityError::SeasonOpened
+        );
+        let r = rarity as usize;
+        require!(r < RARITY_COUNT, SolCityError::BadRarity);
+        ctx.accounts.drops.drops[r].clear();
         Ok(())
     }
 
@@ -2217,6 +2331,9 @@ pub struct OpenBooster<'info> {
     /// never writes the table.
     #[account(seeds = [PACK_CONFIG_SEED], bump)]
     pub config: Account<'info, PackConfig>,
+    /// The season's drop table. Address-checked against the pack's season in
+    /// the instruction body, since a seeds constraint cannot read the config.
+    pub drops: Account<'info, SeasonDrops>,
     /// CHECK: the buyer's token account. Its mint is pinned by the Token
     /// program, which refuses a Transfer whose source and destination mints
     /// differ, and the destination is the one named in the config.
@@ -2256,6 +2373,9 @@ pub struct CallbackOpenBooster<'info> {
         bump,
     )]
     pub unlock_state: Account<'info, UnlockState>,
+    /// The table the pack was paid against, named at request time and frozen
+    /// since its season opened. Address-checked in the body.
+    pub drops: Account<'info, SeasonDrops>,
 }
 
 /// Creates a wallet's UnlockState, once. Separate from the instructions that
@@ -2332,17 +2452,19 @@ pub struct UnlockState {
 /// somebody has already bought. The odds posted when they paid are the odds
 /// they get.
 ///
-/// Twenty-six bytes per wallet, once.
+/// Twelve bytes per wallet, once. The odds are copied; the index lists are
+/// not, because they live in an account that can no longer change.
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, InitSpace, Default)]
 pub struct PendingDraw {
     pub pack_id: u8,
     pub size: u8,
     /// Basis points per rarity, in RARITY_ORDER (common first).
     pub weights: [u16; RARITY_COUNT],
-    /// First catalog index of each rarity for this pack's season.
-    pub start: [u16; RARITY_COUNT],
-    /// How many indices each rarity holds. Zero means the draw falls past it.
-    pub len: [u16; RARITY_COUNT],
+    /// Which season's drop table resolves this pack. Two bytes rather than the
+    /// table's 32-byte address: the callback re-derives the PDA and compares,
+    /// which costs one find_program_address per pack instead of thirty bytes
+    /// on every wallet forever.
+    pub season: u16,
 }
 
 impl UnlockState {
@@ -2397,21 +2519,63 @@ pub struct PackDef {
     pub enabled: bool,
 }
 
-/// Where each rarity sits in the catalog, for one season.
+/// What one season can drop, by rarity.
 ///
-/// A range rather than a rarity stamped on every index: the pool is ordered by
-/// rarity within a season, so four (start, len) pairs say everything and cost
-/// nothing to read. Appended whole when a season opens, never edited after it
-/// closes, because an index that moves invalidates every unlock granted
-/// against it.
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, InitSpace, Default)]
-pub struct SeasonRanges {
+/// ── Why a list per rarity and not a rarity per index ─────────────────────
+///
+/// The first shape of this was four `(start, len)` pairs, which only works if
+/// every item of a rarity occupies a contiguous run of catalog indices. The
+/// pool is not ordered that way and, more to the point, it cannot be: the
+/// items are still being drawn and named, and nobody knows yet how many of
+/// each rarity a season will hold. A range demands the partition up front and
+/// then demands it stay sorted forever.
+///
+/// The obvious alternative, a rarity byte per catalog index, answers the wrong
+/// question. The draw never asks "what rarity is index 203", it asks "give me
+/// a rare one", and a byte array makes that a scan with a counting pass to
+/// stay uniform. Inverted into a list per rarity it is one modulo: constant
+/// time, exactly uniform, and any index can be any rarity in any order.
+///
+/// ── Why one account per season ──────────────────────────────────────────
+///
+/// Because the VRF callback must not be able to fail. It arrives after the
+/// money is taken, and it needs the table that was in force when the pack was
+/// paid for. A table living in `PackConfig` could be rewritten in between, so
+/// the callback would be reading whatever the admin last wrote.
+///
+/// A per-season account is immutable the moment its season opens, which is
+/// enforced below rather than promised: a pack can only be bought in the
+/// current season, and only a season still in the future can be edited. So
+/// the table a pending pack points at can no longer change by the time the
+/// pack exists.
+///
+/// It also makes each season's contents provable on chain for as long as the
+/// season matters, and puts the rent on whoever opens the season instead of
+/// growing one account without bound.
+#[account]
+pub struct SeasonDrops {
     pub season: u16,
-    /// First CATALOG index of each rarity, in RARITY_ORDER.
-    pub start: [u16; RARITY_COUNT],
-    /// How many indices that rarity holds. Zero means the bucket is empty and
-    /// the draw falls past it.
-    pub len: [u16; RARITY_COUNT],
+    /// Catalog indices this season can drop, one list per rarity in
+    /// RARITY_ORDER. An empty list means the draw falls past that rarity.
+    pub drops: [Vec<u16>; RARITY_COUNT],
+}
+
+impl SeasonDrops {
+    /// 8 discriminator + 2 season + four length-prefixed vectors.
+    pub fn size_for(counts: [usize; RARITY_COUNT]) -> usize {
+        8 + 2 + counts.iter().map(|c| 4 + c * 2).sum::<usize>()
+    }
+
+    pub fn current_size(&self) -> usize {
+        Self::size_for([
+            self.drops[0].len(), self.drops[1].len(),
+            self.drops[2].len(), self.drops[3].len(),
+        ])
+    }
+
+    pub fn total(&self) -> usize {
+        self.drops.iter().map(|d| d.len()).sum()
+    }
 }
 
 /// What the city sells, and on what terms.
@@ -2429,11 +2593,14 @@ pub struct SeasonRanges {
 ///
 /// Fixed arrays rather than vectors: this is one account for the whole city,
 /// not one per player, so a kilobyte of slack costs a fraction of a cent once
-/// and spares every instruction a realloc.
+/// and spares every instruction a realloc. What each season can DROP is the
+/// one thing not here, because it has to stop changing when the season opens;
+/// see SeasonDrops.
 #[account]
 #[derive(InitSpace)]
 pub struct PackConfig {
-    /// May change prices, odds, seasons and the current season.
+    /// May change prices, odds, the open season, and any season's drop table
+    /// up until that season opens.
     pub admin: Pubkey,
     /// The mint prices are denominated in. USDC, decided 2026-10-22, so a pack
     /// costs the same tomorrow as today. A SOL price through an oracle is the
@@ -2447,16 +2614,11 @@ pub struct PackConfig {
     pub current_season: u16,
     pub packs: [PackDef; MAX_PACKS],
     pub pack_count: u8,
-    pub seasons: [SeasonRanges; MAX_SEASONS],
-    pub season_count: u8,
 }
 
 impl PackConfig {
     pub fn pack(&self, id: u8) -> Option<&PackDef> {
         self.packs[..self.pack_count as usize].iter().find(|p| p.id == id)
-    }
-    pub fn ranges(&self, season: u16) -> Option<&SeasonRanges> {
-        self.seasons[..self.season_count as usize].iter().find(|r| r.season == season)
     }
 }
 
@@ -2472,6 +2634,47 @@ pub struct InitPackConfig<'info> {
         bump,
     )]
     pub config: Account<'info, PackConfig>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+#[instruction(season: u16)]
+pub struct InitSeasonDrops<'info> {
+    #[account(mut)]
+    pub admin: Signer<'info>,
+    #[account(
+        seeds = [PACK_CONFIG_SEED],
+        bump,
+        constraint = config.admin == admin.key() @ SolCityError::NotPackAdmin,
+    )]
+    pub config: Account<'info, PackConfig>,
+    #[account(
+        init,
+        payer = admin,
+        space = 8 + 2 + 4 * 4,
+        seeds = [SEASON_DROPS_SEED, &season.to_le_bytes()],
+        bump,
+    )]
+    pub drops: Account<'info, SeasonDrops>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct EditSeasonDrops<'info> {
+    #[account(mut)]
+    pub admin: Signer<'info>,
+    #[account(
+        seeds = [PACK_CONFIG_SEED],
+        bump,
+        constraint = config.admin == admin.key() @ SolCityError::NotPackAdmin,
+    )]
+    pub config: Account<'info, PackConfig>,
+    #[account(
+        mut,
+        seeds = [SEASON_DROPS_SEED, &drops.season.to_le_bytes()],
+        bump,
+    )]
+    pub drops: Account<'info, SeasonDrops>,
     pub system_program: Program<'info, System>,
 }
 
