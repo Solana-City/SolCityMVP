@@ -1764,7 +1764,18 @@ pub mod sol_city {
         cfg.admin = ctx.accounts.admin.key();
         cfg.currency_mint = currency_mint;
         cfg.treasury_token_account = treasury_token_account;
-        cfg.current_season = 1;
+        // Zero, meaning no season is open yet, and that is not a placeholder.
+        //
+        // A season's drop table may only be edited while `season >
+        // current_season`, which is what freezes it on opening. Starting at 1
+        // would make season 1's table unwritable from the moment the config
+        // existed: nothing could ever be seeded, because the first season
+        // would already count as open. Zero leaves room for season 1 to be
+        // filled and then opened with `set_current_season`.
+        //
+        // Nothing sells at zero, because `upsert_pack` refuses season 0 and
+        // a pack only sells when its season is the current one.
+        cfg.current_season = 0;
         cfg.packs = [PackDef::default(); MAX_PACKS];
         cfg.pack_count = 0;
         Ok(())
@@ -1779,6 +1790,9 @@ pub mod sol_city {
         let total: u32 = def.weights.iter().map(|w| *w as u32).sum();
         require!(total == WEIGHT_TOTAL as u32, SolCityError::BadWeights);
         require!(def.size as usize <= BOOSTER_PACK_SIZE, SolCityError::InvalidPoolCount);
+        // Season 0 is "nothing open". A pack claiming it would sell while the
+        // config was still being set up.
+        require!(def.season > 0, SolCityError::WrongSeason);
 
         let cfg = &mut ctx.accounts.config;
         let count = cfg.pack_count as usize;
@@ -1896,8 +1910,12 @@ pub mod sol_city {
         Ok(())
     }
 
-    /// Moves the open season. This is how a season closes: one number, and
-    /// every earlier season stops selling.
+    /// Moves the open season. This is how a season opens, and how the one
+    /// before it closes: one number, and every earlier season stops selling.
+    ///
+    /// It is also the point of no return for that season's drop table, which
+    /// can no longer be edited once its season is current. Check the table
+    /// before calling this.
     ///
     /// Forward only. Reopening a closed season would put items back on sale
     /// whose scarcity was the window shutting.
