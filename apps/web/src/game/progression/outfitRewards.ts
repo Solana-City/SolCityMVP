@@ -1,9 +1,12 @@
 import { NPC_REGISTRY } from "@/game/config/npcRegistry";
 import { profileManager } from "@/game/config/profileManager";
 import { progressionBus } from "@/game/progression/progressionBus";
-import { unlockItem } from "@/game/config/wardrobeUnlocks";
+import { unlockItem, getUnlockedSet, unlockKeyOf } from "@/game/config/wardrobeUnlocks";
 import { getVariant } from "@/game/config/paperDoll";
 import { skrBalance } from "@/game/solana/seekerDetection";
+import { fetchBoard } from "@/game/leaderboards/boards";
+import { CARVING_BOARD } from "@/game/halloween/event";
+import { PASS_ACCURACY } from "@/game/minigames/pumpkin-carving/pattern";
 
 /**
  * Earned outfits: items a player unlocks by doing something, never by rolling
@@ -120,11 +123,62 @@ function requiredNpcIds(): string[] {
 function grant(reward: { category: string; id: string; name: string }): void {
   const wallet = profileManager.get().wallet;
   if (!wallet) return;
+  grantTo(wallet, reward);
+}
+
+/**
+ * Same grant, for a wallet the caller already has.
+ *
+ * `grant` reads the wallet off the profile, which is the right thing during
+ * play and the wrong thing at connect time: the reconciliation below runs
+ * from the wallet-change handler, which is upstream of the profile knowing
+ * about it.
+ */
+function grantTo(
+  wallet: string,
+  reward: { category: string; id: string; name: string },
+): void {
   // A reward whose art has not shipped yet is skipped rather than granted: an
   // unlock key for a variant that does not exist would show an empty slot in
   // the wardrobe.
   if (!getVariant(reward.category as never, reward.id)) return;
   unlockItem(wallet, reward.category as never, reward.id, reward.name);
+}
+
+/**
+ * Gives the Pumpkin Head back to a wallet the server already recorded as
+ * having carved one clean.
+ *
+ * The wardrobe is localStorage keyed by wallet, so the hat lives in the
+ * browser that earned it. Clear site data, or carve on a phone and then play
+ * on a laptop, and the hat is missing from the wardrobe even though the wallet
+ * is still in `ev:minigame:pumpkin-carving:won`, which is the list a mint
+ * reads. The entitlement and the wardrobe disagreed, and the player only ever
+ * sees the wardrobe.
+ *
+ * It reads the best-score board, not the winners set: the score is public and
+ * per wallet, so this needs no admin key and nothing new is stored. Both are
+ * written by the same `track` call at the end of a carve, and the pass mark is
+ * the same constant the game grades against.
+ *
+ * An unreachable board grants nothing, on purpose. A board that did not answer
+ * looks exactly like a wallet that never carved, and guessing in the player's
+ * favour would hand the hat to anyone whose network blipped on connect. That
+ * is what `ok` is for.
+ *
+ * Runs whether or not the event is still on. Earning it closes on 2 November;
+ * having earned it does not.
+ */
+export async function reconcileCarvingReward(wallet: string): Promise<void> {
+  if (!wallet) return;
+  const reward = REWARDS.halloween;
+  // Already in this browser: nothing to fetch, and this is the common case.
+  if (getUnlockedSet(wallet).has(unlockKeyOf(reward.category, reward.id))) return;
+
+  const board = await fetchBoard(CARVING_BOARD, { wallet, limit: 1 }).catch(() => null);
+  if (!board?.ok || !board.mine) return;
+  if (board.mine.value < PASS_ACCURACY) return;
+  grantTo(wallet, reward);
 }
 
 /**

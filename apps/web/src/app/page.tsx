@@ -16,6 +16,7 @@ import { fetchStatus } from "@/game/names/nameService";
 import { profileManager } from "@/game/config/profileManager";
 import { useFlags } from "@/ui/useFlags";
 import { setTrackedWallet, track } from "@/game/telemetry/track";
+import { reconcileCarvingReward } from "@/game/progression/outfitRewards";
 import { startSession } from "@/game/telemetry/session";
 
 // All Solana/wallet-adapter code must be client-only — these packages
@@ -420,6 +421,9 @@ export default function Home() {
     setTrackedWallet(wallet);
     // Quest progress follows the player across devices.
     if (wallet) void hydrateQuests(wallet);
+    // So does the Pumpkin Head. The wardrobe is per browser, the win is on the
+    // server, and this is where the two are made to agree.
+    if (wallet) void reconcileCarvingReward(wallet);
     setWalletAddress(wallet);
     // Mirror it somewhere CityScene can read on its own. If the wallet connects
     // while BootScene is still preloading there is no scene to push to yet, and
