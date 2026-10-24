@@ -27,9 +27,13 @@ import {
 import {
   SOL_CITY_PROGRAM_ID, DELEGATION_PROGRAM_ID, derivePlayerPDA, deriveHuntPDA,
   deriveUnlockPDA, VRF_QUEUE_DEVNET, VRF_PROGRAM_ID, deriveVrfIdentityPDA,
+  derivePackConfigPDA, USDC_MINT_DEVNET,
   deriveFriendshipPDA, deriveFriendRequestPDA,
   sortPair, ACHIEVEMENT_BITS,
 } from "./program";
+import {
+  TOKEN_PROGRAM_ID, getAssociatedTokenAddressSync,
+} from "@solana/spl-token";
 import { sha256 } from "@noble/hashes/sha256";
 
 // ── Discriminator helper ────────────────────────────────────────────────
@@ -497,13 +501,23 @@ export function buildInitUnlockStateIx(authority: PublicKey): TransactionInstruc
 /**
  * Builds `open_booster(pool_count: u16, client_seed: [u8;32])` - pays the pack
  * price to the treasury and requests MagicBlock VRF. Wallet-signed on base
- * devnet. Args are Anchor-packed: u16 LE then 32 raw seed bytes (a fixed array
- * carries no length prefix).
+ * devnet. Args are Anchor-packed: the pack id as a u8 then 32 raw seed bytes
+ * (a fixed array carries no length prefix).
+ *
+ * The pack id is what the program charges and draws by. It used to be a
+ * `poolCount` the client measured off its own wardrobe table, which meant the
+ * caller decided the index space the draw ran over; the program now reads the
+ * price, the size and the rarity ranges off PackConfig, so the only thing the
+ * client still chooses is which pack.
+ *
+ * `treasuryTokenAccount` is the one named on PackConfig, and the program
+ * checks it: pass what you read, not what you expect. Callers that already
+ * fetched the config to show prices have it.
  *
  * The UnlockState PDA must already exist, so send `buildInitUnlockStateIx`
  * first, in the same transaction, when the wallet has never opened a pack.
  *
- * ACCOUNTS: all eight are fixed and come from the Rust struct, in this order.
+ * ACCOUNTS: all eleven are fixed and come from the Rust struct, in this order.
  * This used to send five and leave a `vrfAccounts` hole to be filled "from the
  * deployed IDL", on the assumption that the program used the `#[vrf]` macro
  * and let it append its own plumbing. It does not: Solana Playground cannot
@@ -513,24 +527,35 @@ export function buildInitUnlockStateIx(authority: PublicKey): TransactionInstruc
  */
 export function buildOpenBoosterIx(params: {
   payer: PublicKey;
-  poolCount: number;
+  packId: number;
   clientSeed: Uint8Array; // exactly 32 bytes
-  treasury: PublicKey;
+  /** From PackConfig.treasuryTokenAccount. The program address-checks it. */
+  treasuryTokenAccount: PublicKey;
+  /** The buyer's token account in the config's currency. Defaults to their
+   *  associated account for devnet USDC. */
+  buyerTokenAccount?: PublicKey;
 }): TransactionInstruction {
-  const { payer, poolCount, clientSeed, treasury } = params;
+  const { payer, packId, clientSeed, treasuryTokenAccount } = params;
   const seed = Buffer.alloc(32);
   Buffer.from(clientSeed).copy(seed, 0, 0, 32);
 
   const [unlockPda] = deriveUnlockPDA(payer);
+  const [configPda] = derivePackConfigPDA();
   const [vrfIdentity] = deriveVrfIdentityPDA();
-  const data = Buffer.concat([DISC.openBooster, packU16LE(poolCount), seed]);
+  const buyerTokenAccount =
+    params.buyerTokenAccount ??
+    getAssociatedTokenAddressSync(USDC_MINT_DEVNET, payer);
+  const data = Buffer.concat([DISC.openBooster, packU8(packId), seed]);
 
   return new TransactionInstruction({
     programId: SOL_CITY_PROGRAM_ID,
     keys: [
       { pubkey: payer,                     isSigner: true,  isWritable: true  },
       { pubkey: unlockPda,                 isSigner: false, isWritable: true  },
-      { pubkey: treasury,                  isSigner: false, isWritable: true  },
+      { pubkey: configPda,                 isSigner: false, isWritable: false },
+      { pubkey: buyerTokenAccount,         isSigner: false, isWritable: true  },
+      { pubkey: treasuryTokenAccount,      isSigner: false, isWritable: true  },
+      { pubkey: TOKEN_PROGRAM_ID,          isSigner: false, isWritable: false },
       { pubkey: VRF_QUEUE_DEVNET,          isSigner: false, isWritable: true  },
       { pubkey: vrfIdentity,               isSigner: false, isWritable: false },
       { pubkey: VRF_PROGRAM_ID,            isSigner: false, isWritable: false },

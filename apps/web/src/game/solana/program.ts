@@ -46,6 +46,21 @@ export const PLAYER_SEED = "player_v2";
 export const HUNT_SEED = "hunt";
 export const UNLOCKS_SEED = "unlocks";
 
+/** Seed of the one PackConfig account: what the city sells, and on what terms. */
+export const PACK_CONFIG_SEED = "pack_config";
+
+/**
+ * Devnet USDC. The mint prices are denominated in lives on the config account,
+ * not here; this is the one the client funds a test wallet with and the one
+ * `init_pack_config` is called with on devnet.
+ */
+export const USDC_MINT_DEVNET = new PublicKey(
+  "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+);
+
+/** Rarities, matching RARITY_ORDER: common, uncommon, rare, legendary. */
+export const RARITY_COUNT = 4;
+
 /**
  * Master switch for the on-chain (VRF) booster. OFF until the program with
  * open_booster/UnlockState is deployed AND the client ix accounts are filled
@@ -129,6 +144,13 @@ export function decodeHuntState(data: Uint8Array): HuntState | null {
  * Per-wallet booster unlock store — seed ["unlocks", wallet].
  * Matches UnlockState in programs/sol-city/src/lib.rs.
  */
+export function derivePackConfigPDA(): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from(PACK_CONFIG_SEED)],
+    SOL_CITY_PROGRAM_ID,
+  );
+}
+
 export function deriveUnlockPDA(
   wallet: PublicKey,
   programId: PublicKey = SOL_CITY_PROGRAM_ID
@@ -164,20 +186,46 @@ export interface UnlockState {
   /** Indices already turned into a tradable asset. Usually empty. */
   minted: number[];
   pending: boolean;      // a pack is awaiting its VRF callback
-  poolCount: number;     // u16 - index space of the pending draw
+  /** The paid-for pack, frozen at payment. Meaningless unless `pending`. */
+  draw: PendingDraw;
+}
+
+/**
+ * What the program's VRF callback will resolve the pending pack with, copied
+ * out of PackConfig when the pack was paid for.
+ *
+ * A snapshot rather than a pack id, on the program's side, because the
+ * callback must not be able to fail: the money is gone by then. For the client
+ * it means the reveal can show the odds the player actually bought, even if an
+ * admin has since changed that pack.
+ */
+export interface PendingDraw {
+  packId: number;
+  size: number;
+  /** Basis points per rarity, in RARITY_ORDER. Adds up to 10000. */
+  weights: number[];
+  /** First catalog index of each rarity, for this pack's season. */
+  start: number[];
+  /** How many indices each rarity holds. Zero means the draw falls past it. */
+  len: number[];
 }
 
 /**
  * Decodes an UnlockState account. Layout after the 8-byte discriminator:
  *   authority Pubkey(32) | owned Vec<u16> | minted Vec<u16> | pending bool(1)
- *   | poolCount u16(2)
+ *   | draw PendingDraw(26)
+ *
+ * PendingDraw is packId u8 | size u8 | weights [u16;4] | start [u16;4]
+ * | len [u16;4]. Fixed arrays carry no length prefix.
  *
  * A Vec is Anchor-serialised as a 4-byte little-endian length then the items,
  * so the account's size follows what the wallet owns rather than how big the
  * catalog grew. It used to be two fixed bitsets over the whole catalog.
  */
+export const PENDING_DRAW_BYTES = 1 + 1 + RARITY_COUNT * 2 * 3;
+
 export function decodeUnlockState(data: Uint8Array): UnlockState | null {
-  if (data.length < 8 + 32 + 4 + 4 + 1 + 2) return null;
+  if (data.length < 8 + 32 + 4 + 4 + 1 + PENDING_DRAW_BYTES) return null;
   const buf = Buffer.from(data);
   let o = 8;
   const authority = new PublicKey(buf.subarray(o, o + 32)); o += 32;
@@ -195,10 +243,24 @@ export function decodeUnlockState(data: Uint8Array): UnlockState | null {
 
   const owned = readVec();  if (!owned) return null;
   const minted = readVec(); if (!minted) return null;
-  if (o + 3 > buf.length) return null;
+  if (o + 1 + PENDING_DRAW_BYTES > buf.length) return null;
   const pending = buf.readUInt8(o) === 1; o += 1;
-  const poolCount = buf.readUInt16LE(o); o += 2;
-  return { authority, owned, minted, pending, poolCount };
+
+  const packId = buf.readUInt8(o); o += 1;
+  const size = buf.readUInt8(o); o += 1;
+  const readRarityArray = (): number[] => {
+    const out: number[] = [];
+    for (let i = 0; i < RARITY_COUNT; i++) { out.push(buf.readUInt16LE(o)); o += 2; }
+    return out;
+  };
+  const weights = readRarityArray();
+  const start = readRarityArray();
+  const len = readRarityArray();
+
+  return {
+    authority, owned, minted, pending,
+    draw: { packId, size, weights, start, len },
+  };
 }
 
 /**
