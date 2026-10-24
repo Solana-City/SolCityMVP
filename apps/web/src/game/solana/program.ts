@@ -190,7 +190,7 @@ export function deriveUnlockPDA(
  * may have moved twice since, so the chain stays out of it rather than
  * pretending otherwise. See TIMELIMITED_ITEM_CLAIM.md section 3, option 1.
  */
-export const QUEST_FREE_SLOTS = 128;
+export const QUEST_FREE_SLOTS = 1024;
 
 /**
  * How many owned indices the rollup snapshot on PlayerState carries, matching

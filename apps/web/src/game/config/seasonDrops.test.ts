@@ -29,10 +29,10 @@ describe("season drop lists", () => {
 
   it("pins what season 1 would seed, per rarity", () => {
     expect(seasonDropLists(1)).toEqual({
-      common: [192, 193, 194, 195, 199, 200, 208, 209],
-      uncommon: [196, 202, 206],
-      rare: [197, 198, 203, 205, 207],
-      legendary: [201, 204],
+      common: [5632, 5633, 9728, 9729, 15872, 15873, 15881, 15882],
+      uncommon: [9730, 15875, 15879],
+      rare: [11776, 11777, 15876, 15878, 15880],
+      legendary: [15874, 15877],
     });
   });
 

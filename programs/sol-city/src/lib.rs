@@ -28,21 +28,30 @@ declare_id!("HPvDFVnruSXHwKKP44eUvRh8oYqBaHCeQbK1sKWT1aU2");
 pub const PLAYER_SEED: &[u8] = b"player_v3";
 
 /// Global cosmetic catalog split: indices [0, FREE_ITEM_COUNT) are free and
-/// never checked; [FREE_ITEM_COUNT, ..) are lockable (bit = idx - F in
-/// UnlockState / PlayerState.unlocked). MUST match the client's table.
+/// never checked; [FREE_ITEM_COUNT, ..) are lockable. MUST match the client's
+/// table in `catalogIndex.ts`.
 ///
 /// **A reserved SIZE, not a count.** Twenty-six items occupy it today: every
-/// skin, face and hairstyle, the starter shirt and trousers, and one hat. The
-/// rest is slack for free items yet to be drawn, and slack costs nothing: the
-/// bit is `index - FREE_ITEM_COUNT`, so raising this moves where the bitset
-/// window starts rather than consuming any of it.
+/// skin, face and hairstyle, the starter shirt and trousers, and one hat.
 ///
-/// **Sized generously on purpose, because it can never move.** An item in the
-/// enforced range cannot become free later without changing its index, and an
-/// index that has been written to chain names a cosmetic in somebody's wallet.
-/// The owner's rule (2026-10-20): free at start and NPC rewards are not pack
-/// items, everything else is.
-pub const FREE_ITEM_COUNT: u16 = 64;
+/// **The rest is holes on purpose.** The client cuts each block into one LANE
+/// per layer category, sixteen lanes of thirty-two here, so an item's index
+/// depends on its own category and on nothing else. Before that, a block was
+/// filled in category order and adding one accessory moved every hair and
+/// every hat after it. With accessories on the way, that was a renumbering
+/// waiting to happen.
+///
+/// Holes cost nothing now that `UnlockState.owned` is a LIST of what a wallet
+/// has rather than a bitset over what exists: an empty slot is a number
+/// nobody stores. The only ceiling left is the u16 a loadout carries, and the
+/// whole table ends around 16,000 of 65,535.
+///
+/// **It can never move.** An item in the enforced range cannot become free
+/// later without changing its index, and an index written to chain names a
+/// cosmetic in somebody's wallet. The owner's rule (2026-10-20, reaffirmed
+/// 2026-10-25): every hairstyle is free, free-at-start and NPC rewards are
+/// not pack items, everything else is.
+pub const FREE_ITEM_COUNT: u16 = 512;
 // Bumped to 2 to match the client, which went there when Magawk_green and
 // Magawk_red left the variant list and shifted every index after them. That is
 // normally forbidden and was safe exactly once, because these indices have
@@ -69,7 +78,7 @@ pub const POOL_VERSION: u16 = 3;
 /// Unlike the free block, slack here is NOT free: it costs pack slots one for
 /// one. 128 reserved against 1024 bits leaves 896 for packs, which is the
 /// trade that was made deliberately.
-pub const QUEST_FREE_SLOTS: u16 = 128;
+pub const QUEST_FREE_SLOTS: u16 = 1024;
 /// First catalog index `update_look_session` actually checks. Everything below
 /// is either free or inside the quest block, and the quest block is not
 /// enforced while nothing on chain can grant it. A const expression, so an
