@@ -30,10 +30,14 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - name: Check both programs
-        run: cargo check --locked -p sol-city -p sol-mechs
+      # sol-city only. sol-mechs has zero-copy accounts whose Pod derive holds
+      # on the BPF target and not on the host, where alignment differs, so a
+      # host check reports errors that the real build does not have. It is
+      # covered by build-sbf below, which compiles for the target that ships.
+      - name: Check sol-city
+        run: cargo check --locked -p sol-city
       - name: Warnings, reported but not fatal
-        run: cargo clippy --locked -p sol-city -p sol-mechs -- -W clippy::all || true
+        run: cargo clippy --locked -p sol-city -- -W clippy::all || true
 
   # The artifact. Builds the BPF object the way a deploy would, and checks what
   # came out rather than trusting the exit code: a build can succeed and still
@@ -65,10 +69,11 @@ jobs:
           solana --version
           cargo build-sbf --version
 
+      # The whole workspace, so sol-mechs is compiled for the target it ships
+      # to rather than only type-checked on the host.
       - name: Build
         id: build
         run: |
-          cd programs/sol-city
           if [ "${{ matrix.arch }}" = "v3" ]; then
             cargo build-sbf --arch v3
           else
@@ -78,14 +83,16 @@ jobs:
       - name: Inspect the artifact
         if: steps.build.outcome == 'success'
         run: |
-          SO=$(find ../../target -name 'sol_city.so' | head -1)
+          SO=$(find target -name 'sol_city.so' | head -1)
           echo "artifact: $SO"
           ls -la "$SO"
           readelf -h "$SO" | grep -i flags
           echo "--- dynamic linking (must be empty for v3) ---"
           readelf -l "$SO" | grep DYNAMIC || echo "  none"
           readelf -S "$SO" | grep -E '\.rel\.dyn|\.dynsym|\.dynamic' || echo "  none"
-        working-directory: programs/sol-city
+          echo "=== sol_mechs ==="
+          SM=$(find target -name 'sol_mechs.so' | head -1)
+          ls -la "$SM" && readelf -h "$SM" | grep -i flags
 
       - name: Check the declare_id is the one we deploy to
         if: steps.build.outcome == 'success'
@@ -110,6 +117,8 @@ jobs:
         if: steps.build.outcome == 'success'
         with:
           name: sol_city-${{ matrix.arch }}
-          path: target/**/sol_city.so
+          path: |
+            target/**/sol_city.so
+            target/**/sol_mechs.so
           if-no-files-found: error
           retention-days: 30
