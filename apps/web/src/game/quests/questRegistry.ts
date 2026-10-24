@@ -1,6 +1,7 @@
 import type { PlayerProfile } from "@/game/config/profileManager";
 import type { LayerCategory } from "@/game/config/paperDoll";
 import { FOUND_COUNTER } from "@/game/halloween/pumpkinHunt";
+import { isHalloweenOn } from "@/game/halloween/event";
 
 /**
  * The quests the city actually has, as data.
@@ -68,6 +69,15 @@ export interface QuestDef {
   giver?: string;
   steps: QuestStep[];
   reward: QuestReward;
+  /**
+   * Whether this quest can still be started. Omitted means always.
+   *
+   * For a quest that belongs to an event with an end date: once it is false
+   * the quest leaves the list, so nobody is shown steps they can no longer
+   * complete. A player who already finished it keeps seeing it, because the
+   * list is the only place the reward they earned is explained.
+   */
+  available?: () => boolean;
 }
 
 // ── Step builders ───────────────────────────────────────────────────────────
@@ -140,6 +150,7 @@ export const QUESTS: QuestDef[] = [
     title: "Jack O' Lantern's Pumpkins",
     blurb: "Find his pumpkins, then carve one clean.",
     giver: "jack-o-lantern",
+    available: isHalloweenOn,
     steps: [
       talkTo("jack-o-lantern", "Meet Jack O' Lantern"),
       // One, not all five. A pumpkin is a try at the knife and the hat can be
@@ -294,5 +305,9 @@ export function questProgress(def: QuestDef, ctx: QuestContext): QuestProgress {
 
 /** Every quest with its progress, for a list the player can read. */
 export function allQuestProgress(ctx: QuestContext): { def: QuestDef; progress: QuestProgress }[] {
-  return QUESTS.map((def) => ({ def, progress: questProgress(def, ctx) }));
+  return QUESTS
+    .map((def) => ({ def, progress: questProgress(def, ctx) }))
+    // A closed event's quest goes, but not out from under the player who
+    // finished it: that card is where the hat in their wardrobe is explained.
+    .filter(({ def, progress }) => def.available?.() !== false || progress.complete);
 }

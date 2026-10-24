@@ -51,6 +51,7 @@ import { createStockExchange } from "../world/StockExchange";
 import { createAnimatedDecor, REPLACED_MAP_LAYERS } from "../world/AnimatedDecor";
 import { BeachBall, buildBeachMask, type BallBody, type BallKick } from "../world/BeachBall";
 import { PumpkinField } from "../world/PumpkinField";
+import { isHalloweenOn } from "@/game/halloween/event";
 import { readLastPosition, saveLastPosition } from "../world/lastPosition";
 import { buildPhysicsLayer, mergeGroundRun } from "../world/mergeLayers";
 import { SparseLayer, SPARSE_MAX_TILES, GROUND_CHUNK_TILES, type CityLayer } from "../world/sparseLayer";
@@ -2348,6 +2349,10 @@ export class CityScene extends Phaser.Scene {
    */
   private spawnPumpkins(wallet: string): void {
     this.pumpkins?.destroy();
+    this.pumpkins = null;
+    // After the event closes there is nothing to find, and a pumpkin standing
+    // in the street with no Jack O' Lantern to take it to is worse than none.
+    if (!isHalloweenOn()) return;
     this.pumpkins = new PumpkinField(this, wallet);
   }
 

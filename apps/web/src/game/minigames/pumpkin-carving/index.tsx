@@ -41,6 +41,7 @@ import { soundManager } from "@/game/audio/SoundManager";
 import { track } from "@/game/telemetry/track";
 import { HowToPlay, readHowToSeen } from "./HowToPlay";
 import { attemptsLeft, spendAttempt, foundToday, PUMPKINS_PER_HUNT } from "@/game/halloween/pumpkinHunt";
+import { CARVING_BOARD } from "@/game/halloween/event";
 
 const FONT = '"Press Start 2P", monospace';
 /** A mini-game's window wears the map legend's "Mini-games" colour, like the rest of the games. */
@@ -50,7 +51,7 @@ const ON_ACCENT = "#1a1405";
 const GOOD = "#14F195";
 const BAD = "#FF4D6D";
 
-const BOARD = "game:pumpkin-carving";
+const BOARD = CARVING_BOARD;
 /** The reward, as a paper-doll variant. Same pair outfitRewards grants. */
 const REWARD_CATEGORY = "hat" as const;
 const REWARD_ID = "Pumpkin_head";

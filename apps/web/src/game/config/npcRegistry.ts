@@ -1,6 +1,7 @@
 import { npcCategory, CATEGORY_META } from "../minimap/categories";
 import type { Loadout } from "./paperDoll";
 import type { BuffId } from "../buffs/playerBuffs";
+import { isHalloweenOn } from "@/game/halloween/event";
 
 export interface NPCAction {
   type: "tutor" | "swap" | "transfer" | "bounties" | "link" | "placeholder" | "private-payment" | "minigame" | "stock-exchange" | "peg-risk" | "token-scan" | "private-transfer" | "speed-buff" | "pet" | "ore-mine" | "donation" | "tea";
@@ -792,6 +793,10 @@ const NPC_SEEDS: NPCSeed[] = [
     id: "jack-o-lantern",
     name: "Jack O' Lantern",
     role: "Halloween",
+    // The event's window, and the only thing that takes him out of the city.
+    // Evaluated once, at module load, which is also when the city places its
+    // NPCs: a tab left open across the boundary keeps him until it reloads.
+    enabled: isHalloweenOn(),
     // In front of the big tombstone in the Halloween park (DecorHalloweenTomb01,
     // cols 43-44, rows 41-43), which is two tiles wide, so he stands on the left
     // of its two doorstep tiles. findNpcSpawn stands him on tileY + 1, so row 43
