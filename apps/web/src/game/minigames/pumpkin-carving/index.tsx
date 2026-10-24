@@ -323,7 +323,7 @@ export default function PumpkinCarving({ onResult, onClose }: MiniGameComponentP
         .catch(() => undefined)
         .finally(() => {
           invalidateBoard(BOARD);
-          fetchBoard(BOARD, { wallet: w, limit: 5, force: true }).then(setBoard).catch(() => undefined);
+          void settleBoard(w, accuracy, setBoard);
         });
     };
     raf = requestAnimationFrame(step);
@@ -730,6 +730,53 @@ function RewardRow({ state }: { state: RewardState }) {
 }
 
 /** Same rows Kite Clash shows at the end of a run, with the city's rank badges. */
+/**
+ * Fetches the board after a carve, and makes it agree with the carve.
+ *
+ * The score is reported by `track`, which is fire and forget on purpose: a
+ * failed report must never interrupt play, so nothing awaits the POST. That
+ * leaves a race this screen loses visibly. The board was read the instant the
+ * round ended and came back with the score from BEFORE this carve, so a 95%
+ * run showed "NEW BEST!" directly above "Your best 92%".
+ *
+ * Two halves, because they fail differently:
+ *
+ *   • "Your best" is patched to the score the player is looking at. That is
+ *     not optimism, it is the number on the screen above it; the server
+ *     disagreeing only means it has not read the write yet.
+ *   • The rows are server truth and stay that way. They are other people, and
+ *     this screen does not get to invent where they placed. So it simply
+ *     asks again once the write has had time to land.
+ *
+ * One retry. If the second read is still behind, the next open of the board
+ * shows it, and "Your best" was right the whole time either way.
+ */
+const SETTLE_MS = 1500;
+
+async function settleBoard(
+  wallet: string | null,
+  scored: number,
+  onBoard: (b: BoardResult) => void,
+): Promise<void> {
+  const read = async () =>
+    fetchBoard(BOARD, { wallet, limit: 5, force: true }).catch(() => null);
+
+  const withMine = (b: BoardResult): BoardResult =>
+    b.mine && b.mine.value >= scored
+      ? b
+      : { ...b, mine: { value: scored, rank: b.mine?.rank ?? null } };
+
+  const first = await read();
+  if (!first) return;
+  onBoard(withMine(first));
+  // Already caught up: the write landed before the read did.
+  if (first.ok && first.mine && first.mine.value >= scored) return;
+
+  await new Promise((r) => setTimeout(r, SETTLE_MS));
+  const second = await read();
+  if (second) onBoard(withMine(second));
+}
+
 function BoardList({ board, wallet }: { board: BoardResult; wallet: string | null }) {
   return (
     <div style={{ width: "100%", fontSize: 8, lineHeight: 1.9, textAlign: "left" }}>
