@@ -227,17 +227,17 @@ const NPC_SEEDS: NPCSeed[] = [
     id: "dom-tea",
     name: "DOM",
     role: "Tea Ceremony",
-    // Provisional: the empty grass plot in the north west of the city, the one
-    // with the scattered bushes (GrassEmptyPlot / VegetationEmptyPlot), a
-    // couple of tiles west of the Sushi Man's cart.
+    // Provisional: the grass block in the north west of the city (GrassEmptyPlot
+    // / VegetationEmptyPlot) that now holds the yurt (BuildSTKZ, cols 26-32,
+    // rows 14-20), at the bottom left tip of the block, where the owner pointed:
+    // col 25, with open grass on every side and no vegetation painted on it.
+    // findNpcSpawn stands him on tileY + 1, so row 28 here puts him on (25, 29).
     //
-    // His first two spots were both derived from the food cart being at col
-    // 110, which it has not been for some time: it sits at col 43 now, so
-    // "north west of the Sushi Man" put him clear across the city. This is the
-    // spot the owner pointed at, and the tile is one of the few here carrying
-    // no vegetation of its own, so nothing is painted over him.
-    tileX: 33,
-    tileY: 19,
+    // His first spots were derived from the food cart being at col 110, which
+    // it has not been for some time, and the next one, beside the yurt's east
+    // wall, was the owner's own pick before the yurt was there.
+    tileX: 25,
+    tileY: 28,
     dialog: [
       "I'm DOM. Welcome to my Tea Ceremony!",
       "Drinking tea gives you more energy, but without instability.",
