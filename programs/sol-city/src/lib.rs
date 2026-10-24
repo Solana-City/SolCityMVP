@@ -4,6 +4,7 @@ use anchor_lang::solana_program::{
     program::{invoke, invoke_signed},
     system_instruction,
     program_memory::sol_memset,
+    hash::hashv,
     rent::Rent as SolanaRent,
     sysvar::Sysvar as SolanaSysvar,
     instruction::{AccountMeta as SolAccountMeta, Instruction as SolInstruction},
@@ -150,7 +151,19 @@ pub const WEIGHT_TOTAL: u16 = 10_000;
 
 pub const BOOSTER_PACK_SIZE: usize = 5;
 /// Price to open an outfit box (0.025 SOL, about $2.50 at $100/SOL).
-pub const BOOSTER_PRICE_LAMPORTS: u64 = 25_000_000;
+/// SPL Token. The payment CPI is hand-rolled against it, like the delegation
+/// and VRF ones above, so this program still depends on `anchor-lang` alone.
+pub const TOKEN_PROGRAM_ID: Pubkey = pubkey!("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
+
+/// How far the draw walks a rarity bucket looking for something the wallet
+/// does not already own before it settles for a duplicate.
+///
+/// A cap rather than the whole bucket because the callback runs on the
+/// oracle's compute budget, and a season holds a few hundred indices per
+/// rarity. The behaviour it gives up is invisible: a wallet that owns
+/// thirty-two consecutive indices of one rarity owns nearly all of it, and
+/// a duplicate is the honest answer there anyway.
+pub const MAX_BUCKET_PROBES: usize = 32;
 /// Treasury that receives pack payments (the game wallet).
 pub const TREASURY: Pubkey = pubkey!("9592QS34mPUwqA7sPAkug1kcuFddjn59QPQMzzCgKhEp");
 
@@ -1318,36 +1331,57 @@ pub mod sol_city {
 
     // ── Outfit booster (VRF) ───────────────────────────────────────────────
     //
-    // open_booster: wallet pays BOOSTER_PRICE_LAMPORTS to the treasury and
-    // requests verifiable randomness from MagicBlock VRF, naming
-    // callback_open_booster as the consumer. `pool_count` is the client's
-    // current getBoosterPool() length (the index space to draw from); it's
-    // stored on the unlock account so the async callback can use it.
+    // open_booster: the wallet names a pack, pays that pack's price in the
+    // config's currency, and requests verifiable randomness from MagicBlock
+    // VRF naming callback_open_booster as the consumer. The pack's odds and
+    // its season's rarity ranges are copied onto the unlock account, because
+    // the callback arrives later and must not be able to fail.
     //
     // callback_open_booster: invoked by the VRF oracle (signed by the VRF
-    // program identity). Derives BOOSTER_PACK_SIZE distinct indices in
-    // [0, pool_count) from the verified randomness, sets those bits in the
-    // wallet's UnlockState, and emits BoosterOpened so the client reveals them.
+    // program identity). Rolls a rarity per item against the snapshotted
+    // weights, picks an index inside that rarity's range, grants them into the
+    // wallet's UnlockState, and emits BoosterOpened so the client reveals
+    // them. Same shape as the client's rollPack, deliberately: rarity first,
+    // item second, down the ladder when a bucket is empty.
 
     pub fn open_booster(
         ctx: Context<OpenBooster>,
-        pool_count: u16,
+        pack_id: u8,
         client_seed: [u8; 32],
     ) -> Result<()> {
-        require!(pool_count as usize >= BOOSTER_PACK_SIZE, SolCityError::InvalidPoolCount);
-        // Every drawable index must address a real catalog slot. The ceiling is
-        // the u16 the loadout carries, not a bitset any more.
-        require!(
-            (ENFORCED_FROM as usize) + (pool_count as usize) <= u16::MAX as usize,
-            SolCityError::InvalidPoolCount
+        let cfg = &ctx.accounts.config;
+        let def = *cfg.pack(pack_id).ok_or(SolCityError::UnknownPack)?;
+        require!(def.enabled, SolCityError::PackClosed);
+        // A pack of a retired season cannot be bought. It can still be OPENED,
+        // which is the point of carrying the season on the snapshot: what
+        // closes is the sale, not the pack somebody already owns.
+        require!(def.season == cfg.current_season, SolCityError::WrongSeason);
+        require!(def.size as usize <= BOOSTER_PACK_SIZE, SolCityError::InvalidPoolCount);
+        require!(def.size > 0, SolCityError::InvalidPoolCount);
+
+        let ranges = *cfg.ranges(def.season).ok_or(SolCityError::UnknownSeason)?;
+        // The season has to hold enough to fill the pack. Without this a pack
+        // against an empty season would take the money and reveal nothing.
+        let supply: u32 = ranges.len.iter().map(|l| *l as u32).sum();
+        require!(supply >= def.size as u32, SolCityError::InvalidPoolCount);
+
+        require_keys_eq!(
+            ctx.accounts.treasury_token_account.key(),
+            cfg.treasury_token_account,
+            SolCityError::InvalidTreasury
         );
-        require_keys_eq!(ctx.accounts.treasury.key(), TREASURY, SolCityError::InvalidTreasury);
 
         {
             let unlocks = &mut ctx.accounts.unlock_state;
             require!(!unlocks.pending, SolCityError::BoosterPending);
             unlocks.pending = true;
-            unlocks.pending_pool_count = pool_count;
+            unlocks.draw = PendingDraw {
+                pack_id,
+                size: def.size,
+                weights: def.weights,
+                start: ranges.start,
+                len: ranges.len,
+            };
         }
 
         // ── Make room for the pack before the draw ────────────────────────
@@ -1364,7 +1398,7 @@ pub mod sol_city {
         {
             let info = ctx.accounts.unlock_state.to_account_info();
             let needed = UnlockState::size_for(
-                ctx.accounts.unlock_state.owned.len() + BOOSTER_PACK_SIZE,
+                ctx.accounts.unlock_state.owned.len() + def.size as usize,
                 ctx.accounts.unlock_state.minted.len(),
             );
             if info.data_len() < needed {
@@ -1386,17 +1420,34 @@ pub mod sol_city {
             }
         }
 
-        // Payment → treasury (wallet is the signer/fee payer).
+        // Payment → treasury, in the config's currency.
+        //
+        // Hand-rolled like the delegation and VRF CPIs above, so the program
+        // still depends on `anchor-lang` alone: SPL Token's Transfer is
+        // instruction 3 followed by a little-endian amount, nine bytes in all.
+        //
+        // Checking the DESTINATION against the config is enough to pin the
+        // currency, and that is worth saying out loud: Transfer refuses a
+        // source whose mint differs from the destination's, so a buyer cannot
+        // pay for USDC packs in some token of their own making.
+        let mut pay = Vec::with_capacity(9);
+        pay.push(3u8);
+        pay.extend_from_slice(&def.price.to_le_bytes());
         invoke(
-            &system_instruction::transfer(
-                ctx.accounts.payer.key,
-                ctx.accounts.treasury.key,
-                BOOSTER_PRICE_LAMPORTS,
-            ),
+            &SolInstruction {
+                program_id: TOKEN_PROGRAM_ID,
+                accounts: vec![
+                    SolAccountMeta::new(ctx.accounts.buyer_token_account.key(), false),
+                    SolAccountMeta::new(ctx.accounts.treasury_token_account.key(), false),
+                    SolAccountMeta::new_readonly(ctx.accounts.payer.key(), true),
+                ],
+                data: pay,
+            },
             &[
+                ctx.accounts.buyer_token_account.to_account_info(),
+                ctx.accounts.treasury_token_account.to_account_info(),
                 ctx.accounts.payer.to_account_info(),
-                ctx.accounts.treasury.to_account_info(),
-                ctx.accounts.system_program.to_account_info(),
+                ctx.accounts.token_program.to_account_info(),
             ],
         )?;
 
@@ -1446,30 +1497,87 @@ pub mod sol_city {
         randomness: [u8; 32],
     ) -> Result<()> {
         let unlocks = &mut ctx.accounts.unlock_state;
-        let n = unlocks.pending_pool_count.max(1);
+        let draw = unlocks.draw;
+        let total: u32 = draw.weights.iter().map(|w| *w as u32).sum();
 
-        let mut picks: Vec<u16> = Vec::with_capacity(BOOSTER_PACK_SIZE);
-        let mut cursor: usize = 0;
-        // 32 bytes → up to 31 index candidates; plenty to find 5 distinct.
-        while picks.len() < BOOSTER_PACK_SIZE && cursor < 31 {
-            let hi = randomness[cursor] as u16;
-            let lo = randomness[cursor + 1] as u16;
-            // Draw a booster-subset index in [0, n) and turn it into a CATALOG
-            // index: the booster block starts after the free items and the
-            // reserved quest block, so pool index p is ENFORCED_FROM + p.
-            // Bounded by the require! in open_booster; checked anyway so a bad
-            // bound returns a named error instead of a panic.
-            let index = ENFORCED_FROM
-                .checked_add(((hi << 8) | lo) % n)
-                .ok_or(SolCityError::InvalidPoolCount)?;
-            if !picks.contains(&index) {
-                picks.push(index);
-                // Sorted insert, and a duplicate the wallet already owned is a
-                // no-op: owning something twice is not a thing the list can
-                // express, which is the same answer the bitset gave.
-                unlocks.insert_owned(index);
+        let mut picks: Vec<u16> = Vec::with_capacity(draw.size as usize);
+        for item in 0..draw.size {
+            // Fresh randomness per item, hashed from the verified value and the
+            // item's position. One draw per 32 bytes rather than a cursor
+            // walking the original: the ladder can consume several rolls for a
+            // single item, and running off the end of a fixed 32 bytes is how
+            // the last item of a pack would quietly stop being random.
+            let bytes = hashv(&[&randomness, &[item]]).to_bytes();
+            let roll = |k: usize| -> u16 {
+                let i = (k * 2) % 32;
+                ((bytes[i] as u16) << 8) | bytes[(i + 1) % 32] as u16
+            };
+
+            // 1. The rarity, against the pack's weights. Walking the
+            //    cumulative weight in RARITY_ORDER, so common is tried first
+            //    and a zero weight is simply never selected.
+            let mut wanted = RARITY_COUNT - 1;
+            let mut ticket = (roll(0) as u32) % total.max(1);
+            for r in 0..RARITY_COUNT {
+                let w = draw.weights[r] as u32;
+                if ticket < w { wanted = r; break; }
+                ticket -= w;
             }
-            cursor = cursor.saturating_add(1);
+
+            // 2. The ladder: the rolled rarity, then DOWN toward common, and
+            //    only if there is nothing at all below it, up as a last
+            //    resort. The direction is the whole point and it matches
+            //    rollPack in the client: a rarity that has run out must not
+            //    pay out something scarcer, which is the opposite of
+            //    scarcity. Going up at all is a last resort because a pack
+            //    that hands over four pieces instead of five reads as broken.
+            let mut ladder = [0usize; RARITY_COUNT];
+            let mut rungs = 0usize;
+            ladder[rungs] = wanted;
+            rungs += 1;
+            let mut down = wanted;
+            while down > 0 {
+                down -= 1;
+                ladder[rungs] = down;
+                rungs += 1;
+            }
+            for up in (wanted + 1)..RARITY_COUNT {
+                ladder[rungs] = up;
+                rungs += 1;
+            }
+
+            // 3. An index inside the first rung that has one to give. Something
+            //    the wallet does not own beats a duplicate at the same rarity,
+            //    and a duplicate beats nothing at all.
+            let mut picked: Option<u16> = None;
+            for rung in 0..rungs {
+                let r = ladder[rung];
+                let len = draw.len[r];
+                if len == 0 { continue; }
+                let offset = (roll(1 + rung) % len) as usize;
+                let probes = (len as usize).min(MAX_BUCKET_PROBES);
+                let mut duplicate: Option<u16> = None;
+                for step in 0..probes {
+                    let index = draw.start[r]
+                        .checked_add(((offset + step) % len as usize) as u16)
+                        .ok_or(SolCityError::InvalidPoolCount)?;
+                    // No item twice in the same pack.
+                    if picks.contains(&index) { continue; }
+                    if duplicate.is_none() { duplicate = Some(index); }
+                    if !unlocks.owns(index) { picked = Some(index); break; }
+                }
+                if picked.is_none() { picked = duplicate; }
+                if picked.is_some() { break; }
+            }
+
+            // Nothing left anywhere: the whole season is already in this pack.
+            // open_booster checks the supply, so this is the duplicate-free
+            // edge, not a funded pack paying out nothing.
+            let Some(index) = picked else { break };
+            picks.push(index);
+            // Sorted insert, and an index the wallet already owned is a no-op:
+            // owning something twice is not a thing the list can express.
+            unlocks.insert_owned(index);
         }
 
         unlocks.pending = false;
@@ -1498,8 +1606,8 @@ pub mod sol_city {
         unlocks.authority = ctx.accounts.authority.key();
         unlocks.owned = Vec::new();
         unlocks.minted = Vec::new();
+        unlocks.draw = PendingDraw::default();
         unlocks.pending = false;
-        unlocks.pending_pool_count = 0;
         Ok(())
     }
 
@@ -1648,6 +1756,18 @@ pub mod sol_city {
     /// enforces that rather than trusting the operator: the indices inside
     /// them name cosmetics that are in wallets by then.
     pub fn upsert_season(ctx: Context<AdminPackConfig>, ranges: SeasonRanges) -> Result<()> {
+        // Every range must sit inside the enforced block and not run off the
+        // end of the index space. Checked once here rather than on every
+        // draw: the callback cannot afford to fail, so the bad range has to
+        // be refused at the only moment there is still somebody to tell.
+        for r in 0..RARITY_COUNT {
+            if ranges.len[r] == 0 { continue; }
+            require!(ranges.start[r] >= ENFORCED_FROM, SolCityError::InvalidPoolCount);
+            ranges.start[r]
+                .checked_add(ranges.len[r])
+                .ok_or(SolCityError::InvalidPoolCount)?;
+        }
+
         let cfg = &mut ctx.accounts.config;
         require!(ranges.season >= cfg.current_season, SolCityError::WrongSeason);
 
@@ -2093,9 +2213,21 @@ pub struct OpenBooster<'info> {
         constraint = unlock_state.authority == payer.key() @ SolCityError::WrongUnlockOwner,
     )]
     pub unlock_state: Account<'info, UnlockState>,
-    /// CHECK: address-checked against TREASURY in the instruction body.
+    /// What this pack costs and what it draws from. Read only: a purchase
+    /// never writes the table.
+    #[account(seeds = [PACK_CONFIG_SEED], bump)]
+    pub config: Account<'info, PackConfig>,
+    /// CHECK: the buyer's token account. Its mint is pinned by the Token
+    /// program, which refuses a Transfer whose source and destination mints
+    /// differ, and the destination is the one named in the config.
     #[account(mut)]
-    pub treasury: AccountInfo<'info>,
+    pub buyer_token_account: AccountInfo<'info>,
+    /// CHECK: address-checked against config.treasury_token_account.
+    #[account(mut)]
+    pub treasury_token_account: AccountInfo<'info>,
+    /// CHECK: SPL Token program.
+    #[account(address = TOKEN_PROGRAM_ID)]
+    pub token_program: UncheckedAccount<'info>,
     /// CHECK: MagicBlock VRF oracle queue (base devnet).
     #[account(mut, address = VRF_DEFAULT_QUEUE)]
     pub oracle_queue: AccountInfo<'info>,
@@ -2182,16 +2314,43 @@ pub struct UnlockState {
     pub minted: Vec<u16>,
     /// A pack has been paid for and is awaiting the VRF callback.
     pub pending: bool,
-    /// Index space for the pending draw (client getBoosterPool length).
-    pub pending_pool_count: u16,
+    /// The paid-for pack, frozen at the moment of payment.
+    pub draw: PendingDraw,
+}
+
+/// What the callback needs to resolve a pack, copied out of `PackConfig` when
+/// the pack is paid for.
+///
+/// A snapshot rather than a pack id the callback looks up, and the reason is
+/// not space: **the callback must not be able to fail.** The money is already
+/// gone by then. A callback that read the live config could arrive after the
+/// season was retired or the pack disabled, find nothing, and return an error
+/// against a wallet that had paid.
+///
+/// It also narrows the admin key, which is the stated cost of putting the
+/// table in an account: prices and odds can change, but not for a pack
+/// somebody has already bought. The odds posted when they paid are the odds
+/// they get.
+///
+/// Twenty-six bytes per wallet, once.
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, InitSpace, Default)]
+pub struct PendingDraw {
+    pub pack_id: u8,
+    pub size: u8,
+    /// Basis points per rarity, in RARITY_ORDER (common first).
+    pub weights: [u16; RARITY_COUNT],
+    /// First catalog index of each rarity for this pack's season.
+    pub start: [u16; RARITY_COUNT],
+    /// How many indices each rarity holds. Zero means the draw falls past it.
+    pub len: [u16; RARITY_COUNT],
 }
 
 impl UnlockState {
     /// Bytes for an account holding `owned_cap` owned and `minted_cap` minted
     /// entries. 8 discriminator + 32 authority + two length-prefixed vectors
-    /// + 1 pending + 2 pending_pool_count.
+    /// + 1 pending + the pending draw.
     pub fn size_for(owned_cap: usize, minted_cap: usize) -> usize {
-        8 + 32 + (4 + owned_cap * 2) + (4 + minted_cap * 2) + 1 + 2
+        8 + 32 + (4 + owned_cap * 2) + (4 + minted_cap * 2) + 1 + PendingDraw::INIT_SPACE
     }
 
     /// Insert keeping the list sorted, ignoring a value already present.
