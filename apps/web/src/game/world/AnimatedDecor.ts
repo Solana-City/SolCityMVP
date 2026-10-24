@@ -46,6 +46,14 @@ export interface AnimatedDecorDef {
    * than one.
    */
   fromLayer?: string;
+  /**
+   * Row whose bottom edge sets the draw depth of a `ySort` prop, when that is
+   * not the row it stands on (the default). For a prop that sits high on a
+   * building, like a flag on a roof: its own height would sort it BEHIND the
+   * building's layer, which is depth-sorted by the building's base, so it takes
+   * the building's base row instead.
+   */
+  depthRow?: number;
   /** Source pixels to world pixels. 0.5 matches the character sheets. */
   scale: number;
   /** Nudge in world pixels, for art that does not land on a tile centre. */
@@ -295,6 +303,37 @@ export const ANIMATED_DECOR: AnimatedDecorDef[] = [
     fromLayer: "DecorHalloweenPumpkinCandle",
     scale: 1, blocks: true, ySort: true,
   },
+  // ── Flags that were painted into a building's tileset art ─────────────
+  //
+  // The artist took them OUT of the tileset PNGs (the way the fountain's water
+  // was), and drew them as a sheet the size of the whole building: one frame is
+  // the building's footprint, flags on a transparent canvas. Cropped here to the
+  // box the flags move in, so the texture is the flags and not 12x26 tiles of
+  // nothing. Each sprite is placed by the crop's world position (the building's
+  // top left, plus the crop's offset in the frame), and sorts with the building
+  // (`depthRow`), never behind it. 150ms a frame, 3 frames.
+  {
+    // BuildColosseum, cols 104-117 / rows 9-21: six flags on its roofline and
+    // walls. Crop at (6,1) of the 336x312 frame, 324x163.
+    key: "decor-colosseum-flags",
+    file: "assets/sprites/decor/colosseum_flags.png",
+    frameWidth: 324, frameHeight: 163, frameCount: 3, frameRate: 1000 / 150,
+    tileX: 111, tileY: 15, offsetX: -12, offsetY: -4,
+    depthRow: 21,
+    scale: 1, ySort: true,
+  },
+  {
+    // BuildSTBrLighthouse, cols 50-61 / rows 60-85 (its layer carried a pixel
+    // offset until the artist zeroed it, which is why the cells used to read
+    // 54-65 / 52-77): the flag at the top of the tower. Crop at (149,12) of the
+    // 288x624 frame, 48x37.
+    key: "decor-lighthouse-flag",
+    file: "assets/sprites/decor/lighthouse_flag.png",
+    frameWidth: 48, frameHeight: 37, frameCount: 3, frameRate: 1000 / 150,
+    tileX: 57, tileY: 62, offsetX: -7, offsetY: -23,
+    depthRow: 85,
+    scale: 1, ySort: true,
+  },
 ];
 
 /**
@@ -377,7 +416,7 @@ export function createAnimatedDecor(
         .setScale(d.scale)
         // A y-sorted prop follows the same rule as a y-sorted layer: depth is
         // the world Y where it meets the ground.
-        .setDepth(d.ySort ? baseY : foregroundDepth);
+        .setDepth(d.ySort ? (d.depthRow !== undefined ? (d.depthRow + 1) * TILE_SIZE : baseY) : foregroundDepth);
       sprite.anims.play(`${d.key}-loop`);
       sprites.push(sprite);
 
