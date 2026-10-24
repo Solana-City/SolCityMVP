@@ -121,21 +121,21 @@ pub const UNLOCKS_SEED: &[u8] = b"unlocks";
 /// index→item table (getBoosterPool order); the pool count per draw is passed
 /// per request and stored on the account, so the pool can grow without a
 /// redeploy (append-only, never reorder).
-/// Bytes in the unlock bitset: 128 gives 1024 bits, 128 reserved for quest and
-/// NPC rewards and **896 for pack items**, across every season, forever.
+/// How many owned catalog indices the rollup snapshot on PlayerState holds.
 ///
-/// One bit is one DISTINCT catalog item, not one copy: supply lives in the
-/// drop table, not here. A wallet that opens three Crowns sets one bit.
+/// 256 entries, 512 bytes, fixed. It is fixed because PlayerState is delegated
+/// and a delegated account cannot be realloc'd; UnlockState on the base layer
+/// grows instead. 256 covers all but a determined collector, and the escape
+/// beyond it is undelegate, realloc, re-delegate on the next login.
 ///
-/// Sized at the only free moment. It appears in three account layouts
-/// (UnlockState.bits, UnlockState.minted, PlayerState.unlocked) and both
-/// accounts are being created fresh by this deploy, so widening costs nothing
-/// today. Afterwards it costs a realloc and a migration of every wallet, with
-/// PlayerState undelegated from the rollup first.
-///
-/// If 896 is ever not enough, the escape is a second page keyed
-/// ["unlocks2", wallet] rather than resizing this one.
-pub const UNLOCK_BITS: usize = 128;
+/// This replaced a 128-byte bitset on 2026-10-24. A bitset cost
+/// `catalog / 8` bytes for every wallet whether it owned one cosmetic or all
+/// of them, so growing the catalog taxed every player up front and capped the
+/// catalog at whatever was budgeted. A list costs two bytes per item actually
+/// owned, and the catalog size appears in per-player storage nowhere at all:
+/// a u16 index addresses 65,535 items, which at four seasons of 300 is more
+/// than fifty years.
+pub const PLAYER_UNLOCK_CAP: usize = 256;
 /// Pieces granted per pack.
 pub const BOOSTER_PACK_SIZE: usize = 5;
 /// Price to open an outfit box (0.025 SOL, about $2.50 at $100/SOL).
@@ -412,7 +412,8 @@ pub mod sol_city {
         player.expression_at = 0;
         player.last_message = String::new();
         player.message_at = 0;
-        player.unlocked = [0u8; UNLOCK_BITS];
+        player.unlocked = [0u16; PLAYER_UNLOCK_CAP];
+        player.unlocked_len = 0;
         player.last_active = Clock::get()?.unix_timestamp;
         player.created_at = Clock::get()?.unix_timestamp;
         Ok(())
@@ -619,10 +620,12 @@ pub mod sol_city {
             if idx < ENFORCED_FROM {
                 continue;
             }
-            let lockable = (idx - FREE_ITEM_COUNT) as usize;
-            let byte = lockable / 8;
+            // The snapshot is sorted, so this is a binary search rather than
+            // a bit test: eight comparisons at most over 256 entries, which
+            // is cheaper than it looks and buys a catalog with no ceiling.
+            let len = (player.unlocked_len as usize).min(PLAYER_UNLOCK_CAP);
             require!(
-                byte < UNLOCK_BITS && (player.unlocked[byte] & (1u8 << (lockable % 8) as u8)) != 0,
+                player.unlocked[..len].binary_search(&idx).is_ok(),
                 SolCityError::ItemNotUnlocked
             );
         }
@@ -635,7 +638,21 @@ pub mod sol_city {
     /// Session-signed (seamless) and run on BASE before delegating — that's why
     /// unlocks earned this session apply on the next delegation, not instantly.
     pub fn sync_unlocks(ctx: Context<SyncUnlocks>) -> Result<()> {
-        ctx.accounts.player.unlocked = ctx.accounts.unlock_state.bits;
+        // A wallet past the snapshot's capacity keeps the first
+        // PLAYER_UNLOCK_CAP it owns rather than failing the sync: being unable
+        // to wear the tail of a very large collection beats being unable to
+        // sync at all. Sorted ascending on both sides, so the kept prefix
+        // stays searchable.
+        //
+        // Built into a local first, so this never holds a borrow of one
+        // account while writing another.
+        let take = ctx.accounts.unlock_state.owned.len().min(PLAYER_UNLOCK_CAP);
+        let mut snapshot = [0u16; PLAYER_UNLOCK_CAP];
+        snapshot[..take].copy_from_slice(&ctx.accounts.unlock_state.owned[..take]);
+
+        let player = &mut ctx.accounts.player;
+        player.unlocked = snapshot;
+        player.unlocked_len = take as u16;
         Ok(())
     }
 
@@ -1291,9 +1308,10 @@ pub mod sol_city {
         client_seed: [u8; 32],
     ) -> Result<()> {
         require!(pool_count as usize >= BOOSTER_PACK_SIZE, SolCityError::InvalidPoolCount);
-        // Every drawable bit must fit the bitset, or a draw would be silently lost.
+        // Every drawable index must address a real catalog slot. The ceiling is
+        // the u16 the loadout carries, not a bitset any more.
         require!(
-            QUEST_FREE_SLOTS as usize + pool_count as usize <= UNLOCK_BITS * 8,
+            (ENFORCED_FROM as usize) + (pool_count as usize) <= u16::MAX as usize,
             SolCityError::InvalidPoolCount
         );
         require_keys_eq!(ctx.accounts.treasury.key(), TREASURY, SolCityError::InvalidTreasury);
@@ -1303,6 +1321,42 @@ pub mod sol_city {
             require!(!unlocks.pending, SolCityError::BoosterPending);
             unlocks.pending = true;
             unlocks.pending_pool_count = pool_count;
+        }
+
+        // ── Make room for the pack before the draw ────────────────────────
+        //
+        // The VRF callback grants into `owned`, and it cannot grow the account
+        // itself: the oracle signs it, and there is nobody there willing to
+        // fund bytes. So the buyer pays for the space here, in the same
+        // transaction that takes their money, which is also the only moment
+        // the cost is fair to charge.
+        //
+        // Grown by a whole pack whether or not the draw turns out to hold
+        // duplicates. A few spare entries cost two bytes each and save a
+        // second realloc.
+        {
+            let info = ctx.accounts.unlock_state.to_account_info();
+            let needed = UnlockState::size_for(
+                ctx.accounts.unlock_state.owned.len() + BOOSTER_PACK_SIZE,
+                ctx.accounts.unlock_state.minted.len(),
+            );
+            if info.data_len() < needed {
+                let rent = SolanaRent::get()?;
+                let topup = rent
+                    .minimum_balance(needed)
+                    .saturating_sub(info.lamports());
+                if topup > 0 {
+                    invoke(
+                        &system_instruction::transfer(ctx.accounts.payer.key, info.key, topup),
+                        &[
+                            ctx.accounts.payer.to_account_info(),
+                            info.clone(),
+                            ctx.accounts.system_program.to_account_info(),
+                        ],
+                    )?;
+                }
+                info.realloc(needed, false)?;
+            }
         }
 
         // Payment → treasury (wallet is the signer/fee payer).
@@ -1373,20 +1427,20 @@ pub mod sol_city {
         while picks.len() < BOOSTER_PACK_SIZE && cursor < 31 {
             let hi = randomness[cursor] as u16;
             let lo = randomness[cursor + 1] as u16;
-            // Draw a booster-subset index in [0, n); its lockable bit sits after
-            // the reserved quest-free block so quest bits never shift.
-            // Bounded by the require! in open_booster, which refuses a pool
-            // that would not fit the bitset. Checked anyway, so a bad bound
-            // returns a named error instead of a panic.
-            let bit = QUEST_FREE_SLOTS
+            // Draw a booster-subset index in [0, n) and turn it into a CATALOG
+            // index: the booster block starts after the free items and the
+            // reserved quest block, so pool index p is ENFORCED_FROM + p.
+            // Bounded by the require! in open_booster; checked anyway so a bad
+            // bound returns a named error instead of a panic.
+            let index = ENFORCED_FROM
                 .checked_add(((hi << 8) | lo) % n)
                 .ok_or(SolCityError::InvalidPoolCount)?;
-            if !picks.contains(&bit) {
-                picks.push(bit);
-                let byte = (bit / 8) as usize;
-                if byte < UNLOCK_BITS {
-                    unlocks.bits[byte] |= 1u8 << (bit % 8) as u8;
-                }
+            if !picks.contains(&index) {
+                picks.push(index);
+                // Sorted insert, and a duplicate the wallet already owned is a
+                // no-op: owning something twice is not a thing the list can
+                // express, which is the same answer the bitset gave.
+                unlocks.insert_owned(index);
             }
             cursor = cursor.saturating_add(1);
         }
@@ -1415,8 +1469,8 @@ pub mod sol_city {
     pub fn init_unlock_state(ctx: Context<InitUnlockState>) -> Result<()> {
         let unlocks = &mut ctx.accounts.unlock_state;
         unlocks.authority = ctx.accounts.authority.key();
-        unlocks.bits = [0u8; UNLOCK_BITS];
-        unlocks.minted = [0u8; UNLOCK_BITS];
+        unlocks.owned = Vec::new();
+        unlocks.minted = Vec::new();
         unlocks.pending = false;
         unlocks.pending_pool_count = 0;
         Ok(())
@@ -1863,9 +1917,6 @@ pub struct PlayerState {
     pub last_message: String,
     /// Unix ts the last message was sent.
     pub message_at: i64,
-    /// Snapshot of UnlockState.bits, copied in at delegate/sync time so the ER's
-    /// update_look_session can enforce cosmetics without a cross-cluster read.
-    pub unlocked: [u8; UNLOCK_BITS],
     // ── The public profile (read off the same ER poll as position) ─────────
     /// Unlocked achievements, one bit per client registry index.
     ///
@@ -1895,6 +1946,28 @@ pub struct PlayerState {
     /// while a field inserted anywhere above would silently shift every number
     /// after it. Anything added later goes below this, for the same reason.
     pub game_bests: [u32; GAME_SLOTS],
+    // ── The unlock snapshot, deliberately LAST ─────────────────────────────
+    /// Catalog indices this wallet may wear, sorted ascending, the first
+    /// `unlocked_len` entries valid. A snapshot of UnlockState.owned, copied
+    /// at sync time so `update_look_session` can enforce on the rollup without
+    /// a cross-cluster read.
+    ///
+    /// LAST, and that position is the point. Every client reads this account
+    /// by walking offsets from the front, and the discovery sweep pulls one
+    /// per online player every five seconds. Sitting last, it can be left out
+    /// of the sweep entirely with a `dataSlice`, so the mask costs no
+    /// bandwidth at all and the field is free to be generous.
+    ///
+    /// A LIST rather than a bitset, for the same reason as UnlockState.owned:
+    /// its size follows what a player owns, not how big the catalog grew.
+    ///
+    /// FIXED, unlike UnlockState.owned, because this account is delegated to
+    /// the rollup and a delegated account cannot be realloc'd. 256 covers all
+    /// but a determined collector; beyond that the escape is undelegate,
+    /// realloc, re-delegate on the next login.
+    pub unlocked: [u16; PLAYER_UNLOCK_CAP],
+    /// Valid entries in `unlocked`.
+    pub unlocked_len: u16,
 }
 
 // ── Outfit booster accounts ────────────────────────────────────────────────
@@ -1956,7 +2029,12 @@ pub struct InitUnlockState<'info> {
     #[account(
         init,
         payer = authority,
-        space = 8 + UnlockState::INIT_SPACE,
+        // Born empty. The two vectors carry only their 4-byte length prefix,
+        // and open_booster grows the account when it grants, funded by the
+        // buyer. A player who never opens a pack never pays for space they
+        // were never going to use. InitSpace cannot size a Vec, which is the
+        // whole reason this is spelled out.
+        space = UnlockState::size_for(0, 0),
         seeds = [UNLOCKS_SEED, authority.key().as_ref()],
         bump,
     )]
@@ -1965,29 +2043,63 @@ pub struct InitUnlockState<'info> {
 }
 
 #[account]
-#[derive(InitSpace)]
 pub struct UnlockState {
     /// Wallet that owns these unlocks.
     pub authority: Pubkey,
-    /// Bitset of unlocked booster-pool indices (1 bit per index). This is
-    /// permission: it says what this wallet may wear.
-    pub bits: [u8; UNLOCK_BITS],
-    /// Bitset of indices already turned into an asset by this wallet.
+    /// Catalog indices this wallet may wear, sorted ascending.
     ///
-    /// Separate from `bits` because they answer different questions: `bits` is
-    /// permission and survives a sale, this is "an asset for this index has
+    /// A LIST of what is owned, not a bitset over what exists. The difference
+    /// is the whole economics of the account: a bitset costs
+    /// `catalog_size / 8` bytes whether a player owns one cosmetic or all of
+    /// them, so growing the catalog taxed every wallet up front. A list costs
+    /// two bytes per item actually owned, and the catalog size appears here
+    /// nowhere at all.
+    ///
+    /// That is how a wallet holding ten thousand cNFTs costs nothing extra:
+    /// you pay as you acquire. `open_booster` reallocs room for the pack it is
+    /// about to grant and the buyer funds those bytes, so the cost follows the
+    /// purchase that caused it.
+    ///
+    /// Sorted because `update_look_session` binary-searches it on the rollup,
+    /// where compute is the scarce thing.
+    pub owned: Vec<u16>,
+    /// Indices already turned into a tradable asset by this wallet, sorted.
+    ///
+    /// Separate from `owned` because they answer different questions: `owned`
+    /// is permission and survives a sale, this is "an asset for this index has
     /// already been minted to this wallet once". Any future mint path must
-    /// refuse an index that is already set here, or a player could mint, sell,
-    /// and mint again from the same unlock.
+    /// refuse an index already here, or a player could mint, sell, and mint
+    /// again from the same unlock.
     ///
-    /// Carried now, with no writer yet, because the account is created for the
-    /// first time in this redeploy: adding the field later costs a migration
-    /// for every wallet that exists by then. See COLLECTIBLES_SPEC.md.
-    pub minted: [u8; UNLOCK_BITS],
+    /// Usually empty: minting is a choice, and most wallets never make it.
+    pub minted: Vec<u16>,
     /// A pack has been paid for and is awaiting the VRF callback.
     pub pending: bool,
     /// Index space for the pending draw (client getBoosterPool length).
     pub pending_pool_count: u16,
+}
+
+impl UnlockState {
+    /// Bytes for an account holding `owned_cap` owned and `minted_cap` minted
+    /// entries. 8 discriminator + 32 authority + two length-prefixed vectors
+    /// + 1 pending + 2 pending_pool_count.
+    pub fn size_for(owned_cap: usize, minted_cap: usize) -> usize {
+        8 + 32 + (4 + owned_cap * 2) + (4 + minted_cap * 2) + 1 + 2
+    }
+
+    /// Insert keeping the list sorted, ignoring a value already present.
+    /// Returns true when the list actually grew.
+    pub fn insert_owned(&mut self, index: u16) -> bool {
+        match self.owned.binary_search(&index) {
+            Ok(_) => false,
+            Err(at) => { self.owned.insert(at, index); true }
+        }
+    }
+
+    /// Whether this wallet may wear a catalog index.
+    pub fn owns(&self, index: u16) -> bool {
+        self.owned.binary_search(&index).is_ok()
+    }
 }
 
 /// Emitted when a pack resolves — the client reveals these pool indices.
