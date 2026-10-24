@@ -19,6 +19,7 @@ import { chamferBox, octagonFrame, octagonFrameThin } from "@/ui/chamfer";
 import Presence from "@/ui/Presence";
 import { AvatarPortrait, useLiveLoadout } from "@/ui/AvatarPortrait";
 import { KeysRows } from "@/ui/KeysCard";
+import { QuestList, useQuestRows } from "@/ui/QuestCard";
 import { useButtonFeel, feelStyle } from "@/ui/useButtonFeel";
 import { PublicKey } from "@solana/web3.js";
 import { useNickname } from "@/ui/useNicknames";
@@ -439,7 +440,15 @@ function ProfileTab({ profile, wallet, onConnect }: {
         </div>
       </div>
 
-      {/* ── Right: today's quests ── */}
+      {/* ── Right: the city's quests, then today's ── */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      <Card style={{ padding: 12 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
+          <PixelImg src={ICON.tasks} size={24} />
+          <span style={{ fontSize: 11, color: "#fff" }}>QUESTS</span>
+        </div>
+        <CityQuests wallet={wallet} />
+      </Card>
       <Card style={{ padding: 12 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
           <PixelImg src={ICON.tasks} size={24} />
@@ -471,8 +480,15 @@ function ProfileTab({ profile, wallet, onConnect }: {
           })}
         </div>
       </Card>
+      </div>
     </div>
   );
+}
+
+/** The same quest list the HUD card shows, so the two can never disagree. */
+function CityQuests({ wallet }: { wallet: string }) {
+  const rows = useQuestRows(wallet);
+  return <QuestList rows={rows} wallet={wallet} maxHeight={260} />;
 }
 
 // ── Achievements tab ────────────────────────────────────────────────────────

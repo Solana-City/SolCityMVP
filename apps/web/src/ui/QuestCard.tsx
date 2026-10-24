@@ -41,7 +41,7 @@ type Row = { def: QuestDef; progress: QuestProgress };
  * profile update (the streak). Polling would be the alternative and this card
  * can sit open for a whole session.
  */
-function useQuestRows(wallet: string | null): Row[] {
+export function useQuestRows(wallet: string | null): Row[] {
   const [tick, setTick] = useState(0);
   const bump = useCallback(() => setTick((n) => n + 1), []);
 
@@ -150,7 +150,7 @@ function QuestRow({ row, open, onToggle }: {
   );
 }
 
-function QuestList({ rows, wallet, maxHeight }: {
+export function QuestList({ rows, wallet, maxHeight }: {
   rows: Row[]; wallet: string | null; maxHeight: number;
 }) {
   const [open, setOpen] = useState<string | null>(null);
