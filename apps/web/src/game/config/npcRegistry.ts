@@ -238,18 +238,21 @@ const NPC_SEEDS: NPCSeed[] = [
   },
   {
     id: "dombra-artist",
-    name: "Dombra Artist",
+    // The id and the spriteKey keep the name the sheet arrived under: the id
+    // is what ?at= links and visit records are keyed by, and the key is the
+    // filename BootScene loads. Only what players read changes.
+    name: "Aisulu",
     role: "Superteam Kazakhstan",
     // At the yurt's door. BuildSTKZ runs cols 26-32 / rows 14-20, solid across
     // its bottom three rows, so the south face is row 20 and she stands on the
     // clear ground directly below it, centred on the seven columns.
     //
     // tileY is the row ABOVE the one she stands on: findNpcSpawn starts its
-    // scan at tileY + 1, so 20 here puts her on (29, 21). That also keeps her
-    // world Y below the yurt layer's, which is what draws her in FRONT of the
-    // doorway rather than behind the wall.
+    // scan at tileY + 1, so 21 here puts her on (29, 22), one row clear of the
+    // doorway. That also keeps her world Y below the yurt layer's, which is
+    // what draws her in FRONT of the yurt rather than behind its wall.
     tileX: 29,
-    tileY: 20,
+    tileY: 21,
     // One page: the greeting in her own language, who she plays for, and the
     // invitation. Same shape as Kuka's, which is the other Superteam lead who
     // sends players to a timeline rather than into a panel.
