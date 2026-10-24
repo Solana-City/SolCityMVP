@@ -89,7 +89,23 @@ export interface LayerVariant {
    * It is drawn above every other layer and left out of the shadow.
    * Never given to a pedestrian — see PedestrianSprite.
    */
-  effect?: { frames: number; fps: number };
+  effect?: {
+    frames: number;
+    fps: number;
+    /**
+     * Rides above the hair: lifted by however far the hairstyle stands over
+     * the bare head, so a tall style does not poke through the effect.
+     */
+    clearsHair?: boolean;
+    /**
+     * The sheet is groups of SPRITE_COLS cells, each group one walk cycle of
+     * the body it rides on. The cell inside a group is the body's own walk
+     * frame, so the effect moves with the head instead of beside it; `fps`
+     * then sets how fast the groups themselves change (one every
+     * SPRITE_COLS / fps seconds).
+     */
+    followsWalk?: boolean;
+  };
 }
 
 /**
@@ -274,9 +290,9 @@ export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
     // sheet is 24 cells wide and the mask reads the first four as a walk.
     { id: "Halo", name: "Halo", textureKey: "pd-hat-Halo", file: "hat/Halo.png",
       hatCoverage: "band", unlockVia: "quest", unlockHint: "Test item",
-      // One cell per 1/24s, read off the clock (see AvatarSprite.tickEffects),
-      // so the loop is one second whatever the frame rate is doing.
-      effect: { frames: 24, fps: 24 } },
+      // DOM's timing: 150 ms a cell, so a 3.6 s loop. Read off the clock (see
+      // AvatarSprite.tickEffects), so it holds whatever the frame rate does.
+      effect: { frames: 24, fps: 1000 / 150, clearsHair: true, followsWalk: true } },
   ],
 };
 

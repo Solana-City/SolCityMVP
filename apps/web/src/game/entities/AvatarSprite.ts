@@ -43,6 +43,36 @@ function readTexturePixels(scene: Phaser.Scene, textureKey: string): { data: Uin
   }
 }
 
+// Cache: textureKey -> per-direction-row [topmost, lowest] ink y (row-relative),
+// over every cell in that row. Used to seat an effect on top of the hair.
+const inkExtentCache = new Map<string, ({ top: number; bottom: number } | null)[]>();
+
+function getInkExtents(scene: Phaser.Scene, textureKey: string): ({ top: number; bottom: number } | null)[] {
+  const cached = inkExtentCache.get(textureKey);
+  if (cached) return cached;
+  const rows: ({ top: number; bottom: number } | null)[] = [null, null, null, null];
+  const pixels = readTexturePixels(scene, textureKey);
+  if (pixels) {
+    const { data, w } = pixels;
+    for (let band = 0; band < SPRITE_ROWS; band++) {
+      let top = SPRITE_FRAME_HEIGHT, bottom = -1;
+      for (let y = 0; y < SPRITE_FRAME_HEIGHT; y++) {
+        const base = ((band * SPRITE_FRAME_HEIGHT + y) * w) * 4;
+        for (let x = 0; x < w; x++) {
+          if (data[base + x * 4 + 3] > 10) {
+            if (y < top) top = y;
+            if (y > bottom) bottom = y;
+            break;
+          }
+        }
+      }
+      if (bottom >= 0) rows[band] = { top, bottom };
+    }
+  }
+  inkExtentCache.set(textureKey, rows);
+  return rows;
+}
+
 // Cache: hat textureKey -> per-direction-row array of per-column topmost
 // opaque row (row-relative y, 0..SPRITE_FRAME_HEIGHT). SPRITE_FRAME_HEIGHT
 // in a given column means "the hat has no ink in that column for that
@@ -295,6 +325,8 @@ function releaseHairTexture(scene: Phaser.Scene, key: string | null): void {
  */
 /** Gap in world px between the top of the outfit and the bottom of a name tag. */
 const LABEL_GAP = 1.5;
+/** How long a new facing must hold before an effect layer turns to it, in ms. */
+const EFFECT_TURN_MS = 120;
 /** Height the name tag takes above its own seat line, badges stack on top. */
 const NAME_HEIGHT = 8;
 
@@ -309,7 +341,7 @@ export class AvatarSprite {
    * after a slow frame, so a loop on it drifts behind and looks like it
    * freezes. tickEffects picks the cell from the clock instead.
    */
-  private effectSprites: Map<Phaser.GameObjects.Sprite, { effect: NonNullable<LayerVariant["effect"]>; shown: number }> = new Map();
+  private effectSprites: Map<Phaser.GameObjects.Sprite, { effect: NonNullable<LayerVariant["effect"]>; shown: number; row: number; want: number; wantSince: number }> = new Map();
   private effectsTicking = false;
   /** Single silhouette sprite mirrored under the feet — see characterShadow. */
   private shadowSprite: Phaser.GameObjects.Sprite | null = null;
@@ -701,7 +733,7 @@ export class AvatarSprite {
       if (!this.awake) sprite.setActive(false);
       this.container.add(sprite);
       this.layerSprites.set(category, sprite);
-      if (effect) this.effectSprites.set(sprite, { effect, shown: -1 });
+      if (effect) this.effectSprites.set(sprite, { effect, shown: -1, row: -1, want: -1, wantSince: 0 });
       else this.registerAnimations(textureKey);
     }
 
@@ -717,19 +749,55 @@ export class AvatarSprite {
     }
     if (this.effectSprites.size > 0 && !this.effectsTicking) {
       this.effectsTicking = true;
-      this.scene.events.on(Phaser.Scenes.Events.UPDATE, this.tickEffects);
+      this.scene.events.on(Phaser.Scenes.Events.POST_UPDATE, this.tickEffects);
     }
     this.tickEffects();
+  }
+
+  /**
+   * How many sheet pixels the hairstyle stands above the bare head in this
+   * direction. The halo was drawn for a bare head, so it rises by exactly
+   * that much and never sits inside tall hair.
+   */
+  private hairLift(effect: NonNullable<LayerVariant["effect"]>, row: number): number {
+    if (!effect.clearsHair) return 0;
+    const hair = getVariant("hair", this.currentLoadout.hair);
+    const skin = getVariant("skin", this.currentLoadout.skin);
+    if (!hair || !skin) return 0;
+    const h = getInkExtents(this.scene, hair.textureKey)[row];
+    const s = getInkExtents(this.scene, skin.textureKey)[row];
+    if (!h || !s) return 0;
+    return Math.max(0, s.top - h.top);
   }
 
   /** Shows the cell of each effect layer that the clock says is current. */
   private tickEffects = (): void => {
     if (!this.awake) return;
     const now = this.scene.time.now;
-    const row = DIRECTION_ROW[this.currentDirection];
+    const facing = DIRECTION_ROW[this.currentDirection];
     for (const [sprite, fx] of this.effectSprites) {
       const { frames, fps } = fx.effect;
-      const frame = row * frames + (Math.floor((now / 1000) * fps) % frames);
+      // A turn only reaches the effect once the new direction has held for a
+      // moment: walking diagonally flips the facing from one tick to the next,
+      // and each row of the sheet is a different view, so following every flip
+      // swaps the picture back and forth and reads as a stutter.
+      if (facing !== fx.want) { fx.want = facing; fx.wantSince = now; }
+      if (fx.row === -1 || (fx.row !== facing && now - fx.wantSince >= EFFECT_TURN_MS)) {
+        fx.row = facing;
+        // The sheet draws at 0.5 world scale, so a sheet pixel is half a world one.
+        sprite.y = -2 - this.hairLift(fx.effect, facing) * 0.5;
+      }
+      let frame: number;
+      if (fx.effect.followsWalk) {
+        // Groups of SPRITE_COLS cells: the group is the clock's, the cell in
+        // it is the body's walk frame, so the ring bobs with the head.
+        const body = this.layerSprites.get("skin");
+        const phase = body ? Number(body.frame.name) % SPRITE_COLS : 0;
+        const group = Math.floor(((now / 1000) * fps) / SPRITE_COLS) % (frames / SPRITE_COLS);
+        frame = fx.row * frames + group * SPRITE_COLS + phase;
+      } else {
+        frame = fx.row * frames + (Math.floor((now / 1000) * fps) % frames);
+      }
       if (frame !== fx.shown) {
         fx.shown = frame;
         sprite.setFrame(frame);
@@ -805,7 +873,7 @@ export class AvatarSprite {
     this.effectSprites.clear();
     if (this.effectsTicking) {
       this.effectsTicking = false;
-      this.scene.events.off(Phaser.Scenes.Events.UPDATE, this.tickEffects);
+      this.scene.events.off(Phaser.Scenes.Events.POST_UPDATE, this.tickEffects);
     }
 
     if (this.shadowSprite) {
