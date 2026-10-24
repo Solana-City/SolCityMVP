@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { batch, get, hgetall, lrange } from "@/lib/kv";
+import { batch, get, hgetall, lrange, smembers } from "@/lib/kv";
 import { eventReport, recordEvent } from "./events";
 
 const wallet = "9592QS34mPUwqA7sPAkug1kcuFddjn59QPQMzzCgKhEp";
@@ -29,5 +29,22 @@ describe("events", () => {
     const row = report.latency.find((r) => r.id === "ephemeral-move");
     expect(row).toMatchObject({ count: 2, users: 1, slow: 1 });
     expect(row?.average).toBe(800);
+  });
+
+  /**
+   * The list a seasonal item is settled from. It has to hold the winners and
+   * nobody else: the hat is handed over on another cluster months later, and
+   * by then this set is the only record that someone earned it.
+   */
+  it("keeps who won apart from who played", async () => {
+    const winner = "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU";
+    const loser = "4Nd1mBQtrMJVYVfKf2PJy9NZUZdTAsp7D4xWLs4gDB4T";
+    await recordEvent({ kind: "minigame", id: "carve-test", wallet: winner, value: 91, success: true });
+    await recordEvent({ kind: "minigame", id: "carve-test", wallet: loser, value: 44, success: false });
+    // Winning twice is still one entitlement.
+    await recordEvent({ kind: "minigame", id: "carve-test", wallet: winner, value: 95, success: true });
+
+    expect(await smembers("ev:minigame:carve-test:won")).toEqual([winner]);
+    expect((await smembers("ev:minigame:carve-test:users")).sort()).toEqual([loser, winner].sort());
   });
 });

@@ -14,6 +14,7 @@
  *   ev:<kind>:<id>:by             sorted set wallet -> times (top users)
  *   ev:<kind>:<id>:best           sorted set wallet -> best score (mini-games)
  *   ev:<kind>:<id>:ok             completions (a finished tutorial, a claimed quest)
+ *   ev:<kind>:<id>:won            set of wallets that SUCCEEDED, not just played
  *   ev:<kind>:<id>:s:<n>          how many reached step n, which is the funnel
  *   ev:<kind>:<id>:sum            total of the reported values, for averages
  *                                 (latency ms, session seconds, lamports spent)
@@ -79,6 +80,21 @@ export async function recordEvent(ev: GameEvent): Promise<boolean> {
   // card rather than only as "started" versus "finished".
   if (ev.kind === "tutorial" && score > 0 && score <= 20) ops.push({ op: "incrby", key: `${base}:s:${score}` });
   if (ev.success === true) ops.push({ op: "incrby", key: `${base}:ok` });
+  // WHO won, not just how many times. `:ok` is a counter and `:users` is
+  // everyone who turned up, so neither could answer "which wallets earned the
+  // reward", and the only other record of that was the unlock in the player's
+  // own localStorage, which a cleared browser takes with it.
+  //
+  // It is what a seasonal event is settled from: the Halloween hat is granted
+  // for a carve at or above the pass mark, which is exactly what the client
+  // reports as success, so this set IS the list of people owed the item when
+  // the city moves to mainnet. A wallet address is the same on both clusters;
+  // the state is not, so the list has to be kept off chain until then.
+  //
+  // Deliberately not a board: `boardKey` in lib/boards.ts is the allowlist the
+  // admin reset can name, and this key is not in it, so clearing a leaderboard
+  // before a tournament cannot wipe who earned what.
+  if (ev.success === true) ops.push({ op: "sadd", key: `${base}:won`, member: ev.wallet });
   // A running total makes the average free at read time. It matters for
   // latency (ms), sessions (seconds) and purchases (lamports); for the
   // count-only kinds it is a harmless extra counter.
