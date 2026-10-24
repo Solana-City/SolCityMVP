@@ -35,15 +35,15 @@ export interface AnimatedDecorDef {
   /**
    * Name of a map layer (its leaf name) that holds this prop painted, and which
    * is dropped from the map (REPLACED_MAP_LAYERS is built from these). One
-   * sprite stands wherever the layer has a painted tile whose tile below, in
-   * that layer, is empty: the foot of each prop. So a prop two tiles tall is
-   * painted as two stacked tiles and still becomes ONE sprite, standing on the
-   * lower one, and every copy of an identical prop can sit in the same layer;
-   * moving or adding one in Tiled moves or adds the sprite, with no change here.
-   * (Two props stacked directly on top of each other in the same layer would be
-   * read as one: keep those in separate layers.) The copies share the sheet,
-   * the animation and the texture, which is what keeps ten pumpkins no dearer
-   * than one.
+   * sprite per prop, where a prop is a run of painted tiles that touch along an
+   * edge (4-connected): it stands at the bottom centre of that run. So a prop
+   * two tiles tall, or two wide, or both, is painted as the tiles it covers and
+   * still becomes ONE sprite, and every copy of an identical prop can sit in the
+   * same layer; moving or adding one in Tiled moves or adds the sprite, with no
+   * change here. (Two copies painted touching each other would be read as one
+   * prop: leave a tile between them, or give them layers of their own.) The
+   * copies share the sheet, the animation and the texture, which is what keeps
+   * ten pumpkins no dearer than one.
    */
   fromLayer?: string;
   /**
@@ -66,6 +66,13 @@ export interface AnimatedDecorDef {
    * against.
    */
   blocks?: boolean;
+  /**
+   * With `blocks` and `fromLayer`: stamp EVERY tile the prop was painted on, not
+   * just the bottom row. For a prop whose whole body is solid (a cauldron),
+   * where the painted tiles carried collision on all of them; the default is
+   * its feet, which is what a pole or a tall prop with a clear top needs.
+   */
+  blocksWhole?: boolean;
   /**
    * Draw by where the prop meets the ground, like a palm or a lamp post:
    * the player passes in front of it from the south and behind it from the
@@ -266,6 +273,28 @@ export const ANIMATED_DECOR: AnimatedDecorDef[] = [
     // the screen, and the depth lands on the building's own bottom row.
     ySort: true,
   },
+  {
+    // Superteam Kazakhstan flag on the EAST side of the yurt (BuildSTKZ, cols
+    // 26-32 / rows 14-20): the pole's foot on col 33, on the yurt's bottom row,
+    // against its east wall, and the cloth flying out over cols 33-34.
+    //
+    // The same sheet geometry as the other poles (78x183, 4 frames, a 2x draw,
+    // so scale 0.5), the foot at source x 0-24: tile 33 plus offsetX 13 stands
+    // it on tile 33, the cell `blocks` stamps. 6fps like the others; the artist
+    // did not give a speed for this one.
+    key: "flag-st-kz",
+    file: "assets/sprites/decor/flag_stkz.png",
+    frameWidth: 78,
+    frameHeight: 183,
+    frameCount: 4,
+    frameRate: 6,
+    tileX: 33,
+    tileY: 20,
+    offsetX: 13,
+    scale: 0.5,
+    blocks: true,
+    ySort: true,
+  },
   // ── Halloween ────────────────────────────────────────────────────
   //
   // Three props, each painted on a map layer of its own (every copy of it in
@@ -302,6 +331,17 @@ export const ANIMATED_DECOR: AnimatedDecorDef[] = [
     frameWidth: 24, frameHeight: 36, frameCount: 3, frameRate: 1000 / 150,
     fromLayer: "DecorHalloweenPumpkinCandle",
     scale: 1, blocks: true, ySort: true,
+  },
+  {
+    // The cauldron: 6 frames of 48x48, two tiles wide and two tall (layer
+    // DecorHalloweenBoiler), standing on the bottom edge of its lower tiles.
+    // 150ms a frame like the other Halloween props; the sheet came without a
+    // speed of its own.
+    key: "decor-halloween-boiler",
+    file: "assets/sprites/decor/halloween_boiler.png",
+    frameWidth: 48, frameHeight: 48, frameCount: 6, frameRate: 1000 / 150,
+    fromLayer: "DecorHalloweenBoiler",
+    scale: 1, blocks: true, blocksWhole: true, ySort: true,
   },
   // ── Flags that were painted into a building's tileset art ─────────────
   //
@@ -347,14 +387,27 @@ export const REPLACED_MAP_LAYERS: ReadonlySet<string> = new Set([
   ...ANIMATED_DECOR.flatMap((d) => (d.fromLayer ? [d.fromLayer] : [])),
 ]);
 
-/** Where an item stands: its own tile, or the foot of each prop painted on its layer. */
-function placements(d: AnimatedDecorDef, map?: Phaser.Tilemaps.Tilemap): Array<{ tileX: number; tileY: number }> {
-  if (!d.fromLayer) return [{ tileX: d.tileX ?? 0, tileY: d.tileY ?? 0 }];
+/**
+ * Where one copy of an item stands: the tile its foot is on (`tileX`, `tileY`)
+ * and `shiftX`, how far right of that tile's centre its centre is (a prop an
+ * even number of tiles wide is centred on a tile edge). `feet` are the columns
+ * of its bottom row, where `blocks` stamps its collision, and `cells` every
+ * tile it was painted on, where `blocksWhole` does.
+ */
+interface Placement { tileX: number; tileY: number; shiftX: number; feet: number[]; cells: Array<[number, number]> }
+
+/** Where an item stands: its own tile, or each prop painted on its layer. */
+function placements(d: AnimatedDecorDef, map?: Phaser.Tilemaps.Tilemap): Placement[] {
+  if (!d.fromLayer) {
+    const tileX = d.tileX ?? 0;
+    const tileY = d.tileY ?? 0;
+    return [{ tileX, tileY, shiftX: 0, feet: [tileX], cells: [[tileX, tileY]] }];
+  }
   if (!map) {
     console.warn(`[AnimatedDecor] "${d.key}" needs the map to read layer "${d.fromLayer}"`);
     return [];
   }
-  const out: Array<{ tileX: number; tileY: number }> = [];
+  const out: Placement[] = [];
   // Tiled files can hold more than one layer under a name (and group paths
   // prefix it), so every layer whose leaf name matches is read, one by one.
   for (const layer of map.layers) {
@@ -365,9 +418,28 @@ function placements(d: AnimatedDecorDef, map?: Phaser.Tilemaps.Tilemap): Array<{
     const originX = Math.round(layer.x / map.tileWidth);
     const originY = Math.round(layer.y / map.tileHeight);
     const painted = (x: number, y: number) => (layer.data[y]?.[x]?.index ?? 0) > 0;
+    const seen = new Set<number>();
     for (let y = 0; y < layer.height; y++) {
       for (let x = 0; x < layer.width; x++) {
-        if (painted(x, y) && !painted(x, y + 1)) out.push({ tileX: originX + x, tileY: originY + y });
+        if (!painted(x, y) || seen.has(y * layer.width + x)) continue;
+        // Flood the run of touching tiles this one belongs to.
+        let minX = x, maxX = x, maxY = y;
+        const cells: Array<[number, number]> = [[originX + x, originY + y]];
+        const stack: Array<[number, number]> = [[x, y]];
+        seen.add(y * layer.width + x);
+        while (stack.length) {
+          const [cx, cy] = stack.pop()!;
+          minX = Math.min(minX, cx); maxX = Math.max(maxX, cx); maxY = Math.max(maxY, cy);
+          for (const [nx, ny] of [[cx + 1, cy], [cx - 1, cy], [cx, cy + 1], [cx, cy - 1]]) {
+            if (!painted(nx, ny) || seen.has(ny * layer.width + nx)) continue;
+            seen.add(ny * layer.width + nx);
+            stack.push([nx, ny]);
+            cells.push([originX + nx, originY + ny]);
+          }
+        }
+        const feet: number[] = [];
+        for (let fx = minX; fx <= maxX; fx++) if (painted(fx, maxY)) feet.push(originX + fx);
+        out.push({ tileX: originX + minX, tileY: originY + maxY, shiftX: ((maxX - minX) * TILE_SIZE) / 2, feet, cells });
       }
     }
   }
@@ -411,7 +483,7 @@ export function createAnimatedDecor(
     for (const at of placements(d, map)) {
       const baseY = (at.tileY + 1) * TILE_SIZE;
       const sprite = scene.add
-        .sprite(at.tileX * TILE_SIZE + TILE_SIZE / 2 + (d.offsetX ?? 0), baseY + (d.offsetY ?? 0), d.key)
+        .sprite(at.tileX * TILE_SIZE + TILE_SIZE / 2 + at.shiftX + (d.offsetX ?? 0), baseY + (d.offsetY ?? 0), d.key)
         .setOrigin(0.5, 1)
         .setScale(d.scale)
         // A y-sorted prop follows the same rule as a y-sorted layer: depth is
@@ -424,10 +496,13 @@ export function createAnimatedDecor(
       // into a layer that IS drawn would paint a stray tile on the map.
       if (d.blocks && collision && !collision.visible) {
         // Any index does: the volume is never drawn, only collided against.
-        const cell = collision.putTileAt(1, at.tileX, at.tileY, false);
-        if (cell) {
-          cell.setCollision(true, true, true, true, false);
-          collision.calculateFacesAt(at.tileX, at.tileY);
+        const solid: Array<[number, number]> = d.blocksWhole ? at.cells : at.feet.map((fx) => [fx, at.tileY]);
+        for (const [sx, sy] of solid) {
+          const cell = collision.putTileAt(1, sx, sy, false);
+          if (cell) {
+            cell.setCollision(true, true, true, true, false);
+            collision.calculateFacesAt(sx, sy);
+          }
         }
       }
     }
