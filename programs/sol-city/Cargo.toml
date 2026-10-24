@@ -21,5 +21,12 @@ default = []
 # this program creates is created by an explicit `init` in an instruction
 # dedicated to it, so re-initialisation is not reachable even by accident.
 anchor-lang = "0.30.1"
+# Direct, although anchor-lang already pulls it in, because the `pubkey!` macro
+# expands to an absolute `::solana_program::...` path that only resolves when
+# the crate is a dependency of THIS one. Playground happens to provide it, which
+# is why the omission never showed up there and only surfaced the first time
+# these programs were built anywhere else. Pinned to the version anchor-lang
+# 0.30.1 already resolves, so nothing else in the lock moves.
+solana-program = "1.18.26"
 # MagicBlock VRF is called by hand-rolled CPI (see lib.rs): Solana Playground
 # cannot build ephemeral-vrf-sdk, so there is no SDK dependency.
