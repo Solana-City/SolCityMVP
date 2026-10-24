@@ -4,9 +4,7 @@ import { progressionBus } from "@/game/progression/progressionBus";
 import { unlockItem, getUnlockedSet, unlockKeyOf } from "@/game/config/wardrobeUnlocks";
 import { getVariant } from "@/game/config/paperDoll";
 import { skrBalance } from "@/game/solana/seekerDetection";
-import { fetchBoard } from "@/game/leaderboards/boards";
-import { CARVING_BOARD } from "@/game/halloween/event";
-import { PASS_ACCURACY } from "@/game/minigames/pumpkin-carving/pattern";
+import { hasWon } from "@/game/leaderboards/won";
 
 /**
  * Earned outfits: items a player unlocks by doing something, never by rolling
@@ -156,15 +154,18 @@ function grantTo(
  * reads. The entitlement and the wardrobe disagreed, and the player only ever
  * sees the wardrobe.
  *
- * It reads the best-score board, not the winners set: the score is public and
- * per wallet, so this needs no admin key and nothing new is stored. Both are
- * written by the same `track` call at the end of a carve, and the pass mark is
- * the same constant the game grades against.
+ * It asks `ev:minigame:pumpkin-carving:won`, which is the record of having
+ * succeeded rather than an inference from a score. That matters for one
+ * concrete reason: the SCOREBOARD can be reset, and is, to start an event from
+ * zero. The winners set is a different key and survives that, so clearing the
+ * ranking cannot quietly take the hat away from the people who earned it.
  *
- * An unreachable board grants nothing, on purpose. A board that did not answer
- * looks exactly like a wallet that never carved, and guessing in the player's
- * favour would hand the hat to anyone whose network blipped on connect. That
- * is what `ok` is for.
+ * It is also cheaper. One membership test per connect, against the several
+ * commands a board read costs.
+ *
+ * An unreachable store grants nothing, on purpose. "No" and "could not ask"
+ * look identical otherwise, and guessing in the player's favour would hand the
+ * hat to anyone whose network blipped on connect.
  *
  * Runs whether or not the event is still on. Earning it closes on 2 November;
  * having earned it does not.
@@ -172,12 +173,10 @@ function grantTo(
 export async function reconcileCarvingReward(wallet: string): Promise<void> {
   if (!wallet) return;
   const reward = REWARDS.halloween;
-  // Already in this browser: nothing to fetch, and this is the common case.
+  // Already in this browser: nothing to ask, and this is the common case.
   if (getUnlockedSet(wallet).has(unlockKeyOf(reward.category, reward.id))) return;
 
-  const board = await fetchBoard(CARVING_BOARD, { wallet, limit: 1 }).catch(() => null);
-  if (!board?.ok || !board.mine) return;
-  if (board.mine.value < PASS_ACCURACY) return;
+  if (!(await hasWon("minigame", PUMPKIN_CARVING_ID, wallet))) return;
   grantTo(wallet, reward);
 }
 

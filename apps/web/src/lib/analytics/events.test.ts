@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { batch, get, hgetall, lrange, smembers } from "@/lib/kv";
+import { batch, del, get, hgetall, lrange, sismember, smembers } from "@/lib/kv";
+import { boardKey } from "@/lib/boards";
 import { eventReport, recordEvent } from "./events";
 
 const wallet = "9592QS34mPUwqA7sPAkug1kcuFddjn59QPQMzzCgKhEp";
@@ -46,5 +47,32 @@ describe("events", () => {
 
     expect(await smembers("ev:minigame:carve-test:won")).toEqual([winner]);
     expect((await smembers("ev:minigame:carve-test:users")).sort()).toEqual([loser, winner].sort());
+  });
+
+  /**
+   * Resetting a board to start an event from zero must not take back what
+   * people already earned.
+   *
+   * The two live in different keys on purpose, and this is the test that says
+   * so: `/api/admin/board` deletes the ranking, and the entitlement the hat is
+   * re-granted from is somewhere else entirely. It is also why the
+   * reconciliation asks the winners set rather than inferring a win from a
+   * score that a reset can erase.
+   */
+  it("survives the board being cleared", async () => {
+    const winner = "5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1";
+    await recordEvent({ kind: "minigame", id: "reset-test", wallet: winner, value: 93, success: true });
+
+    const ranking = boardKey("game:reset-test");
+    expect(ranking).toBe("ev:minigame:reset-test:best");
+    await del(ranking!);
+
+    expect(await sismember("ev:minigame:reset-test:won", winner)).toBe(true);
+  });
+
+  it("says no for a wallet that never won, without shipping the set", async () => {
+    const stranger = "6dNVprDYLZ7Hh3AQbWnCbWcqNqMDH9hEHnZkLbxJUsHu";
+    await recordEvent({ kind: "minigame", id: "stranger-test", wallet: stranger, value: 10, success: false });
+    expect(await sismember("ev:minigame:stranger-test:won", stranger)).toBe(false);
   });
 });

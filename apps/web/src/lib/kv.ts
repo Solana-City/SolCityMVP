@@ -183,6 +183,19 @@ export async function srem(key: string, value: string): Promise<void> {
   (memory.get(key) as Set<string> | undefined)?.delete(value);
 }
 
+/**
+ * Whether one member is in a set.
+ *
+ * One command, and it never sends the set back. `smembers` on
+ * `ev:<kind>:<id>:won` would answer the same question by shipping every
+ * winner's wallet to whoever asked, which grows with the event and is nobody
+ * else's business.
+ */
+export async function sismember(key: string, value: string): Promise<boolean> {
+  if (storeMode() === "redis") return (await redis<number>(["SISMEMBER", key, value])) === 1;
+  return ((memory.get(key) as Set<string> | undefined) ?? new Set()).has(value);
+}
+
 export async function scard(key: string): Promise<number> {
   if (storeMode() === "redis") return redis<number>(["SCARD", key]);
   return ((memory.get(key) as Set<string> | undefined) ?? new Set()).size;
