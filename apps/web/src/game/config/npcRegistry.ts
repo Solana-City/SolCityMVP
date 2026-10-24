@@ -245,14 +245,13 @@ const NPC_SEEDS: NPCSeed[] = [
     // once the Superteam Kazakhstan area is drawn and placed on the map.
     tileX: 30,
     tileY: 22,
-    // TODO: the action is still being chosen (shashu, the berkut's eye, the
-    // asyk game). Placeholder until then, so talking to her does nothing it
-    // would have to undo later.
+    // One page: the greeting in her own language, who she plays for, and the
+    // invitation. Same shape as Kuka's, which is the other Superteam lead who
+    // sends players to a timeline rather than into a panel.
     dialog: [
-      "Welcome! I am here from Superteam Kazakhstan.",
-      "This is the dombra. Two strings, and every story we have.",
+      "Sälem! I play the dombra for Superteam Kazakhstan. Follow us and see what we are building.",
     ],
-    action: { type: "placeholder", label: "Listen a while" },
+    action: { type: "link", label: "Follow @superteamkz", url: "https://x.com/superteamkz" },
     spriteKey: "Dombra Artist",
     // Static animated, like Kite Pro: one row of 6 frames at 64x84, facing
     // south, never wandering. 150ms a frame, as the sheet was delivered.
