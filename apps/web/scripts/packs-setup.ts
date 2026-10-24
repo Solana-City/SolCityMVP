@@ -45,20 +45,20 @@ const USDC_MINT = new PublicKey(
 );
 
 /**
- * What each pack costs, in US dollars.
+ * What each pack costs, in US dollars. Set 2026-10-24, to start with.
  *
- * PLACEHOLDERS, and the one thing in this file nobody but the owner can
- * decide. They are here rather than taken from `packs.ts` because the number
- * in that table is `priceSol`, which exists for the client-side preview and
- * was never a price anybody agreed to charge.
+ * Here rather than taken from `packs.ts` because the number in that table is
+ * `priceSol`, which exists for the client-side preview and was never a price
+ * anybody agreed to charge.
  *
- * Changing one later is a transaction, not a deploy: re-run with `--send` and
- * `upsert_pack` replaces the pack in place.
+ * Changing one is a transaction, not a deploy: edit, re-run with `--send`, and
+ * `upsert_pack` replaces the pack in place. That is most of the reason the
+ * pack table is an account at all.
  */
 const PRICE_USD: Record<string, number> = {
-  street: 1,
-  city: 2.5,
-  prime: 5,
+  street: 3,
+  city: 7,
+  prime: 10,
 };
 
 /** USDC has six decimals. */
