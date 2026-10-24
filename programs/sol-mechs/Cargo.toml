@@ -25,3 +25,9 @@ anchor-lang = "0.30.1"
 # these programs were built anywhere else. Pinned to the version anchor-lang
 # 0.30.1 already resolves, so nothing else in the lock moves.
 solana-program = "1.18.26"
+# Direct for the same reason as solana-program above: anchor's `zero_copy`
+# attribute expands to absolute `::bytemuck::` paths, which resolve only when
+# the crate belongs to this one. MatchQueue and the other zero-copy accounts
+# are what need it. The derive feature carries the Pod and Zeroable macros the
+# expansion asks for.
+bytemuck = { version = "1", features = ["derive", "min_const_generics"] }
