@@ -137,6 +137,17 @@ pub const UNLOCKS_SEED: &[u8] = b"unlocks";
 /// than fifty years.
 pub const PLAYER_UNLOCK_CAP: usize = 256;
 /// Pieces granted per pack.
+/// Pack configuration, seed ["pack_config"]. One account for the whole city.
+pub const PACK_CONFIG_SEED: &[u8] = b"pack_config";
+/// common, uncommon, rare, legendary. The ladder the client already draws on.
+pub const RARITY_COUNT: usize = 4;
+/// Packs the config can hold. Three exist; the rest is room to tune.
+pub const MAX_PACKS: usize = 8;
+/// Seasons the config can hold. At two to four a year this is a decade.
+pub const MAX_SEASONS: usize = 32;
+/// Basis points, so 0.5% legendary is expressible. Weights must sum to this.
+pub const WEIGHT_TOTAL: u16 = 10_000;
+
 pub const BOOSTER_PACK_SIZE: usize = 5;
 /// Price to open an outfit box (0.025 SOL, about $2.50 at $100/SOL).
 pub const BOOSTER_PRICE_LAMPORTS: u64 = 25_000_000;
@@ -296,6 +307,22 @@ pub enum SolCityError {
     InvalidUndelegationBuffer,
     #[msg("Those seeds do not derive the account being undelegated")]
     InvalidUndelegationSeeds,
+    #[msg("Only the pack config admin may do that")]
+    NotPackAdmin,
+    #[msg("No room left in the pack table")]
+    PackTableFull,
+    #[msg("No room left in the season table")]
+    SeasonTableFull,
+    #[msg("Rarity weights must add up to 10000 basis points")]
+    BadWeights,
+    #[msg("No pack with that id")]
+    UnknownPack,
+    #[msg("That pack is not on sale")]
+    PackClosed,
+    #[msg("That pack belongs to a season that is not the open one")]
+    WrongSeason,
+    #[msg("That season has no rarity ranges")]
+    UnknownSeason,
 }
 
 /// Truncates a string to at most `max` BYTES on a char boundary, so a
@@ -1566,6 +1593,86 @@ pub mod sol_city {
     pub fn remove_friend(_ctx: Context<RemoveFriend>) -> Result<()> {
         Ok(())
     }
+
+    // Pack configuration -----------------------------------------------------
+    //
+    // What the city sells lives in an account rather than in the bytecode, so
+    // opening a season, retiring one, correcting a price or tuning odds that
+    // read wrong in the wild is a transaction instead of a redeploy. The cost
+    // is an admin key that can change payouts; see the note on PackConfig.
+
+    /// Creates the config. Once, ever: a second call fails, which is the point.
+    pub fn init_pack_config(
+        ctx: Context<InitPackConfig>,
+        currency_mint: Pubkey,
+        treasury_token_account: Pubkey,
+    ) -> Result<()> {
+        let cfg = &mut ctx.accounts.config;
+        cfg.admin = ctx.accounts.admin.key();
+        cfg.currency_mint = currency_mint;
+        cfg.treasury_token_account = treasury_token_account;
+        cfg.current_season = 1;
+        cfg.packs = [PackDef::default(); MAX_PACKS];
+        cfg.pack_count = 0;
+        cfg.seasons = [SeasonRanges::default(); MAX_SEASONS];
+        cfg.season_count = 0;
+        Ok(())
+    }
+
+    /// Adds a pack, or replaces the one with the same id.
+    ///
+    /// Replacing is the point: a price or a weight that reads wrong after a
+    /// week of real players is a write, not a deploy. The id is what
+    /// `open_booster` is called with, so in practice it is append-only.
+    pub fn upsert_pack(ctx: Context<AdminPackConfig>, def: PackDef) -> Result<()> {
+        let total: u32 = def.weights.iter().map(|w| *w as u32).sum();
+        require!(total == WEIGHT_TOTAL as u32, SolCityError::BadWeights);
+        require!(def.size as usize <= BOOSTER_PACK_SIZE, SolCityError::InvalidPoolCount);
+
+        let cfg = &mut ctx.accounts.config;
+        let count = cfg.pack_count as usize;
+        if let Some(slot) = cfg.packs[..count].iter_mut().find(|p| p.id == def.id) {
+            *slot = def;
+            return Ok(());
+        }
+        require!(count < MAX_PACKS, SolCityError::PackTableFull);
+        cfg.packs[count] = def;
+        cfg.pack_count = (count + 1) as u8;
+        Ok(())
+    }
+
+    /// Adds a season's rarity ranges, or replaces those of a season that has
+    /// not opened yet.
+    ///
+    /// A closed season's ranges are never edited again, and the program
+    /// enforces that rather than trusting the operator: the indices inside
+    /// them name cosmetics that are in wallets by then.
+    pub fn upsert_season(ctx: Context<AdminPackConfig>, ranges: SeasonRanges) -> Result<()> {
+        let cfg = &mut ctx.accounts.config;
+        require!(ranges.season >= cfg.current_season, SolCityError::WrongSeason);
+
+        let count = cfg.season_count as usize;
+        if let Some(slot) = cfg.seasons[..count].iter_mut().find(|r| r.season == ranges.season) {
+            *slot = ranges;
+            return Ok(());
+        }
+        require!(count < MAX_SEASONS, SolCityError::SeasonTableFull);
+        cfg.seasons[count] = ranges;
+        cfg.season_count = (count + 1) as u8;
+        Ok(())
+    }
+
+    /// Moves the open season. This is how a season closes: one number, and
+    /// every earlier season stops selling.
+    ///
+    /// Forward only. Reopening a closed season would put items back on sale
+    /// whose scarcity was the window shutting.
+    pub fn set_current_season(ctx: Context<AdminPackConfig>, season: u16) -> Result<()> {
+        let cfg = &mut ctx.accounts.config;
+        require!(season >= cfg.current_season, SolCityError::WrongSeason);
+        cfg.current_season = season;
+        Ok(())
+    }
 }
 
 #[derive(Accounts)]
@@ -2108,6 +2215,119 @@ pub struct BoosterOpened {
     pub authority: Pubkey,
     pub indices: Vec<u16>,
 }
+/// One pack the city sells.
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, InitSpace, Default)]
+pub struct PackDef {
+    /// Stable, and what `open_booster` is called with. Append-only.
+    pub id: u8,
+    /// The season this pack draws from. A pack bought in season 1 and opened
+    /// in season 3 is still a season 1 pack, which is why the season lives on
+    /// the pack and not on the clock.
+    pub season: u16,
+    /// Price in the config's currency, in its smallest unit. USDC has six
+    /// decimals, so 30_000 is three cents short of a dollar at 0.03.
+    pub price: u64,
+    /// Items drawn per pack.
+    pub size: u8,
+    /// Weight per rarity for EACH item drawn, in basis points, summing to
+    /// WEIGHT_TOTAL. Basis points rather than percent because half a percent
+    /// legendary is a number somebody will want.
+    pub weights: [u16; RARITY_COUNT],
+    /// A pack that is off sells nothing. This is how a season is retired
+    /// without deleting anything.
+    pub enabled: bool,
+}
+
+/// Where each rarity sits in the catalog, for one season.
+///
+/// A range rather than a rarity stamped on every index: the pool is ordered by
+/// rarity within a season, so four (start, len) pairs say everything and cost
+/// nothing to read. Appended whole when a season opens, never edited after it
+/// closes, because an index that moves invalidates every unlock granted
+/// against it.
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, InitSpace, Default)]
+pub struct SeasonRanges {
+    pub season: u16,
+    /// First CATALOG index of each rarity, in RARITY_ORDER.
+    pub start: [u16; RARITY_COUNT],
+    /// How many indices that rarity holds. Zero means the bucket is empty and
+    /// the draw falls past it.
+    pub len: [u16; RARITY_COUNT],
+}
+
+/// What the city sells, and on what terms.
+///
+/// An account rather than constants in the bytecode, decided 2026-10-22. The
+/// alternative made every economic change a redeploy: opening a season,
+/// closing one, correcting a price, tuning odds that read wrong in the wild.
+/// With seasons arriving a few times a year against a program that cannot be
+/// compiled locally, that is a redeploy per quarter to change a number.
+///
+/// The cost is honest and worth stating: `admin` is a key that can change what
+/// packs pay out. It is narrower than the upgrade authority, which can replace
+/// the bytecode, but it is used routinely rather than living in cold storage.
+/// It belongs in a multisig or on the same hardware wallet.
+///
+/// Fixed arrays rather than vectors: this is one account for the whole city,
+/// not one per player, so a kilobyte of slack costs a fraction of a cent once
+/// and spares every instruction a realloc.
+#[account]
+#[derive(InitSpace)]
+pub struct PackConfig {
+    /// May change prices, odds, seasons and the current season.
+    pub admin: Pubkey,
+    /// The mint prices are denominated in. USDC, decided 2026-10-22, so a pack
+    /// costs the same tomorrow as today. A SOL price through an oracle is the
+    /// thing that would replace this, and would be a new instruction rather
+    /// than a layout change.
+    pub currency_mint: Pubkey,
+    /// Token account that receives payment, owned by the treasury wallet.
+    pub treasury_token_account: Pubkey,
+    /// Only packs of this season may be bought. Moving it is how a season
+    /// closes, and it is one transaction rather than one deploy.
+    pub current_season: u16,
+    pub packs: [PackDef; MAX_PACKS],
+    pub pack_count: u8,
+    pub seasons: [SeasonRanges; MAX_SEASONS],
+    pub season_count: u8,
+}
+
+impl PackConfig {
+    pub fn pack(&self, id: u8) -> Option<&PackDef> {
+        self.packs[..self.pack_count as usize].iter().find(|p| p.id == id)
+    }
+    pub fn ranges(&self, season: u16) -> Option<&SeasonRanges> {
+        self.seasons[..self.season_count as usize].iter().find(|r| r.season == season)
+    }
+}
+
+#[derive(Accounts)]
+pub struct InitPackConfig<'info> {
+    #[account(mut)]
+    pub admin: Signer<'info>,
+    #[account(
+        init,
+        payer = admin,
+        space = 8 + PackConfig::INIT_SPACE,
+        seeds = [PACK_CONFIG_SEED],
+        bump,
+    )]
+    pub config: Account<'info, PackConfig>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct AdminPackConfig<'info> {
+    #[account(
+        mut,
+        seeds = [PACK_CONFIG_SEED],
+        bump,
+        constraint = config.admin == admin.key() @ SolCityError::NotPackAdmin,
+    )]
+    pub config: Account<'info, PackConfig>,
+    pub admin: Signer<'info>,
+}
+
 // -- Friends ----------------------------------------------------------------
 //
 // Two small accounts rather than a list on PlayerState, and that is the whole
