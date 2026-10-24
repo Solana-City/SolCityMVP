@@ -56,6 +56,7 @@ export class SimpleSprite {
   private directionRow: DirectionRow;
   /** Set for "static animated" NPCs — see registerAnimations() below. */
   private idleLoopFrames?: number;
+  private idleFrameRate: number;
   /** frameHeight × applied scale — how tall the sprite renders, feet to top. */
   private visualHeight = 32;
   /** Horizontal shift (source px) of the contact blob, for sprites whose
@@ -87,11 +88,19 @@ export class SimpleSprite {
     scaleOverride?: number,
     /** Horizontal blob shift (source px) for off-center characters. */
     blobOffsetX = 0,
+    /**
+     * Frames per second of a static-animated sheet's loop. Defaults to the 6
+     * every such NPC used before any of them asked for its own: the artist
+     * times these in milliseconds per frame, so a registry entry reads
+     * `1000 / 150` rather than a decimal nobody can check.
+     */
+    idleFrameRate = 6,
   ) {
     this.scene = scene;
     this.textureKey = textureKey;
     this.directionRow = directionRow;
     this.idleLoopFrames = idleLoopFrames;
+    this.idleFrameRate = idleFrameRate;
     this.blobOffsetX = blobOffsetX;
 
     // Pixel-perfect anchoring with integer pixel mapping.
@@ -374,7 +383,7 @@ export class SimpleSprite {
           end: Math.min(this.idleLoopFrames, available) - 1,
         });
         if (frames.length > 0) {
-          this.scene.anims.create({ key, frames, frameRate: 6, repeat: -1 });
+          this.scene.anims.create({ key, frames, frameRate: this.idleFrameRate, repeat: -1 });
         }
       }
       return;

@@ -127,6 +127,7 @@ export class NPCSprite {
       def.spriteAnimation?.frameCount,
       def.spriteAnimation?.scale,
       def.spriteAnimation?.blobOffsetX,
+      def.spriteAnimation?.frameRate,
     );
 
     const container = this.getContainer();

@@ -169,6 +169,19 @@ export interface NPCDefinition {
      * lines up (it's the whole frame) and is unaffected.
      */
     blobOffsetX?: number;
+    /**
+     * Frames per second of the loop. Defaults to 6, which is what every
+     * static-animated NPC played at before one of them needed its own.
+     *
+     * The artists time these in milliseconds per frame and say so in the
+     * filename, so write the division out (`1000 / 150`) rather than a
+     * rounded decimal: it stays checkable against the sheet it came with.
+     *
+     * Phaser caches an animation under the texture's key, so two NPCs
+     * sharing one sheet would also share whichever rate was created first.
+     * Every sheet here belongs to a single NPC, so that cannot bite yet.
+     */
+    frameRate?: number;
   };
 }
 
@@ -222,6 +235,28 @@ const NPC_SEEDS: NPCSeed[] = [
     ],
     action: { type: "speed-buff", label: "Try vietnamese coffee", buffId: "vietnamese-coffee" },
     spriteKey: "Vietnamese Barista",
+  },
+  {
+    id: "dombra-artist",
+    name: "Dombra Artist",
+    role: "Superteam Kazakhstan",
+    // PROVISIONAL: the empty grass plot in the north west, a few tiles from
+    // DOM, on a tile that carries no bush of its own. She moves to the yurt
+    // once the Superteam Kazakhstan area is drawn and placed on the map.
+    tileX: 30,
+    tileY: 22,
+    // TODO: the action is still being chosen (shashu, the berkut's eye, the
+    // asyk game). Placeholder until then, so talking to her does nothing it
+    // would have to undo later.
+    dialog: [
+      "Welcome! I am here from Superteam Kazakhstan.",
+      "This is the dombra. Two strings, and every story we have.",
+    ],
+    action: { type: "placeholder", label: "Listen a while" },
+    spriteKey: "Dombra Artist",
+    // Static animated, like Kite Pro: one row of 6 frames at 64x84, facing
+    // south, never wandering. 150ms a frame, as the sheet was delivered.
+    spriteAnimation: { frameWidth: 64, frameHeight: 84, frameCount: 6, frameRate: 1000 / 150 },
   },
   {
     id: "dom-tea",
