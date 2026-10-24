@@ -91,14 +91,31 @@ export function seasonOf(variant: LayerVariant): number {
 // ── Packs ───────────────────────────────────────────────────────────────────
 
 export interface PackDef {
-  /** Stable id. It is the index space the program will use: append only. */
+  /** Stable id, used by the client and in analytics. Append only. */
   id: string;
+  /**
+   * The number `open_booster` is called with, matching PackConfig.packs[].id
+   * on chain. Append only, and 0 is reserved for "no pack", so these start
+   * at 1.
+   *
+   * Two ids rather than one because they answer to different owners: this
+   * table is edited in a commit, the on-chain one in a transaction, and the
+   * string is what the panels, the art paths and the analytics already use.
+   */
+  onChainId: number;
   name: string;
   /** One line under the name. No paragraphs. */
   blurb: string;
   /** Items drawn per pack. */
   size: number;
-  /** Placeholder price, in SOL. */
+  /**
+   * Placeholder price, in SOL, for the preview only.
+   *
+   * What is charged is PackConfig.packs[].price, in the config's currency
+   * (USDC), which the panel has to read before it can show a figure it will
+   * actually take. Keeping a number here would let the two drift silently,
+   * so this one is explicitly the preview's.
+   */
   priceSol: number;
   /** Weight per rarity for EACH item drawn. Must add up to 100. */
   odds: Record<Rarity, number>;
@@ -120,6 +137,7 @@ export interface PackDef {
 export const PACKS: PackDef[] = [
   {
     id: "street",
+    onChainId: 1,
     name: "STREET PACK",
     blurb: "Everyday city wear.",
     size: 5,
@@ -130,6 +148,7 @@ export const PACKS: PackDef[] = [
   },
   {
     id: "city",
+    onChainId: 2,
     name: "CITY PACK",
     blurb: "Better odds, same five pieces.",
     size: 5,
@@ -140,6 +159,7 @@ export const PACKS: PackDef[] = [
   },
   {
     id: "prime",
+    onChainId: 3,
     name: "PRIME PACK",
     blurb: "The one with the crowns in it.",
     size: 5,
@@ -152,6 +172,11 @@ export const PACKS: PackDef[] = [
 
 export function packById(id: string): PackDef | undefined {
   return PACKS.find((p) => p.id === id);
+}
+
+/** The reverse lookup, for reading a BoosterOpened event or a pending draw. */
+export function packByOnChainId(id: number): PackDef | undefined {
+  return PACKS.find((p) => p.onChainId === id);
 }
 
 // ── The draw ────────────────────────────────────────────────────────────────
