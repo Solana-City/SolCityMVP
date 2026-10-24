@@ -139,52 +139,66 @@ export function deriveUnlockPDA(
   );
 }
 
-export const UNLOCK_BITS = 128; // bytes -> 1024 bits: 128 quest, 896 pack
-
 /**
- * Bits reserved at the front of the unlock bitset for quest and NPC rewards,
- * mirroring QUEST_FREE_SLOTS in the program.
+ * Reserved catalog indices for quest, NPC and event rewards: the block
+ * [FREE_ITEM_COUNT, ENFORCED_FROM), which `update_look_session` never checks.
  *
- * It matters when reading the bitset back: the program grants a pack item at
- * bit `QUEST_FREE_SLOTS + poolIndex`, so a bit is NOT a booster pool index and
- * subtracting this is how you get one. Nothing writes the quest block on chain
- * yet, so bits below this are currently always zero, which is exactly why
- * reading them wrong went unnoticed.
+ * Event items live here on purpose. A time-limited cosmetic whose real
+ * authority is an NFT cannot be proven by a grant record, because the asset
+ * may have moved twice since, so the chain stays out of it rather than
+ * pretending otherwise. See TIMELIMITED_ITEM_CLAIM.md section 3, option 1.
  */
 export const QUEST_FREE_SLOTS = 128;
 
+/**
+ * How many owned indices the rollup snapshot on PlayerState carries, matching
+ * PLAYER_UNLOCK_CAP in the program. Fixed, because that account is delegated
+ * and a delegated account cannot be realloc'd.
+ */
+export const PLAYER_UNLOCK_CAP = 256;
+
 export interface UnlockState {
   authority: PublicKey;
-  bits: Uint8Array;      // UNLOCK_BITS bytes
+  /** Catalog indices this wallet may wear, sorted ascending. */
+  owned: number[];
+  /** Indices already turned into a tradable asset. Usually empty. */
+  minted: number[];
   pending: boolean;      // a pack is awaiting its VRF callback
-  poolCount: number;     // u16 — index space of the pending draw
+  poolCount: number;     // u16 - index space of the pending draw
 }
 
 /**
  * Decodes an UnlockState account. Layout after the 8-byte discriminator:
- *   authority: Pubkey(32) | bits: [u8;32] | pending: bool(1) | poolCount: u16(2)
+ *   authority Pubkey(32) | owned Vec<u16> | minted Vec<u16> | pending bool(1)
+ *   | poolCount u16(2)
+ *
+ * A Vec is Anchor-serialised as a 4-byte little-endian length then the items,
+ * so the account's size follows what the wallet owns rather than how big the
+ * catalog grew. It used to be two fixed bitsets over the whole catalog.
  */
 export function decodeUnlockState(data: Uint8Array): UnlockState | null {
-  const need = 8 + 32 + UNLOCK_BITS + 1 + 2;
-  if (data.length < need) return null;
+  if (data.length < 8 + 32 + 4 + 4 + 1 + 2) return null;
   const buf = Buffer.from(data);
   let o = 8;
   const authority = new PublicKey(buf.subarray(o, o + 32)); o += 32;
-  const bits = new Uint8Array(buf.subarray(o, o + UNLOCK_BITS)); o += UNLOCK_BITS;
+
+  const readVec = (): number[] | null => {
+    if (o + 4 > buf.length) return null;
+    const len = buf.readUInt32LE(o); o += 4;
+    // A length that cannot fit means the account is not what we think it is,
+    // which is worth reporting as null rather than reading past the end.
+    if (len > 65_535 || o + len * 2 > buf.length) return null;
+    const out: number[] = [];
+    for (let i = 0; i < len; i++) { out.push(buf.readUInt16LE(o)); o += 2; }
+    return out;
+  };
+
+  const owned = readVec();  if (!owned) return null;
+  const minted = readVec(); if (!minted) return null;
+  if (o + 3 > buf.length) return null;
   const pending = buf.readUInt8(o) === 1; o += 1;
   const poolCount = buf.readUInt16LE(o); o += 2;
-  return { authority, bits, pending, poolCount };
-}
-
-/** The set of unlocked booster-pool indices encoded in a bitset. */
-export function unlockedIndices(bits: Uint8Array): Set<number> {
-  const out = new Set<number>();
-  for (let byte = 0; byte < bits.length; byte++) {
-    for (let bit = 0; bit < 8; bit++) {
-      if (bits[byte] & (1 << bit)) out.add(byte * 8 + bit);
-    }
-  }
-  return out;
+  return { authority, owned, minted, pending, poolCount };
 }
 
 /**

@@ -111,7 +111,7 @@ import {
 } from "../solana/instructions";
 import {
   derivePlayerPDA, SOL_CITY_PROGRAM_ID, deriveHuntPDA, decodeHuntState,
-  achievementIndices, ACHIEVEMENT_BITS, UNLOCK_BITS,
+  achievementIndices, ACHIEVEMENT_BITS,
 } from "../solana/program";
 import { BASE_RPC_PRIMARY, resilientBaseFetch } from "../solana/baseRpc";
 import { setHuntFromChain, clearHuntFromChain } from "../minigames/whereIsNPC/WhereIsNPCGame";
@@ -173,12 +173,30 @@ const ENDPOINTS = {
 export const EPHEMERAL_VALIDATOR_IDENTITY =
   "MUS3hc9TCw4cGC12vHNoYcCGzJG1txjgQLZWVoeNHNd";
 
-// Minimum byte length of a CURRENT-layout (player_v2) PlayerState account.
-// The v2 account is ~505 bytes (adds loadout/expression/chat over v1's 133).
-// Discovery uses this to ignore STALE pre-v2 PDAs (old seed, still delegated on
-// the ER) that would otherwise overwrite the live player and cause one-way
-// visibility. 256 sits safely between the old 133 and the current 505.
-const CURRENT_PLAYER_MIN_LEN = 256;
+/**
+ * Bytes of a PlayerState this client actually reads: through game_bests, with
+ * every variable-length string at its maximum.
+ *
+ * 8 discriminator + 32 authority + 33 session + 24 name + 4 x + 4 y + 1 dir
+ * + 1 outfit + 4 score + 2+2+2 counts + 8 last_active + 8 created_at
+ * + 124 loadout + 28 expression + 8 expression_at + 204 message + 8 message_at
+ * + 32 achievements + 2 + 2 streaks + 64 game_bests = 605.
+ *
+ * The 514-byte unlock snapshot sits after this and is never fetched.
+ */
+const PLAYER_READ_BYTES = 605;
+
+// What a CURRENT-layout account must return from the sliced sweep.
+//
+// Discovery has to ignore STALE PDAs from older seeds, still delegated on the
+// rollup, which would otherwise overwrite the live player and strand that
+// wallet at a frozen position. v1 is ~133 bytes and v2 ~505; a v3 account is
+// larger than the slice, so it always comes back at exactly PLAYER_READ_BYTES
+// while anything older is clamped to its own smaller size.
+//
+// So the test is equality with the slice, not a threshold between two layouts.
+// The old 256 sat between v1 and v2 and would now let a v2 ghost through.
+const CURRENT_PLAYER_MIN_LEN = PLAYER_READ_BYTES;
 
 // Shared state channel name — BroadcastChannel works across tabs
 // in the same browser origin. Provides instant multi-tab multiplayer
@@ -1619,7 +1637,21 @@ export class OnChainMultiplayer {
     try {
       const accounts = await this.ephemeralConnection.getProgramAccounts(
         SOL_CITY_PROGRAM_ID,
-        { commitment: "confirmed" }
+        {
+          commitment: "confirmed",
+          // Everything this decoder reads, and nothing after it. The unlock
+          // snapshot is 514 bytes sitting at the end of every PlayerState,
+          // and this sweep runs for every online player every few seconds, so
+          // leaving it on the server is the whole reason the field was moved
+          // down there.
+          //
+          // A FIXED length rather than a computed offset, because the strings
+          // in the middle are variable: Borsh writes their real length, so the
+          // position of any later field differs per account. PLAYER_READ_BYTES
+          // is the WORST case, every string at its max, which is the only
+          // length guaranteed to contain the fields regardless.
+          dataSlice: { offset: 0, length: PLAYER_READ_BYTES },
+        }
       );
       console.log(`[Multiplayer] ER getProgramAccounts: ${accounts.length} online player(s)`);
       let added = 0;
@@ -1630,6 +1662,10 @@ export class OnChainMultiplayer {
         // so a stale short account would OVERWRITE the live one in knownPlayers and
         // strand that wallet at a frozen position (one-way visibility). Only the
         // current-layout account is a real, live player.
+        // Under dataSlice a short answer means a short ACCOUNT: the slice is
+        // clamped to whatever exists, so a pre-v3 PDA still on the rollup
+        // comes back under the worst-case length and is skipped here exactly
+        // as it was before.
         if (account.data.length < CURRENT_PLAYER_MIN_LEN) continue;
         const before = this.knownPlayers.size;
         this.decodeAndUpdatePlayer(pubkey.toBase58(), account.data);
@@ -2089,11 +2125,11 @@ export class OnChainMultiplayer {
         if (offset + 2 > buf.length) { offset = buf.length + 1; return 0; }
         const v = buf.readUInt16LE(offset); offset += 2; return v;
       };
-      // unlocked: the look enforcer's snapshot, not part of this view. The
-      // length has to track the program's UNLOCK_BITS, because every field
-      // after it is read at an offset from here: a stale number silently
-      // shifts achievements, streaks and game bests rather than failing.
-      readBytes(UNLOCK_BITS);
+      // The unlock snapshot used to sit HERE, between message_at and the
+      // profile, and had to be skipped by exactly its own length or every
+      // field after it decoded from the wrong offset. It now lives at the end
+      // of the account, after game_bests, so nothing here has to know its
+      // size and the sweep below never fetches it at all.
       const achievementBits = readBytes(ACHIEVEMENT_BITS);
       const streakCurrent = readU16();
       const streakBest    = readU16();
