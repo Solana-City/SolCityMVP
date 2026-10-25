@@ -6,11 +6,13 @@ const JOYSTICK_RADIUS = 34; // px — max thumb travel from center
 const PAD_PX = 100;   // the pad's art size at phone scale
 const THUMB_PX = 44;  // the cross that rides on it
 
-// Chat and expressions sit on an arc round the pad's upper right, where the
-// left thumb already is, rather than on a rail at the far end of the screen.
-// 40° apart at this radius keeps their 44px tap boxes from overlapping.
-const ARC_RADIUS = 80;         // px from the pad's center, at phone scale
-const ARC_ANGLES = [-48, -8];  // degrees per button; 0 = right of the pad, negative = up
+// Chat and expressions sit on an arc round ACT's upper left, where the right
+// thumb already is, rather than on a rail at the far end of the screen. The two
+// sit at this radius so that their 44px tap boxes overlap neither each other
+// nor ACT's own (it is 72px across): Chat to its left, React above that.
+const ARC_RADIUS = 76;          // px from ACT's center, at phone scale
+const ARC_ANGLES = [-171, -124]; // degrees per button; 0 = right of ACT, 180 = left, negative = up
+const ACT_PX = 72;              // ACT's art size at phone scale
 
 // Pixel-art control sprites (public/assets/ui). Rendered at 1x or 1.5x of
 // their native size so device-pixel scaling stays close to integer.
@@ -191,9 +193,9 @@ function edge(side: "left" | "right" | "bottom", tablet: boolean): string {
   return `max(env(safe-area-inset-${side}, 0px), ${off})`;
 }
 
-export default function MobileControls({ besideJoystick, raised = false }: {
-  /** Buttons placed on the arc beside the joystick, in ARC_ANGLES order. */
-  besideJoystick?: ReactNode[];
+export default function MobileControls({ besideAct, raised = false }: {
+  /** Buttons placed on the arc beside ACT, in ARC_ANGLES order. */
+  besideAct?: ReactNode[];
   /** Lift those buttons above the expression wheel's backdrop (z 45), so the
       one that closes the wheel stays visible and tappable while it is open. */
   raised?: boolean;
@@ -221,6 +223,7 @@ export default function MobileControls({ besideJoystick, raised = false }: {
   if (!isTouch) return null;
 
   const scale = tablet ? 1.3 : 1;
+  const actSize = tablet ? 113 : ACT_PX;
   const handleInteract = () => {
     emitGame("touch:interact");
     if (typeof navigator.vibrate === "function") navigator.vibrate(18);
@@ -247,32 +250,32 @@ export default function MobileControls({ besideJoystick, raised = false }: {
           <SpriteButton
             bg={`${UI}/btn_act_bg2.png`}
             icon={`${UI}/btn_act2.png`}
-            size={tablet ? 113 : 72}
+            size={actSize}
             alt="ACT"
             onPress={handleInteract}
           />
         </div>
       </div>
 
-      {/* The arc beside the joystick. A layer of its own, laid exactly over
-          the pad, rather than inside the bar: the bar's z-index caps anything
-          in it, and `raised` has to lift these buttons alone above the wheel. */}
-      {besideJoystick && besideJoystick.length > 0 && (
+      {/* The arc beside ACT. A layer of its own, laid exactly over the button,
+          rather than inside the bar: the bar's z-index caps anything in it, and
+          `raised` has to lift these buttons alone above the wheel. */}
+      {besideAct && besideAct.length > 0 && (
         <div
           className="fixed pointer-events-none"
           style={{
             zIndex: raised ? 46 : 30,
-            left: edge("left", tablet),
+            right: edge("right", tablet),
             bottom: edge("bottom", tablet),
-            width: PAD_PX * scale,
-            height: PAD_PX * scale,
+            width: actSize,
+            height: actSize,
           }}
         >
-          {besideJoystick.map((button, i) => {
+          {besideAct.map((button, i) => {
             const a = ((ARC_ANGLES[i] ?? 0) * Math.PI) / 180;
             // Whole pixels, so the pixel-art icons are not resampled.
-            const x = Math.round(Math.cos(a) * ARC_RADIUS * scale);
-            const y = Math.round(Math.sin(a) * ARC_RADIUS * scale);
+            const x = Math.round(Math.cos(a) * ARC_RADIUS * (actSize / ACT_PX));
+            const y = Math.round(Math.sin(a) * ARC_RADIUS * (actSize / ACT_PX));
             return (
               <div
                 key={i}

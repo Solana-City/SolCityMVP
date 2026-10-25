@@ -398,9 +398,9 @@ export default function ChatPanel({ gameRef, visible = true }: ChatPanelProps) {
             : "max(env(safe-area-inset-bottom, 0px), 12px)"
           : "16px",
         // On the bottom edge, centered between the thumb controls. The
-        // joystick and its chat/expression arc end ~151px past the left
-        // margin (20px, or the safe area); ACT takes less on the right.
-        // Centered, the panel has to clear that left span on both sides.
+        // joystick takes ~120px from the left margin (20px, or the safe area)
+        // and ACT with its chat/expression arc ~145px from the right one.
+        // Centered, the panel has to clear the wider of the two on both sides.
         width: isTouch
           ? "max(240px, min(320px, calc(100vw - 2 * (max(env(safe-area-inset-left, 0px), 20px) + 160px))))"
           : "360px",

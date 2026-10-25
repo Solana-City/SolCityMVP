@@ -553,7 +553,7 @@ export default function Home() {
             </div>
           ) : (
             /* Mobile: icon rail — the hunt toggle. Chat and expressions sit
-               beside the joystick instead (MobileControls below), under the
+               beside ACT instead (MobileControls below), under the right
                thumb. The hunt panel is mutually exclusive with the chat so
                the small screen never stacks multiple windows. */
             <>
@@ -743,7 +743,7 @@ export default function Home() {
           </Presence>
           <MobileControls
             raised={wheelOpen}
-            besideJoystick={[
+            besideAct={[
               <MobilePanelToggle key="chat" iconSrc="/assets/ui/ico_chat.png" label="Chat" active={chatOpen} onClick={toggleMobileChat} dot={unreadDms > 0} />,
               <ExpressionToggle key="expressions" open={wheelOpen} />,
             ]}
@@ -835,7 +835,7 @@ function MobilePanelToggle({ iconSrc, label, active, onClick, dot }: {
   );
 }
 
-/** Button beside the joystick (after Chat) that opens the expression wheel on touch.
+/** Button beside ACT (after Chat) that opens the expression wheel on touch.
     Same chrome as MobilePanelToggle with the pixel-art ico_emoji; the wheel
     isn't a panel, so it just fires the open event. */
 function ExpressionToggle({ open }: { open: boolean }) {
