@@ -109,7 +109,7 @@ pub const ACHIEVEMENT_BITS: usize = 32;
 ///   0 food-cart   1 kite-clash   2 sol-mechs   3 hair-specialist
 ///
 /// Sixteen leaves room to append twelve more without touching the layout.
-pub const GAME_SLOTS: usize = 8;
+pub const GAME_SLOTS: usize = 16;
 /// What a won mini-game adds to the city score, decided here rather than sent
 /// by the client: raw mini-game scores differ by orders of magnitude between
 /// games (a kite run scores thousands, a haircut scores tens), so letting the
@@ -145,24 +145,7 @@ pub const UNLOCKS_SEED: &[u8] = b"unlocks";
 /// owned, and the catalog size appears in per-player storage nowhere at all:
 /// a u16 index addresses 65,535 items, which at four seasons of 300 is more
 /// than fifty years.
-///
-/// **Sixty-four, cut from 256 on 2026-10-25, and it is the single biggest
-/// line in what onboarding costs a player.** At 256 this array was 512 bytes,
-/// 45.8% of a 1119-byte account, 0.0026 SOL of rent that every wallet pays on
-/// its first connect. The whole catalog holds 31 lockable items today, so 256
-/// was budgeting for a collection eight times larger than everything that
-/// exists.
-///
-/// It has to be a fixed array sized for the worst case, because the account is
-/// DELEGATED and a delegated account cannot be realloc'd. That is also why it
-/// cannot be raised later without a redeploy: pick it generously enough to
-/// last and small enough to be worth paying for.
-///
-/// Overflow is handled, not fatal: `sync_unlocks` keeps the first
-/// PLAYER_UNLOCK_CAP a wallet owns, sorted, so a very large collection loses
-/// the ability to WEAR its tail rather than the ability to sync at all. The
-/// full list lives in `UnlockState.owned`, which grows.
-pub const PLAYER_UNLOCK_CAP: usize = 64;
+pub const PLAYER_UNLOCK_CAP: usize = 256;
 /// Pieces granted per pack.
 /// Pack configuration, seed ["pack_config"]. One account for the whole city.
 pub const PACK_CONFIG_SEED: &[u8] = b"pack_config";
