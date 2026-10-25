@@ -13,16 +13,32 @@ import { chamferBox } from "@/ui/chamfer";
 import ChamferGlow from "@/ui/ChamferGlow";
 import { useButtonFeel, feelStyle, type ButtonFeel } from "@/ui/useButtonFeel";
 import { useEscape } from "@/ui/useEscape";
+import { useWallet } from "@solana/wallet-adapter-react";
+import { PublicKey } from "@solana/web3.js";
+import { BOOSTER_ONCHAIN } from "@/game/solana/program";
+import { itemAtGlobalIndex } from "@/game/config/catalogIndex";
+import { rarityOf } from "@/game/config/packs";
+import { getVariant } from "@/game/config/paperDoll";
+import {
+  baseConnection, readPackConfig, currencyBalance, buyPack, packUnavailableReason,
+  type PackConfigAccount,
+} from "@/game/solana/packs";
 
 /**
  * Outfit packs — PREVIEW. Three packs, each with its own odds per rarity,
  * drawing from the season the city is in.
  *
- * Randomness is client-side here; the shipped version draws the same pool
- * through MagicBlock VRF and grants the unlocks in a program instruction. The
- * program does NOT know about packs, rarities or seasons yet — that is the
- * work listed in BOOSTER_SPEC.md under "Before the redeploy", and none of this
- * can take money until it lands. Reveal UX is final.
+ * Two draws live here, and which one runs is BOOSTER_ONCHAIN.
+ *
+ * OFF: client-side `Math.random`, granted into localStorage, free. The
+ * preview, and still what a guest or a wallet with no currency sees.
+ *
+ * ON: the real thing. `open_booster` charges the pack's price in the config's
+ * currency, requests randomness from MagicBlock VRF, and an oracle callback
+ * grants the items into the wallet's UnlockState seconds later. Paying and
+ * being granted are two different transactions, which is why the reveal
+ * WATCHES the account rather than reading a result: there is nothing to read
+ * when the payment confirms.
  *
  * Pack art is an animated strip (see the internal art-requests list). Until a
  * pack's sheet is drawn, its card falls back to the wardrobe icon rather than
@@ -37,6 +53,27 @@ export default function BoosterOverlay({
   const [pack, setPack] = useState<PackDef | null>(null);
   const [phase, setPhase] = useState<"choose" | "opening" | "revealed">("choose");
   const [drops, setDrops] = useState<PackDrop[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [config, setConfig] = useState<PackConfigAccount | null>(null);
+  const [balance, setBalance] = useState<bigint | null>(null);
+  const { signTransaction } = useWallet();
+
+  // What the city actually sells, read once when the overlay opens. Only when
+  // the paid draw is on: the preview has no prices to be wrong about.
+  useEffect(() => {
+    if (!BOOSTER_ONCHAIN || !wallet) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const conn = baseConnection();
+        const cfg = await readPackConfig(conn);
+        if (cancelled) return;
+        setConfig(cfg);
+        if (cfg) setBalance(await currencyBalance(conn, new PublicKey(wallet), cfg.currencyMint));
+      } catch { /* the preview prices stay on screen */ }
+    })();
+    return () => { cancelled = true; };
+  }, [wallet]);
   const laterFeel = useButtonFeel();
   const anotherFeel = useButtonFeel();
   const doneFeel = useButtonFeel();
@@ -45,6 +82,11 @@ export default function BoosterOverlay({
     if (!wallet) return;
     setPack(chosen);
     setPhase("opening");
+    setError(null);
+    if (BOOSTER_ONCHAIN && config && signTransaction) {
+      void openOnChain(chosen);
+      return;
+    }
     const rolled = rollPack(wallet, chosen);
     // Brief suspense, then reveal + grant.
     setTimeout(() => {
@@ -66,7 +108,71 @@ export default function BoosterOverlay({
     }, 650);
   }, [wallet]);
 
-  const backToPacks = () => { setPhase("choose"); setDrops([]); setPack(null); };
+  /**
+   * The paid draw.
+   *
+   * The granted items come back as CATALOG indices, because that is what the
+   * program stores: the chain has no idea what a "Crown" is. They are turned
+   * back into wardrobe items here, and anything this build does not recognise
+   * is dropped rather than guessed at - an index from a newer catalog is a
+   * real possibility and showing the wrong hat is worse than showing one
+   * fewer.
+   *
+   * The local unlock still happens, so the wardrobe reads the same whether the
+   * draw was paid or previewed. It is a mirror of the chain now, not the
+   * record.
+   */
+  const openOnChain = useCallback(async (chosen: PackDef) => {
+    if (!wallet || !signTransaction || !config) return;
+    const onChain = config.packs.find((p) => p.id === chosen.onChainId);
+    if (!onChain) { setError("This pack is not on sale yet."); setPhase("choose"); return; }
+    const why = packUnavailableReason(onChain, config);
+    if (why) { setError(why); setPhase("choose"); return; }
+
+    try {
+      const conn = baseConnection();
+      const result = await buyPack({
+        conn, wallet: new PublicKey(wallet), signTransaction, pack: onChain, config,
+      });
+      if (result.timedOut) {
+        setError("Paid, but the draw has not landed yet. It will appear in your wardrobe.");
+        setPhase("choose");
+        return;
+      }
+      const rolled: PackDrop[] = [];
+      for (const index of result.granted) {
+        const entry = itemAtGlobalIndex(index);
+        if (!entry) continue;
+        const variant = getVariant(entry.category, entry.variant.id);
+        if (!variant) continue;
+        rolled.push({
+          category: entry.category,
+          id: variant.id,
+          name: variant.name,
+          file: variant.file,
+          rarity: rarityOf(entry.category, variant.id),
+          owned: false,
+        });
+        unlockItem(wallet, entry.category, variant.id, variant.name, true);
+      }
+      if (rolled.length > 0) {
+        progressionBus.emit({
+          type: "outfit-unlocked",
+          outfitId: "booster",
+          outfitName: `${rolled.length} new item${rolled.length === 1 ? "" : "s"} from a pack`,
+        });
+      }
+      setDrops(rolled);
+      setPhase("revealed");
+    } catch (err) {
+      // The wallet's own message is the useful one: "insufficient funds",
+      // "User rejected the request".
+      setError((err as Error).message?.split("\n")[0] ?? "The purchase failed.");
+      setPhase("choose");
+    }
+  }, [wallet, signTransaction, config]);
+
+  const backToPacks = () => { setPhase("choose"); setDrops([]); setPack(null); setError(null); };
   // Not mid-opening, same as the backdrop: the pack is already being granted.
   useEscape(phase === "opening" ? null : onClose);
 
@@ -125,6 +231,23 @@ export default function BoosterOverlay({
           </div>
         ) : phase === "choose" ? (
           <>
+            {/* The paid draw's two reasons a pack cannot be opened: something
+                went wrong, or there is no money. Both say so before the player
+                clicks, because a wallet popup that fails reads as the game
+                being broken. */}
+            {error && (
+              <div style={{
+                fontSize: 8, color: "#ff9aa6", lineHeight: 1.8,
+                padding: "8px 10px", marginBottom: 12,
+                border: "1px solid #ff9aa6",
+                background: "rgba(255,154,166,0.08)",
+              }}>{error}</div>
+            )}
+            {BOOSTER_ONCHAIN && balance !== null && balance === BigInt(0) && (
+              <div style={{ fontSize: 8, color: "#aaaacc", lineHeight: 1.8, marginBottom: 12 }}>
+                This wallet has no balance in the currency packs are priced in.
+              </div>
+            )}
             <div className="booster-grid" style={{
               display: "grid",
               gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))",

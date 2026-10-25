@@ -270,7 +270,28 @@ async function main() {
     }
   }
 
-  // ── 6. What is left for a human ─────────────────────────────────────────
+  // ── 6. Opening the season, only when asked ──────────────────────────────
+  //
+  // Behind its own flag because it is the point of no return: it freezes the
+  // drop table permanently and starts taking money. Check section 5 above
+  // before passing it.
+  if (process.argv.includes("--open-season")) {
+    console.log(`
+6. set_current_season(${CURRENT_SEASON})`);
+    await submit(admin, [new TransactionInstruction({
+      programId: PROGRAM,
+      keys: [
+        { pubkey: config,          isSigner: false, isWritable: true },
+        { pubkey: admin.publicKey, isSigner: true,  isWritable: false },
+      ],
+      data: Buffer.concat([disc("set_current_season"), u16(CURRENT_SEASON)]),
+    })], `set_current_season ${CURRENT_SEASON}`);
+    console.log("");
+    console.log("The season is open. Its drop table can no longer be edited.");
+    return;
+  }
+
+  // ── 7. What is left for a human ─────────────────────────────────────────
   //
   // Opening the season is deliberately not here. It freezes the drop table
   // forever and starts taking money, and it is one instruction somebody should
