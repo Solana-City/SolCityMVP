@@ -87,7 +87,6 @@ function decodeLoadout(s: string): Loadout {
 }
 import {
   ConnectionMagicRouter,
-  createCommitAndUndelegateInstruction,
   delegationRecordPdaFromDelegatedAccount,
 } from "@magicblock-labs/ephemeral-rollups-sdk";
 import { SessionKeyManager } from "../solana/sessionKeys";
@@ -95,6 +94,7 @@ import {
   buildInitializePlayerIx,
   buildAuthorizeSessionIx,
   buildDelegateIx,
+  buildCommitAndUndelegatePlayerSessionIx,
   buildUpdatePositionSessionIx,
   buildUpdateLookSessionIx,
   buildSetExpressionSessionIx,
@@ -2090,7 +2090,14 @@ export class OnChainMultiplayer {
       const [playerPDA] = derivePlayerPDA(wallet);
       const sessionKey = this.sessionKeys.getSessionPublicKey();
 
-      const ix = createCommitAndUndelegateInstruction(sessionKey, [playerPDA]);
+      // OUR instruction, not the SDK's top-level one. The magic program
+      // refuses a commit unless the account's OWNER invoked it by CPI, so
+      // createCommitAndUndelegateInstruction fails with "failed to find
+      // parent program id" however it is signed. It had been failing into a
+      // catch since the beginning, which is why PDAs pile up delegated and
+      // why the base copy of a player is frozen at spawn forever.
+      const ix = buildCommitAndUndelegatePlayerSessionIx(wallet, sessionKey);
+      void playerPDA;
       const { blockhash } = await this.ephemeralConnection.getLatestBlockhash();
       const tx = new Transaction({ recentBlockhash: blockhash, feePayer: sessionKey }).add(ix);
 

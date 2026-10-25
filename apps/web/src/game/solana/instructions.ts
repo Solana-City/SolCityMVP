@@ -61,6 +61,9 @@ const DISC = {
   recordMiniGameSession:   ixDiscriminator("record_mini_game_session"),
   changeOutfit:            ixDiscriminator("change_outfit"),
   updateLookSession:       ixDiscriminator("update_look_session"),
+  commitPlayerSession:     ixDiscriminator("commit_player_session"),
+  commitAndUndelegatePlayerSession:
+    ixDiscriminator("commit_and_undelegate_player_session"),
   setExpressionSession:    ixDiscriminator("set_expression_session"),
   sendChatSession:         ixDiscriminator("send_chat_session"),
   delegate:                ixDiscriminator("delegate"),
@@ -383,6 +386,66 @@ export function buildChangeOutfitIx(
  * effect, since the old build wrote None whatever was passed; the call site
  * passes it as of the player_v3 deploy.
  */
+/**
+ * MagicBlock's magic program and the context account it schedules work in.
+ * Both live on the rollup; neither exists on the base layer.
+ */
+export const MAGIC_PROGRAM_ID = new PublicKey("Magic11111111111111111111111111111111111111");
+export const MAGIC_CONTEXT_ID = new PublicKey("MagicContext1111111111111111111111111111111");
+
+/**
+ * `commit_player_session()` and `commit_and_undelegate_player_session()`.
+ *
+ * Both go through OUR program rather than straight to the magic program, and
+ * that is the whole point. The magic program refuses a commit unless the
+ * account's OWNER invoked it by CPI: the parent program id must equal the
+ * account's owner, or the account itself must sign, or the validator must. The
+ * SDK's `createCommitInstruction` builds a top-level instruction with no
+ * parent, so it fails with "failed to find parent program id" however it is
+ * signed. That is why undelegation never landed from the client and why PDAs
+ * piled up delegated forever.
+ *
+ * Session-signed, so no wallet popup. Send them to the ROLLUP the account is
+ * delegated to, never to base: the magic program only exists there.
+ *
+ * Budget: an account gets ten commits before the eleventh fails 0xA0000000.
+ * Commit on milestones, never on movement. A final commit-and-undelegate is
+ * still allowed at the limit.
+ */
+function buildMagicPlayerIx(
+  discriminator: Buffer,
+  authority: PublicKey,
+  sessionKey: PublicKey,
+): TransactionInstruction {
+  const [playerPda] = derivePlayerPDA(authority);
+  return new TransactionInstruction({
+    programId: SOL_CITY_PROGRAM_ID,
+    keys: [
+      { pubkey: playerPda,         isSigner: false, isWritable: true  },
+      { pubkey: authority,         isSigner: false, isWritable: false },
+      { pubkey: sessionKey,        isSigner: true,  isWritable: false },
+      { pubkey: MAGIC_CONTEXT_ID,  isSigner: false, isWritable: true  },
+      { pubkey: MAGIC_PROGRAM_ID,  isSigner: false, isWritable: false },
+    ],
+    data: discriminator,
+  });
+}
+
+/** Copies the rollup state onto base, keeping the account delegated. */
+export function buildCommitPlayerSessionIx(
+  authority: PublicKey, sessionKey: PublicKey,
+): TransactionInstruction {
+  return buildMagicPlayerIx(DISC.commitPlayerSession, authority, sessionKey);
+}
+
+/** Copies it onto base and hands the account back. The base copy stops being
+ *  frozen and the delegation deposit is released. */
+export function buildCommitAndUndelegatePlayerSessionIx(
+  authority: PublicKey, sessionKey: PublicKey,
+): TransactionInstruction {
+  return buildMagicPlayerIx(DISC.commitAndUndelegatePlayerSession, authority, sessionKey);
+}
+
 export function buildDelegateIx(
   authority: PublicKey,
   preferredValidator?: PublicKey,
