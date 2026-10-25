@@ -47,6 +47,18 @@ const LOADOUT_EMIT_ORDER: (keyof Loadout)[] = [
   "skin", "eyesFace", "pants", "tshirt", "back", "accessory", "hair", "hat", "hairColor",
 ];
 
+/**
+ * Send the loadout as catalog indices rather than variant ids.
+ *
+ * The switch for `WARDROBE_ONCHAIN.md` phase 2. Reading both formats shipped
+ * first and on its own, so that by the time this is turned on every client has
+ * long been able to understand the result. Turning it on is one line here; it
+ * waits on something granting booster unlocks on chain, because the program
+ * rejects the whole outfit of a player wearing an item their snapshot does not
+ * hold.
+ */
+const LOADOUT_AS_INDICES = false;
+
 function encodeLoadout(l: Loadout): string {
   const out: string[] = [];
   for (const k of LOADOUT_EMIT_ORDER) {
@@ -59,7 +71,21 @@ function encodeLoadout(l: Loadout): string {
       if (i >= 0) out.push(`c=${i}`);
       continue;
     }
-    out.push(`${LOADOUT_KEY_ABBR[k] ?? k}=${v}`);
+    // The catalog index, not the variant id, once LOADOUT_AS_INDICES is on.
+    //
+    // This is what makes wardrobe enforcement possible at all: the program
+    // parses every value as a u16 and skips what it cannot parse, so while
+    // ids go over the wire it checks nothing. Indices are also shorter, which
+    // buys room against the 120-byte cap.
+    //
+    // OFF by design. The moment it goes on, the program starts REJECTING the
+    // whole outfit write of anybody wearing a booster item they do not own on
+    // chain - and nothing grants booster unlocks on chain yet, while
+    // TEST_UNLOCK_ALL_HATS lets testers wear every hat there is. Flipping this
+    // before the grant path exists would make those players invisible to
+    // everybody. See WARDROBE_ONCHAIN.md.
+    const index = LOADOUT_AS_INDICES ? globalIndexOf(k as LayerCategory, v) : -1;
+    out.push(`${LOADOUT_KEY_ABBR[k] ?? k}=${index >= 0 ? index : v}`);
   }
   return out.join("|");
 }
@@ -78,7 +104,18 @@ function decodeLoadout(s: string): Loadout {
       if (byIndex) out.hairColor = byIndex;
       continue;
     }
-    (out as Record<string, string>)[k] = v;
+    // An index as well as an id, the same way hairColor above takes both.
+    //
+    // The wire is moving from variant ids ("h=Afro") to catalog indices
+    // ("h=194"), because the program parses every value as a u16 and can only
+    // enforce what it can read. Both are understood here for as long as it
+    // takes every client to update: a service worker can keep an old build
+    // alive for days, and a peer that cannot read the new format renders a
+    // bald, naked avatar rather than a person.
+    //
+    // No ambiguity to resolve: no variant id is all digits.
+    const asIndex = /^\d+$/.test(v) ? itemAtGlobalIndex(Number(v)) : undefined;
+    (out as Record<string, string>)[k] = asIndex ? asIndex.variant.id : v;
   }
   // A peer on an older build still broadcasts Brown_hair or a coloured Magawk,
   // which are no longer wardrobe entries. Without this they render as no hair
@@ -118,6 +155,8 @@ import { transactionLog } from "../telemetry/transactionLog";
 import { migrateHairColor, type Loadout } from "../config/paperDoll";
 import { hairColorAtIndex, hairColorIndex } from "../config/hairPalette";
 import { ER_VALIDATORS, probeValidators, nearestValidator } from "./erValidators";
+import { globalIndexOf, itemAtGlobalIndex } from "@/game/config/catalogIndex";
+import type { LayerCategory } from "@/game/config/paperDoll";
 
 // ── Endpoints ──────────────────────────────────────────────────────────
 
