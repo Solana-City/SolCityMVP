@@ -1239,8 +1239,10 @@ export class CityScene extends Phaser.Scene {
       if (loadout) this.game.events.emit("whereIsNPC:targetInfo", loadout);
     });
 
-    // G key — toggle collision debug overlay (desktop only)
-    this.input.keyboard?.on("keydown-G", () => {
+    // G key — toggle collision debug overlay (desktop only). A development
+    // tool: the key is not even bound in a production build, so players cannot
+    // turn it on. (NODE_ENV is replaced when Next builds, so this is a constant.)
+    if (process.env.NODE_ENV !== "production") this.input.keyboard?.on("keydown-G", () => {
       // Not while the player is writing: a "g" in a chat message used to turn
       // this on, and turning it on used to take the game down (below).
       if (this.chatInputActive) return;
