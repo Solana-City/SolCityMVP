@@ -117,6 +117,7 @@ import { setHuntFromChain, clearHuntFromChain } from "../minigames/whereIsNPC/Wh
 import { transactionLog } from "../telemetry/transactionLog";
 import { migrateHairColor, type Loadout } from "../config/paperDoll";
 import { hairColorAtIndex, hairColorIndex } from "../config/hairPalette";
+import { ER_VALIDATORS, probeValidators, nearestValidator } from "./erValidators";
 
 // ── Endpoints ──────────────────────────────────────────────────────────
 
@@ -197,6 +198,36 @@ const PLAYER_READ_BYTES = 573;
 // So the test is equality with the slice, not a threshold between two layouts.
 // The old 256 sat between v1 and v2 and would now let a v2 ghost through.
 const CURRENT_PLAYER_MIN_LEN = PLAYER_READ_BYTES;
+
+/**
+ * What the discovery sweep asks every rollup for.
+ *
+ * Everything the decoder reads and nothing after it. The unlock snapshot sits
+ * at the end of every PlayerState and the sweep runs for every online player
+ * every few seconds, so leaving it on the server is the whole reason that
+ * field was moved down there.
+ *
+ * A FIXED length rather than a computed offset, because the strings in the
+ * middle are variable: Borsh writes their real length, so the position of any
+ * later field differs per account. PLAYER_READ_BYTES is the WORST case, every
+ * string at its max, which is the only length guaranteed to contain the
+ * fields whatever the account holds.
+ */
+const SWEEP_CONFIG = {
+  commitment: "confirmed" as const,
+  dataSlice: { offset: 0, length: PLAYER_READ_BYTES },
+};
+
+/**
+ * `last_active` off a sliced PlayerState, for picking the fresher of two
+ * copies of the same PDA. Only the low 32 bits, which is all the decoder
+ * reads and is good until 2106.
+ */
+function lastActiveOf(data: Uint8Array): number {
+  const OFFSET = 8 + 32 + 33 + 24 + 4 + 4 + 1 + 1 + 4 + 2 + 2 + 2;
+  if (data.length < OFFSET + 4) return 0;
+  return Buffer.from(data).readUInt32LE(OFFSET);
+}
 
 // Shared state channel name — BroadcastChannel works across tabs
 // in the same browser origin. Provides instant multi-tab multiplayer
@@ -325,6 +356,15 @@ export class OnChainMultiplayer {
   // Connections
   private routerConnection:    ConnectionMagicRouter;
   private ephemeralConnection: Connection;
+  /**
+   * One read connection per rollup, so the city can be spread across them.
+   *
+   * Writes still all go to `ephemeralConnection`. This is the READ half,
+   * which is the half that can be proven without touching a delegation: if
+   * everybody still sees everybody with three endpoints being swept, then
+   * spreading the writes later is safe. If it breaks, nobody's PDA has moved.
+   */
+  private erReadConnections: { id: string; conn: Connection }[] = [];
   private baseConnection:      Connection;
 
   // Session
@@ -443,6 +483,25 @@ export class OnChainMultiplayer {
   constructor() {
     this.routerConnection    = new ConnectionMagicRouter(ENDPOINTS.magicRouter,  "confirmed");
     this.ephemeralConnection = new Connection(ENDPOINTS.ephemeral,    "confirmed");
+    // Measure the three once, in the background. Nothing delegates by this
+    // yet: it is the number the validator question was missing, and it has to
+    // exist before anybody's PDA is moved anywhere.
+    void probeValidators().then((results) => {
+      const line = results
+        .map((r) => `${r.id}:${r.ms === null ? "unreachable" : r.ms + "ms"}`)
+        .join("  ");
+      const near = nearestValidator();
+      console.log(`[Multiplayer] rollup latency  ${line}  -> nearest ${near.label}`);
+    }).catch(() => undefined);
+
+    this.erReadConnections = ER_VALIDATORS.map((v) => ({
+      id: v.id,
+      // The write validator reuses the connection the writes are already on,
+      // so the common case opens no extra socket.
+      conn: v.rpc === ENDPOINTS.ephemeral
+        ? this.ephemeralConnection
+        : new Connection(v.rpc, "confirmed"),
+    }));
     // Base HTTP ops (getAccountInfo / getBalance / blockhash / sendRawTransaction
     // / confirm) go through a failover fetch across Helius devnet + api.devnet.
     // NOT the Magic Router — it HANGS on sendRawTransaction (routing proxy, not
@@ -1644,25 +1703,42 @@ export class OnChainMultiplayer {
    */
   private async discoverPlayersFromBase(_self: PublicKey): Promise<void> {
     try {
-      const accounts = await this.ephemeralConnection.getProgramAccounts(
-        SOL_CITY_PROGRAM_ID,
-        {
-          commitment: "confirmed",
-          // Everything this decoder reads, and nothing after it. The unlock
-          // snapshot is 514 bytes sitting at the end of every PlayerState,
-          // and this sweep runs for every online player every few seconds, so
-          // leaving it on the server is the whole reason the field was moved
-          // down there.
-          //
-          // A FIXED length rather than a computed offset, because the strings
-          // in the middle are variable: Borsh writes their real length, so the
-          // position of any later field differs per account. PLAYER_READ_BYTES
-          // is the WORST case, every string at its max, which is the only
-          // length guaranteed to contain the fields regardless.
-          dataSlice: { offset: 0, length: PLAYER_READ_BYTES },
-        }
+      // Every rollup, in parallel, because a player's PDA lives on exactly the
+      // one they delegated to and is invisible on the others. In parallel so
+      // the sweep costs the SLOWEST endpoint rather than the sum: measured
+      // 2026-10-25 from Vietnam, that is ~300ms for three against ~300ms for
+      // the one US endpoint alone.
+      //
+      // A rollup that fails is skipped, not fatal. Losing one means not seeing
+      // the players on it, which is strictly better than seeing nobody.
+      const perValidator = await Promise.all(
+        this.erReadConnections.map(async ({ id, conn }) => {
+          try {
+            return await conn.getProgramAccounts(SOL_CITY_PROGRAM_ID, SWEEP_CONFIG);
+          } catch (err: any) {
+            console.warn(`[Multiplayer] ER sweep failed on ${id}:`, err?.message);
+            return [];
+          }
+        }),
       );
-      console.log(`[Multiplayer] ER getProgramAccounts: ${accounts.length} online player(s)`);
+      // Deduplicated by address. The same PDA should appear on one rollup, but
+      // a delegation that moved can leave a stale copy behind on the old one,
+      // and the fresher copy is the live player.
+      const byAddress = new Map<string, (typeof perValidator)[number][number]>();
+      for (const list of perValidator) {
+        for (const entry of list) {
+          const key = entry.pubkey.toBase58();
+          const seen = byAddress.get(key);
+          if (!seen || lastActiveOf(entry.account.data) > lastActiveOf(seen.account.data)) {
+            byAddress.set(key, entry);
+          }
+        }
+      }
+      const accounts = [...byAddress.values()];
+      console.log(
+        `[Multiplayer] ER sweep: ${accounts.length} online player(s) across `
+        + perValidator.map((l, i) => `${this.erReadConnections[i].id}:${l.length}`).join(" "),
+      );
       let added = 0;
       for (const { pubkey, account } of accounts) {
         // Skip STALE duplicate PDAs from an older seed still delegated on the ER.
