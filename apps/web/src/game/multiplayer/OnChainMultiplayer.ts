@@ -106,7 +106,6 @@ import {
   buildRecordMiniGameSessionIx,
   buildInitializeHuntIx,
   buildClaimFindIx,
-  buildExpireRoundIx,
   isProgramDeployed,
 } from "../solana/instructions";
 import {
@@ -123,24 +122,24 @@ import { hairColorAtIndex, hairColorIndex } from "../config/hairPalette";
 
 const ENDPOINTS = {
   magicRouter:  "https://devnet-router.magicblock.app",
-  ephemeral:    "https://devnet.magicblock.app",
+  // US, chosen 2026-10-22. Verified 2026-10-25: this host answers getIdentity
+  // with MUS3hc9…, and the old devnet.magicblock.app answers MAS1Dt9… (Asia).
+  ephemeral:    "https://devnet-us.magicblock.app",
   solanaDevnet: "https://api.devnet.solana.com",
 } as const;
 
 /**
  * The rollup validator behind ENDPOINTS.ephemeral, as `getIdentity` reports it.
  *
- * We delegate with no validator preference, so the rollup that claims a player
- * PDA is whichever one sees it first, and since every ER write in this file
- * goes straight to ENDPOINTS.ephemeral, that is always this validator. It is
- * true by accident, not by contract: a PDA claimed by a different rollup would
- * be invisible to our reads, which is exactly the "stuck delegated" state
- * forceUndelegateAndReconnect exists to dig out of.
+ * We used to delegate with no preference, so the rollup that claimed a player
+ * PDA was whichever saw it first, and it was ours only because every ER write
+ * in this file goes straight to ENDPOINTS.ephemeral. True by accident, not by
+ * contract: a PDA claimed by a different rollup is invisible to our reads,
+ * which is the "stuck delegated" state forceUndelegateAndReconnect digs out of.
  *
  * `delegate` takes this key as an optional remaining account and writes it into
- * the delegation record, which turns the accident into the contract. Passing it
- * waits on the program redeploy; the deployed build ignores extra accounts and
- * would keep writing None.
+ * the delegation record, which turns the accident into the contract. Passed at
+ * the call site since the player_v3 redeploy, 2026-10-25.
  *
  * ── US, chosen 2026-10-22, and it is a GLOBAL choice ──────────────────────
  *
@@ -158,17 +157,14 @@ const ENDPOINTS = {
  * the others. It is also the right answer for a Brazil-heavy player base,
  * ~120ms against ~300ms on Asia.
  *
- * ── Changing this alone does NOTHING, and that is deliberate ──────────────
+ * ── All three moved together, on the player_v3 deploy ─────────────────────
  *
- * Two other things have to move with it, on deploy day, in this order:
- *   1. ENDPOINTS.ephemeral, which still points at devnet.magicblock.app (Asia).
- *      Delegating to US while reading Asia means nobody sees anybody.
- *   2. The call site, which does not pass this key yet.
- *
- * The endpoint is NOT safe to move early: PDAs already delegated with None
- * live on Asia, and pointing reads at US would lose them until they are
+ * This key, ENDPOINTS.ephemeral, and the call site below. Any one of them on
+ * its own is wrong: delegating to US while reading Asia means nobody sees
+ * anybody, and the endpoint was not safe to move early because PDAs already
+ * delegated with None live on Asia and would have been lost until they were
  * re-delegated. The player_v3 reset re-delegates everyone anyway, which is
- * what makes deploy day the moment to do all three.
+ * what made deploy day the moment to do all three at once.
  */
 export const EPHEMERAL_VALIDATOR_IDENTITY =
   "MUS3hc9TCw4cGC12vHNoYcCGzJG1txjgQLZWVoeNHNd";
@@ -392,6 +388,18 @@ export class OnChainMultiplayer {
   /** wallet → last_active (unix seconds) at the previous sighting. */
   private lastSeenTs = new Map<string, number>();
   private clockSkewMs = 0;       // device clock minus chain clock
+
+  /**
+   * Unix SECONDS on the chain's clock.
+   *
+   * The hunt derives which citizen is the target from a timestamp, so every
+   * client has to agree on what time it is. A device an hour fast would hunt
+   * a citizen nobody else is hunting and have its claim rejected for naming
+   * the wrong round.
+   */
+  private chainNowSecs(): number {
+    return Math.floor((Date.now() - this.clockSkewMs) / 1000);
+  }
 
   // Local player score (kept in sync by CityScene via updateScore())
   private localScore = 0;
@@ -978,8 +986,6 @@ export class OnChainMultiplayer {
    */
   private sessionToWallet = new Map<string, string>();
 
-  private crankAttempt: { round: number; at: number } | null = null;
-  private static readonly CRANK_RETRY_MS = 9_000;
 
   /** Sends a session-signed instruction to the hunt on BASE, fire-and-forget
    *  with one fresh-blockhash retry. Returns the signature, or null on failure. */
@@ -1069,7 +1075,7 @@ export class OnChainMultiplayer {
       const [huntPda] = deriveHuntPDA();
       const info = await this.baseConnection.getAccountInfo(huntPda);
       if (!info) return; // not initialized yet (ensureHuntInitialized will make it)
-      const hunt = decodeHuntState(info.data);
+      const hunt = decodeHuntState(info.data, this.chainNowSecs());
       if (hunt) setHuntFromChain(hunt.round, hunt.deadline, this.resolveWinner(hunt.winner));
     } catch { /* transient RPC — keep the last known round */ }
   }
@@ -1097,7 +1103,7 @@ export class OnChainMultiplayer {
       try {
         const [huntPda] = deriveHuntPDA();
         const info = await this.baseConnection.getAccountInfo(huntPda);
-        hunt = info ? decodeHuntState(info.data) : null;
+        hunt = info ? decodeHuntState(info.data, this.chainNowSecs()) : null;
       } catch { /* transient RPC: try again */ }
       if (hunt && hunt.round !== round) break;
     }
@@ -1134,27 +1140,6 @@ export class OnChainMultiplayer {
       );
     }
     return { won, roundMoved };
-  }
-
-  /** Cranks an expired round forward (any client). Throttled rather than
-   *  one-shot: a client retries the same round every CRANK_RETRY_MS until the
-   *  chain has moved past it, so a dropped send costs a few seconds instead of
-   *  stalling the hunt. First-writer-wins keeps it to a single advance however
-   *  many clients crank at once. */
-  async expireRound(round: number): Promise<void> {
-    if (!this.wallet || !isProgramDeployed()) return;
-    const prev = this.crankAttempt;
-    if (prev && prev.round === round && Date.now() - prev.at < OnChainMultiplayer.CRANK_RETRY_MS) return;
-    this.crankAttempt = { round, at: Date.now() };
-    const sessionKey = this.sessionKeys.getSessionPublicKey();
-    const sent = await this.sendHuntIx(buildExpireRoundIx(sessionKey, round));
-    console.log(
-      sent.signature
-        ? `[Hunt] crank sent for round ${round}: ${sent.signature.slice(0, 12)}`
-        : `[Hunt] crank for round ${round} did not send (${sent.error}) — retrying in 9s`,
-    );
-    await new Promise((r) => setTimeout(r, 1000));
-    await this.pollHunt();
   }
 
   onPlayerAdd(cb: PlayerCallback):    void { this.addCallbacks.push(cb); }
@@ -1898,7 +1883,9 @@ export class OnChainMultiplayer {
       label: "Delegate PDA → Ephemeral Rollup", status: "pending",
     });
     try {
-      const ix = buildDelegateIx(wallet);
+      // The validator goes into the delegation record, so this PDA is served
+      // by the rollup we read from rather than by whichever claims it first.
+      const ix = buildDelegateIx(wallet, new PublicKey(EPHEMERAL_VALIDATOR_IDENTITY));
       const { blockhash } = await this.baseRpcWithRetry(() => this.baseConnection.getLatestBlockhash());
       const tx = new Transaction({ recentBlockhash: blockhash, feePayer: wallet }).add(ix);
 

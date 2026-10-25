@@ -66,7 +66,6 @@ const DISC = {
   delegate:                ixDiscriminator("delegate"),
   initializeHunt:          ixDiscriminator("initialize_hunt"),
   claimFind:               ixDiscriminator("claim_find"),
-  expireRound:             ixDiscriminator("expire_round"),
   initUnlockState:         ixDiscriminator("init_unlock_state"),
   openBooster:             ixDiscriminator("open_booster"),
   publishProfileSession:   ixDiscriminator("publish_profile_session"),
@@ -380,9 +379,9 @@ export function buildChangeOutfitIx(
  *
  * `preferredValidator` is the rollup identity to write into the delegation
  * record, so the PDA is served by the ER this client reads from rather than
- * by whichever one claims it first. It needs the program redeploy to have any
- * effect (the deployed build writes None whatever we pass), so callers leave
- * it out until then. See REDEPLOY_CHECKLIST.md.
+ * by whichever one claims it first. It needed the program redeploy to have any
+ * effect, since the old build wrote None whatever was passed; the call site
+ * passes it as of the player_v3 deploy.
  */
 export function buildDelegateIx(
   authority: PublicKey,
@@ -458,21 +457,6 @@ export function buildClaimFindIx(finder: PublicKey, round: number): TransactionI
   });
 }
 
-/**
- * Builds `expire_round(round)` — cranks a citizen nobody found forward once
- * its deadline has passed. Signed by any session key.
- */
-export function buildExpireRoundIx(cranker: PublicKey, round: number): TransactionInstruction {
-  const [huntPda] = deriveHuntPDA();
-  return new TransactionInstruction({
-    programId: SOL_CITY_PROGRAM_ID,
-    keys: [
-      { pubkey: huntPda,  isSigner: false, isWritable: true },
-      { pubkey: cranker,  isSigner: true,  isWritable: false },
-    ],
-    data: Buffer.concat([DISC.expireRound, packU32LE(round)]),
-  });
-}
 
 /**
  * Builds `init_unlock_state()` — creates this wallet's UnlockState PDA.

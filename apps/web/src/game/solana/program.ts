@@ -39,11 +39,11 @@ export const DELEGATION_PROGRAM_ID = new PublicKey(
   "DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh"
 );
 
-// Bumped to "player_v2" alongside the program's PLAYER_SEED when the
+// Bumped to "player_v3" alongside the program's PLAYER_SEED when the
 // PlayerState layout grew (loadout / expression / chat fields). Must match
 // programs/sol-city/src/lib.rs.
-export const PLAYER_SEED = "player_v2";
-export const HUNT_SEED = "hunt";
+export const PLAYER_SEED = "player_v3";
+export const HUNT_SEED = "hunt_v2";
 export const UNLOCKS_SEED = "unlocks";
 
 /** Seed of the one PackConfig account: what the city sells, and on what terms. */
@@ -120,27 +120,66 @@ export function deriveHuntPDA(
   return PublicKey.findProgramAddressSync([Buffer.from(HUNT_SEED)], programId);
 }
 
+/** How long one citizen is the target. Mirrors CITIZEN_DURATION_SECS. */
+export const CITIZEN_DURATION_SECS = 300;
+
 /**
  * On-chain HuntState — matches the account in programs/sol-city/src/lib.rs.
  * Layout after the 8-byte discriminator:
- *   round: u32 (4) | winner: Pubkey (32) | found_at: i64 (8) | deadline: i64 (8)
+ *   anchor_round: u32 (4) | anchor_at: i64 (8) | winner: Pubkey (32)
+ *
+ * It stores an ANCHOR, not a counter. The round being hunted is derived from
+ * the clock by the program and by every client with the same arithmetic, so an
+ * unfound citizen rotates on time with no transaction at all. The old shape
+ * needed a crank, and froze whenever nobody was there to sign one.
+ *
+ * `round` and `deadline` below are therefore DERIVED, not stored. That is why
+ * decoding takes a clock.
  */
 export interface HuntState {
+  /** The round being hunted at the moment it was decoded. */
   round: number;
+  /** Session key that claimed `anchorRound - 1`. See the note on `winner`. */
   winner: PublicKey;
-  foundAt: number;   // unix seconds
-  deadline: number;  // unix seconds
+  /** When the current citizen rotates if nobody finds it. Unix seconds. */
+  deadline: number;
+  /** The stored anchor, for anything that needs to reason about it. */
+  anchorRound: number;
+  anchorAt: number;
 }
 
-export function decodeHuntState(data: Uint8Array): HuntState | null {
-  if (data.length < 8 + 4 + 32 + 8 + 8) return null;
+/**
+ * Decodes the hunt, resolved against `now`.
+ *
+ * `now` is unix SECONDS on the CHAIN's clock, not the device's. Every client
+ * has to land on the same citizen, and a device an hour fast would otherwise
+ * hunt a different one and have its claim rejected. Callers inside the city
+ * pass `Date.now() - clockSkewMs`; the default is the device clock, which is
+ * right only for a device that agrees with the chain.
+ */
+export function decodeHuntState(
+  data: Uint8Array,
+  now: number = Math.floor(Date.now() / 1000),
+): HuntState | null {
+  if (data.length < 8 + 4 + 8 + 32) return null;
   const buf = Buffer.from(data);
   let o = 8; // skip discriminator
-  const round = buf.readUInt32LE(o); o += 4;
+  const anchorRound = buf.readUInt32LE(o); o += 4;
+  const anchorAt = Number(buf.readBigInt64LE(o)); o += 8;
   const winner = new PublicKey(buf.subarray(o, o + 32)); o += 32;
-  const foundAt = Number(buf.readBigInt64LE(o)); o += 8;
-  const deadline = Number(buf.readBigInt64LE(o)); o += 8;
-  return { round, winner, foundAt, deadline };
+
+  // Floored at zero, exactly as the program does it: a clock that steps
+  // backwards leaves the hunt where it is rather than winding it back to a
+  // citizen somebody has already been found at.
+  const elapsed = Math.max(0, now - anchorAt);
+  const passed = Math.floor(elapsed / CITIZEN_DURATION_SECS);
+  return {
+    round: anchorRound + passed,
+    winner,
+    deadline: anchorAt + (passed + 1) * CITIZEN_DURATION_SECS,
+    anchorRound,
+    anchorAt,
+  };
 }
 
 /**

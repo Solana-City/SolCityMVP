@@ -1218,11 +1218,12 @@ export class CityScene extends Phaser.Scene {
       loop: true,
       callback: () => {
         if (isCitizenExpired()) {
-          if (isHuntOnChain()) {
-            // Shared hunt: crank the on-chain round forward (first-writer-wins;
-            // guarded to one attempt per round). The poll then advances everyone.
-            this.network?.expireRound(getRoundIndex());
-          } else {
+          // On the shared hunt there is nothing to send. The round is derived
+          // from an anchor and the clock, identically by the program and by
+          // every client, so the citizen rotates on time by itself and the
+          // poll picks it up. This used to crank `expire_round`, which is why
+          // the hunt froze whenever nobody was there to sign one.
+          if (!isHuntOnChain()) {
             advanceFindSlot();
             resetCitizenTimer();
           }
