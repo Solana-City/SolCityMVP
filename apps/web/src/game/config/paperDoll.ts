@@ -102,7 +102,8 @@ export interface LayerVariant {
      * the body it rides on. The cell inside a group is the body's own walk
      * frame, so the effect moves with the head instead of beside it; `fps`
      * then sets how fast the groups themselves change (one every
-     * SPRITE_COLS / fps seconds).
+     * SPRITE_COLS / fps seconds). Only while the body walks: standing still
+     * the whole loop plays at `fps` cells a second.
      */
     followsWalk?: boolean;
   };

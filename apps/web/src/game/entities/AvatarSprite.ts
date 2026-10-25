@@ -788,9 +788,11 @@ export class AvatarSprite {
         sprite.y = -2 - this.hairLift(fx.effect, facing) * 0.5;
       }
       let frame: number;
-      if (fx.effect.followsWalk) {
+      if (fx.effect.followsWalk && this.isWalking) {
         // Groups of SPRITE_COLS cells: the group is the clock's, the cell in
-        // it is the body's walk frame, so the ring bobs with the head.
+        // it is the body's walk frame, so the ring bobs with the head. Standing
+        // still there is no head to follow, so the whole loop plays on the
+        // clock below and the effect stays alive.
         const body = this.layerSprites.get("skin");
         const phase = body ? Number(body.frame.name) % SPRITE_COLS : 0;
         const group = Math.floor(((now / 1000) * fps) / SPRITE_COLS) % (frames / SPRITE_COLS);
