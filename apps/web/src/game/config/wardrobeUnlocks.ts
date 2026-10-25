@@ -3,6 +3,7 @@ import { progressionBus } from "@/game/progression/progressionBus";
 import { profileManager } from "@/game/config/profileManager";
 import { decodeUnlockState, BOOSTER_ONCHAIN } from "@/game/solana/program";
 import { itemAtGlobalIndex } from "@/game/config/catalogIndex";
+import { clusterKey } from "./clusterStorage";
 
 /**
  * Per-wallet unlock registry for paper-doll wardrobe items.
@@ -18,7 +19,10 @@ import { itemAtGlobalIndex } from "@/game/config/catalogIndex";
  */
 
 function storageKey(wallet: string): string {
-  return `solcity:unlocks:${wallet}`;
+  // Namespaced by cluster. Without this a devnet tester opening mainnet in the
+  // same browser arrived wearing every outfit they had unlocked on devnet,
+  // which the mainnet chain never granted them.
+  return clusterKey(`solcity:unlocks:${wallet}`);
 }
 
 export function unlockKeyOf(category: LayerCategory, id: string): string {

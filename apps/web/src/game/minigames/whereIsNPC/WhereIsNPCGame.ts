@@ -1,3 +1,4 @@
+import { clusterKey } from "@/game/config/clusterStorage";
 /**
  * "Where Is the NPC?" — global hide-and-seek mini-game.
  *
@@ -12,7 +13,7 @@
 export const ROUND_MS = 5 * 60 * 1000;      // 5-minute rounds
 export const ROTATION_BATCH_MS = 90 * 1000; // pedestrians rotate every 90s in batches
 
-const STORAGE_KEY = "solcity:whereIsNPC:scores";
+const STORAGE_KEY = clusterKey("solcity:whereIsNPC:scores");
 
 // ── Global on-chain hunt state ──────────────────────────────────────────────
 // When the on-chain HuntState is live, its `round` is the shared slot every
@@ -226,7 +227,7 @@ export function getRoundWinner(round: number): string | null {
 // Seeded from epoch seconds at load so the found-log keys are unique per
 // session and don't collide with a prior session's after a reload.
 
-const FIND_LOG_KEY = "solcity:whereIsNPC:findLog"; // { wallet: { seqStr: 1 } }
+const FIND_LOG_KEY = clusterKey("solcity:whereIsNPC:findLog"); // { wallet: { seqStr: 1 } }
 
 function loadFindLog(): Record<string, Record<string, number>> {
   try { return JSON.parse(localStorage.getItem(FIND_LOG_KEY) ?? "{}"); } catch { return {}; }

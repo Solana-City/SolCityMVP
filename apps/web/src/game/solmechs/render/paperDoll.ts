@@ -13,8 +13,9 @@ import * as V1 from "./MechPaperDoll";
 import * as V2 from "./MechPaperDollV2";
 import { MATRICES, getPartsForSlot } from "../data/catalog";
 import type { MechBuild } from "../data/types";
+import { clusterKey } from "@/game/config/clusterStorage";
 
-const STORAGE_KEY = "solmechs:parts";
+const STORAGE_KEY = clusterKey("solmechs:parts");
 
 function readFlag(): boolean {
   try {

@@ -1,3 +1,4 @@
+import { clusterKey } from "@/game/config/clusterStorage";
 /**
  * Timed buffs the player picks up around the city.
  *
@@ -79,7 +80,7 @@ export interface ActiveBuff {
   remainingMs: number;
 }
 
-const STORAGE_KEY = "solcity.buffs.v1";
+const STORAGE_KEY = clusterKey("solcity.buffs.v1");
 /** How often an expiry is swept, which is also how often the HUD can redraw. */
 const SWEEP_MS = 250;
 

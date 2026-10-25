@@ -9,8 +9,9 @@ import {
   buildAuthorizeSessionIx,
   isProgramDeployed,
 } from "./instructions";
+import { clusterKey } from "@/game/config/clusterStorage";
 
-const STORAGE_KEY = "sol-city-session-key";
+const STORAGE_KEY = clusterKey("sol-city-session-key");
 
 /**
  * Manages an ephemeral keypair for the game session.

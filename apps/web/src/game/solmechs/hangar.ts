@@ -14,8 +14,9 @@ import type { MechBuild, MechId } from "./data/types";
 import { PRESET_BUILDS, getMatrix, getPart } from "./data/catalog";
 import { MECH_IDS } from "./data/types";
 import { TEAM_SIZE } from "./data/team";
+import { clusterKey } from "@/game/config/clusterStorage";
 
-const STORAGE_KEY = "solcity:solmechs";
+const STORAGE_KEY = clusterKey("solcity:solmechs");
 
 export interface HangarState {
   /**

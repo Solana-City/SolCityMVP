@@ -1,4 +1,5 @@
 import { progressionBus } from "@/game/progression/progressionBus";
+import { clusterKey } from "./clusterStorage";
 
 export interface PlayerProfile {
   wallet: string | null;
@@ -36,7 +37,7 @@ export interface PlayerProfile {
   lastActive: number;
 }
 
-const STORAGE_KEY = "sol-city-profile";
+const STORAGE_KEY = clusterKey("sol-city-profile");
 
 /**
  * Manages the local player profile.

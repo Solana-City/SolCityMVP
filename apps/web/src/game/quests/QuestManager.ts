@@ -3,6 +3,7 @@ import { invalidateBoard } from "@/game/leaderboards/boards";
 import { questMessage } from "@/lib/auth/requestMessages";
 import { postSigned } from "@/game/auth/signedPost";
 import { profileManager } from "@/game/config/profileManager";
+import { clusterKey } from "@/game/config/clusterStorage";
 
 export interface QuestDefinition {
   id: string;
@@ -66,10 +67,10 @@ export function todayKey(): string {
 }
 
 function progressKey(wallet: string): string {
-  return `solcity:quests:${todayKey()}:${wallet}`;
+  return clusterKey(`solcity:quests:${todayKey()}:${wallet}`);
 }
 
-const LEADERBOARD_KEY = "solcity:questPoints";
+const LEADERBOARD_KEY = clusterKey("solcity:questPoints");
 
 // ── Server sync ───────────────────────────────────────────────────────────
 //

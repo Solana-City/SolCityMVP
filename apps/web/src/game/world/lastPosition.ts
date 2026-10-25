@@ -1,3 +1,4 @@
+import { clusterKey } from "@/game/config/clusterStorage";
 /**
  * Where the player was standing, kept across reloads.
  *
@@ -12,7 +13,7 @@
  * starts at the fountain.
  */
 
-const KEY = "solcity:last-position";
+const KEY = clusterKey("solcity:last-position");
 const MAX_AGE_MS = 30 * 60_000;
 
 export interface SavedPosition {

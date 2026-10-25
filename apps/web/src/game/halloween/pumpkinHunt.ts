@@ -38,6 +38,7 @@
  */
 import { profileManager } from "@/game/config/profileManager";
 import { todayKey } from "@/game/quests/QuestManager";
+import { clusterKey } from "@/game/config/clusterStorage";
 
 /** How many are out there at once, and so how many a day is worth. */
 export const PUMPKINS_PER_HUNT = 5;
@@ -67,7 +68,8 @@ export const FOUND_COUNTER = "pumpkins-found";
 /** Spent on a carve, ever. Attempts left is the difference. */
 export const SPENT_COUNTER = "pumpkins-carved";
 
-const takenKey = (wallet: string, day: string) => `solcity:halloween:pumpkins:${day}:${wallet}`;
+const takenKey = (wallet: string, day: string) =>
+  clusterKey(`solcity:halloween:pumpkins:${day}:${wallet}`);
 
 /** FNV-1a over the wallet: a stable number to seed the pick with. */
 function hash(s: string): number {

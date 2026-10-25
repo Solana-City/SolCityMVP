@@ -23,6 +23,7 @@ import { chamferBox } from "@/ui/chamfer";
 import { PanelTitleBar, ProtocolLogo, ExternalLinkIcon } from "@/ui/PixelIcons";
 import { CATEGORY_META } from "@/game/minimap/categories";
 import { useButtonFeel, feelStyle, type ButtonFeel } from "@/ui/useButtonFeel";
+import { clusterKey } from "@/game/config/clusterStorage";
 
 const PIXEL = '"Press Start 2P", monospace';
 const PROTOCOLS_COLOR = CATEGORY_META.defi.color;
@@ -38,7 +39,7 @@ const SELL_PCT = [0.25, 0.5, 1];
 
 // ── Cost basis (local, per wallet) for the P&L on "MY STOCKS" ─────────────
 type Basis = Record<string, { usd: number; amount: number }>;
-const basisKey = (w: string) => `solcity:stocks:basis:${w}`;
+const basisKey = (w: string) => clusterKey(`solcity:stocks:basis:${w}`);
 function loadBasis(w: string): Basis {
   try { return JSON.parse(localStorage.getItem(basisKey(w)) || "{}"); } catch { return {}; }
 }

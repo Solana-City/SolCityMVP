@@ -1,3 +1,4 @@
+import { clusterKey } from "./clusterStorage";
 export type Direction = "down" | "left" | "right" | "up";
 
 /**
@@ -543,7 +544,7 @@ export function migrateHairColor(loadout: Loadout): Loadout {
   return loadout;
 }
 
-const STORAGE_KEY = "solcity:loadout";
+const STORAGE_KEY = clusterKey("solcity:loadout");
 
 export function saveLoadout(loadout: Loadout): void {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(loadout)); } catch {}
