@@ -236,7 +236,7 @@ export const QUEST_FREE_SLOTS = 1024;
  * PLAYER_UNLOCK_CAP in the program. Fixed, because that account is delegated
  * and a delegated account cannot be realloc'd.
  */
-export const PLAYER_UNLOCK_CAP = 256;
+export const PLAYER_UNLOCK_CAP = 64;
 
 export interface UnlockState {
   authority: PublicKey;

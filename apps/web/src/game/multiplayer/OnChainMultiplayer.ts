@@ -176,11 +176,15 @@ export const EPHEMERAL_VALIDATOR_IDENTITY =
  * 8 discriminator + 32 authority + 33 session + 24 name + 4 x + 4 y + 1 dir
  * + 1 outfit + 4 score + 2+2+2 counts + 8 last_active + 8 created_at
  * + 124 loadout + 28 expression + 8 expression_at + 204 message + 8 message_at
- * + 32 achievements + 2 + 2 streaks + 64 game_bests = 605.
+ * + 32 achievements + 2 + 2 streaks + 32 game_bests = 573.
  *
- * The 514-byte unlock snapshot sits after this and is never fetched.
+ * The 130-byte unlock snapshot sits after this and is never fetched.
+ *
+ * Both numbers moved on 2026-10-25, when the account was cut from 1119 bytes
+ * to 703 so a wallet's first connect costs less: game_bests went from 16 slots
+ * to 8, and the unlock snapshot from 256 entries to 64.
  */
-const PLAYER_READ_BYTES = 605;
+const PLAYER_READ_BYTES = 573;
 
 // What a CURRENT-layout account must return from the sliced sweep.
 //
