@@ -62,6 +62,7 @@ const DISC = {
   changeOutfit:            ixDiscriminator("change_outfit"),
   updateLookSession:       ixDiscriminator("update_look_session"),
   commitPlayerSession:     ixDiscriminator("commit_player_session"),
+  syncUnlocks:             ixDiscriminator("sync_unlocks"),
   commitAndUndelegatePlayerSession:
     ixDiscriminator("commit_and_undelegate_player_session"),
   setExpressionSession:    ixDiscriminator("set_expression_session"),
@@ -542,6 +543,35 @@ export function buildInitUnlockStateIx(authority: PublicKey): TransactionInstruc
       { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
     ],
     data: DISC.initUnlockState,
+  });
+}
+
+/**
+ * `sync_unlocks()` - copies UnlockState.owned into the player's snapshot.
+ *
+ * The snapshot is what `update_look_session` checks a loadout against, and it
+ * is a COPY, not a reference: an unlock earned after the last sync is not
+ * wearable until the next one. So this runs on BASE before delegating, which
+ * is the last moment both accounts are writable in the same place -
+ * UnlockState is never delegated, and a delegated player PDA can only be
+ * written on the rollup.
+ *
+ * Session-signed, so no wallet popup. A wallet with no UnlockState yet has
+ * nothing to sync and this fails; send buildInitUnlockStateIx first, once.
+ */
+export function buildSyncUnlocksIx(
+  authority: PublicKey, sessionKey: PublicKey,
+): TransactionInstruction {
+  const [playerPda] = derivePlayerPDA(authority);
+  const [unlockPda] = deriveUnlockPDA(authority);
+  return new TransactionInstruction({
+    programId: SOL_CITY_PROGRAM_ID,
+    keys: [
+      { pubkey: playerPda,  isSigner: false, isWritable: true  },
+      { pubkey: unlockPda,  isSigner: false, isWritable: false },
+      { pubkey: sessionKey, isSigner: true,  isWritable: false },
+    ],
+    data: DISC.syncUnlocks,
   });
 }
 

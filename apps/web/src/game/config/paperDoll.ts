@@ -402,8 +402,21 @@ export function getEnabledVariants(category: LayerCategory): LayerVariant[] {
 // Every base and hairstyle is free, plus the Black Hat. Packs are for future
 // additions; quests and NPCs still grant their own items.
 
-/** TESTING: every hat is unlocked. Set false to lock hats again (Black Hat stays free). */
-export const TEST_UNLOCK_ALL_HATS = true;
+/**
+ * TESTING: every hat is unlocked. Black Hat stays free either way.
+ *
+ * OFF since 2026-10-26, so the pack economy can be tested against what a
+ * wallet actually owns. While it was on, the client let anybody wear a Crown
+ * or a Ninja - which are pack items - and the chain knew nothing about it.
+ * That gap is what made the wardrobe impossible to enforce: the moment the
+ * loadout goes over the wire as catalog indices, the program rejects the whole
+ * outfit of a player wearing an item their on-chain snapshot does not hold,
+ * and with this flag on that was most testers.
+ *
+ * Turning it back on is a real decision now, not a convenience: it puts the
+ * client and the chain back into disagreement.
+ */
+export const TEST_UNLOCK_ALL_HATS = false;
 
 const FREE_ITEMS: Partial<Record<LayerCategory, "*" | string[]>> = {
   skin: "*",

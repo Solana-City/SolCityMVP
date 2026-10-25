@@ -132,6 +132,8 @@ import {
   buildAuthorizeSessionIx,
   buildDelegateIx,
   buildCommitAndUndelegatePlayerSessionIx,
+  buildInitUnlockStateIx,
+  buildSyncUnlocksIx,
   buildUpdatePositionSessionIx,
   buildUpdateLookSessionIx,
   buildSetExpressionSessionIx,
@@ -147,6 +149,7 @@ import {
 } from "../solana/instructions";
 import {
   derivePlayerPDA, SOL_CITY_PROGRAM_ID, deriveHuntPDA, decodeHuntState,
+  deriveUnlockPDA,
   achievementIndices, ACHIEVEMENT_BITS,
 } from "../solana/program";
 import { BASE_RPC_PRIMARY, resilientBaseFetch } from "../solana/baseRpc";
@@ -1580,6 +1583,13 @@ export class OnChainMultiplayer {
           const tx = new Transaction({ recentBlockhash: blockhash, feePayer: wallet })
             .add(buildInitializePlayerIx(wallet, name))
             .add(buildAuthorizeSessionIx(wallet, sessionKey));
+          // The unlock account, in the same signature. It has to exist before
+          // the first pack and before the first sync, and this is the only
+          // moment the player is already signing something: asking for a
+          // second popup later, at the till, is how a purchase gets abandoned.
+          if (!(await this.accountExists(deriveUnlockPDA(wallet)[0]))) {
+            tx.add(buildInitUnlockStateIx(wallet));
+          }
           if (needsFunding) {
             tx.add(SystemProgram.transfer({ fromPubkey: wallet, toPubkey: sessionKey, lamports: SESSION_FUND_LAMPORTS }));
           }
@@ -2046,6 +2056,13 @@ export class OnChainMultiplayer {
       label: "Delegate PDA → Ephemeral Rollup", status: "pending",
     });
     try {
+      // The snapshot the wardrobe is checked against, refreshed while both
+      // accounts are still writable in the same place. UnlockState is never
+      // delegated and a delegated player PDA can only be written on the
+      // rollup, so base-before-delegate is the last chance. An unlock earned
+      // after this moment is not wearable until the next delegation.
+      await this.syncUnlocksOnBase(wallet);
+
       // The NEAREST rollup, not a fixed one. This is the only moment the
       // choice is free: it is written into the delegation record, and moving
       // it afterwards means undelegating first.
@@ -2120,6 +2137,45 @@ export class OnChainMultiplayer {
    * Commits the delegated player PDA back to the base layer and undelegates it.
    * Called on disconnect. Signed by the session key (no wallet popup).
    */
+  /** Whether an account exists on base, without throwing. */
+  private async accountExists(key: PublicKey): Promise<boolean> {
+    try {
+      return (await this.baseRpcWithRetry(() => this.baseConnection.getAccountInfo(key))) !== null;
+    } catch {
+      // Unreachable RPC. Answering "it exists" is the safe wrong answer: the
+      // worst case is a missing unlock account, which the next connect
+      // creates, against a duplicate init that fails the whole transaction
+      // and leaves the player with no PDA at all.
+      return true;
+    }
+  }
+
+  /**
+   * Copies UnlockState into the player's wardrobe snapshot, on base.
+   *
+   * Session-signed, so no popup. Failure is not fatal and not retried here:
+   * the snapshot is only consulted when a loadout is written, the worst case
+   * is wearing last session's unlocks, and the next connect syncs again.
+   */
+  private async syncUnlocksOnBase(wallet: PublicKey): Promise<void> {
+    try {
+      if (!(await this.accountExists(deriveUnlockPDA(wallet)[0]))) return;
+      const sessionKey = this.sessionKeys.getSessionPublicKey();
+      const { blockhash } = await this.baseRpcWithRetry(
+        () => this.baseConnection.getLatestBlockhash(),
+      );
+      const tx = new Transaction({ recentBlockhash: blockhash, feePayer: sessionKey })
+        .add(buildSyncUnlocksIx(wallet, sessionKey));
+      this.sessionKeys.signTransaction(tx);
+      const sig = await this.baseRpcWithRetry(
+        () => this.baseConnection.sendRawTransaction(tx.serialize(), { skipPreflight: true }),
+      );
+      console.log(`[Multiplayer] unlocks synced to the wardrobe snapshot: ${sig.slice(0, 12)}`);
+    } catch (err: any) {
+      console.warn("[Multiplayer] sync_unlocks skipped:", err?.message);
+    }
+  }
+
   private async commitAndUndelegatePlayer(wallet: PublicKey): Promise<void> {
     const entry = transactionLog.record({
       kind: "undelegate", layer: "ephemeral",
