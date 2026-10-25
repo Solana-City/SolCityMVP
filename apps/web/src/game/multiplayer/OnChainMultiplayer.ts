@@ -392,6 +392,21 @@ export class OnChainMultiplayer {
   /** wallet → last_active (unix seconds) at the previous sighting. */
   private lastSeenTs = new Map<string, number>();
   private clockSkewMs = 0;       // device clock minus chain clock
+  private moveRttMs = 0;         // smoothed send -> accepted, for the renderer
+
+  /**
+   * How long a position write takes to be accepted, smoothed. Zero until the
+   * first one lands.
+   *
+   * The remote-player predictor needs to know how stale the position it is
+   * drawing already is, and that number moved when the city moved validator:
+   * the same two machines side by side went from ~130ms to ~300ms, because
+   * every update travels to the rollup and back out. Hard-coding it meant the
+   * predictor was tuned for one region and read as sliding everywhere else.
+   */
+  getMoveRttMs(): number {
+    return this.moveRttMs;
+  }
 
   /**
    * Unix SECONDS on the chain's clock.
@@ -755,7 +770,12 @@ export class OnChainMultiplayer {
         if (sig) {
           // How long the network took to accept it — the number the player
           // sees in the on-chain log.
-          transactionLog.attachSignature(entry.id, sig, Date.now() - sentAt);
+          const rtt = Date.now() - sentAt;
+          transactionLog.attachSignature(entry.id, sig, rtt);
+          // Smoothed, because the renderer leans on it: how long OUR write
+          // takes to be accepted is the best estimate this client has of how
+          // long somebody else's takes to reach us. See getMoveRttMs.
+          this.moveRttMs = this.moveRttMs === 0 ? rtt : (this.moveRttMs * 3 + rtt) / 4;
           this.noteMoveSent(true);
           this.trackMoveConfirmation(entry.id, sig);
         } else {

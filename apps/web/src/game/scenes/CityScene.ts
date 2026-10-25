@@ -2118,9 +2118,32 @@ export class CityScene extends Phaser.Scene {
     const REMOTE_CATCHUP_MAX = 1.3;       // never more than 1.3x its own walking speed
     const REMOTE_SETTLE_SPEED = 50;       // px/s when easing back from an overshoot
     const REMOTE_WALK_HOLD_MS = 280;      // flagless senders: keep legs going between samples
-    const REMOTE_LATENCY_MS = 140;        // send → rollup → push to this screen
-    const REMOTE_PREDICT_MAX_MS = 320;    // never predict further ahead than this
-    const REMOTE_PREDICT_STALE_MS = 450;  // no new sample for this long: assume stopped (network spikes reach ~480ms)
+
+    // ── These three used to be constants, and that was the bug ────────────
+    //
+    // They were 140 / 320 / 450, measured against a rollup ~130ms away. The
+    // city moved validator and the same two machines side by side went to
+    // ~300ms, because every update travels to the rollup and back out again.
+    //
+    // At that distance the gap between samples passes 450ms often, so the
+    // predictor decided the sender had STOPPED, froze the avatar, and then
+    // dragged it to the next sample when one arrived. That drag is what reads
+    // as sliding rather than walking. The avatar was not animating badly; it
+    // was being told, several times a second, that nobody was moving.
+    //
+    // So they follow the measured round trip instead. On a close validator
+    // the floors below keep exactly the old behaviour.
+    const rtt = this.network?.getMoveRttMs() ?? 0;
+    // Our own send time is the best estimate this client has of how long
+    // somebody else's write takes to reach it: the leg out and the leg back
+    // are the same road.
+    const REMOTE_LATENCY_MS = Phaser.Math.Clamp(rtt || 140, 140, 600);
+    const REMOTE_PREDICT_MAX_MS = Math.max(320, REMOTE_LATENCY_MS * 1.5);
+    // Generous on purpose. Deciding "stopped" too early is the expensive
+    // mistake: it freezes a walking avatar. Deciding it too late only lets a
+    // stopped one drift a few pixels, which the overshoot easing then takes
+    // back.
+    const REMOTE_PREDICT_STALE_MS = Math.max(450, REMOTE_LATENCY_MS * 2 + 250);
 
     const age = now - t.movedAt;
     const predicting = t.walking === true && age < REMOTE_PREDICT_STALE_MS;
