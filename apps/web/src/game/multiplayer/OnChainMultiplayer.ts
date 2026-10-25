@@ -130,45 +130,16 @@ const ENDPOINTS = {
 } as const;
 
 /**
- * The rollup validator behind ENDPOINTS.ephemeral, as `getIdentity` reports it.
+ * The city used to name one rollup here and send everybody to it.
  *
- * We used to delegate with no preference, so the rollup that claimed a player
- * PDA was whichever saw it first, and it was ours only because every ER write
- * in this file goes straight to ENDPOINTS.ephemeral. True by accident, not by
- * contract: a PDA claimed by a different rollup is invisible to our reads,
- * which is the "stuck delegated" state forceUndelegateAndReconnect digs out of.
+ * That constant is gone: `erValidators.ts` holds all three, with identities
+ * read from each host's own `getIdentity`, and a player now delegates to the
+ * nearest one. Keeping a second copy of a validator key in this file is how
+ * the two would quietly stop agreeing.
  *
- * `delegate` takes this key as an optional remaining account and writes it into
- * the delegation record, which turns the accident into the contract. Passed at
- * the call site since the player_v3 redeploy, 2026-10-25.
- *
- * ── US, chosen 2026-10-22, and it is a GLOBAL choice ──────────────────────
- *
- * A transaction cannot span two validators, so everyone delegated elsewhere is
- * in a different world: invisible to the discovery sweep, unable to kick the
- * shared ball, unable to duel. One validator is one city.
- *
- * Three exist on devnet, measured from Asia with the handshake excluded:
- *   devnet-as  MAS1Dt9qreoRMQ14YQuhg8UTZMMzDdKhmkZMECCzk57   ~95ms
- *   devnet-us  MUS3hc9TCw4cGC12vHNoYcCGzJG1txjgQLZWVoeNHNd   ~278ms
- *   devnet-eu  MEUGGrYPxKk17hCr7wpT6s8dtNokZj5U2L57vjYMS8e   ~315ms
- *
- * US wins on worst case, which is the only number that matters for a single
- * shared world: no region is worse than ~280ms against ~315ms for either of
- * the others. It is also the right answer for a Brazil-heavy player base,
- * ~120ms against ~300ms on Asia.
- *
- * ── All three moved together, on the player_v3 deploy ─────────────────────
- *
- * This key, ENDPOINTS.ephemeral, and the call site below. Any one of them on
- * its own is wrong: delegating to US while reading Asia means nobody sees
- * anybody, and the endpoint was not safe to move early because PDAs already
- * delegated with None live on Asia and would have been lost until they were
- * re-delegated. The player_v3 reset re-delegates everyone anyway, which is
- * what made deploy day the moment to do all three at once.
+ * What is left here is only the DEFAULT read/write target, used until the
+ * sweep has found where this wallet's PDA actually lives.
  */
-export const EPHEMERAL_VALIDATOR_IDENTITY =
-  "MUS3hc9TCw4cGC12vHNoYcCGzJG1txjgQLZWVoeNHNd";
 
 /**
  * Bytes of a PlayerState this client actually reads: through game_bests, with
@@ -361,6 +332,15 @@ export class OnChainMultiplayer {
    * spreading the writes later is safe. If it breaks, nobody's PDA has moved.
    */
   private erReadConnections: { id: string; conn: Connection }[] = [];
+  /**
+   * Which rollup each player's PDA was last seen on, as an index into
+   * `erReadConnections`.
+   *
+   * A delegated account exists on exactly one rollup and is invisible on the
+   * others, so the position poll has to ask the right one. Filled by the
+   * discovery sweep, which is the only thing that looks everywhere.
+   */
+  private playerRollup = new Map<string, number>();
   private baseConnection:      Connection;
 
   // Session
@@ -1651,7 +1631,13 @@ export class OnChainMultiplayer {
       // Poll live positions from the ER (fast, sub-100ms) — this is the
       // real-time load now that reads come off the rollup, not frozen base.
       // 500ms matches the position-write throttle so motion stays continuous.
-      setInterval(() => this.pollKnownPlayerPDAs(wallet), 500),
+      // Senders write every POS_THROTTLE_MS (200ms). Polling at 500ms threw
+      // away two of every five of those writes and added ~250ms of waiting to
+      // every move on top of the network, which is as much as the whole
+      // distance between two rollups. One RPC call per tick covers every
+      // known player, so the cost of asking more often is small and it is
+      // paid by everyone equally, wherever they are.
+      setInterval(() => this.pollKnownPlayerPDAs(wallet), 250),
       // Refresh the online roster from the ER. getProgramAccounts on the ER is
       // cheap (~20ms) and returns exactly the delegated (online) players.
       // Someone who just joined only exists for others once this runs, so 12s
@@ -1721,13 +1707,26 @@ export class OnChainMultiplayer {
       // a delegation that moved can leave a stale copy behind on the old one,
       // and the fresher copy is the live player.
       const byAddress = new Map<string, (typeof perValidator)[number][number]>();
-      for (const list of perValidator) {
+      perValidator.forEach((list, validatorIndex) => {
         for (const entry of list) {
           const key = entry.pubkey.toBase58();
           const seen = byAddress.get(key);
           if (!seen || lastActiveOf(entry.account.data) > lastActiveOf(seen.account.data)) {
             byAddress.set(key, entry);
+            this.playerRollup.set(key, validatorIndex);
           }
+        }
+      });
+
+      // Our own writes follow our own PDA. Not the nearest rollup: the nearest
+      // one is where we would delegate a NEW player, but an account already
+      // delegated elsewhere can only be written where it actually lives.
+      if (this.wallet) {
+        const mine = derivePlayerPDA(this.wallet)[0].toBase58();
+        const at = this.playerRollup.get(mine);
+        if (at !== undefined && this.erReadConnections[at].conn !== this.ephemeralConnection) {
+          this.ephemeralConnection = this.erReadConnections[at].conn;
+          console.log(`[Multiplayer] writes follow our PDA to ${this.erReadConnections[at].id}`);
         }
       }
       const accounts = [...byAddress.values()];
@@ -1779,13 +1778,42 @@ export class OnChainMultiplayer {
       // Read from the ER, not base: the ER copy carries live positions; the
       // base copy of a delegated PDA is frozen at spawn.
       const pdas = wallets.map(w => derivePlayerPDA(new PublicKey(w))[0]);
-      // "processed" — lowest-latency ER read; positions are cosmetic so we don't
-      // need "confirmed" and the extra latency it adds.
-      const { context, value: infos } =
-        await this.ephemeralConnection.getMultipleAccountsInfoAndContext(pdas, "processed");
-      infos.forEach((info, i) => {
-        if (info) this.decodeAndUpdatePlayer(pdas[i].toBase58(), info.data, context.slot);
-      });
+
+      // Grouped by the rollup each PDA actually lives on. A delegated account
+      // is invisible on every other rollup, so asking one for all of them
+      // returns null for anybody delegated elsewhere and freezes them.
+      //
+      // A PDA the sweep has not placed yet goes to the rollup we write to,
+      // which is right for everybody while writes are not yet spread and
+      // self-corrects on the next sweep once they are.
+      const groups = new Map<number, PublicKey[]>();
+      const writeIndex = Math.max(
+        0, this.erReadConnections.findIndex(r => r.conn === this.ephemeralConnection),
+      );
+      for (const pda of pdas) {
+        const at = this.playerRollup.get(pda.toBase58()) ?? writeIndex;
+        const list = groups.get(at);
+        if (list) list.push(pda); else groups.set(at, [pda]);
+      }
+
+      // In parallel: the poll costs the slowest rollup, not the sum.
+      //
+      // Slot ordering survives this. `lastSlot` is kept per wallet and a
+      // player lives on one rollup, so the slots compared against each other
+      // always come from the same clock - which they would NOT if a player
+      // could be seen on two.
+      await Promise.all([...groups.entries()].map(async ([at, group]) => {
+        const { id, conn } = this.erReadConnections[at];
+        try {
+          // "processed" — lowest-latency ER read; positions are cosmetic so we
+          // don't need "confirmed" and the extra latency it adds.
+          const { context, value: infos } =
+            await conn.getMultipleAccountsInfoAndContext(group, "processed");
+          infos.forEach((info, i) => {
+            if (info) this.decodeAndUpdatePlayer(group[i].toBase58(), info.data, context.slot);
+          });
+        } catch { void id; /* transient ER read error — next tick retries */ }
+      }));
     } catch { /* transient ER read error — next tick retries */ }
   }
 
@@ -1979,13 +2007,27 @@ export class OnChainMultiplayer {
       label: "Delegate PDA → Ephemeral Rollup", status: "pending",
     });
     try {
-      // The validator goes into the delegation record, so this PDA is served
-      // by the rollup we read from rather than by whichever claims it first.
-      const ix = buildDelegateIx(wallet, new PublicKey(EPHEMERAL_VALIDATOR_IDENTITY));
+      // The NEAREST rollup, not a fixed one. This is the only moment the
+      // choice is free: it is written into the delegation record, and moving
+      // it afterwards means undelegating first.
+      //
+      // Everybody used to land on the same rollup, so two players in the same
+      // room sent every update to the other side of the world and read it
+      // back. The shared world does not need them together: every routine
+      // write touches only the sender's own PDA, and the readers ask all the
+      // rollups.
+      const near = nearestValidator();
+      const ix = buildDelegateIx(wallet, new PublicKey(near.identity));
+      console.log(`[Multiplayer] delegating to ${near.label} (${near.rpc})`);
       const { blockhash } = await this.baseRpcWithRetry(() => this.baseConnection.getLatestBlockhash());
       const tx = new Transaction({ recentBlockhash: blockhash, feePayer: wallet }).add(ix);
 
       const sig = await this.signAndSendViaWallet(tx);
+      // Write where we just delegated. The sweep would find it anyway, but not
+      // for a few seconds, and every position written to the wrong rollup in
+      // between is simply lost.
+      const nearConn = this.erReadConnections.find(r => r.id === near.id);
+      if (nearConn) this.ephemeralConnection = nearConn.conn;
       const landed = await this.waitForDelegation(playerPDA, 12, 800);
       if (landed) {
         transactionLog.markConfirmed(entry.id, sig);
