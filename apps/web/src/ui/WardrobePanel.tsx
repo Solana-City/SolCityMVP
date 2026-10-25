@@ -59,6 +59,9 @@ function AvatarPreview({ loadout, facing = "down", scale = 3 }: { loadout: Loado
     let loaded = 0;
     const imgs: Array<{ img: HTMLImageElement; cat: LayerCategory }> = [];
 
+    let timer: ReturnType<typeof setInterval> | undefined;
+    let cancelled = false;
+
     const draw = () => {
       ctx.clearRect(0, 0, FW, FH);
 
@@ -135,10 +138,24 @@ function AvatarPreview({ loadout, facing = "down", scale = 3 }: { loadout: Loado
         }
       }
 
-      for (const { cat } of imgs) {
-        const off = offByCategory.get(cat)!;
-        ctx.drawImage(off, 0, rowY, SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT, 0, 0, FW, FH);
-      }
+      // An effect layer (the Halo) is a loop of cells, not a pose: it is drawn
+      // last, from whichever cell the clock says, and repainted while the
+      // panel is open so the preview moves like the game does.
+      const effectCats = imgs.filter(({ cat }) => getVariant(cat, loadout[cat])?.effect);
+      const paint = () => {
+        ctx.clearRect(0, 0, FW, FH);
+        for (const { cat } of imgs) {
+          if (getVariant(cat, loadout[cat])?.effect) continue;
+          ctx.drawImage(offByCategory.get(cat)!, 0, rowY, SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT, 0, 0, FW, FH);
+        }
+        for (const { cat } of effectCats) {
+          const fx = getVariant(cat, loadout[cat])!.effect!;
+          const cell = Math.floor((performance.now() / 1000) * fx.fps) % fx.frames;
+          ctx.drawImage(offByCategory.get(cat)!, cell * SPRITE_FRAME_WIDTH, rowY, SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT, 0, 0, FW, FH);
+        }
+      };
+      paint();
+      if (effectCats.length > 0 && !cancelled) timer = setInterval(paint, 50);
     };
 
     for (const cat of LAYER_ORDER) {
@@ -149,8 +166,9 @@ function AvatarPreview({ loadout, facing = "down", scale = 3 }: { loadout: Loado
       const img = new Image();
       img.src = `/assets/sprites/paperdoll/${variant.file}`;
       imgs.push({ img, cat });
-      img.onload = () => { loaded++; if (loaded === imgs.length) draw(); };
+      img.onload = () => { loaded++; if (!cancelled && loaded === imgs.length) draw(); };
     }
+    return () => { cancelled = true; if (timer) clearInterval(timer); };
   }, [loadout, FW, FH, rowY]);
 
   return (
@@ -167,11 +185,13 @@ function AvatarPreview({ loadout, facing = "down", scale = 3 }: { loadout: Loado
   );
 }
 
-export function ChromaPreview({ file, size, facingUp, crop, hairColor }: {
+export function ChromaPreview({ file, size, facingUp, crop, hairColor, effect }: {
   file: string;
   size: number;
   facingUp?: boolean;
   crop?: boolean;
+  /** An effect sheet (the Halo): centred as a whole and played as a loop. */
+  effect?: { frames: number; fps: number };
   /** Set on hair tiles so the grid shows the style in the colour being worn. */
   hairColor?: string;
 }) {
@@ -186,9 +206,12 @@ export function ChromaPreview({ file, size, facingUp, crop, hairColor }: {
     const ctx = canvas.getContext("2d")!;
     ctx.clearRect(0, 0, size, size);
     ctx.imageSmoothingEnabled = false;
+    let timer: ReturnType<typeof setInterval> | undefined;
+    let cancelled = false;
     const img = new Image();
     img.src = `/assets/sprites/paperdoll/${file}`;
     img.onload = () => {
+      if (cancelled) return;
       const off = document.createElement("canvas");
       off.width = img.naturalWidth;
       off.height = img.naturalHeight;
@@ -200,6 +223,41 @@ export function ChromaPreview({ file, size, facingUp, crop, hairColor }: {
       if (hairColor) recolorHairCanvas(oc, img.naturalWidth, img.naturalHeight, hairColor);
       if (!crop) {
         ctx.drawImage(off, 0, rowY, SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT, 0, 0, size, size);
+        return;
+      }
+      if (effect) {
+        // The ink box over EVERY cell of the loop, so the frame around the
+        // art does not breathe as it plays. The item is centred in the tile
+        // as a whole and not clamped to the top of the frame (a halo sits at
+        // the very top, so the usual square would pin it there), then scaled
+        // to the tile's width.
+        const { data: sheet } = oc.getImageData(0, rowY, SPRITE_FRAME_WIDTH * effect.frames, SPRITE_FRAME_HEIGHT);
+        const sheetW = SPRITE_FRAME_WIDTH * effect.frames;
+        let ex0 = SPRITE_FRAME_WIDTH, ey0 = SPRITE_FRAME_HEIGHT, ex1 = -1, ey1 = -1;
+        for (let c = 0; c < effect.frames; c++) {
+          for (let y = 0; y < SPRITE_FRAME_HEIGHT; y++) {
+            for (let x = 0; x < SPRITE_FRAME_WIDTH; x++) {
+              if (sheet[(y * sheetW + c * SPRITE_FRAME_WIDTH + x) * 4 + 3] < 16) continue;
+              if (x < ex0) ex0 = x; if (x > ex1) ex1 = x;
+              if (y < ey0) ey0 = y; if (y > ey1) ey1 = y;
+            }
+          }
+        }
+        if (ex1 < 0) return;
+        const w = ex1 - ex0 + 1, h = ey1 - ey0 + 1;
+        const pad = 2;
+        const scale = size / (Math.max(w, h) + pad * 2);
+        const dx = (size - w * scale) / 2, dy = (size - h * scale) / 2;
+        let shown = -1;
+        const paint = () => {
+          const cell = Math.floor((performance.now() / 1000) * effect.fps) % effect.frames;
+          if (cell === shown) return;
+          shown = cell;
+          ctx.clearRect(0, 0, size, size);
+          ctx.drawImage(off, cell * SPRITE_FRAME_WIDTH + ex0, rowY + ey0, w, h, dx, dy, w * scale, h * scale);
+        };
+        paint();
+        timer = setInterval(paint, 50);
         return;
       }
       // Icon mode: zoom to the item itself (a hat is a few pixels at the top
@@ -229,7 +287,8 @@ export function ChromaPreview({ file, size, facingUp, crop, hairColor }: {
       const sy = topLeft((y0 + y1 + 1) / 2, SPRITE_FRAME_HEIGHT);
       ctx.drawImage(off, sx, rowY + sy, side, side, 0, 0, size, size);
     };
-  }, [file, size, rowY, crop, hairColor]);
+    return () => { cancelled = true; if (timer) clearInterval(timer); };
+  }, [file, size, rowY, crop, hairColor, effect]);
   return (
     <canvas
       ref={canvasRef}
@@ -709,6 +768,7 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
                           size={TILE}
                           facingUp={activeCategory === "back"}
                           crop
+                          effect={v.effect}
                           hairColor={activeCategory === "hair" ? wornHairColor : undefined}
                         />
                         {locked && (
