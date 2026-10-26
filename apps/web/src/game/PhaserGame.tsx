@@ -218,10 +218,21 @@ export default function PhaserGame({ onGameReady }: PhaserGameProps) {
     // window resize event on mobile browsers.
     const observer = new ResizeObserver(() => {
       if (!gameRef.current) return;
-      gameRef.current.scale.resize(
-        Math.round(container.clientWidth * dpr),
-        Math.round(container.clientHeight * dpr)
-      );
+      const w = Math.round(container.clientWidth * dpr);
+      const h = Math.round(container.clientHeight * dpr);
+      // A container with no size is not a size to resize to. WebGL cannot
+      // build a framebuffer with a zero dimension and throws "Framebuffer
+      // status: Incomplete Attachment", which lands the whole game on the
+      // error screen - what players saw the first time they opened the
+      // Halloween mini-game.
+      //
+      // Zero is reported for ordinary reasons: a parent that is briefly
+      // display:none, a layout that has not been measured yet, an overlay
+      // mounting over the canvas. None of them mean the canvas should change,
+      // so the right answer is to ignore the measurement and keep the size
+      // that already works. The next real resize corrects it.
+      if (w < 1 || h < 1) return;
+      gameRef.current.scale.resize(w, h);
     });
 
     // See the constants above. _limitRate is what stepLimitFPS actually reads
