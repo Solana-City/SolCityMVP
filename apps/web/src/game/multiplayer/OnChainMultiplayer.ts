@@ -125,6 +125,7 @@ function decodeLoadout(s: string): Loadout {
 import {
   ConnectionMagicRouter,
   delegationRecordPdaFromDelegatedAccount,
+  DELEGATION_PROGRAM_ID,
 } from "@magicblock-labs/ephemeral-rollups-sdk";
 import { SessionKeyManager } from "../solana/sessionKeys";
 import {
@@ -608,11 +609,28 @@ export class OnChainMultiplayer {
    * PDA's own owner can't be used: the router serves the ER copy of a
    * delegated account, whose owner is our program either way.
    */
+  /**
+   * Whether the account is delegated, asked of the account itself.
+   *
+   * The OWNER of the base account is the answer. Delegation hands the account
+   * to the delegation program; undelegation hands it back. Nothing else is
+   * reliable, and in particular the delegation RECORD is not: it is what this
+   * used to check, and it outlives an undelegation that has not settled on
+   * base yet.
+   *
+   * That gap is not rare, it is the normal path. "committed & undelegated"
+   * followed by "undelegate didn't settle in time" leaves the account already
+   * handed back on the ROLLUP while base still shows the record. The old check
+   * read that as "still delegated", so the client kept writing to a rollup
+   * that no longer accepted the account, and every move failed with
+   * InvalidWritableAccount until the tab was closed. Nothing re-delegated,
+   * because as far as the client knew nothing needed to.
+   */
   private async isPdaDelegated(playerPDA: PublicKey): Promise<boolean> {
     try {
-      const record = delegationRecordPdaFromDelegatedAccount(playerPDA);
-      const info = await this.baseConnection.getAccountInfo(record);
-      return info !== null;
+      const info = await this.baseConnection.getAccountInfo(playerPDA);
+      // No account at all is not delegated: it has never been created.
+      return info !== null && info.owner.equals(DELEGATION_PROGRAM_ID);
     } catch {
       return false;
     }
@@ -1676,6 +1694,11 @@ export class OnChainMultiplayer {
       } else {
         this.useEphemeral = true;
         console.log("✓ already delegated — using ephemeral rollup");
+        // WHICH rollup. Being delegated says nothing about where, and the
+        // default is only right by luck: this account was delegated to Asia
+        // while the city defaulted to the US rollup, so every move failed
+        // with InvalidWritableAccount from the moment it connected.
+        await this.pointWritesAtOwningValidator(playerPDA);
       }
     } catch (err: any) {
       console.warn("○ delegation skipped:", err?.message);
@@ -1801,17 +1824,11 @@ export class OnChainMultiplayer {
       // Our own writes follow our own PDA. Not the nearest rollup: the nearest
       // one is where we would delegate a NEW player, but an account already
       // delegated elsewhere can only be written where it actually lives.
-      if (this.wallet) {
-        const mine = derivePlayerPDA(this.wallet)[0].toBase58();
-        const at = this.playerRollup.get(mine);
-        if (Date.now() < this.writeTargetPinnedUntil) {
-          // Just delegated. The sweep has not seen the new rollup yet and its
-          // answer would send writes back to the old one.
-        } else if (at !== undefined && this.erReadConnections[at].conn !== this.ephemeralConnection) {
-          this.ephemeralConnection = this.erReadConnections[at].conn;
-          console.log(`[Multiplayer] writes follow our PDA to ${this.erReadConnections[at].id}`);
-        }
-      }
+      // Deliberately NOT repointing our own writes from this sweep. Which
+      // rollup answers with a copy of an account says nothing about which one
+      // will accept a write to it: all three answered for the same PDA on
+      // 2026-10-26. Only the delegation record knows, and
+      // pointWritesAtOwningValidator reads it.
       const accounts = [...byAddress.values()];
       // Candidates, not players: the count before the size filter below. Most
       // of what the Asian rollup still holds is pre-v3 PDAs from an older
@@ -2214,25 +2231,61 @@ export class OnChainMultiplayer {
     if (this.relocating || !this.wallet) return;
     this.relocating = true;
     try {
-      const pda = derivePlayerPDA(this.wallet)[0];
-      const found = await Promise.all(this.erReadConnections.map(async ({ id, conn }) => ({
-        id, conn, there: !!(await conn.getAccountInfo(pda).catch(() => null)),
-      })));
-      const home = found.find((f) => f.there);
-      if (!home) {
-        // On no rollup at all: the account came home and nothing re-delegated
-        // it. Base is where it is writable now, and the next connect delegates.
-        console.warn("[Multiplayer] the player PDA is on no rollup — writing to base");
+      await this.pointWritesAtOwningValidator(derivePlayerPDA(this.wallet)[0]);
+    } finally {
+      this.relocating = false;
+    }
+  }
+
+  /**
+   * Sends our writes to the rollup the account is actually delegated to.
+   *
+   * The delegation RECORD names that validator, and it is the only thing that
+   * does. Asking the rollups which of them holds the account does not work:
+   * measured 2026-10-26, all three answered yes for the same PDA. A rollup
+   * keeps a copy of an account it has cloned, and a copy is not authority -
+   * only one validator will accept a write, and the rest answer
+   * InvalidWritableAccount.
+   *
+   * That is the bug this replaces. The city defaulted to the US rollup while
+   * the account was delegated to Asia, so every move failed, and a fallback
+   * that looked for "the rollup that has it" picked whichever answered first
+   * and kept failing.
+   *
+   * Record layout, same as the SDK's own resolver: owned by the delegation
+   * program, non-zero lamports, and the validator in bytes 8 to 40.
+   */
+  private async pointWritesAtOwningValidator(pda: PublicKey): Promise<void> {
+    try {
+      const record = delegationRecordPdaFromDelegatedAccount(pda);
+      const info = await this.baseRpcWithRetry(
+        () => this.baseConnection.getAccountInfo(record),
+      );
+      const delegated = info !== null
+        && info.owner.equals(DELEGATION_PROGRAM_ID)
+        && info.lamports !== 0;
+      if (!delegated) {
+        // Come home, or never delegated. Base is where it is writable, and
+        // the next connect delegates it again.
+        console.warn("[Multiplayer] the PDA is not delegated — writing to base");
         this.useEphemeral = false;
         return;
       }
-      if (home.conn !== this.ephemeralConnection) {
-        this.ephemeralConnection = home.conn;
-        this.writeTargetPinnedUntil = Date.now() + 30_000;
-        console.log(`[Multiplayer] writes relocated to ${home.id}, where the PDA actually is`);
+      const validator = new PublicKey(info!.data.subarray(8, 40)).toBase58();
+      const target = ER_VALIDATORS.find((v) => v.identity === validator);
+      if (!target) {
+        console.warn(`[Multiplayer] delegated to a rollup we do not read: ${validator}`);
+        return;
       }
-    } finally {
-      this.relocating = false;
+      const conn = this.erReadConnections.find((r) => r.id === target.id);
+      if (!conn) return;
+      this.useEphemeral = true;
+      if (conn.conn !== this.ephemeralConnection) {
+        this.ephemeralConnection = conn.conn;
+        console.log(`[Multiplayer] writes go to ${target.label}, which holds the delegation`);
+      }
+    } catch (err: any) {
+      console.warn("[Multiplayer] could not read the delegation record:", err?.message);
     }
   }
 
