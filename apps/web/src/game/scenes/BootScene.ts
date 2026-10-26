@@ -47,6 +47,7 @@ const TILESET_KEYS = [
   "SCBuildColosseum",
   "SCHalloween",
   "SCBuildSTKZ",
+  "SCBuildHome",
 ];
 
 // The new map is small enough (135×115) to serve both platforms — no separate
