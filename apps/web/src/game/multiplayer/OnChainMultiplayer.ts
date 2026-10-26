@@ -1804,14 +1804,22 @@ export class OnChainMultiplayer {
       if (this.wallet) {
         const mine = derivePlayerPDA(this.wallet)[0].toBase58();
         const at = this.playerRollup.get(mine);
-        if (at !== undefined && this.erReadConnections[at].conn !== this.ephemeralConnection) {
+        if (Date.now() < this.writeTargetPinnedUntil) {
+          // Just delegated. The sweep has not seen the new rollup yet and its
+          // answer would send writes back to the old one.
+        } else if (at !== undefined && this.erReadConnections[at].conn !== this.ephemeralConnection) {
           this.ephemeralConnection = this.erReadConnections[at].conn;
           console.log(`[Multiplayer] writes follow our PDA to ${this.erReadConnections[at].id}`);
         }
       }
       const accounts = [...byAddress.values()];
+      // Candidates, not players: the count before the size filter below. Most
+      // of what the Asian rollup still holds is pre-v3 PDAs from an older
+      // seed, delegated there and never undelegated, and they are dropped a
+      // few lines down. Saying "online players" here made the city look full
+      // of people nobody could see.
       console.log(
-        `[Multiplayer] ER sweep: ${accounts.length} online player(s) across `
+        `[Multiplayer] ER sweep: ${accounts.length} candidate(s) across `
         + perValidator.map((l, i) => `${this.erReadConnections[i].id}:${l.length}`).join(" "),
       );
       let added = 0;
@@ -1942,6 +1950,13 @@ export class OnChainMultiplayer {
             transactionLog.markFailed(entryId, `on-chain error: ${JSON.stringify(s.err)}`);
             console.warn("[Multiplayer] move tx FAILED on-chain:", sig.slice(0, 12), s.err);
             this.lastVerifyOkAt = 0; // unhealthy — verify the next move too
+            // "InvalidWritableAccount" from a rollup means one thing: the
+            // account is not delegated HERE. Every move will fail until the
+            // writes move, so find out where it really lives instead of
+            // repeating the question.
+            if (JSON.stringify(s.err).includes("InvalidWritableAccount")) {
+              void this.relocateWrites();
+            }
           } else {
             transactionLog.markConfirmed(entryId, sig);
             this.lastVerifyOkAt = Date.now();
@@ -2114,7 +2129,11 @@ export class OnChainMultiplayer {
       // for a few seconds, and every position written to the wrong rollup in
       // between is simply lost.
       const nearConn = this.erReadConnections.find(r => r.id === near.id);
-      if (nearConn) this.ephemeralConnection = nearConn.conn;
+      if (nearConn) {
+        this.ephemeralConnection = nearConn.conn;
+        // Ours, not the sweep's, until the sweep has had time to see it.
+        this.writeTargetPinnedUntil = Date.now() + 30_000;
+      }
       const landed = await this.waitForDelegation(playerPDA, 12, 800);
       if (landed) {
         transactionLog.markConfirmed(entry.id, sig);
@@ -2168,6 +2187,55 @@ export class OnChainMultiplayer {
    * Commits the delegated player PDA back to the base layer and undelegates it.
    * Called on disconnect. Signed by the session key (no wallet popup).
    */
+  /**
+   * Until when the sweep must not move our writes.
+   *
+   * Set when we delegate. The sweep decides where to write from where it last
+   * SAW the account, and a rollup it has not swept yet looks exactly like a
+   * rollup the account is not on - so right after delegating, its answer is
+   * stale and wrong, and it would drag writes back to the rollup we just left.
+   */
+  private writeTargetPinnedUntil = 0;
+
+  /**
+   * Finds which rollup actually holds our PDA and writes there.
+   *
+   * Called when the chain says "InvalidWritableAccount", which is a rollup
+   * telling us the account is not delegated to it. That is the authoritative
+   * answer and it is worth more than anything this client can predict: a
+   * delegation can be moved, can still be settling, or can have been made by
+   * another device entirely.
+   *
+   * Debounced, because every move in flight fails at once and they would all
+   * ask.
+   */
+  private relocating = false;
+  private async relocateWrites(): Promise<void> {
+    if (this.relocating || !this.wallet) return;
+    this.relocating = true;
+    try {
+      const pda = derivePlayerPDA(this.wallet)[0];
+      const found = await Promise.all(this.erReadConnections.map(async ({ id, conn }) => ({
+        id, conn, there: !!(await conn.getAccountInfo(pda).catch(() => null)),
+      })));
+      const home = found.find((f) => f.there);
+      if (!home) {
+        // On no rollup at all: the account came home and nothing re-delegated
+        // it. Base is where it is writable now, and the next connect delegates.
+        console.warn("[Multiplayer] the player PDA is on no rollup — writing to base");
+        this.useEphemeral = false;
+        return;
+      }
+      if (home.conn !== this.ephemeralConnection) {
+        this.ephemeralConnection = home.conn;
+        this.writeTargetPinnedUntil = Date.now() + 30_000;
+        console.log(`[Multiplayer] writes relocated to ${home.id}, where the PDA actually is`);
+      }
+    } finally {
+      this.relocating = false;
+    }
+  }
+
   /** Whether an account exists on base, without throwing. */
   private async accountExists(key: PublicKey): Promise<boolean> {
     try {
