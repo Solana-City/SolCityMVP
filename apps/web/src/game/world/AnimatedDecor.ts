@@ -295,6 +295,20 @@ export const ANIMATED_DECOR: AnimatedDecorDef[] = [
     blocks: true,
     ySort: true,
   },
+  {
+    // The bees round the Hive Bits building (BuildHiveBits, cols 39-45 / rows
+    // 71-76). The sheet is 5 frames of 123x122, which is the size of the
+    // building's painted art box (x 23-145, y 22-143 of its 168x144 footprint),
+    // so a frame lands on the art by construction: bottom centre on the middle
+    // of the bottom row, tile 42 / row 76 plus half a pixel. 150ms a frame like
+    // the other props of the day; the sheet came without a speed. No `blocks`:
+    // the stand has its own collision. Sorted with the stand, by its base.
+    key: "decor-hive-bees",
+    file: "assets/sprites/decor/hive_bees.png",
+    frameWidth: 123, frameHeight: 122, frameCount: 5, frameRate: 1000 / 150,
+    tileX: 42, tileY: 76, offsetX: 0.5,
+    scale: 1, ySort: true,
+  },
   // ── Halloween ────────────────────────────────────────────────────
   //
   // Three props, each painted on a map layer of its own (every copy of it in
