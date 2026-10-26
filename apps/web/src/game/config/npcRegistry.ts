@@ -207,10 +207,13 @@ const NPC_SEEDS: NPCSeed[] = [
     id: "sushi-man",
     name: "Sushi Man",
     role: "Food Cart",
-    // In front of the food cart (GameAssetFoodCar, cols 42-45 / rows 16-19),
-    // now that the artist relocated the cart art off the ST Earn plot.
-    tileX: 43,
-    tileY: 19,
+    // In front of the food cart (GameAssetFoodCar, cols 26-29 / rows 46-49, solid
+    // on its bottom two rows): on row 50, the first free row below it, at the
+    // middle of its width (col 27, the second of its four columns, as before).
+    // The artist moved the cart here from beside the log cabin, so he moved
+    // with it. findNpcSpawn stands him on tileY + 1.
+    tileX: 27,
+    tileY: 49,
     dialog: [
       "Irasshaimase! Welcome to my cart.",
       "Customers are hungry. Build their sushi sets in order, before time runs out!",
@@ -673,10 +676,11 @@ const NPC_SEEDS: NPCSeed[] = [
     id: "pegana-raffx",
     name: "Raffx",
     role: "Pegana",
-    // On the sand in front of the Pegana stand (BuildStandPegana, cols 40-46
-    // / rows 71-76), two tiles clear of Kite Pro at 40/79.
-    tileX: 43,
-    tileY: 77,
+    // On the sand in front of the Pegana stand (BuildStandPegana, cols 46-50
+    // / rows 71-76): row 77, the first free row below it, at the middle of its
+    // width (col 48).
+    tileX: 48,
+    tileY: 76,
     dialog: [
       "I am Raffx. Pegana watches the peg on 69 stablecoins and LSTs.",
       "A coin holds its peg only while somebody is checking. We check in real time.",
@@ -695,9 +699,10 @@ const NPC_SEEDS: NPCSeed[] = [
     name: "Crash",
     role: "SolSentry",
     // On the sand in front of the SolSentry stand (BuildStandSolSentry, cols
-    // 26-32 / rows 70-76).
+    // 26-32 / rows 70-76): row 77, the first free row below it, at the middle
+    // of its width (col 29).
     tileX: 29,
-    tileY: 77,
+    tileY: 76,
     dialog: [
       "Pass me the address. I read the operator behind the token, not just the token.",
       "SolSentry calls the risk before the rug, and every call stays auditable.",
@@ -748,11 +753,11 @@ const NPC_SEEDS: NPCSeed[] = [
     id: "cloak-vitin",
     name: "Cloak Cat",
     role: "Cloak",
-    // In front of his own stand (BuildStandCloack, art cols 32-38 / rows
-    // 60-66, counter solid on cols 33-37). It faces south onto the boardwalk,
-    // so he stands on row 67 at the centre of the counter (col 35). tileY is
-    // the row above the one he stands on.
-    tileX: 35,
+    // In front of his own stand (BuildStandCloack, cols 40-46 / rows 60-66). It
+    // faces south onto the boardwalk, so he stands on row 67, the first free row
+    // below it, at the centre of its width (col 43). tileY is the row above the
+    // one he stands on.
+    tileX: 43,
     tileY: 66,
     dialog: [
       "Hey! I'm here to make privacy great again on Solana, can I count on you to do that?",
