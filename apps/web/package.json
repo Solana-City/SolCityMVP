@@ -39,6 +39,7 @@
   },
   "devDependencies": {
     "@metaplex-foundation/mpl-bubblegum": "^0.8.0",
+    "@metaplex-foundation/mpl-token-metadata": "2.13.0",
     "@solana/spl-account-compression": "^0.4.1",
     "@types/node": "^20.0.0",
     "@types/react": "^18.3.0",
