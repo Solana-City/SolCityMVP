@@ -2181,14 +2181,22 @@ export class CityScene extends Phaser.Scene {
     this.stepAvoidingWalls(c, (dx / dist) * step, (dy / dist) * step, dist > ownSpeed * REMOTE_LAG_S);
 
     if (overshot || (t.walking === false && dist < 12)) {
-      avatar.idle();
+      // Face where the SENDER is facing even while standing still, so the
+      // avatar does not freeze pointing the way it happened to be dragged.
+      avatar.idle(t.dir);
       return;
     }
-    // Face the way the avatar is really moving on this screen.
-    const dir: Direction = Math.abs(dx) > Math.abs(dy)
-      ? (dx < 0 ? "left" : "right")
-      : (dy < 0 ? "up" : "down");
-    avatar.walk(dir);
+    // The sender's own direction, not the direction of the correction.
+    //
+    // This used to face whichever way the avatar was moving ON SCREEN, which
+    // is the catch-up vector, not the player. An avatar lagging behind is
+    // pulled diagonally, so the dominant axis of the CORRECTION decided the
+    // sprite: a player walking straight down appeared side-on, and whatever
+    // they were facing when they stopped was frozen in.
+    //
+    // The direction byte carries the truth and costs nothing to read. The
+    // screen vector only ever described how far behind the avatar was.
+    avatar.walk(t.dir);
   }
 
   /** True when a character's feet at (wx, wy) would stand on a solid tile. */

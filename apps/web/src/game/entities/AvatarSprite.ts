@@ -612,10 +612,21 @@ export class AvatarSprite {
   }
 
   /**
-   * Stops walking and shows the idle frame for the current direction.
+   * Stops walking and shows the idle frame.
+   *
+   * `direction` turns the character as it stops, for a caller that knows
+   * which way the person is really facing. Remote avatars need it: the one
+   * they were last MOVED in is the direction of a correction, not of the
+   * player.
    */
-  idle(): void {
-    if (!this.isWalking) return;
+  idle(direction?: Direction): void {
+    // A direction that differs has to be applied even when already idle.
+    // Without this, a remote avatar froze facing whatever way it was last
+    // dragged: the early return below meant "already stopped, nothing to do",
+    // and the sender turning on the spot was never drawn.
+    const turning = direction !== undefined && direction !== this.currentDirection;
+    if (turning) this.currentDirection = direction;
+    if (!this.isWalking && !turning) return;
     this.isWalking = false;
     this.walkSynced = false;
     const row = DIRECTION_ROW[this.currentDirection];
