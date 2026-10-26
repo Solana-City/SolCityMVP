@@ -451,6 +451,21 @@ export class OnChainMultiplayer {
   private lastSeenTs = new Map<string, number>();
   private clockSkewMs = 0;       // device clock minus chain clock
   private moveRttMs = 0;         // smoothed send -> accepted, for the renderer
+  /** Moves that cost more than one round trip, since the last report. */
+  private moveCost = { retries: 0, coldHash: 0, total: 0 };
+
+  /**
+   * Notes a move that cost more than the one round trip it should.
+   *
+   * Reported rather than fixed, because the two causes want different fixes
+   * and guessing between them from a latency number is how the wrong one gets
+   * built. A cold blockhash means the prefetch is not keeping up; a retry
+   * means the send itself was rejected.
+   */
+  private noteMoveCost(attempt: number, coldHash: boolean): void {
+    if (attempt > 0) this.moveCost.retries++;
+    if (coldHash) this.moveCost.coldHash++;
+  }
 
   /**
    * How long a position write takes to be accepted, smoothed. Zero until the
@@ -842,6 +857,7 @@ export class OnChainMultiplayer {
     });
     const sentAt = Date.now();
     this.lastChainSendAt = sentAt;
+    this.moveCost.total++;
     this.sendPositionTransaction(x, y, dirNum)
       .then(sig => {
         if (sig) {
@@ -1445,6 +1461,21 @@ export class OnChainMultiplayer {
    * delivering and everything rides the 500ms poll.
    */
   private logReadPaths(): void {
+    // The move report goes out even alone in the city: it is about this
+    // client's own writes, and "why is every move 900ms" is asked by somebody
+    // standing on an empty street as often as in a crowd.
+    const m = this.moveCost;
+    if (m.total > 0) {
+      const where = this.useEphemeral
+        ? (this.erReadConnections.find(r => r.conn === this.ephemeralConnection)?.id ?? "er")
+        : "BASE (not delegated - this is why moves are slow)";
+      console.log(
+        `[mp] last 60s: ${m.total} moves to ${where}, `
+        + `${m.retries} retried, ${m.coldHash} waited for a blockhash`
+        + `, rtt ~${Math.round(this.moveRttMs)}ms`,
+      );
+      this.moveCost = { retries: 0, coldHash: 0, total: 0 };
+    }
     if (this.knownPlayers.size <= 1) return;
     console.log(`[mp] last 60s: ${this.readsByPush} states by push, ${this.readsByPoll} by poll`);
     this.readsByPush = 0;
@@ -2583,7 +2614,13 @@ export class OnChainMultiplayer {
           if (attempt > 0) this.cachedMoveBlockhash = null; // force a fresh hash on each retry
           const tx = new Transaction().add(ix);
           tx.feePayer = sessionKey;
+          // Was the hash already in hand, or did this send have to go and ask
+          // for one? A cold hash doubles the round trips, and a move that
+          // reports twice the latency of the network is usually this rather
+          // than the network.
+          const hashWasCold = !this.cachedMoveBlockhash;
           tx.recentBlockhash = await this.getMoveBlockhash("ephemeral");
+          if (hashWasCold || attempt > 0) this.noteMoveCost(attempt, hashWasCold);
           this.sessionKeys.signTransaction(tx);
           // Actual execution outcome is verified by trackMoveConfirmation
           // (sampled getSignatureStatuses) in the caller.
