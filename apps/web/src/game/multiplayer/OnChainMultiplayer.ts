@@ -234,9 +234,34 @@ const SWEEP_CONFIG = {
  * reads and is good until 2106.
  */
 function lastActiveOf(data: Uint8Array): number {
-  const OFFSET = 8 + 32 + 33 + 24 + 4 + 4 + 1 + 1 + 4 + 2 + 2 + 2;
-  if (data.length < OFFSET + 4) return 0;
-  return Buffer.from(data).readUInt32LE(OFFSET);
+  // Walked, not computed from a constant, because two fields before it are
+  // variable length and a fixed offset reads neither of them.
+  //
+  // `session_authority` is an Option: one tag byte, and the 32 only when it
+  // is Some. `display_name` is a Borsh String: a 4-byte length and then THAT
+  // MANY bytes, not the 20 of its max_len. A constant offset assumed the
+  // worst case for both and so pointed into the middle of whatever came next.
+  //
+  // This matters more than it looks. The sweep merges the copies every rollup
+  // holds of the same account and keeps the one with the newest last_active,
+  // since only the rollup holding the delegation ever updates it. Reading
+  // that field wrong made the choice a coin toss, so a player could be
+  // resolved to a stale copy, drop out of the freshness gate, and vanish for
+  // one side of the city while still seeing the other. One-way visibility.
+  try {
+    const d = Buffer.from(data);
+    let o = 8 + 32;                               // discriminator, authority
+    o += 1 + (d[o] ? 32 : 0);                     // Option<Pubkey>
+    if (o + 4 > d.length) return 0;
+    o += 4 + d.readUInt32LE(o);                   // String, length-prefixed
+    o += 4 + 4 + 1 + 1 + 4 + 2 + 2 + 2;           // x y dir outfit score counts
+    if (o + 4 > d.length) return 0;
+    // The low 32 bits of the i64, which is all a comparison needs and is good
+    // until 2106.
+    return d.readUInt32LE(o);
+  } catch {
+    return 0;
+  }
 }
 
 // Shared state channel name — BroadcastChannel works across tabs
