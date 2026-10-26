@@ -2005,6 +2005,30 @@ export class CityScene extends Phaser.Scene {
     }
   }
 
+  /**
+   * How far a remote player can have moved before it counts as a TELEPORT
+   * rather than a walk.
+   *
+   * This was a flat 180px, and a flat number cannot be right: what somebody
+   * can cover between two samples depends on how long the gap was and how
+   * fast they are. A speed buff is the obvious case and the one that showed
+   * it - a buffed player crossed 180px in fewer missed samples, so they faded
+   * out and back in constantly while simply running.
+   *
+   * So it is derived: their own top speed, times the gap since we last heard
+   * from them, with headroom for sample jitter. Anything further is a real
+   * jump (fast travel, a reconnect) and gets the fade; anything shorter is a
+   * walk and gets walked.
+   *
+   * The floor keeps a tiny gap from reading every stutter as a teleport.
+   */
+  private teleportDistance(t: RemoteTarget | undefined, now: number): number {
+    const speed = Math.max(PLAYER_SPEED, Math.hypot(t?.vx ?? 0, t?.vy ?? 0))
+      * MAX_SPEED_MULTIPLIER;
+    const gapS = Math.min(3, Math.max(0.2, (now - (t?.movedAt ?? now)) / 1000));
+    return Math.max(180, speed * gapS * 1.5);
+  }
+
   private updateRemotePlayer(wallet: string, player: OnChainPlayer): void {
     const avatar = this.remotePlayers.get(wallet);
     if (!avatar) return;
@@ -2019,7 +2043,7 @@ export class CityScene extends Phaser.Scene {
     const dy = player.y - container.y;
     const dist = Math.hypot(dx, dy);
 
-    if (dist > 180) {
+    if (dist > this.teleportDistance(this.remoteTarget.get(wallet), Date.now())) {
       // A jump no walk covers in one sample: fast travel (or a reconnect).
       // Onlookers see the same fade the traveller does: out where they
       // stood, in where they land, instead of a slide across the map.
@@ -2161,7 +2185,8 @@ export class CityScene extends Phaser.Scene {
     const dx = aimX - c.x;
     const dy = aimY - c.y;
     const dist = Math.hypot(dx, dy);
-    if (dist > 180) return; // a jump: updateRemotePlayer fades them across
+    // A jump: updateRemotePlayer fades them across.
+    if (dist > this.teleportDistance(t, now)) return;
 
     if (dist <= 0.75) {
       if (t.walking === true || (t.walking === undefined && age < REMOTE_WALK_HOLD_MS)) avatar.walk(t.dir);
@@ -2180,8 +2205,15 @@ export class CityScene extends Phaser.Scene {
     const step = Math.min(dist, speed * dt);
     this.stepAvoidingWalls(c, (dx / dist) * step, (dy / dist) * step, dist > ownSpeed * REMOTE_LAG_S);
 
-    if (overshot || (t.walking === false && dist < 12)) {
-      // Face where the SENDER is facing even while standing still, so the
+    // The legs belong to the SENDER, not to the distance left to cover.
+    //
+    // This used to need `dist < 12` as well, so an avatar that could not
+    // close the gap - a target behind a wall, a step blocked by
+    // stepAvoidingWalls - walked on the spot forever even though the person
+    // had stopped. The position still catches up below; only the animation
+    // is decided here, and the person's own walking flag is what decides it.
+    if (overshot || t.walking === false) {
+      // Face where the sender is facing even while standing still, so the
       // avatar does not freeze pointing the way it happened to be dragged.
       avatar.idle(t.dir);
       return;
