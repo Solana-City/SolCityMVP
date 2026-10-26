@@ -30,3 +30,16 @@ anchor-lang = "0.30.1"
 solana-program = "1.18.26"
 # MagicBlock VRF is called by hand-rolled CPI (see lib.rs): Solana Playground
 # cannot build ephemeral-vrf-sdk, so there is no SDK dependency.
+#
+# Bubblegum, for minting a pack item as a compressed NFT.
+#
+# Pinned to 2.1.1 and it cannot simply be raised: 3.x and 4.x require
+# `solana-program ^3.0.0` and `anchor-lang ^1.0.0`, and this program is on
+# 1.18.26 / 0.30.1. Taking them would mean migrating Anchor first, which is a
+# different and much larger job than minting a hat.
+#
+# What this crate gives us is instruction BUILDERS; the Bubblegum program on
+# chain is whatever is deployed there, and the v1 instruction layout has not
+# moved. If this does not resolve against our toolchain, the fallback is a
+# hand-rolled CPI, which is how the delegation and VRF calls already work.
+mpl-bubblegum = { version = "2.1.1", default-features = false }
