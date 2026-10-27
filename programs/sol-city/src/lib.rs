@@ -1,4 +1,10 @@
 use anchor_lang::prelude::*;
+use mpl_bubblegum::instructions::MintToCollectionV1Cpi;
+use mpl_bubblegum::instructions::MintToCollectionV1InstructionArgs;
+use mpl_bubblegum::types::{
+    Collection as BubblegumCollection, Creator as BubblegumCreator, MetadataArgs,
+    TokenProgramVersion, TokenStandard,
+};
 use anchor_lang::solana_program::{
     pubkey,
     program::{invoke, invoke_signed},
@@ -156,6 +162,25 @@ pub const MAX_PACKS: usize = 8;
 /// Seasons the config can hold. At two to four a year this is a decade.
 /// Seed of a season's drop table: ["season_drops", season as u16 LE].
 pub const SEASON_DROPS_SEED: &[u8] = b"season_drops";
+
+/// Seed of the one MintConfig: where a cosmetic becomes an asset.
+///
+/// A separate account from PackConfig on purpose. PackConfig is a fixed-size
+/// account created by a one-shot `init`, so it can never grow a field, and
+/// minting needs several it does not have. Keeping them apart means the pack
+/// table never has to be torn down and re-seeded to add one.
+pub const MINT_CONFIG_SEED: &[u8] = b"mint_config";
+
+/// Seed of the PDA that signs for the tree and the collection.
+///
+/// It is the Bubblegum tree's DELEGATE and the collection's authority, which
+/// is what makes the mint trustless: only this program can sign, so only a
+/// wallet whose UnlockState actually holds the index can get an asset. A tree
+/// anyone could mint from would be a tree anyone could mint anything from.
+pub const MINT_AUTHORITY_SEED: &[u8] = b"mint_authority";
+
+/// Most assets one wallet can mint. Two bytes each, same as `owned`.
+pub const PLAYER_MINT_CAP: usize = 256;
 
 /// Most indices one rarity of one season may hold. Generous on purpose: a
 /// season is expected to run past three hundred items across all four, and the
@@ -357,6 +382,14 @@ pub enum SolCityError {
     WrongSeason,
     #[msg("That season has no rarity ranges")]
     UnknownSeason,
+    #[msg("This wallet does not own that cosmetic")]
+    ItemNotOwned,
+    #[msg("An asset for that cosmetic has already been minted to this wallet")]
+    AlreadyMinted,
+    #[msg("That is not the tree or collection this program mints into")]
+    WrongMintTarget,
+    #[msg("This wallet has minted as many assets as it can hold")]
+    MintCapReached,
 }
 
 /// Truncates a string to at most `max` BYTES on a char boundary, so a
@@ -1919,6 +1952,175 @@ pub mod sol_city {
         Ok(())
     }
 
+    /// Creates the mint configuration. Once.
+    pub fn init_mint_config(
+        ctx: Context<InitMintConfig>,
+        merkle_tree: Pubkey,
+        collection_mint: Pubkey,
+        royalty_recipient: Pubkey,
+        seller_fee_basis_points: u16,
+        symbol: String,
+        base_uri: String,
+    ) -> Result<()> {
+        require!(symbol.len() <= 8, SolCityError::WrongMintTarget);
+        require!(base_uri.len() <= 160, SolCityError::WrongMintTarget);
+        let cfg = &mut ctx.accounts.mint_config;
+        cfg.admin = ctx.accounts.admin.key();
+        cfg.merkle_tree = merkle_tree;
+        cfg.collection_mint = collection_mint;
+        cfg.royalty_recipient = royalty_recipient;
+        cfg.seller_fee_basis_points = seller_fee_basis_points;
+        cfg.symbol = symbol;
+        cfg.base_uri = base_uri;
+        Ok(())
+    }
+
+    /// Points minting at a different tree, for when the current one fills.
+    ///
+    /// The collection does NOT move with it. Assets already minted keep
+    /// pointing at the tree that holds them, which is where they live; a tree
+    /// is storage, and the collection is identity.
+    pub fn set_mint_tree(ctx: Context<AdminMintConfig>, merkle_tree: Pubkey) -> Result<()> {
+        ctx.accounts.mint_config.merkle_tree = merkle_tree;
+        Ok(())
+    }
+
+    /// Turns a cosmetic this wallet owns into a compressed NFT it holds.
+    ///
+    /// ── What makes this safe ─────────────────────────────────────────────
+    ///
+    /// The tree's delegate and the collection's authority are both a PDA of
+    /// this program, so Bubblegum will not mint without our signature, and we
+    /// only sign for an index the caller's own UnlockState already holds. A
+    /// tree anyone could mint from would be a tree anyone could mint anything
+    /// from.
+    ///
+    /// `minted` is what makes it once. It is a separate list from `owned`
+    /// because the two answer different questions: owning is permission and
+    /// survives a sale, while this records that an asset for this index has
+    /// been handed to this wallet. Without it a player could mint, sell, and
+    /// mint again from the same unlock, forever, and the scarcity the whole
+    /// season table exists to create would be worth nothing.
+    ///
+    /// ── What this deliberately does NOT do ───────────────────────────────
+    ///
+    /// It does not remove the index from `owned`. Selling the asset therefore
+    /// leaves the seller able to keep WEARING the cosmetic, which the owner
+    /// accepted on 2026-10-26 as the price of not checking possession on every
+    /// outfit change. The buyer gets their own grant through
+    /// `claim_owned_from_asset`.
+    pub fn mint_unlock(ctx: Context<MintUnlock>, index: u16) -> Result<()> {
+        let cfg = &ctx.accounts.mint_config;
+        require_keys_eq!(
+            ctx.accounts.merkle_tree.key(), cfg.merkle_tree, SolCityError::WrongMintTarget
+        );
+        require_keys_eq!(
+            ctx.accounts.collection_mint.key(), cfg.collection_mint, SolCityError::WrongMintTarget
+        );
+
+        {
+            let unlocks = &ctx.accounts.unlock_state;
+            require!(unlocks.owns(index), SolCityError::ItemNotOwned);
+            require!(
+                unlocks.minted.binary_search(&index).is_err(),
+                SolCityError::AlreadyMinted
+            );
+            require!(unlocks.minted.len() < PLAYER_MINT_CAP, SolCityError::MintCapReached);
+        }
+
+        // Room for the new entry, funded by the player, before anything is
+        // minted. Growing after the CPI would leave an asset in their wallet
+        // that `minted` does not record, which is the one state that lets the
+        // same index be minted twice.
+        {
+            let info = ctx.accounts.unlock_state.to_account_info();
+            let needed = UnlockState::size_for(
+                ctx.accounts.unlock_state.owned.len(),
+                ctx.accounts.unlock_state.minted.len() + 1,
+            );
+            if info.data_len() < needed {
+                let rent = SolanaRent::get()?;
+                let topup = rent.minimum_balance(needed).saturating_sub(info.lamports());
+                if topup > 0 {
+                    invoke(
+                        &system_instruction::transfer(ctx.accounts.payer.key, info.key, topup),
+                        &[
+                            ctx.accounts.payer.to_account_info(),
+                            info.clone(),
+                            ctx.accounts.system_program.to_account_info(),
+                        ],
+                    )?;
+                }
+                info.realloc(needed, false)?;
+            }
+        }
+
+        // The metadata URI is built, not stored: one immutable base and the
+        // catalog index. Holding a string per cosmetic on chain would cost
+        // more than every other field of this program put together.
+        let uri = format!("{}{}.json", cfg.base_uri, index);
+        let name = format!("Sol City #{}", index);
+
+        let metadata = MetadataArgs {
+            name,
+            symbol: cfg.symbol.clone(),
+            uri,
+            seller_fee_basis_points: cfg.seller_fee_basis_points,
+            primary_sale_happened: true,
+            is_mutable: false,
+            edition_nonce: None,
+            token_standard: Some(TokenStandard::NonFungible),
+            // Unverified here and verified BY the CPI: passing the collection
+            // with our PDA as its authority is what tells Bubblegum to set the
+            // verified flag itself.
+            collection: Some(BubblegumCollection {
+                verified: false,
+                key: cfg.collection_mint,
+            }),
+            uses: None,
+            token_program_version: TokenProgramVersion::Original,
+            // One creator, unverified, holding the whole share, so a
+            // marketplace honouring royalties has an address to send them to.
+            creators: vec![BubblegumCreator {
+                address: cfg.royalty_recipient,
+                verified: false,
+                share: 100,
+            }],
+        };
+
+        let bump = ctx.bumps.mint_authority;
+        let seeds: &[&[u8]] = &[MINT_AUTHORITY_SEED, &[bump]];
+        MintToCollectionV1Cpi {
+            __program: &ctx.accounts.bubblegum_program,
+            tree_config: &ctx.accounts.tree_config,
+            leaf_owner: &ctx.accounts.payer,
+            leaf_delegate: &ctx.accounts.payer,
+            merkle_tree: &ctx.accounts.merkle_tree,
+            payer: &ctx.accounts.payer,
+            tree_creator_or_delegate: &ctx.accounts.mint_authority,
+            collection_authority: &ctx.accounts.mint_authority,
+            collection_authority_record_pda: None,
+            collection_mint: &ctx.accounts.collection_mint,
+            collection_metadata: &ctx.accounts.collection_metadata,
+            collection_edition: &ctx.accounts.collection_edition,
+            bubblegum_signer: &ctx.accounts.bubblegum_signer,
+            log_wrapper: &ctx.accounts.log_wrapper,
+            compression_program: &ctx.accounts.compression_program,
+            token_metadata_program: &ctx.accounts.token_metadata_program,
+            system_program: &ctx.accounts.system_program,
+            __args: MintToCollectionV1InstructionArgs { metadata },
+        }
+        .invoke_signed(&[seeds])?;
+
+        // Recorded only once the asset exists.
+        let unlocks = &mut ctx.accounts.unlock_state;
+        if let Err(at) = unlocks.minted.binary_search(&index) {
+            unlocks.minted.insert(at, index);
+        }
+        emit!(UnlockMinted { authority: unlocks.authority, index });
+        Ok(())
+    }
+
     /// Moves the open season. This is how a season opens, and how the one
     /// before it closes: one number, and every earlier season stops selling.
     ///
@@ -2517,6 +2719,13 @@ impl UnlockState {
     }
 }
 
+/// Emitted when a cosmetic becomes an asset, so the client can show it.
+#[event]
+pub struct UnlockMinted {
+    pub authority: Pubkey,
+    pub index: u16,
+}
+
 /// Emitted when a pack resolves — the client reveals these pool indices.
 #[event]
 pub struct BoosterOpened {
@@ -2544,6 +2753,43 @@ pub struct PackDef {
     /// A pack that is off sells nothing. This is how a season is retired
     /// without deleting anything.
     pub enabled: bool,
+}
+
+/// Where a cosmetic becomes a compressed NFT.
+///
+/// cNFT rather than a Core asset, and the reason is the price of the decision
+/// the owner made: a pack mints its contents the moment it is opened. Core
+/// costs about 0.0029 SOL an asset, so five items would be 0.0145 SOL - half
+/// the price of the cheapest pack. Compressed assets cost the tree once and
+/// almost nothing per mint.
+///
+/// The cost is paid elsewhere, and honestly: proving a wallet holds a cNFT
+/// needs a merkle proof fetched from an indexer, which is why the wardrobe
+/// does NOT check possession per outfit change. See `claim_owned_from_asset`.
+#[account]
+#[derive(InitSpace)]
+pub struct MintConfig {
+    /// May point this at a different tree when the current one fills.
+    pub admin: Pubkey,
+    /// The Bubblegum tree assets are minted into.
+    pub merkle_tree: Pubkey,
+    /// The collection they all belong to. Event items and pack items share it:
+    /// a collection is a grouping, and what an item IS lives in its metadata.
+    pub collection_mint: Pubkey,
+    /// Where royalties are meant to go. The sole creator on every asset, so a
+    /// marketplace has somewhere to send them.
+    pub royalty_recipient: Pubkey,
+    pub seller_fee_basis_points: u16,
+    #[max_len(8)]
+    pub symbol: String,
+    /// Immutable base for every item's metadata, e.g.
+    /// `https://arweave.net/<id>/`. The catalog index and `.json` are appended.
+    ///
+    /// NOT a domain this project controls: a metadata URI cannot be changed
+    /// after the mint, so an item pointing at our own host dies the day that
+    /// host does.
+    #[max_len(160)]
+    pub base_uri: String,
 }
 
 /// What one season can drop, by rarity.
@@ -2647,6 +2893,83 @@ impl PackConfig {
     pub fn pack(&self, id: u8) -> Option<&PackDef> {
         self.packs[..self.pack_count as usize].iter().find(|p| p.id == id)
     }
+}
+
+#[derive(Accounts)]
+pub struct InitMintConfig<'info> {
+    #[account(mut)]
+    pub admin: Signer<'info>,
+    #[account(
+        init,
+        payer = admin,
+        space = 8 + MintConfig::INIT_SPACE,
+        seeds = [MINT_CONFIG_SEED],
+        bump,
+    )]
+    pub mint_config: Account<'info, MintConfig>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct AdminMintConfig<'info> {
+    #[account(
+        mut,
+        seeds = [MINT_CONFIG_SEED],
+        bump,
+        constraint = mint_config.admin == admin.key() @ SolCityError::NotPackAdmin,
+    )]
+    pub mint_config: Account<'info, MintConfig>,
+    pub admin: Signer<'info>,
+}
+
+/// Minting one owned cosmetic as a compressed NFT.
+///
+/// Most of these are Bubblegum's own plumbing and are checked by Bubblegum,
+/// not here: passing the wrong compression program or log wrapper fails inside
+/// the CPI. What this program checks are the three that decide WHO gets WHAT:
+/// the unlock account belongs to the payer, and the tree and collection are
+/// the ones the config names.
+#[derive(Accounts)]
+pub struct MintUnlock<'info> {
+    #[account(mut)]
+    pub payer: Signer<'info>,
+    #[account(
+        mut,
+        seeds = [UNLOCKS_SEED, payer.key().as_ref()],
+        bump,
+        constraint = unlock_state.authority == payer.key() @ SolCityError::WrongUnlockOwner,
+    )]
+    pub unlock_state: Account<'info, UnlockState>,
+    #[account(seeds = [MINT_CONFIG_SEED], bump)]
+    pub mint_config: Account<'info, MintConfig>,
+    /// CHECK: the PDA that is the tree delegate and collection authority. It
+    /// signs the CPI; Bubblegum checks it against the tree and collection.
+    #[account(seeds = [MINT_AUTHORITY_SEED], bump)]
+    pub mint_authority: UncheckedAccount<'info>,
+    /// CHECK: Bubblegum's tree config, derived from and checked against the tree.
+    #[account(mut)]
+    pub tree_config: UncheckedAccount<'info>,
+    /// CHECK: address-checked against mint_config.merkle_tree.
+    #[account(mut)]
+    pub merkle_tree: UncheckedAccount<'info>,
+    /// CHECK: address-checked against mint_config.collection_mint.
+    pub collection_mint: UncheckedAccount<'info>,
+    /// CHECK: Metaplex collection metadata, checked by Bubblegum.
+    #[account(mut)]
+    pub collection_metadata: UncheckedAccount<'info>,
+    /// CHECK: Metaplex master edition, checked by Bubblegum.
+    pub collection_edition: UncheckedAccount<'info>,
+    /// CHECK: Bubblegum's own signing PDA, checked by Bubblegum.
+    pub bubblegum_signer: UncheckedAccount<'info>,
+    /// CHECK: SPL Noop. Checked by Bubblegum.
+    pub log_wrapper: UncheckedAccount<'info>,
+    /// CHECK: SPL Account Compression. Checked by Bubblegum.
+    pub compression_program: UncheckedAccount<'info>,
+    /// CHECK: Token Metadata. Checked by Bubblegum.
+    pub token_metadata_program: UncheckedAccount<'info>,
+    /// CHECK: Bubblegum itself, the program being called.
+    pub bubblegum_program: UncheckedAccount<'info>,
+    pub system_program: Program<'info, System>,
 }
 
 #[derive(Accounts)]
