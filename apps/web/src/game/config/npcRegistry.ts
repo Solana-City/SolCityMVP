@@ -60,6 +60,16 @@ export interface NPCDefinition {
   highlights?: NPCHighlight[];
   name: string;
   role: string;
+  /**
+   * A second button on the last line, beside the main one, drawn as an
+   * outline so the primary action still reads as the primary.
+   *
+   * For a partner whose NPC has two things to offer and no good way to rank
+   * them: Queen Bea both sells a token and has a site to visit, and burying
+   * the site inside the swap panel would hide it from everyone who does not
+   * swap.
+   */
+  extraAction?: NPCAction;
   tileX: number;
   tileY: number;
   /**

@@ -70,6 +70,7 @@ function NPCDialogBody({ npc, closing, onClose, onAction }: NPCDialogProps & { n
   const instantRef = useRef(false);
   const isTouch = useIsTouch();
   const actionFeel = useButtonFeel();
+  const extraFeel = useButtonFeel();
   const skipFeel = useButtonFeel();
 
   // Reset when NPC changes
@@ -250,14 +251,19 @@ function NPCDialogBody({ npc, closing, onClose, onAction }: NPCDialogProps & { n
   // Desktop is the roomy version (a big portrait on the left, everything else
   // in a column); a phone puts a small portrait on the header row and lets the
   // text run the full width underneath.
-  const actionButton = (
+  /**
+   * The last line's buttons. The NPC's own action is filled in its colour;
+   * an extraAction beside it is an outline, so two offers still read as one
+   * primary and one alternative rather than a pair of equal shouts.
+   */
+  const buttonFor = (action: NPCAction, feel: ReturnType<typeof useButtonFeel>, secondary = false) => (
     <button
-      onClick={(e) => { e.stopPropagation(); onAction(npc.action, npc); }}
-      {...actionFeel.handlers}
+      onClick={(e) => { e.stopPropagation(); onAction(action, npc); }}
+      {...feel.handlers}
       style={chamferBox(8, {
-        background:  color,
-        border:      "none",
-        color:       "#000",
+        background:  secondary ? "transparent" : color,
+        border:      secondary ? `2px solid ${color}` : "none",
+        color:       secondary ? color : "#000",
         fontFamily:  '"Press Start 2P", monospace',
         fontSize: isTouch ? "7px" : "8px",
         padding:     isTouch ? "9px 16px" : "10px 20px",
@@ -266,12 +272,18 @@ function NPCDialogBody({ npc, closing, onClose, onAction }: NPCDialogProps & { n
         touchAction: "manipulation",
         display: "flex", alignItems: "center", gap: 6,
         flexShrink: 0,
-        ...feelStyle(actionFeel),
+        ...feelStyle(feel),
       })}
     >
-      {npc.action.label.toUpperCase()}
-      {npc.action.type === "link" && <ExternalLinkIcon size={8} color="#000" />}
+      {action.label.toUpperCase()}
+      {action.type === "link" && <ExternalLinkIcon size={8} color={secondary ? color : "#000"} />}
     </button>
+  );
+  const actionButton = (
+    <>
+      {npc.extraAction && buttonFor(npc.extraAction, extraFeel, true)}
+      {buttonFor(npc.action, actionFeel)}
+    </>
   );
   const skipButton = showSkip ? (
     <button
