@@ -204,6 +204,28 @@ export interface NPCDefinition {
 
 type NPCSeed = Omit<NPCDefinition, "color">;
 
+/**
+ * Exa Energia's two hosts say the same thing, because they are one voice with
+ * two faces: whichever of them a player walks up to, they get the whole pitch
+ * rather than half of it. Spread into both entries so it can never drift.
+ */
+const EXA_PITCH = {
+  dialog: [
+    "The lights in Solana City run on power from Exa Energia.",
+    "Brazil makes more energy than it uses. We let generators compete to connect straight to homes and businesses, and that is what makes the power cheaper.",
+    {
+      text: "Unlocking energy abundance, and connecting the people who make energy to the people who need it.",
+      accent: "Come and see how it works.",
+    },
+  ] as NPCDialogLine[],
+  highlights: [
+    { label: "BRAZIL SURPLUS" },
+    { label: "DIRECT SUPPLY" },
+    { label: "CHEAPER POWER" },
+  ] as NPCHighlight[],
+  action: { type: "link", label: "exaenergia.com", url: "https://www.exaenergia.com/" } as NPCAction,
+};
+
 const NPC_SEEDS: NPCSeed[] = [
   {
     id: "sol-guide",
@@ -688,6 +710,31 @@ const NPC_SEEDS: NPCSeed[] = [
   //
   // All three sheets are 6 frames of 64x64 in one row, idle in place, so they
   // carry spriteAnimation rather than a walk grid.
+  {
+    id: "exa-luiz",
+    name: "Luiz",
+    role: "Exa Energia",
+    // The pair stand either side of the centre of the Exa Energia stand
+    // (BuildExaEnergia, cols 26-33 / rows 62-66), on the clear row below it.
+    // Their world Y is under the stand's base row, so they draw in front of
+    // the panels rather than behind them.
+    tileX: 28,
+    tileY: 66,
+    ...EXA_PITCH,
+    spriteKey: "Luiz",
+    spriteAnimation: { frameWidth: 64, frameHeight: 64, frameCount: 6, frameRate: 1000 / 150 },
+  },
+  {
+    id: "exa-diogo",
+    name: "Diogo",
+    role: "Exa Energia",
+    // The other half of the pair, east of centre. See Luiz above.
+    tileX: 31,
+    tileY: 66,
+    ...EXA_PITCH,
+    spriteKey: "Diogo",
+    spriteAnimation: { frameWidth: 64, frameHeight: 64, frameCount: 6, frameRate: 1000 / 150 },
+  },
   {
     id: "queen-bea",
     name: "Queen Bea",
