@@ -1,6 +1,6 @@
 import * as Phaser from "phaser";
 import { PublicKey } from "@solana/web3.js";
-import { PLAYER_SPEED, TILE_SIZE } from "../config/constants";
+import { NAME_DEPTH, PLAYER_SPEED, TILE_SIZE } from "../config/constants";
 import { Direction } from "../entities/SimpleSprite";
 import { AvatarSprite } from "../entities/AvatarSprite";
 import { playExpressionFx, EXPRESSION_DURATION_MS } from "../entities/ExpressionFx";
@@ -17,15 +17,6 @@ import { BUFFS, MAX_SPEED_MULTIPLIER, activeBuff, activeBuffIndex, buffByIndex, 
 /** Chat-log color for stock trade lines. */
 const TRADE_COLOR = "#FFB547";
 
-/**
- * Depth a player's name tag draws at: over every map layer (the foreground
- * sits at 10000) and under the chat bubbles that have to clear it (20000).
- *
- * A name is how you tell who somebody is, so it is the one part of a player
- * that a building is never allowed to cover. Everything else about them still
- * sorts normally, which is why this is the tag alone and not the avatar.
- */
-const NAME_DEPTH = 15000;
 
 /**
  * Friendly names for the ?at= deep link, so a shared link can read
@@ -1608,6 +1599,9 @@ export class CityScene extends Phaser.Scene {
       // all drawn wherever they stood on the map.
       for (const npc of this.npcSprites) {
         cullContainer(npc.getContainer(), view, CHARACTER_PAD);
+        // Their tags draw over the map too, so they are placed here rather
+        // than carried by the container. See NPCSprite.syncNameLabel.
+        npc.syncNameLabel();
       }
       for (const avatar of this.remotePlayers.values()) {
         const c = avatar.getContainer();

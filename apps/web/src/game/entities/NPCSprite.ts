@@ -1,5 +1,5 @@
 import * as Phaser from "phaser";
-import { TILE_SIZE } from "../config/constants";
+import { NAME_DEPTH, TILE_SIZE } from "../config/constants";
 import { ChatBubble } from "../chat/ChatBubble";
 import { SimpleSprite, NPC_DIRECTION_ROW, PLAYER_DIRECTION_ROW, type Direction } from "./SimpleSprite";
 import type { NPCDefinition } from "../config/npcRegistry";
@@ -61,6 +61,8 @@ export class NPCSprite {
   private exclamationBg: Phaser.GameObjects.Arc | null = null;
   private exclamationText: Phaser.GameObjects.Text | null = null;
   private nameText: Phaser.GameObjects.Text;
+  /** Local Y the name tag sits at, since it is not carried by the container. */
+  private nameSeatY = 0;
   private promptText: Phaser.GameObjects.Text;
   private _isInRange = false;
   private bubble: ChatBubble | null = null;
@@ -164,7 +166,13 @@ export class NPCSprite {
       stroke: "#0a0a1e",
       strokeThickness: 3,
     }).setOrigin(0.5, 1);
-    container.add(this.nameText);
+    // NOT added to the container: a container's children sort inside it, at
+    // the container's own depth, so a building in front of the NPC covered
+    // their name along with them. The tag rides over the map instead and is
+    // placed every frame by syncNameLabel.
+    this.nameSeatY = nameY;
+    this.nameText.setDepth(NAME_DEPTH);
+    this.syncNameLabel();
 
     // ── Exclamation ──────────────────────────────────────────────────────────
     const balloonKey = `attention-${npcCategory(def)}`;
@@ -321,8 +329,23 @@ export class NPCSprite {
     return this.avatar.getContainer();
   }
 
+  /**
+   * Puts the name tag where this NPC is. It draws at NAME_DEPTH rather than
+   * inside the container, so it has to be moved by hand, and it follows the
+   * container's visibility: an off-screen NPC is culled, and a floating name
+   * would be the one thing left of them.
+   */
+  syncNameLabel(): void {
+    const c = this.getContainer();
+    this.nameText.setVisible(c.visible);
+    if (!c.visible) return;
+    this.nameText.setPosition(c.x, c.y + this.nameSeatY);
+  }
+
   destroy(): void {
     if (this.unsubBus) { this.unsubBus(); this.unsubBus = null; }
+    // The tag is not a child, so the container's destroy does not take it.
+    this.nameText.destroy();
     this.avatar.destroy();
   }
 
