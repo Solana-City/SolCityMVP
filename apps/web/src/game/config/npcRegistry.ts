@@ -21,6 +21,12 @@ export interface NPCAction {
    * would reach nobody. Defaults to practice SOL when unset.
    */
   token?: string;
+  /**
+   * Which token a "swap" action opens BUYING, by symbol (see TOKEN_LIST in
+   * jupiterSwap.ts). A partner's NPC sends players to their own token, so the
+   * panel should not make them find it in the dropdown. Defaults to USDC.
+   */
+  swapTo?: string;
 }
 
 /** A picture + a word or two, shown on an NPC's last dialog line. */

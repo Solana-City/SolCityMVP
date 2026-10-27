@@ -223,7 +223,7 @@ function ActionPanelBody({ action, closing, onClose }: { action: NPCAction; clos
       {action.type === "tutor" && <CloseButton onClick={onClose} style={{ position: "absolute", top: isTouch ? 8 : 16, right: isTouch ? 8 : 16 }} />}
 
       {action.type === "tutor"           && <TutorPanel           onClose={onClose} />}
-      {action.type === "swap"            && <JupiterPanel onClose={onClose} tab="swap" />}
+      {action.type === "swap"            && <JupiterPanel onClose={onClose} tab="swap" swapTo={action.swapTo} />}
       {action.type === "transfer"        && <JupiterPanel onClose={onClose} tab="send" to={action.recipient} toName={action.recipientName} token={action.token} />}
       {action.type === "bounties"        && <ProtocolIntroGate spec={EARN_INTRO}><BountiesPanel onClose={onClose} /></ProtocolIntroGate>}
       {action.type === "private-payment" && (
@@ -289,20 +289,22 @@ type JupiterTab = "swap" | "send";
  * already dismissed the swap walkthrough still gets the sending one the first
  * time they open SEND, and neither comes back twice.
  */
-function JupiterPanel({ onClose, tab: initialTab, to, toName, token }: {
+function JupiterPanel({ onClose, tab: initialTab, to, toName, token, swapTo }: {
   onClose: () => void;
   tab: JupiterTab;
   to?: string;
   toName?: string;
   /** Which send-catalog entry to open on. See NPCAction.token. */
   token?: string;
+  /** Which token SWAP opens buying. See NPCAction.swapTo. */
+  swapTo?: string;
 }) {
   // Opened from a player's card, SEND is the point, so it starts there.
   const [tab, setTab] = useState<JupiterTab>(initialTab);
   const tabs = <PanelTabs tab={tab} onTab={setTab} />;
 
   return tab === "swap"
-    ? <ProtocolIntroGate spec={SWAP_INTRO}><SwapPanel onClose={onClose} tabs={tabs} /></ProtocolIntroGate>
+    ? <ProtocolIntroGate spec={SWAP_INTRO}><SwapPanel onClose={onClose} tabs={tabs} swapTo={swapTo} /></ProtocolIntroGate>
     : <ProtocolIntroGate spec={TRANSFER_INTRO}><TransferPanel onClose={onClose} to={to} toName={toName} token={token} tabs={tabs} /></ProtocolIntroGate>;
 }
 
@@ -340,10 +342,15 @@ function PanelTab({ label, active, onClick }: { label: string; active: boolean; 
 
 // ── Swap Panel (Jupiter Swap V2: /order + /execute) ───────────────────
 
-function SwapPanel({ onClose, tabs }: { onClose: () => void; tabs?: React.ReactNode }) {
+function SwapPanel({ onClose, tabs, swapTo }: {
+  onClose: () => void;
+  tabs?: React.ReactNode;
+  /** Token to open buying, when an NPC sends the player here for one. */
+  swapTo?: string;
+}) {
   const { connected, publicKey, signTransaction } = useWallet();
   const [inputToken,  setInputToken]  = useState("SOL");
-  const [outputToken, setOutputToken] = useState("USDC");
+  const [outputToken, setOutputToken] = useState(swapTo ?? "USDC");
   const [amount,  setAmount]  = useState("0.1");
   const [quote,   setQuote]   = useState<any>(null);
   const [loading, setLoading] = useState(false);
@@ -1526,7 +1533,7 @@ function PrivateIntro({ onDone }: { onDone: () => void }) {
 
 // ── Shared helpers ────────────────────────────────────────────────────
 
-const TOKEN_LIST_SYMBOLS = ["SOL", "USDC", "USDT", "JUP", "BONK"];
+const TOKEN_LIST_SYMBOLS = ["SOL", "USDC", "USDT", "JUP", "BONK", "NECTAR"];
 
 function TokenBox({ label, token, onTokenChange, excludeToken, tokens, getLogo, children }: {
   label: string;

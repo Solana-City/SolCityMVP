@@ -16,6 +16,9 @@ export const TOKEN_LIST = [
   { symbol: "USDT", mint: "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB", decimals: 6, logo: "https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB/logo.svg" },
   { symbol: "JUP",  mint: "JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN",  decimals: 6, logo: "https://static.jup.ag/jup/icon.png" },
   { symbol: "BONK", mint: "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263", decimals: 5, logo: "https://arweave.net/hQiPZOsRZXGXBJd_82PhVdlM_hACsT_q6wqwf5cSY7I" },
+  // HiveBits' community token, which Queen Bea sends players here to buy.
+  // Decimals read off the mint itself (getTokenSupply), not assumed.
+  { symbol: "NECTAR", mint: "CMFmrTNfNEYNnauug1mi2LMkghaVT3Sx6CxJ8xLcmeta", decimals: 6, logo: "https://hivebits.io/favicon.ico" },
 ] as const;
 
 export type TokenInfo = (typeof TOKEN_LIST)[number];
