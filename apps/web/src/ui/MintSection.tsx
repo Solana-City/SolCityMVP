@@ -23,6 +23,10 @@ import { readMintConfig, mintedIndices, mintCosmetic, type MintConfigAccount } f
  *
  * The player pays. A compressed mint is a transaction fee and nothing else,
  * which is the whole reason the pack economy went with cNFTs.
+ *
+ * Nothing here explains what selling does, deliberately. The honest sentence
+ * is long and easy to misread, and the behaviour it describes is one the owner
+ * may want to change rather than document. See the note on mint_unlock.
  */
 export default function MintSection({ wallet }: { wallet: string | null }) {
   const { signTransaction } = useWallet();
@@ -126,8 +130,7 @@ export default function MintSection({ wallet }: { wallet: string | null }) {
 
       {justMinted.length > 0 && (
         <div style={{ color: "#14F195", marginTop: 8 }}>
-          {justMinted.length} now in your wallet. Selling one does not take the
-          outfit away, and whoever buys it can claim the right to wear it too.
+          {justMinted.length} now in your wallet.
         </div>
       )}
     </div>
