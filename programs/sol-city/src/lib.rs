@@ -390,6 +390,11 @@ pub enum SolCityError {
     WrongMintTarget,
     #[msg("This wallet has minted as many assets as it can hold")]
     MintCapReached,
+    // Appended, never inserted. Anchor numbers these by POSITION, so a
+    // variant added in the middle silently renumbers every one after it and
+    // any client matching on a code starts reporting the wrong thing.
+    #[msg("They need to visit the city once before they can be invited")]
+    FriendNotCitizen,
 }
 
 /// Truncates a string to at most `max` BYTES on a char boundary, so a
@@ -478,6 +483,34 @@ fn schedule_magic_commit<'info>(
         ],
     )?;
     Ok(())
+}
+
+/// The wallet a player account belongs to, read whether this program holds the
+/// account or it is delegated to a rollup right now.
+///
+/// A player in the city is DELEGATED, which makes the delegation program the
+/// owner of their account on base, so `Account<PlayerState>` refuses exactly
+/// the people you can see and click on. The bytes on base are still ours: the
+/// snapshot taken at delegation, discriminator intact. `authority` is written
+/// once at init and never changes, so that snapshot is as good as the live
+/// copy for this one field.
+///
+/// Returns the default key for anything that is not a player account. A caller
+/// must reject that key AND keep `seeds = [PLAYER_SEED, citizen_authority(..)]`
+/// on the account: this only reads bytes, and the seeds are what tie those
+/// bytes to the address they came from.
+fn citizen_authority(info: &AccountInfo) -> Pubkey {
+    if info.owner != &crate::ID && info.owner != &DELEGATION_PROGRAM_ID {
+        return Pubkey::default();
+    }
+    let data = match info.try_borrow_data() {
+        Ok(data) => data,
+        Err(_) => return Pubkey::default(),
+    };
+    if data.len() < 8 + 32 || data[..8] != PlayerState::DISCRIMINATOR {
+        return Pubkey::default();
+    }
+    Pubkey::try_from(&data[8..40]).unwrap_or_default()
 }
 
 #[program]
@@ -1738,7 +1771,10 @@ pub mod sol_city {
     /// a deliberate act. The rent comes back when the invite is closed,
     /// whichever way it goes.
     pub fn send_friend_request(ctx: Context<SendFriendRequest>) -> Result<()> {
-        let to = ctx.accounts.to_player.authority;
+        let to = citizen_authority(&ctx.accounts.to_player);
+        // `seeds` alone lets the default key through: nothing lives at its
+        // player PDA, so it reads back as default and matches itself.
+        require!(to != Pubkey::default(), SolCityError::FriendNotCitizen);
         require!(ctx.accounts.from.key() != to, SolCityError::FriendSelf);
         let req = &mut ctx.accounts.request;
         req.from = ctx.accounts.from.key();
@@ -3063,23 +3099,33 @@ pub struct SendFriendRequest<'info> {
         init,
         payer = from,
         space = 8 + FriendRequest::INIT_SPACE,
-        seeds = [FRIEND_REQUEST_SEED, from.key().as_ref(), to_player.authority.as_ref()],
+        seeds = [FRIEND_REQUEST_SEED, from.key().as_ref(), citizen_authority(&to_player).as_ref()],
         bump,
     )]
     pub request: Account<'info, FriendRequest>,
-    /// The recipient's player account: being a citizen is what makes someone
-    /// invitable, and reading `authority` off it is also how we learn the
-    /// recipient's key without trusting an argument for it.
+    /// CHECK: the recipient's player account. Being a citizen is what makes
+    /// someone invitable, and reading `authority` off it is how we learn their
+    /// key without trusting an argument for it.
     ///
-    /// Consequence of the player_v3 reset: a wallet that has not entered the
-    /// city since the redeploy has no PDA at this seed yet and cannot be
-    /// invited. The client should say "they need to visit the city first"
-    /// rather than surface a raw constraint failure.
+    /// NOT `Account<PlayerState>`, and that was the bug. `Account<T>` demands
+    /// this program as owner, but a player who is IN THE CITY is delegated, so
+    /// on base the delegation program owns their account. The invite failed
+    /// with AccountOwnedByWrongProgram for exactly the people you can see and
+    /// click on, and the client translated that as "they need to visit the
+    /// city first", which hid it.
+    ///
+    /// `citizen_authority` accepts either owner and checks the discriminator;
+    /// `seeds` is what ties those bytes to the wallet they name, so forged
+    /// bytes would derive a different address and fail.
+    ///
+    /// A wallet with no account at the current seed reads back as the default
+    /// key, which passes `seeds` against its own empty PDA and is caught by
+    /// the handler's FriendNotCitizen.
     #[account(
-        seeds = [PLAYER_SEED, to_player.authority.as_ref()],
+        seeds = [PLAYER_SEED, citizen_authority(&to_player).as_ref()],
         bump,
     )]
-    pub to_player: Account<'info, PlayerState>,
+    pub to_player: UncheckedAccount<'info>,
     #[account(mut)]
     pub from: Signer<'info>,
     pub system_program: Program<'info, System>,
