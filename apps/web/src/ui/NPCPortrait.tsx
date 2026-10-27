@@ -17,6 +17,14 @@ import { CROPS, PortraitBox, drawAvatarPortrait, removeChroma } from "@/ui/Avata
  * crowd - carries a paper-doll loadout instead, and is drawn from the layers
  * exactly as the player's own portrait is.
  *
+ * And a few NPCs cannot be cut from their sheet at all: whatever the sheet
+ * carries above or below the character lands in the box, cropped or not, and
+ * on some of them that is smoke, or a kite flying off the top. Those set
+ * `portrait` and get a drawing made for the job. It is a ONE-FRAME SHEET on
+ * the same 64px contract, not a different kind of file, so it goes through
+ * the same crop below and comes out the same size, in the same place, as
+ * every bust taken straight off a sheet.
+ *
  * Anchoring: the sheets are a 64px grid with the character standing on the
  * bottom edge, so the bust is the top 52 rows of the LAST 64. On a 64px frame
  * that is just the top of the frame; on a taller one (Kite Pro's sheet is 97
@@ -35,23 +43,41 @@ function sheetUrl(spriteKey: string): string {
   return `/assets/sprites/${encodeURIComponent(file)}.png`;
 }
 
-/** Cuts the bust out of `npc`'s sheet and fills `canvas` with it. */
+/**
+ * What this NPC's bust is cut out of. A sheet is cut at its DECLARED frame
+ * size, since the file holds a row of them; a portrait is a single frame, so
+ * the file's own size is the frame and there is nothing to declare.
+ */
+function bustSource(npc: NPCDefinition): { url: string; frame: { w: number; h: number } | null } {
+  if (npc.portrait) return { url: sheetUrl(npc.portrait), frame: null };
+  return {
+    url: sheetUrl(npc.spriteKey ?? "avatar-player"),
+    frame: {
+      w: npc.spriteAnimation?.frameWidth ?? 64,
+      h: npc.spriteAnimation?.frameHeight ?? 64,
+    },
+  };
+}
+
+/** Cuts the bust out of `npc`'s portrait or sheet and fills `canvas` with it. */
 function drawNPCBust(canvas: HTMLCanvasElement, npc: NPCDefinition, smooth: boolean): () => void {
   const ctx = canvas.getContext("2d");
   let cancelled = false;
   if (!ctx) return () => { cancelled = true; };
 
-  const frameW = npc.spriteAnimation?.frameWidth ?? 64;
-  const frameH = npc.spriteAnimation?.frameHeight ?? 64;
-  const bust = CROPS.bust.w;
-  const w = Math.min(bust, frameW);
-  const h = Math.min(bust, frameH);
-  const sx = Math.max(0, Math.round((frameW - w) / 2));
-  const sy = Math.max(0, frameH - 64);
+  const source = bustSource(npc);
 
   const img = new Image();
   img.onload = () => {
     if (cancelled || !img.naturalWidth) return;
+    // A portrait's frame is the image itself, so this waits for the load.
+    const frameW = source.frame?.w ?? img.naturalWidth;
+    const frameH = source.frame?.h ?? img.naturalHeight;
+    const bust = CROPS.bust.w;
+    const w = Math.min(bust, frameW);
+    const h = Math.min(bust, frameH);
+    const sx = Math.max(0, Math.round((frameW - w) / 2));
+    const sy = Math.max(0, frameH - 64);
     // Cut first, at the art's own size, then blow the cut up: the chroma pass
     // then reads 52x52 instead of the whole sheet, and the scaling stays one
     // clean step.
@@ -70,7 +96,7 @@ function drawNPCBust(canvas: HTMLCanvasElement, npc: NPCDefinition, smooth: bool
     ctx.imageSmoothingEnabled = smooth;
     ctx.drawImage(off, 0, 0, w, h, 0, 0, canvas.width, canvas.height);
   };
-  img.src = sheetUrl(npc.spriteKey ?? "avatar-player");
+  img.src = source.url;
 
   return () => { cancelled = true; };
 }

@@ -149,10 +149,23 @@ export interface NPCDefinition {
    */
   repel?: { radius: number; push: number; ms: number; say: string };
   /**
-   * Optional path to a portrait PNG (served from /public).
-   * Recommended: 256x256 px, transparent background, pixel art.
-   * If missing or fails to load, the dialog falls back to a
-   * colored tile with the NPC's initial.
+   * A drawing made for the dialog's portrait box, for an NPC whose sheet
+   * cannot be cut into one.
+   *
+   * The box takes a 52 square bust off the top of a frame. That is the right
+   * answer for a character standing in their frame, and the wrong one for a
+   * sheet carrying something else in that space: DOM's smoke sits where his
+   * head should be, and Kite Pro's kite flies off the top of the box and is
+   * sliced. Those two get a drawing instead.
+   *
+   * It is a ONE-FRAME SHEET, not another kind of file: same 64px frame, same
+   * import through import-sprite-sheet.mjs, named like a spriteKey and
+   * resolved under /assets/sprites, which is why "portraits/DOM" works. The
+   * portrait box then crops it exactly as it crops a sheet, so the result
+   * lands at the same size and in the same place as every other NPC.
+   *
+   * Point it at a file that is not there and the box falls back to a plain
+   * tile with the NPC's initial, so a typo is visible rather than silent.
    */
   portrait?: string;
   /**
@@ -332,6 +345,8 @@ const NPC_SEEDS: NPCSeed[] = [
     ],
     action: { type: "tea", label: "Drink the tea" },
     spriteKey: "DOM",
+    // His sheet puts smoke where the portrait box wants his head.
+    portrait: "portraits/DOM",
     // Static animated, like Kite Pro: one row of 6 frames at 64x64, seated at
     // the tea set, facing south, never wandering.
     spriteAnimation: { frameWidth: 64, frameHeight: 64, frameCount: 6 },
@@ -351,6 +366,8 @@ const NPC_SEEDS: NPCSeed[] = [
     ],
     action: { type: "minigame", label: "Launch Kite", miniGameId: "kite-clash" },
     spriteKey: "Kite Pro",
+    // The kite flies past the top of the portrait box and gets sliced.
+    portrait: "portraits/Kite Pro",
     // Idle-loop sheet: 8 frames (57x97 each), always facing south, never
     // wanders. DOM re-exported at ~half the old resolution, so scale 0.5
     // renders the character at ~the same on-screen size as before AND is
