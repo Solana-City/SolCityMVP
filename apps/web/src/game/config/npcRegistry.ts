@@ -689,6 +689,37 @@ const NPC_SEEDS: NPCSeed[] = [
   // All three sheets are 6 frames of 64x64 in one row, idle in place, so they
   // carry spriteAnimation rather than a walk grid.
   {
+    id: "queen-bea",
+    name: "Queen Bea",
+    role: "HiveBits",
+    // Centred in front of the HiveBits stand (BuildHiveBits, cols 39-45 /
+    // rows 71-76, solid across 74-76), on the clear row below it. Her world Y
+    // is under both the stand's base row and the bee swarm's, so she draws in
+    // front of the two of them rather than inside the hive.
+    tileX: 42,
+    tileY: 76,
+    dialog: [
+      "Bzzz! Welcome to HiveBits. I'm your guide to real beekeeping on Solana.",
+      "We tokenize real beekeeping farms. Our smart hives track temperature, weight and activity, so you can see what is happening inside a hive.",
+      {
+        text: "$NECTAR is the token of our hive community, and our honey shop opens soon, starting with Brazil.",
+        accent: "Bee well, and come back soon!",
+      },
+    ],
+    highlights: [
+      { label: "REAL HIVES" },
+      { label: "$NECTAR" },
+      { label: "HONEY SOON" },
+    ],
+    action: { type: "swap", label: "Swap $NECTAR", swapTo: "NECTAR" },
+    extraAction: { type: "link", label: "hivebits.io", url: "https://hivebits.io/" },
+    spriteKey: "Queen Bea",
+    // Static animated, like the other stand keepers: one row of 6 frames at
+    // 64x64, facing south, never wandering. 150ms a frame, matching the bee
+    // swarm already flying over the stand behind her.
+    spriteAnimation: { frameWidth: 64, frameHeight: 64, frameCount: 6, frameRate: 1000 / 150 },
+  },
+  {
     id: "pegana-raffx",
     name: "Raffx",
     role: "Pegana",
