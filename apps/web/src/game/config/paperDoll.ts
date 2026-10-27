@@ -71,7 +71,7 @@ export interface LayerVariant {
    * Covers quest rewards and the NPC-granted Superteam Brasil set (see
    * progression/outfitRewards.ts); `unlockHint` spells out the route for each.
    */
-  unlockVia?: "quest";
+  unlockVia?: "quest" | "event";
   /** Overrides the default locked-item hint shown in the wardrobe. */
   unlockHint?: string;
   /**
@@ -266,7 +266,7 @@ export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
     // booster pool, and it is off the season table on purpose: its scarcity is
     // the event window, not a drop table that would need a redeploy.
     { id: "Pumpkin_head", name: "Pumpkin Head", textureKey: "pd-hat-Pumpkin_head",
-      file: "hat/Pumpkin_head.png", hatCoverage: "suppress", unlockVia: "quest",
+      file: "hat/Pumpkin_head.png", hatCoverage: "suppress", unlockVia: "event",
       unlockHint: "Carve a clean pumpkin for Jack O' Lantern" },
     // The Claim Office's trophy, for ORE actually struck rather than a claim
     // staked. unlockVia keeps it out of the booster pool, like every other

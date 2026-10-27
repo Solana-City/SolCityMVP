@@ -20,7 +20,7 @@ import {
 } from "@/game/config/paperDoll";
 import { profileManager } from "@/game/config/profileManager";
 import { isVariantUnlocked, unlockItem } from "@/game/config/wardrobeUnlocks";
-import { RARITY_LABEL, isPackItem, rarityOf, rarityTheme, type Rarity } from "@/game/config/packs";
+import { RARITY_LABEL, isPackItem, rarityTheme, tileKindOf, type TileKind } from "@/game/config/packs";
 import { progressionBus } from "@/game/progression/progressionBus";
 import BoosterOverlay from "@/ui/BoosterOverlay";
 import {
@@ -757,7 +757,7 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
                       locked={locked}
                       hintFlashing={hintFlashing}
                       compact={isMobile}
-                      rarity={isPackItem(activeCategory, v.id) ? rarityOf(activeCategory, v.id) : null}
+                      kind={tileKindOf(activeCategory, v)}
                       onClick={() => selectVariant(activeCategory, v.id)}
                     >
                       <div style={{ position: "relative", lineHeight: 0 }}>
@@ -966,30 +966,31 @@ const BORDER = 2;
 const SELECTED_BORDER = 4;
 
 /**
- * One option in the grid. The card's own frame IS the rarity — colour and
- * tint come from rarityTheme() (game/collections/seasons.ts, the one place
- * rarity colours are authored), so there is no second box drawn inside it.
+ * One option in the grid. The card's own frame IS the rarity, or the badge of
+ * where the item came from: colour and tint come from rarityTheme()
+ * (game/collections/seasons.ts, the one place these colours are authored), so
+ * there is no second box drawn inside it.
  *
- * `rarity: null` is an item no pack gives (a free shirt, a quest reward) and
- * keeps the neutral frame the grid has always had.
+ * `kind: null` is an item that is neither sold nor earned, which is every
+ * free one, and it keeps the neutral frame the grid has always had.
  *
  * Selection still wins the frame while it lasts: only one tile per category
  * is selected, and losing its rarity colour for as long as it is worn beats
  * making "which one am I wearing" a guess.
  */
 function VariantCard({
-  isSelected, isFlashing, locked = false, hintFlashing = false, compact = false, rarity = null, onClick, children,
+  isSelected, isFlashing, locked = false, hintFlashing = false, compact = false, kind = null, onClick, children,
 }: {
   compact?: boolean;
   isSelected: boolean;
   isFlashing: boolean;
   locked?: boolean;
   hintFlashing?: boolean;
-  rarity?: Rarity | null;
+  kind?: TileKind | null;
   onClick: () => void;
   children: React.ReactNode;
 }) {
-  const theme = rarityTheme(rarity);
+  const theme = rarityTheme(kind);
   const baseBg = locked
     ? "rgba(255,255,255,0.015)"
     : isSelected ? theme.fillStrong
@@ -1004,7 +1005,7 @@ function VariantCard({
     <button
       onClick={onClick}
       data-sfx={locked ? undefined : "outfit"}
-      title={[rarity ? RARITY_LABEL[rarity] : "", locked ? "Locked" : ""].filter(Boolean).join(" · ") || undefined}
+      title={[kind ? RARITY_LABEL[kind] : "", locked ? "Locked" : ""].filter(Boolean).join(" · ") || undefined}
       style={chamferBox(10, {
         display: "flex",
         flexDirection: "column",

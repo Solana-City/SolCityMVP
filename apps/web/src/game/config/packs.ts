@@ -1,13 +1,13 @@
 import { LayerCategory, getBoosterPool, isFreeInShippedGame, type LayerVariant } from "./paperDoll";
 import { getUnlockedSet, unlockKeyOf } from "./wardrobeUnlocks";
 import {
-  CURRENT_SEASON, RARITY_ORDER, type Rarity,
+  CURRENT_SEASON, RARITY_ORDER, type Rarity, type TileKind,
 } from "@/game/collections/seasons";
 
 // Re-exported so a screen that shows wardrobe items does not have to know
 // where the shared vocabulary lives.
-export { RARITY_ORDER, RARITY_LABEL, RARITY_COLOR, rarityTheme, UNRANKED_THEME, CURRENT_SEASON, SEASONS, seasonLabel } from "@/game/collections/seasons";
-export type { Rarity, RarityTheme } from "@/game/collections/seasons";
+export { RARITY_ORDER, RARITY_LABEL, RARITY_COLOR, PROVENANCE_COLOR, TILE_COLOR, TILE_ORDER, rarityTheme, UNRANKED_THEME, CURRENT_SEASON, SEASONS, seasonLabel } from "@/game/collections/seasons";
+export type { Rarity, RarityTheme, TileKind } from "@/game/collections/seasons";
 
 /**
  * Outfit packs: three of them, four rarities, one season at a time.
@@ -83,6 +83,24 @@ export function rarityOf(category: LayerCategory, id: string): Rarity {
 // The calendar itself lives in game/collections/seasons.ts, shared with the
 // other collection. Here it is only the reader: which season an item belongs
 // to, and the rule that a pack draws from one season and one only.
+
+/**
+ * How to frame one wardrobe tile: its drop rarity, or, when a pack never
+ * gives it, where it came from instead.
+ *
+ * Provenance wins over rarity, and that costs nothing today because the two
+ * cannot overlap: `unlockVia` is exactly what keeps an item out of the
+ * booster pool, so an item with one is never a pack item. Stated as an order
+ * rather than left to chance, so a future item marked both still frames as
+ * what it was earned for rather than silently as a common.
+ *
+ * `null` is an item that is neither, which is every free one. Those keep the
+ * neutral frame the grid has always had.
+ */
+export function tileKindOf(category: LayerCategory, variant: LayerVariant): TileKind | null {
+  if (variant.unlockVia) return variant.unlockVia;
+  return isPackItem(category, variant.id) ? rarityOf(category, variant.id) : null;
+}
 
 export function seasonOf(variant: LayerVariant): number {
   return variant.season ?? 1;

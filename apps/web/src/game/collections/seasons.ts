@@ -33,23 +33,62 @@ export type Rarity = "common" | "uncommon" | "rare" | "legendary";
 /** Least to most rare. Also the fallback ladder when a bucket runs dry. */
 export const RARITY_ORDER: Rarity[] = ["common", "uncommon", "rare", "legendary"];
 
-export const RARITY_LABEL: Record<Rarity, string> = {
+/**
+ * How a wardrobe tile is framed. A drop rarity, or, for an item no pack ever
+ * gives, where it came from instead.
+ *
+ * Quest and event are NOT rarities and must never be sorted among them: an
+ * event item's scarcity is the window it was open in, not a weight in a drop
+ * table. They live in this union only because they share the frame, and the
+ * player learns one vocabulary of colour either way.
+ */
+export type TileKind = Rarity | "quest" | "event";
+
+export const TILE_ORDER: TileKind[] = [...RARITY_ORDER, "quest", "event"];
+
+export const RARITY_LABEL: Record<TileKind, string> = {
   common: "COMMON",
   uncommon: "UNCOMMON",
   rare: "RARE",
   legendary: "LEGENDARY",
+  quest: "QUEST",
+  event: "EVENT",
 };
 
 /**
  * One colour per rarity, for every surface in the game that shows one: the
  * wardrobe grid, a pack reveal, a Sol Mechs part card. A player should learn
- * "gold means legendary" once.
+ * "purple means legendary" once.
+ *
+ * Settled with the owner on 2026-10-28, and these are the SAME six colours the
+ * collectible art is being drawn with. The borders a player sees in the
+ * wardrobe and the borders on the asset they end up holding have to agree, so
+ * treat this list as shared with the art rather than as a UI choice: changing
+ * a hex here without changing the frames desynchronises the two.
  */
 export const RARITY_COLOR: Record<Rarity, string> = {
-  common: "#8a8aa7",
+  common: "#8A8AA7",
   uncommon: "#14F195",
-  rare: "#00D1FF",
-  legendary: "#FFD700",
+  rare: "#3D8BFF",
+  legendary: "#B15CFF",
+};
+
+/**
+ * The other two colours of that same set, for items a pack never drops.
+ *
+ * Kept in their own map rather than merged into RARITY_COLOR so that
+ * `RARITY_COLOR[r]` stays exhaustive over Rarity and nothing can accidentally
+ * iterate a quest item into a drop table.
+ */
+export const PROVENANCE_COLOR: Record<"quest" | "event", string> = {
+  quest: "#FF9F2E",
+  event: "#FF4B4B",
+};
+
+/** Every tile colour, by the kind of tile it frames. */
+export const TILE_COLOR: Record<TileKind, string> = {
+  ...RARITY_COLOR,
+  ...PROVENANCE_COLOR,
 };
 
 /**
@@ -85,12 +124,21 @@ export interface RarityTheme {
 /** Hex + two-digit alpha. The palette is authored as 6-digit hex on purpose. */
 const alpha = (hex: string, aa: string) => `${hex}${aa}`;
 
-/** Tint and glow strength per rarity: common stays flat, legendary burns. */
-const RARITY_WEIGHT: Record<Rarity, { fill: string; fillStrong: string; glow: string }> = {
+/**
+ * Tint and glow strength per tile: common stays flat, legendary burns.
+ *
+ * Quest and event sit at rare's weight deliberately. They are meant to read
+ * as special, but a quest hat that out-glows a legendary would say it is
+ * rarer than one, and it is not: it is only harder to come by in a different
+ * way.
+ */
+const RARITY_WEIGHT: Record<TileKind, { fill: string; fillStrong: string; glow: string }> = {
   common: { fill: "0d", fillStrong: "26", glow: "00" },
   uncommon: { fill: "16", fillStrong: "33", glow: "55" },
   rare: { fill: "1c", fillStrong: "38", glow: "66" },
   legendary: { fill: "22", fillStrong: "40", glow: "88" },
+  quest: { fill: "1c", fillStrong: "38", glow: "66" },
+  event: { fill: "1c", fillStrong: "38", glow: "66" },
 };
 
 /** One step down for every rarity: a locked item still says what it is. */
@@ -110,20 +158,20 @@ export const UNRANKED_THEME: RarityTheme = {
   label: "",
 };
 
-const RARITY_THEME: Record<Rarity, RarityTheme> = Object.fromEntries(
-  RARITY_ORDER.map((r) => [r, {
-    color: RARITY_COLOR[r],
-    muted: alpha(RARITY_COLOR[r], MUTED),
-    strong: RARITY_COLOR[r],
-    fill: alpha(RARITY_COLOR[r], RARITY_WEIGHT[r].fill),
-    fillStrong: alpha(RARITY_COLOR[r], RARITY_WEIGHT[r].fillStrong),
-    glow: alpha(RARITY_COLOR[r], RARITY_WEIGHT[r].glow),
+const RARITY_THEME: Record<TileKind, RarityTheme> = Object.fromEntries(
+  TILE_ORDER.map((r) => [r, {
+    color: TILE_COLOR[r],
+    muted: alpha(TILE_COLOR[r], MUTED),
+    strong: TILE_COLOR[r],
+    fill: alpha(TILE_COLOR[r], RARITY_WEIGHT[r].fill),
+    fillStrong: alpha(TILE_COLOR[r], RARITY_WEIGHT[r].fillStrong),
+    glow: alpha(TILE_COLOR[r], RARITY_WEIGHT[r].glow),
     label: RARITY_LABEL[r],
   }]),
-) as Record<Rarity, RarityTheme>;
+) as Record<TileKind, RarityTheme>;
 
-export function rarityTheme(rarity: Rarity | null | undefined): RarityTheme {
-  return rarity ? RARITY_THEME[rarity] : UNRANKED_THEME;
+export function rarityTheme(kind: TileKind | null | undefined): RarityTheme {
+  return kind ? RARITY_THEME[kind] : UNRANKED_THEME;
 }
 
 // ── Seasons ─────────────────────────────────────────────────────────────────

@@ -45,13 +45,20 @@ describe("the quest registry", () => {
     }
   });
 
-  it("points every reward at a real item that is reserved to a quest", () => {
+  it("points every reward at a real item that no pack can also drop", () => {
     // A reward naming an item that does not exist, or one a pack could also
     // drop, is the failure this catches.
+    //
+    // Any `unlockVia` satisfies it, not "quest" specifically, because
+    // `unlockVia` being SET is what keeps an item out of the booster pool and
+    // that is the property under test. An event item can legitimately be a
+    // quest reward: the Pumpkin Head is handed over by finishing Jack O'
+    // Lantern's quest, and it is still an event item, because what made it
+    // scarce was the window being open and not a weight in a drop table.
     for (const q of QUESTS) {
       const variant = getVariant(q.reward.category, q.reward.id);
       expect(variant, `${q.id} -> ${q.reward.id}`).toBeDefined();
-      expect(variant!.unlockVia, `${q.id} -> ${q.reward.id}`).toBe("quest");
+      expect(variant!.unlockVia, `${q.id} -> ${q.reward.id}`).toBeDefined();
     }
   });
 
