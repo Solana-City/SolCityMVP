@@ -24,6 +24,10 @@ export const HUD_TEXT = "#d0d0f0";
 /** The cyan a finished step takes, as the player card's CTAs do. */
 export const HUD_CYAN = "#14F0C6";
 
+/** The phone minimap's width. The column under it (wallet, onchain) is held to
+    the same width, so the three line up. */
+export const MINIMAP_MOBILE_PX = 108;
+
 /**
  * The desktop card's border: the panel art at its full 20px, which leaves
  * content inside the art's teal band.

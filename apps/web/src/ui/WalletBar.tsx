@@ -25,9 +25,13 @@ function useIsTouch() {
 interface WalletBarProps {
   /** "panel" = embedded in the map + player HUD card (phone and desktop) */
   layout?: "default" | "panel";
+  /** Panel only: fit a column about 90px wide (the phone HUD holds it to the
+      minimap's width, 108). Shrinks the text, and drops the disconnect button,
+      which the phone HUD has as a button of its own. */
+  narrow?: boolean;
 }
 
-export default function WalletBar({ layout = "default" }: WalletBarProps) {
+export default function WalletBar({ layout = "default", narrow = false }: WalletBarProps) {
   const { publicKey, connected, disconnect } = useWallet();
   const { connection } = useConnection();
   const { setVisible } = useWalletModal();
@@ -38,7 +42,7 @@ export default function WalletBar({ layout = "default" }: WalletBarProps) {
 
   const address = publicKey?.toBase58() ?? null;
   const shortAddr = address
-    ? `${address.slice(0, 4)}...${address.slice(-4)}`
+    ? narrow ? `${address.slice(0, 3)}...${address.slice(-3)}` : `${address.slice(0, 4)}...${address.slice(-4)}`
     : null;
 
   const fetchBalance = useCallback(() => {
@@ -94,40 +98,47 @@ export default function WalletBar({ layout = "default" }: WalletBarProps) {
   // ── Panel layout: single compact row for the unified HUD card ───────────────
   if (layout === "panel") {
     return (
-      <div style={{ display: "flex", alignItems: "center", gap: 8, fontFamily: '"Press Start 2P", monospace' }}>
+      <div style={{ display: "flex", alignItems: "center", gap: narrow && !connected ? 4 : 8, fontFamily: '"Press Start 2P", monospace' }}>
         {/* Status dot */}
-        <img src={connected ? "/assets/ui/icon_wallet1.png" : "/assets/ui/icon_wallet.png"} alt="" draggable={false} width={28} height={28} style={{
+        {/* The narrow one has the icon at about the height of the two text
+            lines beside it, so it reads as part of them. Grey when there is no
+            wallet, with CONNECT right next to it. It is the bare wallet in
+            both states: the other art has a frame round it, which the narrow
+            one does not want. */}
+        <img src={connected || narrow ? "/assets/ui/icon_wallet1.png" : "/assets/ui/icon_wallet.png"} alt="" draggable={false} width={narrow ? 18 : 28} height={narrow ? 18 : 28} style={{
           flexShrink: 0, imageRendering: "pixelated", display: "block",
           filter: connected ? "drop-shadow(0 0 4px rgba(183,233,40,0.6))" : "grayscale(1) opacity(0.6)",
         }} />
 
         {/* Wallet info — balance + short address stacked */}
-        <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 1, minWidth: 0 }}>
+        {(connected || !isTouch) && (
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 1, minWidth: 0, overflow: "hidden" }}>
           {connected ? (
             <>
               {balance !== null && (
-                <span style={{ fontSize: 8, color: "#e0e0ff", lineHeight: 1 }}>
+                <span style={{ fontSize: narrow ? 7 : 8, color: "#e0e0ff", lineHeight: 1, whiteSpace: "nowrap" }}>
                   {balance} <span style={{ color: "#B7E928" }}>SOL</span>
                 </span>
               )}
               {shortAddr && (
-                <span style={{ fontSize: 7, color: "#14F0C6", letterSpacing: 0.3, opacity: 0.8 }}>
+                <span style={{ fontSize: narrow ? 6 : 7, color: "#14F0C6", letterSpacing: 0.3, opacity: 0.8, whiteSpace: "nowrap" }}>
                   {shortAddr}
                   {isAndroid && hasSGT && <span style={{ color: "#FFD700", marginLeft: 4 }}>⬡</span>}
                 </span>
               )}
             </>
-          ) : isTouch ? null : (
-            /* The phone card is too narrow for the word beside CONNECT: the
-               button overlapped it and the text read "OFFLIN". The grey dot
-               on the left already says the wallet is not connected. */
+          ) : (
+            /* Not on a phone: the phone card is too narrow for the word beside
+               CONNECT (the button overlapped it and the text read "OFFLIN"),
+               and the grey icon already says the wallet is not connected. */
             <span style={{ fontSize: 7, color: "#555", letterSpacing: 1,
               fontFamily: '"Press Start 2P", monospace' }}>OFFLINE</span>
           )}
         </div>
+        )}
 
         {/* Action button */}
-        {connected ? (
+        {connected ? (narrow ? null : (
           <button
             onClick={handleClick}
             title="Disconnect wallet" aria-label="Disconnect wallet"
@@ -136,7 +147,7 @@ export default function WalletBar({ layout = "default" }: WalletBarProps) {
           >
             <img src="/assets/ui/icon_disconnect.png" alt="" draggable={false} width={32} height={32} style={{ imageRendering: "pixelated", display: "block" }} />
           </button>
-        ) : (
+        )) : (
           /* Same pixel-art CONNECT button used on mobile, scaled down to fit the panel row */
           <button
             onClick={handleClick}
@@ -153,7 +164,7 @@ export default function WalletBar({ layout = "default" }: WalletBarProps) {
           >
             <img
               src="/assets/ui/btn_connect.png"
-              width={72} height={24} alt="Connect wallet" draggable={false}
+              width={narrow ? 64 : 72} height={narrow ? 21 : 24} alt="Connect wallet" draggable={false}
               style={{ imageRendering: "pixelated" }}
             />
           </button>

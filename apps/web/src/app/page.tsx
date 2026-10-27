@@ -60,6 +60,9 @@ import ErrorBoundary from "@/ui/ErrorBoundary";
 import Presence, { useLast } from "@/ui/Presence";
 import { AvatarPortrait, useLiveLoadout } from "@/ui/AvatarPortrait";
 import { chamferBox, chamferClip } from "@/ui/chamfer";
+import { MINIMAP_MOBILE_PX } from "@/ui/hudFrame";
+import { WALLET_LOGOUT_EVENT } from "@/ui/walletSession";
+import { useWallet } from "@solana/wallet-adapter-react";
 import { OPEN_DM_EVENT } from "@/game/chat/dmEvents";
 import { OPEN_CALENDAR_EVENT } from "@/game/daily/calendarEvents";
 import { DM_UNREAD_EVENT, SEND_TOKENS_EVENT } from "@/game/chat/dmEvents";
@@ -623,53 +626,89 @@ export default function Home() {
                  start tucked away behind the arrow: a phone screen is
                  already four icons wide here, and most sessions never
                  touch the wallet. */
-              <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+              /* The profile and the icons under it stand in one column against
+                 the screen edge: wardrobe, calendar, map, log out. A slim
+                 toggle beside the profile opens the wallet and the onchain bar
+                 to its left, level with the profile. The minimap opens in the
+                 same strip with its bottom on the map button's, and drops
+                 below the wallet when both are open. Wallet, onchain bar and
+                 minimap are one width. */
+              <div style={{ position: "relative", display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+                <div style={{ position: "relative" }}>
                   <ProfileButton gameRef={game} size={60} frame="thin" onClick={() => setProfileOpen(true)} />
-                  <WardrobeButton size={MOBILE_ICON_PX} onClick={() => setWardrobeOpen(true)} />
-                  <CalendarButton size={MOBILE_ICON_PX} />
-                  <HudIconBtn
-                    size={MOBILE_ICON_PX} src="/assets/ui/icon_hud_map.png"
-                    onClick={() => setMapOpen((v) => !v)}
-                    title="Minimap" aria-expanded={mapOpen} aria-controls="hud-map-preview"
-                    aria-label={mapOpen ? "Hide minimap" : "Show minimap"}
-                  />
                   <button
                     onClick={() => setWalletSectionOpen((v) => !v)}
                     title="Wallet" aria-expanded={walletSectionOpen}
                     aria-label={walletSectionOpen ? "Hide wallet" : "Show wallet"}
-                    style={{ background: "none", border: "none", padding: 0, cursor: "pointer", flexShrink: 0, display: "block" }}
+                    style={{
+                      position: "absolute", right: `calc(100% + ${MOBILE_TOGGLE_GAP}px)`, top: 4,
+                      width: MOBILE_TOGGLE_W, height: 52, padding: 0,
+                      background: "none", border: "none", cursor: "pointer",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      opacity: walletSectionOpen ? 1 : 0.7,
+                      WebkitTapHighlightColor: "transparent",
+                    }}
                   >
+                    {/* The arrow art points down. Left says the wallet opens to
+                        that side; right says it folds back the way it came. */}
                     <img
-                      src="/assets/ui/icon_down.png" width={MOBILE_ICON_PX} height={MOBILE_ICON_PX} alt="" draggable={false}
-                      style={{ imageRendering: "pixelated", display: "block", transform: walletSectionOpen ? "rotate(180deg)" : undefined }}
+                      src="/assets/ui/icon_down.png" width={16} height={16} alt="" draggable={false}
+                      style={{ imageRendering: "pixelated", display: "block", transform: `rotate(${walletSectionOpen ? -90 : 90}deg)` }}
                     />
                   </button>
                 </div>
+                <WardrobeButton size={MOBILE_ICON_PX} onClick={() => setWardrobeOpen(true)} />
+                <CalendarButton size={MOBILE_ICON_PX} />
+                <HudIconBtn
+                  size={MOBILE_ICON_PX} src="/assets/ui/icon_hud_map.png"
+                  onClick={() => setMapOpen((v) => !v)}
+                  title="Minimap" aria-expanded={mapOpen} aria-controls="hud-map-preview"
+                  aria-label={mapOpen ? "Hide minimap" : "Show minimap"}
+                />
+                <LogoutButton size={MOBILE_ICON_PX} />
 
-                <Presence show={mapOpen}>
-                  <div id="hud-map-preview" className="sc-pop">
-                    <Minimap bare compact="mobile" />
-                  </div>
-                </Presence>
-
-                {walletSectionOpen && (
-                  <>
-                    {/* Navy backing cut to the frame art's own chamfer (8px at this
-                        scale), so its square corners do not show past the diagonals. */}
-                    <Framed width={9} style={{ background: "#061A3A", clipPath: chamferClip(8) }}>
-                      <div style={{ padding: "4px 8px" }}>
-                        <WalletBar layout="panel" />
+                {/* The strip to the left of the column, as tall as the column
+                    down to the map button. The wallet sits at its top; the
+                    minimap's margin pushes it to the bottom, level with its
+                    button, and the strip grows when both are open. Taps pass
+                    through it except on the panels. */}
+                <div style={{
+                  position: "absolute", right: "calc(100% + 6px)", top: 0,
+                  minHeight: 60 + 3 * (MOBILE_ICON_PX + 4),
+                  display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6,
+                  pointerEvents: "none",
+                }}>
+                  {walletSectionOpen && (
+                    <div style={{
+                      pointerEvents: "auto", marginRight: MOBILE_TOGGLE_W + MOBILE_TOGGLE_GAP,
+                      display: "flex", flexDirection: "column", alignItems: "stretch", gap: 6,
+                      width: MINIMAP_MOBILE_PX,
+                    }}>
+                      {/* Navy backing cut to the frame art's own chamfer (6px at
+                          this scale), so its square corners do not show past the
+                          diagonals. */}
+                      <Framed width={6} style={{ background: "#061A3A", clipPath: chamferClip(5) }}>
+                        <div style={{ padding: "3px 4px" }}>
+                          <WalletBar layout="panel" narrow />
+                        </div>
+                      </Framed>
+                      <TransactionLogPanel
+                        isOpen={logOpen}
+                        onToggle={() => setLogOpen((v) => !v)}
+                        gameRef={game}
+                        compact
+                      />
+                    </div>
+                  )}
+                  {/* In line with the wallet's column when that is open too. */}
+                  <div style={{ marginTop: "auto", pointerEvents: "auto", marginRight: walletSectionOpen ? MOBILE_TOGGLE_W + MOBILE_TOGGLE_GAP : 0 }}>
+                    <Presence show={mapOpen}>
+                      <div id="hud-map-preview" className="sc-pop">
+                        <Minimap bare compact="mobile" />
                       </div>
-                    </Framed>
-                    <TransactionLogPanel
-                      isOpen={logOpen}
-                      onToggle={() => setLogOpen((v) => !v)}
-                      gameRef={game}
-                      compact
-                    />
-                  </>
-                )}
+                    </Presence>
+                  </div>
+                </div>
               </div>
             ) : (
               /* Desktop: one 9-slice framed card: profile row, wallet row,
@@ -806,7 +845,9 @@ function ActiveRing() {
     Not the profile picture, which keeps its own. */
 const MOBILE_HUD_SCALE = 1.05;
 const MOBILE_TOGGLE_PX = 44 * MOBILE_HUD_SCALE;   // chat, expressions, hunt, quests
-const MOBILE_ICON_PX = 30 * MOBILE_HUD_SCALE;     // the row at the top right
+const MOBILE_ICON_PX = 30 * MOBILE_HUD_SCALE;     // the column at the top right
+const MOBILE_TOGGLE_W = 22;                       // the wallet toggle beside the profile
+const MOBILE_TOGGLE_GAP = 2;                      // and its gap to the profile
 
 function MobilePanelToggle({ iconSrc, label, active, onClick, dot }: {
   iconSrc: string; label: string; active: boolean; onClick: () => void;
@@ -937,6 +978,25 @@ function CalendarButton({ size = 30 }: { size?: number }) {
 
 function WardrobeButton({ onClick, size = 36 }: { onClick: () => void; size?: number }) {
   return <HudIconBtn size={size} src="/assets/ui/icon_wardrob.png" title="Wardrobe" onClick={onClick} />;
+}
+
+/**
+ * Leaves the city. A connected wallet is disconnected; a guest has nothing to
+ * disconnect, and the same event is what takes them back to the login screen.
+ */
+function LogoutButton({ size }: { size: number }) {
+  const { connected, disconnect } = useWallet();
+  return (
+    <HudIconBtn
+      size={size} src="/assets/ui/icon_disconnect.png" title="Log out" aria-label="Log out"
+      onClick={() => {
+        // Says "this one is deliberate", so the login screen comes back at once
+        // instead of waiting out the flap grace (walletSession).
+        window.dispatchEvent(new Event(WALLET_LOGOUT_EVENT));
+        if (connected) disconnect().catch(() => { /* already gone */ });
+      }}
+    />
+  );
 }
 
 /** One HUD-rail icon button: the sprite carries its own frame; hover brightens and lifts it, a press sinks it back down. */
