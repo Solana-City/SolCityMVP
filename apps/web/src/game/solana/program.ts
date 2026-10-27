@@ -65,13 +65,22 @@ export const USDC_MINT_DEVNET = new PublicKey(
 export const RARITY_COUNT = 4;
 
 /**
- * Master switch for the on-chain (VRF) booster. OFF until the program with
- * open_booster/UnlockState is deployed AND the client ix accounts are filled
- * from the new IDL. While false the booster runs the client-side preview
- * (Math.random + localStorage). Flip via NEXT_PUBLIC_BOOSTER_ONCHAIN=1.
+ * Master switch for the on-chain (VRF) booster.
+ *
+ * ON since 2026-10-28. Both conditions it was waiting for are met: the
+ * program with `open_booster`/`UnlockState` is deployed, and a pack has been
+ * bought end to end with real devnet USDC, drawn by the VRF callback and
+ * written to the account. The client ix accounts were filled from the struct
+ * rather than the IDL, which is why the "fill from the new IDL" note no
+ * longer applies.
+ *
+ * While false the booster runs the client-side preview (Math.random +
+ * localStorage) and the wardrobe stops asking the chain who owns what. That
+ * is now the escape hatch rather than the default: set
+ * NEXT_PUBLIC_BOOSTER_ONCHAIN=0 to go back to the preview.
  */
 export const BOOSTER_ONCHAIN =
-  (typeof process !== "undefined" && process.env.NEXT_PUBLIC_BOOSTER_ONCHAIN === "1") || false;
+  typeof process === "undefined" || process.env.NEXT_PUBLIC_BOOSTER_ONCHAIN !== "0";
 
 /**
  * MagicBlock ephemeral-VRF oracle queue — base devnet (`DEFAULT_QUEUE`).

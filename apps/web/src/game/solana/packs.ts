@@ -8,6 +8,7 @@ import {
 } from "./program";
 import { buildOpenBoosterIx, buildInitUnlockStateIx } from "./instructions";
 import { BASE_RPC_PRIMARY, resilientBaseFetch } from "./baseRpc";
+import { setOnChainUnlocks } from "@/game/config/wardrobeUnlocks";
 
 /**
  * Buying a pack, on chain.
@@ -112,6 +113,19 @@ export async function currencyBalance(
 
 /** What a wallet already owns, as catalog indices. Empty when it has no
  *  unlock account yet. */
+/**
+ * Re-reads what this wallet owns and hands it to the wardrobe.
+ *
+ * Has to run right after a pack lands. Since the chain became the authority
+ * for pack items, a freshly drawn hat is NOT wearable until these bytes are
+ * read back: the local grant is a mirror now, not the record, and a mirror
+ * cannot authorise anything.
+ */
+export async function syncOwnedToWardrobe(conn: Connection, wallet: PublicKey): Promise<void> {
+  const info = await conn.getAccountInfo(deriveUnlockPDA(wallet)[0]);
+  setOnChainUnlocks(wallet.toBase58(), info ? new Uint8Array(info.data) : null);
+}
+
 export async function ownedIndices(conn: Connection, wallet: PublicKey): Promise<number[]> {
   const info = await conn.getAccountInfo(deriveUnlockPDA(wallet)[0]);
   if (!info) return [];

@@ -2,7 +2,7 @@ import { LayerCategory, LayerVariant, isFreeItem, getBoosterPool } from "./paper
 import { progressionBus } from "@/game/progression/progressionBus";
 import { profileManager } from "@/game/config/profileManager";
 import { decodeUnlockState, BOOSTER_ONCHAIN } from "@/game/solana/program";
-import { itemAtGlobalIndex } from "@/game/config/catalogIndex";
+import { itemAtGlobalIndex, globalIndexOf, BOOSTER_BLOCK_START } from "@/game/config/catalogIndex";
 import { clusterKey } from "./clusterStorage";
 
 /**
@@ -51,12 +51,36 @@ export function isVariantUnlocked(
   if (isFreeItem(category, variant.id)) return true;
   if (!wallet) return false;
   const key = unlockKeyOf(category, variant.id);
-  // localStorage — quest/NPC grants (and the preview's client-side booster).
+  const chain = onchainUnlocks.get(wallet);
+
+  // A PACK item: the chain decides, and localStorage does not get a vote.
+  //
+  // This mirrors the program exactly, which is the point. `update_look_session`
+  // enforces only indices at or above the booster block and skips everything
+  // below it, so the client has to draw the line in the same place. If it
+  // drew it anywhere else, a player could put on something the program then
+  // refuses, and the refusal takes down the WHOLE outfit write: they would
+  // freeze in their last synced look for everyone else, with no clue why.
+  //
+  // `chain &&` so this only bites once the account has actually been read.
+  // Before that we are not entitled to call anything locked, and saying so
+  // would briefly strip a player of items they own while the RPC answers.
+  if (BOOSTER_ONCHAIN && chain && isBoosterItem(category, variant.id)) {
+    return chain.has(key);
+  }
+
+  // Everything else: quests, NPC gifts, event items. localStorage is the
+  // record because nothing on chain grants these yet, and the program skips
+  // their whole index block for the same reason.
   if (getUnlockedSet(wallet).has(key)) return true;
-  // On-chain booster unlocks (only when the VRF booster is live). No-op while
-  // BOOSTER_ONCHAIN is false, so the current behavior is unchanged.
-  if (BOOSTER_ONCHAIN && onchainUnlocks.get(wallet)?.has(key)) return true;
+  if (BOOSTER_ONCHAIN && chain?.has(key)) return true;
   return false;
+}
+
+/** In the booster block of the catalog, which is the range the program checks. */
+function isBoosterItem(category: LayerCategory, id: string): boolean {
+  const index = globalIndexOf(category, id);
+  return index >= BOOSTER_BLOCK_START;
 }
 
 // ── On-chain booster unlocks (read from the UnlockState PDA) ─────────────────

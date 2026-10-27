@@ -22,6 +22,7 @@ import { getVariant } from "@/game/config/paperDoll";
 import {
   baseConnection, readPackConfig, currencyBalance, buyPack, packUnavailableReason,
   type PackConfigAccount,
+  syncOwnedToWardrobe,
 } from "@/game/solana/packs";
 
 /**
@@ -139,6 +140,11 @@ export default function BoosterOverlay({
         setPhase("choose");
         return;
       }
+      // Before anything is shown as wearable. The chain is what authorises a
+      // pack item now, so the reveal would otherwise offer five hats the
+      // wardrobe still refuses to put on.
+      await syncOwnedToWardrobe(conn, new PublicKey(wallet));
+
       const rolled: PackDrop[] = [];
       for (const index of result.granted) {
         const entry = itemAtGlobalIndex(index);

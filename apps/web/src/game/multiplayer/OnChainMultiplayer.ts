@@ -78,12 +78,24 @@ function encodeLoadout(l: Loadout): string {
     // ids go over the wire it checks nothing. Indices are also shorter, which
     // buys room against the 120-byte cap.
     //
-    // OFF by design. The moment it goes on, the program starts REJECTING the
-    // whole outfit write of anybody wearing a booster item they do not own on
-    // chain - and nothing grants booster unlocks on chain yet, while
-    // TEST_UNLOCK_ALL_HATS lets testers wear every hat there is. Flipping this
-    // before the grant path exists would make those players invisible to
-    // everybody. See WARDROBE_ONCHAIN.md.
+    // STILL OFF, and the old reason has expired. Grants DO exist on chain
+    // (open_booster, proven end to end with real USDC), TEST_UNLOCK_ALL_HATS
+    // is false, globalIndexOf is built and round-trip tested, and the
+    // wardrobe now reads what a wallet owns off the chain. What remains is
+    // narrower and sharper:
+    //
+    // The program checks `player.unlocked`, the SNAPSHOT, not UnlockState.
+    // `sync_unlocks` is what copies one to the other, and it can only run
+    // while BOTH accounts are writable in the same place. They never are
+    // during a session: the player PDA is delegated to the rollup and
+    // UnlockState is base-only and never delegated. So a pack bought MID
+    // SESSION lands in UnlockState, the client can see it, and the snapshot
+    // the program enforces against does not have it until the next connect.
+    //
+    // Turn this on today and that player's whole outfit write is rejected,
+    // freezing them in their last synced look for everyone else, with no clue
+    // why. The fix is a grant the rollup can see, which is a program change,
+    // so this rides the next deploy rather than a flag. See WARDROBE_ONCHAIN.md.
     const index = LOADOUT_AS_INDICES ? globalIndexOf(k as LayerCategory, v) : -1;
     out.push(`${LOADOUT_KEY_ABBR[k] ?? k}=${index >= 0 ? index : v}`);
   }
@@ -160,6 +172,7 @@ import { migrateHairColor, type Loadout } from "../config/paperDoll";
 import { hairColorAtIndex, hairColorIndex } from "../config/hairPalette";
 import { ER_VALIDATORS, probeValidators, nearestValidator } from "./erValidators";
 import { globalIndexOf, itemAtGlobalIndex } from "@/game/config/catalogIndex";
+import { setOnChainUnlocks } from "@/game/config/wardrobeUnlocks";
 import type { LayerCategory } from "@/game/config/paperDoll";
 
 // ── Endpoints ──────────────────────────────────────────────────────────
@@ -2336,7 +2349,17 @@ export class OnChainMultiplayer {
    */
   private async syncUnlocksOnBase(wallet: PublicKey): Promise<void> {
     try {
-      if (!(await this.accountExists(deriveUnlockPDA(wallet)[0]))) return;
+      // ONE fetch, two jobs. The account is read here anyway to decide
+      // whether there is anything to sync, so the same bytes also feed the
+      // client's idea of what this wallet owns. Without this second job the
+      // program enforces a snapshot the client has never seen, which is
+      // exactly how an outfit write starts failing for someone who is
+      // wearing something they genuinely own.
+      const info = await this.baseRpcWithRetry(
+        () => this.baseConnection.getAccountInfo(deriveUnlockPDA(wallet)[0]),
+      );
+      setOnChainUnlocks(wallet.toBase58(), info ? new Uint8Array(info.data) : null);
+      if (!info) return;
       const sessionKey = this.sessionKeys.getSessionPublicKey();
       const { blockhash } = await this.baseRpcWithRetry(
         () => this.baseConnection.getLatestBlockhash(),
