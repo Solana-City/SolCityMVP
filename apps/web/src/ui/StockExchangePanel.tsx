@@ -370,12 +370,18 @@ function TradeView(props: {
       // Counted here and not at the click: this line is only reached once the
       // order came back confirmed. Sells are not buys and do not count.
       if (side === "buy") profileManager.bump("stocks-buys");
-      // No "game:swap" here on purpose: that event makes CityScene send a
-      // record_swap transaction signed by the MAIN wallet, so the player got a
-      // second popup (a devnet record) right after signing a real mainnet buy.
-      // Points still land through profileManager.recordSwap above. Restore the
-      // on-chain record once the pending redeploy ships the session-key record
-      // variant, which writes with no popup at all.
+      // Back on, 2026-10-28. This used to be commented out because the event
+      // made CityScene send a record_swap signed by the MAIN wallet, so a
+      // player got a second approval, for a devnet bookkeeping write, right
+      // after signing a real mainnet buy. recordAction now uses
+      // record_swap_session, which the session key signs: no popup, no fee,
+      // and it lands on the rollup the player is already on.
+      //
+      // ONE event for the whole order, not one per leg. swap_count counts
+      // trading ACTIONS, and a basket bought in a single press is one action
+      // however many stocks it touched. The per-stock tally is
+      // profileManager's job and it already has okCount.
+      emitGameEvent("game:swap");
       emitGameEvent("game:stock-trade", {
         side, ticker: stock.ticker, sector: stock.sector, wallStreetOpen: getMarketClock().wallStreetOpen,
         // What the trade was worth: the order's own USD value, else the amount picked.
@@ -608,12 +614,18 @@ function BasketView(props: {
       // bought: counting it as a single purchase would under-report the
       // player who buys the whole sector at once.
       profileManager.bump("stocks-buys", okCount);
-      // No "game:swap" here on purpose: that event makes CityScene send a
-      // record_swap transaction signed by the MAIN wallet, so the player got a
-      // second popup (a devnet record) right after signing a real mainnet buy.
-      // Points still land through profileManager.recordSwap above. Restore the
-      // on-chain record once the pending redeploy ships the session-key record
-      // variant, which writes with no popup at all.
+      // Back on, 2026-10-28. This used to be commented out because the event
+      // made CityScene send a record_swap signed by the MAIN wallet, so a
+      // player got a second approval, for a devnet bookkeeping write, right
+      // after signing a real mainnet buy. recordAction now uses
+      // record_swap_session, which the session key signs: no popup, no fee,
+      // and it lands on the rollup the player is already on.
+      //
+      // ONE event for the whole order, not one per leg. swap_count counts
+      // trading ACTIONS, and a basket bought in a single press is one action
+      // however many stocks it touched. The per-stock tally is
+      // profileManager's job and it already has okCount.
+      emitGameEvent("game:swap");
       emitGameEvent("game:stock-trade", {
         side: "buy", basketId: basket.id,
         // Only the legs that actually landed.

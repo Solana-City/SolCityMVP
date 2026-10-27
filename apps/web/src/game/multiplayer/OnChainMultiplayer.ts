@@ -157,6 +157,8 @@ import {
   buildRecordBountyIx,
   buildRecordMiniGameSessionIx,
   buildRecordGameScoreSessionIx,
+  buildRecordSwapSessionIx,
+  buildRecordTransferSessionIx,
   buildInitializeHuntIx,
   buildClaimFindIx,
   isProgramDeployed,
@@ -1059,23 +1061,34 @@ export class OnChainMultiplayer {
   }
 
   /**
-   * Sends a record_swap / record_transfer / record_bounty transaction
-   * to the base layer when the program is deployed.
-   * Main wallet signs (one popup per action — acceptable since these are rare).
-   * Falls back to a no-op in simulation mode.
+   * Records a swap, a transfer or a bounty.
+   *
+   * Swap and transfer go through the SESSION-signed variants, which is why
+   * the stock exchange can emit `game:swap` again. The wallet-signed ones
+   * popped a second approval right after a real mainnet buy, asking a player
+   * to sign a devnet bookkeeping write to be told they had bought a stock,
+   * so both call sites were commented out instead. Session-signed costs no
+   * popup and no fee, and lands on the rollup the player is already on.
+   *
+   * Bounty still asks: the program has no `record_bounty_session`, and a
+   * bounty is rare enough that one approval is not the same insult.
    */
   async recordAction(kind: "swap" | "transfer" | "bounty"): Promise<void> {
     if (!this.wallet || !isProgramDeployed()) return;
 
-    const label = kind === "swap" ? "Record swap" : kind === "transfer" ? "Record transfer" : "Record bounty";
-    const logKind = kind === "swap" ? "swap" : kind === "transfer" ? "transfer" : "bounty";
-    const entry = transactionLog.record({ kind: logKind, layer: "base", label, status: "pending" });
+    if (kind !== "bounty") {
+      await this.recordActionSession(kind);
+      return;
+    }
+
+    // Bounty only past here, so no branching on kind: the other two left
+    // through the session path above.
+    const entry = transactionLog.record({
+      kind: "bounty", layer: "base", label: "Record bounty", status: "pending",
+    });
 
     try {
-      const ix =
-        kind === "swap"     ? buildRecordSwapIx(this.wallet) :
-        kind === "transfer" ? buildRecordTransferIx(this.wallet) :
-                              buildRecordBountyIx(this.wallet);
+      const ix = buildRecordBountyIx(this.wallet);
 
       const { blockhash } = await this.baseConnection.getLatestBlockhash();
       const tx = new Transaction({
@@ -1129,6 +1142,39 @@ export class OnChainMultiplayer {
       success, score, `${gameId} ${success ? "win" : "run"}${score ? ` · ${score}` : ""}`,
       "minigame", slot,
     );
+  }
+
+  /**
+   * The session-signed half of recordAction: no wallet, no popup, no fee.
+   *
+   * Sent on the seamless path, the rollup when delegated and base otherwise,
+   * and never the Magic Router, which hangs on sendRawTransaction. A failure
+   * is swallowed: this is a tally beside a trade that already happened, and
+   * it is not worth telling a player their purchase went wrong when it did
+   * not. The next one counts.
+   */
+  private async recordActionSession(kind: "swap" | "transfer"): Promise<void> {
+    const layer = this.useEphemeral ? "ephemeral" : "base";
+    const label = kind === "swap" ? "Record swap" : "Record transfer";
+    const entry = transactionLog.record({ kind, layer, label, status: "pending" });
+    try {
+      const sessionKey = this.sessionKeys.getSessionPublicKey();
+      const conn = this.useEphemeral ? this.ephemeralConnection : this.baseConnection;
+      const ix = kind === "swap"
+        ? buildRecordSwapSessionIx(this.wallet!, sessionKey)
+        : buildRecordTransferSessionIx(this.wallet!, sessionKey);
+      const tx = new Transaction().add(ix);
+      tx.feePayer = sessionKey;
+      tx.recentBlockhash = await this.getMoveBlockhash(layer);
+      this.sessionKeys.signTransaction(tx);
+      const sig = await OnChainMultiplayer.withTimeout(
+        conn.sendRawTransaction(tx.serialize(), { skipPreflight: true }), 6_000,
+      );
+      transactionLog.markConfirmed(entry.id, sig);
+    } catch (err: any) {
+      this.cachedMoveBlockhash = null;
+      transactionLog.markFailed(entry.id, err?.message ?? `${kind} record failed`);
+    }
   }
 
   /**

@@ -58,6 +58,8 @@ const DISC = {
   recordSwap:              ixDiscriminator("record_swap"),
   recordTransfer:          ixDiscriminator("record_transfer"),
   recordBounty:            ixDiscriminator("record_bounty"),
+  recordSwapSession:       ixDiscriminator("record_swap_session"),
+  recordTransferSession:   ixDiscriminator("record_transfer_session"),
   recordMiniGameSession:   ixDiscriminator("record_mini_game_session"),
   recordGameScoreSession:  ixDiscriminator("record_game_score_session"),
   changeOutfit:            ixDiscriminator("change_outfit"),
@@ -302,6 +304,44 @@ export function buildRecordSwapIx(authority: PublicKey): TransactionInstruction 
       { pubkey: authority, isSigner: true, isWritable: false },
     ],
     data: DISC.recordSwap,
+  });
+}
+
+/**
+ * The session-signed swap and transfer records.
+ *
+ * Same tallies as `record_swap` / `record_transfer`, signed by the session
+ * key instead of the wallet, which is the whole point: the main-wallet
+ * version popped a second approval right after a real mainnet buy, so the
+ * stock exchange stopped emitting the event rather than ask twice.
+ */
+export function buildRecordSwapSessionIx(
+  playerWallet: PublicKey,
+  sessionKey: PublicKey,
+): TransactionInstruction {
+  const [playerPda] = derivePlayerPDA(playerWallet);
+  return new TransactionInstruction({
+    programId: SOL_CITY_PROGRAM_ID,
+    keys: [
+      { pubkey: playerPda, isSigner: false, isWritable: true },
+      { pubkey: sessionKey, isSigner: true, isWritable: false },
+    ],
+    data: DISC.recordSwapSession,
+  });
+}
+
+export function buildRecordTransferSessionIx(
+  playerWallet: PublicKey,
+  sessionKey: PublicKey,
+): TransactionInstruction {
+  const [playerPda] = derivePlayerPDA(playerWallet);
+  return new TransactionInstruction({
+    programId: SOL_CITY_PROGRAM_ID,
+    keys: [
+      { pubkey: playerPda, isSigner: false, isWritable: true },
+      { pubkey: sessionKey, isSigner: true, isWritable: false },
+    ],
+    data: DISC.recordTransferSession,
   });
 }
 
