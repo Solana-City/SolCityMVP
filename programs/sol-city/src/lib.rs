@@ -2,9 +2,11 @@ use anchor_lang::prelude::*;
 use mpl_bubblegum::instructions::MintToCollectionV1Cpi;
 use mpl_bubblegum::instructions::MintToCollectionV1InstructionArgs;
 use mpl_bubblegum::types::{
-    Collection as BubblegumCollection, Creator as BubblegumCreator, MetadataArgs,
+    Collection as BubblegumCollection, Creator as BubblegumCreator, LeafSchema, MetadataArgs,
     TokenProgramVersion, TokenStandard,
 };
+use mpl_bubblegum::hash::{hash_creators, hash_metadata};
+use mpl_bubblegum::utils::get_asset_id;
 use anchor_lang::solana_program::{
     pubkey,
     program::{invoke, invoke_signed},
@@ -191,6 +193,20 @@ pub const WEIGHT_TOTAL: u16 = 10_000;
 
 pub const BOOSTER_PACK_SIZE: usize = 5;
 /// Price to open an outfit box (0.025 SOL, about $2.50 at $100/SOL).
+/// SPL Account Compression, where the Bubblegum tree lives.
+///
+/// Called by hand-rolled CPI rather than taking the crate: version 1.0.0 wants
+/// anchor-lang 0.31 and solana-program 2, and 0.4.2 wants anchor 0.29, so
+/// either would put a second anchor-lang in the tree beside our 0.30.1.
+/// `verify_leaf` is a discriminator, a root, a leaf and an index, which is
+/// less to get wrong than two Anchors in one build.
+pub const ACCOUNT_COMPRESSION_ID: Pubkey =
+    pubkey!("cmtDvXumGCrqC1Age74AVPhSRVXJMd8PJS91L8KbNCK");
+
+/// Anchor discriminator for the compression program's `verify_leaf`:
+/// the first 8 bytes of sha256("global:verify_leaf").
+pub const VERIFY_LEAF_DISCRIMINATOR: [u8; 8] = [124, 220, 22, 223, 104, 10, 250, 224];
+
 /// SPL Token. The payment CPI is hand-rolled against it, like the delegation
 /// and VRF ones above, so this program still depends on `anchor-lang` alone.
 pub const TOKEN_PROGRAM_ID: Pubkey = pubkey!("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
@@ -395,6 +411,10 @@ pub enum SolCityError {
     // any client matching on a code starts reporting the wrong thing.
     #[msg("They need to visit the city once before they can be invited")]
     FriendNotCitizen,
+    #[msg("That asset is not the cosmetic being claimed")]
+    AssetIsNotThatItem,
+    #[msg("This wallet already owns that cosmetic")]
+    AlreadyOwned,
 }
 
 /// Truncates a string to at most `max` BYTES on a char boundary, so a
@@ -2157,6 +2177,122 @@ pub mod sol_city {
         Ok(())
     }
 
+    /// Grants a cosmetic to the wallet that can prove it holds the asset.
+    ///
+    /// ── Why this has to exist ────────────────────────────────────────────
+    ///
+    /// `mint_unlock` leaves the seller's grant in place, so a sold cosmetic
+    /// stays wearable by the person who sold it. That is a deliberate and
+    /// accepted leak. What is NOT acceptable is the other half: without this,
+    /// the BUYER holds an asset the wardrobe has never heard of, and a
+    /// tradable item that the game refuses to put on your head is a JPEG.
+    ///
+    /// ── What it proves, and what it does not ─────────────────────────────
+    ///
+    /// Three things have to be true together, and none of them is taken on
+    /// trust:
+    ///
+    ///   1. The metadata passed in really is this catalog index. Checked by
+    ///      rebuilding the URI from the config's immutable base and comparing.
+    ///      Without this, somebody holding ANY asset in the tree could claim
+    ///      ANY cosmetic.
+    ///   2. The leaf built from that metadata, owned by the CALLER, is in the
+    ///      tree. Checked by the compression program against the proof.
+    ///   3. The tree is ours. Checked against the config.
+    ///
+    /// The caller passes the metadata rather than the program storing it,
+    /// because the leaf only commits to a HASH of it: the chain cannot tell
+    /// which cosmetic an asset is without being shown the preimage.
+    ///
+    /// It is a snapshot, not a subscription. A later sale does not take the
+    /// grant back, for the same reason the seller keeps theirs: there is no
+    /// moment at which this program hears about it.
+    pub fn claim_owned_from_asset(
+        ctx: Context<ClaimOwnedFromAsset>,
+        index: u16,
+        root: [u8; 32],
+        nonce: u64,
+        leaf_index: u32,
+        metadata: MetadataArgs,
+    ) -> Result<()> {
+        let cfg = &ctx.accounts.mint_config;
+        require_keys_eq!(
+            ctx.accounts.merkle_tree.key(), cfg.merkle_tree, SolCityError::WrongMintTarget
+        );
+        require!(
+            !ctx.accounts.unlock_state.owns(index),
+            SolCityError::AlreadyOwned
+        );
+
+        // (1) This metadata is that cosmetic. The URI is built the same way
+        // mint_unlock built it, from a base that cannot change.
+        let expected_uri = format!("{}{}.json", cfg.base_uri, index);
+        require!(metadata.uri == expected_uri, SolCityError::AssetIsNotThatItem);
+
+        // (2) A leaf owned by the caller, carrying that metadata, is in the
+        // tree. Both hashes come from the metadata itself, so a caller cannot
+        // name an asset they do not hold without also forging the proof.
+        let data_hash = hash_metadata(&metadata)?;
+        let creator_hash = hash_creators(&metadata.creators);
+        let tree = ctx.accounts.merkle_tree.key();
+        let leaf = LeafSchema::V1 {
+            id: get_asset_id(&tree, nonce),
+            owner: ctx.accounts.claimer.key(),
+            delegate: ctx.accounts.claimer.key(),
+            nonce,
+            data_hash,
+            creator_hash,
+        }
+        .hash();
+
+        let mut data = Vec::with_capacity(8 + 32 + 32 + 4);
+        data.extend_from_slice(&VERIFY_LEAF_DISCRIMINATOR);
+        data.extend_from_slice(&root);
+        data.extend_from_slice(&leaf);
+        data.extend_from_slice(&leaf_index.to_le_bytes());
+
+        // The proof arrives as remaining accounts: one node per tree level
+        // that the canopy does not already hold.
+        let mut metas = vec![SolAccountMeta::new_readonly(tree, false)];
+        let mut infos = vec![ctx.accounts.merkle_tree.to_account_info()];
+        for node in ctx.remaining_accounts.iter() {
+            metas.push(SolAccountMeta::new_readonly(node.key(), false));
+            infos.push(node.clone());
+        }
+        infos.push(ctx.accounts.compression_program.to_account_info());
+        invoke(
+            &SolInstruction { program_id: ACCOUNT_COMPRESSION_ID, accounts: metas, data },
+            &infos,
+        )?;
+
+        // Room first, funded by the claimer, then the grant.
+        {
+            let info = ctx.accounts.unlock_state.to_account_info();
+            let needed = UnlockState::size_for(
+                ctx.accounts.unlock_state.owned.len() + 1,
+                ctx.accounts.unlock_state.minted.len(),
+            );
+            if info.data_len() < needed {
+                let rent = SolanaRent::get()?;
+                let topup = rent.minimum_balance(needed).saturating_sub(info.lamports());
+                if topup > 0 {
+                    invoke(
+                        &system_instruction::transfer(ctx.accounts.claimer.key, info.key, topup),
+                        &[
+                            ctx.accounts.claimer.to_account_info(),
+                            info.clone(),
+                            ctx.accounts.system_program.to_account_info(),
+                        ],
+                    )?;
+                }
+                info.realloc(needed, false)?;
+            }
+        }
+        let unlocks = &mut ctx.accounts.unlock_state;
+        unlocks.insert_owned(index);
+        Ok(())
+    }
+
     /// Moves the open season. This is how a season opens, and how the one
     /// before it closes: one number, and every earlier season stops selling.
     ///
@@ -3005,6 +3141,33 @@ pub struct MintUnlock<'info> {
     pub token_metadata_program: UncheckedAccount<'info>,
     /// CHECK: Bubblegum itself, the program being called.
     pub bubblegum_program: UncheckedAccount<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+/// Claiming the grant for an asset this wallet holds.
+///
+/// The merkle proof arrives as remaining accounts, one node per tree level the
+/// canopy does not cover, so the account list here stops at what this program
+/// itself reads.
+#[derive(Accounts)]
+pub struct ClaimOwnedFromAsset<'info> {
+    #[account(mut)]
+    pub claimer: Signer<'info>,
+    #[account(
+        mut,
+        seeds = [UNLOCKS_SEED, claimer.key().as_ref()],
+        bump,
+        constraint = unlock_state.authority == claimer.key() @ SolCityError::WrongUnlockOwner,
+    )]
+    pub unlock_state: Account<'info, UnlockState>,
+    #[account(seeds = [MINT_CONFIG_SEED], bump)]
+    pub mint_config: Account<'info, MintConfig>,
+    /// CHECK: address-checked against mint_config.merkle_tree.
+    pub merkle_tree: UncheckedAccount<'info>,
+    /// CHECK: SPL Account Compression, pinned by address. It is what actually
+    /// decides whether the proof holds.
+    #[account(address = ACCOUNT_COMPRESSION_ID)]
+    pub compression_program: UncheckedAccount<'info>,
     pub system_program: Program<'info, System>,
 }
 
