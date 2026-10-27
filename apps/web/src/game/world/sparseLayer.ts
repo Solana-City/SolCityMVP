@@ -112,6 +112,37 @@ export const SPARSE_MAX_TILES = 1000;
  *  is culled on its own, so only the chunks near the camera are drawn. */
 export const GROUND_CHUNK_TILES = 16;
 
+
+/**
+ * The same question for a layer that stayed a TILEMAP: does what it paints at
+ * this world point actually cover anything?
+ *
+ * A layer with collision never becomes a SparseLayer (CityScene keeps those as
+ * tilemaps), so every collidable building kept the older test, "is there a
+ * tile here". A building sliced into a rectangle answers yes over its own
+ * empty corners, which is why one could fade itself out while the player stood
+ * beside it in plain sight.
+ */
+export function tileOpaqueAt(layer: CityLayer, worldX: number, worldY: number): boolean {
+  // CityLayer keeps the return loose so a SparseLayer can satisfy it; the one
+  // caller only ever passes a real tilemap layer, which returns a real Tile.
+  const tile = layer.getTileAtWorldXY(worldX, worldY) as Phaser.Tilemaps.Tile | null;
+  if (!tile || tile.index <= 0) return false;
+  const ts = tile.tileset;
+  if (!ts) return true;
+  const mask = opaqueMask(ts, tile.index);
+  if (!mask) return true; // cannot read the pixels: keep the tile-level answer
+  const baseX = layer.tileToWorldX(tile.x);
+  const baseY = layer.tileToWorldY(tile.y);
+  if (baseX === null || baseY === null) return true;
+  let lx = Math.floor(worldX - (baseX - ts.tileOffset.x));
+  let ly = Math.floor(worldY - (baseY - ts.tileOffset.y));
+  if (lx < 0 || ly < 0 || lx >= ts.tileWidth || ly >= ts.tileHeight) return false;
+  if (tile.flipX) lx = ts.tileWidth - 1 - lx;
+  if (tile.flipY) ly = ts.tileHeight - 1 - ly;
+  return mask[ly * ts.tileWidth + lx] === 1;
+}
+
 export class SparseLayer implements CityLayer {
   readonly layer: { name: string };
   readonly visible = true;

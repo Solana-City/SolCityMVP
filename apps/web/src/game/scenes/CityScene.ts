@@ -54,7 +54,7 @@ import { PumpkinField } from "../world/PumpkinField";
 import { isHalloweenOn } from "@/game/halloween/event";
 import { readLastPosition, saveLastPosition } from "../world/lastPosition";
 import { buildPhysicsLayer, mergeGroundRun } from "../world/mergeLayers";
-import { SparseLayer, SPARSE_MAX_TILES, GROUND_CHUNK_TILES, type CityLayer } from "../world/sparseLayer";
+import { SparseLayer, SPARSE_MAX_TILES, GROUND_CHUNK_TILES, tileOpaqueAt, type CityLayer } from "../world/sparseLayer";
 import { bakeStaticLayers, type BakedGround } from "../world/groundBake";
 import { LANDMARK_LAYERS } from "../minimap/categories";
 import { cachedName, onNames, requestNames, NAME_CHANGED_EVENT } from "../names/nameService";
@@ -1615,9 +1615,18 @@ export class CityScene extends Phaser.Scene {
         if (layer instanceof SparseLayer) { layer.updateFade(px, py); continue; }
         // Layer is "overhead" only when it draws above the player's depth.
         const isAbove = layer.depth > py;
+        // Having a TILE over the player is not the same as hiding them. A
+        // building sliced into a rectangle carries fully transparent tiles
+        // across its own empty corners, and testing the tile alone let one
+        // fade itself out while the player stood beside it in plain sight.
+        // Same four points, and the same pixel test, the SparseLayer path has
+        // always used; it is only collidable layers that never got here,
+        // because those are the ones kept as tilemaps.
         const covers = isAbove && (
-          layer.getTileAtWorldXY(px, py - TILE_SIZE) !== null ||
-          layer.getTileAtWorldXY(px, py - TILE_SIZE * 1.5) !== null
+          tileOpaqueAt(layer, px, py - TILE_SIZE) ||
+          tileOpaqueAt(layer, px - 6, py - TILE_SIZE) ||
+          tileOpaqueAt(layer, px + 6, py - TILE_SIZE) ||
+          tileOpaqueAt(layer, px, py - TILE_SIZE * 1.5)
         );
         const target = covers ? 0.25 : 1.0;
         if (Math.abs(layer.alpha - target) > 0.004) {
