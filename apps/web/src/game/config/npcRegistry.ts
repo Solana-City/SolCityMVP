@@ -727,8 +727,8 @@ const NPC_SEEDS: NPCSeed[] = [
     tileX: 40,
     tileY: 21,
     dialog: [
-      "Greetings, stranger. Welcome to the art universe of DOM: Home's Journey.",
-      "Home's Journey is a sci-fi folk horror universe where ancient mysteries, forgotten worlds and wandering souls intertwine.",
+      "Greetings, stranger. Get to know the Art Universe created by the artist DOM: Home's Journey.",
+      "Home's Journey is a sci-fi folk horror universe where ancient mysteries, Forgotten Worlds, and wandering souls intertwine.",
     ],
     highlights: [
       { label: "HOME TRAVELERS" },
