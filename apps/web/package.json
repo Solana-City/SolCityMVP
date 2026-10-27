@@ -25,9 +25,9 @@
     "@solana-mobile/wallet-standard-mobile": "^0.5.2",
     "@solana/spl-token": "^0.4.6",
     "@solana/wallet-adapter-base": "^0.9.23",
+    "@solana/wallet-adapter-phantom": "^0.9.29",
     "@solana/wallet-adapter-react": "^0.15.35",
     "@solana/wallet-adapter-react-ui": "^0.9.35",
-    "@solana/wallet-adapter-phantom": "^0.9.29",
     "@solana/wallet-adapter-solflare": "^0.6.33",
     "@solana/web3.js": "^1.95.0",
     "buffer": "^6.0.3",
@@ -38,6 +38,8 @@
     "tweetnacl": "^1.0.3"
   },
   "devDependencies": {
+    "@metaplex-foundation/mpl-bubblegum": "^0.8.0",
+    "@solana/spl-account-compression": "^0.4.1",
     "@types/node": "^20.0.0",
     "@types/react": "^18.3.0",
     "@types/react-dom": "^18.3.0",
