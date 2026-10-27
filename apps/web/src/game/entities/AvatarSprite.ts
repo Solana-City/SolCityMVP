@@ -438,21 +438,9 @@ export class AvatarSprite {
     return { ...this.currentLoadout };
   }
 
-  /** Name tags that ride just above the head and follow outfit changes. */
-  private labels: Phaser.GameObjects.Text[] = [];
-  /** Buff icons that ride above the name tags (see attachBadge). */
+  /** Buff icons that ride above the name tag (see attachBadge). */
   private badges: Phaser.GameObjects.Image[] = [];
   private static inkTopCache = new Map<string, number>();
-
-  /**
-   * Keep a text label a small, fixed gap above the top of the outfit (the
-   * tallest of hair, hat and body in the down-facing frame), so a tall hat
-   * never sits under the name and a bare head doesn't leave it floating.
-   */
-  attachLabel(label: Phaser.GameObjects.Text): void {
-    this.labels.push(label);
-    this.seatOverhead();
-  }
 
   /**
    * A small icon that sits above the name tag rather than beside it: the
@@ -462,6 +450,21 @@ export class AvatarSprite {
   attachBadge(badge: Phaser.GameObjects.Image): void {
     this.badges.push(badge);
     this.seatOverhead();
+  }
+
+  /**
+   * Local Y a name tag sits at: a small, fixed gap above the top of the
+   * outfit (the tallest of hair, hat and body in the down-facing frame), so a
+   * tall hat never sits under the name and a bare head does not leave it
+   * floating.
+   *
+   * A player's tag is NOT a child of the container. It has to draw over the
+   * buildings, and a container's children sort inside it, at the container's
+   * own depth, so CityScene keeps it at a depth of its own and reads this
+   * every frame to place it.
+   */
+  labelSeatY(): number {
+    return this.headTopY() - LABEL_GAP;
   }
 
   /**
@@ -486,24 +489,23 @@ export class AvatarSprite {
    * name (see ExpressionFx).
    */
   overheadTopY(): number {
-    let top = this.headTopY();
-    for (const label of this.labels ?? []) {
-      if (!label.visible || !label.active) continue;
-      top = Math.min(top, label.y - NAME_HEIGHT);
-    }
+    // The name tag is no longer a child to measure (see labelSeatY), but it
+    // is always there and always NAME_HEIGHT tall, so its top is a
+    // calculation now instead of a lookup.
+    let top = Math.min(this.headTopY(), this.labelSeatY() - NAME_HEIGHT);
     const badgeTop = this.badgeTopY();
     if (badgeTop !== null) top = Math.min(top, badgeTop);
     return top;
   }
 
   /**
-   * Re-seats the name tags on the outfit and the badges on top of them. The
-   * name is a 5px font: NAME_HEIGHT is that plus its stroke and a pixel of
-   * air, which is cheaper and steadier than measuring a Text every frame.
+   * Re-seats the badges over the outfit, leaving room for the name tag that
+   * rides above it. The name is a 5px font: NAME_HEIGHT is that plus its
+   * stroke and a pixel of air, which is cheaper and steadier than measuring a
+   * Text every frame.
    */
   private seatOverhead(): void {
     const y = this.headTopY() - LABEL_GAP;
-    for (const label of this.labels ?? []) if (label.active) label.setY(y);
     for (const badge of this.badges ?? []) if (badge.active) badge.setY(y - NAME_HEIGHT);
   }
 

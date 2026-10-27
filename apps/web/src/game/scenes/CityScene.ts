@@ -18,6 +18,16 @@ import { BUFFS, MAX_SPEED_MULTIPLIER, activeBuff, activeBuffIndex, buffByIndex, 
 const TRADE_COLOR = "#FFB547";
 
 /**
+ * Depth a player's name tag draws at: over every map layer (the foreground
+ * sits at 10000) and under the chat bubbles that have to clear it (20000).
+ *
+ * A name is how you tell who somebody is, so it is the one part of a player
+ * that a building is never allowed to cover. Everything else about them still
+ * sorts normally, which is why this is the tag alone and not the avatar.
+ */
+const NAME_DEPTH = 15000;
+
+/**
  * Friendly names for the ?at= deep link, so a shared link can read
  * ?at=stocklana instead of an internal NPC id. Any NPC id also works as is.
  */
@@ -133,6 +143,8 @@ export class CityScene extends Phaser.Scene {
   private remoteDust = new Map<string, { lastX: number; lastY: number; lastDustAt: number }>();
   private nameLabels = new Map<string, Phaser.GameObjects.Text>();
   private activeBubbles = new Map<string, ChatBubble>();
+  /** The local player's name tag. Drawn over the map, not inside the avatar. */
+  private youLabel: Phaser.GameObjects.Text | null = null;
   /** Buff badge per remote wallet, so an arriving flag can toggle it. */
   private remoteBuffBadges = new Map<string, Phaser.GameObjects.Image>();
   // Debounce "entered the city" — wallet reconnects clear knownPlayers and
@@ -718,7 +730,7 @@ export class CityScene extends Phaser.Scene {
     this.cameras.main.setBounds(0, 0, map.widthInPixels, map.heightInPixels);
 
     // Own name tag: the nickname once there is one ("YOU" until then), small
-    // and seated just above the outfit (AvatarSprite.attachLabel).
+    // and seated just above the outfit (AvatarSprite.labelSeatY).
     const youLabel = this.add.text(0, -34, "YOU", {
       fontSize: "5px", fontFamily: '"Press Start 2P", monospace',
       color: "#14F195", align: "center",
@@ -726,8 +738,12 @@ export class CityScene extends Phaser.Scene {
       stroke: "#0a0a1e",
       strokeThickness: 2,
     }).setOrigin(0.5, 1);
-    container.add(youLabel);
-    this.avatar.attachLabel(youLabel);
+    // NOT added to the container: a name has to stay readable over whatever
+    // the player is standing behind, and a container's children sort inside
+    // it, at the container's own depth. It rides at NAME_DEPTH instead and is
+    // placed every frame by followNameLabel.
+    youLabel.setDepth(NAME_DEPTH);
+    this.youLabel = youLabel;
 
     // Buff badge: the cup of whatever is running rides over the name. Buffs
     // are exclusive, so it is one badge that swaps its picture rather than a
@@ -1563,6 +1579,7 @@ export class CityScene extends Phaser.Scene {
     }
 
     this.avatar.updateDepth();
+    this.followNameLabel(this.youLabel, this.avatar);
 
     // ── Overhead fade ─────────────────────────────────────────────────────
     // Fade a layer only while it actually HIDES the player: it has to draw
@@ -1681,6 +1698,7 @@ export class CityScene extends Phaser.Scene {
       const target = this.remoteTarget.get(wallet);
       if (target) this.followRemote(remote, target, followDt, followNow);
       remote.updateDepth();
+      this.followNameLabel(this.nameLabels.get(wallet) ?? null, remote);
       const c = remote.getContainer();
       const prev = this.remoteDust.get(wallet);
       if (prev) {
@@ -1950,8 +1968,8 @@ export class CityScene extends Phaser.Scene {
       stroke: "#0a0a1e",
       strokeThickness: 2,
     }).setOrigin(0.5, 1);
-    avatar.getContainer().add(label);
-    avatar.attachLabel(label);
+    // Over the buildings, like the local player's. See youLabel.
+    label.setDepth(NAME_DEPTH);
     this.nameLabels.set(wallet, label);
 
     // Their buff badge, from the bit they packed into the direction byte.
@@ -2324,6 +2342,20 @@ export class CityScene extends Phaser.Scene {
       avatar.setExpression(null);
       this.remoteExprTimers.delete(wallet);
     }));
+  }
+
+  /**
+   * Puts a name tag where its owner is. The tag draws at NAME_DEPTH rather
+   * than inside the avatar's container, so it has to be moved by hand, and it
+   * follows the container's visibility: an off-screen player is culled, and a
+   * floating name would be the one thing left of them.
+   */
+  private followNameLabel(label: Phaser.GameObjects.Text | null, avatar: AvatarSprite): void {
+    if (!label) return;
+    const c = avatar.getContainer();
+    label.setVisible(c.visible);
+    if (!c.visible) return;
+    label.setPosition(c.x, c.y + avatar.labelSeatY());
   }
 
   private showBubble(
