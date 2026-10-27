@@ -1599,9 +1599,10 @@ export class CityScene extends Phaser.Scene {
       // all drawn wherever they stood on the map.
       for (const npc of this.npcSprites) {
         cullContainer(npc.getContainer(), view, CHARACTER_PAD);
-        // Their tags draw over the map too, so they are placed here rather
-        // than carried by the container. See NPCSprite.syncNameLabel.
-        npc.syncNameLabel();
+        // Their name, "!" and prompt draw over the map too, so they are
+        // placed here rather than carried by the container. See
+        // NPCSprite.syncOverhead.
+        npc.syncOverhead();
       }
       for (const avatar of this.remotePlayers.values()) {
         const c = avatar.getContainer();

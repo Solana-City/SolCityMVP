@@ -61,8 +61,18 @@ export class NPCSprite {
   private exclamationBg: Phaser.GameObjects.Arc | null = null;
   private exclamationText: Phaser.GameObjects.Text | null = null;
   private nameText: Phaser.GameObjects.Text;
-  /** Local Y the name tag sits at, since it is not carried by the container. */
-  private nameSeatY = 0;
+  /**
+   * Everything that rides over this NPC's head: the name, the "!" and the
+   * talk prompt.
+   *
+   * A container of its own, NOT a child of the avatar's. A container's
+   * children sort inside it, at the container's own depth, so a building in
+   * front of the NPC covered all three along with them. This one draws at
+   * NAME_DEPTH, over the map, and syncOverhead walks it to wherever the NPC
+   * is. Every child keeps the local position it always had, which is what
+   * lets the "!" keep bobbing on its own tween.
+   */
+  private overhead: Phaser.GameObjects.Container;
   private promptText: Phaser.GameObjects.Text;
   private _isInRange = false;
   private bubble: ChatBubble | null = null;
@@ -166,13 +176,8 @@ export class NPCSprite {
       stroke: "#0a0a1e",
       strokeThickness: 3,
     }).setOrigin(0.5, 1);
-    // NOT added to the container: a container's children sort inside it, at
-    // the container's own depth, so a building in front of the NPC covered
-    // their name along with them. The tag rides over the map instead and is
-    // placed every frame by syncNameLabel.
-    this.nameSeatY = nameY;
-    this.nameText.setDepth(NAME_DEPTH);
-    this.syncNameLabel();
+    this.overhead = scene.add.container(0, 0).setDepth(NAME_DEPTH);
+    this.overhead.add(this.nameText);
 
     // ── Exclamation ──────────────────────────────────────────────────────────
     const balloonKey = `attention-${npcCategory(def)}`;
@@ -203,7 +208,7 @@ export class NPCSprite {
       }).setOrigin(0.5, 0.5);
       this.exclamation = scene.add.container(0, exclamationY, [this.exclamationBg, this.exclamationText]);
     }
-    container.add(this.exclamation);
+    this.overhead.add(this.exclamation);
 
     // The drawn mark bobs on its own, so only the primitive fallback needs a
     // tween to move it. Both together was two bobs fighting each other.
@@ -242,7 +247,7 @@ export class NPCSprite {
       stroke: "#000000",
       strokeThickness: 4,
     }).setOrigin(0.5, 0.5).setVisible(false);
-    container.add(this.promptText);
+    this.overhead.add(this.promptText);
 
     // ── Hit zone ─────────────────────────────────────────────────────────────
     // Transparent rectangle over the NPC sprite and its name. Clicking or
@@ -269,6 +274,10 @@ export class NPCSprite {
     }
 
     container.setDepth(y);
+    // Seed the overhead stack where the NPC actually is. Without this it sits
+    // at the map origin until the first frame places it, which is a flash of
+    // every NPC's name piled in the top left corner.
+    this.syncOverhead();
     // Static animated NPCs (spriteAnimation set) stay put, facing south,
     // playing their idle-loop animation — no wandering to layer on top.
     if (!def.spriteAnimation) {
@@ -330,22 +339,22 @@ export class NPCSprite {
   }
 
   /**
-   * Puts the name tag where this NPC is. It draws at NAME_DEPTH rather than
-   * inside the container, so it has to be moved by hand, and it follows the
-   * container's visibility: an off-screen NPC is culled, and a floating name
-   * would be the one thing left of them.
+   * Walks the overhead container to wherever this NPC is. It draws at
+   * NAME_DEPTH rather than inside the avatar's container, so it has to be
+   * moved by hand, and it follows that container's visibility: an off-screen
+   * NPC is culled, and a floating name would be the one thing left of them.
    */
-  syncNameLabel(): void {
+  syncOverhead(): void {
     const c = this.getContainer();
-    this.nameText.setVisible(c.visible);
+    this.overhead.setVisible(c.visible);
     if (!c.visible) return;
-    this.nameText.setPosition(c.x, c.y + this.nameSeatY);
+    this.overhead.setPosition(c.x, c.y);
   }
 
   destroy(): void {
     if (this.unsubBus) { this.unsubBus(); this.unsubBus = null; }
-    // The tag is not a child, so the container's destroy does not take it.
-    this.nameText.destroy();
+    // Not a child of the avatar's container, so its destroy does not take it.
+    this.overhead.destroy();
     this.avatar.destroy();
   }
 
