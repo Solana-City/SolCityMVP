@@ -370,12 +370,15 @@ export default function Home() {
   const handleMiniGameResult = useCallback(async (result: MiniGameResult) => {
     // The id rides along so the scene can tell WHICH game was won — the
     // Superteam Brasil cap is a Kite Clash reward, not a reward for any win.
-    game?.events.emit("minigame:result", { id: activeMiniGame?.id, success: result.success });
+    // The score is worked out BEFORE the emit now, because the scene puts it
+    // on chain: game_bests keeps a best per game and a result without its
+    // number would record a zero over a real record.
+    const meta = result.metadata ?? {};
+    const score = typeof meta.score === "number"
+      ? meta.score
+      : typeof meta.completedOrders === "number" ? meta.completedOrders : 0;
+    game?.events.emit("minigame:result", { id: activeMiniGame?.id, success: result.success, score });
     if (activeMiniGame?.id) {
-      const meta = result.metadata ?? {};
-      const score = typeof meta.score === "number"
-        ? meta.score
-        : typeof meta.completedOrders === "number" ? meta.completedOrders : 0;
       track("minigame", activeMiniGame.id, {
         value: score,
         success: result.success,

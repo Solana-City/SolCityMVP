@@ -1366,8 +1366,13 @@ export class CityScene extends Phaser.Scene {
       this.interactionBlocked = false;
     });
     // Record result to ephemeral rollup via session key — no wallet popup.
-    this.onGameEvent("minigame:result", ({ id, success }: { id?: string; success: boolean }) => {
-      this.network?.recordMiniGame(success);
+    this.onGameEvent("minigame:result", (
+      { id, success, score = 0 }: { id?: string; success: boolean; score?: number },
+    ) => {
+      // One write, which keeps the per-game best as well as awarding the win.
+      // Without an id there is no slot to file the score under, so the run is
+      // worth points but not a record.
+      this.network?.recordGameScore(id ?? "", score, success);
       if (id) onMiniGameFinished(id, success);
     });
 

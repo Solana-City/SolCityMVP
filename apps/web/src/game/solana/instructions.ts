@@ -59,6 +59,7 @@ const DISC = {
   recordTransfer:          ixDiscriminator("record_transfer"),
   recordBounty:            ixDiscriminator("record_bounty"),
   recordMiniGameSession:   ixDiscriminator("record_mini_game_session"),
+  recordGameScoreSession:  ixDiscriminator("record_game_score_session"),
   changeOutfit:            ixDiscriminator("change_outfit"),
   updateLookSession:       ixDiscriminator("update_look_session"),
   commitPlayerSession:     ixDiscriminator("commit_player_session"),
@@ -346,6 +347,41 @@ export function buildRecordMiniGameSessionIx(
     DISC.recordMiniGameSession,
     Buffer.from([success ? 1 : 0]),  // bool as u8
     packU32LE(Math.max(0, scoreDelta)),
+  ]);
+  return new TransactionInstruction({
+    programId: SOL_CITY_PROGRAM_ID,
+    keys: [
+      { pubkey: playerPda, isSigner: false, isWritable: true },
+      { pubkey: sessionKey, isSigner: true, isWritable: false },
+    ],
+    data,
+  });
+}
+
+/**
+ * `record_game_score_session(game, score, success)`.
+ *
+ * Supersedes `record_mini_game_session` rather than joining it. The program
+ * side of this one already does everything the older instruction did, the
+ * flat MINI_GAME_WIN_POINTS and the bounty bump, and keeps the per-game best
+ * on top. Sending both would pay a player twice for one match.
+ *
+ * `game` is a slot in `PlayerState.game_bests`, not a name. See
+ * game/minigames/slots.ts for why that table may only be appended to.
+ */
+export function buildRecordGameScoreSessionIx(
+  playerWallet: PublicKey,
+  sessionKey: PublicKey,
+  game: number,
+  score: number,
+  success: boolean,
+): TransactionInstruction {
+  const [playerPda] = derivePlayerPDA(playerWallet);
+  const data = Buffer.concat([
+    DISC.recordGameScoreSession,
+    Buffer.from([game & 0xff]),
+    packU32LE(Math.max(0, Math.round(score))),
+    Buffer.from([success ? 1 : 0]),
   ]);
   return new TransactionInstruction({
     programId: SOL_CITY_PROGRAM_ID,

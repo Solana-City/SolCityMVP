@@ -156,6 +156,7 @@ import {
   buildRecordTransferIx,
   buildRecordBountyIx,
   buildRecordMiniGameSessionIx,
+  buildRecordGameScoreSessionIx,
   buildInitializeHuntIx,
   buildClaimFindIx,
   isProgramDeployed,
@@ -173,6 +174,7 @@ import { hairColorAtIndex, hairColorIndex } from "../config/hairPalette";
 import { ER_VALIDATORS, probeValidators, nearestValidator } from "./erValidators";
 import { globalIndexOf, itemAtGlobalIndex } from "@/game/config/catalogIndex";
 import { setOnChainUnlocks } from "@/game/config/wardrobeUnlocks";
+import { gameSlotOf, GAME_SLOT_CAP } from "@/game/minigames/slots";
 import type { LayerCategory } from "@/game/config/paperDoll";
 
 // ── Endpoints ──────────────────────────────────────────────────────────
@@ -359,6 +361,14 @@ export interface OnChainPlayer {
   /** Daily check-in streak, as the player last published it. */
   streakCurrent?: number;
   streakBest?: number;
+  /**
+   * Best score per mini-game, indexed by slot (game/minigames/slots.ts).
+   *
+   * Read off the same sweep as everything else, so a board costs no extra
+   * RPC: the account is already in hand and these are the last bytes before
+   * the unlock snapshot.
+   */
+  gameBests?: number[];
 }
 
 type PlayerCallback  = (wallet: string, player: OnChainPlayer) => void;
@@ -1089,9 +1099,35 @@ export class OnChainMultiplayer {
    * sendRawTransaction (that silently dropped every mini-game record).
    * Falls back to transactionLog simulation when program is not deployed.
    */
-  async recordMiniGame(success: boolean): Promise<void> {
+  /**
+   * One finished mini-game run, best score and all.
+   *
+   * This replaced `recordMiniGame(success)`, which sent
+   * `record_mini_game_session` and threw the score away. The program had
+   * carried `game_bests` and `record_game_score_session` since the player_v3
+   * deploy and nothing had ever called them, so the boards stayed off chain
+   * for no reason but an unwritten client.
+   *
+   * ONE instruction, not two. The new one already awards the same flat win
+   * points and bumps bounty_count, so sending the old one beside it would pay
+   * twice for one match.
+   *
+   * A game with no slot still gets its win points, through the older
+   * instruction, but no record: filing its score under slot 0 by default
+   * would overwrite Food Cart's board with a stranger's number.
+   */
+  async recordGameScore(gameId: string, score: number, success: boolean): Promise<void> {
+    const slot = gameSlotOf(gameId);
+    if (slot < 0) {
+      console.warn(`[Multiplayer] no on-chain slot for mini-game "${gameId}", best not recorded`);
+      await this.recordScoreSession(
+        success, success ? 100 : 0, success ? "Mini-game win" : "Mini-game loss", "minigame",
+      );
+      return;
+    }
     await this.recordScoreSession(
-      success, success ? 100 : 0, success ? "Mini-game win" : "Mini-game loss", "minigame",
+      success, score, `${gameId} ${success ? "win" : "run"}${score ? ` · ${score}` : ""}`,
+      "minigame", slot,
     );
   }
 
@@ -1103,6 +1139,7 @@ export class OnChainMultiplayer {
    */
   private async recordScoreSession(
     success: boolean, scoreDelta: number, label: string, kind: "minigame" | "hunt",
+    gameSlot?: number,
   ): Promise<void> {
     const layer = this.useEphemeral ? "ephemeral" : "base";
     const entry = transactionLog.record({ kind, layer, label, status: "pending" });
@@ -1117,7 +1154,12 @@ export class OnChainMultiplayer {
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
         if (attempt === 1) this.cachedMoveBlockhash = null;
-        const ix = buildRecordMiniGameSessionIx(this.wallet, sessionKey, success, scoreDelta);
+        // The hunt has no board of its own, so it keeps the older
+        // instruction and its own score delta. A mini-game goes through the
+        // one that also keeps the best.
+        const ix = gameSlot === undefined
+          ? buildRecordMiniGameSessionIx(this.wallet, sessionKey, success, scoreDelta)
+          : buildRecordGameScoreSessionIx(this.wallet, sessionKey, gameSlot, scoreDelta, success);
         const tx = new Transaction().add(ix);
         tx.feePayer = sessionKey;
         tx.recentBlockhash = await this.getMoveBlockhash(layer);
@@ -2560,6 +2602,12 @@ export class OnChainMultiplayer {
       const achievementBits = readBytes(ACHIEVEMENT_BITS);
       const streakCurrent = readU16();
       const streakBest    = readU16();
+      // game_bests: [u32; 16]. Absent on a v2 account, which readBytes
+      // reports as null rather than reading past the end.
+      const bestsRaw = readBytes(GAME_SLOT_CAP * 4);
+      const gameBests = bestsRaw
+        ? Array.from({ length: GAME_SLOT_CAP }, (_, i) => bestsRaw.readUInt32LE(i * 4))
+        : null;
 
       // (self already returned above, right after the session->wallet line)
 
@@ -2654,6 +2702,17 @@ export class OnChainMultiplayer {
         if (streakCurrent !== updated.streakCurrent || streakBest !== updated.streakBest) {
           updated.streakCurrent = streakCurrent;
           updated.streakBest = streakBest;
+        }
+        // Compared as a joined string for the same reason the achievement
+        // bits are compared as base64: this runs for every player twice a
+        // second and allocating sixteen numbers to discover nothing moved is
+        // the kind of per-frame waste that put the city at 95% CPU once.
+        if (gameBests) {
+          const sig = gameBests.join(",");
+          if (sig !== (updated as any)._bestsSig) {
+            (updated as any)._bestsSig = sig;
+            updated.gameBests = gameBests;
+          }
         }
 
         // A kick of the beach football rides the chat field, tagged (see
