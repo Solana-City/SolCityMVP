@@ -355,10 +355,12 @@ const NPC_SEEDS: NPCSeed[] = [
     id: "kite-pro",
     name: "Kite Pro",
     role: "Kite Clash",
-    // Superteam Brazil zone — out on the open sand, south of the market
-    // stands, where there is vertical room for the kite.
-    tileX: 40,
-    tileY: 79,
+    // Superteam Brazil zone, out on the open sand south west of the market
+    // stands, where there is vertical room for the kite. Moved down and left
+    // from (40, 80) to the spot the owner marked. Clear sand: nothing but the
+    // ground is painted on this tile, so nothing can draw over him.
+    tileX: 35,
+    tileY: 81,
     dialog: [
       "Hey! Want to take a kite up and see who else is flying right now?",
       "Stay airborne to rack up points. The further out you let your line, the faster you score.",
