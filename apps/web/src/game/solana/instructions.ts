@@ -42,7 +42,7 @@ import { sha256 } from "@noble/hashes/sha256";
  * Mirrors Anchor's `sighash("global", ix_name)`: the first 8 bytes of
  * sha256("global:<snake_case_name>"). Stable across Anchor versions.
  */
-function ixDiscriminator(name: string): Buffer {
+export function ixDiscriminator(name: string): Buffer {
   const preimage = `global:${name}`;
   const digest = sha256(new TextEncoder().encode(preimage));
   return Buffer.from(digest.slice(0, 8));

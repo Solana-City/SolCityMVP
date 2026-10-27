@@ -28,6 +28,7 @@ import {
 } from "@/game/config/hairPalette";
 import { chamferBox, solidColor } from "@/ui/chamfer";
 import ChamferGlow from "@/ui/ChamferGlow";
+import MintSection from "@/ui/MintSection";
 import { useViewportBox, overlayBox } from "@/ui/useViewportBox";
 import { useEscape } from "@/ui/useEscape";
 import { removeChroma } from "@/ui/AvatarPortrait";
@@ -803,6 +804,11 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
               </div>
             </div>
           </div>
+
+          {/* Only appears once minting exists on chain: readMintConfig is
+              null until the collection and tree do, and a button that can
+              only fail is worse than no button. */}
+          <MintSection wallet={wallet} />
         </div>
 
         {confirmLeave && (
