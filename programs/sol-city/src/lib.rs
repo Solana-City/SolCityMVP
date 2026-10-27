@@ -527,7 +527,11 @@ fn citizen_authority(info: &AccountInfo) -> Pubkey {
         Ok(data) => data,
         Err(_) => return Pubkey::default(),
     };
-    if data.len() < 8 + 32 || data[..8] != PlayerState::DISCRIMINATOR {
+    // The trait, spelled out: it is NOT in the prelude at anchor-lang 0.30.1,
+    // whatever the write-up assumed.
+    if data.len() < 8 + 32
+        || data[..8] != <PlayerState as anchor_lang::Discriminator>::DISCRIMINATOR
+    {
         return Pubkey::default();
     }
     Pubkey::try_from(&data[8..40]).unwrap_or_default()
@@ -2207,8 +2211,12 @@ pub mod sol_city {
     /// It is a snapshot, not a subscription. A later sale does not take the
     /// grant back, for the same reason the seller keeps theirs: there is no
     /// moment at which this program hears about it.
-    pub fn claim_owned_from_asset(
-        ctx: Context<ClaimOwnedFromAsset>,
+    pub fn claim_owned_from_asset<'info>(
+        // One named lifetime, because this instruction mixes the proof from
+        // `remaining_accounts` with accounts from the struct, and
+        // UncheckedAccount is invariant over 'info: without it the two are
+        // different lifetimes that cannot be put in the same Vec.
+        ctx: Context<'_, '_, '_, 'info, ClaimOwnedFromAsset<'info>>,
         index: u16,
         root: [u8; 32],
         nonce: u64,
