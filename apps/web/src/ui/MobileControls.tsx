@@ -193,12 +193,13 @@ function edge(side: "left" | "right" | "bottom", tablet: boolean): string {
   return `max(env(safe-area-inset-${side}, 0px), ${off})`;
 }
 
-export default function MobileControls({ besideAct, raised = false }: {
+export default function MobileControls({ besideAct, raisedIndex }: {
   /** Buttons placed on the arc beside ACT, in ARC_ANGLES order. */
   besideAct?: ReactNode[];
-  /** Lift those buttons above the expression wheel's backdrop (z 45), so the
-      one that closes the wheel stays visible and tappable while it is open. */
-  raised?: boolean;
+  /** Lift this one button above the expression wheel's backdrop (z 45), so it
+      stays visible and tappable while the wheel is open. The rest stay under
+      the backdrop, dimmed and out of reach. */
+  raisedIndex?: number;
 }) {
   const [isTouch, setIsTouch] = useState(false);
   // A tablet is a touch screen whose SHORT side is big. The pads were placed
@@ -257,40 +258,39 @@ export default function MobileControls({ besideAct, raised = false }: {
         </div>
       </div>
 
-      {/* The arc beside ACT. A layer of its own, laid exactly over the button,
-          rather than inside the bar: the bar's z-index caps anything in it, and
-          `raised` has to lift these buttons alone above the wheel. */}
-      {besideAct && besideAct.length > 0 && (
-        <div
-          className="fixed pointer-events-none"
-          style={{
-            zIndex: raised ? 46 : 30,
-            right: edge("right", tablet),
-            bottom: edge("bottom", tablet),
-            width: actSize,
-            height: actSize,
-          }}
-        >
-          {besideAct.map((button, i) => {
-            const a = ((ARC_ANGLES[i] ?? 0) * Math.PI) / 180;
-            // Whole pixels, so the pixel-art icons are not resampled.
-            const x = Math.round(Math.cos(a) * ARC_RADIUS * (actSize / ACT_PX));
-            const y = Math.round(Math.sin(a) * ARC_RADIUS * (actSize / ACT_PX));
-            return (
-              <div
-                key={i}
-                className="pointer-events-auto"
-                style={{
-                  position: "absolute", left: "50%", top: "50%",
-                  transform: `translate(-50%, -50%) translate(${x}px, ${y}px)`,
-                }}
-              >
-                {button}
-              </div>
-            );
-          })}
-        </div>
-      )}
+      {/* The arc beside ACT. A layer of its own per button, each laid exactly
+          over ACT, rather than inside the bar: the bar's z-index caps anything
+          in it, and `raisedIndex` has to lift one button alone above the wheel
+          while the others stay under its backdrop. */}
+      {besideAct?.map((button, i) => {
+        const a = ((ARC_ANGLES[i] ?? 0) * Math.PI) / 180;
+        // Whole pixels, so the pixel-art icons are not resampled.
+        const x = Math.round(Math.cos(a) * ARC_RADIUS * (actSize / ACT_PX));
+        const y = Math.round(Math.sin(a) * ARC_RADIUS * (actSize / ACT_PX));
+        return (
+          <div
+            key={i}
+            className="fixed pointer-events-none"
+            style={{
+              zIndex: raisedIndex === i ? 46 : 30,
+              right: edge("right", tablet),
+              bottom: edge("bottom", tablet),
+              width: actSize,
+              height: actSize,
+            }}
+          >
+            <div
+              className="pointer-events-auto"
+              style={{
+                position: "absolute", left: "50%", top: "50%",
+                transform: `translate(-50%, -50%) translate(${x}px, ${y}px)`,
+              }}
+            >
+              {button}
+            </div>
+          </div>
+        );
+      })}
     </>
   );
 }

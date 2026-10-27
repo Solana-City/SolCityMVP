@@ -579,12 +579,12 @@ export default function Home() {
               <div style={{
                 position: "fixed", zIndex: 20,
                 top: "max(env(safe-area-inset-top, 0px), 12px)",
-                left: "calc(max(env(safe-area-inset-left, 0px), 12px) + 50px)",
+                left: `calc(max(env(safe-area-inset-left, 0px), 12px) + ${MOBILE_TOGGLE_PX + 6}px)`,
                 maxHeight: "calc(100dvh - max(env(safe-area-inset-top, 0px), 12px) - 170px)",
                 display: "flex", flexDirection: "column", gap: 6,
                 pointerEvents: "none",
               }}>
-                <div style={{ minHeight: 44, flex: "0 0 auto" }}>
+                <div style={{ minHeight: MOBILE_TOGGLE_PX, flex: "0 0 auto" }}>
                   <Presence show={mobilePanels.hunt}>
                     {/* A HUD piece rather than a modal: no backdrop, so the city
                         stays playable while it is open. Its folded strip is meant
@@ -626,10 +626,10 @@ export default function Home() {
               <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
                   <ProfileButton gameRef={game} size={60} frame="thin" onClick={() => setProfileOpen(true)} />
-                  <WardrobeButton size={30} onClick={() => setWardrobeOpen(true)} />
-                  <CalendarButton size={30} />
+                  <WardrobeButton size={MOBILE_ICON_PX} onClick={() => setWardrobeOpen(true)} />
+                  <CalendarButton size={MOBILE_ICON_PX} />
                   <HudIconBtn
-                    size={30} src="/assets/ui/icon_hud_map.png"
+                    size={MOBILE_ICON_PX} src="/assets/ui/icon_hud_map.png"
                     onClick={() => setMapOpen((v) => !v)}
                     title="Minimap" aria-expanded={mapOpen} aria-controls="hud-map-preview"
                     aria-label={mapOpen ? "Hide minimap" : "Show minimap"}
@@ -641,7 +641,7 @@ export default function Home() {
                     style={{ background: "none", border: "none", padding: 0, cursor: "pointer", flexShrink: 0, display: "block" }}
                   >
                     <img
-                      src="/assets/ui/icon_down.png" width={30} height={30} alt="" draggable={false}
+                      src="/assets/ui/icon_down.png" width={MOBILE_ICON_PX} height={MOBILE_ICON_PX} alt="" draggable={false}
                       style={{ imageRendering: "pixelated", display: "block", transform: walletSectionOpen ? "rotate(180deg)" : undefined }}
                     />
                   </button>
@@ -745,7 +745,7 @@ export default function Home() {
             )}
           </Presence>
           <MobileControls
-            raised={wheelOpen}
+            raisedIndex={wheelOpen ? 1 : undefined}
             besideAct={[
               <MobilePanelToggle key="chat" iconSrc="/assets/ui/ico_chat.png" label="Chat" active={chatOpen} onClick={toggleMobileChat} dot={unreadDms > 0} />,
               <ExpressionToggle key="expressions" open={wheelOpen} />,
@@ -802,6 +802,12 @@ function ActiveRing() {
   );
 }
 
+/** The phone HUD's buttons, 5% over their first size (they read as too small).
+    Not the profile picture, which keeps its own. */
+const MOBILE_HUD_SCALE = 1.05;
+const MOBILE_TOGGLE_PX = 44 * MOBILE_HUD_SCALE;   // chat, expressions, hunt, quests
+const MOBILE_ICON_PX = 30 * MOBILE_HUD_SCALE;     // the row at the top right
+
 function MobilePanelToggle({ iconSrc, label, active, onClick, dot }: {
   iconSrc: string; label: string; active: boolean; onClick: () => void;
   /** A direct message is waiting and the panel is closed. */
@@ -813,7 +819,7 @@ function MobilePanelToggle({ iconSrc, label, active, onClick, dot }: {
       title={label}
       style={{
         position: "relative",
-        width: 44, height: 44, padding: 0,
+        width: MOBILE_TOGGLE_PX, height: MOBILE_TOGGLE_PX, padding: 0,
         background: "transparent", border: "none",
         cursor: "pointer", flexShrink: 0,
         display: "flex", alignItems: "center", justifyContent: "center",
@@ -823,7 +829,7 @@ function MobilePanelToggle({ iconSrc, label, active, onClick, dot }: {
     >
       <img
         src={active ? "/assets/ui/icon_cross.png" : iconSrc}
-        width={32} height={32} alt={label} draggable={false}
+        width={32 * MOBILE_HUD_SCALE} height={32 * MOBILE_HUD_SCALE} alt={label} draggable={false}
         style={{ imageRendering: "pixelated", position: "relative" }}
       />
       {active && <ActiveRing />}
@@ -848,7 +854,7 @@ function ExpressionToggle({ open }: { open: boolean }) {
       title={open ? "Close expressions" : "Expressions"}
       style={{
         position: "relative",
-        width: 44, height: 44, padding: 0,
+        width: MOBILE_TOGGLE_PX, height: MOBILE_TOGGLE_PX, padding: 0,
         background: "transparent", border: "none",
         cursor: "pointer", flexShrink: 0,
         display: "flex", alignItems: "center", justifyContent: "center",
@@ -858,7 +864,7 @@ function ExpressionToggle({ open }: { open: boolean }) {
     >
       <img
         src={open ? "/assets/ui/icon_cross.png" : "/assets/ui/ico_emoji.png"}
-        width={32} height={32} alt="Expressions" draggable={false}
+        width={32 * MOBILE_HUD_SCALE} height={32 * MOBILE_HUD_SCALE} alt="Expressions" draggable={false}
         style={{ imageRendering: "pixelated", position: "relative" }}
       />
       {open && <ActiveRing />}
