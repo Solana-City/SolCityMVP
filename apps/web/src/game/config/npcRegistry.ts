@@ -711,6 +711,35 @@ const NPC_SEEDS: NPCSeed[] = [
   // All three sheets are 6 frames of 64x64 in one row, idle in place, so they
   // carry spriteAnimation rather than a walk grid.
   {
+    id: "shen",
+    name: "Shen",
+    role: "Home's Journey",
+    // On the path in front of the Home building's door (BuildHome, cols 38-46
+    // / rows 15-20, solid across 18-20), where the owner stood to point the
+    // spot out.
+    //
+    // Every tile here carries BuildMonkeDAo, whose rectangle slice reaches
+    // this far west, and whose base rows (29-32) are far to the SOUTH, so by
+    // depth that layer draws over anything standing here. It is safe only
+    // because what it paints on these cells is empty: the owner's own avatar
+    // renders here, which is the proof. Nothing else in cols 36-48 is clear
+    // of it, so there was no tile to move to.
+    tileX: 40,
+    tileY: 21,
+    dialog: [
+      "Greetings, stranger. Welcome to the art universe of DOM: Home's Journey.",
+      "Home's Journey is a sci-fi folk horror universe where ancient mysteries, forgotten worlds and wandering souls intertwine.",
+    ],
+    highlights: [
+      { label: "HOME TRAVELERS" },
+      { label: "LORE" },
+      { label: "CCG" },
+    ],
+    action: { type: "link", label: "Visit Home's Journey", url: "https://www.trianglecirclesquare.org/" },
+    spriteKey: "Shen",
+    spriteAnimation: { frameWidth: 64, frameHeight: 64, frameCount: 6, frameRate: 1000 / 150 },
+  },
+  {
     id: "exa-luiz",
     name: "Luiz",
     role: "Exa Energia",
