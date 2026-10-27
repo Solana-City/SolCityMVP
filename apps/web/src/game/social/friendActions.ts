@@ -23,9 +23,20 @@ import { invalidateFriends } from "./friends";
  */
 
 /**
- * Off until the player_v3 redeploy. The deployed program has no friend
- * instructions yet, and the client's player seed (player_v2) would not match
- * the program's once it does. Flip this together with PLAYER_SEED.
+ * Still off, but no longer for the reason it was.
+ *
+ * The player_v3 redeploy happened (devnet slot 514961676, 2026-10-25) and
+ * PLAYER_SEED already matches, so the seed objection is gone. What remains is
+ * that the DEPLOYED binary still predates the fix in `fix(friends): an invite
+ * reaches a player who is in the city`: it takes `to_player` as an
+ * `Account<PlayerState>`, which Anchor refuses the moment that account is
+ * delegated to the rollup. Every player standing in the city is delegated, so
+ * on the binary that is live today an invite fails for precisely the people
+ * you would want to invite.
+ *
+ * Flip this once the program at HEAD is deployed, and not before. Verify by
+ * reading the programdata account's slot, not by trusting this comment: if it
+ * still says 514961676, the fix is not up there.
  */
 export const FRIENDS_ENABLED = false;
 
