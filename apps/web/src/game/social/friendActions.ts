@@ -23,22 +23,20 @@ import { invalidateFriends } from "./friends";
  */
 
 /**
- * Still off, but no longer for the reason it was.
+ * On, as of the devnet deploy at slot 515764637 (2026-10-28).
  *
- * The player_v3 redeploy happened (devnet slot 514961676, 2026-10-25) and
- * PLAYER_SEED already matches, so the seed objection is gone. What remains is
- * that the DEPLOYED binary still predates the fix in `fix(friends): an invite
- * reaches a player who is in the city`: it takes `to_player` as an
- * `Account<PlayerState>`, which Anchor refuses the moment that account is
- * delegated to the rollup. Every player standing in the city is delegated, so
- * on the binary that is live today an invite fails for precisely the people
- * you would want to invite.
+ * It waited on two things and both are done: PLAYER_SEED matches the
+ * program's `player_v3`, and the binary on chain now carries the fix that
+ * takes `to_player` as an `UncheckedAccount` and checks its authority by
+ * hand. Before that, Anchor's `Account<PlayerState>` refused any account
+ * delegated to the rollup, which is every player standing in the city, so an
+ * invite failed for exactly the people worth inviting.
  *
- * Flip this once the program at HEAD is deployed, and not before. Verify by
- * reading the programdata account's slot, not by trusting this comment: if it
- * still says 514961676, the fix is not up there.
+ * Verified against the deployed bytecode rather than assumed: the fix's error
+ * message is in the dump, and the dump is byte-for-byte the artifact CI built
+ * from HEAD.
  */
-export const FRIENDS_ENABLED = false;
+export const FRIENDS_ENABLED = true;
 
 export type FriendAction = "invite" | "accept" | "decline" | "cancel" | "remove";
 
