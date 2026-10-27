@@ -27,18 +27,21 @@
 import { readFileSync } from "fs";
 import {
   Connection, Keypair, LAMPORTS_PER_SOL, PublicKey, SystemProgram, Transaction,
-  TransactionInstruction, sendAndConfirmTransaction,
+  TransactionInstruction,
 } from "@solana/web3.js";
 import {
   TOKEN_PROGRAM_ID, getAssociatedTokenAddressSync,
   createAssociatedTokenAccountInstruction,
 } from "@solana/spl-token";
 import { sha256 } from "@noble/hashes/sha256";
+import { devnetConnection, sendAndPoll } from "./_rpc";
 import { PACKS } from "../src/game/config/packs";
 import { seasonDropLists } from "../src/game/config/seasonDrops";
 import { CURRENT_SEASON, RARITY_ORDER } from "../src/game/collections/seasons";
 
-const RPC = process.env.SOLCITY_RPC ?? "https://api.devnet.solana.com";
+// See scripts/_rpc.ts: the Helius key is origin-locked and a script has no
+// origin, so without that header this falls through to api.devnet and gets
+// rate-banned.
 const PROGRAM = new PublicKey("HPvDFVnruSXHwKKP44eUvRh8oYqBaHCeQbK1sKWT1aU2");
 const USDC_MINT = new PublicKey(
   process.env.SOLCITY_USDC_MINT ?? "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
@@ -69,7 +72,7 @@ function usdc(dollars: number): bigint {
 /** Indices per append. 200 u16 is 400 bytes, well inside a transaction. */
 const APPEND_CHUNK = 200;
 
-const conn = new Connection(RPC, "confirmed");
+const conn = devnetConnection();
 const send = process.argv.includes("--send");
 
 function load(path: string): Keypair {
@@ -115,9 +118,7 @@ async function submit(
 ): Promise<void> {
   if (!send) { console.log(`  skip ${label}  (dry run)`); return; }
   try {
-    const sig = await sendAndConfirmTransaction(
-      conn, new Transaction().add(...ixs), [admin], { commitment: "confirmed" },
-    );
+    const sig = await sendAndPoll(conn, new Transaction().add(...ixs), [admin]);
     console.log(`  ok   ${label}  ${sig.slice(0, 12)}...`);
   } catch (err) {
     console.log(`  FAIL ${label}: ${(err as Error).message.split("\n")[0]}`);
@@ -144,7 +145,7 @@ async function main() {
   const config = configPda();
   const drops = dropsPda(CURRENT_SEASON);
 
-  console.log(`rpc        ${RPC}`);
+  console.log(`rpc        ${conn.rpcEndpoint.replace(/api-key=.*/, "api-key=***")}`);
   console.log(`program    ${PROGRAM.toBase58()}`);
   console.log(`admin      ${admin.publicKey.toBase58()}`);
   console.log(`balance    ${(await conn.getBalance(admin.publicKey)) / LAMPORTS_PER_SOL} SOL`);

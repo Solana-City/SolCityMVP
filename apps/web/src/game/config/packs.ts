@@ -131,8 +131,26 @@ export interface PackDef {
 }
 
 /**
- * The three packs. Names, prices and odds are placeholders (see the file
- * header); the shape is not.
+ * The three packs.
+ *
+ * ── Common is always the largest, and every tier below it is smaller ─────
+ *
+ * In every pack, without exception. A premium pack is premium because the
+ * whole curve SHIFTS UP, never because the order changes. Every gacha worth
+ * copying does it this way: a CS:GO case is 79.92 / 15.98 / 3.20 / 0.64 /
+ * 0.26, a Hearthstone pack about 70 / 22 / 4.5 / 1.4, Genshin 94 / 5.1 / 0.6.
+ *
+ * Prime used to be 20 / 40 / 30 / 10, which inverted it: a player paying the
+ * most saw the FEWEST commons, and commons are most of what gets drawn and
+ * most of what gets drawn. Fixed 2026-10-27.
+ *
+ * Prime now carries seven times Street's legendary rate for 3.3x the price,
+ * and almost one Prime in three holds at least one.
+ *
+ * These weights are mirrored on chain in PackConfig as basis points, which
+ * the program requires to add up to 10000. Changing one is an upsert_pack
+ * transaction rather than a deploy, so this table and the chain can drift:
+ * scripts/packs-setup.ts is what puts them back in step.
  */
 export const PACKS: PackDef[] = [
   {
@@ -142,7 +160,7 @@ export const PACKS: PackDef[] = [
     blurb: "Everyday city wear.",
     size: 5,
     priceSol: 0.03,
-    odds: { common: 70, uncommon: 22, rare: 7, legendary: 1 },
+    odds: { common: 72, uncommon: 22, rare: 5, legendary: 1 },
     art: { file: "/assets/ui/packs/pack_street.png", frames: 12, frameWidth: 36, frameHeight: 51 },
     accent: "#F5464C",
   },
@@ -153,7 +171,7 @@ export const PACKS: PackDef[] = [
     blurb: "Better odds, same five pieces.",
     size: 5,
     priceSol: 0.07,
-    odds: { common: 45, uncommon: 35, rare: 17, legendary: 3 },
+    odds: { common: 58, uncommon: 29, rare: 10, legendary: 3 },
     art: { file: "/assets/ui/packs/pack_city.png", frames: 12, frameWidth: 36, frameHeight: 51 },
     accent: "#4995F3",
   },
@@ -164,7 +182,7 @@ export const PACKS: PackDef[] = [
     blurb: "The one with the crowns in it.",
     size: 5,
     priceSol: 0.1,
-    odds: { common: 20, uncommon: 40, rare: 30, legendary: 10 },
+    odds: { common: 44, uncommon: 32, rare: 17, legendary: 7 },
     art: { file: "/assets/ui/packs/pack_prime.png", frames: 12, frameWidth: 36, frameHeight: 51 },
     accent: "#9A46FE",
   },
