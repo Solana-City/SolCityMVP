@@ -543,8 +543,31 @@ function Action({ label, placeholder, button, onSubmit, disabled, danger }: {
 }
 
 const sx: Record<string, React.CSSProperties> = {
-  page: { minHeight: "100vh", background: "#070910", color: "#d8d8ea", padding: 24, fontFamily: "system-ui, sans-serif" },
-  gate: { minHeight: "100vh", background: "#070910", display: "flex", alignItems: "center", justifyContent: "center" },
+  /**
+   * The panel scrolls itself.
+   *
+   * `body` is `overflow: hidden` at 100dvh in globals.css, because the city
+   * is a canvas that fills the window and must never scroll. This page is a
+   * long document living under that rule, so everything below the first
+   * screenful simply could not be reached: no scrollbar, no wheel, nothing.
+   *
+   * Filling the locked viewport and scrolling INSIDE it fixes that without
+   * touching the global rule, which the game still needs. `overflow: auto`
+   * rather than `overflow-y`, because a wide table (the mini-game rows carry
+   * five wallet chips) should be reachable sideways too instead of clipped.
+   * The retro scrollbar styling is global, so it is already dressed.
+   */
+  page: {
+    height: "100dvh",
+    overflow: "auto",
+    overscrollBehavior: "contain",
+    background: "#070910", color: "#d8d8ea", padding: 24, fontFamily: "system-ui, sans-serif",
+  },
+  gate: {
+    height: "100dvh",
+    overflow: "auto",
+    background: "#070910", display: "flex", alignItems: "center", justifyContent: "center",
+  },
   card: { width: 360, padding: 24, background: "#0d1020", border: "1px solid #232a44", borderRadius: 12, color: "#d8d8ea", fontFamily: "system-ui, sans-serif" },
   head: { display: "flex", alignItems: "center", gap: 12, marginBottom: 16, flexWrap: "wrap" },
   h1: { fontSize: 20, margin: 0, fontWeight: 700 },
