@@ -102,15 +102,6 @@ pub const QUEST_FREE_SLOTS: u16 = 1024;
 /// enforced while nothing on chain can grant it. A const expression, so an
 /// overflow here would fail the build rather than wrap at runtime.
 pub const ENFORCED_FROM: u16 = FREE_ITEM_COUNT + QUEST_FREE_SLOTS;
-// Bumped to 2 to match the client, which went there when Magawk_green and
-// Magawk_red left the variant list and shifted every index after them. That is
-// normally forbidden and was safe exactly once, because these indices have
-// never been written to chain. After this deploy does write them, a removal
-// renumbers cosmetics wallets already own and the append-only rule is absolute.
-//
-// Nothing reads this constant: it is a marker that both sides agree, so having
-// it disagree was worse than useless.
-pub const POOL_VERSION: u16 = 3;
 // ── Outfit booster ─────────────────────────────────────────────────────────
 /// Per-wallet unlock store (bitset of booster-pool item indices).
 pub const UNLOCKS_SEED: &[u8] = b"unlocks";
@@ -407,7 +398,12 @@ pub mod sol_city_collectibles {
         VrfRequest {
             caller_seed: client_seed,
             callback_program_id: crate::ID,
-            callback_discriminator: instruction::CallbackOpenBooster::DISCRIMINATOR.to_vec(),
+            // Spelled out rather than `Type::DISCRIMINATOR`: the trait is not
+            // in the anchor-lang 0.30.1 prelude, so the short form does not
+            // resolve. Same fix as the one PlayerState needed.
+            callback_discriminator:
+                <instruction::CallbackOpenBooster as anchor_lang::Discriminator>::DISCRIMINATOR
+                    .to_vec(),
             callback_accounts_metas: vec![
                 VrfCallbackMeta {
                     pubkey: ctx.accounts.unlock_state.key(),
