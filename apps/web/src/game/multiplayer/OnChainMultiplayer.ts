@@ -1,4 +1,5 @@
 import {
+  type AccountInfo,
   Connection,
   PublicKey,
   SystemProgram,
@@ -158,6 +159,7 @@ import {
   buildRecordMiniGameSessionIx,
   buildRecordGameScoreSessionIx,
   buildRecordSwapSessionIx,
+  buildSetLinkSessionIx,
   buildRecordTransferSessionIx,
   buildInitializeHuntIx,
   buildClaimFindIx,
@@ -364,6 +366,14 @@ export interface OnChainPlayer {
   streakCurrent?: number;
   streakBest?: number;
   /**
+   * Who this player wants as a friend, and who they turned down.
+   *
+   * Read off the same sweep as everything else, so friendship costs no RPC of
+   * its own: a friendship is both sides wanting it, and both sides are
+   * already in this roster.
+   */
+  links?: PlayerLink[];
+  /**
    * Best score per mini-game, indexed by slot (game/minigames/slots.ts).
    *
    * Read off the same sweep as everything else, so a board costs no extra
@@ -371,6 +381,65 @@ export interface OnChainPlayer {
    * the unlock snapshot.
    */
   gameBests?: number[];
+}
+
+/** Where the DOM finds the live multiplayer client. */
+export type SolCityNetworkHost = typeof globalThis & {
+  __solCityNetwork?: OnChainMultiplayer | null;
+};
+
+/** The live client, or null before the city has booted. */
+export function getNetwork(): OnChainMultiplayer | null {
+  return (globalThis as SolCityNetworkHost).__solCityNetwork ?? null;
+}
+
+/** One entry of a player's friend list. `state` is LINK_WANT or LINK_DECLINED. */
+export interface PlayerLink { peer: string; state: number }
+
+/** Mirrors FRIEND_LINK_CAP in the program. */
+export const FRIEND_LINK_CAP = 16;
+
+/** Mirrors PLAYER_UNLOCK_CAP: the fixed snapshot the links sit behind. */
+const PLAYER_UNLOCK_CAP = 256;
+
+/**
+ * Walks a FULL PlayerState to its friend links.
+ *
+ * Everything before them has to be stepped over exactly, and four of those
+ * fields are variable length, which is why this cannot be a dataSlice. The
+ * unlock snapshot is a fixed array with no length prefix, so it is skipped by
+ * its own size: getting that wrong would decode somebody's friends out of
+ * their hats.
+ *
+ * Returns null for anything too short, which is how an account from an older
+ * seed, or a short read, declines to answer instead of answering nonsense.
+ */
+function decodeLinks(buf: Buffer): PlayerLink[] | null {
+  try {
+    let o = 8 + 32;                                   // disc + authority
+    o += buf.readUInt8(o) === 1 ? 33 : 1;             // Option<Pubkey>
+    const str = (): void => { const n = buf.readUInt32LE(o); o += 4 + n; };
+    str();                                            // display_name
+    o += 4 + 4 + 1 + 1 + 4 + 2 + 2 + 2 + 8 + 8;       // x..created_at
+    str(); str(); o += 8; str(); o += 8;              // loadout, expr, chat
+    o += 32 + 2 + 2;                                  // achievements, streaks
+    o += 16 * 4;                                      // game_bests
+    o += PLAYER_UNLOCK_CAP * 2 + 2;                   // unlocked + len
+    if (o + FRIEND_LINK_CAP * 33 + 1 > buf.length) return null;
+    const base = o;
+    const len = Math.min(buf.readUInt8(base + FRIEND_LINK_CAP * 33), FRIEND_LINK_CAP);
+    const out: PlayerLink[] = [];
+    for (let i = 0; i < len; i++) {
+      const at = base + i * 33;
+      out.push({
+        peer: new PublicKey(buf.subarray(at, at + 32)).toBase58(),
+        state: buf.readUInt8(at + 32),
+      });
+    }
+    return out;
+  } catch {
+    return null;
+  }
 }
 
 type PlayerCallback  = (wallet: string, player: OnChainPlayer) => void;
@@ -565,6 +634,10 @@ export class OnChainMultiplayer {
   private programSubId: number | null = null;
 
   constructor() {
+    // Reachable from React without threading the instance through every panel,
+    // the same way the minimap and the wallet already do it. The friends UI
+    // lives in the DOM and the roster lives here.
+    (globalThis as SolCityNetworkHost).__solCityNetwork = this;
     this.routerConnection    = new ConnectionMagicRouter(ENDPOINTS.magicRouter,  "confirmed");
     this.ephemeralConnection = new Connection(ENDPOINTS.ephemeral,    "confirmed");
     // Measure the three once, in the background. Nothing delegates by this
@@ -1112,6 +1185,108 @@ export class OnChainMultiplayer {
    * sendRawTransaction (that silently dropped every mini-game record).
    * Falls back to transactionLog simulation when program is not deployed.
    */
+  /**
+   * Sets what we think of another player, on our OWN account.
+   *
+   * Every friend action there is: invite and accept are both LINK_WANT,
+   * decline is LINK_DECLINED, cancel and unfriend are LINK_NONE. Session
+   * signed on the rollup, so it costs the player nothing and asks for
+   * nothing, exactly like sending a chat line.
+   */
+  async setFriendLink(peer: PublicKey, state: number): Promise<void> {
+    if (!this.wallet || !isProgramDeployed()) return;
+    const layer = this.useEphemeral ? "ephemeral" : "base";
+    const entry = transactionLog.record({
+      kind: "friend", layer, label: `Friend link ${state}`, status: "pending",
+    });
+    try {
+      const sessionKey = this.sessionKeys.getSessionPublicKey();
+      const conn = this.useEphemeral ? this.ephemeralConnection : this.baseConnection;
+      const tx = new Transaction()
+        .add(buildSetLinkSessionIx(this.wallet, sessionKey, peer, state));
+      tx.feePayer = sessionKey;
+      tx.recentBlockhash = await this.getMoveBlockhash(layer);
+      this.sessionKeys.signTransaction(tx);
+      const sig = await OnChainMultiplayer.withTimeout(
+        conn.sendRawTransaction(tx.serialize(), { skipPreflight: true }), 6_000,
+      );
+      transactionLog.markConfirmed(entry.id, sig);
+    } catch (err: any) {
+      this.cachedMoveBlockhash = null;
+      transactionLog.markFailed(entry.id, err?.message ?? "friend link failed");
+      throw err;
+    }
+  }
+
+  /** Every citizen the roster currently knows about, self excluded. */
+  citizenWallets(): string[] {
+    return [...this.knownPlayers.keys()];
+  }
+
+  /** The links last read for a citizen. Empty until refreshLinks has run. */
+  linksOf(wallet: string): PlayerLink[] {
+    return this.knownPlayers.get(wallet)?.links ?? [];
+  }
+
+  /**
+   * Reads the friend links of everyone currently in the city, plus our own.
+   *
+   * NOT part of the 500ms sweep, deliberately. That sweep takes a 605-byte
+   * dataSlice that stops before the unlock snapshot, and the links sit after
+   * it, so including them would roughly treble what every client pulls for
+   * every citizen twice a second. Friendship does not need half-second
+   * freshness.
+   *
+   * It cannot be sliced either. `session_authority` is an `Option<Pubkey>`,
+   * one byte or thirty-three, and the name, loadout, expression and chat are
+   * all variable, so nothing after them sits at a fixed offset. The whole
+   * account has to come back and be walked.
+   *
+   * Called when the friends UI wants it, and on a slow timer. One
+   * getMultipleAccounts per rollup over accounts we already know about.
+   */
+  async refreshLinks(): Promise<void> {
+    const wallets = [...this.knownPlayers.keys()];
+    if (this.wallet) wallets.push(this.wallet.toBase58());
+    if (wallets.length === 0) return;
+
+    const byPda = new Map<string, string>();
+    for (const w of wallets) {
+      try { byPda.set(derivePlayerPDA(new PublicKey(w))[0].toBase58(), w); } catch { /* not a key */ }
+    }
+    const pdas = [...byPda.keys()].map((k) => new PublicKey(k));
+
+    // Every rollup, because citizens are spread across them and a wallet's
+    // account only answers on the one it is delegated to.
+    const conns = [...this.erReadConnections.map((e) => e.conn), this.baseConnection];
+    const seen = new Set<string>();
+    for (const conn of conns) {
+      for (let i = 0; i < pdas.length; i += 100) {
+        const slice = pdas.slice(i, i + 100);
+        let infos;
+        try {
+          infos = await conn.getMultipleAccountsInfo(slice);
+        } catch { continue; }
+        infos.forEach((info: AccountInfo<Buffer> | null, k: number) => {
+          if (!info) return;
+          const wallet = byPda.get(slice[k].toBase58());
+          if (!wallet || seen.has(wallet)) return;
+          const links = decodeLinks(Buffer.from(info.data));
+          if (!links) return;
+          seen.add(wallet);
+          const player = this.knownPlayers.get(wallet);
+          if (player) player.links = links;
+          else this.selfLinks = wallet === this.wallet?.toBase58() ? links : this.selfLinks;
+          if (wallet === this.wallet?.toBase58()) this.selfLinks = links;
+        });
+      }
+    }
+  }
+
+  /** Our own links. The roster skips self, so they are kept apart. */
+  private selfLinks: PlayerLink[] = [];
+  myLinks(): PlayerLink[] { return this.selfLinks; }
+
   /**
    * One finished mini-game run, best score and all.
    *
@@ -2760,6 +2935,7 @@ export class OnChainMultiplayer {
             updated.gameBests = gameBests;
           }
         }
+
 
         // A kick of the beach football rides the chat field, tagged (see
         // world/BeachBall). It is deduped by the PAYLOAD, not by message_at:

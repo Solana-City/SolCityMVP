@@ -28,7 +28,7 @@ import {
   listFriends, listInboundRequests, listOutboundRequests,
 } from "@/game/social/friends";
 import { runFriendAction, type FriendAction } from "@/game/social/friendActions";
-import type { FriendRequest } from "@/game/solana/program";
+import type { FriendRequest } from "@/game/social/friends";
 
 const PIXEL = '"Press Start 2P", monospace';
 const CYAN = "#14F0C6";
@@ -633,7 +633,7 @@ function FriendsTab({ gameRef }: { gameRef: Phaser.Game | null }) {
   const act = async (action: FriendAction, other: string) => {
     if (!publicKey || !signTransaction) return;
     setBusy(other); setNote(null);
-    const res = await runFriendAction(action, publicKey, new PublicKey(other), signTransaction);
+    const res = await runFriendAction(action, publicKey, new PublicKey(other));
     setBusy(null);
     if (res.ok) await load(true);
     else setNote(res.message);

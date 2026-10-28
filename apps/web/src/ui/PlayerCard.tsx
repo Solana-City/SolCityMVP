@@ -112,7 +112,7 @@ export default function PlayerCard({ gameRef, wallet, displayName, myWallet, onC
     setFriendBusy(true);
     setFriendNote(null);
     const res = await runFriendAction(
-      action, new PublicKey(myWallet), new PublicKey(wallet), signTransaction,
+      action, new PublicKey(myWallet), new PublicKey(wallet),
     );
     setFriendBusy(false);
     if (res.ok) {

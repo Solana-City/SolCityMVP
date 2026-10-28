@@ -1,138 +1,61 @@
-import { Connection, PublicKey, Transaction } from "@solana/web3.js";
-import {
-  buildAcceptFriendRequestIx,
-  buildCancelFriendRequestIx,
-  buildDeclineFriendRequestIx,
-  buildRemoveFriendIx,
-  buildSendFriendRequestIx,
-} from "@/game/solana/instructions";
-import { BASE_RPC_PRIMARY, resilientBaseFetch } from "@/game/solana/baseRpc";
-import { transactionLog } from "@/game/telemetry/transactionLog";
-import { invalidateFriends } from "./friends";
+import { PublicKey } from "@solana/web3.js";
+import { getNetwork } from "@/game/multiplayer/OnChainMultiplayer";
+import { LINK_NONE, LINK_WANT, LINK_DECLINED } from "@/game/solana/instructions";
+import { answeredInvite, invalidateFriends } from "./friends";
 
 /**
- * The four things you can do about a friendship, as base-layer transactions.
+ * The four things you can do about a friendship, as writes to your OWN
+ * account on the rollup.
  *
- * Wallet-signed, one prompt each, because they create and close accounts and
- * the session key holds no lamports. That is the right shape anyway: inviting
- * somebody is a deliberate act, not a movement update.
+ * None of them asks the player for anything. No wallet prompt, no fee, no
+ * account to create first: the friend list is a field of the PlayerState they
+ * already have and that is already delegated, so a friend action costs
+ * exactly what sending a chat line costs, which is nothing.
  *
- * Sent the way everything else here sends base transactions: the wallet SIGNS
- * only and we do the sending, over the failover RPC. Never the Magic Router,
- * which hangs on sendRawTransaction.
+ * That is also why there are only two states to write. Inviting and accepting
+ * are the same fact, "I want this person as a friend", and a friendship is
+ * both sides holding it. Cancelling an invite and unfriending are the same
+ * act too: drop your half.
  */
 
 /**
- * On, as of the devnet deploy at slot 515764637 (2026-10-28).
- *
- * It waited on two things and both are done: PLAYER_SEED matches the
- * program's `player_v3`, and the binary on chain now carries the fix that
- * takes `to_player` as an `UncheckedAccount` and checks its authority by
- * hand. Before that, Anchor's `Account<PlayerState>` refused any account
- * delegated to the rollup, which is every player standing in the city, so an
- * invite failed for exactly the people worth inviting.
- *
- * Verified against the deployed bytecode rather than assumed: the fix's error
- * message is in the dump, and the dump is byte-for-byte the artifact CI built
- * from HEAD.
+ * ON. The player_v4 program carries `links` on PlayerState and
+ * `set_link_session` writes them, both verified on the deployed bytecode.
  */
 export const FRIENDS_ENABLED = true;
 
 export type FriendAction = "invite" | "accept" | "decline" | "cancel" | "remove";
 
 export type FriendResult =
-  | { ok: true; signature: string }
+  | { ok: true }
   | { ok: false; message: string };
 
-type SignTransaction = (tx: Transaction) => Promise<Transaction>;
-
-let shared: Connection | null = null;
-
-function baseConnection(): Connection {
-  if (!shared) {
-    shared = new Connection(BASE_RPC_PRIMARY, {
-      commitment: "confirmed",
-      fetch: resilientBaseFetch,
-    });
-  }
-  return shared;
-}
-
-const LABEL: Record<FriendAction, string> = {
-  invite: "Friend invite sent",
-  accept: "Friend invite accepted",
-  decline: "Friend invite declined",
-  cancel: "Friend invite cancelled",
-  remove: "Friend removed",
+const STATE: Record<FriendAction, number> = {
+  invite: LINK_WANT,
+  accept: LINK_WANT,
+  decline: LINK_DECLINED,
+  cancel: LINK_NONE,
+  remove: LINK_NONE,
 };
-
-/**
- * Turns a program failure into something a player can act on.
- *
- * The two that actually happen: inviting someone twice (the invite PDA already
- * exists, so `init` fails), and inviting a wallet with no player account. The
- * second is a consequence of the player_v3 reset rather than anything the
- * inviter did wrong, so it says what to do about it.
- */
-function explain(err: unknown, action: FriendAction): string {
-  const raw = String((err as Error)?.message ?? err ?? "");
-  if (/already in use|custom program error: 0x0\b/i.test(raw)) {
-    return action === "invite"
-      ? "You already invited them. Give them a moment."
-      : "That already went through.";
-  }
-  if (/AccountNotInitialized|could not find account|AccountOwnedByWrongProgram/i.test(raw)) {
-    return "They need to visit the city once before they can be invited.";
-  }
-  if (/FriendSelf/i.test(raw)) return "You can't befriend yourself.";
-  if (/insufficient|0x1\b/i.test(raw)) {
-    return "Not enough SOL to cover the account. It comes back when the invite is answered.";
-  }
-  if (/User rejected|rejected the request/i.test(raw)) return "Cancelled.";
-  return "That didn't go through. Try again in a moment.";
-}
-
-function buildIx(action: FriendAction, me: PublicKey, other: PublicKey) {
-  switch (action) {
-    case "invite":  return buildSendFriendRequestIx(me, other);
-    case "accept":  return buildAcceptFriendRequestIx(me, other);
-    case "decline": return buildDeclineFriendRequestIx(me, other);
-    case "cancel":  return buildCancelFriendRequestIx(me, other);
-    case "remove":  return buildRemoveFriendIx(me, other);
-  }
-}
 
 export async function runFriendAction(
   action: FriendAction,
   me: PublicKey,
   other: PublicKey,
-  signTransaction: SignTransaction,
 ): Promise<FriendResult> {
-  const entry = transactionLog.record({
-    kind: "friend",
-    layer: "base",
-    label: LABEL[action],
-    status: "pending",
-  });
+  const net = getNetwork();
+  if (!net) return { ok: false, message: "The city is still connecting." };
 
   try {
-    const conn = baseConnection();
-    const tx = new Transaction().add(buildIx(action, me, other));
-    tx.feePayer = me;
-    tx.recentBlockhash = (await conn.getLatestBlockhash("confirmed")).blockhash;
-
-    const signed = await signTransaction(tx);
-    const signature = await conn.sendRawTransaction(signed.serialize(), {
-      skipPreflight: false,
-    });
-    await conn.confirmTransaction(signature, "confirmed");
-
-    // The lists just changed, so the next read must go to the chain.
+    await net.setFriendLink(other, STATE[action]);
+    // Answering an invite, either way, retires the remembered copy of it.
+    if (action === "accept" || action === "decline") answeredInvite(me, other);
     invalidateFriends();
-    transactionLog.markConfirmed(entry.id, signature);
-    return { ok: true, signature };
+    return { ok: true };
   } catch (err) {
-    transactionLog.markFailed(entry.id, String((err as Error)?.message ?? err));
-    return { ok: false, message: explain(err, action) };
+    return {
+      ok: false,
+      message: (err as Error).message?.split("\n")[0] ?? "That did not go through.",
+    };
   }
 }
