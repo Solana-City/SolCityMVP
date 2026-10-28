@@ -44,7 +44,10 @@ import {
 import { sha256 } from "@noble/hashes/sha256";
 import { devnetConnection, sendAndPoll } from "./_rpc";
 
-const PROGRAM = new PublicKey("HPvDFVnruSXHwKKP44eUvRh8oYqBaHCeQbK1sKWT1aU2");
+// The COLLECTIBLES program, not the city one: packs, seasons, unlocks and
+// the mint moved out on 2026-10-29. Deriving a PackConfig from the city id
+// does not fail, it just points at an address nothing lives at.
+const PROGRAM = new PublicKey("EptRxVBysFzJEz52r58c2yCkpDGvF55aBPj1eCkWaphz");
 const COMPRESSION_PROGRAM = new PublicKey("cmtDvXumGCrqC1Age74AVPhSRVXJMd8PJS91L8KbNCK");
 const LOG_WRAPPER = new PublicKey("noopb9bkMVfRPU8AsbpTUg8AQkHtKwMYZiFUjNRtMmV");
 

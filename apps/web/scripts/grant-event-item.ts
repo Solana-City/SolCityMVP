@@ -39,12 +39,15 @@ import {
   Keypair, PublicKey, SystemProgram, Transaction, TransactionInstruction,
 } from "@solana/web3.js";
 import { devnetConnection, sendAndPoll } from "./_rpc";
-import { SOL_CITY_PROGRAM_ID, deriveUnlockPDA } from "../src/game/solana/program";
+import { SOL_CITY_COLLECTIBLES_PROGRAM_ID, deriveUnlockPDA } from "../src/game/solana/program";
 import { ixDiscriminator } from "../src/game/solana/instructions";
 import { globalIndexOf } from "../src/game/config/catalogIndex";
 import type { LayerCategory } from "../src/game/config/paperDoll";
 
 const PACK_CONFIG_SEED = "pack_config";
+
+/** CollectiblesError::AlreadyOwned. Anchor numbers by position from 6000. */
+const ALREADY_OWNED_HEX = "0x" + (6000 + 21).toString(16);
 
 /** The program's own guard, mirrored so the dry run can explain a refusal. */
 const FREE_ITEM_COUNT = 512;
@@ -69,13 +72,13 @@ function load(path: string): Keypair {
 
 function buildGrantIx(admin: PublicKey, unlockPda: PublicKey, index: number): TransactionInstruction {
   const [config] = PublicKey.findProgramAddressSync(
-    [Buffer.from(PACK_CONFIG_SEED)], SOL_CITY_PROGRAM_ID,
+    [Buffer.from(PACK_CONFIG_SEED)], SOL_CITY_COLLECTIBLES_PROGRAM_ID,
   );
   const data = Buffer.alloc(10);
   ixDiscriminator("admin_grant_event_item").copy(data, 0);
   data.writeUInt16LE(index, 8);
   return new TransactionInstruction({
-    programId: SOL_CITY_PROGRAM_ID,
+    programId: SOL_CITY_COLLECTIBLES_PROGRAM_ID,
     keys: [
       { pubkey: admin,                   isSigner: true,  isWritable: true  },
       { pubkey: config,                  isSigner: false, isWritable: false },
@@ -160,7 +163,9 @@ async function main(): Promise<void> {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       // 0x1792 is AlreadyOwned. Expected on a second pass, not a failure.
-      if (msg.includes("0x1792") || msg.includes("AlreadyOwned")) {
+      // The enum split when the programs did, so this code is the one in
+      // CollectiblesError, not the old SolCityError position.
+      if (msg.includes(ALREADY_OWNED_HEX) || msg.includes("AlreadyOwned")) {
         console.log(`  ${n} ${walletStr.slice(0, 8)}…  already had it`);
         already++;
       } else {

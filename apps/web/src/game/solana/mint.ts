@@ -2,7 +2,7 @@ import {
   Connection, PublicKey, Transaction, TransactionInstruction, SystemProgram,
 } from "@solana/web3.js";
 import {
-  SOL_CITY_PROGRAM_ID, deriveUnlockPDA, decodeUnlockState,
+  SOL_CITY_COLLECTIBLES_PROGRAM_ID, deriveUnlockPDA, decodeUnlockState,
 } from "./program";
 import { ixDiscriminator } from "./instructions";
 import { baseConnection } from "./packs";
@@ -41,7 +41,7 @@ export interface MintConfigAccount {
   baseUri: string;
 }
 
-function derivePda(seed: string, programId = SOL_CITY_PROGRAM_ID): PublicKey {
+function derivePda(seed: string, programId = SOL_CITY_COLLECTIBLES_PROGRAM_ID): PublicKey {
   return PublicKey.findProgramAddressSync([Buffer.from(seed)], programId)[0];
 }
 
@@ -121,7 +121,7 @@ export function buildMintUnlockIx(params: {
   data.writeUInt16LE(index, 8);
 
   return new TransactionInstruction({
-    programId: SOL_CITY_PROGRAM_ID,
+    programId: SOL_CITY_COLLECTIBLES_PROGRAM_ID,
     keys: [
       { pubkey: payer,                     isSigner: true,  isWritable: true  },
       { pubkey: unlockPda,                 isSigner: false, isWritable: true  },

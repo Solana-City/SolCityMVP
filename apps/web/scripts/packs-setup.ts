@@ -42,7 +42,10 @@ import { CURRENT_SEASON, RARITY_ORDER } from "../src/game/collections/seasons";
 // See scripts/_rpc.ts: the Helius key is origin-locked and a script has no
 // origin, so without that header this falls through to api.devnet and gets
 // rate-banned.
-const PROGRAM = new PublicKey("HPvDFVnruSXHwKKP44eUvRh8oYqBaHCeQbK1sKWT1aU2");
+// The COLLECTIBLES program, not the city one: packs, seasons, unlocks and
+// the mint moved out on 2026-10-29. Deriving a PackConfig from the city id
+// does not fail, it just points at an address nothing lives at.
+const PROGRAM = new PublicKey("EptRxVBysFzJEz52r58c2yCkpDGvF55aBPj1eCkWaphz");
 const USDC_MINT = new PublicKey(
   process.env.SOLCITY_USDC_MINT ?? "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
 );

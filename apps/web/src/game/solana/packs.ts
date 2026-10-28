@@ -3,8 +3,8 @@ import {
 } from "@solana/web3.js";
 import { getAssociatedTokenAddressSync } from "@solana/spl-token";
 import {
-  SOL_CITY_PROGRAM_ID, derivePackConfigPDA, deriveUnlockPDA, decodeUnlockState,
-  RARITY_COUNT,
+  SOL_CITY_COLLECTIBLES_PROGRAM_ID, derivePackConfigPDA, deriveUnlockPDA,
+  decodeUnlockState, RARITY_COUNT,
 } from "./program";
 import { buildOpenBoosterIx, buildInitUnlockStateIx } from "./instructions";
 import { BASE_RPC_PRIMARY, resilientBaseFetch } from "./baseRpc";
@@ -205,5 +205,6 @@ export async function buyPack(args: {
   return { signature, granted: [], timedOut: true };
 }
 
-/** Program id, re-exported so a caller does not need two imports. */
-export { SOL_CITY_PROGRAM_ID };
+/** Program id, re-exported so a caller does not need two imports. Packs live
+ *  in the collectibles program, not the city one. */
+export { SOL_CITY_COLLECTIBLES_PROGRAM_ID };

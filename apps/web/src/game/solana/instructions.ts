@@ -27,6 +27,7 @@ import {
 import {
   SOL_CITY_PROGRAM_ID, DELEGATION_PROGRAM_ID, derivePlayerPDA, deriveHuntPDA,
   deriveUnlockPDA, VRF_QUEUE_DEVNET, VRF_PROGRAM_ID, deriveVrfIdentityPDA,
+  SOL_CITY_COLLECTIBLES_PROGRAM_ID,
   derivePackConfigPDA, deriveSeasonDropsPDA, USDC_MINT_DEVNET,
   deriveFriendshipPDA, deriveFriendRequestPDA,
   sortPair, ACHIEVEMENT_BITS,
@@ -612,7 +613,7 @@ export function buildClaimFindIx(finder: PublicKey, round: number): TransactionI
 export function buildInitUnlockStateIx(authority: PublicKey): TransactionInstruction {
   const [unlockPda] = deriveUnlockPDA(authority);
   return new TransactionInstruction({
-    programId: SOL_CITY_PROGRAM_ID,
+    programId: SOL_CITY_COLLECTIBLES_PROGRAM_ID,
     keys: [
       { pubkey: authority,               isSigner: true,  isWritable: true },
       { pubkey: unlockPda,               isSigner: false, isWritable: true },
@@ -708,7 +709,7 @@ export function buildOpenBoosterIx(params: {
   const data = Buffer.concat([DISC.openBooster, packU8(packId), seed]);
 
   return new TransactionInstruction({
-    programId: SOL_CITY_PROGRAM_ID,
+    programId: SOL_CITY_COLLECTIBLES_PROGRAM_ID,
     keys: [
       { pubkey: payer,                     isSigner: true,  isWritable: true  },
       { pubkey: unlockPda,                 isSigner: false, isWritable: true  },

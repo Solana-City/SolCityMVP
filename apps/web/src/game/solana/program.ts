@@ -28,6 +28,28 @@ const ENV_PROGRAM_ID =
 // The env var overrides this at build time (e.g., for a different deploy).
 const DEPLOYED_PROGRAM_ID = "HPvDFVnruSXHwKKP44eUvRh8oYqBaHCeQbK1sKWT1aU2";
 
+/**
+ * The collectibles program: packs, seasons, unlocks and the mint.
+ *
+ * Split out of sol-city on 2026-10-29 so that opening a season stops being a
+ * redeploy of the code that moves players, and so its upgrade authority can
+ * be frozen on its own one day. Same upgrade authority as the city today.
+ *
+ * Everything derived from THIS id rather than the city's: PackConfig,
+ * SeasonDrops, UnlockState, MintConfig, and the VRF identity. Pointing one of
+ * them at the wrong program does not fail loudly, it just derives an address
+ * that nothing lives at, so they are all in one place below.
+ */
+const DEPLOYED_COLLECTIBLES_PROGRAM_ID = "EptRxVBysFzJEz52r58c2yCkpDGvF55aBPj1eCkWaphz";
+
+export const SOL_CITY_COLLECTIBLES_PROGRAM_ID = new PublicKey(
+  (typeof process !== "undefined"
+    && process.env.NEXT_PUBLIC_SOL_CITY_COLLECTIBLES_PROGRAM_ID
+    && process.env.NEXT_PUBLIC_SOL_CITY_COLLECTIBLES_PROGRAM_ID.length >= 32)
+    ? process.env.NEXT_PUBLIC_SOL_CITY_COLLECTIBLES_PROGRAM_ID
+    : DEPLOYED_COLLECTIBLES_PROGRAM_ID,
+);
+
 export const SOL_CITY_PROGRAM_ID = new PublicKey(
   ENV_PROGRAM_ID && ENV_PROGRAM_ID.length >= 32
     ? ENV_PROGRAM_ID
@@ -102,7 +124,7 @@ export const VRF_PROGRAM_ID = new PublicKey(
 export function deriveVrfIdentityPDA(): [PublicKey, number] {
   return PublicKey.findProgramAddressSync(
     [Buffer.from("identity")],
-    SOL_CITY_PROGRAM_ID,
+    SOL_CITY_COLLECTIBLES_PROGRAM_ID,
   );
 }
 
@@ -198,7 +220,7 @@ export function decodeHuntState(
 export function derivePackConfigPDA(): [PublicKey, number] {
   return PublicKey.findProgramAddressSync(
     [Buffer.from(PACK_CONFIG_SEED)],
-    SOL_CITY_PROGRAM_ID,
+    SOL_CITY_COLLECTIBLES_PROGRAM_ID,
   );
 }
 
@@ -215,13 +237,13 @@ export function deriveSeasonDropsPDA(season: number): [PublicKey, number] {
   seed.writeUInt16LE(season, 0);
   return PublicKey.findProgramAddressSync(
     [Buffer.from(SEASON_DROPS_SEED), seed],
-    SOL_CITY_PROGRAM_ID,
+    SOL_CITY_COLLECTIBLES_PROGRAM_ID,
   );
 }
 
 export function deriveUnlockPDA(
   wallet: PublicKey,
-  programId: PublicKey = SOL_CITY_PROGRAM_ID
+  programId: PublicKey = SOL_CITY_COLLECTIBLES_PROGRAM_ID
 ): [PublicKey, number] {
   return PublicKey.findProgramAddressSync(
     [Buffer.from(UNLOCKS_SEED), wallet.toBuffer()],
