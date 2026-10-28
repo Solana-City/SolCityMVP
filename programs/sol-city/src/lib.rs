@@ -4,7 +4,7 @@ use anchor_lang::prelude::*;
 // writes it. Imported rather than redeclared so the catalog boundaries
 // have ONE definition, because two copies that must agree is how they
 // stop agreeing.
-use sol_city_collectibles::{UnlockState, ENFORCED_FROM, UNLOCKS_SEED};
+use sol_city_catalog::{UnlockState, ENFORCED_FROM, UNLOCKS_SEED};
 use anchor_lang::solana_program::{
     pubkey,
     program::{invoke, invoke_signed},

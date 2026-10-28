@@ -22,5 +22,8 @@ default = []
 # serialises it; moving one crate's Anchor without the other is the way to
 # make that layout quietly disagree.
 anchor-lang = "0.30.1"
+# The shared layout. A library with no cdylib and no entrypoint, which is
+# what keeps this program from ever depending on another program.
+sol-city-catalog = { path = "../sol-city-catalog" }
 solana-program = "1.18.26"
 mpl-bubblegum = { version = "2.1.1", default-features = false }

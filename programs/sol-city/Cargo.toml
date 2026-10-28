@@ -28,15 +28,13 @@ anchor-lang = "0.30.1"
 # these programs were built anywhere else. Pinned to the version anchor-lang
 # 0.30.1 already resolves, so nothing else in the lock moves.
 solana-program = "1.18.26"
-# The collectibles program, as a LIBRARY only.
+# The shared vocabulary, NOT the collectibles program.
 #
-# `no-entrypoint` so its entrypoint is not compiled into this binary: what is
-# wanted is the UnlockState layout and the catalog boundaries, not its
-# instructions. The dependency goes this way and only this way, because
-# nothing in collectibles touches PlayerState, so there is no cycle.
+# The city used to take sol-city-collectibles with `no-entrypoint` to get this
+# layout. Correct on its own, wrong in combination: cargo unifies features
+# across one invocation, so a workspace build handed the collectibles cdylib
+# that same feature and emitted a 4 KB object with no entrypoint, exit 0.
 #
-# This is also what makes `Account<'info, UnlockState>` in SyncUnlocks check
-# the right owner: the Owner impl comes from that crate's declare_id!, so
-# Anchor refuses an UnlockState that is not owned by the collectibles
-# program, which is a check nobody has to remember to write.
-sol-city-collectibles = { path = "../sol-city-collectibles", features = ["no-entrypoint"] }
+# A crate that is not a program has no entrypoint to leak. No program depends
+# on another program now, so that cannot happen rather than being checked for.
+sol-city-catalog = { path = "../sol-city-catalog" }

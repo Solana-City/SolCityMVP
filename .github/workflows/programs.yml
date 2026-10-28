@@ -34,10 +34,16 @@ jobs:
       # on the BPF target and not on the host, where alignment differs, so a
       # host check reports errors that the real build does not have. It is
       # covered by build-sbf below, which compiles for the target that ships.
-      - name: Check sol-city and sol-city-collectibles
-        run: cargo check --locked -p sol-city -p sol-city-collectibles
+      - name: Check every crate
+        run: cargo check --locked -p sol-city -p sol-city-collectibles -p sol-city-catalog
+      # The catalog crate names the collectibles program id and pins the
+      # UnlockState discriminator, both of which are one fact written in two
+      # places. These tests are what make that safe rather than hopeful, so
+      # they are a gate and not a warning.
+      - name: Tests
+        run: cargo test --locked -p sol-city-catalog -p sol-city-collectibles
       - name: Warnings, reported but not fatal
-        run: cargo clippy --locked -p sol-city -p sol-city-collectibles -- -W clippy::all || true
+        run: cargo clippy --locked -p sol-city -p sol-city-collectibles -p sol-city-catalog -- -W clippy::all || true
 
   # The artifact. Builds the BPF object the way a deploy would, and checks what
   # came out rather than trusting the exit code: a build can succeed and still

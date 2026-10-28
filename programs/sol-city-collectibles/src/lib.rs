@@ -45,71 +45,18 @@ use anchor_lang::solana_program::{
 
 declare_id!("EptRxVBysFzJEz52r58c2yCkpDGvF55aBPj1eCkWaphz");
 
-/// Global cosmetic catalog split: indices [0, FREE_ITEM_COUNT) are free and
-/// never checked; [FREE_ITEM_COUNT, ..) are lockable. MUST match the client's
-/// table in `catalogIndex.ts`.
-///
-/// **A reserved SIZE, not a count.** Twenty-six items occupy it today: every
-/// skin, face and hairstyle, the starter shirt and trousers, and one hat.
-///
-/// **The rest is holes on purpose.** The client cuts each block into one LANE
-/// per layer category, sixteen lanes of thirty-two here, so an item's index
-/// depends on its own category and on nothing else. Before that, a block was
-/// filled in category order and adding one accessory moved every hair and
-/// every hat after it. With accessories on the way, that was a renumbering
-/// waiting to happen.
-///
-/// Holes cost nothing now that `UnlockState.owned` is a LIST of what a wallet
-/// has rather than a bitset over what exists: an empty slot is a number
-/// nobody stores. The only ceiling left is the u16 a loadout carries, and the
-/// whole table ends around 16,000 of 65,535.
-///
-/// **It can never move.** An item in the enforced range cannot become free
-/// later without changing its index, and an index written to chain names a
-/// cosmetic in somebody's wallet. The owner's rule (2026-10-20, reaffirmed
-/// 2026-10-25): every hairstyle is free, free-at-start and NPC rewards are
-/// not pack items, everything else is.
-pub const FREE_ITEM_COUNT: u16 = 512;
-// Bumped to 2 to match the client, which went there when Magawk_green and
-// Magawk_red left the variant list and shifted every index after them. That is
-// normally forbidden and was safe exactly once, because these indices have
-// never been written to chain. After this deploy does write them, a removal
-// renumbers cosmetics wallets already own and the append-only rule is absolute.
-//
-// Nothing reads this constant: it is a marker that both sides agree, so having
-// it disagree was worse than useless.
-pub const POOL_VERSION: u16 = 3;
-/// Reserved block, inside the lockable space, for quest and NPC reward outfits.
-/// Lockable bit layout:
-///   [0, QUEST_FREE_SLOTS)   → quest and NPC rewards
-///   [QUEST_FREE_SLOTS, ..)  → booster items
-///
-/// Nothing grants these on chain yet: the instruction that did was pulled from
-/// this deploy because its condition could only be checked in the client. The
-/// block stays reserved so the layout does not move when it returns.
-///
-/// **Also a reserved size.** Twelve items use it. It went from 16 to 128 on
-/// 2026-10-20, at the owner's call for "100+ to start", because more
-/// NPC-distributed items are planned and growing this later would shift every
-/// booster bit after it.
-///
-/// Unlike the free block, slack here is NOT free: it costs pack slots one for
-/// one. 128 reserved against 1024 bits leaves 896 for packs, which is the
-/// trade that was made deliberately.
-pub const QUEST_FREE_SLOTS: u16 = 1024;
-/// First catalog index `update_look_session` actually checks. Everything below
-/// is either free or inside the quest block, and the quest block is not
-/// enforced while nothing on chain can grant it. A const expression, so an
-/// overflow here would fail the build rather than wrap at runtime.
-pub const ENFORCED_FROM: u16 = FREE_ITEM_COUNT + QUEST_FREE_SLOTS;
+// The shared vocabulary, defined in a crate that is NOT a program. That is
+// what keeps any program from depending on another program, so the
+// `no-entrypoint` feature never enters this build graph at all. See the note
+// at the top of sol-city-catalog.
+pub use sol_city_catalog::{
+    UnlockState, PendingDraw,
+    FREE_ITEM_COUNT, QUEST_FREE_SLOTS, ENFORCED_FROM, UNLOCKS_SEED, RARITY_COUNT,
+};
+
 // ── Outfit booster ─────────────────────────────────────────────────────────
-/// Per-wallet unlock store (bitset of booster-pool item indices).
-pub const UNLOCKS_SEED: &[u8] = b"unlocks";
-/// Pieces granted per pack.
 /// Pack configuration, seed ["pack_config"]. One account for the whole city.
 pub const PACK_CONFIG_SEED: &[u8] = b"pack_config";
-/// common, uncommon, rare, legendary. The ladder the client already draws on.
-pub const RARITY_COUNT: usize = 4;
 /// Packs the config can hold. Three exist; the rest is room to tune.
 pub const MAX_PACKS: usize = 8;
 /// Seasons the config can hold. At two to four a year this is a decade.
@@ -141,6 +88,7 @@ pub const MAX_SEASON_DROPS: usize = 2048;
 /// Basis points, so 0.5% legendary is expressible. Weights must sum to this.
 pub const WEIGHT_TOTAL: u16 = 10_000;
 
+/// Pieces granted per pack.
 pub const BOOSTER_PACK_SIZE: usize = 5;
 /// Price to open an outfit box (0.025 SOL, about $2.50 at $100/SOL).
 /// SPL Account Compression, where the Bubblegum tree lives.
@@ -1210,94 +1158,6 @@ pub struct InitUnlockState<'info> {
     pub unlock_state: Account<'info, UnlockState>,
     pub system_program: Program<'info, System>,
 }
-#[account]
-pub struct UnlockState {
-    /// Wallet that owns these unlocks.
-    pub authority: Pubkey,
-    /// Catalog indices this wallet may wear, sorted ascending.
-    ///
-    /// A LIST of what is owned, not a bitset over what exists. The difference
-    /// is the whole economics of the account: a bitset costs
-    /// `catalog_size / 8` bytes whether a player owns one cosmetic or all of
-    /// them, so growing the catalog taxed every wallet up front. A list costs
-    /// two bytes per item actually owned, and the catalog size appears here
-    /// nowhere at all.
-    ///
-    /// That is how a wallet holding ten thousand cNFTs costs nothing extra:
-    /// you pay as you acquire. `open_booster` reallocs room for the pack it is
-    /// about to grant and the buyer funds those bytes, so the cost follows the
-    /// purchase that caused it.
-    ///
-    /// Sorted because `update_look_session` binary-searches it on the rollup,
-    /// where compute is the scarce thing.
-    pub owned: Vec<u16>,
-    /// Indices already turned into a tradable asset by this wallet, sorted.
-    ///
-    /// Separate from `owned` because they answer different questions: `owned`
-    /// is permission and survives a sale, this is "an asset for this index has
-    /// already been minted to this wallet once". Any future mint path must
-    /// refuse an index already here, or a player could mint, sell, and mint
-    /// again from the same unlock.
-    ///
-    /// Usually empty: minting is a choice, and most wallets never make it.
-    pub minted: Vec<u16>,
-    /// A pack has been paid for and is awaiting the VRF callback.
-    pub pending: bool,
-    /// The paid-for pack, frozen at the moment of payment.
-    pub draw: PendingDraw,
-}
-
-/// What the callback needs to resolve a pack, copied out of `PackConfig` when
-/// the pack is paid for.
-///
-/// A snapshot rather than a pack id the callback looks up, and the reason is
-/// not space: **the callback must not be able to fail.** The money is already
-/// gone by then. A callback that read the live config could arrive after the
-/// season was retired or the pack disabled, find nothing, and return an error
-/// against a wallet that had paid.
-///
-/// It also narrows the admin key, which is the stated cost of putting the
-/// table in an account: prices and odds can change, but not for a pack
-/// somebody has already bought. The odds posted when they paid are the odds
-/// they get.
-///
-/// Twelve bytes per wallet, once. The odds are copied; the index lists are
-/// not, because they live in an account that can no longer change.
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, InitSpace, Default)]
-pub struct PendingDraw {
-    pub pack_id: u8,
-    pub size: u8,
-    /// Basis points per rarity, in RARITY_ORDER (common first).
-    pub weights: [u16; RARITY_COUNT],
-    /// Which season's drop table resolves this pack. Two bytes rather than the
-    /// table's 32-byte address: the callback re-derives the PDA and compares,
-    /// which costs one find_program_address per pack instead of thirty bytes
-    /// on every wallet forever.
-    pub season: u16,
-}
-
-impl UnlockState {
-    /// Bytes for an account holding `owned_cap` owned and `minted_cap` minted
-    /// entries. 8 discriminator + 32 authority + two length-prefixed vectors
-    /// + 1 pending + the pending draw.
-    pub fn size_for(owned_cap: usize, minted_cap: usize) -> usize {
-        8 + 32 + (4 + owned_cap * 2) + (4 + minted_cap * 2) + 1 + PendingDraw::INIT_SPACE
-    }
-
-    /// Insert keeping the list sorted, ignoring a value already present.
-    /// Returns true when the list actually grew.
-    pub fn insert_owned(&mut self, index: u16) -> bool {
-        match self.owned.binary_search(&index) {
-            Ok(_) => false,
-            Err(at) => { self.owned.insert(at, index); true }
-        }
-    }
-
-    /// Whether this wallet may wear a catalog index.
-    pub fn owns(&self, index: u16) -> bool {
-        self.owned.binary_search(&index).is_ok()
-    }
-}
 
 /// Emitted when a cosmetic becomes an asset, so the client can show it.
 #[event]
@@ -1675,4 +1535,17 @@ pub struct AdminPackConfig<'info> {
     )]
     pub config: Account<'info, PackConfig>,
     pub admin: Signer<'info>,
+}
+
+#[cfg(test)]
+mod id_agreement {
+    /// The catalog crate has to name the program that owns the accounts it
+    /// defines, and it cannot read `crate::ID` to do it, so that one fact
+    /// lives in two places. This is the guard that stops them drifting: if
+    /// they did, `Account<UnlockState>` would check the wrong owner and
+    /// accept an account belonging to somebody else.
+    #[test]
+    fn the_catalog_names_this_program() {
+        assert_eq!(crate::ID, sol_city_catalog::COLLECTIBLES_PROGRAM_ID);
+    }
 }
