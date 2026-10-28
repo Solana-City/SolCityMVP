@@ -1,0 +1,26 @@
+[package]
+name = "sol-city-collectibles"
+version = "0.1.0"
+description = "Sol City packs, seasons, unlocks and the collectible mint"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "sol_city_collectibles"
+
+[features]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+cpi = ["no-entrypoint"]
+idl-build = ["anchor-lang/idl-build"]
+default = []
+
+[dependencies]
+# Same pins as sol-city, deliberately. The two programs share an account
+# layout across the seam (UnlockState), so they have to agree on how Anchor
+# serialises it; moving one crate's Anchor without the other is the way to
+# make that layout quietly disagree.
+anchor-lang = "0.30.1"
+solana-program = "1.18.26"
+mpl-bubblegum = { version = "2.1.1", default-features = false }

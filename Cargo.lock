@@ -1668,6 +1668,15 @@ name = "sol-city"
 version = "0.1.0"
 dependencies = [
  "anchor-lang",
+ "sol-city-collectibles",
+ "solana-program",
+]
+
+[[package]]
+name = "sol-city-collectibles"
+version = "0.1.0"
+dependencies = [
+ "anchor-lang",
  "mpl-bubblegum",
  "solana-program",
 ]

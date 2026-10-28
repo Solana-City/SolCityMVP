@@ -34,10 +34,10 @@ jobs:
       # on the BPF target and not on the host, where alignment differs, so a
       # host check reports errors that the real build does not have. It is
       # covered by build-sbf below, which compiles for the target that ships.
-      - name: Check sol-city
-        run: cargo check --locked -p sol-city
+      - name: Check sol-city and sol-city-collectibles
+        run: cargo check --locked -p sol-city -p sol-city-collectibles
       - name: Warnings, reported but not fatal
-        run: cargo clippy --locked -p sol-city -- -W clippy::all || true
+        run: cargo clippy --locked -p sol-city -p sol-city-collectibles -- -W clippy::all || true
 
   # The artifact. Builds the BPF object the way a deploy would, and checks what
   # came out rather than trusting the exit code: a build can succeed and still
@@ -90,6 +90,9 @@ jobs:
           echo "--- dynamic linking (must be empty for v3) ---"
           readelf -l "$SO" | grep DYNAMIC || echo "  none"
           readelf -S "$SO" | grep -E '\.rel\.dyn|\.dynsym|\.dynamic' || echo "  none"
+          echo "=== sol_city_collectibles ==="
+          SC=$(find target -name 'sol_city_collectibles.so' | head -1)
+          ls -la "$SC" && readelf -h "$SC" | grep -i flags
           echo "=== sol_mechs ==="
           SM=$(find target -name 'sol_mechs.so' | head -1)
           ls -la "$SM" && readelf -h "$SM" | grep -i flags
@@ -106,6 +109,22 @@ jobs:
               return n.to_bytes(32, "big")
           want = "HPvDFVnruSXHwKKP44eUvRh8oYqBaHCeQbK1sKWT1aU2"
           blob = io.open(sys.argv[1], "rb").read()
+          # Both programs, because a split is exactly when an id goes astray.
+          if blob.count(dec(want)):
+              print(f"declare_id OK: {want}")
+          else:
+              print(f"declare_id MISSING: {want} is not in this binary")
+              sys.exit(1)
+          PY
+          python3 - "$(find target -name 'sol_city_collectibles.so' | head -1)" <<'PY'
+          import sys, io
+          A = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
+          def dec(s):
+              n = 0
+              for c in s: n = n * 58 + A.index(c)
+              return n.to_bytes(32, "big")
+          want = "EptRxVBysFzJEz52r58c2yCkpDGvF55aBPj1eCkWaphz"
+          blob = io.open(sys.argv[1], "rb").read()
           if blob.count(dec(want)):
               print(f"declare_id OK: {want}")
           else:
@@ -119,6 +138,7 @@ jobs:
           name: sol_city-${{ matrix.arch }}
           path: |
             target/**/sol_city.so
+            target/**/sol_city_collectibles.so
             target/**/sol_mechs.so
           if-no-files-found: error
           retention-days: 30
