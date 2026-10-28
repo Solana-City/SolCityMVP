@@ -69,16 +69,26 @@ jobs:
           solana --version
           cargo build-sbf --version
 
-      # The whole workspace, so sol-mechs is compiled for the target it ships
-      # to rather than only type-checked on the host.
+      # ONE INVOCATION PER PROGRAM, and the order matters.
+      #
+      # Not `cargo build-sbf` over the workspace. sol-city depends on
+      # sol-city-collectibles with `no-entrypoint`, and cargo unifies features
+      # across a single invocation, so a workspace build applies that feature
+      # to the collectibles cdylib as well and emits a 4 KB stub with no
+      # entrypoint. It exits 0. The first attempt at this shipped exactly that
+      # and only the size gave it away.
+      #
+      # Building each manifest on its own means the collectibles build does
+      # not have no-entrypoint turned on by anyone. It goes LAST because both
+      # builds write the same .so path and the last one wins.
       - name: Build
         id: build
         run: |
-          if [ "${{ matrix.arch }}" = "v3" ]; then
-            cargo build-sbf --arch v3
-          else
-            cargo build-sbf
-          fi
+          ARCH=""
+          if [ "${{ matrix.arch }}" = "v3" ]; then ARCH="--arch v3"; fi
+          cargo build-sbf $ARCH --manifest-path programs/sol-mechs/Cargo.toml
+          cargo build-sbf $ARCH --manifest-path programs/sol-city/Cargo.toml
+          cargo build-sbf $ARCH --manifest-path programs/sol-city-collectibles/Cargo.toml
 
       - name: Inspect the artifact
         if: steps.build.outcome == 'success'
@@ -93,6 +103,16 @@ jobs:
           echo "=== sol_city_collectibles ==="
           SC=$(find target -name 'sol_city_collectibles.so' | head -1)
           ls -la "$SC" && readelf -h "$SC" | grep -i flags
+          # A program that is not a program. See the note on the Build step:
+          # with no-entrypoint leaking in, this is ~4 KB and still exits 0, so
+          # size is the only thing that tells the difference.
+          for F in "$SO" "$SC"; do
+            SZ=$(stat -c%s "$F")
+            if [ "$SZ" -lt 100000 ]; then
+              echo "FAIL: $F is $SZ bytes, which is a stub and not a program"
+              exit 1
+            fi
+          done
           echo "=== sol_mechs ==="
           SM=$(find target -name 'sol_mechs.so' | head -1)
           ls -la "$SM" && readelf -h "$SM" | grep -i flags
