@@ -31,7 +31,7 @@ declare_id!("HPvDFVnruSXHwKKP44eUvRh8oYqBaHCeQbK1sKWT1aU2");
 // wallet re-inits on next connect (same as v1→v2). Unlocks live in the separate
 // UnlockState PDA, so they're NOT lost by the re-init. Client derivePlayerPDA
 // uses the same seed.
-pub const PLAYER_SEED: &[u8] = b"player_v3";
+pub const PLAYER_SEED: &[u8] = b"player_v4";
 
 pub const BUFFER_SEED: &[u8] = b"buffer";
 /// Global "Find Someone" hunt state — one account for the whole city.
@@ -87,48 +87,6 @@ pub const MINI_GAME_WIN_POINTS: u32 = 100;
 pub const PLAYER_UNLOCK_CAP: usize = 256;
 
 
-
-// ── The beach football ─────────────────────────────────────────────────────
-//
-// One account for the ball on the ST Brasil sand, delegated to the rollup so
-// a kick is a free, sub-second write everybody reads off the same poll.
-//
-// Only the KICK is stored, never the roll: position, the speed it left at,
-// and when. Every client runs the same fixed-step physics from that snapshot
-// (apps/web/src/game/world/BeachBall.ts), so a ball that rolls for two
-// seconds costs one write instead of a hundred.
-//
-// A singleton, like the hunt. A second ball would need another seed and
-// another deploy, which is the same bargain HUNT_SEED already takes.
-pub const BALL_SEED: &[u8] = b"ball";
-
-/// How far a player may be from the ball and still kick it, in world pixels,
-/// SQUARED.
-///
-/// Deliberately loose. A player's on-chain position is rewritten every 200ms,
-/// so at a walk it is routinely a tile and a half behind where they really
-/// are, and further under a speed buff. This is here to stop a modified
-/// client putting the ball on the other side of the city, not to referee the
-/// tackle — a check tight enough to be "accurate" would throw out real kicks
-/// all day.
-pub const BALL_REACH_SQ: i64 = 96 * 96;
-
-/// The fastest a kick may leave, px/s. The game kicks at 190.
-pub const BALL_MAX_SPEED: i16 = 400;
-
-/// The ST Brasil beach, as a bounding box in world pixels (tiles 5..68 by
-/// 56..104 of a 24px grid).
-///
-/// The real boundary is the painted sand, which the client carries as a tile
-/// mask built from the map at load — far too much detail for a program to
-/// hold, and it would have to be re-deployed every time the artist moved the
-/// shoreline. So the chain keeps the ball in the right QUARTER of the city
-/// and the clients agree on the exact edge between them.
-pub const BALL_MIN_X: u32 = 5 * 24;
-pub const BALL_MAX_X: u32 = 68 * 24;
-pub const BALL_MIN_Y: u32 = 56 * 24;
-pub const BALL_MAX_Y: u32 = 104 * 24;
-
 /// MagicBlock delegation program on devnet.
 pub const DELEGATION_PROGRAM_ID: Pubkey =
     pubkey!("DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh");
@@ -164,32 +122,18 @@ const MAGIC_IX_COMMIT_AND_UNDELEGATE: u32 = 2;
 /// Seeds of the buffer the delegation program fills with the committed state
 /// and hands to `process_undelegation`. Derived under the DELEGATION program,
 /// not under ours, which is what makes it unforgeable.
-/// Per-player social account, seeds ["social", wallet].
+/// Friends a player can hold, counting people invited and people turned
+/// down. Sixteen costs 528 bytes, which is 0.0027 SOL on top of an account
+/// every player already creates.
 ///
-/// One account per PLAYER, not one per pair, and that is the whole design.
-/// A pair account has to be created before it can say anything, which means
-/// rent and a wallet popup for the mundane act of asking someone to be your
-/// friend. This account is created and delegated ONCE, and from then on every
-/// invite, accept, cancel and unfriend is a session-signed write to your own
-/// account on the rollup: no popup, no fee, nothing new to pay for.
-///
-/// It also fits the invariant the whole shared world rests on, which is that
-/// **a player only ever writes their own PDA**. A pair account breaks it, and
-/// that matters more now than it used to: players are delegated to the
-/// nearest of three rollups, and two delegated accounts in one instruction
-/// have to be on the same one. A friendship between a player in Asia and a
-/// player in Europe had nowhere to live.
-pub const SOCIAL_SEED: &[u8] = b"social";
-
-/// Links one account can hold, counting friends, people invited and people
-/// turned down. Fixed, because a delegated account cannot be realloc'd: this
-/// account spends its life on the rollup, where growing it is not an option.
-pub const SOCIAL_LINK_CAP: usize = 40;
+/// Fixed, because this account spends its life delegated to a rollup and a
+/// delegated account cannot be realloc'd.
+pub const FRIEND_LINK_CAP: usize = 16;
 
 /// "I want this person as a friend." An invite and an acceptance are the SAME
 /// state, which is what lets one instruction serve both: a friendship is
 /// simply both sides holding it about each other, and the client derives that
-/// from two accounts it already reads.
+/// from two accounts it already reads twice a second.
 pub const LINK_WANT: u8 = 1;
 
 /// "I said no." Kept so the sender sees an answer instead of a pending invite
@@ -424,16 +368,14 @@ pub enum SolCityError {
     HuntRoundStale,
     #[msg("Loadout contains an item this wallet hasn't unlocked")]
     ItemNotUnlocked,
-    #[msg("Too far from the ball to kick it")]
-    BallOutOfReach,
     #[msg("No such mini-game slot")]
     UnknownMiniGame,
     #[msg("Undelegation buffer is not the canonical one for this account")]
     InvalidUndelegationBuffer,
     #[msg("Those seeds do not derive the account being undelegated")]
     InvalidUndelegationSeeds,
-    #[msg("This player's social list is full")]
-    SocialFull,
+    #[msg("This player's friend list is full")]
+    FriendListFull,
     #[msg("That is not a link state this program knows")]
     BadLinkState,
     // Appended, never inserted. Anchor numbers these by POSITION, so a
@@ -836,41 +778,16 @@ pub mod sol_city {
         Ok(())
     }
 
-    // ── Friends, as one account per player ────────────────────────────────
+    // ── Friends ───────────────────────────────────────────────────────────
     //
-    // init_social and delegate_social run ONCE in a player's life, in the same
-    // transaction, the first time they touch the feature. Every friend action
-    // after that is set_link_session, which costs nothing and asks for
-    // nothing.
-
-    /// Creates this wallet's social account. Once, ever.
-    pub fn init_social(ctx: Context<InitSocial>) -> Result<()> {
-        let social = &mut ctx.accounts.social;
-        social.authority = ctx.accounts.authority.key();
-        social.links_len = 0;
-        Ok(())
-    }
-
-    /// Puts the social account on the rollup, so every later write is free.
-    ///
-    /// Sent in the same transaction as init_social, so the player sees one
-    /// prompt rather than two. The validator is named the same way the player
-    /// PDA names one, and it must be the SAME rollup: a client reading a
-    /// citizen's links wants them where it already found the citizen.
-    pub fn delegate_social(ctx: Context<DelegateSocial>) -> Result<()> {
-        let authority_key = ctx.accounts.authority.key();
-        delegate_pda(
-            &ctx.accounts.authority,
-            &ctx.accounts.social,
-            &ctx.accounts.delegate_buffer,
-            &ctx.accounts.delegation_record,
-            &ctx.accounts.delegation_metadata,
-            &ctx.accounts.system_program,
-            &[SOCIAL_SEED, authority_key.as_ref()],
-            ctx.bumps.social,
-            ctx.remaining_accounts.first().map(|acc| *acc.key),
-        )
-    }
+    // No account of their own, and that is the whole point. A friend list is
+    // durable state, so it needs bytes somewhere, and the cheapest bytes a
+    // player can have are the ones in the account they already create and
+    // already pay for. That is also exactly why chat costs nothing: it writes
+    // a field of this same account, already delegated, with the session key.
+    //
+    // So a player signs NOTHING, ever, to use friends. There is no setup
+    // transaction, no second account, no second delegation.
 
     /// Sets what this player thinks of another one, on their OWN account.
     ///
@@ -892,7 +809,7 @@ pub mod sol_city {
     ///
     /// Session-signed, so no popup and no fee.
     pub fn set_link_session(
-        ctx: Context<UpdateSocialSession>,
+        ctx: Context<UpdatePlayerSession>,
         peer: Pubkey,
         state: u8,
     ) -> Result<()> {
@@ -900,9 +817,9 @@ pub mod sol_city {
             state == 0 || state == LINK_WANT || state == LINK_DECLINED,
             SolCityError::BadLinkState
         );
-        let social = &mut ctx.accounts.social;
-        let len = (social.links_len as usize).min(SOCIAL_LINK_CAP);
-        let found = social.links[..len].iter().position(|l| l.peer == peer);
+        let player = &mut ctx.accounts.player;
+        let len = (player.links_len as usize).min(FRIEND_LINK_CAP);
+        let found = player.links[..len].iter().position(|l| l.peer == peer);
 
         match (found, state) {
             // Dropping a link that is not there is not an error: cancelling an
@@ -911,219 +828,46 @@ pub mod sol_city {
             // Swap-remove. Order carries no meaning here, so the cheap removal
             // is also the correct one.
             (Some(at), 0) => {
-                social.links[at] = social.links[len - 1];
-                social.links[len - 1] = Link::default();
-                social.links_len -= 1;
+                player.links[at] = player.links[len - 1];
+                player.links[len - 1] = Link::default();
+                player.links_len -= 1;
             }
-            (Some(at), _) => social.links[at].state = state,
+            (Some(at), _) => player.links[at].state = state,
             (None, _) => {
-                require!(len < SOCIAL_LINK_CAP, SolCityError::SocialFull);
-                social.links[len] = Link { peer, state };
-                social.links_len += 1;
+                require!(len < FRIEND_LINK_CAP, SolCityError::FriendListFull);
+                player.links[len] = Link { peer, state };
+                player.links_len += 1;
             }
         }
+        player.last_active = Clock::get()?.unix_timestamp;
         Ok(())
     }
 
-    // ── The beach football ─────────────────────────────────────────────────
-    //
-    // initialize_ball: once, ever, after deploy. Then delegate_ball, once,
-    // ever, and from there the ball lives on the rollup and every kick is a
-    // session-signed write with no popup and no fee.
 
-    /// Creates the ball and puts it on the sand. Call once, ever, after deploy.
-    pub fn initialize_ball(ctx: Context<InitializeBall>, x: u32, y: u32) -> Result<()> {
-        let ball = &mut ctx.accounts.ball;
-        ball.x = x.clamp(BALL_MIN_X, BALL_MAX_X);
-        ball.y = y.clamp(BALL_MIN_Y, BALL_MAX_Y);
-        ball.vx = 0;
-        ball.vy = 0;
-        ball.kicker = Pubkey::default();
-        ball.kicked_at = Clock::get()?.unix_timestamp;
-        ball.seq = 0;
-        Ok(())
-    }
-
-    /// Kicks the ball: stores where it was, how fast it left, and when.
+    /// Puts the global hunt on a rollup, so claiming a find is instant.
     ///
-    /// The kicker's own player account comes along, which proves two things
-    /// with one read: the signer really is a session key somebody authorized,
-    /// and that somebody is standing next to the ball. Without it any session
-    /// key in the city could put the ball anywhere.
+    /// Safe in a way the beach ball was not, and the difference is the whole
+    /// reason this one can exist: `claim_find` touches ONE delegated account,
+    /// the hunt itself. The finder is a plain signature, not an account that
+    /// has to live anywhere. So a player delegated to any of the three rollups
+    /// can still claim a find on the rollup that holds the hunt.
     ///
-    /// Session-signed, so no wallet popup, and on the rollup, so no fee.
-    pub fn kick_ball_session(
-        ctx: Context<KickBallSession>,
-        x: u32,
-        y: u32,
-        vx: i16,
-        vy: i16,
-    ) -> Result<()> {
-        // Everything read off `ctx.accounts` up front, so the mutable borrow
-        // of `ball` below is the only borrow alive by the time it is taken.
-        let px = ctx.accounts.player.x as i64;
-        let py = ctx.accounts.player.y as i64;
-        let kicker = ctx.accounts.session_authority.key();
-        let now = Clock::get()?.unix_timestamp;
-
-        // Measured against the position the kick CLAIMS, not against where the
-        // ball was last stored: the ball has been rolling since that snapshot,
-        // and the client that caught up with it is the one telling us where it
-        // got to.
-        let dx = px - x as i64;
-        let dy = py - y as i64;
-        require!(dx * dx + dy * dy <= BALL_REACH_SQ, SolCityError::BallOutOfReach);
-
-        let ball = &mut ctx.accounts.ball;
-        ball.x = x.clamp(BALL_MIN_X, BALL_MAX_X);
-        ball.y = y.clamp(BALL_MIN_Y, BALL_MAX_Y);
-        ball.vx = vx.clamp(-BALL_MAX_SPEED, BALL_MAX_SPEED);
-        ball.vy = vy.clamp(-BALL_MAX_SPEED, BALL_MAX_SPEED);
-        ball.kicker = kicker;
-        ball.kicked_at = now;
-        // Wrapping, not saturating: this counts kicks, and a ball that has
-        // been kicked four billion times should keep going, not freeze on
-        // u32::MAX and stop looking like a new kick to anybody.
-        ball.seq = ball.seq.wrapping_add(1);
-        Ok(())
-    }
-
-    /// Delegates the ball to the MagicBlock Ephemeral Rollup. Once, ever,
-    /// right after initialize_ball.
+    /// `kick_ball_session` needed two delegated accounts at once, the ball and
+    /// the kicker, and those are never on the same rollup for everybody.
     ///
-    /// The same six steps `delegate` runs for a player PDA, against a PDA
-    /// with one seed and no owner. It is written out rather than shared with
-    /// `delegate` on purpose: nothing in this repo can build an SBF binary
-    /// (see REDEPLOY_CHECKLIST), Playground is the only compiler, and pulling
-    /// a generic helper out of the one delegation path that has already
-    /// shipped would put it at risk to save a screen of code.
-    ///
-    /// Takes the same OPTIONAL validator remaining account as `delegate`.
-    ///
-    /// Nothing ever undelegates it. The ball is a fixture of the city, not a
-    /// session: it belongs on the rollup for as long as the rollup is there.
-    pub fn delegate_ball(ctx: Context<DelegateBall>) -> Result<()> {
-        let ball_key = ctx.accounts.ball.key();
-        let ball_bump = ctx.bumps.ball;
-
-        // Signer seeds for the ball PDA (WITH bump, for invoke_signed)
-        let ball_signer_seeds: &[&[u8]] = &[BALL_SEED, &[ball_bump]];
-
-        let (_, buffer_bump) = Pubkey::find_program_address(
-            &[BUFFER_SEED, ball_key.as_ref()],
-            &crate::ID,
-        );
-        let buffer_signer_seeds: &[&[u8]] = &[
-            BUFFER_SEED,
-            ball_key.as_ref(),
-            &[buffer_bump],
-        ];
-
-        let data_len = ctx.accounts.ball.data_len();
-        let rent = SolanaRent::get()?;
-
-        // ── 1. Create the buffer PDA ───────────────────────────────────────
-        invoke_signed(
-            &system_instruction::create_account(
-                ctx.accounts.payer.key,
-                ctx.accounts.delegate_buffer.key,
-                rent.minimum_balance(data_len),
-                data_len as u64,
-                &crate::ID,
-            ),
-            &[
-                ctx.accounts.payer.to_account_info(),
-                ctx.accounts.delegate_buffer.to_account_info(),
-                ctx.accounts.system_program.to_account_info(),
-            ],
-            &[buffer_signer_seeds],
-        )?;
-
-        // ── 2. Copy ball data → buffer ─────────────────────────────────────
-        {
-            let ball_data = ctx.accounts.ball.data.borrow();
-            let mut buffer_data = ctx.accounts.delegate_buffer.data.borrow_mut();
-            buffer_data.copy_from_slice(&ball_data);
-        }
-
-        // ── 3. Zero the ball PDA data ──────────────────────────────────────
-        {
-            let mut ball_data = ctx.accounts.ball.data.borrow_mut();
-            sol_memset(&mut ball_data, 0, data_len);
-        }
-
-        // ── 4. Reassign ball PDA → delegation program ──────────────────────
-        ctx.accounts.ball.assign(&anchor_lang::solana_program::system_program::id());
-        invoke_signed(
-            &system_instruction::assign(
-                ctx.accounts.ball.key,
-                &DELEGATION_PROGRAM_ID,
-            ),
-            &[
-                ctx.accounts.ball.to_account_info(),
-                ctx.accounts.system_program.to_account_info(),
-            ],
-            &[ball_signer_seeds],
-        )?;
-
-        // ── 5. CPI → delegation program ────────────────────────────────────
-        // Same layout as `delegate`, with ONE seed instead of two, and the
-        // same optional validator as the single remaining account.
-        let preferred_validator: Option<Pubkey> =
-            ctx.remaining_accounts.first().map(|acc| *acc.key);
-        let seeds_vec: [Vec<u8>; 1] = [BALL_SEED.to_vec()];
-        let mut ix_data: Vec<u8> = Vec::with_capacity(96);
-        ix_data.extend_from_slice(&[0u8; 8]);                               // discriminator
-        ix_data.extend_from_slice(&NO_PERIODIC_COMMIT.to_le_bytes());       // commit_frequency_ms
-        ix_data.extend_from_slice(&(seeds_vec.len() as u32).to_le_bytes()); // seeds.len()
-        for seed in &seeds_vec {
-            ix_data.extend_from_slice(&(seed.len() as u32).to_le_bytes());
-            ix_data.extend_from_slice(seed);
-        }
-        match preferred_validator {
-            Some(validator) => {
-                ix_data.push(1u8);
-                ix_data.extend_from_slice(validator.as_ref());
-            }
-            None => ix_data.push(0u8),
-        }
-
-        let delegate_ix = SolInstruction {
-            program_id: DELEGATION_PROGRAM_ID,
-            accounts: vec![
-                SolAccountMeta::new(*ctx.accounts.payer.key, true),
-                SolAccountMeta::new(*ctx.accounts.ball.key, true),
-                SolAccountMeta::new_readonly(crate::ID, false),
-                SolAccountMeta::new(*ctx.accounts.delegate_buffer.key, false),
-                SolAccountMeta::new(*ctx.accounts.delegation_record.key, false),
-                SolAccountMeta::new(*ctx.accounts.delegation_metadata.key, false),
-                SolAccountMeta::new_readonly(*ctx.accounts.system_program.key, false),
-            ],
-            data: ix_data,
-        };
-
-        invoke_signed(
-            &delegate_ix,
-            &[
-                ctx.accounts.payer.to_account_info(),
-                ctx.accounts.ball.to_account_info(),
-                ctx.accounts.owner_program.to_account_info(),
-                ctx.accounts.delegate_buffer.to_account_info(),
-                ctx.accounts.delegation_record.to_account_info(),
-                ctx.accounts.delegation_metadata.to_account_info(),
-                ctx.accounts.system_program.to_account_info(),
-            ],
-            &[ball_signer_seeds],
-        )?;
-
-        // ── 6. Close buffer PDA (return rent to payer) ─────────────────────
-        {
-            let buffer_lamports = ctx.accounts.delegate_buffer.lamports();
-            **ctx.accounts.delegate_buffer.try_borrow_mut_lamports()? -= buffer_lamports;
-            **ctx.accounts.payer.try_borrow_mut_lamports()? += buffer_lamports;
-        }
-
-        Ok(())
+    /// Admin-run, once. Nothing undelegates it: the hunt is a fixture.
+    pub fn delegate_hunt(ctx: Context<DelegateHunt>) -> Result<()> {
+        delegate_pda(
+            &ctx.accounts.payer,
+            &ctx.accounts.hunt,
+            &ctx.accounts.delegate_buffer,
+            &ctx.accounts.delegation_record,
+            &ctx.accounts.delegation_metadata,
+            &ctx.accounts.system_program,
+            &[HUNT_SEED],
+            ctx.bumps.hunt,
+            ctx.remaining_accounts.first().map(|acc| *acc.key),
+        )
     }
 
     // ── Carrying rollup state back to the base layer ───────────────────
@@ -1199,7 +943,8 @@ pub mod sol_city {
     ///
     /// It re-creates the PDA under this program at the buffer’s size and copies
     /// the committed state in. Generic on purpose: the seeds arrive as an
-    /// argument, so it serves the player PDA and the ball alike.
+    /// argument, so it serves any PDA this program delegates: the player today,
+    /// the hunt once it is delegated.
     ///
     /// Anyone may call it. What makes that safe is the buffer: it has to sign,
     /// it has to be owned by the delegation program, and it has to be the
@@ -1467,68 +1212,6 @@ pub struct ClaimFind<'info> {
 }
 
 
-#[derive(Accounts)]
-pub struct InitializeBall<'info> {
-    #[account(
-        init,
-        payer = payer,
-        space = 8 + BallState::INIT_SPACE,
-        seeds = [BALL_SEED],
-        bump,
-    )]
-    pub ball: Account<'info, BallState>,
-    #[account(mut)]
-    pub payer: Signer<'info>,
-    pub system_program: Program<'info, System>,
-}
-
-#[derive(Accounts)]
-pub struct KickBallSession<'info> {
-    #[account(mut, seeds = [BALL_SEED], bump)]
-    pub ball: Account<'info, BallState>,
-    /// The kicker's own player account. Read-only, and read for two reasons:
-    /// the session-key constraint proves the signer is somebody's authorized
-    /// key, and `player.x`/`player.y` prove that somebody is at the ball.
-    #[account(
-        seeds = [PLAYER_SEED, player.authority.as_ref()],
-        bump,
-        constraint = player.session_authority == Some(session_authority.key())
-            @ SolCityError::InvalidSessionKey,
-    )]
-    pub player: Account<'info, PlayerState>,
-    /// Session key — seamless, no wallet popup.
-    pub session_authority: Signer<'info>,
-}
-
-#[derive(Accounts)]
-pub struct DelegateBall<'info> {
-    #[account(mut)]
-    pub payer: Signer<'info>,
-    /// CHECK: PDA verified via seeds; zeroed and reassigned in the instruction body
-    #[account(mut, seeds = [BALL_SEED], bump)]
-    pub ball: UncheckedAccount<'info>,
-    /// CHECK: our own program ID, used by the delegation CPI to verify PDA
-    /// ownership. Pinned by address: the CPI below names `crate::ID` in the
-    /// account metas, so anything else here could only fail deeper in.
-    #[account(address = crate::ID)]
-    pub owner_program: UncheckedAccount<'info>,
-    /// CHECK: delegate buffer PDA — seeds ["buffer", ball.key()], owned by this program
-    #[account(mut)]
-    pub delegate_buffer: UncheckedAccount<'info>,
-    /// CHECK: delegation record PDA — ["delegation", ball.key()], owned by delegation program
-    #[account(mut)]
-    pub delegation_record: UncheckedAccount<'info>,
-    /// CHECK: delegation metadata PDA — ["delegation-metadata", ball.key()], owned by delegation program
-    #[account(mut)]
-    pub delegation_metadata: UncheckedAccount<'info>,
-    /// CHECK: MagicBlock delegation program, pinned by address. Never read
-    /// here: the CPI target is the `DELEGATION_PROGRAM_ID` constant. It is in
-    /// this struct so the transaction carries the account.
-    #[account(address = DELEGATION_PROGRAM_ID)]
-    pub delegation_program: UncheckedAccount<'info>,
-    pub system_program: Program<'info, System>,
-}
-
 /// Committing a delegated player, with the PDA taken UNCHECKED on purpose.
 ///
 /// The magic program touches the account during the CPI: commit-and-undelegate
@@ -1537,6 +1220,32 @@ pub struct DelegateBall<'info> {
 /// back over that when the instruction ends, which is the stale-write the
 /// MagicBlock docs warn about. So the account comes in raw, the seeds tie it to
 /// `authority`, and the session key is checked against the stored bytes.
+#[derive(Accounts)]
+pub struct DelegateHunt<'info> {
+    #[account(mut)]
+    pub payer: Signer<'info>,
+    /// CHECK: PDA by seeds. Unchecked because the delegation CPI reassigns its
+    /// owner midway, and Anchor would write a stale copy back over it.
+    #[account(mut, seeds = [HUNT_SEED], bump)]
+    pub hunt: UncheckedAccount<'info>,
+    /// CHECK: our own program id, pinned; the CPI names crate::ID in its metas.
+    #[account(address = crate::ID)]
+    pub owner_program: UncheckedAccount<'info>,
+    /// CHECK: delegate buffer PDA, seeds ["buffer", hunt.key()].
+    #[account(mut)]
+    pub delegate_buffer: UncheckedAccount<'info>,
+    /// CHECK: delegation record PDA, owned by the delegation program.
+    #[account(mut)]
+    pub delegation_record: UncheckedAccount<'info>,
+    /// CHECK: delegation metadata PDA, owned by the delegation program.
+    #[account(mut)]
+    pub delegation_metadata: UncheckedAccount<'info>,
+    /// CHECK: MagicBlock delegation program, pinned by address.
+    #[account(address = DELEGATION_PROGRAM_ID)]
+    pub delegation_program: UncheckedAccount<'info>,
+    pub system_program: Program<'info, System>,
+}
+
 #[derive(Accounts)]
 pub struct CommitPlayerSession<'info> {
     /// CHECK: seeds tie it to `authority`; the session key is verified in the body.
@@ -1575,7 +1284,8 @@ pub struct CommitAndUndelegatePlayerSession<'info> {
 
 /// Accounts for the undelegation callback, in the order the delegation program
 /// passes them. Nothing here is seeds-checked by Anchor: the account is
-/// whatever came home (player PDA or ball), and every guard is in the body.
+/// whatever came home (a player PDA, or the hunt), and every guard is in the
+/// body.
 #[derive(Accounts)]
 pub struct InitializeAfterUndelegation<'info> {
     /// CHECK: the account coming home. Its seeds are validated in the body
@@ -1591,31 +1301,6 @@ pub struct InitializeAfterUndelegation<'info> {
     #[account(mut)]
     pub payer: UncheckedAccount<'info>,
     pub system_program: Program<'info, System>,
-}
-
-/// The beach football: the last KICK, never the roll.
-///
-/// Every client replays the same physics from this snapshot, so the account
-/// only changes when somebody touches the ball — a roll costs nothing.
-#[account]
-#[derive(InitSpace)]
-pub struct BallState {
-    /// Where the ball was when it was last kicked, in world pixels.
-    pub x: u32,
-    pub y: u32,
-    /// How fast it left, px/s. Signed: a ball goes in every direction.
-    pub vx: i16,
-    pub vy: i16,
-    /// Session key of whoever kicked it last.
-    pub kicker: Pubkey,
-    /// When, by the CHAIN's clock — which is the point of this account. It is
-    /// the one clock every device agrees on, so a client can measure how old
-    /// a kick is instead of guessing a constant for the trip, and two clients
-    /// can order two kicks the same way.
-    pub kicked_at: i64,
-    /// Bumped on every kick. `kicked_at` is whole seconds and a dribble puts
-    /// three kicks inside one of them, so this is what tells two apart.
-    pub seq: u32,
 }
 
 #[account]
@@ -1743,89 +1428,30 @@ pub struct PlayerState {
     pub unlocked: [u16; PLAYER_UNLOCK_CAP],
     /// Valid entries in `unlocked`.
     pub unlocked_len: u16,
-}
-
-// ── Friends, as one account per player ──────────────────────────────────────
-
-/// What one player thinks of another. 33 bytes.
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, InitSpace, Default)]
-pub struct Link {
-    pub peer: Pubkey,
-    /// LINK_WANT or LINK_DECLINED. Never 0 inside `links_len`.
-    pub state: u8,
-}
-
-/// One player's whole social graph, written only by them.
-#[account]
-#[derive(InitSpace)]
-pub struct Social {
-    pub authority: Pubkey,
-    pub links: [Link; SOCIAL_LINK_CAP],
+    /// Who this player wants as a friend, and who they turned down.
+    ///
+    /// Here rather than in an account of its own, for the reason chat is free:
+    /// this account already exists, is already paid for and is already
+    /// delegated, so writing a field of it costs a session signature and
+    /// nothing else. A separate account would have meant a wallet prompt and
+    /// a rent deposit before the other side had even answered.
+    ///
+    /// Appended LAST, after the unlock snapshot, so the offsets of everything
+    /// a client already decodes stay where they were.
+    pub links: [Link; FRIEND_LINK_CAP],
     /// How many of `links` are in use. The rest are zeroed and meaningless.
     pub links_len: u8,
 }
 
-#[derive(Accounts)]
-pub struct InitSocial<'info> {
-    #[account(mut)]
-    pub authority: Signer<'info>,
-    #[account(
-        init,
-        payer = authority,
-        space = 8 + Social::INIT_SPACE,
-        seeds = [SOCIAL_SEED, authority.key().as_ref()],
-        bump,
-    )]
-    pub social: Account<'info, Social>,
-    pub system_program: Program<'info, System>,
-}
-
-#[derive(Accounts)]
-pub struct DelegateSocial<'info> {
-    #[account(mut)]
-    pub authority: Signer<'info>,
-    /// CHECK: PDA by seeds. Unchecked because the delegation CPI reassigns its
-    /// owner midway, and Anchor would write a stale copy back over it.
-    #[account(mut, seeds = [SOCIAL_SEED, authority.key().as_ref()], bump)]
-    pub social: UncheckedAccount<'info>,
-    /// CHECK: our own program id, pinned; the CPI names crate::ID in its metas.
-    #[account(address = crate::ID)]
-    pub owner_program: UncheckedAccount<'info>,
-    /// CHECK: delegate buffer PDA, seeds ["buffer", social.key()].
-    #[account(mut)]
-    pub delegate_buffer: UncheckedAccount<'info>,
-    /// CHECK: delegation record PDA, owned by the delegation program.
-    #[account(mut)]
-    pub delegation_record: UncheckedAccount<'info>,
-    /// CHECK: delegation metadata PDA, owned by the delegation program.
-    #[account(mut)]
-    pub delegation_metadata: UncheckedAccount<'info>,
-    /// CHECK: MagicBlock delegation program, pinned by address.
-    #[account(address = DELEGATION_PROGRAM_ID)]
-    pub delegation_program: UncheckedAccount<'info>,
-    pub system_program: Program<'info, System>,
-}
-
-/// Session-signed writes to your own social account, on the rollup.
+/// What one player thinks of another. 33 bytes.
 ///
-/// The session key is checked against the PLAYER account, not this one: the
-/// player PDA is where `authorize_session` records it, and keeping one place
-/// that answers "is this key allowed to act for this wallet" is what stops
-/// the two drifting apart.
-#[derive(Accounts)]
-pub struct UpdateSocialSession<'info> {
-    #[account(
-        mut,
-        seeds = [SOCIAL_SEED, social.authority.as_ref()],
-        bump,
-    )]
-    pub social: Account<'info, Social>,
-    #[account(
-        seeds = [PLAYER_SEED, social.authority.as_ref()],
-        bump,
-        constraint = player.session_authority == Some(session_authority.key())
-            @ SolCityError::InvalidSessionKey,
-    )]
-    pub player: Account<'info, PlayerState>,
-    pub session_authority: Signer<'info>,
+/// A friendship is both sides holding LINK_WANT about each other, which the
+/// client works out from two accounts it already reads. There is no separate
+/// "accepted" fact, so nothing can get out of step between two accounts, and
+/// unfriending needs no cooperation: you drop your half.
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, InitSpace, Default)]
+pub struct Link {
+    pub peer: Pubkey,
+    /// LINK_WANT or LINK_DECLINED. Never 0 within `links_len`.
+    pub state: u8,
 }
