@@ -17,7 +17,7 @@ import {
 } from "@/game/minimap/MinimapHost";
 import { CATEGORY_META, CATEGORY_ORDER, type MinimapCategory } from "@/game/minimap/categories";
 import { chamferBox, chamferClip } from "@/ui/chamfer";
-import { MINIMAP_MOBILE_PX } from "@/ui/hudFrame";
+import { MINIMAP_DESKTOP_PX, MINIMAP_MOBILE_PX } from "@/ui/hudFrame";
 import { PixelImg, CloseButton } from "@/ui/PixelIcons";
 import { useButtonFeel, feelStyle, type ButtonFeel } from "@/ui/useButtonFeel";
 import { useEscape } from "@/ui/useEscape";
@@ -345,7 +345,7 @@ function CompactMap({ host, mobile, corners, bare, onOpen, onCollapse }: {
   host: MinimapHost; mobile: boolean; corners?: MapCorners; bare?: boolean; onOpen: () => void; onCollapse: () => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const D = mobile ? MINIMAP_MOBILE_PX : 176;
+  const D = mobile ? MINIMAP_MOBILE_PX : MINIMAP_DESKTOP_PX;
   // World px shown across the diameter. The city is 3240 wide, so this is
   // about half of it on desktop and 40% on a phone: testers could not tell
   // where anything was when the corner map showed only a third.

@@ -641,19 +641,25 @@ export default function Home() {
                     title="Wallet" aria-expanded={walletSectionOpen}
                     aria-label={walletSectionOpen ? "Hide wallet" : "Show wallet"}
                     style={{
-                      position: "absolute", right: `calc(100% + ${MOBILE_TOGGLE_GAP}px)`, top: 4,
-                      width: MOBILE_TOGGLE_W, height: 52, padding: 0,
+                      // Wider than the line it draws, so a thumb finds it: the
+                      // line is flush right, the rest is only tappable.
+                      position: "absolute", right: `calc(100% + ${MOBILE_TOGGLE_GAP}px)`, top: MOBILE_TOGGLE_INSET_Y,
+                      width: Math.max(24, MOBILE_TOGGLE_W * 2), height: 60 - 2 * MOBILE_TOGGLE_INSET_Y, padding: 0,
                       background: "none", border: "none", cursor: "pointer",
-                      display: "flex", alignItems: "center", justifyContent: "center",
-                      opacity: walletSectionOpen ? 1 : 0.7,
-                      WebkitTapHighlightColor: "transparent",
+                      display: "flex", alignItems: "stretch", justifyContent: "flex-end",
+                      overflow: "hidden", WebkitTapHighlightColor: "transparent",
                     }}
                   >
-                    {/* The arrow art points down. Left says the wallet opens to
-                        that side; right says it folds back the way it came. */}
+                    {/* A thin cyan line along the profile with a small arrow on
+                        it: pointing away from the profile, to where the wallet
+                        opens, and back at the profile when it is open. The art
+                        is drawn 60 tall and cropped to the profile's straight
+                        side, so the line ends where the corner's chamfer begins
+                        and the arrow stays the same size. */}
                     <img
-                      src="/assets/ui/icon_down.png" width={16} height={16} alt="" draggable={false}
-                      style={{ imageRendering: "pixelated", display: "block", transform: `rotate(${walletSectionOpen ? -90 : 90}deg)` }}
+                      src={walletSectionOpen ? "/assets/ui/icon_hud_toggle_open.png" : "/assets/ui/icon_hud_toggle.png"}
+                      width={MOBILE_TOGGLE_W} height={60} alt="" draggable={false}
+                      style={{ imageRendering: "pixelated", display: "block", marginTop: -MOBILE_TOGGLE_INSET_Y }}
                     />
                   </button>
                 </div>
@@ -673,15 +679,15 @@ export default function Home() {
                     button, and the strip grows when both are open. Taps pass
                     through it except on the panels. */}
                 <div style={{
-                  position: "absolute", right: "calc(100% + 6px)", top: 0,
+                  position: "absolute", right: `calc(100% + ${MOBILE_STRIP_GAP}px)`, top: 0,
                   minHeight: 60 + 3 * (MOBILE_ICON_PX + 4),
                   display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6,
                   pointerEvents: "none",
                 }}>
                   {walletSectionOpen && (
                     <div style={{
-                      pointerEvents: "auto", marginRight: MOBILE_TOGGLE_W + MOBILE_TOGGLE_GAP,
-                      display: "flex", flexDirection: "column", alignItems: "stretch", gap: 6,
+                      pointerEvents: "auto", marginRight: MOBILE_WALLET_INSET,
+                      display: "flex", flexDirection: "column", alignItems: "stretch", gap: 2,
                       width: MINIMAP_MOBILE_PX,
                     }}>
                       {/* Navy backing cut to the frame art's own chamfer (6px at
@@ -701,7 +707,7 @@ export default function Home() {
                     </div>
                   )}
                   {/* In line with the wallet's column when that is open too. */}
-                  <div style={{ marginTop: "auto", pointerEvents: "auto", marginRight: walletSectionOpen ? MOBILE_TOGGLE_W + MOBILE_TOGGLE_GAP : 0 }}>
+                  <div style={{ marginTop: "auto", pointerEvents: "auto", marginRight: walletSectionOpen ? MOBILE_WALLET_INSET : 0 }}>
                     <Presence show={mapOpen}>
                       <div id="hud-map-preview" className="sc-pop">
                         <Minimap bare compact="mobile" />
@@ -711,9 +717,13 @@ export default function Home() {
                 </div>
               </div>
             ) : (
-              /* Desktop: one 9-slice framed card: profile row, wallet row,
-                 onchain+zoom row — each row nested in its own thinner frame
-                 inside the bold outer one. */
+              /* Desktop: one 9-slice framed card, the same parts as the phone's
+                 column. The profile row carries the four icons (wardrobe,
+                 calendar, map, log out); the wallet and the onchain bar are
+                 folded away until the arrow under it opens them, above the
+                 map, as on the phone. The zoom, which only a mouse needs,
+                 sits on the arrow's row, at the far end. Each row nested in
+                 its own thinner frame inside the bold outer one. */
               <div style={{
                 width: 300,
                 borderWidth: 20, borderStyle: "solid", borderColor: "transparent",
@@ -735,30 +745,38 @@ export default function Home() {
                         title="Minimap" aria-expanded={mapOpen} aria-controls="hud-map-preview"
                         aria-label={mapOpen ? "Hide minimap" : "Show minimap"}
                       />
+                      <LogoutButton size={34} />
                     </span>
                   </div>
                 </Framed>
+
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6, padding: "0 2px" }}>
+                  <WalletToggle open={walletSectionOpen} onClick={() => setWalletSectionOpen((v) => !v)} />
+                  <ZoomControl />
+                </div>
+
+                {walletSectionOpen && (
+                  <>
+                    <Framed width={9}>
+                      <div style={{ padding: "4px 8px" }}>
+                        <WalletBar layout="panel" hideDisconnect />
+                      </div>
+                    </Framed>
+                    <div style={{ padding: "0 2px" }}>
+                      <TransactionLogPanel
+                        isOpen={logOpen}
+                        onToggle={() => setLogOpen((v) => !v)}
+                        gameRef={game}
+                      />
+                    </div>
+                  </>
+                )}
 
                 <Presence show={mapOpen}>
                   <div id="hud-map-preview" className="sc-pop" style={{ display: "flex", justifyContent: "center" }}>
                     <Minimap bare compact="desktop" />
                   </div>
                 </Presence>
-
-                <Framed width={9}>
-                  <div style={{ padding: "4px 8px" }}>
-                    <WalletBar layout="panel" />
-                  </div>
-                </Framed>
-
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6, padding: "0 2px" }}>
-                  <TransactionLogPanel
-                    isOpen={logOpen}
-                    onToggle={() => setLogOpen((v) => !v)}
-                    gameRef={game}
-                  />
-                  <ZoomControl />
-                </div>
               </div>
             )}
             </div>
@@ -846,8 +864,13 @@ function ActiveRing() {
 const MOBILE_HUD_SCALE = 1.05;
 const MOBILE_TOGGLE_PX = 44 * MOBILE_HUD_SCALE;   // chat, expressions, hunt, quests
 const MOBILE_ICON_PX = 30 * MOBILE_HUD_SCALE;     // the column at the top right
-const MOBILE_TOGGLE_W = 22;                       // the wallet toggle beside the profile
-const MOBILE_TOGGLE_GAP = 2;                      // and its gap to the profile
+const MOBILE_TOGGLE_W = (9 * 60) / 64;            // the wallet toggle beside the profile: a thin line (its art is 9x64, drawn 60 tall)
+const MOBILE_TOGGLE_GAP = 0;                      // flush against the profile
+const MOBILE_TOGGLE_INSET_Y = 4;                  // its line stops this far from the profile's top and bottom, 3.6px being the chamfer
+const MOBILE_STRIP_GAP = 6;                       // the minimap's distance from the column
+// How far the wallet and onchain bar stand in from the strip, so that they sit
+// 2px from the toggle's bar whatever the strip's own gap is.
+const MOBILE_WALLET_INSET = MOBILE_TOGGLE_W + MOBILE_TOGGLE_GAP + 2 - MOBILE_STRIP_GAP;
 
 function MobilePanelToggle({ iconSrc, label, active, onClick, dot }: {
   iconSrc: string; label: string; active: boolean; onClick: () => void;
@@ -978,6 +1001,28 @@ function CalendarButton({ size = 30 }: { size?: number }) {
 
 function WardrobeButton({ onClick, size = 36 }: { onClick: () => void; size?: number }) {
   return <HudIconBtn size={size} src="/assets/ui/icon_wardrob.png" title="Wardrobe" onClick={onClick} />;
+}
+
+/** The desktop card's toggle for the wallet and onchain rows, above the map: a
+    small arrow, down while they are folded away and up while they are shown. */
+function WalletToggle({ open, onClick }: { open: boolean; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      title={open ? "Hide wallet" : "Show wallet"} aria-label={open ? "Hide wallet" : "Show wallet"}
+      aria-expanded={open}
+      style={{
+        width: 40, height: 28, padding: 0, background: "none", border: "none", cursor: "pointer",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        opacity: open ? 1 : 0.7, transition: "opacity 0.12s",
+      }}
+    >
+      <img
+        src="/assets/ui/icon_down.png" width={20} height={20} alt="" draggable={false}
+        style={{ imageRendering: "pixelated", display: "block", transform: open ? "rotate(180deg)" : undefined }}
+      />
+    </button>
+  );
 }
 
 /**

@@ -27,6 +27,9 @@ export const HUD_CYAN = "#14F0C6";
 /** The phone minimap's width. The column under it (wallet, onchain) is held to
     the same width, so the three line up. */
 export const MINIMAP_MOBILE_PX = 108;
+/** The desktop minimap's width: all of the card's content, which is the card's
+    300px less its 20px border on each side. */
+export const MINIMAP_DESKTOP_PX = 260;
 
 /**
  * The desktop card's border: the panel art at its full 20px, which leaves

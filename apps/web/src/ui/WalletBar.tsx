@@ -29,9 +29,12 @@ interface WalletBarProps {
       minimap's width, 108). Shrinks the text, and drops the disconnect button,
       which the phone HUD has as a button of its own. */
   narrow?: boolean;
+  /** Panel only: no disconnect button in the row, because the HUD has Log out
+      beside it. The narrow form never has one either. */
+  hideDisconnect?: boolean;
 }
 
-export default function WalletBar({ layout = "default", narrow = false }: WalletBarProps) {
+export default function WalletBar({ layout = "default", narrow = false, hideDisconnect = false }: WalletBarProps) {
   const { publicKey, connected, disconnect } = useWallet();
   const { connection } = useConnection();
   const { setVisible } = useWalletModal();
@@ -138,7 +141,7 @@ export default function WalletBar({ layout = "default", narrow = false }: Wallet
         )}
 
         {/* Action button */}
-        {connected ? (narrow ? null : (
+        {connected ? (narrow || hideDisconnect ? null : (
           <button
             onClick={handleClick}
             title="Disconnect wallet" aria-label="Disconnect wallet"
