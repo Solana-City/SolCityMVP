@@ -1150,7 +1150,23 @@ pub struct SyncUnlocks<'info> {
             @ SolCityError::InvalidSessionKey,
     )]
     pub player: Account<'info, PlayerState>,
-    #[account(seeds = [UNLOCKS_SEED, player.authority.as_ref()], bump)]
+    /// The one account this program reads that another program owns.
+    ///
+    /// `seeds::program` is not optional here and leaving it off is not a
+    /// style slip: without it Anchor derives this PDA under OUR id, which is
+    /// a different address from the one the collectibles program created. The
+    /// instruction then fails on every player, and the symptom is a wardrobe
+    /// snapshot that silently never updates, so a pack item is bought and
+    /// never becomes wearable.
+    ///
+    /// The owner check comes free from the type: `UnlockState` is defined in
+    /// sol-city-catalog with an `Owner` impl naming the collectibles program,
+    /// so Anchor refuses an account that program does not own.
+    #[account(
+        seeds = [UNLOCKS_SEED, player.authority.as_ref()],
+        bump,
+        seeds::program = sol_city_catalog::COLLECTIBLES_PROGRAM_ID,
+    )]
     pub unlock_state: Account<'info, UnlockState>,
     pub session_authority: Signer<'info>,
 }
