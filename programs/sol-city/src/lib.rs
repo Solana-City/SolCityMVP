@@ -2388,7 +2388,7 @@ pub mod sol_city {
         }
 
         let unlocks = &mut ctx.accounts.unlock_state;
-        require!(unlocks.grant(index), SolCityError::AlreadyOwned);
+        require!(unlocks.insert_owned(index), SolCityError::AlreadyOwned);
         Ok(())
     }
 }
