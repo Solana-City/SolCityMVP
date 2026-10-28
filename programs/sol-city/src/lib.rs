@@ -415,6 +415,8 @@ pub enum SolCityError {
     AssetIsNotThatItem,
     #[msg("This wallet already owns that cosmetic")]
     AlreadyOwned,
+    #[msg("Only a quest or event cosmetic can be granted this way")]
+    NotAnEventItem,
 }
 
 /// Truncates a string to at most `max` BYTES on a char boundary, so a
@@ -2316,6 +2318,79 @@ pub mod sol_city {
         cfg.current_season = season;
         Ok(())
     }
+
+    /// Hands a wallet an event or quest cosmetic it earned somewhere this
+    /// program cannot see.
+    ///
+    /// ── Why an admin signs this ──────────────────────────────────────────
+    ///
+    /// `claim_free_outfit` was pulled because the condition it checked was
+    /// authored by the client, so any wallet could claim every quest index.
+    /// This is the other answer to the same problem: the condition is still
+    /// checked off chain, but the signature that acts on it is the admin's,
+    /// not the claimant's. Nobody can grant themselves anything.
+    ///
+    /// The Halloween Pumpkin Head is the first customer. It is won by carving
+    /// one on devnet, the winners are a list the city keeps off chain, and
+    /// the hat is meant to reach the same wallets on mainnet. The admin walks
+    /// a FROZEN snapshot of that list; see scripts/freeze-winners.ts for why
+    /// the snapshot has to exist before the event closes.
+    ///
+    /// ── The range guard is the point ─────────────────────────────────────
+    ///
+    /// Only the quest and event block, never the booster block. A grant path
+    /// that reached pack items would be a button that mints the shop's own
+    /// inventory out of nothing, and the scarcity those items are sold on is
+    /// the only thing they have. The admin cannot reach them here, and that
+    /// is deliberate rather than an oversight to be "fixed" later.
+    ///
+    /// The free block is excluded too, for a duller reason: an item below
+    /// FREE_ITEM_COUNT is already wearable by everybody, so granting one
+    /// would spend rent to say nothing.
+    ///
+    /// Idempotence is NOT silent. Running the admin's script twice over the
+    /// same snapshot fails on the second pass rather than quietly doing
+    /// nothing, because "already granted" and "granted just now" are facts an
+    /// operator handing out collectibles needs told apart.
+    pub fn admin_grant_event_item(
+        ctx: Context<AdminGrantEventItem>,
+        index: u16,
+    ) -> Result<()> {
+        require!(
+            index >= FREE_ITEM_COUNT && index < ENFORCED_FROM,
+            SolCityError::NotAnEventItem
+        );
+
+        // Room first, funded by the admin, then the write. Same order as
+        // mint_unlock and for the same reason: growing the account after the
+        // state change can leave the two disagreeing.
+        {
+            let info = ctx.accounts.unlock_state.to_account_info();
+            let needed = UnlockState::size_for(
+                ctx.accounts.unlock_state.owned.len() + 1,
+                ctx.accounts.unlock_state.minted.len(),
+            );
+            if info.data_len() < needed {
+                let rent = SolanaRent::get()?;
+                let topup = rent.minimum_balance(needed).saturating_sub(info.lamports());
+                if topup > 0 {
+                    invoke(
+                        &system_instruction::transfer(ctx.accounts.admin.key, info.key, topup),
+                        &[
+                            ctx.accounts.admin.to_account_info(),
+                            info.clone(),
+                            ctx.accounts.system_program.to_account_info(),
+                        ],
+                    )?;
+                }
+                info.realloc(needed, false)?;
+            }
+        }
+
+        let unlocks = &mut ctx.accounts.unlock_state;
+        require!(unlocks.grant(index), SolCityError::AlreadyOwned);
+        Ok(())
+    }
 }
 
 #[derive(Accounts)]
@@ -3191,6 +3266,37 @@ pub struct InitPackConfig<'info> {
         bump,
     )]
     pub config: Account<'info, PackConfig>,
+    pub system_program: Program<'info, System>,
+}
+
+/// The admin grants, the wallet receives, and the wallet is identified by the
+/// UnlockState's own authority rather than by an argument.
+///
+/// That is what makes the seeds self-checking: the account has to sit at the
+/// PDA derived from the authority written inside it, so an admin handed a
+/// lookalike account writes a grant into nobody rather than into the wrong
+/// player.
+///
+/// The account must already exist. `init_unlock_state` is signed by the
+/// player, so the admin cannot create one, and a winner who has never
+/// connected on this cluster has nothing to grant into yet. The script skips
+/// them and says so, rather than this instruction trying to be clever.
+#[derive(Accounts)]
+pub struct AdminGrantEventItem<'info> {
+    #[account(mut)]
+    pub admin: Signer<'info>,
+    #[account(
+        seeds = [PACK_CONFIG_SEED],
+        bump,
+        constraint = config.admin == admin.key() @ SolCityError::NotPackAdmin,
+    )]
+    pub config: Account<'info, PackConfig>,
+    #[account(
+        mut,
+        seeds = [UNLOCKS_SEED, unlock_state.authority.as_ref()],
+        bump,
+    )]
+    pub unlock_state: Account<'info, UnlockState>,
     pub system_program: Program<'info, System>,
 }
 
