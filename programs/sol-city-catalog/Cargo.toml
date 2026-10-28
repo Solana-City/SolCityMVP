@@ -16,3 +16,9 @@ name = "sol_city_catalog"
 # both serialise and deserialise, so a different Anchor here than there is a
 # way to make the two disagree about bytes on chain.
 anchor-lang = "0.30.1"
+# Direct, although anchor-lang already pulls it in. The `pubkey!` macro
+# expands to an absolute `::solana_program::...` path, which only resolves
+# when the crate is a dependency of THIS one. sol-city's Cargo.toml carries
+# the same note for the same reason, and this crate walked into it anyway the
+# first time it used the macro.
+solana-program = "1.18.26"
