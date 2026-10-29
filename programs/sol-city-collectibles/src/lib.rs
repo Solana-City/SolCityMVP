@@ -152,6 +152,112 @@ struct VrfCallbackMeta {
 fn vrf_callback_identity() -> Pubkey {
     Pubkey::find_program_address(&[VRF_IDENTITY_SEED, crate::ID.as_ref()], &VRF_PROGRAM_ID).0
 }
+/// A pack that may be SOLD right now, and the table it will resolve against.
+///
+/// Shared by both purchase paths rather than copied into each. They have to
+/// agree about what is on sale: a pack the booster path refuses and the
+/// sealed path sells would be a pack that can be bought and never opened.
+///
+/// `drops_total` is passed rather than the account, because the two callers
+/// hold it in different structs and this only needs the number.
+fn sellable_pack(
+    cfg: &PackConfig,
+    pack_id: u8,
+    drops_key: &Pubkey,
+    drops_total: usize,
+) -> Result<PackDef> {
+    let def = *cfg.pack(pack_id).ok_or(CollectiblesError::UnknownPack)?;
+    require!(def.enabled, CollectiblesError::PackClosed);
+    // A retired season cannot be BOUGHT from. It can still be opened, which
+    // is the whole point of carrying the season on the pack: what closes is
+    // the sale, not a pack somebody already holds.
+    require!(def.season == cfg.current_season, CollectiblesError::WrongSeason);
+    require!(def.size > 0, CollectiblesError::InvalidPoolCount);
+    require!(def.size as usize <= BOOSTER_PACK_SIZE, CollectiblesError::InvalidPoolCount);
+
+    // The drop table must be the one for this pack's season. Derived and
+    // compared here rather than constrained in the Accounts struct, because
+    // the season is read off the config at runtime and a seeds constraint
+    // cannot see it.
+    let (expected, _) = Pubkey::find_program_address(
+        &[SEASON_DROPS_SEED, &def.season.to_le_bytes()],
+        &crate::ID,
+    );
+    require_keys_eq!(*drops_key, expected, CollectiblesError::WrongDropTable);
+    // Checked when the pack is SOLD, not only when it is opened. A sealed
+    // pack against an empty season would be an asset that can never resolve,
+    // and the buyer would find out months later.
+    require!(drops_total >= def.size as usize, CollectiblesError::UnknownSeason);
+    Ok(def)
+}
+
+/// Moves `amount` of the config's currency from the buyer to the treasury.
+///
+/// Hand-rolled like the delegation and VRF CPIs, so this program still
+/// depends on `anchor-lang` alone: SPL Token's Transfer is instruction 3
+/// followed by a little-endian amount, nine bytes in all.
+///
+/// Checking the DESTINATION against the config is enough to pin the currency,
+/// and that is worth saying out loud: Transfer refuses a source whose mint
+/// differs from the destination's, so a buyer cannot pay for USDC packs in
+/// some token of their own making.
+fn take_payment<'info>(
+    buyer_token_account: &AccountInfo<'info>,
+    treasury_token_account: &AccountInfo<'info>,
+    payer: &Signer<'info>,
+    token_program: &AccountInfo<'info>,
+    amount: u64,
+) -> Result<()> {
+    let mut data = Vec::with_capacity(9);
+    data.push(3u8);
+    data.extend_from_slice(&amount.to_le_bytes());
+    invoke(
+        &SolInstruction {
+            program_id: TOKEN_PROGRAM_ID,
+            accounts: vec![
+                SolAccountMeta::new(buyer_token_account.key(), false),
+                SolAccountMeta::new(treasury_token_account.key(), false),
+                SolAccountMeta::new_readonly(payer.key(), true),
+            ],
+            data,
+        },
+        &[
+            buyer_token_account.clone(),
+            treasury_token_account.clone(),
+            payer.to_account_info(),
+            token_program.clone(),
+        ],
+    )?;
+    Ok(())
+}
+
+/// The metadata of a SEALED pack asset.
+///
+/// A pack and a cosmetic are told apart by their URI and nothing else, which
+/// is what lets both live under one immutable base: a cosmetic is
+/// `<base><index>.json` and a pack is `<base>pack-<id>.json`. Nothing on
+/// chain stores either name.
+fn sealed_pack_metadata(cfg: &MintConfig, pack_id: u8) -> MetadataArgs {
+    MetadataArgs {
+        name: format!("Sol City Pack #{}", pack_id),
+        symbol: cfg.symbol.clone(),
+        uri: format!("{}pack-{}.json", cfg.base_uri, pack_id),
+        seller_fee_basis_points: cfg.seller_fee_basis_points,
+        primary_sale_happened: true,
+        is_mutable: false,
+        edition_nonce: None,
+        token_standard: Some(TokenStandard::NonFungible),
+        collection: Some(BubblegumCollection { verified: false, key: cfg.collection_mint }),
+        uses: None,
+        token_program_version: TokenProgramVersion::Original,
+        creators: vec![BubblegumCreator {
+            address: cfg.royalty_recipient,
+            verified: false,
+            share: 100,
+        }],
+    }
+}
+
 #[error_code]
 pub enum CollectiblesError {
     #[msg("A booster pack is already being opened for this wallet")]
@@ -229,32 +335,16 @@ pub mod sol_city_collectibles {
         pack_id: u8,
         client_seed: [u8; 32],
     ) -> Result<()> {
+        // Shared with mint_pack, because the two purchase paths have to agree
+        // about what is on sale: a pack one of them refuses and the other
+        // sells is a pack that can be bought and never opened.
+        let def = sellable_pack(
+            &ctx.accounts.config,
+            pack_id,
+            &ctx.accounts.drops.key(),
+            ctx.accounts.drops.total(),
+        )?;
         let cfg = &ctx.accounts.config;
-        let def = *cfg.pack(pack_id).ok_or(CollectiblesError::UnknownPack)?;
-        require!(def.enabled, CollectiblesError::PackClosed);
-        // A pack of a retired season cannot be bought. It can still be OPENED,
-        // which is the point of carrying the season on the snapshot: what
-        // closes is the sale, not the pack somebody already owns.
-        require!(def.season == cfg.current_season, CollectiblesError::WrongSeason);
-        require!(def.size as usize <= BOOSTER_PACK_SIZE, CollectiblesError::InvalidPoolCount);
-        require!(def.size > 0, CollectiblesError::InvalidPoolCount);
-
-        // The drop table has to be the one for this pack's season. Derived and
-        // compared rather than constrained in the Accounts struct, because the
-        // season is read off the config at runtime and a seeds constraint
-        // cannot see it.
-        let (expected, _) = Pubkey::find_program_address(
-            &[SEASON_DROPS_SEED, &def.season.to_le_bytes()],
-            &crate::ID,
-        );
-        require_keys_eq!(
-            ctx.accounts.drops.key(),
-            expected,
-            CollectiblesError::WrongDropTable
-        );
-        // The season has to hold enough to fill the pack. Without this a pack
-        // against an empty season would take the money and reveal nothing.
-        require!(ctx.accounts.drops.total() >= def.size as usize, CollectiblesError::UnknownSeason);
 
         require_keys_eq!(
             ctx.accounts.treasury_token_account.key(),
@@ -310,35 +400,13 @@ pub mod sol_city_collectibles {
             }
         }
 
-        // Payment → treasury, in the config's currency.
-        //
-        // Hand-rolled like the delegation and VRF CPIs above, so the program
-        // still depends on `anchor-lang` alone: SPL Token's Transfer is
-        // instruction 3 followed by a little-endian amount, nine bytes in all.
-        //
-        // Checking the DESTINATION against the config is enough to pin the
-        // currency, and that is worth saying out loud: Transfer refuses a
-        // source whose mint differs from the destination's, so a buyer cannot
-        // pay for USDC packs in some token of their own making.
-        let mut pay = Vec::with_capacity(9);
-        pay.push(3u8);
-        pay.extend_from_slice(&def.price.to_le_bytes());
-        invoke(
-            &SolInstruction {
-                program_id: TOKEN_PROGRAM_ID,
-                accounts: vec![
-                    SolAccountMeta::new(ctx.accounts.buyer_token_account.key(), false),
-                    SolAccountMeta::new(ctx.accounts.treasury_token_account.key(), false),
-                    SolAccountMeta::new_readonly(ctx.accounts.payer.key(), true),
-                ],
-                data: pay,
-            },
-            &[
-                ctx.accounts.buyer_token_account.to_account_info(),
-                ctx.accounts.treasury_token_account.to_account_info(),
-                ctx.accounts.payer.to_account_info(),
-                ctx.accounts.token_program.to_account_info(),
-            ],
+        // Shared with mint_pack: the same transfer, written once.
+        take_payment(
+            &ctx.accounts.buyer_token_account,
+            &ctx.accounts.treasury_token_account,
+            &ctx.accounts.payer,
+            &ctx.accounts.token_program.to_account_info(),
+            def.price,
         )?;
 
         // Request randomness; the callback grants into this UnlockState.
@@ -995,6 +1063,83 @@ pub mod sol_city_collectibles {
         cfg.current_season = season;
         Ok(())
     }
+    /// Buys a pack SEALED: pays for it and mints the pack itself as an asset.
+    ///
+    /// The other purchase path. `open_booster` pays and draws in one go;
+    /// this pays and draws nothing, handing back a cNFT that is the unopened
+    /// pack. It can be held, gifted or resold like any other asset, and the
+    /// city has no further opinion about it until somebody opens it.
+    ///
+    /// No randomness is requested and no UnlockState is touched, which is why
+    /// this instruction is so much smaller than its sibling: there is nothing
+    /// to draw, nothing to grant and nothing to make room for. The buyer does
+    /// not even need an UnlockState yet, and if they gift the pack away they
+    /// never will.
+    ///
+    /// The season is checked HERE as well as at opening. A sealed pack sold
+    /// against a season with nothing in it would be an asset that can never
+    /// resolve, and its buyer would find that out months later.
+    pub fn mint_pack(ctx: Context<MintPack>, pack_id: u8) -> Result<()> {
+        let def = sellable_pack(
+            &ctx.accounts.config,
+            pack_id,
+            &ctx.accounts.drops.key(),
+            ctx.accounts.drops.total(),
+        )?;
+
+        require_keys_eq!(
+            ctx.accounts.treasury_token_account.key(),
+            ctx.accounts.config.treasury_token_account,
+            CollectiblesError::InvalidTreasury
+        );
+        require_keys_eq!(
+            ctx.accounts.merkle_tree.key(),
+            ctx.accounts.mint_config.merkle_tree,
+            CollectiblesError::WrongMintTarget
+        );
+        require_keys_eq!(
+            ctx.accounts.collection_mint.key(),
+            ctx.accounts.mint_config.collection_mint,
+            CollectiblesError::WrongMintTarget
+        );
+
+        take_payment(
+            &ctx.accounts.buyer_token_account,
+            &ctx.accounts.treasury_token_account,
+            &ctx.accounts.payer,
+            &ctx.accounts.token_program.to_account_info(),
+            def.price,
+        )?;
+
+        let metadata = sealed_pack_metadata(&ctx.accounts.mint_config, pack_id);
+        let bump = ctx.bumps.mint_authority;
+        let seeds: &[&[u8]] = &[MINT_AUTHORITY_SEED, &[bump]];
+        MintToCollectionV1Cpi {
+            __program: &ctx.accounts.bubblegum_program,
+            tree_config: &ctx.accounts.tree_config,
+            leaf_owner: &ctx.accounts.payer,
+            leaf_delegate: &ctx.accounts.payer,
+            merkle_tree: &ctx.accounts.merkle_tree,
+            payer: &ctx.accounts.payer,
+            tree_creator_or_delegate: &ctx.accounts.mint_authority,
+            collection_authority: &ctx.accounts.mint_authority,
+            collection_authority_record_pda: None,
+            collection_mint: &ctx.accounts.collection_mint,
+            collection_metadata: &ctx.accounts.collection_metadata,
+            collection_edition: &ctx.accounts.collection_edition,
+            bubblegum_signer: &ctx.accounts.bubblegum_signer,
+            log_wrapper: &ctx.accounts.log_wrapper,
+            compression_program: &ctx.accounts.compression_program,
+            token_metadata_program: &ctx.accounts.token_metadata_program,
+            system_program: &ctx.accounts.system_program,
+            __args: MintToCollectionV1InstructionArgs { metadata },
+        }
+        .invoke_signed(&[seeds])?;
+
+        emit!(PackMinted { buyer: ctx.accounts.payer.key(), pack_id, season: def.season });
+        Ok(())
+    }
+
     /// Hands a wallet an event or quest cosmetic it earned somewhere this
     /// program cannot see.
     ///
@@ -1157,6 +1302,14 @@ pub struct InitUnlockState<'info> {
     )]
     pub unlock_state: Account<'info, UnlockState>,
     pub system_program: Program<'info, System>,
+}
+
+/// Emitted when a pack is bought SEALED, so the client can show it arriving.
+#[event]
+pub struct PackMinted {
+    pub buyer: Pubkey,
+    pub pack_id: u8,
+    pub season: u16,
 }
 
 /// Emitted when a cosmetic becomes an asset, so the client can show it.
@@ -1465,6 +1618,57 @@ pub struct InitPackConfig<'info> {
 /// player, so the admin cannot create one, and a winner who has never
 /// connected on this cluster has nothing to grant into yet. The script skips
 /// them and says so, rather than this instruction trying to be clever.
+/// Buying a pack sealed. No UnlockState and no VRF: nothing is drawn here.
+#[derive(Accounts)]
+pub struct MintPack<'info> {
+    #[account(mut)]
+    pub payer: Signer<'info>,
+    #[account(seeds = [PACK_CONFIG_SEED], bump)]
+    pub config: Account<'info, PackConfig>,
+    /// The season's table. Read only for its total: a pack cannot be sold
+    /// against a season that could not fill it. Its address is checked in the
+    /// body, because the season comes off the config at runtime.
+    pub drops: Account<'info, SeasonDrops>,
+    #[account(seeds = [MINT_CONFIG_SEED], bump)]
+    pub mint_config: Account<'info, MintConfig>,
+    /// CHECK: the PDA that is the tree delegate and collection authority.
+    #[account(seeds = [MINT_AUTHORITY_SEED], bump)]
+    pub mint_authority: UncheckedAccount<'info>,
+    /// CHECK: the buyer's token account in the config's currency. Pinned by
+    /// the transfer itself, which refuses a mint the destination does not share.
+    #[account(mut)]
+    pub buyer_token_account: AccountInfo<'info>,
+    /// CHECK: checked against config.treasury_token_account in the body.
+    #[account(mut)]
+    pub treasury_token_account: AccountInfo<'info>,
+    /// CHECK: SPL Token, pinned by address in the CPI.
+    pub token_program: UncheckedAccount<'info>,
+    /// CHECK: Bubblegum's tree config, checked by Bubblegum against the tree.
+    #[account(mut)]
+    pub tree_config: UncheckedAccount<'info>,
+    /// CHECK: the tree, checked against mint_config in the body.
+    #[account(mut)]
+    pub merkle_tree: UncheckedAccount<'info>,
+    /// CHECK: the collection, checked against mint_config in the body.
+    pub collection_mint: UncheckedAccount<'info>,
+    /// CHECK: Token Metadata's account for the collection; Bubblegum checks it.
+    #[account(mut)]
+    pub collection_metadata: UncheckedAccount<'info>,
+    /// CHECK: the collection's master edition; Bubblegum checks it.
+    pub collection_edition: UncheckedAccount<'info>,
+    /// CHECK: Bubblegum's own signing PDA.
+    pub bubblegum_signer: UncheckedAccount<'info>,
+    /// CHECK: SPL Noop, passed through to Bubblegum.
+    pub log_wrapper: UncheckedAccount<'info>,
+    /// CHECK: SPL Account Compression, passed through to Bubblegum.
+    pub compression_program: UncheckedAccount<'info>,
+    /// CHECK: Token Metadata, passed through to Bubblegum.
+    pub token_metadata_program: UncheckedAccount<'info>,
+    /// CHECK: Bubblegum itself, the CPI target.
+    pub bubblegum_program: UncheckedAccount<'info>,
+    pub system_program: Program<'info, System>,
+}
+
 #[derive(Accounts)]
 pub struct AdminGrantEventItem<'info> {
     #[account(mut)]
