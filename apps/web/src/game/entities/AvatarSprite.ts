@@ -19,6 +19,7 @@ import {
   Loadout,
   DEFAULT_LOADOUT,
   getVariant,
+  effectCell,
 } from "../config/paperDoll";
 import {
   applyHairSwaps, hairColorOf, readHairTones, swapsForTones,
@@ -715,9 +716,10 @@ export class AvatarSprite {
       const textureKey = category === "hair"
         ? acquireHairTexture(
             this.scene, variant.textureKey, this.currentLoadout.hairColor,
-            // An effect floats over the head and hides nothing, so it casts no mask.
-            hatVariant?.effect ? undefined : hatVariant?.textureKey,
-            hatVariant?.effect ? undefined : hatVariant?.hatCoverage,
+            // A halo floats clear of the hair and hides nothing, so it casts no
+            // mask. A crown is worn ON the head and masks like any other.
+            hatVariant?.effect?.clearsHair ? undefined : hatVariant?.textureKey,
+            hatVariant?.effect?.clearsHair ? undefined : hatVariant?.hatCoverage,
           )
         : variant.textureKey;
       if (category === "hair" && textureKey !== variant.textureKey) {
@@ -789,7 +791,7 @@ export class AvatarSprite {
     const now = this.scene.time.now;
     const facing = DIRECTION_ROW[this.currentDirection];
     for (const [sprite, fx] of this.effectSprites) {
-      const { frames, fps } = fx.effect;
+      const { frames } = fx.effect;
       // A turn only reaches the effect once the new direction has held for a
       // moment: walking diagonally flips the facing from one tick to the next,
       // and each row of the sheet is a different view, so following every flip
@@ -800,19 +802,11 @@ export class AvatarSprite {
         // The sheet draws at 0.5 world scale, so a sheet pixel is half a world one.
         sprite.y = -2 - this.hairLift(fx.effect, facing) * 0.5;
       }
-      let frame: number;
-      if (fx.effect.followsWalk && this.isWalking) {
-        // Groups of SPRITE_COLS cells: the group is the clock's, the cell in
-        // it is the body's walk frame, so the ring bobs with the head. Standing
-        // still there is no head to follow, so the whole loop plays on the
-        // clock below and the effect stays alive.
-        const body = this.layerSprites.get("skin");
-        const phase = body ? Number(body.frame.name) % SPRITE_COLS : 0;
-        const group = Math.floor(((now / 1000) * fps) / SPRITE_COLS) % (frames / SPRITE_COLS);
-        frame = fx.row * frames + group * SPRITE_COLS + phase;
-      } else {
-        frame = fx.row * frames + (Math.floor((now / 1000) * fps) % frames);
-      }
+      // Walking, the body's own frame picks the cell, so the effect moves with
+      // the head. Standing, effectCell decides (see its "standing" rule).
+      const body = this.layerSprites.get("skin");
+      const walkPhase = this.isWalking && body ? Number(body.frame.name) % SPRITE_COLS : null;
+      const frame = fx.row * frames + effectCell(fx.effect, now, walkPhase);
       if (frame !== fx.shown) {
         fx.shown = frame;
         sprite.setFrame(frame);

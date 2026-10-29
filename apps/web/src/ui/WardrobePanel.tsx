@@ -12,6 +12,8 @@ import {
   loadSavedLoadout,
   getVariant,
   getEnabledVariants,
+  effectCell,
+  type LayerVariant,
   isFreeItem,
   unlockHintFor,
   SPRITE_FRAME_WIDTH,
@@ -113,7 +115,7 @@ function AvatarPreview({ loadout, facing = "down", scale = 3 }: { loadout: Loado
       if (hatOff && hairOff && hatVariantVal?.hatCoverage === "suppress") {
         const hairCtx = hairOff.getContext("2d")!;
         hairCtx.clearRect(0, rowY, SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT);
-      } else if (hatOff && hairOff && !hatVariantVal?.effect) {
+      } else if (hatOff && hairOff && !hatVariantVal?.effect?.clearsHair) {
         const hatCtx = hatOff.getContext("2d")!;
         const hatData = hatCtx.getImageData(0, rowY, SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT).data;
         const hairCtx = hairOff.getContext("2d")!;
@@ -156,7 +158,7 @@ function AvatarPreview({ loadout, facing = "down", scale = 3 }: { loadout: Loado
         }
         for (const { cat } of effectCats) {
           const fx = getVariant(cat, loadout[cat])!.effect!;
-          const cell = Math.floor((performance.now() / 1000) * fx.fps) % fx.frames;
+          const cell = effectCell(fx, performance.now(), null);
           ctx.drawImage(offByCategory.get(cat)!, cell * SPRITE_FRAME_WIDTH, rowY, SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT, 0, 0, FW, FH);
         }
       };
@@ -197,7 +199,7 @@ export function ChromaPreview({ file, size, facingUp, crop, hairColor, effect }:
   facingUp?: boolean;
   crop?: boolean;
   /** An effect sheet (the Halo): centred as a whole and played as a loop. */
-  effect?: { frames: number; fps: number };
+  effect?: NonNullable<LayerVariant["effect"]>;
   /** Set on hair tiles so the grid shows the style in the colour being worn. */
   hairColor?: string;
 }) {
@@ -256,7 +258,7 @@ export function ChromaPreview({ file, size, facingUp, crop, hairColor, effect }:
         const dx = (size - w * scale) / 2, dy = (size - h * scale) / 2;
         let shown = -1;
         const paint = () => {
-          const cell = Math.floor((performance.now() / 1000) * effect.fps) % effect.frames;
+          const cell = effectCell(effect, performance.now(), null);
           if (cell === shown) return;
           shown = cell;
           ctx.clearRect(0, 0, size, size);

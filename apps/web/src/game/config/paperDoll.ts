@@ -107,6 +107,14 @@ export interface LayerVariant {
      * the whole loop plays at `fps` cells a second.
      */
     followsWalk?: boolean;
+    /**
+     * What the effect does while the body stands still (with `followsWalk`):
+     * "loop" plays the whole sheet on the clock (a halo floats, so its bob
+     * needs no head), "follow" keeps the body's own frame, which is the
+     * resting one, and only changes group (a crown sits ON the head, and a
+     * crown that bobbed over a still head would look loose).
+     */
+    standing?: "loop" | "follow";
   };
 }
 
@@ -124,6 +132,32 @@ export const SPRITE_COLS = 4;
 export const SPRITE_ROWS = 4;
 
 // Row order used in the spriter's paperdoll sheets (matches NPC_DIRECTION_ROW).
+/**
+ * Which cell of an effect sheet to show at `nowMs`.
+ *
+ * `walkPhase` is the body's own walk frame (0..SPRITE_COLS-1) while it walks,
+ * and null standing or in a preview. A sheet with `followsWalk` is groups of
+ * SPRITE_COLS cells, each one walk cycle: the clock picks the group and the
+ * body picks the cell in it, so the effect moves with the head. Standing, the
+ * effect either plays the whole sheet on the clock ("loop", the default) or
+ * keeps the resting cell and only changes group ("follow").
+ *
+ * One rule for the game, the wardrobe tile and the large preview, so the three
+ * cannot drift apart.
+ */
+export function effectCell(
+  effect: NonNullable<LayerVariant["effect"]>,
+  nowMs: number,
+  walkPhase: number | null,
+): number {
+  const step = Math.floor((nowMs / 1000) * effect.fps);
+  if (effect.followsWalk && (walkPhase !== null || effect.standing === "follow")) {
+    const group = Math.floor(step / SPRITE_COLS) % (effect.frames / SPRITE_COLS);
+    return group * SPRITE_COLS + (walkPhase ?? 0);
+  }
+  return step % effect.frames;
+}
+
 export const DIRECTION_ROW: Record<Direction, number> = {
   down: 0,
   up: 1,
@@ -295,6 +329,16 @@ export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
       // DOM's timing: 150 ms a cell, so a 3.6 s loop. Read off the clock (see
       // AvatarSprite.tickEffects), so it holds whatever the frame rate does.
       effect: { frames: 24, fps: 1000 / 150, clearsHair: true, followsWalk: true } },
+    // The second effect sheet, and the first that is a crown rather than a
+    // halo: 48 cells a row, twelve walk cycles drawn over the body, in the same
+    // place as the static Crown above. Appended AFTER the Halo on purpose (an
+    // index written to chain names an item). A hat worn ON the head, so unlike
+    // the Halo it casts the hair mask like any crown (clearsHair is unset), and
+    // standing it only changes group, because a crown that bobbed over a still
+    // head would look loose.
+    { id: "Royal_crown", name: "Royal Crown", textureKey: "pd-hat-Royal_crown", file: "hat/Royal_crown.png",
+      unlockVia: "quest", unlockHint: "Test item",
+      effect: { frames: 48, fps: 1000 / 150, followsWalk: true, standing: "follow" } },
   ],
 };
 
