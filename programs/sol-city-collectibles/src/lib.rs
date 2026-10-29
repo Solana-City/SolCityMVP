@@ -166,12 +166,30 @@ fn sellable_pack(
     drops_key: &Pubkey,
     drops_total: usize,
 ) -> Result<PackDef> {
-    let def = *cfg.pack(pack_id).ok_or(CollectiblesError::UnknownPack)?;
+    let def = openable_pack(cfg, pack_id, drops_key, drops_total)?;
+    // The two extra conditions that apply to a SALE and never to an opening.
+    //
+    // A retired season, or a pack taken off sale, must still open: somebody
+    // may be holding a sealed one bought months ago, and refusing to open it
+    // would be taking their money and keeping the pack. What closes is the
+    // sale, which is the whole point of carrying the season on the pack.
     require!(def.enabled, CollectiblesError::PackClosed);
-    // A retired season cannot be BOUGHT from. It can still be opened, which
-    // is the whole point of carrying the season on the pack: what closes is
-    // the sale, not a pack somebody already holds.
     require!(def.season == cfg.current_season, CollectiblesError::WrongSeason);
+    Ok(def)
+}
+
+/// A pack that can be RESOLVED: it exists, has a size, and its season still
+/// holds enough to fill it.
+///
+/// Says nothing about whether it may be bought. A sealed pack from a closed
+/// season is openable and not sellable, and that asymmetry is the feature.
+fn openable_pack(
+    cfg: &PackConfig,
+    pack_id: u8,
+    drops_key: &Pubkey,
+    drops_total: usize,
+) -> Result<PackDef> {
+    let def = *cfg.pack(pack_id).ok_or(CollectiblesError::UnknownPack)?;
     require!(def.size > 0, CollectiblesError::InvalidPoolCount);
     require!(def.size as usize <= BOOSTER_PACK_SIZE, CollectiblesError::InvalidPoolCount);
 
@@ -190,6 +208,13 @@ fn sellable_pack(
     require!(drops_total >= def.size as usize, CollectiblesError::UnknownSeason);
     Ok(def)
 }
+
+/// Bubblegum's `burn`, as `sha256("global:burn")[..8]`.
+///
+/// Hand-rolled like every other CPI here, and for the same reason: this
+/// program builds its instruction data itself rather than taking a builder's
+/// word for the layout.
+pub const BURN_DISCRIMINATOR: [u8; 8] = [116, 110, 29, 56, 107, 219, 42, 93];
 
 /// Moves `amount` of the config's currency from the buyer to the treasury.
 ///
@@ -227,6 +252,81 @@ fn take_payment<'info>(
             payer.to_account_info(),
             token_program.clone(),
         ],
+    )?;
+    Ok(())
+}
+
+/// Bubblegum's `burn`, as `sha256("global:burn")[..8]`.
+///
+/// Hand-rolled like every other CPI here, and for the same reason: this
+/// program builds its instruction data itself rather than taking a builder's
+/// word for the layout.
+pub const BURN_DISCRIMINATOR: [u8; 8] = [116, 110, 29, 56, 107, 219, 42, 93];
+
+/// Asks MagicBlock's VRF for the randomness that resolves a pack.
+///
+/// Shared by both ways a pack is opened, bought-and-opened or spent from a
+/// sealed asset, because the draw must be identical either way. A second copy
+/// of this would be a second chance to name the wrong callback or forget an
+/// account, and the failure would land on somebody who has already paid.
+///
+/// A SCOPED request: the oracle signs our callback with the per-program
+/// identity PDA, so nothing else can impersonate the answer.
+#[allow(clippy::too_many_arguments)]
+fn request_draw<'info>(
+    client_seed: [u8; 32],
+    payer: &Signer<'info>,
+    unlock_state: &AccountInfo<'info>,
+    drops: &AccountInfo<'info>,
+    oracle_queue: &AccountInfo<'info>,
+    program_identity: &UncheckedAccount<'info>,
+    vrf_program: &UncheckedAccount<'info>,
+    slot_hashes: &UncheckedAccount<'info>,
+    system_program: &Program<'info, System>,
+    identity_bump: u8,
+) -> Result<()> {
+    let mut data = vec![VRF_REQUEST_SCOPED, 0, 0, 0, 0, 0, 0, 0];
+    VrfRequest {
+        caller_seed: client_seed,
+        callback_program_id: crate::ID,
+        // Spelled out rather than `Type::DISCRIMINATOR`: the trait is not in
+        // the anchor-lang 0.30.1 prelude, so the short form does not resolve.
+        callback_discriminator:
+            <instruction::CallbackOpenBooster as anchor_lang::Discriminator>::DISCRIMINATOR
+                .to_vec(),
+        callback_accounts_metas: vec![
+            VrfCallbackMeta { pubkey: unlock_state.key(), is_signer: false, is_writable: true },
+            // The season's drop table, read only. Named here so the callback
+            // gets the table that was in force when the pack was spent, and
+            // frozen by then because its season has opened.
+            VrfCallbackMeta { pubkey: drops.key(), is_signer: false, is_writable: false },
+        ],
+        callback_args: vec![],
+    }
+    .serialize(&mut data)
+    .map_err(|_| ProgramError::InvalidInstructionData)?;
+
+    invoke_signed(
+        &SolInstruction {
+            program_id: VRF_PROGRAM_ID,
+            accounts: vec![
+                SolAccountMeta::new(payer.key(), true),
+                SolAccountMeta::new_readonly(program_identity.key(), true),
+                SolAccountMeta::new(oracle_queue.key(), false),
+                SolAccountMeta::new_readonly(system_program.key(), false),
+                SolAccountMeta::new_readonly(slot_hashes.key(), false),
+            ],
+            data,
+        },
+        &[
+            payer.to_account_info(),
+            program_identity.to_account_info(),
+            oracle_queue.clone(),
+            system_program.to_account_info(),
+            slot_hashes.to_account_info(),
+            vrf_program.to_account_info(),
+        ],
+        &[&[VRF_IDENTITY_SEED, &[identity_bump]]],
     )?;
     Ok(())
 }
@@ -409,58 +509,19 @@ pub mod sol_city_collectibles {
             def.price,
         )?;
 
-        // Request randomness; the callback grants into this UnlockState.
-        let mut data = vec![VRF_REQUEST_SCOPED, 0, 0, 0, 0, 0, 0, 0];
-        VrfRequest {
-            caller_seed: client_seed,
-            callback_program_id: crate::ID,
-            // Spelled out rather than `Type::DISCRIMINATOR`: the trait is not
-            // in the anchor-lang 0.30.1 prelude, so the short form does not
-            // resolve. Same fix as the one PlayerState needed.
-            callback_discriminator:
-                <instruction::CallbackOpenBooster as anchor_lang::Discriminator>::DISCRIMINATOR
-                    .to_vec(),
-            callback_accounts_metas: vec![
-                VrfCallbackMeta {
-                    pubkey: ctx.accounts.unlock_state.key(),
-                    is_signer: false,
-                    is_writable: true,
-                },
-                // The season's drop table, read only. Named here so the
-                // callback gets the table that was in force at payment, and
-                // frozen by then because its season has opened.
-                VrfCallbackMeta {
-                    pubkey: ctx.accounts.drops.key(),
-                    is_signer: false,
-                    is_writable: false,
-                },
-            ],
-            callback_args: vec![],
-        }
-        .serialize(&mut data)
-        .map_err(|_| ProgramError::InvalidInstructionData)?;
-        let ix = SolInstruction {
-            program_id: VRF_PROGRAM_ID,
-            accounts: vec![
-                SolAccountMeta::new(ctx.accounts.payer.key(), true),
-                SolAccountMeta::new_readonly(ctx.accounts.program_identity.key(), true),
-                SolAccountMeta::new(ctx.accounts.oracle_queue.key(), false),
-                SolAccountMeta::new_readonly(ctx.accounts.system_program.key(), false),
-                SolAccountMeta::new_readonly(ctx.accounts.slot_hashes.key(), false),
-            ],
-            data,
-        };
-        invoke_signed(
-            &ix,
-            &[
-                ctx.accounts.payer.to_account_info(),
-                ctx.accounts.program_identity.to_account_info(),
-                ctx.accounts.oracle_queue.to_account_info(),
-                ctx.accounts.system_program.to_account_info(),
-                ctx.accounts.slot_hashes.to_account_info(),
-                ctx.accounts.vrf_program.to_account_info(),
-            ],
-            &[&[VRF_IDENTITY_SEED, &[ctx.bumps.program_identity]]],
+        // Shared with open_pack_from_asset: the draw has to be identical
+        // however the pack was spent.
+        request_draw(
+            client_seed,
+            &ctx.accounts.payer,
+            &ctx.accounts.unlock_state.to_account_info(),
+            &ctx.accounts.drops.to_account_info(),
+            &ctx.accounts.oracle_queue,
+            &ctx.accounts.program_identity,
+            &ctx.accounts.vrf_program,
+            &ctx.accounts.slot_hashes,
+            &ctx.accounts.system_program,
+            ctx.bumps.program_identity,
         )?;
         Ok(())
     }
@@ -1063,6 +1124,164 @@ pub mod sol_city_collectibles {
         cfg.current_season = season;
         Ok(())
     }
+    /// Opens a sealed pack: burns the asset and asks for the draw, together.
+    ///
+    /// ── Why one instruction and not two ─────────────────────────────────
+    ///
+    /// If the burn succeeded and the request then failed, the pack would be
+    /// destroyed and nothing owed to anybody. In one instruction a failure
+    /// reverts both, so there is no moment where the pack is gone and the
+    /// draw never happened.
+    ///
+    /// ── The burn IS the proof ───────────────────────────────────────────
+    ///
+    /// Nothing here checks separately that the caller holds the asset.
+    /// Bubblegum's burn does it: it walks the proof against the tree and
+    /// refuses unless the leaf owner signs. A caller who does not hold the
+    /// pack cannot produce a proof that burns, so possession is established
+    /// by the act of spending it rather than by a check that could disagree.
+    ///
+    /// What this program checks is the one thing Bubblegum cannot know:
+    /// WHICH pack the asset is. That is the URI, rebuilt from the immutable
+    /// base exactly as `mint_pack` built it.
+    ///
+    /// ── Whoever OPENS it gets the items ─────────────────────────────────
+    ///
+    /// The UnlockState is the opener's, not the buyer's. That is what makes
+    /// gifting work, and it is the reason this instruction exists at all
+    /// rather than a flag on the original purchase.
+    pub fn open_pack_from_asset<'info>(
+        // One named lifetime, because the proof arrives in remaining_accounts
+        // and is put in the same Vec as accounts from the struct.
+        ctx: Context<'_, '_, '_, 'info, OpenPackFromAsset<'info>>,
+        pack_id: u8,
+        client_seed: [u8; 32],
+        root: [u8; 32],
+        nonce: u64,
+        leaf_index: u32,
+        metadata: MetadataArgs,
+    ) -> Result<()> {
+        // Openable, NOT sellable: a sealed pack from a closed season still
+        // opens. Refusing it would be keeping the money and the pack.
+        let def = openable_pack(
+            &ctx.accounts.config,
+            pack_id,
+            &ctx.accounts.drops.key(),
+            ctx.accounts.drops.total(),
+        )?;
+        require_keys_eq!(
+            ctx.accounts.merkle_tree.key(),
+            ctx.accounts.mint_config.merkle_tree,
+            CollectiblesError::WrongMintTarget
+        );
+
+        // (1) This metadata is THAT pack. Same string mint_pack wrote, built
+        // from a base that cannot change, so naming another pack's id here
+        // produces a hash that will not burn.
+        let expected_uri = format!("{}pack-{}.json", ctx.accounts.mint_config.base_uri, pack_id);
+        require!(metadata.uri == expected_uri, CollectiblesError::AssetIsNotThatItem);
+
+        // (2) Burn it. Both hashes come from the metadata above, so a caller
+        // cannot burn one asset while claiming the contents of another.
+        let data_hash = hash_metadata(&metadata)?;
+        let creator_hash = hash_creators(&metadata.creators);
+
+        let mut data = Vec::with_capacity(8 + 32 + 32 + 32 + 8 + 4);
+        data.extend_from_slice(&BURN_DISCRIMINATOR);
+        data.extend_from_slice(&root);
+        data.extend_from_slice(&data_hash);
+        data.extend_from_slice(&creator_hash);
+        data.extend_from_slice(&nonce.to_le_bytes());
+        data.extend_from_slice(&leaf_index.to_le_bytes());
+
+        let opener = ctx.accounts.opener.key();
+        let mut metas = vec![
+            SolAccountMeta::new(ctx.accounts.tree_config.key(), false),
+            SolAccountMeta::new_readonly(opener, true),
+            SolAccountMeta::new_readonly(opener, true),
+            SolAccountMeta::new(ctx.accounts.merkle_tree.key(), false),
+            SolAccountMeta::new_readonly(ctx.accounts.log_wrapper.key(), false),
+            SolAccountMeta::new_readonly(ctx.accounts.compression_program.key(), false),
+            SolAccountMeta::new_readonly(ctx.accounts.system_program.key(), false),
+        ];
+        let mut infos = vec![
+            ctx.accounts.tree_config.to_account_info(),
+            ctx.accounts.opener.to_account_info(),
+            ctx.accounts.merkle_tree.to_account_info(),
+            ctx.accounts.log_wrapper.to_account_info(),
+            ctx.accounts.compression_program.to_account_info(),
+            ctx.accounts.system_program.to_account_info(),
+        ];
+        // The proof: one node per tree level the canopy does not already hold.
+        for node in ctx.remaining_accounts.iter() {
+            metas.push(SolAccountMeta::new_readonly(node.key(), false));
+            infos.push(node.clone());
+        }
+        invoke(
+            &SolInstruction {
+                program_id: ctx.accounts.bubblegum_program.key(),
+                accounts: metas,
+                data,
+            },
+            &infos,
+        )?;
+
+        // (3) From here it is the same as a pack bought and opened at once.
+        {
+            let unlocks = &mut ctx.accounts.unlock_state;
+            require!(!unlocks.pending, CollectiblesError::BoosterPending);
+            unlocks.pending = true;
+            unlocks.draw = PendingDraw {
+                pack_id,
+                size: def.size,
+                weights: def.weights,
+                season: def.season,
+            };
+        }
+
+        // Room for the draw, funded by the opener, because the VRF callback
+        // cannot grow the account: the oracle signs it and there is nobody
+        // there willing to pay for bytes.
+        {
+            let info = ctx.accounts.unlock_state.to_account_info();
+            let needed = UnlockState::size_for(
+                ctx.accounts.unlock_state.owned.len() + def.size as usize,
+                ctx.accounts.unlock_state.minted.len(),
+            );
+            if info.data_len() < needed {
+                let rent = SolanaRent::get()?;
+                let topup = rent.minimum_balance(needed).saturating_sub(info.lamports());
+                if topup > 0 {
+                    invoke(
+                        &system_instruction::transfer(ctx.accounts.opener.key, info.key, topup),
+                        &[
+                            ctx.accounts.opener.to_account_info(),
+                            info.clone(),
+                            ctx.accounts.system_program.to_account_info(),
+                        ],
+                    )?;
+                }
+                info.realloc(needed, false)?;
+            }
+        }
+
+        request_draw(
+            client_seed,
+            &ctx.accounts.opener,
+            &ctx.accounts.unlock_state.to_account_info(),
+            &ctx.accounts.drops.to_account_info(),
+            &ctx.accounts.oracle_queue,
+            &ctx.accounts.program_identity,
+            &ctx.accounts.vrf_program,
+            &ctx.accounts.slot_hashes,
+            &ctx.accounts.system_program,
+            ctx.bumps.program_identity,
+        )?;
+
+        emit!(PackOpened { opener, pack_id, season: def.season });
+        Ok(())
+    }
+
     /// Buys a pack SEALED: pays for it and mints the pack itself as an asset.
     ///
     /// The other purchase path. `open_booster` pays and draws in one go;
@@ -1302,6 +1521,14 @@ pub struct InitUnlockState<'info> {
     )]
     pub unlock_state: Account<'info, UnlockState>,
     pub system_program: Program<'info, System>,
+}
+
+/// Emitted when a sealed pack is spent, so the client can start the reveal.
+#[event]
+pub struct PackOpened {
+    pub opener: Pubkey,
+    pub pack_id: u8,
+    pub season: u16,
 }
 
 /// Emitted when a pack is bought SEALED, so the client can show it arriving.
@@ -1618,6 +1845,51 @@ pub struct InitPackConfig<'info> {
 /// player, so the admin cannot create one, and a winner who has never
 /// connected on this cluster has nothing to grant into yet. The script skips
 /// them and says so, rather than this instruction trying to be clever.
+/// Opening a sealed pack. The proof rides in `remaining_accounts`.
+#[derive(Accounts)]
+pub struct OpenPackFromAsset<'info> {
+    #[account(mut)]
+    pub opener: Signer<'info>,
+    /// The OPENER's unlock account, not the buyer's. Gifting works because
+    /// the items land here.
+    #[account(
+        mut,
+        seeds = [UNLOCKS_SEED, opener.key().as_ref()],
+        bump,
+        constraint = unlock_state.authority == opener.key() @ CollectiblesError::WrongUnlockOwner,
+    )]
+    pub unlock_state: Account<'info, UnlockState>,
+    #[account(seeds = [PACK_CONFIG_SEED], bump)]
+    pub config: Account<'info, PackConfig>,
+    /// The season's table, checked against the pack's season in the body.
+    pub drops: Account<'info, SeasonDrops>,
+    #[account(seeds = [MINT_CONFIG_SEED], bump)]
+    pub mint_config: Account<'info, MintConfig>,
+    /// CHECK: Bubblegum's tree config, which Bubblegum checks against the tree.
+    #[account(mut)]
+    pub tree_config: UncheckedAccount<'info>,
+    /// CHECK: the tree, checked against mint_config in the body.
+    #[account(mut)]
+    pub merkle_tree: UncheckedAccount<'info>,
+    /// CHECK: SPL Noop, passed through to Bubblegum.
+    pub log_wrapper: UncheckedAccount<'info>,
+    /// CHECK: SPL Account Compression, passed through to Bubblegum.
+    pub compression_program: UncheckedAccount<'info>,
+    /// CHECK: Bubblegum itself, the burn CPI target.
+    pub bubblegum_program: UncheckedAccount<'info>,
+    /// CHECK: the VRF oracle queue.
+    #[account(mut)]
+    pub oracle_queue: AccountInfo<'info>,
+    /// CHECK: our own VRF identity PDA, which signs the callback.
+    #[account(mut, seeds = [VRF_IDENTITY_SEED], bump)]
+    pub program_identity: UncheckedAccount<'info>,
+    /// CHECK: the VRF program, pinned by address in the CPI.
+    pub vrf_program: UncheckedAccount<'info>,
+    /// CHECK: the slot hashes sysvar the VRF reads.
+    pub slot_hashes: UncheckedAccount<'info>,
+    pub system_program: Program<'info, System>,
+}
+
 /// Buying a pack sealed. No UnlockState and no VRF: nothing is drawn here.
 #[derive(Accounts)]
 pub struct MintPack<'info> {
