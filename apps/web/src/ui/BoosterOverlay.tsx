@@ -7,7 +7,10 @@ import {
   rollPack, type PackDef, type PackDrop,
 } from "@/game/config/packs";
 import { unlockItem } from "@/game/config/wardrobeUnlocks";
-import { mintMany } from "@/game/solana/mint";
+import { mintMany, readMintConfig, type MintConfigAccount } from "@/game/solana/mint";
+import {
+  buySealedPacks, heldSealedPacks, openSealedPack,
+} from "@/game/solana/sealedPacks";
 /** Mirrors MAX_BUNDLE_ITEMS: what one draw may resolve. */
 const MAX_BUNDLE_ITEMS = 50;
 import { progressionBus } from "@/game/progression/progressionBus";
@@ -25,7 +28,7 @@ import { getVariant } from "@/game/config/paperDoll";
 import {
   baseConnection, readPackConfig, currencyBalance, buyPack, packUnavailableReason,
   type PackConfigAccount,
-  syncOwnedToWardrobe,
+  syncOwnedToWardrobe, awaitDraw, ownedIndices,
 } from "@/game/solana/packs";
 
 /**
@@ -80,6 +83,9 @@ export default function BoosterOverlay({
     try { return localStorage.getItem("solcity:skip-reveal") === "1"; } catch { return false; }
   });
   const [minting, setMinting] = useState(false);
+  const [mintConfig, setMintConfig] = useState<MintConfigAccount | null>(null);
+  const [sealed, setSealed] = useState<{ assetId: PublicKey; packId: number; nonce: number }[]>([]);
+  const [sealing, setSealing] = useState<number | null>(null);
   const [mintNote, setMintNote] = useState<string | null>(null);
 
   const setSkip = useCallback((on: boolean) => {
@@ -109,6 +115,172 @@ export default function BoosterOverlay({
     })();
     return () => { cancelled = true; };
   }, [wallet]);
+
+  /**
+   * What this wallet already holds sealed.
+   *
+   * Asked of the indexer, because a sealed pack is an ordinary asset that may
+   * have arrived from anywhere: bought here, bought on a marketplace, or
+   * given. Nothing in our own accounts knows about it.
+   */
+  const refreshSealed = useCallback(async (cfg: MintConfigAccount | null) => {
+    if (!wallet || !cfg) { setSealed([]); return; }
+    try {
+      setSealed(await heldSealedPacks(baseConnection(), new PublicKey(wallet), cfg));
+    } catch {
+      // An unreachable indexer hides the sealed list rather than claiming the
+      // player has none.
+    }
+  }, [wallet]);
+
+  useEffect(() => {
+    if (!BOOSTER_ONCHAIN || !wallet) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const cfg = await readMintConfig(baseConnection());
+        if (cancelled) return;
+        setMintConfig(cfg);
+        await refreshSealed(cfg);
+      } catch { /* the sealed row simply does not appear */ }
+    })();
+    return () => { cancelled = true; };
+  }, [wallet, refreshSealed]);
+
+  /**
+   * Turns a resolved draw into a reveal, and mints it.
+   *
+   * Shared by the two ways a pack is spent, because from here they are the
+   * same thing: a list of indices that have to become wearable. Opening a
+   * sealed pack and buying one to open now differ only in what preceded the
+   * oracle's answer.
+   */
+  const revealAndMint = useCallback(async (
+    granted: number[],
+    conn: ReturnType<typeof baseConnection>,
+    me: PublicKey,
+  ) => {
+      if (!wallet) return;
+      // Before anything is shown as wearable. The chain is what authorises a
+      // pack item now, so the reveal would otherwise offer hats the wardrobe
+      // still refuses to put on.
+      await syncOwnedToWardrobe(conn, me);
+
+      const rolled: PackDrop[] = [];
+      for (const index of granted) {
+        const entry = itemAtGlobalIndex(index);
+        if (!entry) continue;
+        const variant = getVariant(entry.category, entry.variant.id);
+        if (!variant) continue;
+        rolled.push({
+          category: entry.category,
+          id: variant.id,
+          name: variant.name,
+          file: variant.file,
+          rarity: rarityOf(entry.category, variant.id),
+          owned: false,
+        });
+        unlockItem(wallet, entry.category, variant.id, variant.name, true);
+      }
+      if (rolled.length > 0) {
+        progressionBus.emit({
+          type: "outfit-unlocked",
+          outfitId: "booster",
+          outfitName: `${rolled.length} new item${rolled.length === 1 ? "" : "s"} from a pack`,
+        });
+      }
+      setDrops(rolled);
+      setPhase("revealed");
+
+      // MINTING IS NOT A SECOND DECISION. Possession is what lets a pack item
+      // be worn, so an unminted item is one the player cannot use. One
+      // approval covers the whole haul: mintMany chunks it and the wallet
+      // signs the batch together.
+      if (granted.length > 0 && signAllTransactions) {
+        setMinting(true);
+        try {
+          const { failed } = await mintMany({
+            wallet: new PublicKey(wallet),
+              indices: granted,
+            signAllTransactions,
+            conn,
+          });
+          // Anything that did not land stays in UnlockState, so the
+          // wardrobe's own mint button finishes it. Said plainly rather than
+          // hidden, because until it lands the item cannot be worn.
+          if (failed.length > 0) {
+            setMintNote(
+              `${failed.length} still to mint. Finish from the wardrobe whenever you like.`,
+            );
+          }
+        } catch (err) {
+          setMintNote((err as Error).message?.split("\n")[0] ?? "The mint did not go through.");
+        } finally {
+          setMinting(false);
+        }
+      }
+  }, [wallet, signAllTransactions]);
+
+  /** Buys `count` of this pack sealed, in one approval. */
+  const seal = useCallback(async (chosen: PackDef) => {
+    if (!wallet || !signAllTransactions || !config || !mintConfig) return;
+    const onChain = config.packs.find((p) => p.id === chosen.onChainId);
+    if (!onChain) { setError("This pack is not on sale yet."); return; }
+    const why = packUnavailableReason(onChain, config);
+    if (why) { setError(why); return; }
+
+    setSealing(chosen.onChainId);
+    setError(null);
+    try {
+      await buySealedPacks({
+        wallet: new PublicKey(wallet), pack: onChain, config, mintConfig,
+        count, signAllTransactions,
+      });
+      // The indexer needs a moment to see a brand new leaf, so the list is
+      // re-read rather than guessed at.
+      setTimeout(() => void refreshSealed(mintConfig), 2500);
+    } catch (err) {
+      setError((err as Error).message?.split("\n")[0] ?? "The purchase failed.");
+    } finally {
+      setSealing(null);
+    }
+  }, [wallet, signAllTransactions, config, mintConfig, count, refreshSealed]);
+
+  /** Burns one sealed pack and waits for its reveal. */
+  const openSealed = useCallback(async (entry: { assetId: PublicKey; packId: number; nonce: number }) => {
+    if (!wallet || !signTransaction || !config || !mintConfig) return;
+    const onChain = config.packs.find((p) => p.id === entry.packId);
+    if (!onChain) { setError("That pack is not one this city knows."); return; }
+    const card = PACKS.find((p) => p.onChainId === entry.packId) ?? PACKS[0];
+
+    setPack(card);
+    setPhase("opening");
+    setError(null);
+    try {
+      await openSealedPack({
+        wallet: new PublicKey(wallet), assetId: entry.assetId, nonce: entry.nonce,
+        pack: onChain, mintConfig, signTransaction,
+      });
+      // From here it is the same reveal a bought-and-opened pack gets: the
+      // draw lands in UnlockState when the oracle answers.
+      // The same wait a bought-and-opened pack gets, then the same reveal
+      // and the same mint, because from the oracle's side nothing differs.
+      const conn = baseConnection();
+      const me = new PublicKey(wallet);
+      const before = new Set(await ownedIndices(conn, me));
+      const { granted, timedOut } = await awaitDraw(conn, me, before);
+      if (timedOut) {
+        setError("Opened, but the draw has not landed yet. It will appear in your wardrobe.");
+        setPhase("choose");
+        return;
+      }
+      await revealAndMint(granted, conn, me);
+      void refreshSealed(mintConfig);
+    } catch (err) {
+      setError((err as Error).message?.split("\n")[0] ?? "That pack would not open.");
+      setPhase("choose");
+    }
+  }, [wallet, signTransaction, config, mintConfig, refreshSealed, revealAndMint]);
   const laterFeel = useButtonFeel();
   const anotherFeel = useButtonFeel();
   const doneFeel = useButtonFeel();
@@ -176,71 +348,15 @@ export default function BoosterOverlay({
         setPhase("choose");
         return;
       }
-      // Before anything is shown as wearable. The chain is what authorises a
-      // pack item now, so the reveal would otherwise offer five hats the
-      // wardrobe still refuses to put on.
-      await syncOwnedToWardrobe(conn, new PublicKey(wallet));
-
-      const rolled: PackDrop[] = [];
-      for (const index of result.granted) {
-        const entry = itemAtGlobalIndex(index);
-        if (!entry) continue;
-        const variant = getVariant(entry.category, entry.variant.id);
-        if (!variant) continue;
-        rolled.push({
-          category: entry.category,
-          id: variant.id,
-          name: variant.name,
-          file: variant.file,
-          rarity: rarityOf(entry.category, variant.id),
-          owned: false,
-        });
-        unlockItem(wallet, entry.category, variant.id, variant.name, true);
-      }
-      if (rolled.length > 0) {
-        progressionBus.emit({
-          type: "outfit-unlocked",
-          outfitId: "booster",
-          outfitName: `${rolled.length} new item${rolled.length === 1 ? "" : "s"} from a pack`,
-        });
-      }
-      setDrops(rolled);
-      setPhase("revealed");
-
-      // MINTING IS NOT A SECOND DECISION. Possession is what lets a pack item
-      // be worn, so an unminted item is one the player cannot use. One
-      // approval covers the whole haul: mintMany chunks it and the wallet
-      // signs the batch together.
-      if (result.granted.length > 0 && signAllTransactions) {
-        setMinting(true);
-        try {
-          const { failed } = await mintMany({
-            wallet: new PublicKey(wallet),
-            indices: result.granted,
-            signAllTransactions,
-            conn,
-          });
-          // Anything that did not land stays in UnlockState, so the
-          // wardrobe's own mint button finishes it. Said plainly rather than
-          // hidden, because until it lands the item cannot be worn.
-          if (failed.length > 0) {
-            setMintNote(
-              `${failed.length} still to mint. Finish from the wardrobe whenever you like.`,
-            );
-          }
-        } catch (err) {
-          setMintNote((err as Error).message?.split("\n")[0] ?? "The mint did not go through.");
-        } finally {
-          setMinting(false);
-        }
-      }
+      await revealAndMint(result.granted, conn, new PublicKey(wallet));
     } catch (err) {
       // The wallet's own message is the useful one: "insufficient funds",
       // "User rejected the request".
       setError((err as Error).message?.split("\n")[0] ?? "The purchase failed.");
       setPhase("choose");
     }
-  }, [wallet, signTransaction, signAllTransactions, config, count]);
+  }, [wallet, signTransaction, config, count, revealAndMint]);
+
 
   const backToPacks = () => { setPhase("choose"); setDrops([]); setPack(null); setError(null); };
   // Not mid-opening, same as the backdrop: the pack is already being granted.
@@ -355,9 +471,51 @@ export default function BoosterOverlay({
               gap: 12, marginBottom: 16,
             }}>
               {PACKS.map((p) => (
-                <PackCard key={p.id} pack={p} onOpen={() => open(p)} />
+                <PackCard
+                  key={p.id}
+                  pack={p}
+                  onOpen={() => open(p)}
+                  onSeal={() => void seal(p)}
+                  sealing={sealing === p.onChainId}
+                />
               ))}
             </div>
+            {/* WHAT YOU ALREADY HOLD SEALED.
+                Below the shop rather than beside it, because these are not
+                for sale: they are already yours, and the only question left
+                is when to open them. Absent entirely when there are none,
+                since an empty shelf is worse than no shelf. */}
+            {sealed.length > 0 && (
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ fontSize: 8, color: "#aaaacc", letterSpacing: 1, marginBottom: 8 }}>
+                  YOUR SEALED PACKS
+                </div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                  {sealed.map((entry) => {
+                    const card = PACKS.find((c) => c.onChainId === entry.packId);
+                    return (
+                      <button
+                        key={entry.assetId.toBase58()}
+                        onClick={() => void openSealed(entry)}
+                        style={chamferBox(8, {
+                          fontFamily: '"Press Start 2P", monospace', fontSize: 7,
+                          padding: "10px 12px", cursor: "pointer",
+                          background: "rgba(255,255,255,0.03)",
+                          color: card?.accent ?? "#aaaacc",
+                          border: `1px solid ${(card?.accent ?? "#3a3a55")}66`,
+                        })}
+                      >
+                        OPEN {card?.name ?? `PACK ${entry.packId}`}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div style={{ fontSize: 6, color: "#7a7aa0", marginTop: 8, lineHeight: 1.5 }}>
+                  Opening burns the pack. What is inside is drawn at that moment, not before.
+                </div>
+              </div>
+            )}
+
             <button onClick={onClose} {...laterFeel.handlers} style={btn("ghost", laterFeel)}>LATER</button>
           </>
         ) : phase === "revealed" ? (
@@ -436,8 +594,22 @@ export default function BoosterOverlay({
 }
 
 /** One pack on the chooser: its art, what it costs, and what it rolls. */
-function PackCard({ pack, onOpen }: { pack: PackDef; onOpen: () => void }) {
+/**
+ * One pack, with the TWO things that can be done with it.
+ *
+ * Opening now and keeping it sealed are different products, not a setting:
+ * one ends in cosmetics, the other in a tradeable asset somebody might
+ * never open. So they are two buttons of equal standing rather than a
+ * primary action with a modifier hidden beside it.
+ */
+function PackCard({ pack, onOpen, onSeal, sealing }: {
+  pack: PackDef;
+  onOpen: () => void;
+  onSeal: () => void;
+  sealing: boolean;
+}) {
   const openFeel = useButtonFeel();
+  const sealFeel = useButtonFeel();
   return (
     <div className="pack-card" style={chamferBox(12, {
       padding: "14px 12px 12px",
@@ -487,6 +659,26 @@ function PackCard({ pack, onOpen }: { pack: PackDef; onOpen: () => void }) {
           OPEN
         </button>
       </ChamferGlow>
+      <button
+        onClick={onSeal}
+        disabled={sealing}
+        {...sealFeel.handlers}
+        style={chamferBox(8, {
+          width: "100%", fontFamily: '"Press Start 2P", monospace',
+          fontSize: 7, letterSpacing: 1, padding: "9px 8px",
+          cursor: sealing ? "default" : "pointer",
+          background: "transparent", color: pack.accent,
+          border: `1px solid ${pack.accent}77`,
+          ...feelStyle(sealFeel),
+        })}
+      >
+        {sealing ? "BUYING…" : "KEEP SEALED"}
+      </button>
+      {/* Said once, on the card, because "sealed" is the whole product and a
+          player meeting it for the first time has no reason to guess. */}
+      <div style={{ fontSize: 6, color: "#7a7aa0", lineHeight: 1.5, textAlign: "center" }}>
+        Sealed packs can be traded or gifted, and opened whenever you like.
+      </div>
       </div>
     </div>
   );

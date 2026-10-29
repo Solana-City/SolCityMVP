@@ -198,22 +198,42 @@ export async function buyPack(args: {
   await conn.confirmTransaction({ signature, blockhash, lastValidBlockHeight:
     (await conn.getLatestBlockhash()).lastValidBlockHeight }, "confirmed");
 
-  // Watch for the callback. Polled rather than subscribed because the oracle
-  // writes whenever it writes, and a missed websocket frame here would leave
-  // a paying player staring at an empty pack.
-  const until = Date.now() + timeout;
+  const { granted, timedOut } = await awaitDraw(conn, wallet, before, timeout);
+  return { signature, granted, timedOut };
+}
+
+/**
+ * Waits for the VRF callback to resolve a draw, however the pack was spent.
+ *
+ * Shared by buying-and-opening and by burning a sealed pack, because the
+ * wait is the same: the oracle answers on its own schedule and the only
+ * thing that changes is which transaction preceded it.
+ *
+ * Polled rather than subscribed. The oracle writes whenever it writes, and a
+ * missed websocket frame here would leave somebody who has already paid
+ * staring at an empty pack.
+ */
+export async function awaitDraw(
+  conn: Connection,
+  wallet: PublicKey,
+  before: Set<number>,
+  timeoutMs = 45_000,
+): Promise<{ granted: number[]; timedOut: boolean }> {
+  const unlockPda = deriveUnlockPDA(wallet)[0];
+  const until = Date.now() + timeoutMs;
   while (Date.now() < until) {
     await new Promise((r) => setTimeout(r, 1500));
     const info = await conn.getAccountInfo(unlockPda);
     const state = info ? decodeUnlockState(info.data) : null;
     if (!state) continue;
-    const granted = state.owned.filter((i) => !before.has(i));
     // `pending` goes false in the same write that grants, so a draw that
     // genuinely gave nothing new (every item a duplicate) still ends here
     // rather than running to the timeout.
-    if (!state.pending) return { signature, granted, timedOut: false };
+    if (!state.pending) {
+      return { granted: state.owned.filter((i) => !before.has(i)), timedOut: false };
+    }
   }
-  return { signature, granted: [], timedOut: true };
+  return { granted: [], timedOut: true };
 }
 
 /** Program id, re-exported so a caller does not need two imports. Packs live
