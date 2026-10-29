@@ -399,6 +399,8 @@ pub enum CollectiblesError {
     AlreadyOwned,
     #[msg("Only a quest or event cosmetic can be granted this way")]
     NotAnEventItem,
+    #[msg("A pack's season, size and odds cannot change once it exists")]
+    PackTermsFrozen,
     // Appended, never inserted. Anchor numbers these by POSITION, so a
     // variant added in the middle silently renumbers every one after it
     // and any client matching on a code starts reporting the wrong thing.
@@ -701,7 +703,33 @@ pub mod sol_city_collectibles {
         let cfg = &mut ctx.accounts.config;
         let count = cfg.pack_count as usize;
         if let Some(slot) = cfg.packs[..count].iter_mut().find(|p| p.id == def.id) {
-            *slot = def;
+            // ── What a pack id promises can never be rewritten ────────────
+            //
+            // Only `price` and `enabled` may move on an existing pack, and
+            // both of those only affect a future sale.
+            //
+            // Season, size and weights cannot, because a SEALED pack carries
+            // nothing but its id: its URI is `pack-<id>.json` and its terms
+            // are looked up here when it is opened, perhaps months later.
+            // Rewriting them would re-point a pack somebody already paid for
+            // at a different season or worse odds, which is the one thing
+            // that would make a sealed pack worthless on the secondary
+            // market, where we cannot reach it to make amends.
+            //
+            // The buy-and-open path never had this hole: PendingDraw freezes
+            // the terms at the moment of payment. This is the same promise
+            // for the pack that is paid for now and resolved later.
+            //
+            // New odds mean a NEW pack id. That costs a slot in a table of
+            // eight and keeps every promise already made.
+            require!(
+                def.season == slot.season
+                    && def.size == slot.size
+                    && def.weights == slot.weights,
+                CollectiblesError::PackTermsFrozen
+            );
+            slot.price = def.price;
+            slot.enabled = def.enabled;
             return Ok(());
         }
         require!(count < MAX_PACKS, CollectiblesError::PackTableFull);
