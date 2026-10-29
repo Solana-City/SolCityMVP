@@ -41,6 +41,9 @@ const ESCAPE_AFTER_MS = 25_000;
 export default function ConnectingOverlay({ onEnter, onRetry }: { onEnter: () => void; onRetry: () => void }) {
   const [label, setLabel] = useState("Starting your session...");
   const [failed, setFailed] = useState(false);
+  // Why the handshake failed, when the chain said (an empty wallet, a declined
+  // signature). Shown instead of the generic line, so the player knows what to do.
+  const [reason, setReason] = useState<string | null>(null);
   const [canSkip, setCanSkip] = useState(false);
 
   useEffect(() => {
@@ -50,13 +53,16 @@ export default function ConnectingOverlay({ onEnter, onRetry }: { onEnter: () =>
       const bus = (globalThis as any).__solCityGameEvents as
         | { on: Function; off: Function } | undefined;
       if (!bus) return false;
-      const onProgress = (text: string) => { setLabel(text); setFailed(false); };
+      const onProgress = (text: string) => { setLabel(text); setFailed(false); setReason(null); };
       const onReady = (online: boolean) => setFailed(!online);
+      const onError = (text: string) => setReason(text);
       bus.on("game:sessionProgress", onProgress);
+      bus.on("game:sessionError", onError);
       bus.on("multiplayer:ready", onReady);
       bus.on("multiplayer:online", onReady);
       off = () => {
         bus.off("game:sessionProgress", onProgress);
+        bus.off("game:sessionError", onError);
         bus.off("multiplayer:ready", onReady);
         bus.off("multiplayer:online", onReady);
       };
@@ -116,11 +122,22 @@ export default function ConnectingOverlay({ onEnter, onRetry }: { onEnter: () =>
 
         <div style={{ fontFamily: PIXEL, fontSize: 7, color: "#b9b9cc", lineHeight: 1.8, minHeight: "3.6em" }}>
           {failed
-            ? "The city could not reach the chain. Nobody would see you in there."
+            ? (reason ?? "The city could not reach the chain. Nobody would see you in there.")
             : needsSignature
               ? "Approve it in your wallet. On a phone, switch to the wallet app."
               : label}
         </div>
+
+        {failed && reason?.includes("faucet.solana.com") && (
+          <a
+            href="https://faucet.solana.com"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ display: "block", marginTop: 8, fontFamily: PIXEL, fontSize: 7, color: LIME }}
+          >
+            OPEN FAUCET
+          </a>
+        )}
 
         {(failed || canSkip) && (
           <div style={{ display: "flex", gap: 8, marginTop: 10 }}>

@@ -181,6 +181,7 @@ import { setOnChainUnlocks } from "@/game/config/wardrobeUnlocks";
 import { syncHeldToWardrobe } from "@/game/solana/mint";
 import { gameSlotOf, GAME_SLOT_CAP } from "@/game/minigames/slots";
 import type { LayerCategory } from "@/game/config/paperDoll";
+import { walletRequest } from "@/game/solana/walletBus";
 
 // ── Endpoints ──────────────────────────────────────────────────────────
 
@@ -1930,21 +1931,41 @@ export class OnChainMultiplayer {
           label: "Initialize player + session", status: "pending",
         });
         try {
-          const { blockhash } = await this.baseRpcWithRetry(() => this.baseConnection.getLatestBlockhash());
-          const tx = new Transaction({ recentBlockhash: blockhash, feePayer: wallet })
-            .add(buildInitializePlayerIx(wallet, name))
-            .add(buildAuthorizeSessionIx(wallet, sessionKey));
           // The unlock account, in the same signature. It has to exist before
           // the first pack and before the first sync, and this is the only
           // moment the player is already signing something: asking for a
           // second popup later, at the till, is how a purchase gets abandoned.
-          if (!(await this.accountExists(deriveUnlockPDA(wallet)[0]))) {
-            tx.add(buildInitUnlockStateIx(wallet));
+          const needsUnlock = !(await this.accountExists(deriveUnlockPDA(wallet)[0]));
+
+          // An empty wallet is told so BEFORE the wallet opens. Otherwise the
+          // wallet shows "failed to simulate" in red, the player approves
+          // anyway, and the transaction is dropped for want of a fee. The
+          // sizes are PlayerState (1648) and UnlockState (61) as deployed;
+          // an estimate is enough, preflight below has the last word.
+          const [playerRent, unlockRent, balance] = await Promise.all([
+            this.baseConnection.getMinimumBalanceForRentExemption(1648).catch(() => 12_400_000),
+            this.baseConnection.getMinimumBalanceForRentExemption(61).catch(() => 1_300_000),
+            this.baseConnection.getBalance(wallet).catch(() => Number.MAX_SAFE_INTEGER),
+          ]);
+          const needed = playerRent + (needsUnlock ? unlockRent : 0)
+            + (needsFunding ? SESSION_FUND_LAMPORTS : 0) + 100_000;
+          if (balance < needed) {
+            throw new Error(
+              `Your wallet needs about ${(needed / 1e9).toFixed(3)} devnet SOL. `
+              + "Get some at faucet.solana.com, then try again.",
+            );
           }
-          if (needsFunding) {
-            tx.add(SystemProgram.transfer({ fromPubkey: wallet, toPubkey: sessionKey, lamports: SESSION_FUND_LAMPORTS }));
-          }
-          const sig = await this.signAndSendViaWallet(tx);
+
+          const sig = await this.signSendAndLand((blockhash) => {
+            const tx = new Transaction({ recentBlockhash: blockhash, feePayer: wallet })
+              .add(buildInitializePlayerIx(wallet, name))
+              .add(buildAuthorizeSessionIx(wallet, sessionKey));
+            if (needsUnlock) tx.add(buildInitUnlockStateIx(wallet));
+            if (needsFunding) {
+              tx.add(SystemProgram.transfer({ fromPubkey: wallet, toPubkey: sessionKey, lamports: SESSION_FUND_LAMPORTS }));
+            }
+            return tx;
+          });
           this.progress("Confirming your player…");
           pdaReady = await this.waitForAccount(playerPDA, 12, 800);
           if (pdaReady) {
@@ -1956,8 +1977,19 @@ export class OnChainMultiplayer {
             console.warn("✗ init sent but PDA never appeared:", sig.slice(0, 12));
           }
         } catch (err: any) {
-          transactionLog.markFailed(initEntry.id, err?.message ?? "init failed");
-          console.warn("✗ init/auth failed:", err?.message);
+          // A first attempt can land while the retry is being prepared; the
+          // retry then fails on "already in use", which is success.
+          pdaReady = await this.waitForAccount(playerPDA, 1, 0);
+          if (pdaReady) {
+            this.sessionKeys["authorized"] = true;
+            const first = await this.baseConnection
+              .getSignaturesForAddress(playerPDA, { limit: 1 }).catch(() => []);
+            if (first[0]) transactionLog.markConfirmed(initEntry.id, first[0].signature);
+          } else {
+            transactionLog.markFailed(initEntry.id, err?.message ?? "init failed");
+            console.warn("✗ init/auth failed:", err?.message);
+            this.sessionError(err?.message ?? "Could not create your player.");
+          }
         }
       } else if (!isDelegated) {
         this.progress("Authorizing session…");
@@ -3203,64 +3235,79 @@ export class OnChainMultiplayer {
   }
 
   /**
+   * Signs with the wallet, sends, and does not return until the transaction is
+   * CONFIRMED on base, or throws a reason a player can act on.
+   *
+   * signAndSendViaWallet sends once with skipPreflight and leaves the caller to
+   * guess. For the player's first transaction that guess was a ten second
+   * poll, and every way of failing looked the same from there: a wallet with
+   * no devnet SOL, a blockhash that expired while the player read the wallet's
+   * warnings, a send the RPC dropped. All three dropped the transaction without
+   * a trace on chain, and the connect screen could only say "could not
+   * connect". Here preflight runs, so the chain says why; the raw bytes are
+   * resent until they land or the blockhash dies; and an approval that took
+   * too long is asked for once more with a fresh blockhash instead of failing.
+   */
+  private async signSendAndLand(build: (blockhash: string) => Transaction): Promise<string> {
+    const conn = this.baseConnection;
+    const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const { blockhash, lastValidBlockHeight } =
+        await this.baseRpcWithRetry(() => conn.getLatestBlockhash("confirmed"));
+      if (attempt > 0) this.progress("That took a while. Approve once more (sign)…");
+      const signed = await this.requestWalletSignOnly(build(blockhash));
+      const raw = signed.serialize();
+      let sig: string;
+      try {
+        sig = await conn.sendRawTransaction(raw, { skipPreflight: false, preflightCommitment: "confirmed", maxRetries: 0 });
+      } catch (err: any) {
+        const msg = String(err?.message ?? err);
+        if (/blockhash not found/i.test(msg)) continue;
+        if (/no record of a prior credit|insufficient (funds|lamports)/i.test(msg)) {
+          throw new Error("Your wallet needs devnet SOL. Get some at faucet.solana.com, then try again.");
+        }
+        throw new Error(msg.replace(/^.*?Simulation failed\.\s*/i, "").slice(0, 200));
+      }
+      while (true) {
+        const status = (await conn.getSignatureStatuses([sig]).catch(() => null))?.value?.[0];
+        if (status?.err) throw new Error(`transaction failed on chain: ${JSON.stringify(status.err)}`);
+        if (status?.confirmationStatus === "confirmed" || status?.confirmationStatus === "finalized") return sig;
+        const height = await conn.getBlockHeight("confirmed").catch(() => 0);
+        if (height > lastValidBlockHeight) break;
+        conn.sendRawTransaction(raw, { skipPreflight: true, maxRetries: 0 }).catch(() => {});
+        await sleep(2_000);
+      }
+    }
+    throw new Error("The transaction did not land. Try again.");
+  }
+
+  /**
+   * The one reason the handshake failed, for the connect screen. Without it
+   * the screen can only say "could not connect", which tells a player with an
+   * empty wallet nothing about what to do.
+   */
+  private sessionError(reason: string): void {
+    try { (globalThis as any).__solCityGameEvents?.emit("game:sessionError", reason); } catch {}
+  }
+
+  /**
    * Emits a game event asking React (which has access to useWallet()) to sign
    * a transaction. Returns the signature once confirmed.
    * This avoids passing wallet adapter hooks deep into Phaser scenes.
    */
   private requestWalletSign(tx: Transaction): Promise<string> {
-    return new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => reject(new Error("wallet sign timeout")), 60_000);
-
-      // Access the global game event bus — set by CityScene on connect.
-      // IMPORTANT: do NOT resolve with a fake signature — passing non-base58
-      // strings to confirmTransaction / getSignatureStatus triggers a tweetnacl
-      // "Assertion failed" that escapes try/catch.  Reject instead so callers
-      // fall through to their catch blocks and gracefully enter offline mode.
-      const bus = (globalThis as any).__solCityGameEvents as Phaser.Events.EventEmitter | undefined;
-      if (!bus) {
-        clearTimeout(timeout);
-        reject(new Error("wallet bus not available, session offline"));
-        return;
-      }
-
-      bus.once("wallet:signedTx", (sig: string) => {
-        clearTimeout(timeout);
-        resolve(sig);
-      });
-      bus.once("wallet:signError", (err: Error) => {
-        clearTimeout(timeout);
-        reject(err);
-      });
-      bus.emit("wallet:needSign", tx);
-    });
+    return walletRequest<string>("wallet:needSign", "wallet:signedTx", "wallet:signError", tx);
   }
 
   /**
-   * Asks the wallet to SIGN a transaction without sending it — used when the
+   * Asks the wallet to SIGN a transaction without sending it, used when the
    * tx must be submitted to a different cluster than the app connection
    * (e.g. authorize_session on the ephemeral rollup). Returns the signed tx.
    */
   private requestWalletSignOnly(tx: Transaction): Promise<Transaction> {
-    return new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => reject(new Error("wallet sign timeout")), 60_000);
-
-      const bus = (globalThis as any).__solCityGameEvents as Phaser.Events.EventEmitter | undefined;
-      if (!bus) {
-        clearTimeout(timeout);
-        reject(new Error("wallet bus not available, session offline"));
-        return;
-      }
-
-      bus.once("wallet:signedTxOnly", (signed: Transaction) => {
-        clearTimeout(timeout);
-        resolve(signed);
-      });
-      bus.once("wallet:signOnlyError", (err: Error) => {
-        clearTimeout(timeout);
-        reject(err);
-      });
-      bus.emit("wallet:needSignOnly", tx);
-    });
+    return walletRequest<Transaction>(
+      "wallet:needSignOnly", "wallet:signedTxOnly", "wallet:signOnlyError", tx,
+    );
   }
 
   // ── Player state machine ──────────────────────────────────────────────
