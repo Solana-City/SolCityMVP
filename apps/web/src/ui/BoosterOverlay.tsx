@@ -89,7 +89,27 @@ export default function BoosterOverlay({
   });
   const [minting, setMinting] = useState(false);
   const [mintConfig, setMintConfig] = useState<MintConfigAccount | null>(null);
-  const [sealed, setSealed] = useState<{ assetId: PublicKey; packId: number; nonce: number }[]>([]);
+  /**
+   * Sealed packs this wallet holds, or null for "we could not find out".
+   *
+   * The distinction is the whole reliability of this screen. An empty list
+   * and a dead indexer look identical if both are `[]`, and telling somebody
+   * who owns a pack that they own nothing is the one answer this must never
+   * give.
+   */
+  const [sealed, setSealed] =
+    useState<{ assetId: PublicKey; packId: number; nonce: number }[] | null>(null);
+  const [sealedBusy, setSealedBusy] = useState(false);
+  /**
+   * Which half of the shop is showing.
+   *
+   * A tab rather than a shelf below the grid, because of where a sealed pack
+   * comes from: it may have been bought on a marketplace, or given, and in
+   * neither case did this screen have anything to do with it. Somebody
+   * arriving to look for it needs a place that is there BEFORE they own
+   * anything, or there is no answer to "where is my pack".
+   */
+  const [tab, setTab] = useState<"buy" | "mine">("buy");
   const [sealing, setSealing] = useState<number | null>(null);
   const [mintNote, setMintNote] = useState<string | null>(null);
 
@@ -129,17 +149,27 @@ export default function BoosterOverlay({
    * given. Nothing in our own accounts knows about it.
    */
   const refreshSealed = useCallback(async (cfg: MintConfigAccount | null) => {
+    // No MintConfig means no tree and no collection, so a sealed pack cannot
+    // exist yet. That is knowledge, not a failure, and the empty list is
+    // the honest answer.
     if (!wallet || !cfg) { setSealed([]); return; }
+    setSealedBusy(true);
     try {
       setSealed(await heldSealedPacks(baseConnection(), new PublicKey(wallet), cfg));
     } catch {
-      // An unreachable indexer hides the sealed list rather than claiming the
-      // player has none.
+      // Unknown, and SAID to be unknown. The packs are on chain either way;
+      // what failed is our ability to look, and the tab says so rather than
+      // showing an empty shelf to somebody holding three.
+      setSealed(null);
+    } finally {
+      setSealedBusy(false);
     }
   }, [wallet]);
 
   useEffect(() => {
-    if (!BOOSTER_ONCHAIN || !wallet) return;
+    // Off chain, or no wallet: a sealed pack cannot exist, and the tab says so
+    // plainly instead of sitting in "we could not find out".
+    if (!BOOSTER_ONCHAIN || !wallet) { setSealed([]); return; }
     let cancelled = false;
     void (async () => {
       try {
@@ -251,6 +281,10 @@ export default function BoosterOverlay({
       });
       // The indexer needs a moment to see a brand new leaf, so the list is
       // re-read rather than guessed at.
+      // The pack goes somewhere, so show where. Switching the tab IS the
+      // answer to "where did it go", and it is a better answer than a line
+      // of text saying the same thing.
+      setTab("mine");
       setTimeout(() => void refreshSealed(mintConfig), 2500);
     } catch (err) {
       setError((err as Error).message?.split("\n")[0] ?? "The purchase failed.");
@@ -451,86 +485,92 @@ export default function BoosterOverlay({
                 This wallet has no balance in the currency packs are priced in.
               </div>
             )}
-            {/* HOW MANY, and whether to watch them open.
-                One payment, one draw, one reveal however many are bought:
-                the quantity is part of the purchase, not a button pressed
-                again and again. The ceiling comes from the program. */}
+            {/* TWO HALVES OF A SHOP: what is for sale, and what is already
+                yours.
+                The second one is a tab and not a shelf under the first,
+                because a sealed pack may have come from a marketplace or
+                from a friend. Somebody arriving to look for it has to find
+                the place BEFORE they own anything, so this is here whether
+                the shelf is empty or not. */}
             <div style={{
-              display: "flex", alignItems: "center", gap: 10,
-              fontSize: 8, color: "#aaaacc", marginBottom: 12, flexWrap: "wrap",
+              display: "flex", gap: 0, marginBottom: 14,
+              borderBottom: "1px solid #2a2a44",
             }}>
-              <span>HOW MANY</span>
-              {[1, 3, 5, 10].map((n) => (
+              {([["buy", "BUY"], ["mine", "YOUR PACKS"]] as const).map(([key, label]) => (
                 <button
-                  key={n}
-                  onClick={() => setCount(n)}
+                  key={key}
+                  onClick={() => setTab(key)}
                   style={{
-                    fontFamily: "inherit", fontSize: 8, padding: "4px 10px",
-                    cursor: "pointer", background: "transparent",
-                    border: `1px solid ${count === n ? "#14F195" : "#3a3a55"}`,
-                    color: count === n ? "#14F195" : "#aaaacc",
+                    fontFamily: "inherit", fontSize: 8, padding: "8px 14px",
+                    cursor: "pointer", background: "transparent", border: "none",
+                    borderBottom: `2px solid ${tab === key ? "#14F195" : "transparent"}`,
+                    color: tab === key ? "#14F195" : "#aaaacc",
                   }}
-                >{n}</button>
+                >
+                  {label}
+                  {/* The count is the whole reason to look, so it is on the
+                      tab rather than behind it. */}
+                  {key === "mine" && sealed !== null && sealed.length > 0 && ` (${sealed.length})`}
+                </button>
               ))}
-              <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
-                <input
-                  type="checkbox"
-                  checked={skipReveal}
-                  onChange={(e) => setSkip(e.target.checked)}
-                />
-                Skip the reveal and show everything at once
-              </label>
             </div>
 
-            <div className="booster-grid" style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))",
-              gap: 12, marginBottom: 16,
-            }}>
-              {PACKS.map((p) => (
-                <PackCard
-                  key={p.id}
-                  pack={p}
-                  onOpen={() => open(p)}
-                  onSeal={() => void seal(p)}
-                  sealing={sealing === p.onChainId}
-                />
-              ))}
-            </div>
-            {/* WHAT YOU ALREADY HOLD SEALED.
-                Below the shop rather than beside it, because these are not
-                for sale: they are already yours, and the only question left
-                is when to open them. Absent entirely when there are none,
-                since an empty shelf is worse than no shelf. */}
-            {sealed.length > 0 && (
-              <div style={{ marginBottom: 16 }}>
-                <div style={{ fontSize: 8, color: "#aaaacc", letterSpacing: 1, marginBottom: 8 }}>
-                  YOUR SEALED PACKS
-                </div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                  {sealed.map((entry) => {
-                    const card = PACKS.find((c) => c.onChainId === entry.packId);
-                    return (
-                      <button
-                        key={entry.assetId.toBase58()}
-                        onClick={() => void openSealed(entry)}
-                        style={chamferBox(8, {
-                          fontFamily: '"Press Start 2P", monospace', fontSize: 7,
-                          padding: "10px 12px", cursor: "pointer",
-                          background: "rgba(255,255,255,0.03)",
-                          color: card?.accent ?? "#aaaacc",
-                          border: `1px solid ${(card?.accent ?? "#3a3a55")}66`,
-                        })}
-                      >
-                        OPEN {card?.name ?? `PACK ${entry.packId}`}
-                      </button>
-                    );
-                  })}
-                </div>
-                <div style={{ fontSize: 6, color: "#7a7aa0", marginTop: 8, lineHeight: 1.5 }}>
-                  Opening burns the pack. What is inside is drawn at that moment, not before.
-                </div>
+            {tab === "buy" ? (
+              <>
+              {/* HOW MANY, and whether to watch them open.
+                  One payment, one draw, one reveal however many are bought:
+                  the quantity is part of the purchase, not a button pressed
+                  again and again. The ceiling comes from the program. */}
+              <div style={{
+                display: "flex", alignItems: "center", gap: 10,
+                fontSize: 8, color: "#aaaacc", marginBottom: 12, flexWrap: "wrap",
+              }}>
+                <span>HOW MANY</span>
+                {[1, 3, 5, 10].map((n) => (
+                  <button
+                    key={n}
+                    onClick={() => setCount(n)}
+                    style={{
+                      fontFamily: "inherit", fontSize: 8, padding: "4px 10px",
+                      cursor: "pointer", background: "transparent",
+                      border: `1px solid ${count === n ? "#14F195" : "#3a3a55"}`,
+                      color: count === n ? "#14F195" : "#aaaacc",
+                    }}
+                  >{n}</button>
+                ))}
+                <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
+                  <input
+                    type="checkbox"
+                    checked={skipReveal}
+                    onChange={(e) => setSkip(e.target.checked)}
+                  />
+                  Skip the reveal and show everything at once
+                </label>
               </div>
+
+              <div className="booster-grid" style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))",
+                gap: 12, marginBottom: 16,
+              }}>
+                {PACKS.map((p) => (
+                  <PackCard
+                    key={p.id}
+                    pack={p}
+                    onOpen={() => open(p)}
+                    onSeal={() => void seal(p)}
+                    sealing={sealing === p.onChainId}
+                  />
+                ))}
+              </div>
+              </>
+            ) : (
+              <MyPacks
+                sealed={sealed}
+                busy={sealedBusy}
+                onOpen={(entry) => void openSealed(entry)}
+                onRetry={() => void refreshSealed(mintConfig)}
+              />
             )}
 
             <button onClick={onClose} {...laterFeel.handlers} style={btn("ghost", laterFeel)}>LATER</button>
@@ -714,6 +754,88 @@ function PackCard({ pack, onOpen, onSeal, sealing }: {
  * A missing file falls back to the wardrobe icon in the pack's own colour,
  * which is what the chooser showed before the art arrived.
  */
+/**
+ * The packs this wallet is holding unopened.
+ *
+ * ── Why `sealed` may be null ────────────────────────────────────────────
+ *
+ * These are ordinary assets, so the only way to find them is to ask the
+ * indexer, and the indexer can be down. Null means we could not find out,
+ * which is a different sentence from "you have none" and has to read like
+ * one: somebody holding three packs must never be shown an empty shelf.
+ */
+function MyPacks({ sealed, busy, onOpen, onRetry }: {
+  sealed: { assetId: PublicKey; packId: number; nonce: number }[] | null;
+  busy: boolean;
+  onOpen: (entry: { assetId: PublicKey; packId: number; nonce: number }) => void;
+  onRetry: () => void;
+}) {
+  const note = (text: string) => (
+    <div style={{ fontSize: 8, color: "#aaaacc", lineHeight: 1.8, padding: "24px 0" }}>
+      {text}
+    </div>
+  );
+
+  if (busy && sealed === null) return note("Looking for your packs.");
+
+  if (sealed === null) {
+    return (
+      <div style={{ padding: "18px 0" }}>
+        {note("Could not reach the indexer, so this list is unknown. Your packs are safe.")}
+        <button
+          onClick={onRetry}
+          style={chamferBox(8, {
+            fontFamily: "inherit", fontSize: 8, padding: "8px 16px", cursor: "pointer",
+            background: "transparent", color: "#aaaacc", border: "1px solid #3a3a55",
+          })}
+        >TRY AGAIN</button>
+      </div>
+    );
+  }
+
+  if (sealed.length === 0) {
+    return note("Nothing sealed yet. Buy a pack sealed, or pick one up anywhere, and it waits here.");
+  }
+
+  return (
+    <div style={{ marginBottom: 16 }}>
+      <div style={{
+        display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(118px, 1fr))",
+        gap: 10, marginBottom: 10,
+      }}>
+        {sealed.map((entry) => {
+          const card = PACKS.find((c) => c.onChainId === entry.packId);
+          const accent = card?.accent ?? "#aaaacc";
+          return (
+            <button
+              key={entry.assetId.toBase58()}
+              onClick={() => onOpen(entry)}
+              style={chamferBox(10, {
+                fontFamily: '"Press Start 2P", monospace', fontSize: 7,
+                display: "flex", flexDirection: "column", alignItems: "center", gap: 8,
+                padding: "12px 8px", cursor: "pointer",
+                background: "rgba(255,255,255,0.03)",
+                color: accent,
+                border: `1px solid ${accent}66`,
+              })}
+            >
+              {/* The pack's own art, so the shelf looks like the shop it came
+                  from. A pack id this build has never heard of still shows,
+                  because refusing to draw it would hide a real asset. */}
+              {card ? <PackArt pack={card} scale={2} /> : null}
+              <span>{card?.name ?? `PACK ${entry.packId}`}</span>
+              <span style={{ color: "#d0d0f0" }}>OPEN</span>
+            </button>
+          );
+        })}
+      </div>
+      <div style={{ fontSize: 6, color: "#7a7aa0", lineHeight: 1.5 }}>
+        Opening burns the pack. What is inside is drawn at that moment, not before.
+      </div>
+    </div>
+  );
+}
+
 function PackArt({ pack, scale }: { pack: PackDef; scale: number }) {
   const width = pack.art.frameWidth * scale;
   const height = pack.art.frameHeight * scale;
