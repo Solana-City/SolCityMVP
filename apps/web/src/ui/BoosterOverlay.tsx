@@ -7,7 +7,10 @@ import {
   rollPack, type PackDef, type PackDrop,
 } from "@/game/config/packs";
 import { unlockItem } from "@/game/config/wardrobeUnlocks";
-import { mintMany, readMintConfig, type MintConfigAccount } from "@/game/solana/mint";
+import {
+  settleMints, readMintConfig,
+  type MintConfigAccount, type SignedMints,
+} from "@/game/solana/mint";
 import {
   buySealedPacks, heldSealedPacks, openSealedPack,
 } from "@/game/solana/sealedPacks";
@@ -63,7 +66,9 @@ export default function BoosterOverlay({
   const [error, setError] = useState<string | null>(null);
   const [config, setConfig] = useState<PackConfigAccount | null>(null);
   const [balance, setBalance] = useState<bigint | null>(null);
-  const { signTransaction, signAllTransactions } = useWallet();
+  // One signing call for everything here. A purchase and the mint that
+  // follows it are approved together or the flow is broken.
+  const { signAllTransactions } = useWallet();
   /**
    * How many packs this purchase buys, resolved as ONE draw.
    *
@@ -159,6 +164,10 @@ export default function BoosterOverlay({
     granted: number[],
     conn: ReturnType<typeof baseConnection>,
     me: PublicKey,
+    /** Signed at the till, so sending them asks nobody anything. */
+    presigned: SignedMints | null,
+    /** Everything those transactions owe: this draw plus any leftovers. */
+    owed: number[],
   ) => {
       if (!wallet) return;
       // Before anything is shown as wearable. The chain is what authorises a
@@ -192,18 +201,22 @@ export default function BoosterOverlay({
       setDrops(rolled);
       setPhase("revealed");
 
-      // MINTING IS NOT A SECOND DECISION. Possession is what lets a pack item
-      // be worn, so an unminted item is one the player cannot use. One
-      // approval covers the whole haul: mintMany chunks it and the wallet
-      // signs the batch together.
-      if (granted.length > 0 && signAllTransactions) {
+      // MINTING IS NOT A SECOND DECISION, and by here it is not a second
+      // APPROVAL either: these transactions were signed in the same breath as
+      // the payment. Sending them is all that is left, and it happens behind
+      // the reveal the player is already watching.
+      if (owed.length > 0) {
         setMinting(true);
         try {
-          const { failed } = await mintMany({
-            wallet: new PublicKey(wallet),
-              indices: granted,
-            signAllTransactions,
+          const { failed } = await settleMints({
             conn,
+            wallet: me,
+            presigned,
+            expected: owed,
+            // Only reached when the pre-signed route is gone: minting not set
+            // up, or a draw slower than a blockhash lives. It asks, which is
+            // the thing all of this exists to avoid.
+            signAllTransactions,
           });
           // Anything that did not land stays in UnlockState, so the
           // wardrobe's own mint button finishes it. Said plainly rather than
@@ -248,7 +261,7 @@ export default function BoosterOverlay({
 
   /** Burns one sealed pack and waits for its reveal. */
   const openSealed = useCallback(async (entry: { assetId: PublicKey; packId: number; nonce: number }) => {
-    if (!wallet || !signTransaction || !config || !mintConfig) return;
+    if (!wallet || !signAllTransactions || !config || !mintConfig) return;
     const onChain = config.packs.find((p) => p.id === entry.packId);
     if (!onChain) { setError("That pack is not one this city knows."); return; }
     const card = PACKS.find((p) => p.onChainId === entry.packId) ?? PACKS[0];
@@ -257,9 +270,9 @@ export default function BoosterOverlay({
     setPhase("opening");
     setError(null);
     try {
-      await openSealedPack({
+      const { presignedMints, leftover } = await openSealedPack({
         wallet: new PublicKey(wallet), assetId: entry.assetId, nonce: entry.nonce,
-        pack: onChain, mintConfig, signTransaction,
+        pack: onChain, mintConfig, signAllTransactions,
       });
       // From here it is the same reveal a bought-and-opened pack gets: the
       // draw lands in UnlockState when the oracle answers.
@@ -274,13 +287,15 @@ export default function BoosterOverlay({
         setPhase("choose");
         return;
       }
-      await revealAndMint(granted, conn, me);
+      const owed = [...leftover, ...granted.filter((i) => !leftover.includes(i))]
+        .sort((a, b) => a - b);
+      await revealAndMint(granted, conn, me, presignedMints, owed);
       void refreshSealed(mintConfig);
     } catch (err) {
       setError((err as Error).message?.split("\n")[0] ?? "That pack would not open.");
       setPhase("choose");
     }
-  }, [wallet, signTransaction, config, mintConfig, refreshSealed, revealAndMint]);
+  }, [wallet, signAllTransactions, config, mintConfig, refreshSealed, revealAndMint]);
   const laterFeel = useButtonFeel();
   const anotherFeel = useButtonFeel();
   const doneFeel = useButtonFeel();
@@ -290,7 +305,7 @@ export default function BoosterOverlay({
     setPack(chosen);
     setPhase("opening");
     setError(null);
-    if (BOOSTER_ONCHAIN && config && signTransaction) {
+    if (BOOSTER_ONCHAIN && config && signAllTransactions) {
       void openOnChain(chosen);
       return;
     }
@@ -331,7 +346,7 @@ export default function BoosterOverlay({
    * record.
    */
   const openOnChain = useCallback(async (chosen: PackDef) => {
-    if (!wallet || !signTransaction || !config) return;
+    if (!wallet || !signAllTransactions || !config) return;
     const onChain = config.packs.find((p) => p.id === chosen.onChainId);
     if (!onChain) { setError("This pack is not on sale yet."); setPhase("choose"); return; }
     const why = packUnavailableReason(onChain, config);
@@ -340,7 +355,7 @@ export default function BoosterOverlay({
     try {
       const conn = baseConnection();
       const result = await buyPack({
-        conn, wallet: new PublicKey(wallet), signTransaction, pack: onChain, config,
+        conn, wallet: new PublicKey(wallet), signAllTransactions, pack: onChain, config,
         count,
       });
       if (result.timedOut) {
@@ -348,14 +363,16 @@ export default function BoosterOverlay({
         setPhase("choose");
         return;
       }
-      await revealAndMint(result.granted, conn, new PublicKey(wallet));
+      await revealAndMint(
+        result.granted, conn, new PublicKey(wallet), result.presignedMints, result.owed,
+      );
     } catch (err) {
       // The wallet's own message is the useful one: "insufficient funds",
       // "User rejected the request".
       setError((err as Error).message?.split("\n")[0] ?? "The purchase failed.");
       setPhase("choose");
     }
-  }, [wallet, signTransaction, config, count, revealAndMint]);
+  }, [wallet, signAllTransactions, config, count, revealAndMint]);
 
 
   const backToPacks = () => { setPhase("choose"); setDrops([]); setPack(null); setError(null); };
