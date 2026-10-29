@@ -76,6 +76,18 @@ export default function Analytics({ adminKey }: { adminKey: string }) {
   const [busy, setBusy] = useState(false);
   /** Wallet -> nickname, so the tables read as people rather than addresses. */
   const [names, setNames] = useState<Record<string, string>>({});
+  /**
+   * The wallets that earned a mini-game's reward, fetched on demand.
+   *
+   * Not part of the overview: it is a list rather than a number, it is only
+   * wanted when a season is being settled, and it is the one thing here that
+   * leaves the panel as a file. `:won` is written on every win, so this is
+   * the entitlement list, not an inference from scores.
+   */
+  const [winners, setWinners] = useState<
+    { id: string; wallets: string[]; takenAt: string; error?: string } | null
+  >(null);
+  const [winnersBusy, setWinnersBusy] = useState<string | null>(null);
 
   const load = useCallback(async (force = false) => {
     setBusy(true);
@@ -117,6 +129,34 @@ export default function Analytics({ adminKey }: { adminKey: string }) {
   }, [data]);
 
   const who = (wallet: string) => names[wallet] ?? `${wallet.slice(0, 4)}...${wallet.slice(-4)}`;
+
+  const loadWinners = async (id: string) => {
+    setWinnersBusy(id);
+    try {
+      const res = await fetch(`/api/admin/winners?kind=minigame&id=${encodeURIComponent(id)}`, {
+        headers: { "x-admin-key": adminKey },
+      });
+      const body = await res.json();
+      if (!res.ok || !body.ok) throw new Error(body.message ?? `HTTP ${res.status}`);
+      setWinners({ id, wallets: body.wallets ?? [], takenAt: body.takenAt ?? "" });
+    } catch (e) {
+      setWinners({ id, wallets: [], takenAt: "", error: e instanceof Error ? e.message : String(e) });
+    } finally {
+      setWinnersBusy(null);
+    }
+  };
+
+  /** The same CSV the API serves, built from what is already on screen. */
+  const downloadWinners = () => {
+    if (!winners) return;
+    const csv = ["wallet", ...winners.wallets].join("\n");
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${winners.id}-winners-${(winners.takenAt || new Date().toISOString()).slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   if (error) return <p style={sx.error}>{error}</p>;
   if (!data) return <p style={sx.dim}>Reading the chain...</p>;
@@ -381,8 +421,10 @@ export default function Analytics({ adminKey }: { adminKey: string }) {
                     <th style={sx.th}>Game</th>
                     <th style={sx.thNum}>Rounds</th>
                     <th style={sx.thNum}>Players</th>
+                    <th style={sx.thNum}>Won</th>
                     <th style={sx.thNum}>7d</th>
                     <th style={sx.th}>Best scores</th>
+                    <th style={sx.th}>Winners</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -391,16 +433,77 @@ export default function Analytics({ adminKey }: { adminKey: string }) {
                       <td style={sx.td}>{g.id}</td>
                       <td style={sx.tdNum}>{g.count}</td>
                       <td style={sx.tdNum}>{g.users}</td>
+                      <td style={sx.tdNum}>{g.ok}</td>
                       <td style={sx.tdNum}>{g.last7}</td>
                       <td style={sx.td}>
                         {g.best.length === 0 ? <span style={sx.dim}>-</span> : g.best.map((b, i) => (
                           <span key={b.wallet} style={sx.chip}>{i + 1}. {who(b.wallet)} · {b.score}</span>
                         ))}
                       </td>
+                      <td style={sx.td}>
+                        <button
+                          style={{ ...sx.ghost, padding: "4px 9px", fontSize: 11 }}
+                          onClick={() => void loadWinners(g.id)}
+                          disabled={winnersBusy === g.id}
+                        >
+                          {winnersBusy === g.id ? "..." : "List"}
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+            )}
+
+            {winners && (
+              <div style={sx.winners}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 8 }}>
+                  <strong style={{ fontSize: 13 }}>{winners.id}</strong>
+                  {winners.error ? (
+                    <span style={sx.error}>{winners.error}</span>
+                  ) : (
+                    <>
+                      <span style={sx.dim}>
+                        {winners.wallets.length} {winners.wallets.length === 1 ? "wallet" : "wallets"}
+                        {winners.takenAt ? ` · read ${winners.takenAt.slice(0, 19).replace("T", " ")} UTC` : ""}
+                      </span>
+                      <button
+                        style={{ ...sx.ghost, padding: "4px 9px", fontSize: 11 }}
+                        onClick={() => void navigator.clipboard?.writeText(winners.wallets.join("\n"))}
+                        disabled={winners.wallets.length === 0}
+                      >
+                        Copy
+                      </button>
+                      <button
+                        style={{ ...sx.ghost, padding: "4px 9px", fontSize: 11 }}
+                        onClick={downloadWinners}
+                        disabled={winners.wallets.length === 0}
+                      >
+                        Download CSV
+                      </button>
+                    </>
+                  )}
+                  <button
+                    style={{ ...sx.ghost, padding: "4px 9px", fontSize: 11, marginLeft: "auto" }}
+                    onClick={() => setWinners(null)}
+                  >
+                    Close
+                  </button>
+                </div>
+                {!winners.error && (winners.wallets.length === 0 ? (
+                  <p style={sx.dim}>Nobody has earned this one yet.</p>
+                ) : (
+                  <>
+                    {/* Names to read by. */}
+                    <div style={{ marginBottom: 8 }}>
+                      {winners.wallets.map((w) => <span key={w} style={sx.chip}>{who(w)}</span>)}
+                    </div>
+                    {/* Addresses to paste. Full, one per line, nothing else:
+                        this is what a mint script is given. */}
+                    <pre style={sx.addresses}>{winners.wallets.join("\n")}</pre>
+                  </>
+                ))}
+              </div>
             )}
           </Panel>
 
@@ -756,6 +859,13 @@ const sx: Record<string, React.CSSProperties> = {
   funnelBar: { width: "100%", background: "#9945FF", borderRadius: "3px 3px 0 0", minHeight: 2 },
   funnelLabel: { fontSize: 10, color: "#7d86a8" },
   chip: { display: "inline-block", fontSize: 11, padding: "2px 7px", margin: "2px 4px 2px 0", borderRadius: 6, background: "#141a2e", border: "1px solid #232a44" },
+  winners: { marginTop: 14, padding: 12, background: "#0b0e1c", border: "1px solid #232a44", borderRadius: 8 },
+  addresses: {
+    margin: 0, padding: 10, maxHeight: 220, overflow: "auto",
+    background: "#070910", border: "1px solid #1a2038", borderRadius: 6,
+    fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: 12, lineHeight: 1.6,
+    color: "#c7d0f0", whiteSpace: "pre", userSelect: "all",
+  },
   feed: { display: "flex", flexDirection: "column", gap: 2, fontSize: 12 },
   feedRow: { display: "flex", gap: 10, padding: "4px 0", borderBottom: "1px solid #161c30", alignItems: "center" },
   feedTime: { color: "#5b6485", fontFamily: "monospace", flexShrink: 0 },
