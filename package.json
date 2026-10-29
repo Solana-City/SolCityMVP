@@ -24,6 +24,7 @@
     "@metaplex-foundation/umi": "0.9.2"
   },
   "devDependencies": {
+    "gifwrap": "^0.10.1",
     "jimp": "^1.6.1",
     "pngjs": "^7.0.0"
   }
