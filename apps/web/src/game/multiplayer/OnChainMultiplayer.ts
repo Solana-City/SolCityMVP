@@ -3375,15 +3375,6 @@ export class OnChainMultiplayer {
   }
 
   /**
-   * Emits a game event asking React (which has access to useWallet()) to sign
-   * a transaction. Returns the signature once confirmed.
-   * This avoids passing wallet adapter hooks deep into Phaser scenes.
-   */
-  private requestWalletSign(tx: Transaction): Promise<string> {
-    return walletRequest<string>("wallet:needSign", "wallet:signedTx", "wallet:signError", tx);
-  }
-
-  /**
    * Asks the wallet to SIGN a transaction without sending it, used when the
    * tx must be submitted to a different cluster than the app connection
    * (e.g. authorize_session on the ephemeral rollup). Returns the signed tx.
