@@ -33,6 +33,10 @@ const DEVICE_PREFERENCES = [
   "ui/Minimap.tsx",
   "ui/ProtocolIntro.tsx",
   "ui/ActionPanel.tsx",
+  // Whether to watch packs open one card at a time. A feeling about an
+  // animation, identical on every cluster, and namespacing it would only
+  // make somebody say so twice.
+  "ui/BoosterOverlay.tsx",
   "app/page.tsx",
   "app/privacy/page.tsx",
   // Opt-outs and drafts the player typed, which belong to the person.

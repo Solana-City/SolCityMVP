@@ -232,6 +232,102 @@ export async function syncHeldToWardrobe(
 }
 
 export type SignTx = (tx: Transaction) => Promise<Transaction>;
+export type SignAllTx = (txs: Transaction[]) => Promise<Transaction[]>;
+
+/**
+ * How many mints go in one transaction.
+ *
+ * A MEASUREMENT, not a preference. Each mint_unlock CPIs into Bubblegum, and
+ * what fits is decided by the compute limit rather than by the 1232-byte
+ * transaction size: the fifteen accounts are shared across the instructions,
+ * so only ten bytes of data are added per extra item.
+ *
+ * Three is the conservative starting point. Raise it when it has been timed
+ * on devnet with a full pack, and lower it the moment a bundle starts
+ * failing with an exceeded compute budget.
+ */
+export const MINTS_PER_TX = 3;
+
+/** ComputeBudget's SetComputeUnitLimit, which the default 200k will not cover. */
+function computeLimitIx(units: number): TransactionInstruction {
+  const data = Buffer.alloc(5);
+  data.writeUInt8(2, 0);
+  data.writeUInt32LE(units, 1);
+  return new TransactionInstruction({
+    programId: new PublicKey("ComputeBudget111111111111111111111111111111"),
+    keys: [],
+    data,
+  });
+}
+
+/**
+ * Mints every drawn item, asking the wallet ONCE.
+ *
+ * Minting is not optional: possession is what decides whether a pack item can
+ * be worn, so an item left unminted is an item the player cannot use. This is
+ * the step that follows a reveal, not a button they may ignore.
+ *
+ * Chunked because a Bubblegum mint is expensive in compute and a pack of five
+ * will not fit one transaction. `signAllTransactions` is what keeps that from
+ * costing a prompt per chunk: most wallets show one approval for the batch.
+ *
+ * Returns the indices that landed. Anything missing stays in UnlockState and
+ * the wardrobe's own mint button finishes it later, which is the recovery
+ * path and never the main one.
+ */
+export async function mintMany(args: {
+  wallet: PublicKey;
+  indices: number[];
+  signAllTransactions: SignAllTx;
+  conn?: Connection;
+  perTx?: number;
+}): Promise<{ minted: number[]; failed: number[] }> {
+  const conn = args.conn ?? baseConnection();
+  const config = await readMintConfig(conn);
+  if (!config) return { minted: [], failed: args.indices };
+
+  const already = new Set(await mintedIndices(conn, args.wallet));
+  const todo = args.indices.filter((i) => !already.has(i));
+  if (todo.length === 0) return { minted: [], failed: [] };
+
+  const per = Math.max(1, args.perTx ?? MINTS_PER_TX);
+  const chunks: number[][] = [];
+  for (let i = 0; i < todo.length; i += per) chunks.push(todo.slice(i, i + per));
+
+  const { blockhash } = await conn.getLatestBlockhash();
+  const txs = chunks.map((chunk) => {
+    const tx = new Transaction({ recentBlockhash: blockhash, feePayer: args.wallet });
+    // Asked for per chunk rather than globally: the limit is per transaction.
+    tx.add(computeLimitIx(300_000 * chunk.length));
+    for (const index of chunk) {
+      tx.add(buildMintUnlockIx({ payer: args.wallet, index, config }));
+    }
+    return tx;
+  });
+
+  const signed = await args.signAllTransactions(txs);
+  await Promise.all(signed.map((tx) =>
+    conn.sendRawTransaction(tx.serialize(), { skipPreflight: false }).catch(() => null),
+  ));
+
+  // Confirmed by reading `minted` back rather than by watching signatures:
+  // what the player is about to be told is "these are yours now", and the
+  // account saying so is the thing that makes it true.
+  for (let i = 0; i < 30; i++) {
+    await new Promise((r) => setTimeout(r, 1000));
+    const now = new Set(await mintedIndices(conn, args.wallet));
+    const landed = todo.filter((x) => now.has(x));
+    if (landed.length === todo.length) {
+      await syncHeldToWardrobe(conn, args.wallet);
+      return { minted: landed, failed: [] };
+    }
+    if (i === 29) {
+      await syncHeldToWardrobe(conn, args.wallet);
+      return { minted: landed, failed: todo.filter((x) => !now.has(x)) };
+    }
+  }
+  return { minted: [], failed: todo };
+}
 
 /**
  * Mints one cosmetic and waits for it to land.

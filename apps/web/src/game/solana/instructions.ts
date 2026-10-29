@@ -729,8 +729,17 @@ export function buildOpenBoosterIx(params: {
   /** The buyer's token account in the config's currency. Defaults to their
    *  associated account for devnet USDC. */
   buyerTokenAccount?: PublicKey;
+  /**
+   * How many packs of this kind, resolved as ONE draw.
+   *
+   * The program caps count x pack size at MAX_BUNDLE_ITEMS (50), because the
+   * VRF callback rolls the whole bundle in a single transaction that is not
+   * allowed to fail, and a wallet can only have one draw in flight.
+   */
+  count?: number;
 }): TransactionInstruction {
   const { payer, packId, season, clientSeed, treasuryTokenAccount } = params;
+  const count = Math.max(1, Math.min(255, Math.round(params.count ?? 1)));
   const seed = Buffer.alloc(32);
   Buffer.from(clientSeed).copy(seed, 0, 0, 32);
 
@@ -741,7 +750,8 @@ export function buildOpenBoosterIx(params: {
   const buyerTokenAccount =
     params.buyerTokenAccount ??
     getAssociatedTokenAddressSync(USDC_MINT_DEVNET, payer);
-  const data = Buffer.concat([DISC.openBooster, packU8(packId), seed]);
+  // packId, the 32-byte seed, then the bundle count, in that order.
+  const data = Buffer.concat([DISC.openBooster, packU8(packId), seed, packU8(count)]);
 
   return new TransactionInstruction({
     programId: SOL_CITY_COLLECTIBLES_PROGRAM_ID,

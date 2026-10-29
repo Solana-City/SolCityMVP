@@ -1,12 +1,15 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { CATEGORY_LABELS } from "@/game/config/paperDoll";
 import {
   PACKS, RARITY_COLOR, RARITY_LABEL, RARITY_ORDER, rarityTheme, CURRENT_SEASON,
   rollPack, type PackDef, type PackDrop,
 } from "@/game/config/packs";
 import { unlockItem } from "@/game/config/wardrobeUnlocks";
+import { mintMany } from "@/game/solana/mint";
+/** Mirrors MAX_BUNDLE_ITEMS: what one draw may resolve. */
+const MAX_BUNDLE_ITEMS = 50;
 import { progressionBus } from "@/game/progression/progressionBus";
 import { ChromaPreview } from "@/ui/WardrobePanel";
 import { chamferBox } from "@/ui/chamfer";
@@ -57,7 +60,38 @@ export default function BoosterOverlay({
   const [error, setError] = useState<string | null>(null);
   const [config, setConfig] = useState<PackConfigAccount | null>(null);
   const [balance, setBalance] = useState<bigint | null>(null);
-  const { signTransaction } = useWallet();
+  const { signTransaction, signAllTransactions } = useWallet();
+  /**
+   * How many packs this purchase buys, resolved as ONE draw.
+   *
+   * One payment, one randomness request, one reveal. The ceiling is the
+   * program's: a wallet can hold one draw in flight, and the callback has to
+   * roll the whole bundle in a single transaction that is not allowed to
+   * fail. So fifty items, which is ten five-item packs.
+   */
+  const [count, setCount] = useState(1);
+  /**
+   * Skip the per-item animation and show the whole haul at once.
+   *
+   * Remembered, because somebody opening ten packs has already decided how
+   * they feel about the animation and should not have to say so again.
+   */
+  const [skipReveal, setSkipReveal] = useState(() => {
+    try { return localStorage.getItem("solcity:skip-reveal") === "1"; } catch { return false; }
+  });
+  const [minting, setMinting] = useState(false);
+  const [mintNote, setMintNote] = useState<string | null>(null);
+
+  const setSkip = useCallback((on: boolean) => {
+    setSkipReveal(on);
+    try { localStorage.setItem("solcity:skip-reveal", on ? "1" : "0"); } catch { /* fine */ }
+  }, []);
+
+  /** The most packs of this kind that still fit one draw. */
+  const maxCount = useMemo(
+    () => (pack ? Math.max(1, Math.floor(MAX_BUNDLE_ITEMS / Math.max(1, pack.size))) : 1),
+    [pack],
+  );
 
   // What the city actually sells, read once when the overlay opens. Only when
   // the paid draw is on: the preview has no prices to be wrong about.
@@ -89,7 +123,8 @@ export default function BoosterOverlay({
       return;
     }
     const rolled = rollPack(wallet, chosen);
-    // Brief suspense, then reveal + grant.
+    // Brief suspense, then reveal + grant. Suspense is the thing the skip
+    // toggle removes, so there is nothing to wait through when it is on.
     setTimeout(() => {
       let newCount = 0;
       for (const d of rolled) {
@@ -106,7 +141,7 @@ export default function BoosterOverlay({
       }
       setDrops(rolled);
       setPhase("revealed");
-    }, 650);
+    }, skipReveal ? 0 : 650);
   }, [wallet]);
 
   /**
@@ -134,6 +169,7 @@ export default function BoosterOverlay({
       const conn = baseConnection();
       const result = await buyPack({
         conn, wallet: new PublicKey(wallet), signTransaction, pack: onChain, config,
+        count,
       });
       if (result.timedOut) {
         setError("Paid, but the draw has not landed yet. It will appear in your wardrobe.");
@@ -170,13 +206,41 @@ export default function BoosterOverlay({
       }
       setDrops(rolled);
       setPhase("revealed");
+
+      // MINTING IS NOT A SECOND DECISION. Possession is what lets a pack item
+      // be worn, so an unminted item is one the player cannot use. One
+      // approval covers the whole haul: mintMany chunks it and the wallet
+      // signs the batch together.
+      if (result.granted.length > 0 && signAllTransactions) {
+        setMinting(true);
+        try {
+          const { failed } = await mintMany({
+            wallet: new PublicKey(wallet),
+            indices: result.granted,
+            signAllTransactions,
+            conn,
+          });
+          // Anything that did not land stays in UnlockState, so the
+          // wardrobe's own mint button finishes it. Said plainly rather than
+          // hidden, because until it lands the item cannot be worn.
+          if (failed.length > 0) {
+            setMintNote(
+              `${failed.length} still to mint. Finish from the wardrobe whenever you like.`,
+            );
+          }
+        } catch (err) {
+          setMintNote((err as Error).message?.split("\n")[0] ?? "The mint did not go through.");
+        } finally {
+          setMinting(false);
+        }
+      }
     } catch (err) {
       // The wallet's own message is the useful one: "insufficient funds",
       // "User rejected the request".
       setError((err as Error).message?.split("\n")[0] ?? "The purchase failed.");
       setPhase("choose");
     }
-  }, [wallet, signTransaction, config]);
+  }, [wallet, signTransaction, signAllTransactions, config, count]);
 
   const backToPacks = () => { setPhase("choose"); setDrops([]); setPack(null); setError(null); };
   // Not mid-opening, same as the backdrop: the pack is already being granted.
@@ -254,6 +318,37 @@ export default function BoosterOverlay({
                 This wallet has no balance in the currency packs are priced in.
               </div>
             )}
+            {/* HOW MANY, and whether to watch them open.
+                One payment, one draw, one reveal however many are bought:
+                the quantity is part of the purchase, not a button pressed
+                again and again. The ceiling comes from the program. */}
+            <div style={{
+              display: "flex", alignItems: "center", gap: 10,
+              fontSize: 8, color: "#aaaacc", marginBottom: 12, flexWrap: "wrap",
+            }}>
+              <span>HOW MANY</span>
+              {[1, 3, 5, 10].map((n) => (
+                <button
+                  key={n}
+                  onClick={() => setCount(n)}
+                  style={{
+                    fontFamily: "inherit", fontSize: 8, padding: "4px 10px",
+                    cursor: "pointer", background: "transparent",
+                    border: `1px solid ${count === n ? "#14F195" : "#3a3a55"}`,
+                    color: count === n ? "#14F195" : "#aaaacc",
+                  }}
+                >{n}</button>
+              ))}
+              <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
+                <input
+                  type="checkbox"
+                  checked={skipReveal}
+                  onChange={(e) => setSkip(e.target.checked)}
+                />
+                Skip the reveal and show everything at once
+              </label>
+            </div>
+
             <div className="booster-grid" style={{
               display: "grid",
               gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))",
@@ -267,9 +362,24 @@ export default function BoosterOverlay({
           </>
         ) : phase === "revealed" ? (
           <>
+            {minting && (
+              <div style={{ fontSize: 8, color: "#14F195", marginBottom: 10 }}>
+                MINTING…
+              </div>
+            )}
+            {mintNote && (
+              <div style={{ fontSize: 8, color: "#ffa726", lineHeight: 1.8, marginBottom: 10 }}>
+                {mintNote}
+              </div>
+            )}
+            {/* One column per item stops being a layout at ten and is a
+                hairline at fifty, so the grid wraps once a bundle is more
+                than a single pack. */}
             <div style={{
               display: "grid",
-              gridTemplateColumns: `repeat(${Math.max(1, drops.length)}, 1fr)`,
+              gridTemplateColumns: drops.length > 5
+                ? "repeat(auto-fit, minmax(72px, 1fr))"
+                : `repeat(${Math.max(1, drops.length)}, 1fr)`,
               gap: 8, marginBottom: 18,
             }}>
               {drops.map((d, i) => (
@@ -280,7 +390,14 @@ export default function BoosterOverlay({
                     padding: "10px 4px",
                     background: d.owned ? "rgba(255,255,255,0.02)" : rarityTheme(d.rarity).fill,
                     border: `2px solid ${d.owned ? "rgba(255,255,255,0.08)" : rarityTheme(d.rarity).color}`,
-                    animation: `booster-pop 0.4s ${i * 0.09}s ease-out both`,
+                    // The STAGGER is the reveal: each card popping in turn.
+                    // Skipping drops the delay rather than the animation, so
+                    // the haul still arrives rather than appearing to have
+                    // always been there. At fifty items the stagger alone
+                    // would run four and a half seconds.
+                    animation: skipReveal
+                      ? "booster-pop 0.25s ease-out both"
+                      : `booster-pop 0.4s ${i * 0.09}s ease-out both`,
                   })}
                 >
                   {/* Cropped, same as the wardrobe grid: the reveal is about

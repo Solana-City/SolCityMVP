@@ -159,8 +159,18 @@ export async function buyPack(args: {
   config: PackConfigAccount;
   /** How long to watch for the VRF callback. */
   revealTimeoutMs?: number;
+  /**
+   * How many packs of this kind, resolved as ONE draw.
+   *
+   * One payment, one randomness request, one reveal. The program caps
+   * count x pack size at fifty, because a wallet can only have one draw in
+   * flight and the callback has to resolve the whole bundle in a single
+   * transaction that is not allowed to fail.
+   */
+  count?: number;
 }): Promise<BuyResult> {
   const { conn, wallet, signTransaction, pack, config } = args;
+  const count = Math.max(1, Math.round(args.count ?? 1));
   const timeout = args.revealTimeoutMs ?? 45_000;
 
   const before = new Set(await ownedIndices(conn, wallet));
@@ -178,6 +188,7 @@ export async function buyPack(args: {
     clientSeed,
     treasuryTokenAccount: config.treasuryTokenAccount,
     buyerTokenAccount: getAssociatedTokenAddressSync(config.currencyMint, wallet),
+    count,
   }));
 
   const { blockhash } = await conn.getLatestBlockhash();
