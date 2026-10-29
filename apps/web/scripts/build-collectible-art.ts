@@ -1,8 +1,14 @@
 /**
  * Sol City - render every collectible as the picture a marketplace will show.
  *
- *   npx tsx scripts/build-collectible-art.ts
- *   npx tsx scripts/build-collectible-art.ts --out ../../collectible-art
+ *   npx tsx scripts/build-collectible-art.ts \
+ *     --out apps/web/public/collectibles \
+ *     --base https://solanacity.io/collectibles/
+ *
+ *   npx tsx scripts/build-collectible-art.ts \
+ *     --base https://solanacity.io/collectibles/ \
+ *     --image-base https://arweave.net/<manifest-txid>/
+ *
  *   npx tsx scripts/build-collectible-art.ts --only hat/Cap_Sol --scale 8
  *
  * ── What comes out ─────────────────────────────────────────────────────
@@ -15,6 +21,14 @@
  *   <index>.png    its first frame, for anything that will not animate
  *   <index>.json   the Metaplex metadata, pointing at the gif
  *
+ * And per pack, because a SEALED pack is an asset too and the program builds
+ * its URL the same way, from `<base_uri>pack-<id>.json`:
+ *
+ *   pack-<id>.gif / .png / .json
+ *
+ * A pack gets no rarity frame. It has no rarity: what is inside it has not
+ * been decided yet, and that is the product.
+ *
  * ── Why the GIF and not the MP4 the artist also sent ───────────────────
  *
  * The three exports from the artist are the same four cells. Only the sheet
@@ -24,6 +38,21 @@
  * would only ever be an `animation_url`, which most marketplaces ignore while
  * still demanding an `image`.
  *
+ * ── Two bases, not one ─────────────────────────────────────────────────
+ *
+ * `--base` is where the JSON will be SERVED, and it has to match the
+ * program's `base_uri` exactly, because the program builds its URLs from that
+ * string and nothing else.
+ *
+ * `--image-base` is where the pictures live, and it defaults to the same
+ * place. They are separate because on mainnet they will not be the same
+ * place: the JSON is served from a host we control, so the catalog can keep
+ * growing, while the picture it points at is a permanent Arweave URL. See
+ * PACK_RULES for why a raw Arweave manifest cannot be `base_uri` itself.
+ *
+ * Absolute, both of them. A relative `image` resolves differently in every
+ * wallet that reads it, and some do not resolve it at all.
+ *
  * ── The one number to watch ────────────────────────────────────────────
  *
  * `--scale` is how many output pixels a frame pixel becomes. The item gets
@@ -32,14 +61,14 @@
  * than the frame's. That is intentional and matches the reference art.
  */
 import { readFileSync, writeFileSync, mkdirSync } from "fs";
-import { join, dirname } from "path";
+import { join, dirname, resolve } from "path";
 import { fileURLToPath } from "url";
 import { PNG } from "pngjs";
 import { GifFrame, GifUtil, GifCodec, BitmapImage } from "gifwrap";
 import { LAYER_ORDER, DIRECTION_ROW, SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT, getEnabledVariants } from "../src/game/config/paperDoll";
-import { tileKindOf } from "../src/game/config/packs";
+import { tileKindOf, PACKS } from "../src/game/config/packs";
 import { globalIndexOf } from "../src/game/config/catalogIndex";
-import { FRAME_GEOMETRY, FRAME_SHEET, RARITY_LABEL } from "../src/game/collections/seasons";
+import { FRAME_GEOMETRY, FRAME_SHEET, RARITY_LABEL, CURRENT_SEASON } from "../src/game/collections/seasons";
 import type { LayerCategory } from "../src/game/config/paperDoll";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -158,10 +187,16 @@ async function main() {
   };
   const scale = Number(arg("--scale") ?? 10);
   const only = arg("--only");
-  // OUTSIDE the repo by default. This repository is public and these are
-  // unreleased collectibles; the upload to Arweave is what publishes them,
-  // and a stray commit should not be able to do it first.
-  const outDir = join(HERE, "..", "..", "..", "..", arg("--out") ?? "collectible-art");
+  // A trailing slash or the concatenation below silently makes nonsense, so
+  // it is added here rather than demanded of whoever types the command.
+  const slash = (u: string) => (u.endsWith("/") ? u : u + "/");
+  const base = slash(arg("--base") ?? "https://solanacity.io/collectibles/");
+  const imageBase = slash(arg("--image-base") ?? base);
+  // A path you pass means what you typed, relative to where you are. The
+  // DEFAULT is outside the repo: this repository is public, and a render
+  // meant for Arweave should not be published by a stray commit instead.
+  const out = arg("--out");
+  const outDir = out ? resolve(out) : join(HERE, "..", "..", "..", "..", "collectible-art");
   mkdirSync(outDir, { recursive: true });
 
   const sheets = new Map<string, Bitmap>();
@@ -196,21 +231,67 @@ async function main() {
         name: variant.name,
         symbol: "SCC",
         description: `${RARITY_LABEL[kind]} ${category} from Sol City.`,
-        // Filled in by the upload step, which is the only place that knows
-        // where these files ended up.
-        image: `${index}.gif`,
+        image: `${imageBase}${index}.gif`,
         attributes: [
           { trait_type: "Rarity", value: RARITY_LABEL[kind] },
           { trait_type: "Slot", value: category },
           { trait_type: "Season", value: String(variant.season ?? 1) },
         ],
-        properties: { files: [{ uri: `${index}.gif`, type: "image/gif" }], category: "image" },
+        properties: {
+          files: [{ uri: `${imageBase}${index}.gif`, type: "image/gif" }],
+          category: "image",
+        },
       }, null, 2) + "\n");
       made++;
       console.log(`${String(index).padStart(5)}  ${RARITY_LABEL[kind].padEnd(9)} ${category}/${variant.id}`);
     }
   }
-  console.log(`\n${made} collectibles rendered at ${FRAME_GEOMETRY.cell * scale}px into ${outDir}`);
+  // ── The packs ───────────────────────────────────────────────────────
+  //
+  // Drawn from their own sheet at its own cell size, which is 36x51 and not
+  // square. The card is padded to a square because marketplaces lay out
+  // squares, and a sheet stretched to fit one would be the only resampled
+  // thing in this whole script.
+  for (const pack of PACKS) {
+    const art = removeChroma(readPng(join(PUBLIC, pack.art.file)));
+    const k = Math.max(1, Math.floor(FRAME_GEOMETRY.cell * scale * 0.8 / pack.art.frameHeight));
+    const side = FRAME_GEOMETRY.cell * scale;
+    const cells = Array.from({ length: pack.art.frames }, (_, c) => {
+      const out: Bitmap = { w: side, h: side, px: Buffer.alloc(side * side * 4) };
+      drawScaled(
+        out, art,
+        c * pack.art.frameWidth, 0, pack.art.frameWidth, pack.art.frameHeight,
+        Math.floor((side - pack.art.frameWidth * k) / 2),
+        Math.floor((side - pack.art.frameHeight * k) / 2),
+        k,
+      );
+      return out;
+    });
+    writePng(join(outDir, `pack-${pack.onChainId}.png`), cells[0]);
+    // The shop plays this strip at 8fps; the card plays it at the same speed
+    // or the pack a player bought animates differently from the one they saw.
+    await writeGif(join(outDir, `pack-${pack.onChainId}.gif`), cells, 12);
+    writeFileSync(join(outDir, `pack-${pack.onChainId}.json`), JSON.stringify({
+      name: `Sol City ${pack.name}`,
+      symbol: "SCC",
+      description: `${pack.blurb} Sealed: ${pack.size} items, drawn when it is opened.`,
+      image: `${imageBase}pack-${pack.onChainId}.gif`,
+      attributes: [
+        { trait_type: "Kind", value: "Sealed Pack" },
+        { trait_type: "Items", value: String(pack.size) },
+        { trait_type: "Season", value: String(CURRENT_SEASON) },
+      ],
+      properties: {
+        files: [{ uri: `${imageBase}pack-${pack.onChainId}.gif`, type: "image/gif" }],
+        category: "image",
+      },
+    }, null, 2) + "\n");
+    console.log(`${"pack".padStart(5)}  ${pack.name}`);
+  }
+
+  console.log(`\n${made} collectibles and ${PACKS.length} packs rendered at ${FRAME_GEOMETRY.cell * scale}px into ${outDir}`);
+  console.log(`metadata served from ${base}, pictures from ${imageBase}`);
+  console.log(`the program's base_uri MUST be exactly ${base}`);
   console.log(`${skipped} free items skipped: a free item is not a collectible.`);
 }
 

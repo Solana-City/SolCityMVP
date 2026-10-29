@@ -624,9 +624,13 @@ export default function BoosterOverlay({
                   })}
                 >
                   {/* Cropped, same as the wardrobe grid: the reveal is about
-                      the item, not the character it sits on. In the frame its
-                      rarity is drawn rather than written, which is the point
-                      of opening a pack and watching. */}
+                      the item, not the character it sits on.
+
+                      The frame says the rarity in colour and the label below
+                      says it in words, ON PURPOSE. The colour is the faster
+                      read once you know it, and nobody knows it the first
+                      time: the written line is what teaches the colour, so
+                      it stays even though it looks redundant. */}
                   <RarityFrame kind={d.rarity} size={REVEAL_TILE}>
                     <ChromaPreview
                       file={d.file}

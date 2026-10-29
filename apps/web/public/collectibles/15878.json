@@ -1,0 +1,29 @@
+{
+  "name": "Pirate",
+  "symbol": "SCC",
+  "description": "RARE hat from Sol City.",
+  "image": "https://solanacity.io/collectibles/15878.gif",
+  "attributes": [
+    {
+      "trait_type": "Rarity",
+      "value": "RARE"
+    },
+    {
+      "trait_type": "Slot",
+      "value": "hat"
+    },
+    {
+      "trait_type": "Season",
+      "value": "1"
+    }
+  ],
+  "properties": {
+    "files": [
+      {
+        "uri": "https://solanacity.io/collectibles/15878.gif",
+        "type": "image/gif"
+      }
+    ],
+    "category": "image"
+  }
+}

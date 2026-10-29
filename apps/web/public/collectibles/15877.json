@@ -1,0 +1,29 @@
+{
+  "name": "Ninja",
+  "symbol": "SCC",
+  "description": "LEGENDARY hat from Sol City.",
+  "image": "https://solanacity.io/collectibles/15877.gif",
+  "attributes": [
+    {
+      "trait_type": "Rarity",
+      "value": "LEGENDARY"
+    },
+    {
+      "trait_type": "Slot",
+      "value": "hat"
+    },
+    {
+      "trait_type": "Season",
+      "value": "1"
+    }
+  ],
+  "properties": {
+    "files": [
+      {
+        "uri": "https://solanacity.io/collectibles/15877.gif",
+        "type": "image/gif"
+      }
+    ],
+    "category": "image"
+  }
+}

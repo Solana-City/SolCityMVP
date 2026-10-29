@@ -1,0 +1,29 @@
+{
+  "name": "Sol City CITY PACK",
+  "symbol": "SCC",
+  "description": "Better odds, same five pieces. Sealed: 5 items, drawn when it is opened.",
+  "image": "https://solanacity.io/collectibles/pack-2.gif",
+  "attributes": [
+    {
+      "trait_type": "Kind",
+      "value": "Sealed Pack"
+    },
+    {
+      "trait_type": "Items",
+      "value": "5"
+    },
+    {
+      "trait_type": "Season",
+      "value": "1"
+    }
+  ],
+  "properties": {
+    "files": [
+      {
+        "uri": "https://solanacity.io/collectibles/pack-2.gif",
+        "type": "image/gif"
+      }
+    ],
+    "category": "image"
+  }
+}

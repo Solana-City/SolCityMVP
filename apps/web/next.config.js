@@ -88,7 +88,20 @@ module.exports = withPWA({
   // parts, 0.7 MB in all), and every fresh install fetched every one of them,
   // which Vercel bills as a request each. They load on demand instead, through
   // the sc-sprites-v1 NetworkFirst rule below, and are cached from then on.
-  publicExcludes: ["!noprecache/**/*", "!assets/audio/**/*", "!assets/minigames/**/*"],
+  //
+  // Collectible art is excluded for a third reason: the GAME NEVER ASKS FOR
+  // IT. Those files exist so a wallet or a marketplace can show a cNFT, and
+  // both fetch them over the internet, not through our service worker. They
+  // are served from this domain only because the program's `base_uri` is one
+  // immutable string and a host we control is the only kind that can still
+  // answer it after the catalog has grown twice. Precaching them would have
+  // every player download eighty pictures of items most of them do not own.
+  publicExcludes: [
+    "!noprecache/**/*",
+    "!assets/audio/**/*",
+    "!assets/minigames/**/*",
+    "!collectibles/**/*",
+  ],
   disable: process.env.NODE_ENV === "development",
   reloadOnOnline: true,
   cacheOnFrontEndNav: true,
