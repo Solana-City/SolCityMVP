@@ -182,7 +182,7 @@ import { syncHeldToWardrobe } from "@/game/solana/mint";
 import { gameSlotOf, GAME_SLOT_CAP } from "@/game/minigames/slots";
 import type { LayerCategory } from "@/game/config/paperDoll";
 import { walletRequest } from "@/game/solana/walletBus";
-import { prepareWalletTx, sendWalletSigned } from "@/game/solana/walletTx";
+import { prepareWalletTx, sendWalletSigned, WalletTxRejected } from "@/game/solana/walletTx";
 
 // ── Endpoints ──────────────────────────────────────────────────────────
 
@@ -1878,6 +1878,12 @@ export class OnChainMultiplayer {
     // with AccountNotInitialized (custom 3012). Gate on this so we never prompt
     // a delegate for a PDA that was never created.
     let pdaReady = false;
+    // Set when the delegation went out in the same signature as something
+    // else, so the delegation step below has nothing left to ask for.
+    let delegatedTo: ReturnType<typeof nearestValidator> | null = null;
+    // Set when a returning player's delegation should also top the session
+    // key up, instead of asking for a signature of its own.
+    let fundWithDelegation = 0;
     try {
       const existing = await this.baseRpcWithRetry(() => this.baseConnection.getAccountInfo(playerPDA));
       pdaReady = existing !== null;
@@ -1923,7 +1929,7 @@ export class OnChainMultiplayer {
 
       if (!existing) {
         this.progress("Creating your player (sign)…");
-        console.log("… new player — init + auth" + (needsFunding ? " + fund" : "") + " (1 sign prompt)");
+        console.log("… new player — init + auth" + (needsFunding ? " + fund" : "") + " + delegate (1 sign prompt)");
         // Logged + confirmed by POLLING the PDA (confirmTransaction's router WS
         // is unreliable). Without this the init failure was invisible — no log
         // entry at all — while every later ix failed 3012 on the missing PDA.
@@ -1948,8 +1954,10 @@ export class OnChainMultiplayer {
             this.baseConnection.getMinimumBalanceForRentExemption(61).catch(() => 1_300_000),
             this.baseConnection.getBalance(wallet).catch(() => Number.MAX_SAFE_INTEGER),
           ]);
+          // The last 4,000,000 covers the delegation record, metadata and fees
+          // (a real one-signature login measured 0.0163 SOL in all).
           const needed = playerRent + (needsUnlock ? unlockRent : 0)
-            + (needsFunding ? SESSION_FUND_LAMPORTS : 0) + 100_000;
+            + (needsFunding ? SESSION_FUND_LAMPORTS : 0) + 4_000_000;
           if (balance < needed) {
             throw new Error(
               `Your wallet needs about ${(needed / 1e9).toFixed(3)} devnet SOL. `
@@ -1957,7 +1965,15 @@ export class OnChainMultiplayer {
             );
           }
 
-          const sig = await this.signSendAndLand((blockhash) => {
+          // The delegation rides in the same signature. It used to be a
+          // second popup right after this one, and with the wallet's warning
+          // screens in front of each, logging in took about nine clicks. A
+          // new player has nothing to sync into the wardrobe snapshot (both
+          // the snapshot and the unlock account start empty), which is the
+          // only thing that ever had to happen between the two.
+          const near = nearestValidator();
+          let withDelegate = true;
+          const build = (blockhash: string) => {
             const tx = new Transaction({ recentBlockhash: blockhash, feePayer: wallet })
               .add(buildInitializePlayerIx(wallet, name))
               .add(buildAuthorizeSessionIx(wallet, sessionKey));
@@ -1965,8 +1981,22 @@ export class OnChainMultiplayer {
             if (needsFunding) {
               tx.add(SystemProgram.transfer({ fromPubkey: wallet, toPubkey: sessionKey, lamports: SESSION_FUND_LAMPORTS }));
             }
+            if (withDelegate) tx.add(buildDelegateIx(wallet, new PublicKey(near.identity)));
             return tx;
-          });
+          };
+          let sig: string;
+          try {
+            sig = await this.signSendAndLand(build);
+          } catch (err) {
+            // Refused before the wallet opened, for a reason that is not the
+            // wallet's balance: try without the delegation, which then goes
+            // out on its own as it used to.
+            if (!(err instanceof WalletTxRejected) || /SOL/.test(err.message)) throw err;
+            console.warn("… init with delegation refused, retrying without it:", err.message);
+            withDelegate = false;
+            sig = await this.signSendAndLand(build);
+          }
+          if (withDelegate) delegatedTo = near;
           this.progress("Confirming your player…");
           pdaReady = await this.waitForAccount(playerPDA, 12, 800);
           if (pdaReady) {
@@ -1993,10 +2023,25 @@ export class OnChainMultiplayer {
           }
         }
       } else if (!isDelegated) {
-        this.progress("Authorizing session…");
-        console.log("✓ PDA on base — auth" + (needsFunding ? " + fund (1 sign prompt)" : " (may skip if cached)"));
-        await this.sessionKeys.authorize(wallet, this.baseConnection, undefined, needsFunding ? SESSION_FUND_LAMPORTS : 0);
-        console.log("✓ session authorized");
+        // Leaving the city undelegates but does not revoke on chain, so a
+        // player coming back in the same browser usually finds our key still
+        // authorized on base. Authorizing it again was a popup that changed
+        // nothing; the top-up it carried now rides with the delegation. The
+        // sync before delegating is session-signed, so the session key must
+        // be able to pay for it: a key too close to the rent floor still goes
+        // the old way, with the funding first.
+        const baseKey = this.readSessionAuthority(existing.data);
+        const canPayForSync = sessionBalance >= rentFloor + 10_000;
+        if (baseKey?.equals(sessionKey) && canPayForSync) {
+          this.sessionKeys["authorized"] = true;
+          fundWithDelegation = needsFunding ? SESSION_FUND_LAMPORTS : 0;
+          console.log("✓ PDA on base already authorizes this session key — no prompt");
+        } else {
+          this.progress("Authorizing session…");
+          console.log("✓ PDA on base — auth" + (needsFunding ? " + fund (1 sign prompt)" : ""));
+          await this.sessionKeys.authorize(wallet, this.baseConnection, undefined, needsFunding ? SESSION_FUND_LAMPORTS : 0);
+          console.log("✓ session authorized");
+        }
       } else {
         // Delegated: the ER copy is the authoritative session state.
         // Re-authorize on the rollup only if its stored key differs from ours
@@ -2022,10 +2067,18 @@ export class OnChainMultiplayer {
       if (!pdaReady) {
         console.warn("○ delegation skipped — player PDA not initialized");
         this.useEphemeral = false;
+      } else if (delegatedTo) {
+        this.progress("Delegated, entering the rollup…");
+        // What syncUnlocksOnBase would have read on the way: the client's view
+        // of the unlock account. There is nothing to write, both start empty.
+        await this.refreshUnlockView(wallet);
+        this.adoptNewDelegation(delegatedTo);
+        this.useEphemeral = await this.waitForDelegation(playerPDA, 12, 800);
+        console.log(`✓ delegated with the init to ${delegatedTo.label}: ${this.useEphemeral}`);
       } else if (!isDelegated) {
         this.progress("Delegating to rollup (sign)…");
         console.log("… delegating PDA to ephemeral rollup (1 sign prompt)");
-        this.useEphemeral = await this.delegateToEphemeral(wallet);
+        this.useEphemeral = await this.delegateToEphemeral(wallet, fundWithDelegation);
       } else {
         this.useEphemeral = true;
         console.log("✓ already delegated — using ephemeral rollup");
@@ -2447,7 +2500,7 @@ export class OnChainMultiplayer {
    * confirmed on-chain (its delegation record exists) — getSignatureStatuses on
    * the router is unreliable, so a delegated PDA is proven by the record.
    */
-  private async delegateToEphemeral(wallet: PublicKey): Promise<boolean> {
+  private async delegateToEphemeral(wallet: PublicKey, fundSessionLamports = 0): Promise<boolean> {
     const [playerPDA] = derivePlayerPDA(wallet);
     const entry = transactionLog.record({
       kind: "delegate", layer: "base",
@@ -2474,18 +2527,16 @@ export class OnChainMultiplayer {
       const ix = buildDelegateIx(wallet, new PublicKey(near.identity));
       console.log(`[Multiplayer] delegating to ${near.label} (${near.rpc})`);
       const { blockhash } = await this.baseRpcWithRetry(() => this.baseConnection.getLatestBlockhash());
-      const tx = new Transaction({ recentBlockhash: blockhash, feePayer: wallet }).add(ix);
+      const tx = new Transaction({ recentBlockhash: blockhash, feePayer: wallet });
+      if (fundSessionLamports > 0) {
+        tx.add(SystemProgram.transfer({
+          fromPubkey: wallet, toPubkey: this.sessionKeys.getSessionPublicKey(), lamports: fundSessionLamports,
+        }));
+      }
+      tx.add(ix);
 
       const sig = await this.signAndSendViaWallet(tx);
-      // Write where we just delegated. The sweep would find it anyway, but not
-      // for a few seconds, and every position written to the wrong rollup in
-      // between is simply lost.
-      const nearConn = this.erReadConnections.find(r => r.id === near.id);
-      if (nearConn) {
-        this.ephemeralConnection = nearConn.conn;
-        // Ours, not the sweep's, until the sweep has had time to see it.
-        this.writeTargetPinnedUntil = Date.now() + 30_000;
-      }
+      this.adoptNewDelegation(near);
       const landed = await this.waitForDelegation(playerPDA, 12, 800);
       if (landed) {
         transactionLog.markConfirmed(entry.id, sig);
@@ -2498,6 +2549,20 @@ export class OnChainMultiplayer {
       console.error("[Multiplayer] delegate failed:", err);
       transactionLog.markFailed(entry.id, err?.message ?? "delegate failed");
       return false;
+    }
+  }
+
+  /**
+   * Write where we just delegated. The sweep would find it anyway, but not for
+   * a few seconds, and every position written to the wrong rollup in between
+   * is simply lost.
+   */
+  private adoptNewDelegation(near: ReturnType<typeof nearestValidator>): void {
+    const nearConn = this.erReadConnections.find(r => r.id === near.id);
+    if (nearConn) {
+      this.ephemeralConnection = nearConn.conn;
+      // Ours, not the sweep's, until the sweep has had time to see it.
+      this.writeTargetPinnedUntil = Date.now() + 30_000;
     }
   }
 
@@ -2644,6 +2709,20 @@ export class OnChainMultiplayer {
    * the snapshot is only consulted when a loadout is written, the worst case
    * is wearing last session's unlocks, and the next connect syncs again.
    */
+  /**
+   * Hands the unlock account to the client's wardrobe, plus what the wallet
+   * holds, without writing anything. Used when there is nothing to sync.
+   */
+  private async refreshUnlockView(wallet: PublicKey): Promise<void> {
+    const info = await this.baseRpcWithRetry(
+      () => this.baseConnection.getAccountInfo(deriveUnlockPDA(wallet)[0]),
+    ).catch(() => null);
+    setOnChainUnlocks(wallet.toBase58(), info ? new Uint8Array(info.data) : null);
+    // Not awaited: it goes to an indexer, and nothing here should wait on one
+    // to let somebody into the city.
+    void syncHeldToWardrobe(this.baseConnection, wallet);
+  }
+
   private async syncUnlocksOnBase(wallet: PublicKey): Promise<void> {
     try {
       // ONE fetch, two jobs. The account is read here anyway to decide
