@@ -8,6 +8,7 @@ import {
   deriveUnlockPDA, deriveVrfIdentityPDA, VRF_QUEUE_DEVNET, VRF_PROGRAM_ID,
 } from "./program";
 import { ixDiscriminator, buildInitUnlockStateIx } from "./instructions";
+import { prepareWalletTx } from "./walletTx";
 import {
   deriveMintConfigPDA, deriveMintAuthorityPDA, pendingMintIndices, buildMintPendingTxs,
   type MintConfigAccount, type SignedMints, type SignAllTx,
@@ -201,7 +202,8 @@ export async function buySealedPacks(args: {
     txs.push(tx);
   }
 
-  const signed = await args.signAllTransactions(txs);
+  const ready = await Promise.all(txs.map((t) => prepareWalletTx(conn, t)));
+  const signed = await args.signAllTransactions(ready);
   let sent = 0;
   for (const tx of signed) {
     try {
@@ -379,7 +381,10 @@ export async function openSealedPack(args: {
     items: leftover.length + args.pack.size,
   });
 
-  const signed = await args.signAllTransactions([tx, ...mintTxs]);
+  // Only the opening can be simulated now: the mints read a draw that does
+  // not exist yet. They carry their own compute limits (buildMintPendingTxs).
+  const ready = await prepareWalletTx(conn, tx);
+  const signed = await args.signAllTransactions([ready, ...mintTxs]);
   const signature = await conn.sendRawTransaction(signed[0].serialize(), { skipPreflight: false });
   return {
     signature,

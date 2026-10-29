@@ -22,6 +22,7 @@ import { CATEGORY_META } from "@/game/minimap/categories";
 import { chamferBox } from "@/ui/chamfer";
 import { useButtonFeel, feelStyle } from "@/ui/useButtonFeel";
 import { transactionLog } from "@/game/telemetry/transactionLog";
+import { prepareWalletTx } from "@/game/solana/walletTx";
 import { getSendToken, explorerUrl } from "@/game/solana/sendTokens";
 import { DONATION_WALLET, formatSol, shortWallet } from "@/lib/donationWallet";
 
@@ -445,7 +446,7 @@ function DonateScreen({ onBack, onAbout, onClose }: { onBack: () => void; onAbou
       if (signTransaction) {
         sig = await sendAndConfirmTransfer({
           connection: conn,
-          signed: await signTransaction(tx),
+          signed: await signTransaction(await prepareWalletTx(conn, tx)),
           lastValidBlockHeight,
         });
       } else {

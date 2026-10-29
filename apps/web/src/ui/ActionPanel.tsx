@@ -6,6 +6,7 @@ import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import type { NPCAction } from "@/game/config/npcRegistry";
 import type { EarnListing, EarnListingType } from "@/game/solana/superteamEarn";
 import { transactionLog } from "@/game/telemetry/transactionLog";
+import { prepareWalletTx } from "@/game/solana/walletTx";
 import { profileManager } from "@/game/config/profileManager";
 import {
   SEND_TOKENS, DEFAULT_SEND_TOKEN, getSendToken, explorerUrl,
@@ -618,7 +619,7 @@ function TransferPanel({ onClose, to, toName, token: initialToken, tabs }: {
       if (signTransaction) {
         sig = await sendAndConfirmTransfer({
           connection: conn,
-          signed: await signTransaction(tx),
+          signed: await signTransaction(await prepareWalletTx(conn, tx)),
           lastValidBlockHeight,
         });
       } else {

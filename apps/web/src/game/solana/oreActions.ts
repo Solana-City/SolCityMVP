@@ -29,6 +29,7 @@ import {
   buildClaimSol,
   buildDeploy,
 } from "./oreInstructions";
+import { prepareWalletTx } from "./walletTx";
 
 // One connection for the whole office, with the failover that lives in ore.ts:
 // sending through the public endpoint alone fails the same way reading did.
@@ -64,7 +65,8 @@ async function sendSigned(
     const tx = new Transaction({ blockhash, lastValidBlockHeight, feePayer: authority });
     tx.add(...instructions);
 
-    const signed = await signTransaction(tx);
+    // Simulated, with explicit limits, before the wallet opens (walletTx.ts).
+    const signed = await signTransaction(await prepareWalletTx(connection, tx));
     const signature = await connection.sendRawTransaction(signed.serialize(), {
       // A deploy is only valid inside its round, so a preflight failure here is
       // worth hearing about rather than skipping past.

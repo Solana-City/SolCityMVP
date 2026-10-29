@@ -11,6 +11,7 @@ import {
 } from "./instructions";
 import { clusterKey } from "@/game/config/clusterStorage";
 import { walletRequest } from "@/game/solana/walletBus";
+import { prepareWalletTx, sendWalletSigned } from "@/game/solana/walletTx";
 
 const STORAGE_KEY = clusterKey("sol-city-session-key");
 
@@ -145,16 +146,19 @@ export class SessionKeyManager {
         }));
       }
 
-      const sig = await this.requestWalletSign(tx);
-      if (!sig.startsWith("sim:")) {
-        // Broadcast signed tx to primary connection AND alt connection concurrently.
-        // One will succeed (correct layer), the other will silently reject.
-        const raw = tx.serialize();
-        await Promise.allSettled([
-          connection.confirmTransaction(sig, "confirmed"),
-          altConnection ? altConnection.sendRawTransaction(raw, { skipPreflight: true }) : Promise.resolve(),
-        ]);
-      }
+      // Signed by the wallet and sent by us, with preflight, after a
+      // simulation: what Phantom asks of a dApp (see walletTx.ts). This used
+      // to go through the wallet's own sign-and-send, which broadcasts on
+      // whatever network the wallet is set to.
+      const ready = await prepareWalletTx(connection, tx);
+      const signed = await walletRequest<Transaction>(
+        "wallet:needSignOnly", "wallet:signedTxOnly", "wallet:signOnlyError", ready,
+      );
+      const sig = await sendWalletSigned(connection, signed);
+      await Promise.allSettled([
+        connection.confirmTransaction(sig, "confirmed"),
+        altConnection ? altConnection.sendRawTransaction(signed.serialize(), { skipPreflight: true }) : Promise.resolve(),
+      ]);
 
       this.authorized = true;
       console.log(
@@ -203,14 +207,6 @@ export class SessionKeyManager {
   rotateKey(): void {
     this.sessionKey = Keypair.generate();
     this.persist();
-  }
-
-  /**
-   * Requests the user's wallet (via WalletSignBridge in React) to sign a tx.
-   * Returns the transaction signature.
-   */
-  private requestWalletSign(tx: Transaction): Promise<string> {
-    return walletRequest<string>("wallet:needSign", "wallet:signedTx", "wallet:signError", tx);
   }
 
   /**

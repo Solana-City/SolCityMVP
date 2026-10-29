@@ -182,6 +182,7 @@ import { syncHeldToWardrobe } from "@/game/solana/mint";
 import { gameSlotOf, GAME_SLOT_CAP } from "@/game/minigames/slots";
 import type { LayerCategory } from "@/game/config/paperDoll";
 import { walletRequest } from "@/game/solana/walletBus";
+import { prepareWalletTx, sendWalletSigned } from "@/game/solana/walletTx";
 
 // ── Endpoints ──────────────────────────────────────────────────────────
 
@@ -3230,8 +3231,11 @@ export class OnChainMultiplayer {
    * wallet-signed tx on devnet regardless of the wallet's selected cluster.
    */
   private async signAndSendViaWallet(tx: Transaction): Promise<string> {
-    const signed = await this.requestWalletSignOnly(tx);
-    return this.baseConnection.sendRawTransaction(signed.serialize(), { skipPreflight: true });
+    // Simulated and given explicit limits before the wallet sees it, then
+    // sent with preflight: what Phantom asks of a dApp (see walletTx.ts).
+    const ready = await prepareWalletTx(this.baseConnection, tx);
+    const signed = await this.requestWalletSignOnly(ready);
+    return sendWalletSigned(this.baseConnection, signed);
   }
 
   /**
@@ -3255,7 +3259,8 @@ export class OnChainMultiplayer {
       const { blockhash, lastValidBlockHeight } =
         await this.baseRpcWithRetry(() => conn.getLatestBlockhash("confirmed"));
       if (attempt > 0) this.progress("That took a while. Approve once more (sign)…");
-      const signed = await this.requestWalletSignOnly(build(blockhash));
+      const ready = await prepareWalletTx(conn, build(blockhash));
+      const signed = await this.requestWalletSignOnly(ready);
       const raw = signed.serialize();
       let sig: string;
       try {

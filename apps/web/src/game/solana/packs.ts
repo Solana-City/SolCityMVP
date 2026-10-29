@@ -8,6 +8,7 @@ import {
 } from "./program";
 import { buildOpenBoosterIx, buildInitUnlockStateIx } from "./instructions";
 import { baseConnection } from "./baseRpc";
+import { prepareWalletTx } from "./walletTx";
 import {
   readMintConfig, pendingMintIndices, buildMintPendingTxs,
   type SignedMints, type SignAllTx,
@@ -233,7 +234,10 @@ export async function buyPack(args: {
         items: leftover.length + count * pack.size,
       })
     : [];
-  const signed = await signAllTransactions([tx, ...mintTxs]);
+  // Only the payment can be simulated now: the mints read a draw that does
+  // not exist yet. They carry their own compute limits (buildMintPendingTxs).
+  const ready = await prepareWalletTx(conn, tx);
+  const signed = await signAllTransactions([ready, ...mintTxs]);
 
   const signature = await conn.sendRawTransaction(signed[0].serialize(), { skipPreflight: false });
   await conn.confirmTransaction({ signature, blockhash, lastValidBlockHeight }, "confirmed");

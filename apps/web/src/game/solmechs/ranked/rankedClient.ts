@@ -15,10 +15,11 @@
  * only ever ask for what the rules already allow — it cannot pick a friend.
  */
 import {
-  ComputeBudgetProgram, Connection, PublicKey, Transaction,
+  Connection, PublicKey, Transaction,
   type TransactionInstruction,
 } from "@solana/web3.js";
 import { BASE_RPC_PRIMARY, resilientBaseFetch } from "@/game/solana/baseRpc";
+import { prepareWalletTx } from "@/game/solana/walletTx";
 import { SEASON_ID, SOLMECHS_PROGRAM_ID, isPvpChainConfigured } from "../pvp/chain/config";
 import * as P from "../pvp/chain/mechProgram";
 import { sleep } from "../pvp/types";
@@ -250,9 +251,9 @@ export class RankedClient {
 
   private async send(ixs: TransactionInstruction[]): Promise<string> {
     const { blockhash, lastValidBlockHeight } = await this.base.getLatestBlockhash();
-    const tx = new Transaction({ feePayer: this.wallet, recentBlockhash: blockhash })
-      .add(ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }), ...ixs);
-    const signed = await this.signTransaction(tx);
+    // The compute limit is measured, not fixed (walletTx.ts).
+    const tx = new Transaction({ feePayer: this.wallet, recentBlockhash: blockhash }).add(...ixs);
+    const signed = await this.signTransaction(await prepareWalletTx(this.base, tx));
     const sig = await this.base.sendRawTransaction(signed.serialize(), { skipPreflight: false });
     const result = await this.base.confirmTransaction(
       { signature: sig, blockhash, lastValidBlockHeight },

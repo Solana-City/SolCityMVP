@@ -16,12 +16,13 @@
  * instead of being resent into an "already committed" rejection.
  */
 import {
-  ComputeBudgetProgram, Connection,
+  Connection,
   PublicKey, Transaction, type TransactionInstruction,
 } from "@solana/web3.js";
 import { SessionKeyManager } from "@/game/solana/sessionKeys";
 import { trackLatency } from "@/game/telemetry/latency";
 import { BASE_RPC_PRIMARY, resilientBaseFetch } from "@/game/solana/baseRpc";
+import { prepareWalletTx } from "@/game/solana/walletTx";
 import { DELEGATION_PROGRAM_ID } from "@/game/solana/program";
 import type { TeamBuild } from "../../data/team";
 import { decodeTeam, encodeTeam, matchSeed, sameBytes } from "../protocol";
@@ -609,9 +610,9 @@ export class ChainTransport implements PvpTransport {
 
   private async sendBase(ixs: TransactionInstruction[]): Promise<void> {
     const { blockhash, lastValidBlockHeight } = await this.base.getLatestBlockhash();
-    const tx = new Transaction({ feePayer: this.wallet, recentBlockhash: blockhash })
-      .add(ComputeBudgetProgram.setComputeUnitLimit({ units: 600_000 }), ...ixs);
-    const signed = await this.signTransaction(tx);
+    // The compute limit is measured, not fixed (walletTx.ts).
+    const tx = new Transaction({ feePayer: this.wallet, recentBlockhash: blockhash }).add(...ixs);
+    const signed = await this.signTransaction(await prepareWalletTx(this.base, tx));
     const sig = await this.base.sendRawTransaction(signed.serialize(), { skipPreflight: false });
     const result = await this.base.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, "confirmed");
     if (result.value.err) throw new Error(`Setup transaction failed: ${JSON.stringify(result.value.err)}`);

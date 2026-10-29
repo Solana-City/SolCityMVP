@@ -5,6 +5,7 @@ import {
   SOL_CITY_COLLECTIBLES_PROGRAM_ID, deriveUnlockPDA, decodeUnlockState,
 } from "./program";
 import { ixDiscriminator } from "./instructions";
+import { prepareWalletTx } from "./walletTx";
 import { BOOSTER_BLOCK_START } from "@/game/config/catalogIndex";
 import { baseConnection } from "./baseRpc";
 import { setHeldItems } from "@/game/config/wardrobeUnlocks";
@@ -568,7 +569,7 @@ export async function mintCosmetic(args: {
   const { blockhash } = await conn.getLatestBlockhash();
   const tx = new Transaction({ recentBlockhash: blockhash, feePayer: args.wallet })
     .add(buildMintUnlockIx({ payer: args.wallet, index: args.index, config }));
-  const signed = await args.signTransaction(tx);
+  const signed = await args.signTransaction(await prepareWalletTx(conn, tx));
   const signature = await conn.sendRawTransaction(signed.serialize(), { skipPreflight: false });
 
   for (let i = 0; i < 30; i++) {
