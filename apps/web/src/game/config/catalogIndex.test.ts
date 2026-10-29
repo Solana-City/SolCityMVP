@@ -150,7 +150,7 @@ describe("the global catalog index", () => {
       [832, "accessory:Trader_shades"],
       [960, "hat:Cap_Sol"], [961, "hat:city_cap"], [962, "hat:turkish_head"],
       [963, "hat:STB_cap"], [964, "hat:Seeker_hat"], [965, "hat:Pumpkin_head"],
-      [966, "hat:Miner_hat"], [967, "hat:Halo"],
+      [966, "hat:Miner_hat"], [967, "hat:Halo"], [968, "hat:Royal_crown"],
     ]);
   });
 
