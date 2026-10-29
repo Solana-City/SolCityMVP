@@ -8,8 +8,11 @@ import {
   deriveUnlockPDA, deriveVrfIdentityPDA, VRF_QUEUE_DEVNET, VRF_PROGRAM_ID,
 } from "./program";
 import { ixDiscriminator, buildInitUnlockStateIx } from "./instructions";
-import { deriveMintConfigPDA, deriveMintAuthorityPDA, type MintConfigAccount } from "./mint";
-import { baseConnection, type OnChainPack, type PackConfigAccount, type SignTx } from "./packs";
+import {
+  deriveMintConfigPDA, deriveMintAuthorityPDA, pendingMintIndices, buildMintPendingTxs,
+  type MintConfigAccount, type SignedMints, type SignAllTx,
+} from "./mint";
+import { baseConnection, type OnChainPack, type PackConfigAccount } from "./packs";
 
 /**
  * The sealed pack: bought as an asset, opened later by burning it.
@@ -321,7 +324,13 @@ export function buildOpenPackFromAssetIx(params: {
 }
 
 /**
- * Burns a sealed pack and asks for its draw, in one signature.
+ * Burns a sealed pack, asks for its draw, and signs the mint that follows,
+ * all in one approval.
+ *
+ * The same shape as buying one to open now, because from the opener's side it
+ * is the same thing: something is spent, the oracle decides, and the items
+ * have to arrive without asking again. The mint transactions name no index,
+ * so they can be signed here and held until the draw lands.
  *
  * The UnlockState is created first if the opener has never had one, which is
  * the normal case for somebody who was GIFTED a pack: they may never have
@@ -333,9 +342,9 @@ export async function openSealedPack(args: {
   nonce: number;
   pack: OnChainPack;
   mintConfig: MintConfigAccount;
-  signTransaction: SignTx;
+  signAllTransactions: SignAllTx;
   conn?: Connection;
-}): Promise<{ signature: string }> {
+}): Promise<{ signature: string; presignedMints: SignedMints; leftover: number[] }> {
   const conn = args.conn ?? baseConnection();
   const proof = await getAssetProof(conn, args.assetId);
 
@@ -357,11 +366,26 @@ export async function openSealedPack(args: {
     metadata: sealedPackMetadata(args.mintConfig, args.pack.id),
   }));
 
-  const { blockhash } = await conn.getLatestBlockhash();
+  // Anything an earlier mint left behind comes first on chain, so it has to
+  // be counted here or this pack's last items have nothing to ride in.
+  const leftover = await pendingMintIndices(conn, args.wallet);
+
+  const { blockhash, lastValidBlockHeight } = await conn.getLatestBlockhash();
   const tx = new Transaction({ recentBlockhash: blockhash, feePayer: args.wallet }).add(...ixs);
-  const signed = await args.signTransaction(tx);
-  const signature = await conn.sendRawTransaction(signed.serialize(), { skipPreflight: false });
-  return { signature };
+  const mintTxs = buildMintPendingTxs({
+    wallet: args.wallet,
+    config: args.mintConfig,
+    blockhash,
+    items: leftover.length + args.pack.size,
+  });
+
+  const signed = await args.signAllTransactions([tx, ...mintTxs]);
+  const signature = await conn.sendRawTransaction(signed[0].serialize(), { skipPreflight: false });
+  return {
+    signature,
+    presignedMints: { txs: signed.slice(1), lastValidBlockHeight },
+    leftover,
+  };
 }
 
 /**

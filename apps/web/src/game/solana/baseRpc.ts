@@ -18,6 +18,8 @@
  * ConnectionMagicRouter for payment auto-routing, never for base sends.
  */
 
+import { Connection } from "@solana/web3.js";
+
 // Free Helius devnet key — client-side and low-risk; override with
 // NEXT_PUBLIC_HELIUS_DEVNET. Kept first because when it's up it's fastest and
 // isn't rate-banned; api.devnet is the fallback.
@@ -65,4 +67,15 @@ export async function resilientBaseFetch(
     }
   }
   throw lastErr ?? new Error("all base RPCs failed");
+}
+
+/**
+ * The connection everything on base shares.
+ *
+ * Lives here rather than with any one feature because it is the RPC, not a
+ * pack or a mint: it carries the failover fetch above, which is what makes a
+ * Helius outage a slow call instead of a lost purchase.
+ */
+export function baseConnection(): Connection {
+  return new Connection(BASE_RPC_PRIMARY, { commitment: "confirmed", fetch: resilientBaseFetch });
 }

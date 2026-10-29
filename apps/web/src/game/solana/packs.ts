@@ -7,7 +7,11 @@ import {
   decodeUnlockState, RARITY_COUNT,
 } from "./program";
 import { buildOpenBoosterIx, buildInitUnlockStateIx } from "./instructions";
-import { BASE_RPC_PRIMARY, resilientBaseFetch } from "./baseRpc";
+import { baseConnection } from "./baseRpc";
+import {
+  readMintConfig, pendingMintIndices, buildMintPendingTxs,
+  type SignedMints, type SignAllTx,
+} from "./mint";
 import { setOnChainUnlocks } from "@/game/config/wardrobeUnlocks";
 
 /**
@@ -46,9 +50,8 @@ export interface PackConfigAccount {
 
 const MAX_PACKS = 8;
 
-export function baseConnection(): Connection {
-  return new Connection(BASE_RPC_PRIMARY, { commitment: "confirmed", fetch: resilientBaseFetch });
-}
+/** Re-exported from baseRpc, where it lives, so callers keep one import. */
+export { baseConnection };
 
 /**
  * Reads what the city sells. Null when the config has never been created,
@@ -140,6 +143,18 @@ export interface BuyResult {
    *  yet, which is a timeout rather than a loss: the items are still coming. */
   granted: number[];
   timedOut: boolean;
+  /**
+   * Mint transactions the wallet signed at the till, waiting to be sent.
+   *
+   * Null when minting is not configured yet, which is the only state in which
+   * a pack resolves to nothing but a grant. Handed back rather than sent here
+   * so the reveal can be shown first: the player watches what they got while
+   * these land behind it.
+   */
+  presignedMints: SignedMints | null;
+  /** What those transactions owe, which is the draw plus anything a previous
+   *  mint left behind. */
+  owed: number[];
 }
 
 /**
@@ -154,7 +169,14 @@ export interface BuyResult {
 export async function buyPack(args: {
   conn: Connection;
   wallet: PublicKey;
-  signTransaction: SignTx;
+  /**
+   * One signing call for the purchase AND the mint that follows it.
+   *
+   * Not `signTransaction`, even though only one transaction is sent here.
+   * The mint cannot wait for the draw and then ask again: that second popup
+   * is what broke the flow, and a wallet shows one approval for a batch.
+   */
+  signAllTransactions: SignAllTx;
   pack: OnChainPack;
   config: PackConfigAccount;
   /** How long to watch for the VRF callback. */
@@ -169,7 +191,7 @@ export async function buyPack(args: {
    */
   count?: number;
 }): Promise<BuyResult> {
-  const { conn, wallet, signTransaction, pack, config } = args;
+  const { conn, wallet, signAllTransactions, pack, config } = args;
   const count = Math.max(1, Math.round(args.count ?? 1));
   const timeout = args.revealTimeoutMs ?? 45_000;
 
@@ -191,15 +213,41 @@ export async function buyPack(args: {
     count,
   }));
 
-  const { blockhash } = await conn.getLatestBlockhash();
+  // What the mint will owe, worked out before the draw exists.
+  //
+  // The pack is one part of it. The other is anything a previous mint left
+  // behind, because `mint_pending` takes the oldest work first and would
+  // otherwise spend this pack's transactions on last week's leftovers.
+  const mintConfig = await readMintConfig(conn);
+  const leftover = mintConfig ? await pendingMintIndices(conn, wallet) : [];
+
+  const { blockhash, lastValidBlockHeight } = await conn.getLatestBlockhash();
   const tx = new Transaction({ recentBlockhash: blockhash, feePayer: wallet }).add(...ixs);
-  const signed = await signTransaction(tx);
-  const signature = await conn.sendRawTransaction(signed.serialize(), { skipPreflight: false });
-  await conn.confirmTransaction({ signature, blockhash, lastValidBlockHeight:
-    (await conn.getLatestBlockhash()).lastValidBlockHeight }, "confirmed");
+
+  // One approval, two kinds of transaction: the one that pays, and the ones
+  // that deliver. The second kind names no index, so it can be signed now and
+  // sent when the oracle has decided what the indices are.
+  const mintTxs = mintConfig
+    ? buildMintPendingTxs({
+        wallet, config: mintConfig, blockhash,
+        items: leftover.length + count * pack.size,
+      })
+    : [];
+  const signed = await signAllTransactions([tx, ...mintTxs]);
+
+  const signature = await conn.sendRawTransaction(signed[0].serialize(), { skipPreflight: false });
+  await conn.confirmTransaction({ signature, blockhash, lastValidBlockHeight }, "confirmed");
 
   const { granted, timedOut } = await awaitDraw(conn, wallet, before, timeout);
-  return { signature, granted, timedOut };
+  return {
+    signature,
+    granted,
+    timedOut,
+    presignedMints: mintConfig
+      ? { txs: signed.slice(1), lastValidBlockHeight }
+      : null,
+    owed: [...leftover, ...granted.filter((i) => !leftover.includes(i))].sort((a, b) => a - b),
+  };
 }
 
 /**

@@ -5,7 +5,8 @@ import {
   SOL_CITY_COLLECTIBLES_PROGRAM_ID, deriveUnlockPDA, decodeUnlockState,
 } from "./program";
 import { ixDiscriminator } from "./instructions";
-import { baseConnection } from "./packs";
+import { BOOSTER_BLOCK_START } from "@/game/config/catalogIndex";
+import { baseConnection } from "./baseRpc";
 import { setHeldItems } from "@/game/config/wardrobeUnlocks";
 
 /**
@@ -147,6 +148,28 @@ export async function mintedIndices(conn: Connection, wallet: PublicKey): Promis
 }
 
 /**
+ * Catalog indices this wallet owns, can mint, and has not minted yet.
+ *
+ * The same three conditions `mint_pending` applies on chain, and they have to
+ * stay the same three: this is what decides HOW MANY transactions to prepare,
+ * and preparing too few leaves items unminted behind a popup the whole design
+ * exists to avoid.
+ *
+ * Below BOOSTER_BLOCK_START are the free items and the quest and event block.
+ * Those never become assets, so they are not work.
+ */
+export async function pendingMintIndices(
+  conn: Connection,
+  wallet: PublicKey,
+): Promise<number[]> {
+  const info = await conn.getAccountInfo(deriveUnlockPDA(wallet)[0]);
+  const state = info ? decodeUnlockState(info.data) : null;
+  if (!state) return [];
+  const minted = new Set(state.minted);
+  return state.owned.filter((i) => i >= BOOSTER_BLOCK_START && !minted.has(i));
+}
+
+/**
  * `mint_unlock(index)`.
  *
  * The PDAs that are not ours are derived the way Bubblegum and Token Metadata
@@ -159,7 +182,26 @@ export function buildMintUnlockIx(params: {
   index: number;
   config: MintConfigAccount;
 }): TransactionInstruction {
-  const { payer, index, config } = params;
+  const data = Buffer.alloc(10);
+  ixDiscriminator("mint_unlock").copy(data, 0);
+  data.writeUInt16LE(params.index, 8);
+
+  return new TransactionInstruction({
+    programId: SOL_CITY_COLLECTIBLES_PROGRAM_ID,
+    keys: mintAccountMetas(params.payer, params.config),
+    data,
+  });
+}
+
+/**
+ * The accounts both mint instructions take, in the order the program declares
+ * them.
+ *
+ * Written once because the two instructions share one Accounts struct on
+ * chain. Two copies here that drifted by one entry would fail inside a CPI,
+ * where the error names Bubblegum rather than us.
+ */
+function mintAccountMetas(payer: PublicKey, config: MintConfigAccount) {
   const [unlockPda] = deriveUnlockPDA(payer);
   const mintAuthority = deriveMintAuthorityPDA();
 
@@ -179,29 +221,47 @@ export function buildMintUnlockIx(params: {
     [Buffer.from("collection_cpi")], BUBBLEGUM_PROGRAM_ID,
   );
 
-  const data = Buffer.alloc(10);
-  ixDiscriminator("mint_unlock").copy(data, 0);
-  data.writeUInt16LE(index, 8);
+  return [
+    { pubkey: payer,                     isSigner: true,  isWritable: true  },
+    { pubkey: unlockPda,                 isSigner: false, isWritable: true  },
+    { pubkey: deriveMintConfigPDA(),     isSigner: false, isWritable: false },
+    { pubkey: mintAuthority,             isSigner: false, isWritable: false },
+    { pubkey: treeConfig,                isSigner: false, isWritable: true  },
+    { pubkey: config.merkleTree,         isSigner: false, isWritable: true  },
+    { pubkey: config.collectionMint,     isSigner: false, isWritable: false },
+    { pubkey: collectionMetadata,        isSigner: false, isWritable: true  },
+    { pubkey: collectionEdition,         isSigner: false, isWritable: false },
+    { pubkey: bubblegumSigner,           isSigner: false, isWritable: false },
+    { pubkey: LOG_WRAPPER_ID,            isSigner: false, isWritable: false },
+    { pubkey: COMPRESSION_PROGRAM_ID,    isSigner: false, isWritable: false },
+    { pubkey: TOKEN_METADATA_PROGRAM_ID, isSigner: false, isWritable: false },
+    { pubkey: BUBBLEGUM_PROGRAM_ID,      isSigner: false, isWritable: false },
+    { pubkey: SystemProgram.programId,   isSigner: false, isWritable: false },
+  ];
+}
 
+/**
+ * `mint_pending(limit)`: mint what is owed, whatever that turns out to be.
+ *
+ * The same accounts as `mint_unlock`, deliberately: on chain the two share
+ * one Accounts struct, because they do the same thing and differ only in
+ * where the indices come from.
+ *
+ * What matters here is what is NOT in the data. There is no index, so these
+ * bytes can be built, and signed, before the draw that decides them exists.
+ * That is the whole reason this instruction is here.
+ */
+export function buildMintPendingIx(params: {
+  payer: PublicKey;
+  limit: number;
+  config: MintConfigAccount;
+}): TransactionInstruction {
+  const data = Buffer.alloc(9);
+  ixDiscriminator("mint_pending").copy(data, 0);
+  data.writeUInt8(params.limit, 8);
   return new TransactionInstruction({
     programId: SOL_CITY_COLLECTIBLES_PROGRAM_ID,
-    keys: [
-      { pubkey: payer,                     isSigner: true,  isWritable: true  },
-      { pubkey: unlockPda,                 isSigner: false, isWritable: true  },
-      { pubkey: deriveMintConfigPDA(),     isSigner: false, isWritable: false },
-      { pubkey: mintAuthority,             isSigner: false, isWritable: false },
-      { pubkey: treeConfig,                isSigner: false, isWritable: true  },
-      { pubkey: config.merkleTree,         isSigner: false, isWritable: true  },
-      { pubkey: config.collectionMint,     isSigner: false, isWritable: false },
-      { pubkey: collectionMetadata,        isSigner: false, isWritable: true  },
-      { pubkey: collectionEdition,         isSigner: false, isWritable: false },
-      { pubkey: bubblegumSigner,           isSigner: false, isWritable: false },
-      { pubkey: LOG_WRAPPER_ID,            isSigner: false, isWritable: false },
-      { pubkey: COMPRESSION_PROGRAM_ID,    isSigner: false, isWritable: false },
-      { pubkey: TOKEN_METADATA_PROGRAM_ID, isSigner: false, isWritable: false },
-      { pubkey: BUBBLEGUM_PROGRAM_ID,      isSigner: false, isWritable: false },
-      { pubkey: SystemProgram.programId,   isSigner: false, isWritable: false },
-    ],
+    keys: mintAccountMetas(params.payer, params.config),
     data,
   });
 }
@@ -237,16 +297,29 @@ export type SignAllTx = (txs: Transaction[]) => Promise<Transaction[]>;
 /**
  * How many mints go in one transaction.
  *
- * A MEASUREMENT, not a preference. Each mint_unlock CPIs into Bubblegum, and
- * what fits is decided by the compute limit rather than by the 1232-byte
- * transaction size: the fifteen accounts are shared across the instructions,
- * so only ten bytes of data are added per extra item.
+ * Five, which is a pack, because a pack arriving in one transaction is the
+ * point. What decides it is the compute limit and not the 1232-byte
+ * transaction size: the fifteen accounts are shared, and `mint_pending` adds
+ * no data per item at all.
  *
- * Three is the conservative starting point. Raise it when it has been timed
- * on devnet with a full pack, and lower it the moment a bundle starts
- * failing with an exceeded compute budget.
+ * Budgeted at UNITS_PER_MINT below, which leaves five inside the 1.4M a
+ * transaction may ask for. Lower this the moment a pack fails with an
+ * exceeded compute budget, and the on-chain MINT_PENDING_CAP with it.
  */
-export const MINTS_PER_TX = 3;
+export const MINTS_PER_TX = 5;
+
+/**
+ * Compute units asked for per item.
+ *
+ * Deliberately generous. A Bubblegum mint that CPIs into Token Metadata and
+ * the compression program costs well under this, and asking for more than you
+ * use is nearly free, while asking for less is a transaction that dies after
+ * minting three of five. Five of these still fit the 1.4M ceiling.
+ */
+const UNITS_PER_MINT = 260_000;
+
+/** What ComputeBudget will accept, and what five mints have to live inside. */
+const MAX_COMPUTE_UNITS = 1_400_000;
 
 /** ComputeBudget's SetComputeUnitLimit, which the default 200k will not cover. */
 function computeLimitIx(units: number): TransactionInstruction {
@@ -258,6 +331,152 @@ function computeLimitIx(units: number): TransactionInstruction {
     keys: [],
     data,
   });
+}
+
+/**
+ * Transactions that will mint `items` cosmetics, built BEFORE anyone knows
+ * which cosmetics those are.
+ *
+ * This is the piece that removes the second wallet popup. Every byte here is
+ * decided by the wallet and the config, never by the draw, so these can be
+ * handed to `signAllTransactions` alongside the purchase itself and held
+ * until the oracle answers.
+ *
+ * ── Why the compute limits count upwards ────────────────────────────────
+ *
+ * Two transactions with the same instructions, the same signer and the same
+ * blockhash are not two transactions: they hash to one signature, and the
+ * network keeps the first and drops the rest. Chunks after the first ask for
+ * one more compute unit than the chunk before, which costs nothing and makes
+ * each one a distinct transaction. A single pack is one chunk and never
+ * reaches this.
+ */
+export function buildMintPendingTxs(args: {
+  wallet: PublicKey;
+  config: MintConfigAccount;
+  items: number;
+  blockhash: string;
+}): Transaction[] {
+  const chunks: number[] = [];
+  for (let left = args.items; left > 0; left -= MINTS_PER_TX) {
+    chunks.push(Math.min(MINTS_PER_TX, left));
+  }
+  return chunks.map((size, i) => {
+    const tx = new Transaction({ recentBlockhash: args.blockhash, feePayer: args.wallet });
+    tx.add(computeLimitIx(Math.min(MAX_COMPUTE_UNITS, UNITS_PER_MINT * size + i)));
+    tx.add(buildMintPendingIx({ payer: args.wallet, limit: size, config: args.config }));
+    return tx;
+  });
+}
+
+/**
+ * Sends transactions the wallet signed earlier, and reports what landed.
+ *
+ * Sent together rather than one after another. They all write the same unlock
+ * account, so the runtime runs them one at a time whatever we do, and each
+ * one reads the list fresh: a chunk that finds the first five already minted
+ * takes the next five. Order does not have to be arranged, only allowed.
+ *
+ * Failures are swallowed here on purpose. What the player is about to be told
+ * is "these are yours now", and the account saying so is the thing that makes
+ * it true, so the answer is read back from the account rather than inferred
+ * from a signature.
+ */
+export async function sendMintPending(args: {
+  conn: Connection;
+  wallet: PublicKey;
+  signed: Transaction[];
+  expected: number[];
+}): Promise<{ minted: number[]; failed: number[] }> {
+  const { conn, wallet, signed, expected } = args;
+  await Promise.all(signed.map((tx) =>
+    conn.sendRawTransaction(tx.serialize(), { skipPreflight: false }).catch(() => null),
+  ));
+
+  for (let i = 0; i < 30; i++) {
+    await new Promise((r) => setTimeout(r, 1000));
+    const now = new Set(await mintedIndices(conn, wallet));
+    const landed = expected.filter((x) => now.has(x));
+    if (landed.length === expected.length || i === 29) {
+      await syncHeldToWardrobe(conn, wallet);
+      return { minted: landed, failed: expected.filter((x) => !now.has(x)) };
+    }
+  }
+  return { minted: [], failed: expected };
+}
+
+/**
+ * Mint transactions the wallet has already signed, and the height past which
+ * the network will no longer take them.
+ *
+ * Handed from the purchase to whoever shows the reveal, so the player sees
+ * what they got while these are still in flight.
+ */
+export interface SignedMints {
+  txs: Transaction[];
+  lastValidBlockHeight: number;
+}
+
+/**
+ * Turns everything the wallet owes into assets, with no further approval if
+ * it can be helped.
+ *
+ * The happy path sends what was signed during the purchase, which is the
+ * whole point of the exercise. Two things can take it away: minting may not
+ * be configured yet, and a draw may have taken longer than a blockhash lives.
+ * Both land on `mintMany`, which works but asks, and asking is the thing this
+ * was built to avoid rather than something it is allowed to fail over.
+ */
+export async function settleMints(args: {
+  conn: Connection;
+  wallet: PublicKey;
+  presigned: SignedMints | null;
+  /** Indices that must end up as assets. */
+  expected: number[];
+  /** The fallback, used only when the pre-signed route is gone. */
+  signAllTransactions?: SignAllTx;
+}): Promise<{ minted: number[]; failed: number[] }> {
+  const { conn, wallet, presigned, expected } = args;
+  if (expected.length === 0) return { minted: [], failed: [] };
+
+  let minted: number[] = [];
+  if (presigned && await stillSendable(conn, presigned.lastValidBlockHeight)) {
+    // Only as many chunks as there is work for. A draw that repeated an item
+    // the wallet already owned grants less than it was sold, and a chunk with
+    // nothing to do is a transaction that fails and still pays its fee.
+    const need = Math.ceil(expected.length / MINTS_PER_TX);
+    const out = await sendMintPending({
+      conn, wallet, signed: presigned.txs.slice(0, need), expected,
+    });
+    if (out.failed.length === 0) return out;
+    minted = out.minted;
+  }
+
+  const left = expected.filter((i) => !minted.includes(i));
+  if (!args.signAllTransactions) return { minted, failed: left };
+  const out = await mintMany({
+    wallet, indices: left, signAllTransactions: args.signAllTransactions, conn,
+  });
+  return { minted: [...minted, ...out.minted], failed: out.failed };
+}
+
+/**
+ * Whether transactions signed against `blockhash` can still be sent.
+ *
+ * A pre-signed mint carries a blockhash chosen before the purchase, and the
+ * network stops accepting it about a minute later. The oracle is normally
+ * seconds, so this is the unlikely path, but when it happens the items are
+ * safe in the account and the only cost is the popup this was avoiding.
+ */
+export async function stillSendable(
+  conn: Connection,
+  lastValidBlockHeight: number,
+): Promise<boolean> {
+  try {
+    return (await conn.getBlockHeight()) <= lastValidBlockHeight;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -298,7 +517,7 @@ export async function mintMany(args: {
   const txs = chunks.map((chunk) => {
     const tx = new Transaction({ recentBlockhash: blockhash, feePayer: args.wallet });
     // Asked for per chunk rather than globally: the limit is per transaction.
-    tx.add(computeLimitIx(300_000 * chunk.length));
+    tx.add(computeLimitIx(Math.min(MAX_COMPUTE_UNITS, UNITS_PER_MINT * chunk.length)));
     for (const index of chunk) {
       tx.add(buildMintUnlockIx({ payer: args.wallet, index, config }));
     }
