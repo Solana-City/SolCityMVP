@@ -209,13 +209,6 @@ fn openable_pack(
     Ok(def)
 }
 
-/// Bubblegum's `burn`, as `sha256("global:burn")[..8]`.
-///
-/// Hand-rolled like every other CPI here, and for the same reason: this
-/// program builds its instruction data itself rather than taking a builder's
-/// word for the layout.
-pub const BURN_DISCRIMINATOR: [u8; 8] = [116, 110, 29, 56, 107, 219, 42, 93];
-
 /// Moves `amount` of the config's currency from the buyer to the treasury.
 ///
 /// Hand-rolled like the delegation and VRF CPIs, so this program still
