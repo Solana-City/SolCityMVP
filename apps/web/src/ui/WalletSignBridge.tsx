@@ -40,28 +40,30 @@ export default function WalletSignBridge() {
         | { on: Function; off: Function; emit: Function } | undefined;
       if (!bus) return false;
 
-      const handler = async (tx: Transaction) => {
+      // Every answer echoes the request id, so only the request that asked
+      // is settled by it (see game/solana/walletBus.ts).
+      const handler = async (tx: Transaction, id?: number) => {
         try {
           if (!sendRef.current) throw new Error("Wallet not connected");
           const sig = await sendRef.current(tx, connRef.current, {
             skipPreflight: true,
           });
-          bus.emit("wallet:signedTx", sig);
+          bus.emit("wallet:signedTx", sig, id);
         } catch (err) {
-          bus.emit("wallet:signError", err);
+          bus.emit("wallet:signError", err, id);
         }
       };
 
       // Sign WITHOUT sending — for transactions that must be submitted to a
       // different cluster than the app connection (e.g. authorize_session on
       // the ephemeral rollup, which needs an ER blockhash and ER endpoint).
-      const signOnlyHandler = async (tx: Transaction) => {
+      const signOnlyHandler = async (tx: Transaction, id?: number) => {
         try {
           if (!signRef.current) throw new Error("Wallet cannot sign transactions");
           const signed = await signRef.current(tx);
-          bus.emit("wallet:signedTxOnly", signed);
+          bus.emit("wallet:signedTxOnly", signed, id);
         } catch (err) {
-          bus.emit("wallet:signOnlyError", err);
+          bus.emit("wallet:signOnlyError", err, id);
         }
       };
 
@@ -69,13 +71,13 @@ export default function WalletSignBridge() {
       // deterministic session key: the same wallet always produces the same
       // ed25519 signature for a fixed message, so the session key is identical
       // on every device/browser and never falls out of sync with the ER.
-      const signMessageHandler = async (message: Uint8Array) => {
+      const signMessageHandler = async (message: Uint8Array, id?: number) => {
         try {
           if (!signMsgRef.current) throw new Error("Wallet cannot sign messages");
           const sig = await signMsgRef.current(message);
-          bus.emit("wallet:signedMessage", sig);
+          bus.emit("wallet:signedMessage", sig, id);
         } catch (err) {
-          bus.emit("wallet:signMessageError", err);
+          bus.emit("wallet:signMessageError", err, id);
         }
       };
 

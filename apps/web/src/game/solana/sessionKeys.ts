@@ -10,6 +10,7 @@ import {
   isProgramDeployed,
 } from "./instructions";
 import { clusterKey } from "@/game/config/clusterStorage";
+import { walletRequest } from "@/game/solana/walletBus";
 
 const STORAGE_KEY = clusterKey("sol-city-session-key");
 
@@ -209,34 +210,7 @@ export class SessionKeyManager {
    * Returns the transaction signature.
    */
   private requestWalletSign(tx: Transaction): Promise<string> {
-    return new Promise((resolve, reject) => {
-      const timeout = setTimeout(
-        () => reject(new Error("wallet sign timeout")),
-        60_000
-      );
-
-      const bus = (globalThis as any).__solCityGameEvents as
-        | { once: (event: string, cb: (...a: any[]) => void) => void; emit: (event: string, ...a: any[]) => void }
-        | undefined;
-
-      if (!bus) {
-        clearTimeout(timeout);
-        // Reject — do NOT resolve with a fake signature. Passing non-base58
-        // strings to confirmTransaction crashes via tweetnacl assertion.
-        reject(new Error("wallet bus not available, session offline"));
-        return;
-      }
-
-      bus.once("wallet:signedTx", (sig: string) => {
-        clearTimeout(timeout);
-        resolve(sig);
-      });
-      bus.once("wallet:signError", (err: Error) => {
-        clearTimeout(timeout);
-        reject(err);
-      });
-      bus.emit("wallet:needSign", tx);
-    });
+    return walletRequest<string>("wallet:needSign", "wallet:signedTx", "wallet:signError", tx);
   }
 
   /**
@@ -244,29 +218,9 @@ export class SessionKeyManager {
    * signature bytes. Used only to derive the deterministic session key.
    */
   private requestWalletSignMessage(message: Uint8Array): Promise<Uint8Array> {
-    return new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => reject(new Error("sign message timeout")), 60_000);
-
-      const bus = (globalThis as any).__solCityGameEvents as
-        | { once: (event: string, cb: (...a: any[]) => void) => void; emit: (event: string, ...a: any[]) => void }
-        | undefined;
-
-      if (!bus) {
-        clearTimeout(timeout);
-        reject(new Error("wallet bus not available, session offline"));
-        return;
-      }
-
-      bus.once("wallet:signedMessage", (sig: Uint8Array) => {
-        clearTimeout(timeout);
-        resolve(sig);
-      });
-      bus.once("wallet:signMessageError", (err: Error) => {
-        clearTimeout(timeout);
-        reject(err);
-      });
-      bus.emit("wallet:needSignMessage", message);
-    });
+    return walletRequest<Uint8Array>(
+      "wallet:needSignMessage", "wallet:signedMessage", "wallet:signMessageError", message,
+    );
   }
 
   private persist(): void {
