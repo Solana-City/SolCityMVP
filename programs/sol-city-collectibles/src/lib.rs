@@ -90,6 +90,18 @@ pub const WEIGHT_TOTAL: u16 = 10_000;
 
 /// Pieces granted per pack.
 pub const BOOSTER_PACK_SIZE: usize = 5;
+
+/// Items ONE draw may resolve, which is what caps a buy-and-open bundle.
+///
+/// Fifty is ten street packs in a single payment, a single randomness
+/// request and a single reveal. The ceiling is the VRF callback: it hashes
+/// and places every item in one transaction, it cannot be split, and it must
+/// not be able to fail, because by the time it runs the money is gone.
+///
+/// SEALED packs have no such ceiling. Nothing is drawn, so a bundle of them
+/// is only mints, and the client chunks those across transactions the wallet
+/// signs together.
+pub const MAX_BUNDLE_ITEMS: usize = 50;
 /// Price to open an outfit box (0.025 SOL, about $2.50 at $100/SOL).
 /// SPL Account Compression, where the Bubblegum tree lives.
 ///
@@ -401,6 +413,8 @@ pub enum CollectiblesError {
     NotAnEventItem,
     #[msg("A pack's season, size and odds cannot change once it exists")]
     PackTermsFrozen,
+    #[msg("That many packs cannot be opened as one draw")]
+    BadBundleCount,
     // Appended, never inserted. Anchor numbers these by POSITION, so a
     // variant added in the middle silently renumbers every one after it
     // and any client matching on a code starts reporting the wrong thing.
@@ -425,11 +439,24 @@ pub mod sol_city_collectibles {
     // them. Same shape as the client's rollPack, deliberately: rarity first,
     // item second, down the ladder when a bucket is empty.
 
+    /// Buys `count` packs of one kind and opens them as ONE draw.
+    ///
+    /// `count` exists so that buying ten packs is one payment, one randomness
+    /// request and one reveal rather than ten of each. The items are rolled
+    /// independently, exactly as ten separate packs would have been: nothing
+    /// about the odds changes, only the number of prompts.
+    ///
+    /// It cannot scale forever. `UnlockState.pending` is one slot per wallet,
+    /// so a second draw cannot be in flight while this one is, and the
+    /// callback resolves the whole bundle in a single transaction that is not
+    /// allowed to fail. MAX_BUNDLE_ITEMS is where those two meet.
     pub fn open_booster(
         ctx: Context<OpenBooster>,
         pack_id: u8,
         client_seed: [u8; 32],
+        count: u8,
     ) -> Result<()> {
+        require!(count > 0, CollectiblesError::BadBundleCount);
         // Shared with mint_pack, because the two purchase paths have to agree
         // about what is on sale: a pack one of them refuses and the other
         // sells is a pack that can be bought and never opened.
@@ -440,6 +467,17 @@ pub mod sol_city_collectibles {
             ctx.accounts.drops.total(),
         )?;
         let cfg = &ctx.accounts.config;
+
+        // The whole bundle as one draw. Checked, not wrapped: a count that
+        // overflowed would resolve into a draw of almost nothing against a
+        // payment of almost everything.
+        let items = (def.size as usize)
+            .checked_mul(count as usize)
+            .ok_or(CollectiblesError::BadBundleCount)?;
+        require!(items <= MAX_BUNDLE_ITEMS, CollectiblesError::BadBundleCount);
+        let price = def.price
+            .checked_mul(count as u64)
+            .ok_or(CollectiblesError::BadBundleCount)?;
 
         require_keys_eq!(
             ctx.accounts.treasury_token_account.key(),
@@ -453,7 +491,9 @@ pub mod sol_city_collectibles {
             unlocks.pending = true;
             unlocks.draw = PendingDraw {
                 pack_id,
-                size: def.size,
+                // The BUNDLE's size, not the pack's. The callback loops this
+                // many times and knows nothing about how many packs it was.
+                size: items as u8,
                 weights: def.weights,
                 season: def.season,
             };
@@ -473,7 +513,7 @@ pub mod sol_city_collectibles {
         {
             let info = ctx.accounts.unlock_state.to_account_info();
             let needed = UnlockState::size_for(
-                ctx.accounts.unlock_state.owned.len() + def.size as usize,
+                ctx.accounts.unlock_state.owned.len() + items,
                 ctx.accounts.unlock_state.minted.len(),
             );
             if info.data_len() < needed {
@@ -501,7 +541,7 @@ pub mod sol_city_collectibles {
             &ctx.accounts.treasury_token_account,
             &ctx.accounts.payer,
             &ctx.accounts.token_program.to_account_info(),
-            def.price,
+            price,
         )?;
 
         // Shared with open_pack_from_asset: the draw has to be identical
