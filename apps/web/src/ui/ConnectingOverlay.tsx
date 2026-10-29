@@ -128,6 +128,17 @@ export default function ConnectingOverlay({ onEnter, onRetry }: { onEnter: () =>
               : label}
         </div>
 
+        {/* Phantom simulates on the network it is set to, mainnet by default,
+            where the city's programs do not exist: every transaction then
+            shows "failed to simulate" in red. Nothing on our side can see or
+            change the wallet's network, so the player is told while the
+            wallet is open, which is when the warning is in front of them. */}
+        {!failed && needsSignature && (
+          <div style={{ fontFamily: PIXEL, fontSize: 6, color: "#6a6a7d", lineHeight: 1.8, marginTop: 6 }}>
+            Red warning in Phantom? Turn on Testnet Mode and pick Devnet.
+          </div>
+        )}
+
         {failed && reason?.includes("faucet.solana.com") && (
           <a
             href="https://faucet.solana.com"
