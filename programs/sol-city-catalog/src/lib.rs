@@ -161,6 +161,42 @@ impl UnlockState {
     pub fn owns(&self, index: u16) -> bool {
         self.owned.binary_search(&index).is_ok()
     }
+
+    /// Whether an asset for this index has already been handed to this wallet.
+    ///
+    /// Not "does an asset exist": assets for the same index exist once per
+    /// wallet that ever acquired one. What this answers is whether THIS
+    /// wallet has already been given one, which is the question that keeps
+    /// the supply honest.
+    pub fn is_minted(&self, index: u16) -> bool {
+        self.minted.binary_search(&index).is_ok()
+    }
+
+    /// Record that an asset for this index is now in this wallet's hands.
+    /// Returns true when the list actually grew.
+    ///
+    /// Called both by minting one and by claiming one bought from somebody
+    /// else, because by this list's own definition the two are the same
+    /// event: an asset for that index is here.
+    pub fn insert_minted(&mut self, index: u16) -> bool {
+        match self.minted.binary_search(&index) {
+            Ok(_) => false,
+            Err(at) => { self.minted.insert(at, index); true }
+        }
+    }
+}
+
+/// Whether a catalog index can exist as an asset at all.
+///
+/// Below ENFORCED_FROM live the free items and the quest and event block,
+/// and none of them is tradable: a quest cosmetic is proof you did the thing,
+/// and an asset is proof you bought something. Minting one would put it on a
+/// marketplace, where the proof becomes a price.
+///
+/// A property of the catalog rather than of a wallet, so it lives next to the
+/// block constants that define it.
+pub fn is_mintable(index: u16) -> bool {
+    index >= ENFORCED_FROM
 }
 
 // ── The four impls `#[account]` would have written ──────────────────────────
@@ -235,5 +271,10 @@ mod tests {
     fn the_blocks_do_not_overlap() {
         assert_eq!(ENFORCED_FROM, FREE_ITEM_COUNT + QUEST_FREE_SLOTS);
         assert!(FREE_ITEM_COUNT < ENFORCED_FROM);
+        // Nothing in the free or quest blocks may become an asset.
+        assert!(!is_mintable(0));
+        assert!(!is_mintable(FREE_ITEM_COUNT));
+        assert!(!is_mintable(ENFORCED_FROM - 1));
+        assert!(is_mintable(ENFORCED_FROM));
     }
 }

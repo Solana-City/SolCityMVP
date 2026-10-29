@@ -52,6 +52,7 @@ declare_id!("EptRxVBysFzJEz52r58c2yCkpDGvF55aBPj1eCkWaphz");
 pub use sol_city_catalog::{
     UnlockState, PendingDraw,
     FREE_ITEM_COUNT, QUEST_FREE_SLOTS, ENFORCED_FROM, UNLOCKS_SEED, RARITY_COUNT,
+    is_mintable,
 };
 
 // ── Outfit booster ─────────────────────────────────────────────────────────
@@ -80,6 +81,15 @@ pub const MINT_AUTHORITY_SEED: &[u8] = b"mint_authority";
 
 /// Most assets one wallet can mint. Two bytes each, same as `owned`.
 pub const PLAYER_MINT_CAP: usize = 256;
+
+/// How many cosmetics one `mint_pending` call will mint.
+///
+/// A compute bound and nothing else: each Bubblegum mint CPIs into Token
+/// Metadata and the compression program, and a transaction has 1.4M units to
+/// spend whatever it is doing. Five is one pack, which is the case that has to
+/// work in a single transaction; the headroom above it is for a bundle, which
+/// the client splits across several calls anyway.
+pub const MINT_PENDING_CAP: usize = 8;
 
 /// Most indices one rarity of one season may hold. Generous on purpose: a
 /// season is expected to run past three hundred items across all four, and the
@@ -336,6 +346,42 @@ fn request_draw<'info>(
     Ok(())
 }
 
+/// The metadata of a COSMETIC asset.
+///
+/// Shared by `mint_unlock` and `mint_pending` rather than copied into each,
+/// and the reason is not tidiness: these bytes are what the leaf hashes to.
+/// Two builders that drifted by one field would mint assets that
+/// `claim_owned_from_asset` could no longer recognise, and nothing would say
+/// so until a buyer found their cosmetic unwearable.
+///
+/// The URI is built, not stored: one immutable base and the catalog index.
+/// Holding a string per cosmetic on chain would cost more than every other
+/// field of this program put together.
+fn cosmetic_metadata(cfg: &MintConfig, index: u16) -> MetadataArgs {
+    MetadataArgs {
+        name: format!("Sol City #{}", index),
+        symbol: cfg.symbol.clone(),
+        uri: format!("{}{}.json", cfg.base_uri, index),
+        seller_fee_basis_points: cfg.seller_fee_basis_points,
+        primary_sale_happened: true,
+        is_mutable: false,
+        edition_nonce: None,
+        token_standard: Some(TokenStandard::NonFungible),
+        // Unverified here and verified BY the CPI: passing the collection with
+        // our PDA as its authority is what tells Bubblegum to set the flag.
+        collection: Some(BubblegumCollection { verified: false, key: cfg.collection_mint }),
+        uses: None,
+        token_program_version: TokenProgramVersion::Original,
+        // One creator, unverified, holding the whole share, so a marketplace
+        // honouring royalties has an address to send them to.
+        creators: vec![BubblegumCreator {
+            address: cfg.royalty_recipient,
+            verified: false,
+            share: 100,
+        }],
+    }
+}
+
 /// The metadata of a SEALED pack asset.
 ///
 /// A pack and a cosmetic are told apart by their URI and nothing else, which
@@ -415,6 +461,10 @@ pub enum CollectiblesError {
     PackTermsFrozen,
     #[msg("That many packs cannot be opened as one draw")]
     BadBundleCount,
+    #[msg("Quest and event cosmetics cannot be minted as assets")]
+    ItemNotMintable,
+    #[msg("This wallet has nothing left to mint")]
+    NothingToMint,
     // Appended, never inserted. Anchor numbers these by POSITION, so a
     // variant added in the middle silently renumbers every one after it
     // and any client matching on a code starts reporting the wrong thing.
@@ -951,10 +1001,11 @@ pub mod sol_city_collectibles {
         {
             let unlocks = &ctx.accounts.unlock_state;
             require!(unlocks.owns(index), CollectiblesError::ItemNotOwned);
-            require!(
-                unlocks.minted.binary_search(&index).is_err(),
-                CollectiblesError::AlreadyMinted
-            );
+            // A quest or event cosmetic is not a thing that can be sold, so it
+            // is not a thing that can be minted. Without this a wallet could
+            // turn the proof it did a quest into an asset and list it.
+            require!(is_mintable(index), CollectiblesError::ItemNotMintable);
+            require!(!unlocks.is_minted(index), CollectiblesError::AlreadyMinted);
             require!(unlocks.minted.len() < PLAYER_MINT_CAP, CollectiblesError::MintCapReached);
         }
 
@@ -985,38 +1036,7 @@ pub mod sol_city_collectibles {
             }
         }
 
-        // The metadata URI is built, not stored: one immutable base and the
-        // catalog index. Holding a string per cosmetic on chain would cost
-        // more than every other field of this program put together.
-        let uri = format!("{}{}.json", cfg.base_uri, index);
-        let name = format!("Sol City #{}", index);
-
-        let metadata = MetadataArgs {
-            name,
-            symbol: cfg.symbol.clone(),
-            uri,
-            seller_fee_basis_points: cfg.seller_fee_basis_points,
-            primary_sale_happened: true,
-            is_mutable: false,
-            edition_nonce: None,
-            token_standard: Some(TokenStandard::NonFungible),
-            // Unverified here and verified BY the CPI: passing the collection
-            // with our PDA as its authority is what tells Bubblegum to set the
-            // verified flag itself.
-            collection: Some(BubblegumCollection {
-                verified: false,
-                key: cfg.collection_mint,
-            }),
-            uses: None,
-            token_program_version: TokenProgramVersion::Original,
-            // One creator, unverified, holding the whole share, so a
-            // marketplace honouring royalties has an address to send them to.
-            creators: vec![BubblegumCreator {
-                address: cfg.royalty_recipient,
-                verified: false,
-                share: 100,
-            }],
-        };
+        let metadata = cosmetic_metadata(cfg, index);
 
         let bump = ctx.bumps.mint_authority;
         let seeds: &[&[u8]] = &[MINT_AUTHORITY_SEED, &[bump]];
@@ -1044,10 +1064,142 @@ pub mod sol_city_collectibles {
 
         // Recorded only once the asset exists.
         let unlocks = &mut ctx.accounts.unlock_state;
-        if let Err(at) = unlocks.minted.binary_search(&index) {
-            unlocks.minted.insert(at, index);
-        }
+        unlocks.insert_minted(index);
         emit!(UnlockMinted { authority: unlocks.authority, index });
+        Ok(())
+    }
+
+    /// Mints every cosmetic this wallet owns and does not yet hold as an asset.
+    ///
+    /// ── Why this exists when `mint_unlock` already does ─────────────────
+    ///
+    /// Not for convenience. `mint_unlock` takes the index as an argument, so
+    /// a transaction calling it cannot be BUILT until the draw is known, and
+    /// the draw is only known after the oracle answers. That is what cost the
+    /// player a second wallet popup: not a second transaction, but a second
+    /// transaction nobody could write down in advance.
+    ///
+    /// This one takes no index. It reads the work out of the account at the
+    /// moment it runs, so its bytes and its account list are the same before
+    /// and after the draw. The client can therefore have the wallet sign it in
+    /// the same breath as the purchase, hold it, and send it when the oracle
+    /// lands. One approval buys a pack and delivers what was in it.
+    ///
+    /// ── Which items it takes ────────────────────────────────────────────
+    ///
+    /// Owned, mintable, and not already here. All three matter:
+    ///
+    ///   * `owns` is the permission, and it is the only source of indices:
+    ///     the caller names nothing, so they cannot name something else.
+    ///   * `is_mintable` keeps the quest and event block out. Those are not
+    ///     tradable and never become assets.
+    ///   * `is_minted` is what makes it once per wallet. A cosmetic bought on
+    ///     a marketplace is recorded there the moment it is claimed, so this
+    ///     will not mint a second asset for something the wallet already has.
+    ///
+    /// ── Why running it twice is harmless ────────────────────────────────
+    ///
+    /// It recomputes that list every time it executes, so two calls sent
+    /// together do not fight over the same five items: they write the same
+    /// account, Solana runs them one after the other, and the second sees what
+    /// the first did and takes the next ones. A call with nothing left to do
+    /// fails loudly rather than reporting success for no work.
+    pub fn mint_pending(ctx: Context<MintUnlock>, limit: u8) -> Result<()> {
+        let cfg = &ctx.accounts.mint_config;
+        require_keys_eq!(
+            ctx.accounts.merkle_tree.key(), cfg.merkle_tree, CollectiblesError::WrongMintTarget
+        );
+        require_keys_eq!(
+            ctx.accounts.collection_mint.key(), cfg.collection_mint, CollectiblesError::WrongMintTarget
+        );
+
+        // A draw still in flight means the items are not in `owned` yet. This
+        // is the one thing that could make a pre-signed transaction mint the
+        // wrong set: sent a moment too early it would find nothing and, if it
+        // succeeded, would be spent. Failing leaves it valid to send again.
+        require!(!ctx.accounts.unlock_state.pending, CollectiblesError::BoosterPending);
+
+        let want = match limit as usize {
+            0 => MINT_PENDING_CAP,
+            n => n.min(MINT_PENDING_CAP),
+        };
+        let todo: Vec<u16> = {
+            let unlocks = &ctx.accounts.unlock_state;
+            unlocks
+                .owned
+                .iter()
+                .copied()
+                .filter(|i| is_mintable(*i) && !unlocks.is_minted(*i))
+                .take(want)
+                .collect()
+        };
+        require!(!todo.is_empty(), CollectiblesError::NothingToMint);
+        require!(
+            ctx.accounts.unlock_state.minted.len() + todo.len() <= PLAYER_MINT_CAP,
+            CollectiblesError::MintCapReached
+        );
+
+        // Room for all of them at once, funded by the player, before anything
+        // is minted. Growing after a CPI would leave an asset in the wallet
+        // that `minted` does not record, which is the one state that lets the
+        // same index be minted twice.
+        {
+            let info = ctx.accounts.unlock_state.to_account_info();
+            let needed = UnlockState::size_for(
+                ctx.accounts.unlock_state.owned.len(),
+                ctx.accounts.unlock_state.minted.len() + todo.len(),
+            );
+            if info.data_len() < needed {
+                let rent = SolanaRent::get()?;
+                let topup = rent.minimum_balance(needed).saturating_sub(info.lamports());
+                if topup > 0 {
+                    invoke(
+                        &system_instruction::transfer(ctx.accounts.payer.key, info.key, topup),
+                        &[
+                            ctx.accounts.payer.to_account_info(),
+                            info.clone(),
+                            ctx.accounts.system_program.to_account_info(),
+                        ],
+                    )?;
+                }
+                info.realloc(needed, false)?;
+            }
+        }
+
+        let authority = ctx.accounts.unlock_state.authority;
+        let bump = ctx.bumps.mint_authority;
+        let seeds: &[&[u8]] = &[MINT_AUTHORITY_SEED, &[bump]];
+        for index in todo {
+            MintToCollectionV1Cpi {
+                __program: &ctx.accounts.bubblegum_program,
+                tree_config: &ctx.accounts.tree_config,
+                leaf_owner: &ctx.accounts.payer,
+                leaf_delegate: &ctx.accounts.payer,
+                merkle_tree: &ctx.accounts.merkle_tree,
+                payer: &ctx.accounts.payer,
+                tree_creator_or_delegate: &ctx.accounts.mint_authority,
+                collection_authority: &ctx.accounts.mint_authority,
+                collection_authority_record_pda: None,
+                collection_mint: &ctx.accounts.collection_mint,
+                collection_metadata: &ctx.accounts.collection_metadata,
+                collection_edition: &ctx.accounts.collection_edition,
+                bubblegum_signer: &ctx.accounts.bubblegum_signer,
+                log_wrapper: &ctx.accounts.log_wrapper,
+                compression_program: &ctx.accounts.compression_program,
+                token_metadata_program: &ctx.accounts.token_metadata_program,
+                system_program: &ctx.accounts.system_program,
+                __args: MintToCollectionV1InstructionArgs {
+                    metadata: cosmetic_metadata(&ctx.accounts.mint_config, index),
+                },
+            }
+            .invoke_signed(&[seeds])?;
+
+            // Recorded one at a time, right after the asset exists, so a
+            // failure halfway through leaves the account describing exactly
+            // what was minted and the rest still waiting.
+            ctx.accounts.unlock_state.insert_minted(index);
+            emit!(UnlockMinted { authority, index });
+        }
         Ok(())
     }
 
@@ -1148,7 +1300,7 @@ pub mod sol_city_collectibles {
             let info = ctx.accounts.unlock_state.to_account_info();
             let needed = UnlockState::size_for(
                 ctx.accounts.unlock_state.owned.len() + 1,
-                ctx.accounts.unlock_state.minted.len(),
+                ctx.accounts.unlock_state.minted.len() + 1,
             );
             if info.data_len() < needed {
                 let rent = SolanaRent::get()?;
@@ -1168,6 +1320,12 @@ pub mod sol_city_collectibles {
         }
         let unlocks = &mut ctx.accounts.unlock_state;
         unlocks.insert_owned(index);
+        // And an asset for this index is already in this wallet's hands, which
+        // is the whole of what `minted` means. Recording only `owned` here
+        // would let the buyer of a second-hand cosmetic mint a FRESH asset for
+        // it as well, sell both, and repeat: the supply the season table
+        // exists to fix would become whatever the market could absorb.
+        unlocks.insert_minted(index);
         Ok(())
     }
     /// Moves the open season. This is how a season opens, and how the one
