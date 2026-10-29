@@ -21,6 +21,11 @@ import {
 import { profileManager } from "@/game/config/profileManager";
 import { isVariantUnlocked, unlockItem } from "@/game/config/wardrobeUnlocks";
 import { RARITY_LABEL, isPackItem, rarityTheme, tileKindOf, type TileKind } from "@/game/config/packs";
+import { RarityFrame, innerSize } from "@/ui/RarityFrame";
+
+/** The framed item in the reveal. Bigger than a wardrobe tile: the reveal is
+ *  the one moment the player is looking AT the item rather than for it. */
+const REVEAL_TILE = 72;
 import { progressionBus } from "@/game/progression/progressionBus";
 import BoosterOverlay from "@/ui/BoosterOverlay";
 import {
@@ -749,6 +754,7 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
                   const isFlashing = flash === `${activeCategory}:${v.id}`;
                   const locked = !isVariantUnlocked(wallet, activeCategory, v);
                   const hintFlashing = flash === `locked:${activeCategory}:${v.id}`;
+                  const kind = tileKindOf(activeCategory, v);
                   return (
                     <VariantCard
                       key={v.id}
@@ -757,21 +763,28 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
                       locked={locked}
                       hintFlashing={hintFlashing}
                       compact={isMobile}
-                      kind={tileKindOf(activeCategory, v)}
+                      kind={kind}
                       onClick={() => selectVariant(activeCategory, v.id)}
                     >
                       <div style={{ position: "relative", lineHeight: 0 }}>
                         {/* Cropped: the grid shows the hat, not the character
                             wearing it. Without this a hat is a dozen pixels in
-                            the middle of a tile and unreadable on a phone. */}
-                        <ChromaPreview
-                          file={v.file}
-                          size={TILE}
-                          facingUp={activeCategory === "back"}
-                          crop
-                          effect={v.effect}
-                          hairColor={activeCategory === "hair" ? wornHairColor : undefined}
-                        />
+                            the middle of a tile and unreadable on a phone.
+
+                            The frame does not change the tile's SIZE: it is
+                            drawn at TILE and the item shrinks to fit inside
+                            it, so the grid is laid out exactly as before and
+                            a collectible gains a frame rather than space. */}
+                        <RarityFrame kind={kind} size={TILE}>
+                          <ChromaPreview
+                            file={v.file}
+                            size={kind ? innerSize(TILE) : TILE}
+                            facingUp={activeCategory === "back"}
+                            crop
+                            effect={v.effect}
+                            hairColor={activeCategory === "hair" ? wornHairColor : undefined}
+                          />
+                        </RarityFrame>
                         {locked && (
                           <span style={chamferBox(6, {
                             position: "absolute", inset: 0,
@@ -991,15 +1004,22 @@ function VariantCard({
   children: React.ReactNode;
 }) {
   const theme = rarityTheme(kind);
+  // A tile with a drawn frame already wears its rarity, in the same colour.
+  // Tinting the card behind it would put a second border of the same hue
+  // around the first, which is the one thing this grid has always avoided.
+  // Selection still wins, because WHICH ONE AM I WEARING beats tidiness.
+  const framed = kind !== null;
   const baseBg = locked
     ? "rgba(255,255,255,0.015)"
     : isSelected ? theme.fillStrong
     : isFlashing ? "rgba(183,233,40,0.08)"
+    : framed ? "transparent"
     : theme.fill;
   const baseBorder = hintFlashing
     ? `${BORDER}px solid rgba(255,215,0,0.6)`
     : locked ? `${BORDER}px solid ${theme.muted}`
     : isSelected ? `${SELECTED_BORDER}px solid ${theme.strong}`
+    : framed ? `${BORDER}px solid transparent`
     : `${BORDER}px solid ${theme.color}`;
   return (
     <button
@@ -1036,7 +1056,7 @@ function VariantCard({
       }}
       onMouseLeave={e => {
         if (!isSelected && !locked) {
-          e.currentTarget.style.backgroundColor = theme.fill;
+          e.currentTarget.style.backgroundColor = framed ? "transparent" : theme.fill;
           e.currentTarget.style.setProperty("--cbc", solidColor(theme.color));
         }
         e.currentTarget.style.transform = isFlashing || hintFlashing ? "scale(1.04)" : "scale(1)";

@@ -121,6 +121,47 @@ export interface RarityTheme {
   label: string;
 }
 
+/**
+ * The drawn frame each tile kind is wearing.
+ *
+ * Six sheets, one per kind, and the colours in them are the colours above:
+ * the hex drives borders and odds bars, the art drives the tile itself, and
+ * the two were authored to agree.
+ *
+ * The season is PAINTED INTO the art, bottom right. That is deliberate and it
+ * has a cost worth writing down: a new season means six new sheets, not a
+ * string change. It buys a badge that cannot drift from the asset it is on.
+ */
+export const FRAME_SHEET: Record<TileKind, string> = {
+  common: "/assets/ui/frames/Common.png",
+  uncommon: "/assets/ui/frames/Uncommon.png",
+  rare: "/assets/ui/frames/Rare.png",
+  legendary: "/assets/ui/frames/Legendary.png",
+  quest: "/assets/ui/frames/Quest.png",
+  event: "/assets/ui/frames/Seasonal.png",
+};
+
+/**
+ * How a frame sheet is laid out, and where the item goes inside it.
+ *
+ * All six share this, which is why it is one constant and not a field per
+ * kind. Measured off the art rather than guessed:
+ *
+ *   - 4 cells of 64x64 in a row, 100ms each, a 400ms loop.
+ *   - The window is the lit area inside the border. Its top is 9 and not 8
+ *     because Quest and Seasonal hang an ornament down from the top edge.
+ *   - `fill` is how much of that window the item is allowed to take. At 1.0
+ *     every item touches the border; 0.8 is the breathing room that makes it
+ *     read as framed rather than as crammed.
+ */
+export const FRAME_GEOMETRY = {
+  cell: 64,
+  cells: 4,
+  loopMs: 400,
+  window: { x: 6, y: 9, w: 53, h: 48 },
+  fill: 0.8,
+} as const;
+
 /** Hex + two-digit alpha. The palette is authored as 6-digit hex on purpose. */
 const alpha = (hex: string, aa: string) => `${hex}${aa}`;
 

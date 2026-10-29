@@ -274,3 +274,17 @@ input[type="range"].pixel-range::-moz-range-thumb { width: 10px; height: 10px; b
     cursor: not-allowed !important;
   }
 }
+
+/*
+ * The rarity frame's background, walked one cell at a time.
+ *
+ * Global because two surfaces draw the same frame (the wardrobe grid and the
+ * pack reveal) and a keyframe rule declared inside a component is declared
+ * once per instance of it.
+ *
+ * `--roll` is the full strip width, negated, and steps() is the cell count.
+ */
+@keyframes rarity-frame-roll {
+  from { background-position: 0 0 }
+  to   { background-position: var(--roll) 0 }
+}

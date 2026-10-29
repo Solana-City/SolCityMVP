@@ -18,6 +18,7 @@ import {
 const MAX_BUNDLE_ITEMS = 50;
 import { progressionBus } from "@/game/progression/progressionBus";
 import { ChromaPreview } from "@/ui/WardrobePanel";
+import { RarityFrame, innerSize } from "@/ui/RarityFrame";
 import { chamferBox } from "@/ui/chamfer";
 import ChamferGlow from "@/ui/ChamferGlow";
 import { useButtonFeel, feelStyle, type ButtonFeel } from "@/ui/useButtonFeel";
@@ -54,6 +55,10 @@ import {
  * pack's sheet is drawn, its card falls back to the wardrobe icon rather than
  * an empty box.
  */
+/** The framed item in the reveal. Bigger than a wardrobe tile: the reveal is
+ *  the one moment the player is looking AT the item rather than for it. */
+const REVEAL_TILE = 72;
+
 export default function BoosterOverlay({
   wallet, onClose,
 }: {
@@ -603,8 +608,11 @@ export default function BoosterOverlay({
                   style={chamferBox(10, {
                     display: "flex", flexDirection: "column", alignItems: "center", gap: 5,
                     padding: "10px 4px",
-                    background: d.owned ? "rgba(255,255,255,0.02)" : rarityTheme(d.rarity).fill,
-                    border: `2px solid ${d.owned ? "rgba(255,255,255,0.08)" : rarityTheme(d.rarity).color}`,
+                    // Neutral, because the frame inside is the rarity now.
+                    // Two borders of one colour around one item reads as a
+                    // mistake, and the drawn one is the better of the two.
+                    background: "rgba(255,255,255,0.02)",
+                    border: "2px solid rgba(255,255,255,0.08)",
                     // The STAGGER is the reveal: each card popping in turn.
                     // Skipping drops the delay rather than the animation, so
                     // the haul still arrives rather than appearing to have
@@ -616,8 +624,17 @@ export default function BoosterOverlay({
                   })}
                 >
                   {/* Cropped, same as the wardrobe grid: the reveal is about
-                      the item, not the character it sits on. */}
-                  <ChromaPreview file={d.file} size={60} facingUp={d.category === "back"} crop />
+                      the item, not the character it sits on. In the frame its
+                      rarity is drawn rather than written, which is the point
+                      of opening a pack and watching. */}
+                  <RarityFrame kind={d.rarity} size={REVEAL_TILE}>
+                    <ChromaPreview
+                      file={d.file}
+                      size={innerSize(REVEAL_TILE)}
+                      facingUp={d.category === "back"}
+                      crop
+                    />
+                  </RarityFrame>
                   <span style={{ fontSize: 8, color: "#e0d0ff", lineHeight: 1.3, textAlign: "center" }}>{d.name}</span>
                   <span style={{ fontSize: 8, color: "#7a7aa0", letterSpacing: 0.5 }}>
                     {CATEGORY_LABELS[d.category]}
