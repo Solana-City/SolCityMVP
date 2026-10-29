@@ -53,6 +53,23 @@ export function isVariantUnlocked(
   const key = unlockKeyOf(category, variant.id);
   const chain = onchainUnlocks.get(wallet);
 
+  // A PACK item that can be HELD: possession decides, and nothing else does.
+  //
+  // Once an item has been minted it is tradeable, and the seller must stop
+  // being able to wear what they sold. Our own `owned` list cannot answer
+  // that: a compressed NFT moves on Bubblegum and the program is never told,
+  // so `owned` would still name the seller forever. Only the indexer knows
+  // who holds it now.
+  //
+  // `held` is undefined, not empty, whenever we do not know: minting is not
+  // live yet, or the indexer did not answer. That is the difference between
+  // "they sold it" and "we cannot see", and it falls through to the chain
+  // list below rather than stripping somebody's wardrobe over an RPC blip.
+  const held = heldItems.get(wallet);
+  if (BOOSTER_ONCHAIN && held && isBoosterItem(category, variant.id)) {
+    return held.has(key);
+  }
+
   // A PACK item: the chain decides, and localStorage does not get a vote.
   //
   // This mirrors the program exactly, which is the point. `update_look_session`
@@ -106,6 +123,32 @@ export function setOnChainUnlocks(wallet: string, data: Uint8Array | null): void
     if (entry) keys.add(unlockKeyOf(entry.category, entry.variant.id));
   }
   onchainUnlocks.set(wallet, keys);
+}
+
+// ── What a wallet HOLDS right now, from the indexer ─────────────────────────
+//
+// Separate from `onchainUnlocks` because they answer different questions.
+// That one is "was this ever granted to you", which survives a sale; this is
+// "is it in your wallet today", which does not. For a tradeable item only the
+// second one is the truth.
+
+const heldItems = new Map<string, Set<string>>();
+
+/**
+ * Hands over the catalog indices a wallet holds an asset for.
+ *
+ * `null` means UNKNOWN and clears any previous answer, so the wardrobe falls
+ * back to the grant list rather than hiding items. Never call it with an
+ * empty array to mean "the lookup failed": empty means they hold nothing.
+ */
+export function setHeldItems(wallet: string, indices: number[] | null): void {
+  if (!indices) { heldItems.delete(wallet); return; }
+  const keys = new Set<string>();
+  for (const index of indices) {
+    const entry = itemAtGlobalIndex(index);
+    if (entry) keys.add(unlockKeyOf(entry.category, entry.variant.id));
+  }
+  heldItems.set(wallet, keys);
 }
 
 export function getOnChainUnlocks(wallet: string | null): Set<string> {

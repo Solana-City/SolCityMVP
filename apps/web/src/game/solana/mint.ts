@@ -6,6 +6,7 @@ import {
 } from "./program";
 import { ixDiscriminator } from "./instructions";
 import { baseConnection } from "./packs";
+import { setHeldItems } from "@/game/config/wardrobeUnlocks";
 
 /**
  * Turning an owned cosmetic into a compressed NFT the player holds.
@@ -76,7 +77,69 @@ export async function readMintConfig(conn: Connection): Promise<MintConfigAccoun
   };
 }
 
-/** Catalog indices this wallet holds an asset for. Minting is once per index. */
+/**
+ * Catalog indices this wallet HOLDS AN ASSET FOR RIGHT NOW, asked of the
+ * indexer rather than of our own accounts.
+ *
+ * This is what makes selling mean something. A compressed NFT moves on
+ * Bubblegum and our program is never told, so `UnlockState.owned` cannot be
+ * revoked when the asset is sold: it would say the seller still owns a hat
+ * that is now in somebody else's wallet. Possession is the only honest
+ * answer for an item that can be traded, and only an indexer knows it.
+ *
+ * The index is read back out of the URI, which is how the chain identifies
+ * which cosmetic an asset is in the first place (see `mint_unlock`: the URI
+ * is built, not stored). Anything outside our collection is ignored.
+ *
+ * Throws rather than returning empty on a failure. An empty list and "the
+ * indexer is down" must not look the same to the caller: one means the player
+ * sold everything, the other means we do not know, and the second must never
+ * strip somebody of their wardrobe.
+ */
+export async function heldIndices(
+  conn: Connection,
+  wallet: PublicKey,
+  config: MintConfigAccount,
+): Promise<number[]> {
+  const res = await fetch(conn.rpcEndpoint, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: "held",
+      method: "getAssetsByOwner",
+      params: {
+        ownerAddress: wallet.toBase58(),
+        page: 1,
+        limit: 1000,
+        displayOptions: { showUnverifiedCollections: true },
+      },
+    }),
+  });
+  if (!res.ok) throw new Error(`the indexer answered ${res.status}`);
+  const body = await res.json() as {
+    result?: { items?: { grouping?: { group_key: string; group_value: string }[];
+                         content?: { json_uri?: string } }[] };
+    error?: { message?: string };
+  };
+  if (body.error) throw new Error(body.error.message ?? "the indexer refused");
+
+  const collection = config.collectionMint.toBase58();
+  const out: number[] = [];
+  for (const item of body.result?.items ?? []) {
+    const inOurs = item.grouping?.some(
+      (g) => g.group_key === "collection" && g.group_value === collection,
+    );
+    if (!inOurs) continue;
+    const uri = item.content?.json_uri ?? "";
+    if (!uri.startsWith(config.baseUri)) continue;
+    const n = Number(uri.slice(config.baseUri.length).replace(/\.json$/, ""));
+    if (Number.isInteger(n) && n >= 0) out.push(n);
+  }
+  return out;
+}
+
+/** Catalog indices this wallet has ever minted. Minting is once per index. */
 export async function mintedIndices(conn: Connection, wallet: PublicKey): Promise<number[]> {
   const info = await conn.getAccountInfo(deriveUnlockPDA(wallet)[0]);
   if (!info) return [];
@@ -143,6 +206,31 @@ export function buildMintUnlockIx(params: {
   });
 }
 
+/**
+ * Tells the wardrobe what this wallet holds, so a sold item stops being
+ * wearable by the seller.
+ *
+ * Three outcomes, and the difference between the last two is the whole point:
+ * a list when the indexer answered, and UNKNOWN both when minting is not set
+ * up yet and when the lookup failed. Unknown falls back to the grant list, so
+ * an indexer outage never takes a hat off anybody.
+ */
+export async function syncHeldToWardrobe(
+  conn: Connection,
+  wallet: PublicKey,
+): Promise<void> {
+  const key = wallet.toBase58();
+  try {
+    const config = await readMintConfig(conn);
+    // No MintConfig means nothing can have been minted, so nothing can have
+    // been sold, and possession has no opinion to offer yet.
+    if (!config) { setHeldItems(key, null); return; }
+    setHeldItems(key, await heldIndices(conn, wallet, config));
+  } catch {
+    setHeldItems(key, null);
+  }
+}
+
 export type SignTx = (tx: Transaction) => Promise<Transaction>;
 
 /**
@@ -170,7 +258,13 @@ export async function mintCosmetic(args: {
 
   for (let i = 0; i < 30; i++) {
     await new Promise((r) => setTimeout(r, 1000));
-    if ((await mintedIndices(conn, args.wallet)).includes(args.index)) return { signature };
+    if ((await mintedIndices(conn, args.wallet)).includes(args.index)) {
+      // The item just became a held asset, and from here possession is what
+      // decides whether it can be worn. Asking again now is what keeps it
+      // wearable across that handover.
+      await syncHeldToWardrobe(conn, args.wallet);
+      return { signature };
+    }
     const st = (await conn.getSignatureStatuses([signature])).value[0];
     if (st?.err) throw new Error(`The mint failed on chain: ${JSON.stringify(st.err)}`);
   }

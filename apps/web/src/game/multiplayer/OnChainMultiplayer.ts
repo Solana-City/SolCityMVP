@@ -178,6 +178,7 @@ import { hairColorAtIndex, hairColorIndex } from "../config/hairPalette";
 import { ER_VALIDATORS, probeValidators, nearestValidator } from "./erValidators";
 import { globalIndexOf, itemAtGlobalIndex } from "@/game/config/catalogIndex";
 import { setOnChainUnlocks } from "@/game/config/wardrobeUnlocks";
+import { syncHeldToWardrobe } from "@/game/solana/mint";
 import { gameSlotOf, GAME_SLOT_CAP } from "@/game/minigames/slots";
 import type { LayerCategory } from "@/game/config/paperDoll";
 
@@ -2622,6 +2623,12 @@ export class OnChainMultiplayer {
         () => this.baseConnection.getAccountInfo(deriveUnlockPDA(wallet)[0]),
       );
       setOnChainUnlocks(wallet.toBase58(), info ? new Uint8Array(info.data) : null);
+
+      // And what they HOLD, which is a different question once an item has
+      // been minted and can be sold. Not awaited: it goes to an indexer, and
+      // nothing here should wait on one to let somebody into the city.
+      void syncHeldToWardrobe(this.baseConnection, wallet);
+
       if (!info) return;
       const sessionKey = this.sessionKeys.getSessionPublicKey();
       const { blockhash } = await this.baseRpcWithRetry(
