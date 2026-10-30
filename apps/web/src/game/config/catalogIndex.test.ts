@@ -128,7 +128,7 @@ describe("the global catalog index", () => {
     expect(assigned("free")).toEqual([
       [0, "skin:Light"], [1, "skin:Feyan"], [2, "skin:Laovai"], [3, "skin:Pinki"],
       [4, "skin:Radio"], [5, "skin:Brown"], [6, "skin:Dark_brown"],
-      [32, "eyesFace:Happy"], [33, "eyesFace:Terminator"], [34, "eyesFace:Normal_blue"],
+      [32, "eyesFace:Happy"], [33, "eyesFace:Normal_solana"], [34, "eyesFace:Normal_blue"],
       [35, "eyesFace:Normal_green"], [36, "eyesFace:Normal_grey"],
       [37, "eyesFace:Normal_orange"], [38, "eyesFace:Normal_red"],
       [64, "pants:Blue_pants"], [65, "pants:Grey_pants"],

@@ -203,11 +203,11 @@ export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
   ],
   eyesFace: [
     { id: "Happy",        name: "Happy",        textureKey: "pd-eyesFace-Happy",        file: "eyesFace/Happy.png" },
-    // Retired 2026-10-30: the Cyber Visor accessory does this, and better,
-    // without taking over the whole face. Disabled rather than deleted,
-    // because deleting it would renumber every face after it and a catalog
-    // index is what a wallet owns.
-    { id: "Terminator",   name: "Terminator",   textureKey: "pd-eyesFace-Terminator",   file: "eyesFace/Terminator.png", enabled: false },
+    // Replaced the Terminator face on 2026-10-30, IN PLACE. The old one
+    // carried someone else's character name and was not going to ship, but
+    // removing a free item renumbers every face after it, and a catalog index
+    // is what a wallet owns. Taking over the slot keeps Normal Blue at 34.
+    { id: "Normal_solana", name: "Normal Solana", textureKey: "pd-eyesFace-Normal_solana", file: "eyesFace/Normal_solana.png" },
     { id: "Normal_blue",  name: "Normal Blue",  textureKey: "pd-eyesFace-Normal_blue",  file: "eyesFace/Normal_blue.png" },
     { id: "Normal_green", name: "Normal Green", textureKey: "pd-eyesFace-Normal_green", file: "eyesFace/Normal_green.png" },
     { id: "Normal_grey",  name: "Normal Grey",  textureKey: "pd-eyesFace-Normal_grey",  file: "eyesFace/Normal_grey.png" },
