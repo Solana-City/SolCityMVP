@@ -107,14 +107,6 @@ export interface LayerVariant {
      * the whole loop plays at `fps` cells a second.
      */
     followsWalk?: boolean;
-    /**
-     * What the effect does while the body stands still (with `followsWalk`):
-     * "loop" plays the whole sheet on the clock (a halo floats, so its bob
-     * needs no head), "follow" keeps the body's own frame, which is the
-     * resting one, and only changes group (a crown sits ON the head, and a
-     * crown that bobbed over a still head would look loose).
-     */
-    standing?: "loop" | "follow";
   };
 }
 
@@ -139,8 +131,7 @@ export const SPRITE_ROWS = 4;
  * and null standing or in a preview. A sheet with `followsWalk` is groups of
  * SPRITE_COLS cells, each one walk cycle: the clock picks the group and the
  * body picks the cell in it, so the effect moves with the head. Standing, the
- * effect either plays the whole sheet on the clock ("loop", the default) or
- * keeps the resting cell and only changes group ("follow").
+ * whole sheet plays on the clock at `fps`, which is how the artist drew it.
  *
  * One rule for the game, the wardrobe tile and the large preview, so the three
  * cannot drift apart.
@@ -151,9 +142,9 @@ export function effectCell(
   walkPhase: number | null,
 ): number {
   const step = Math.floor((nowMs / 1000) * effect.fps);
-  if (effect.followsWalk && (walkPhase !== null || effect.standing === "follow")) {
+  if (effect.followsWalk && walkPhase !== null) {
     const group = Math.floor(step / SPRITE_COLS) % (effect.frames / SPRITE_COLS);
-    return group * SPRITE_COLS + (walkPhase ?? 0);
+    return group * SPRITE_COLS + walkPhase;
   }
   return step % effect.frames;
 }
@@ -399,12 +390,12 @@ export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
     // halo: 48 cells a row, twelve walk cycles drawn over the body, in the same
     // place as the static Crown above. Appended AFTER the Halo on purpose (an
     // index written to chain names an item). A hat worn ON the head, so unlike
-    // the Halo it casts the hair mask like any crown (clearsHair is unset), and
-    // standing it only changes group, because a crown that bobbed over a still
-    // head would look loose.
+    // the Halo it masks the hair (clearsHair is unset). "band", not "full": from
+    // the side its prongs have gaps, and the per-column cutoff of "full" erased
+    // the hair between them and left bare skin showing through the crown.
     { id: "Royal_crown", name: "Royal Crown", textureKey: "pd-hat-Royal_crown", file: "hat/Royal_crown.png",
-      unlockVia: "quest", unlockHint: "Test item",
-      effect: { frames: 48, fps: 1000 / 150, followsWalk: true, standing: "follow" } },
+      hatCoverage: "band", unlockVia: "quest", unlockHint: "Test item",
+      effect: { frames: 48, fps: 1000 / 150, followsWalk: true } },
     // The colourway caps, 2026-10-30. Appended, never inserted: a booster
     // item's catalog index is its position in this lane, and a wallet owns
     // the index, not the name.
