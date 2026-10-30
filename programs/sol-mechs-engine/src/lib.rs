@@ -188,6 +188,67 @@ pub fn tie_break(seed: u32, round: u32) -> bool {
     x & 1 == 0
 }
 
+pub mod battle;
+pub use battle::{replay, Action, Battle, Build, Side};
+
+// What the TypeScript engine did, generated from it. Test-only, so none of
+// it reaches the program.
+#[cfg(test)]
+#[path = "vectors.generated.rs"]
+mod vectors;
+
+/// The port, judged against the engine it was ported from.
+///
+/// This is the test the whole crate exists for. Everything else in it is
+/// arithmetic that looks right; this is the only thing that says it IS right,
+/// and it says so by replaying battles the other engine actually played.
+#[cfg(test)]
+mod vector_tests {
+    use super::battle::{replay, Side};
+    use super::vectors::VECTORS;
+    use super::Slot;
+
+    #[test]
+    fn every_vector_replays_to_the_same_battle() {
+        assert!(!VECTORS.is_empty(), "no vectors; regenerate vectors.generated.rs");
+        for v in VECTORS {
+            let b = replay(&v.p1, &v.p2, v.seed, v.rounds)
+                .unwrap_or_else(|e| panic!("{}: the build does not assemble: {:?}", v.name, e));
+
+            assert_eq!(b.winner, v.winner, "{}: wrong winner", v.name);
+
+            // The end state and not only the winner. A port can reach the
+            // right winner by the wrong arithmetic, and the next balance
+            // change is when that would surface.
+            for (side, want, got) in [
+                ("p1", &v.end_p1, &b.p1),
+                ("p2", &v.end_p2, &b.p2),
+            ] {
+                assert_eq!(got.is_defeated(), want.defeated, "{}: {} defeated", v.name, side);
+                for (i, slot) in Slot::ALL.iter().enumerate() {
+                    assert_eq!(
+                        got.statuses[i].current_hp, want.slots[i].hp,
+                        "{}: {} {:?} hp", v.name, side, slot,
+                    );
+                    assert_eq!(
+                        got.statuses[i].stages, want.slots[i].stages,
+                        "{}: {} {:?} stages", v.name, side, slot,
+                    );
+                }
+            }
+        }
+    }
+
+    /// Both outcomes are in the set, so neither branch of the defeat check is
+    /// untested by accident.
+    #[test]
+    fn the_vectors_cover_both_winners() {
+        let p1 = VECTORS.iter().filter(|v| v.winner == Some(Side::P1)).count();
+        let p2 = VECTORS.iter().filter(|v| v.winner == Some(Side::P2)).count();
+        assert!(p1 > 0 && p2 > 0, "one-sided vectors prove less than they look");
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
