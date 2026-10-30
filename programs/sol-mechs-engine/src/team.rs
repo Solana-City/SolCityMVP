@@ -360,3 +360,56 @@ mod tests {
         assert_eq!(code_from_byte("M", 200), None);
     }
 }
+
+// ── The wire format ───────────────────────────────────────────────────────
+
+/// A source slot, as `encodeAction` numbers them.
+///
+/// THE TWO ORDERS ARE NOT THE SAME. A source is numbered
+/// [rightArm, leftArm, lowerBody, matrix] and a target is
+/// [matrix, rightArm, leftArm, lowerBody]. Getting that backwards yields a
+/// decoder that is right about the matrix and silently swaps the arms, which
+/// is the kind of wrong that settles matches the wrong way for weeks.
+fn source_slot(i: u8) -> Option<Slot> {
+    match i {
+        0 => Some(Slot::RightArm),
+        1 => Some(Slot::LeftArm),
+        2 => Some(Slot::LowerBody),
+        3 => Some(Slot::Matrix),
+        _ => None,
+    }
+}
+
+/// A target slot, as `encodeAction` numbers them. See above.
+fn target_slot(i: u8) -> Option<Slot> {
+    match i {
+        0 => Some(Slot::Matrix),
+        1 => Some(Slot::RightArm),
+        2 => Some(Slot::LeftArm),
+        3 => Some(Slot::LowerBody),
+        _ => None,
+    }
+}
+
+/// `decodeAction`: the two bytes a reveal carries, back into an action.
+///
+/// `Ok(None)` is a side that did nothing, which is a legal round: a mech with
+/// no standing limb and a sealed opponent has nothing to send. `Err` is a
+/// malformed kind, which a settlement must refuse rather than guess at.
+pub fn decode_action(bytes: &[u8; 2]) -> Result<Option<TeamAction>, BuildError> {
+    match bytes[0] {
+        0 => Ok(None),
+        1 => {
+            let b = bytes[1];
+            let source = source_slot(b & 0b11).ok_or(BuildError::UnknownPart)?;
+            let target = target_slot((b >> 4) & 0b11).ok_or(BuildError::UnknownPart)?;
+            Ok(Some(TeamAction::Move {
+                source,
+                move_index: ((b >> 2) & 0b11) as usize,
+                target,
+            }))
+        }
+        2 => Ok(Some(TeamAction::Switch { to: bytes[1] as usize })),
+        _ => Err(BuildError::UnknownPart),
+    }
+}

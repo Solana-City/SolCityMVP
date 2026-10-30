@@ -191,7 +191,10 @@ pub fn tie_break(seed: u32, round: u32) -> bool {
 pub mod battle;
 pub mod team;
 pub use battle::{replay, Action, Battle, Build, Side};
-pub use team::{decode_team, replay_team, TeamAction, TeamBattle, TeamStatus, TEAM_BYTES, TEAM_SIZE};
+pub use team::{
+    decode_action, decode_team, replay_team, TeamAction, TeamBattle, TeamStatus, TEAM_BYTES,
+    TEAM_SIZE,
+};
 
 // What the TypeScript engine did, generated from it. Test-only, so none of
 // it reaches the program.
@@ -202,6 +205,10 @@ mod vectors;
 #[cfg(test)]
 #[path = "team_vectors.generated.rs"]
 mod team_vectors;
+
+#[cfg(test)]
+#[path = "wire_vectors.generated.rs"]
+mod wire_vectors;
 
 /// The port, judged against the engine it was ported from.
 ///
@@ -280,6 +287,49 @@ mod vector_tests {
                 }
             }
         }
+    }
+
+    /// Every action the squad vectors send, decoded from its two bytes.
+    ///
+    /// The two index orders in `encodeAction` are NOT the same: a source is
+    /// [rightArm, leftArm, lowerBody, matrix] and a target is
+    /// [matrix, rightArm, leftArm, lowerBody]. A decoder that reads the
+    /// asymmetry backwards is right about the matrix and swaps the arms, and
+    /// nothing but a table like this one notices.
+    #[test]
+    fn every_wire_action_decodes_to_what_was_encoded() {
+        use super::team::{decode_action, TeamAction};
+        use super::wire_vectors::WIRE_VECTORS;
+
+        assert!(!WIRE_VECTORS.is_empty(), "no wire vectors; regenerate them");
+        for (bytes, want) in WIRE_VECTORS {
+            let got = decode_action(bytes).unwrap_or_else(|e| {
+                panic!("{:?} did not decode: {:?}", bytes, e)
+            });
+            match (got, want) {
+                (None, None) => {}
+                (
+                    Some(TeamAction::Move { source: gs, move_index: gm, target: gt }),
+                    Some(TeamAction::Move { source: ws, move_index: wm, target: wt }),
+                ) => {
+                    assert_eq!(gs, *ws, "{:?} source", bytes);
+                    assert_eq!(gm, *wm, "{:?} move index", bytes);
+                    assert_eq!(gt, *wt, "{:?} target", bytes);
+                }
+                (Some(TeamAction::Switch { to: g }), Some(TeamAction::Switch { to: w })) => {
+                    assert_eq!(g, *w, "{:?} switch index", bytes);
+                }
+                _ => panic!("{:?} decoded to the wrong kind", bytes),
+            }
+        }
+    }
+
+    /// A kind the client never sends must be refused, not guessed at.
+    #[test]
+    fn a_malformed_action_is_an_error() {
+        use super::team::decode_action;
+        assert!(decode_action(&[3, 0]).is_err());
+        assert!(decode_action(&[255, 255]).is_err());
     }
 
     /// Both outcomes are in the set, so neither branch of the defeat check is
