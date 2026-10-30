@@ -224,6 +224,11 @@ pub mod sol_mechs {
         Ok(())
     }
 
+    /// Takes one OPTIONAL remaining account: the rollup this duelist lives on.
+    ///
+    /// Pass it. A duel touches two duelists at once and a transaction cannot
+    /// span two validators, so two players who delegated to different rollups
+    /// cannot be paired at all. Omitting it leaves that to chance.
     pub fn delegate_duelist(ctx: Context<DelegateDuelist>) -> Result<()> {
         let authority_key = ctx.accounts.authority.key();
         {
@@ -243,6 +248,7 @@ pub mod sol_mechs {
             &ctx.accounts.system_program.to_account_info(),
             &[DUELIST_SEED, authority_key.as_ref()],
             bump,
+            ctx.remaining_accounts.first().map(|v| *v.key),
         )
     }
 
@@ -254,6 +260,9 @@ pub mod sol_mechs {
         Ok(())
     }
 
+    /// Takes the same OPTIONAL remaining account as `delegate_duelist`, and
+    /// it has to be the SAME validator: pairing writes the lobby and both
+    /// duelists in one transaction.
     pub fn delegate_lobby(ctx: Context<DelegateLobby>) -> Result<()> {
         let bump = ctx.bumps.lobby;
         delegate_pda(
@@ -266,6 +275,7 @@ pub mod sol_mechs {
             &ctx.accounts.system_program.to_account_info(),
             &[LOBBY_SEED],
             bump,
+            ctx.remaining_accounts.first().map(|v| *v.key),
         )
     }
 
@@ -1187,6 +1197,7 @@ fn delegate_pda<'info>(
     system_program: &AccountInfo<'info>,
     seeds: &[&[u8]],
     bump: u8,
+    preferred_validator: Option<Pubkey>,
 ) -> Result<()> {
     let pda_key = *pda.key;
 
@@ -1249,7 +1260,27 @@ fn delegate_pda<'info>(
         ix_data.extend_from_slice(&(seed.len() as u32).to_le_bytes());
         ix_data.extend_from_slice(seed);
     }
-    ix_data.push(0u8);
+    // WHICH ROLLUP THIS ACCOUNT LIVES ON.
+    //
+    // Omitted, the delegation program picks, and a PvP instruction touches
+    // TWO duelists: if the two land on different validators the match cannot
+    // be paired at all, because a transaction cannot span two of them.
+    //
+    // The city deliberately does NOT do this. Its players fan across all
+    // three rollups and every client reads all three, which works because
+    // every routine city write touches one account, the sender's own. Sol
+    // Mechs is the opposite case and gets the opposite answer.
+    //
+    // Pinning these is free of the city's trade-off: this program never
+    // touches PlayerState, so where a duelist lives says nothing about where
+    // its owner walks around.
+    match preferred_validator {
+        Some(validator) => {
+            ix_data.push(1u8);
+            ix_data.extend_from_slice(validator.as_ref());
+        }
+        None => ix_data.push(0u8),
+    }
 
     let delegate_ix = SolInstruction {
         program_id: DELEGATION_PROGRAM_ID,

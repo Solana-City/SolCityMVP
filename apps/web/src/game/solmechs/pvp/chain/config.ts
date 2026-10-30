@@ -23,8 +23,41 @@ export function isPvpChainConfigured(): boolean {
   return SOLMECHS_PROGRAM_ID !== null;
 }
 
-/** MagicBlock devnet rollup — the same endpoint Solana City plays on. */
-export const ER_ENDPOINT = "https://devnet.magicblock.app";
+/**
+ * The ONE rollup every duelist lives on.
+ *
+ * ── Why Sol Mechs pins and the city does not ───────────────────────────
+ *
+ * The city fans its players across all three rollups on purpose, and every
+ * client reads all three. That works because a routine city write touches one
+ * account: the sender's own PDA. Reading is not a transaction.
+ *
+ * Sol Mechs is the opposite. Pairing a match writes BOTH duelists and the
+ * lobby in one transaction, and a transaction cannot span two validators, so
+ * two friends on different rollups could never duel. Nothing in the UI would
+ * explain why.
+ *
+ * Pinning costs the city nothing, because `sol-mechs` never touches
+ * PlayerState. Where your duelist lives says nothing about where you walk
+ * around, and the two choices do not interact.
+ *
+ * It costs latency for players far from this one. That is the right thing to
+ * spend here: Sol Mechs is turn-based commit-reveal, not movement at 60fps.
+ *
+ * `devnet.magicblock.app`, which this used to point at, is an alias for Asia.
+ * Naming the validator outright is what lets the delegation and the sends
+ * agree, which is the whole bug being fixed: the delegation record decides
+ * where a write is accepted, and every other rollup answers
+ * InvalidWritableAccount.
+ */
+export const MECH_VALIDATOR = {
+  identity: "MUS3hc9TCw4cGC12vHNoYcCGzJG1txjgQLZWVoeNHNd",
+  rpc: "https://devnet-us.magicblock.app",
+  label: "US",
+} as const;
+
+/** Where duelist transactions are sent. Must be the rollup named above. */
+export const ER_ENDPOINT = MECH_VALIDATOR.rpc;
 
 export const DUELIST_SEED = "mech_duelist";
 export const LOBBY_SEED = "mech_lobby";
