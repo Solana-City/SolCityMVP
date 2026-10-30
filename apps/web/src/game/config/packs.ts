@@ -42,11 +42,17 @@ const RARITY_TABLE: Partial<Record<Rarity, Partial<Record<LayerCategory, string[
   },
   rare: {
     hat: ["Viking_hat", "Vizard_hat", "Pirate"],
-    accessory: ["Golden_ring", "Pirate"],
+    accessory: ["Golden_ring", "Pirate", "Ring_brilliant", "Glasses_thug", "Blindfold_demon", "Visor_cyber"],
+    back: ["Wings_angel", "Wings_demon"],
+    tshirt: ["Tshirt_dragon", "Coat_doc", "Coat_dude", "Coat_red", "Suit_black", "Suit_golden"],
+    pants: ["Pants_golden"],
   },
   uncommon: {
     hat: ["Cylinder", "Straw_hat"],
     back: ["backpack_red"],
+    accessory: ["Glasses_round", "Glasses_steampunk"],
+    tshirt: ["Longsleeve_acid", "Longsleeve_neon", "Longsleeve_chess", "Longsleeve_indies", "Tshirt_acid", "Tshirt_neon", "Tshirt_chess", "Tshirt_solana_white"],
+    pants: ["Pants_chess_red", "Pants_chess_white"],
   },
 };
 

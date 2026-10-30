@@ -24,14 +24,31 @@ describe("season drop lists", () => {
   it("season 1 is the open one and holds pack items", () => {
     expect(SEASONS.map((s) => s.n)).toEqual([1]);
     const counts = seasonDropCounts(1);
-    expect(RARITY_ORDER.reduce((n, r) => n + counts[r], 0)).toBe(18);
+    expect(RARITY_ORDER.reduce((n, r) => n + counts[r], 0)).toBe(74);
   });
 
   it("pins what season 1 would seed, per rarity", () => {
     expect(seasonDropLists(1)).toEqual({
-      common: [5632, 5633, 9728, 9729, 15872, 15873, 15881, 15882],
-      uncommon: [9730, 15875, 15879],
-      rare: [11776, 11777, 15876, 15878, 15880],
+      common: [
+        5632, 5633, 5634, 5635, 5636,
+        7680, 7681, 7682, 7683, 7684, 7685, 7686, 7687, 7688, 7689, 7690, 7691,
+        7692, 7693, 7694, 7695, 7696, 7697,
+        9728, 9729, 11778, 11779,
+        15872, 15873, 15881, 15882, 15883, 15884, 15885, 15886, 15887, 15888,
+        15889, 15890,
+      ],
+      uncommon: [
+        5637, 5638,
+        7698, 7699, 7700, 7701, 7702, 7703, 7704, 7705,
+        9730, 11780, 11781, 15875, 15879,
+      ],
+      rare: [
+        5639,
+        7706, 7707, 7708, 7709, 7710, 7711,
+        9731, 9732,
+        11776, 11777, 11782, 11783, 11784, 11785,
+        15876, 15878, 15880,
+      ],
       legendary: [15874, 15877],
     });
   });
