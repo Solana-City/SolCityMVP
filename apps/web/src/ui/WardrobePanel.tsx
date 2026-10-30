@@ -2,6 +2,7 @@
 
 import { PixelImg, ICON, LockIcon, CloseButton, Bitmap } from "@/ui/PixelIcons";
 import { useButtonFeel, feelStyle } from "@/ui/useButtonFeel";
+import { HUD_CYAN } from "@/ui/hudFrame";
 import { useState, useCallback, useEffect, useRef } from "react";
 import {
   LAYER_ORDER,
@@ -22,7 +23,7 @@ import {
 } from "@/game/config/paperDoll";
 import { profileManager } from "@/game/config/profileManager";
 import { isVariantUnlocked, unlockItem } from "@/game/config/wardrobeUnlocks";
-import { RARITY_LABEL, isPackItem, rarityTheme, tileKindOf, type TileKind } from "@/game/config/packs";
+import { RARITY_LABEL, rarityTheme, tileKindOf, type TileKind } from "@/game/config/packs";
 import { RarityFrame, innerSize } from "@/ui/RarityFrame";
 
 /** The framed item in the reveal. Bigger than a wardrobe tile: the reveal is
@@ -325,8 +326,6 @@ function CategoryIcon({ cat, size }: { cat: LayerCategory; size: number }) {
 const OPTIONAL: LayerCategory[] = ["hat", "accessory", "back"];
 /** Categories the player can take off: they get a None tile first in the grid. */
 const REMOVABLE: LayerCategory[] = ["hat", "hair", "accessory", "back"];
-/** No pack carries these, so no Open Pack tile at the end of their grid. */
-const NO_PACKS: LayerCategory[] = ["hair", "eyesFace", "skin"];
 
 function sameLoadout(a: Loadout, b: Loadout): boolean {
   return LAYER_ORDER.every((cat) => (a[cat] ?? undefined) === (b[cat] ?? undefined));
@@ -487,8 +486,6 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
   /** Twenty swatches have to fit a phone without pushing the styles off screen. */
   const SWATCH = isMobile ? 22 : 26;
   const currentVariantId = loadout[activeCategory];
-  const showPackTile = !NO_PACKS.includes(activeCategory)
-    && variants.some((v) => isPackItem(activeCategory, v.id));
 
   // Reverse so topmost layer (hat) appears first in the tab list, then Face
   // moves up to sit right under Hair (it is drawn near the bottom of the stack
@@ -529,8 +526,10 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
       }}>
 
         {/* ── Header ── */}
+        {/* Three columns, the outer two equal, so the pack button is in the
+            middle of the bar whatever the title and Save happen to measure. */}
         <div style={{
-          display: "flex", alignItems: "center", justifyContent: "space-between",
+          display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center", columnGap: 12,
           padding: isMobile ? "6px 12px" : short ? "7px 20px" : "12px 20px",
           borderBottom: "1px solid rgba(183,233,40,0.12)",
           background: "rgba(183,233,40,0.06)",
@@ -544,7 +543,8 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
               letterSpacing: 2,
             }}>WARDROBE</span>
           </div>
-          <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+          <PackButton onClick={() => setBoosterOpen(true)} />
+          <div style={{ display: "flex", gap: 12, alignItems: "center", justifySelf: "end" }}>
             <SaveButton enabled={dirty} onClick={handleSave} />
             <CloseButton onClick={requestClose} />
           </div>
@@ -812,10 +812,6 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
                     </VariantCard>
                   );
                 })}
-
-                {showPackTile && (
-                  <PackTile tile={TILE} compact={isMobile} onClick={() => setBoosterOpen(true)} />
-                )}
               </div>
             </div>
           </div>
@@ -927,30 +923,37 @@ function PreviewTool({ label, color, disabled = false, onClick, children }: {
   );
 }
 
-/** Last tile of a category's grid: buying a pack right when you want one. */
-function PackTile({ tile, compact, onClick }: { tile: number; compact: boolean; onClick: () => void }) {
+/** In the header, between the title and Save: buying a pack right when you want
+    one. It used to be the last tile of a category's grid, where a long grid hid
+    it. */
+function PackButton({ onClick }: { onClick: () => void }) {
   const feel = useButtonFeel();
+  // Solid, like Save when it is on, so it is the first thing the bar shows; the
+  // hover lifts it brighter than the default step, which on a flat fill is easy
+  // to see.
   return (
-    <button
-      onClick={onClick}
-      title="Open a booster pack"
-      {...feel.handlers}
-      style={chamferBox(10, {
-        display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-        gap: compact ? 3 : 5, padding: compact ? "5px 3px" : "8px 5px",
-        background: "rgba(183,233,40,0.07)",
-        border: "2px dashed rgba(183,233,40,0.55)",
-        color: "#B7E928", cursor: "pointer",
-        fontSize: 8, letterSpacing: 0.5, lineHeight: 1.3,
-        fontFamily: '"Press Start 2P", monospace',
-        ...feelStyle(feel),
-      })}
-    >
-      <span style={{ width: tile, height: tile, display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <PixelImg src="/assets/ui/ico_wardrop.png" size={Math.round(tile * 0.7)} />
-      </span>
-      <span>OPEN PACK</span>
-    </button>
+    <ChamferGlow glow={`drop-shadow(0 0 ${feel.hover ? 10 : 6}px rgba(20,240,198,${feel.hover ? 0.6 : 0.35}))`}>
+      <button
+        onClick={onClick}
+        title="Open a booster pack"
+        {...feel.handlers}
+        style={chamferBox(8, {
+          display: "flex", alignItems: "center", gap: 8,
+          padding: "6px 14px",
+          position: "relative", overflow: "hidden",
+          background: HUD_CYAN,
+          border: "none",
+          color: "#050a14", cursor: "pointer",
+          fontSize: 8, fontWeight: 700, letterSpacing: 1, whiteSpace: "nowrap",
+          fontFamily: '"Press Start 2P", monospace',
+          ...feelStyle(feel, { hoverBrightness: 1.2 }),
+        })}
+      >
+        <PixelImg src="/assets/ui/icon_pack03.png" size={20} />
+        <span>OPEN PACK</span>
+        <span className="sc-shine" aria-hidden="true" />
+      </button>
+    </ChamferGlow>
   );
 }
 

@@ -113,6 +113,23 @@ button:focus-visible {
   .sc-presence .sc-fade, .sc-presence .sc-pop { animation: none !important; }
 }
 
+/* ── A highlight that sweeps across a solid button (ui/WardrobePanel Open Pack) ──
+ * One pass in the first third of the cycle, then still, so the button glints
+ * rather than flickers. The button clips it to its own shape. */
+@keyframes sc-shine {
+  0%        { transform: translateX(-130%) skewX(-20deg); }
+  35%, 100% { transform: translateX(380%) skewX(-20deg); }
+}
+.sc-shine {
+  position: absolute; top: 0; bottom: 0; left: 0; width: 35%;
+  pointer-events: none;
+  background: linear-gradient(90deg, rgba(255,255,255,0), rgba(255,255,255,0.6), rgba(255,255,255,0));
+  animation: sc-shine 3.4s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .sc-shine { animation: none; display: none; }
+}
+
 /* ── Canvas: pixel-art nearest-neighbor scaling ───────────────────────────── */
 /* Forces nearest-neighbor interpolation when the browser CSS-scales the
  * canvas (e.g. on DPR > 1 screens like Retina / high-density Android).
