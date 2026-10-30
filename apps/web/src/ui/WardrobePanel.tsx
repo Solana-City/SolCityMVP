@@ -160,7 +160,7 @@ function AvatarPreview({ loadout, facing = "down", scale = 3 }: { loadout: Loado
         }
         for (const { cat } of effectCats) {
           const fx = getVariant(cat, loadout[cat])!.effect!;
-          const cell = effectCell(fx, performance.now(), null);
+          const cell = effectCell(fx, performance.now());
           ctx.drawImage(offByCategory.get(cat)!, cell * SPRITE_FRAME_WIDTH, rowY, SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT, 0, 0, FW, FH);
         }
       };
@@ -260,7 +260,7 @@ export function ChromaPreview({ file, size, facingUp, crop, hairColor, effect }:
         const dx = (size - w * scale) / 2, dy = (size - h * scale) / 2;
         let shown = -1;
         const paint = () => {
-          const cell = effectCell(effect, performance.now(), null);
+          const cell = effectCell(effect, performance.now());
           if (cell === shown) return;
           shown = cell;
           ctx.clearRect(0, 0, size, size);

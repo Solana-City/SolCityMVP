@@ -808,11 +808,9 @@ export class AvatarSprite {
         // The sheet draws at 0.5 world scale, so a sheet pixel is half a world one.
         sprite.y = -2 - this.hairLift(fx.effect, facing) * 0.5;
       }
-      // Walking, the body's own frame picks the cell, so the effect moves with
-      // the head. Standing, effectCell plays the whole sheet on the clock.
-      const body = this.layerSprites.get("skin");
-      const walkPhase = this.isWalking && body ? Number(body.frame.name) % SPRITE_COLS : null;
-      const frame = fx.row * frames + effectCell(fx.effect, now, walkPhase);
+      // The sheet has the animation for every angle and ignores the walk: the
+      // clock picks the cell, the facing picks the row.
+      const frame = fx.row * frames + effectCell(fx.effect, now);
       if (frame !== fx.shown) {
         fx.shown = frame;
         sprite.setFrame(frame);

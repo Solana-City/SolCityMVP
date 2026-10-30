@@ -98,15 +98,6 @@ export interface LayerVariant {
      * the bare head, so a tall style does not poke through the effect.
      */
     clearsHair?: boolean;
-    /**
-     * The sheet is groups of SPRITE_COLS cells, each group one walk cycle of
-     * the body it rides on. The cell inside a group is the body's own walk
-     * frame, so the effect moves with the head instead of beside it; `fps`
-     * then sets how fast the groups themselves change (one every
-     * SPRITE_COLS / fps seconds). Only while the body walks: standing still
-     * the whole loop plays at `fps` cells a second.
-     */
-    followsWalk?: boolean;
   };
 }
 
@@ -127,26 +118,15 @@ export const SPRITE_ROWS = 4;
 /**
  * Which cell of an effect sheet to show at `nowMs`.
  *
- * `walkPhase` is the body's own walk frame (0..SPRITE_COLS-1) while it walks,
- * and null standing or in a preview. A sheet with `followsWalk` is groups of
- * SPRITE_COLS cells, each one walk cycle: the clock picks the group and the
- * body picks the cell in it, so the effect moves with the head. Standing, the
- * whole sheet plays on the clock at `fps`, which is how the artist drew it.
+ * The sheet carries the whole animation for every angle, and it does not care
+ * whether the body walks: the clock walks the cells at `fps`, and the facing
+ * only picks the ROW. So a turn changes the picture and keeps the rhythm.
  *
  * One rule for the game, the wardrobe tile and the large preview, so the three
  * cannot drift apart.
  */
-export function effectCell(
-  effect: NonNullable<LayerVariant["effect"]>,
-  nowMs: number,
-  walkPhase: number | null,
-): number {
-  const step = Math.floor((nowMs / 1000) * effect.fps);
-  if (effect.followsWalk && walkPhase !== null) {
-    const group = Math.floor(step / SPRITE_COLS) % (effect.frames / SPRITE_COLS);
-    return group * SPRITE_COLS + walkPhase;
-  }
-  return step % effect.frames;
+export function effectCell(effect: NonNullable<LayerVariant["effect"]>, nowMs: number): number {
+  return Math.floor((nowMs / 1000) * effect.fps) % effect.frames;
 }
 
 export const DIRECTION_ROW: Record<Direction, number> = {
@@ -385,7 +365,7 @@ export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
       hatCoverage: "band", unlockVia: "quest", unlockHint: "Test item",
       // DOM's timing: 150 ms a cell, so a 3.6 s loop. Read off the clock (see
       // AvatarSprite.tickEffects), so it holds whatever the frame rate does.
-      effect: { frames: 24, fps: 1000 / 150, clearsHair: true, followsWalk: true } },
+      effect: { frames: 24, fps: 1000 / 150, clearsHair: true } },
     // The second effect sheet, and the first that is a crown rather than a
     // halo: 48 cells a row, twelve walk cycles drawn over the body, in the same
     // place as the static Crown above. Appended AFTER the Halo on purpose (an
@@ -395,7 +375,7 @@ export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
     // the hair between them and left bare skin showing through the crown.
     { id: "Royal_crown", name: "Royal Crown", textureKey: "pd-hat-Royal_crown", file: "hat/Royal_crown.png",
       hatCoverage: "band", unlockVia: "quest", unlockHint: "Test item",
-      effect: { frames: 48, fps: 1000 / 150, followsWalk: true } },
+      effect: { frames: 48, fps: 1000 / 150 } },
     // The colourway caps, 2026-10-30. Appended, never inserted: a booster
     // item's catalog index is its position in this lane, and a wallet owns
     // the index, not the name.
