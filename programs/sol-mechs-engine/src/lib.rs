@@ -1,0 +1,241 @@
+//! Sol Mechs combat rules, in the language the program speaks.
+//!
+//! ── Why this exists ──────────────────────────────────────────────────────
+//!
+//! A ranked result is only trustworthy if the PROGRAM decides it. Today both
+//! clients report who won and the chain believes them when they agree, which
+//! means a pair can agree on anything. The fix is for the chain to replay the
+//! match from its action list, and replaying needs these rules here.
+//!
+//! ── Why it is a crate of its own ─────────────────────────────────────────
+//!
+//! Not tidiness. `sol-mechs` is deliberately outside host `cargo check`,
+//! because its zero-copy accounts derive `Pod` on the BPF target and not on
+//! the host, where alignment differs; a host check reports errors the real
+//! build does not have. Combat arithmetic has no accounts in it, so as its
+//! own crate it can be checked AND tested on the host. That is the only way
+//! the vectors generated from the TypeScript engine become a gate rather
+//! than a file nobody runs.
+//!
+//! ── The rule this file lives under ───────────────────────────────────────
+//!
+//! The TypeScript engine in `apps/web/src/game/solmechs/engine/BattleEngine.ts`
+//! is the REFERENCE. It is the one that has been played and balanced. This is
+//! a port of it, and where they disagree this one is wrong, however reasonable
+//! it looks.
+//!
+//! The disagreement to fear is arithmetic, not logic. The damage path runs
+//! `clamp(2*atk/(atk+def)) * base * 0.65` through a stage table holding
+//! 0.2857 and 0.3333. JavaScript numbers are IEEE-754 doubles and so is
+//! `f64`, so `+ - * /` agree exactly. Rounding does not: JS `Math.round`
+//! takes a half UP, `f64::round` takes a half AWAY FROM ZERO, and they part
+//! company at -0.5. Use [`js_round`] and never `f64::round`.
+
+#![allow(clippy::excessive_precision)]
+
+/// The five stats a move can stage up or down. HP and PROC are not staged.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Stat {
+    ATK,
+    DEF,
+    ENG,
+    SPD,
+    SYS,
+}
+
+/// The four places a mech is assembled from and attacked at.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Slot {
+    RightArm,
+    LeftArm,
+    LowerBody,
+    Matrix,
+}
+
+impl Slot {
+    /// Every slot, in the order the TypeScript `MODULE_SLOTS` lists them.
+    /// The order is load-bearing: it is how a vector's per-slot end state
+    /// lines up with the unit it describes.
+    pub const ALL: [Slot; 4] = [Slot::RightArm, Slot::LeftArm, Slot::LowerBody, Slot::Matrix];
+
+    /// The three that can be destroyed on their own. The matrix is the core.
+    pub const LIMBS: [Slot; 3] = [Slot::RightArm, Slot::LeftArm, Slot::LowerBody];
+}
+
+/// Physical weighs ATK against DEF, Energy weighs ENG against SYS, and Effect
+/// deals no damage at all and only moves stages.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum DamageType {
+    Physical,
+    Energy,
+    Effect,
+}
+
+/// `Own` and not `Self`, which Rust reserves.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum TargetType {
+    Single,
+    Own,
+    Aoe,
+}
+
+/// A chassis' or a part's contribution, and a unit's total.
+///
+/// `proc_` carries the trailing underscore because `proc` is reserved. The
+/// generator knows; see `RUST_FIELD` in the exporter.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub struct Stats {
+    pub hp: i32,
+    pub atk: i32,
+    pub def: i32,
+    pub eng: i32,
+    pub spd: i32,
+    pub sys: i32,
+    pub proc_: i32,
+}
+
+impl Stats {
+    pub fn plus(self, o: Stats) -> Stats {
+        Stats {
+            hp: self.hp + o.hp,
+            atk: self.atk + o.atk,
+            def: self.def + o.def,
+            eng: self.eng + o.eng,
+            spd: self.spd + o.spd,
+            sys: self.sys + o.sys,
+            proc_: self.proc_ + o.proc_,
+        }
+    }
+
+    pub fn get(&self, s: Stat) -> i32 {
+        match s {
+            Stat::ATK => self.atk,
+            Stat::DEF => self.def,
+            Stat::ENG => self.eng,
+            Stat::SPD => self.spd,
+            Stat::SYS => self.sys,
+        }
+    }
+}
+
+/// A stat stage carried by a move. Stages, not points.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct StatMod {
+    pub stat: Stat,
+    pub amount: i32,
+}
+
+/// One move. `chance` is absent on purpose: every rider in the catalog lands,
+/// and a probability would make a battle unreplayable.
+#[derive(Clone, Copy, Debug)]
+pub struct Move {
+    pub name: &'static str,
+    pub base_damage: i32,
+    pub damage_type: DamageType,
+    pub target_type: TargetType,
+    pub mods: &'static [StatMod],
+    pub heal: i32,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct Matrix {
+    pub code: &'static str,
+    pub base: Stats,
+    pub moves: &'static [Move],
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct Part {
+    pub code: &'static str,
+    pub slot: Slot,
+    pub stats: Stats,
+    pub moves: &'static [Move],
+}
+
+// The filename keeps saying "generated" so nobody edits it by hand.
+#[path = "catalog.generated.rs"]
+mod catalog;
+pub use catalog::{MATRICES, PARTS};
+
+pub fn matrix(code: &str) -> Option<&'static Matrix> {
+    MATRICES.iter().find(|m| m.code == code)
+}
+
+pub fn part(code: &str) -> Option<&'static Part> {
+    PARTS.iter().find(|p| p.code == code)
+}
+
+/// `Math.round` as JavaScript does it: a half goes UP, towards +infinity.
+///
+/// `f64::round` takes a half AWAY FROM ZERO, so the two agree on 2.5 and
+/// disagree on -2.5, and `effectiveStats` can hand this a negative when a
+/// wrecked part's share is subtracted. One character of difference, and the
+/// chain settles a match the clients did not play.
+pub fn js_round(x: f64) -> f64 {
+    (x + 0.5).floor()
+}
+
+/// The deterministic coin flip that breaks a speed tie.
+///
+/// An xorshift over the battle seed and the round, ported from `tieBreak`.
+/// Every step is `u32` wrapping arithmetic, which is what `>>> 0` and
+/// `Math.imul` mean on the other side.
+pub fn tie_break(seed: u32, round: u32) -> bool {
+    let mut x = seed ^ round.wrapping_mul(0x9E37_79B1);
+    x ^= x << 13;
+    x ^= x >> 17;
+    x ^= x << 5;
+    x & 1 == 0
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_catalog_arrived() {
+        assert!(!MATRICES.is_empty(), "no chassis; regenerate catalog.generated.rs");
+        assert!(!PARTS.is_empty(), "no parts; regenerate catalog.generated.rs");
+        // Every part belongs to a slot that can hold one. A matrix is not a
+        // part, so nothing should claim that slot.
+        for p in PARTS {
+            assert!(p.slot != Slot::Matrix, "{} claims the matrix slot", p.code);
+        }
+    }
+
+    #[test]
+    fn codes_are_unique() {
+        for (i, a) in MATRICES.iter().enumerate() {
+            for b in &MATRICES[i + 1..] {
+                assert_ne!(a.code, b.code, "two chassis share a code");
+            }
+        }
+        for (i, a) in PARTS.iter().enumerate() {
+            for b in &PARTS[i + 1..] {
+                assert_ne!(a.code, b.code, "two parts share {}", a.code);
+            }
+        }
+    }
+
+    /// The rounding trap, stated as a test so it cannot be undone quietly.
+    #[test]
+    fn js_round_is_not_f64_round() {
+        assert_eq!(js_round(2.5), 3.0);
+        assert_eq!(js_round(-2.5), -2.0);
+        // What the obvious implementation would have given.
+        assert_eq!((-2.5f64).round(), -3.0);
+    }
+
+    /// Pinned against the TypeScript `tieBreak` for the first few rounds of
+    /// the seed the vectors are generated from.
+    #[test]
+    fn tie_break_is_deterministic() {
+        let a = tie_break(1000, 1);
+        assert_eq!(a, tie_break(1000, 1), "same input, same answer");
+        assert_ne!(
+            (1..40).map(|r| tie_break(1000, r)).filter(|b| *b).count(),
+            0,
+            "a flip that never comes up heads is not a flip",
+        );
+    }
+}

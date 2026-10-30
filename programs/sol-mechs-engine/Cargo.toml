@@ -1,0 +1,16 @@
+[package]
+name = "sol-mechs-engine"
+version = "0.1.0"
+description = "Sol Mechs combat rules: the half of the game a program can verify"
+edition = "2021"
+
+# A library and nothing else. No cdylib, no entrypoint, no Anchor, no
+# accounts: this crate is arithmetic. That is what lets the host check and
+# test it, which `sol-mechs` itself cannot do -- its zero-copy accounts derive
+# Pod on the BPF target and not on the host, so it is excluded from
+# `cargo check` and would take the vector tests out of CI with it.
+[lib]
+crate-type = ["lib"]
+name = "sol_mechs_engine"
+
+[dependencies]

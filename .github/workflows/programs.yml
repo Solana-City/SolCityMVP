@@ -30,18 +30,23 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      # sol-city only. sol-mechs has zero-copy accounts whose Pod derive holds
-      # on the BPF target and not on the host, where alignment differs, so a
-      # host check reports errors that the real build does not have. It is
-      # covered by build-sbf below, which compiles for the target that ships.
+      # Not sol-mechs. Its zero-copy accounts derive Pod on the BPF target and
+      # not on the host, where alignment differs, so a host check reports
+      # errors that the real build does not have. It is covered by build-sbf
+      # below, which compiles for the target that ships.
+      #
+      # sol-mechs-engine IS here, and that is the whole reason it is a crate
+      # of its own: combat arithmetic has no accounts in it, so the host can
+      # check and test it, and the vectors ported from the TypeScript engine
+      # become a gate instead of a file nobody runs.
       - name: Check every crate
-        run: cargo check --locked -p sol-city -p sol-city-collectibles -p sol-city-catalog
+        run: cargo check --locked -p sol-city -p sol-city-collectibles -p sol-city-catalog -p sol-mechs-engine
       # The catalog crate names the collectibles program id and pins the
       # UnlockState discriminator, both of which are one fact written in two
       # places. These tests are what make that safe rather than hopeful, so
       # they are a gate and not a warning.
       - name: Tests
-        run: cargo test --locked -p sol-city-catalog -p sol-city-collectibles
+        run: cargo test --locked -p sol-city-catalog -p sol-city-collectibles -p sol-mechs-engine
       - name: Warnings, reported but not fatal
         run: cargo clippy --locked -p sol-city -p sol-city-collectibles -p sol-city-catalog -- -W clippy::all || true
 

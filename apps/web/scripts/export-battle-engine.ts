@@ -124,9 +124,17 @@ function play(p1: MechBuild, p2: MechBuild, seed: number, maxRounds: number) {
 
 const STAT_ORDER = ["HP", "ATK", "DEF", "ENG", "SPD", "SYS", "PROC"] as const;
 
+/** `proc` is a reserved word in Rust, so the field carries the trailing _. */
+const RUST_FIELD: Record<(typeof STAT_ORDER)[number], string> = {
+  HP: "hp", ATK: "atk", DEF: "def", ENG: "eng", SPD: "spd", SYS: "sys", PROC: "proc_",
+};
+
 function rustStats(b: StatBlock): string {
-  return `Stats { ${STAT_ORDER.map((k) => `${k.toLowerCase()}: ${b[k]}`).join(", ")} }`;
+  return `Stats { ${STAT_ORDER.map((k) => `${RUST_FIELD[k]}: ${b[k]}`).join(", ")} }`;
 }
+
+/** `Self` is a reserved word too, so the self-target variant is `Own`. */
+const RUST_TARGET: Record<string, string> = { single: "Single", self: "Own", aoe: "Aoe" };
 
 function rustMove(m: MoveDefinition): string {
   const mods = m.statModifiers
@@ -137,7 +145,7 @@ function rustMove(m: MoveDefinition): string {
     `name: ${JSON.stringify(m.name)},`,
     `base_damage: ${m.baseDamage},`,
     `damage_type: DamageType::${m.damageType},`,
-    `target_type: TargetType::${m.targetType[0].toUpperCase()}${m.targetType.slice(1)},`,
+    `target_type: TargetType::${RUST_TARGET[m.targetType]},`,
     `mods: &[${mods}],`,
     `heal: ${m.healAmount ?? 0},`,
     "}",
