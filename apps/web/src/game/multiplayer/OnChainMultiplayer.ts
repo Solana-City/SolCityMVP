@@ -2723,6 +2723,18 @@ export class OnChainMultiplayer {
     void syncHeldToWardrobe(this.baseConnection, wallet);
   }
 
+  /**
+   * Copies what the wallet owns into the snapshot the program checks.
+   *
+   * Sent to WHICHEVER LAYER holds the player PDA. It used to always go to
+   * base, which is right only before delegation: a delegated PDA cannot be
+   * written there, so a call later in the session was a transaction that
+   * quietly did nothing.
+   *
+   * The rollup can read UnlockState even though it is on base and never
+   * delegated, measured 2026-10-31 with a control; the validator clones it.
+   * That is what lets this run mid-session at all.
+   */
   private async syncUnlocksOnBase(wallet: PublicKey): Promise<void> {
     try {
       // ONE fetch, two jobs. The account is read here anyway to decide
@@ -2743,16 +2755,21 @@ export class OnChainMultiplayer {
 
       if (!info) return;
       const sessionKey = this.sessionKeys.getSessionPublicKey();
-      const { blockhash } = await this.baseRpcWithRetry(
-        () => this.baseConnection.getLatestBlockhash(),
-      );
+      // The player PDA is the account being WRITTEN, so its layer decides.
+      const onRollup = this.useEphemeral;
+      const conn = onRollup ? this.ephemeralConnection : this.baseConnection;
+      const { blockhash } = onRollup
+        ? await conn.getLatestBlockhash()
+        : await this.baseRpcWithRetry(() => conn.getLatestBlockhash());
       const tx = new Transaction({ recentBlockhash: blockhash, feePayer: sessionKey })
         .add(buildSyncUnlocksIx(wallet, sessionKey));
       this.sessionKeys.signTransaction(tx);
-      const sig = await this.baseRpcWithRetry(
-        () => this.baseConnection.sendRawTransaction(tx.serialize(), { skipPreflight: true }),
+      const send = () => conn.sendRawTransaction(tx.serialize(), { skipPreflight: true });
+      const sig = onRollup ? await send() : await this.baseRpcWithRetry(send);
+      console.log(
+        `[Multiplayer] unlocks synced to the wardrobe snapshot on `
+        + `${onRollup ? "the rollup" : "base"}: ${sig.slice(0, 12)}`,
       );
-      console.log(`[Multiplayer] unlocks synced to the wardrobe snapshot: ${sig.slice(0, 12)}`);
     } catch (err: any) {
       console.warn("[Multiplayer] sync_unlocks skipped:", err?.message);
     }

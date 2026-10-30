@@ -663,10 +663,22 @@ export function buildInitUnlockStateIx(authority: PublicKey): TransactionInstruc
  *
  * The snapshot is what `update_look_session` checks a loadout against, and it
  * is a COPY, not a reference: an unlock earned after the last sync is not
- * wearable until the next one. So this runs on BASE before delegating, which
- * is the last moment both accounts are writable in the same place -
- * UnlockState is never delegated, and a delegated player PDA can only be
- * written on the rollup.
+ * wearable until the next one.
+ *
+ * ── It runs on EITHER layer, measured 2026-10-31 ──────────────────────
+ *
+ * This used to say it had to run on base before delegating, because
+ * UnlockState is never delegated and a delegated player PDA can only be
+ * written on the rollup. The second half is true; the conclusion was not.
+ *
+ * A rollup transaction CAN read a base account that is not delegated: the
+ * validator clones it. `scripts/er-reads-base-smoke.ts` proves it with a
+ * control, running this very instruction on the rollup first with no
+ * UnlockState in existence, which Anchor rejects, and then with one, which
+ * lands.
+ *
+ * So a pack bought mid-session no longer waits for an undelegate. Send this
+ * to whichever layer holds the player PDA and the item is wearable at once.
  *
  * Session-signed, so no wallet popup. A wallet with no UnlockState yet has
  * nothing to sync and this fails; send buildInitUnlockStateIx first, once.

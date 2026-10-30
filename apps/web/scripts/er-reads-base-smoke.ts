@@ -35,6 +35,7 @@
  * Spends ~0.06 devnet SOL and leaves a throwaway wallet behind.
  */
 import { readFileSync } from "fs";
+import bs58 from "bs58";
 import {
   Connection, Keypair, LAMPORTS_PER_SOL, PublicKey, SystemProgram, Transaction,
   sendAndConfirmTransaction,
@@ -52,8 +53,20 @@ const ER = ER_VALIDATORS.find((v) => v.id === "as") ?? ER_VALIDATORS[0];
 const base = new Connection(BASE, "confirmed");
 const er = new Connection(ER.rpc, "confirmed");
 
+/**
+ * A keypair from a file, in either shape the project keeps them in.
+ *
+ * `solana-keygen` writes a JSON array of 64 bytes; a wallet export is the
+ * same 64 bytes in base58 on one line. Reading both means the caller passes
+ * whichever file they have rather than converting one by hand, which is a
+ * step where a private key ends up on a clipboard.
+ */
 function load(path: string): Keypair {
-  return Keypair.fromSecretKey(Uint8Array.from(JSON.parse(readFileSync(path, "utf8"))));
+  const raw = readFileSync(path, "utf8").trim();
+  const bytes = raw.startsWith("[")
+    ? Uint8Array.from(JSON.parse(raw) as number[])
+    : bs58.decode(raw);
+  return Keypair.fromSecretKey(bytes);
 }
 
 /** Sends to the rollup and reports what came back, without throwing. */
