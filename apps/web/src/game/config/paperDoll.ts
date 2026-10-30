@@ -203,7 +203,11 @@ export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
   ],
   eyesFace: [
     { id: "Happy",        name: "Happy",        textureKey: "pd-eyesFace-Happy",        file: "eyesFace/Happy.png" },
-    { id: "Terminator",   name: "Terminator",   textureKey: "pd-eyesFace-Terminator",   file: "eyesFace/Terminator.png" },
+    // Retired 2026-10-30: the Cyber Visor accessory does this, and better,
+    // without taking over the whole face. Disabled rather than deleted,
+    // because deleting it would renumber every face after it and a catalog
+    // index is what a wallet owns.
+    { id: "Terminator",   name: "Terminator",   textureKey: "pd-eyesFace-Terminator",   file: "eyesFace/Terminator.png", enabled: false },
     { id: "Normal_blue",  name: "Normal Blue",  textureKey: "pd-eyesFace-Normal_blue",  file: "eyesFace/Normal_blue.png" },
     { id: "Normal_green", name: "Normal Green", textureKey: "pd-eyesFace-Normal_green", file: "eyesFace/Normal_green.png" },
     { id: "Normal_grey",  name: "Normal Grey",  textureKey: "pd-eyesFace-Normal_grey",  file: "eyesFace/Normal_grey.png" },
@@ -300,7 +304,10 @@ export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
   // anyone who had one on. The names dropped their colour for the same reason:
   // "Black Hair" is wrong the moment it can be pink.
   hair: [
-    { id: "Avatar",      name: "Avatar",     textureKey: "pd-hair-Avatar",      file: "hair/Avatar.png" },
+    // "Arrow Tattoo" and not "Avatar": it is a mark on the head, not a
+    // hairstyle, and the old name said nothing about it. The ID stays, because
+    // the id is what the catalog index and every saved loadout are built from.
+    { id: "Avatar",      name: "Arrow Tattoo", textureKey: "pd-hair-Avatar",      file: "hair/Avatar.png" },
     { id: "Black_hair",  name: "Short Hair", textureKey: "pd-hair-Black_hair",  file: "hair/Black_hair.png" },
     // Re-enabled: AvatarSprite.ts's hair masking now clips per column against
     // the hat's own silhouette (not just a single row-wide cutoff), which
