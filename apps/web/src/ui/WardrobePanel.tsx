@@ -16,6 +16,7 @@ import {
   effectCell,
   type LayerVariant,
   isFreeItem,
+  isFreeInShippedGame,
   unlockHintFor,
   SPRITE_FRAME_WIDTH,
   SPRITE_FRAME_HEIGHT,
@@ -34,7 +35,7 @@ import BoosterOverlay from "@/ui/BoosterOverlay";
 import {
   HAIR_COLORS, defaultColorFor, recolorHairCanvas,
 } from "@/game/config/hairPalette";
-import { chamferBox, solidColor } from "@/ui/chamfer";
+import { chamferBox } from "@/ui/chamfer";
 import ChamferGlow from "@/ui/ChamferGlow";
 import MintSection from "@/ui/MintSection";
 import { useViewportBox, overlayBox } from "@/ui/useViewportBox";
@@ -474,7 +475,13 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
   useEscape(requestClose);
   useEscape(() => setConfirmLeave(false), confirmLeave);
 
-  const variants = getEnabledVariants(activeCategory);
+  // The free items (Blue Pants, Black Hat...) lead, right after None; what a
+  // pack, quest or event grants follows, whether or not it is owned yet, so a
+  // tile never jumps when something unlocks. Stable: catalog order otherwise.
+  const variants = getEnabledVariants(activeCategory)
+    .map(v => ({ v, free: isFreeInShippedGame(activeCategory, v.id) }))
+    .sort((a, b) => Number(b.free) - Number(a.free))
+    .map(({ v }) => v);
   // The colour the worn style is actually drawn in: an explicit pick, else the
   // swatch its own sheet uses. Every hair tile in the grid previews in this, so
   // picking a colour recolours the whole row at once.
@@ -482,7 +489,7 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
   // The item art, not the card. It is drawn CROPPED to the item itself (a hat
   // is a dozen pixels at the top of a 64px character frame), so this is the
   // size the hat actually gets — which is why it can be this big.
-  const TILE = isMobile ? 52 : 68;
+  const TILE = isMobile ? 60 : 88;
   /** Twenty swatches have to fit a phone without pushing the styles off screen. */
   const SWATCH = isMobile ? 22 : 26;
   const currentVariantId = loadout[activeCategory];
@@ -731,7 +738,7 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
             <div style={{ flex: 1, overflowY: "auto", padding: isMobile ? "8px 10px" : "12px 14px" }}>
               <div style={{
                 display: "grid",
-                gridTemplateColumns: `repeat(auto-fill, minmax(${isMobile ? 74 : 96}px, 1fr))`,
+                gridTemplateColumns: `repeat(auto-fill, minmax(${isMobile ? 82 : 104}px, 1fr))`,
                 gap: isMobile ? 5 : 8,
               }}>
                 {/* None, first, wherever the item can be taken off */}
@@ -742,11 +749,12 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
                     compact={isMobile}
                     onClick={() => selectVariant(activeCategory, undefined)}
                   >
-                    <div style={{
-                      width: TILE, height: TILE,
-                      display: "flex", alignItems: "center", justifyContent: "center",
-                      color: "#333344", fontSize: 22,
-                    }}>∅</div>
+                    <div style={{ position: "relative", lineHeight: 0 }}>
+                      <PlainTile size={TILE}>
+                        <span style={{ color: "#333344", fontSize: 22 }}>∅</span>
+                      </PlainTile>
+                      {!currentVariantId && <SelectRing kind={null} compact={isMobile} />}
+                    </div>
                     <span style={{ color: !currentVariantId ? "#B7E928" : "#444466" }}>None</span>
                   </VariantCard>
                 )}
@@ -777,16 +785,24 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
                             drawn at TILE and the item shrinks to fit inside
                             it, so the grid is laid out exactly as before and
                             a collectible gains a frame rather than space. */}
-                        <RarityFrame kind={kind} size={TILE}>
-                          <ChromaPreview
-                            file={v.file}
-                            size={kind ? innerSize(TILE) : TILE}
-                            facingUp={activeCategory === "back"}
-                            crop
-                            effect={v.effect}
-                            hairColor={activeCategory === "hair" ? wornHairColor : undefined}
-                          />
-                        </RarityFrame>
+                        {(() => {
+                          const art = (size: number) => (
+                            <ChromaPreview
+                              file={v.file}
+                              size={size}
+                              facingUp={activeCategory === "back"}
+                              crop
+                              effect={v.effect}
+                              hairColor={activeCategory === "hair" ? wornHairColor : undefined}
+                            />
+                          );
+                          return kind
+                            ? <RarityFrame kind={kind} size={TILE}>{art(innerSize(TILE))}</RarityFrame>
+                            : <PlainTile size={TILE}>{art(TILE - 8)}</PlainTile>;
+                        })()}
+                        {/* The selection frame hugs the item's own frame and is
+                            drawn outside it, so picking never moves the tile. */}
+                        {isSelected && !locked && <SelectRing kind={kind} compact={isMobile} />}
                         {locked && (
                           <span style={chamferBox(6, {
                             position: "absolute", inset: 0,
@@ -807,7 +823,11 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
                           letterSpacing: 0.5,
                           textAlign: "center",
                           lineHeight: 1.4,
-                        }}>{unlockHintFor(v)}</span>
+                          display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 3,
+                        }}>
+                          {!v.unlockHint && <PixelImg src="/assets/ui/icon_pack02.png" size={10} />}
+                          {unlockHintFor(v)}
+                        </span>
                       )}
                     </VariantCard>
                   );
@@ -977,25 +997,43 @@ function DialogButton({ primary = false, onClick, children }: { primary?: boolea
   );
 }
 
-/** Frame weight. Selection is WEIGHT, not hue: the frame keeps the item's
- *  own rarity colour and simply doubles, because a lime accent in a grid of
- *  four rarity colours competes with them instead of standing out. */
-const BORDER = 2;
-const SELECTED_BORDER = 4;
-
 /**
- * One option in the grid. The card's own frame IS the rarity, or the badge of
- * where the item came from: colour and tint come from rarityTheme()
- * (game/collections/seasons.ts, the one place these colours are authored), so
- * there is no second box drawn inside it.
+ * One option in the grid. The card itself is bare: the art above the title is
+ * the tile (a rarity frame, or a neutral box for an item with none), and the
+ * selection frame is drawn round that art by the grid, so every tile has the
+ * same size and the title always sits outside it.
  *
- * `kind: null` is an item that is neither sold nor earned, which is every
- * free one, and it keeps the neutral frame the grid has always had.
- *
- * Selection still wins the frame while it lasts: only one tile per category
- * is selected, and losing its rarity colour for as long as it is worn beats
- * making "which one am I wearing" a guess.
+ * Tapping a locked tile only flashes its hint text (and nudges the tile); the
+ * hover is the only outline a locked tile has.
  */
+/** The frame round the art of the worn tile, drawn outside it so picking never
+ *  moves anything. */
+function SelectRing({ kind, compact }: { kind: TileKind | null; compact: boolean }) {
+  return (
+    <span aria-hidden style={chamferBox(6, {
+      position: "absolute",
+      inset: compact ? -2 : -3,
+      border: `${compact ? 2 : 3}px solid ${kind ? rarityTheme(kind).strong : "#B7E928"}`,
+      background: "transparent",
+      pointerEvents: "none",
+    })} />
+  );
+}
+
+/** The stand-in for a rarity frame on an item with none (None, Black Hat...),
+ *  the same size as one, so the whole grid reads as one set of tiles. */
+function PlainTile({ size, children }: { size: number; children: React.ReactNode }) {
+  const theme = rarityTheme(null);
+  return (
+    <div style={chamferBox(6, {
+      width: size, height: size, boxSizing: "border-box",
+      display: "flex", alignItems: "center", justifyContent: "center",
+      border: `2px solid ${theme.color}`,
+      background: theme.fill,
+    })}>{children}</div>
+  );
+}
+
 function VariantCard({
   isSelected, isFlashing, locked = false, hintFlashing = false, compact = false, kind = null, onClick, children,
 }: {
@@ -1008,24 +1046,6 @@ function VariantCard({
   onClick: () => void;
   children: React.ReactNode;
 }) {
-  const theme = rarityTheme(kind);
-  // A tile with a drawn frame already wears its rarity, in the same colour.
-  // Tinting the card behind it would put a second border of the same hue
-  // around the first, which is the one thing this grid has always avoided.
-  // Selection still wins, because WHICH ONE AM I WEARING beats tidiness.
-  const framed = kind !== null;
-  const baseBg = locked
-    ? "rgba(255,255,255,0.015)"
-    : isSelected ? theme.fillStrong
-    : isFlashing ? "rgba(183,233,40,0.08)"
-    : framed ? "transparent"
-    : theme.fill;
-  const baseBorder = hintFlashing
-    ? `${BORDER}px solid rgba(255,215,0,0.6)`
-    : locked ? `${BORDER}px solid ${theme.muted}`
-    : isSelected ? `${SELECTED_BORDER}px solid ${theme.strong}`
-    : framed ? `${BORDER}px solid transparent`
-    : `${BORDER}px solid ${theme.color}`;
   return (
     <button
       onClick={onClick}
@@ -1035,35 +1055,21 @@ function VariantCard({
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
-        gap: compact ? 3 : 5,
-        padding: isSelected
-          ? (compact ? "3px 1px" : "6px 3px")
-          : (compact ? "5px 3px" : "8px 5px"),
-        background: baseBg,
-        border: baseBorder,
+        gap: compact ? 5 : 8,
+        padding: compact ? "5px 3px" : "8px 5px",
+        background: "transparent",
+        border: "2px solid transparent",
         cursor: "pointer",
         fontSize: 8,
         fontFamily: '"Press Start 2P", monospace',
         opacity: locked ? 0.6 : 1,
-        transition: "background 0.15s, border-color 0.15s, transform 0.1s",
+        transition: "transform 0.1s",
         transform: isFlashing || hintFlashing ? "scale(1.04)" : "scale(1)",
         outline: isFlashing ? "2px solid rgba(183,233,40,0.5)" : "none",
         outlineOffset: 2,
       })}
-      onMouseEnter={e => {
-        if (!isSelected && !locked) {
-          // Hover brightens the item's own colour rather than washing it lime,
-          // so it previews what picking the tile would look like.
-          e.currentTarget.style.backgroundColor = theme.fillStrong;
-          e.currentTarget.style.setProperty("--cbc", solidColor(theme.strong));
-        }
-        e.currentTarget.style.transform = "scale(1.03)";
-      }}
+      onMouseEnter={e => { e.currentTarget.style.transform = "scale(1.03)"; }}
       onMouseLeave={e => {
-        if (!isSelected && !locked) {
-          e.currentTarget.style.backgroundColor = framed ? "transparent" : theme.fill;
-          e.currentTarget.style.setProperty("--cbc", solidColor(theme.color));
-        }
         e.currentTarget.style.transform = isFlashing || hintFlashing ? "scale(1.04)" : "scale(1)";
       }}
       onPointerDown={e => { if (!locked) e.currentTarget.style.transform = "scale(0.96)"; }}

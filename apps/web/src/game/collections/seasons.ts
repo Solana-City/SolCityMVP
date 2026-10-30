@@ -68,7 +68,7 @@ export const RARITY_LABEL: Record<TileKind, string> = {
  */
 export const RARITY_COLOR: Record<Rarity, string> = {
   common: "#8A8AA7",
-  uncommon: "#14F195",
+  uncommon: "#3ec54b",
   rare: "#3D8BFF",
   legendary: "#B15CFF",
 };
