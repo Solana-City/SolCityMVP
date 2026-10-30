@@ -1,0 +1,29 @@
+{
+  "name": "Steampunk Goggles",
+  "symbol": "SCC",
+  "description": "UNCOMMON accessory from Sol City.",
+  "image": "https://solanacity.io/collectibles/11781.gif",
+  "attributes": [
+    {
+      "trait_type": "Rarity",
+      "value": "UNCOMMON"
+    },
+    {
+      "trait_type": "Slot",
+      "value": "accessory"
+    },
+    {
+      "trait_type": "Season",
+      "value": "1"
+    }
+  ],
+  "properties": {
+    "files": [
+      {
+        "uri": "https://solanacity.io/collectibles/11781.gif",
+        "type": "image/gif"
+      }
+    ],
+    "category": "image"
+  }
+}

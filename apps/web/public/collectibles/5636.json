@@ -1,0 +1,29 @@
+{
+  "name": "Green Pants",
+  "symbol": "SCC",
+  "description": "COMMON pants from Sol City.",
+  "image": "https://solanacity.io/collectibles/5636.gif",
+  "attributes": [
+    {
+      "trait_type": "Rarity",
+      "value": "COMMON"
+    },
+    {
+      "trait_type": "Slot",
+      "value": "pants"
+    },
+    {
+      "trait_type": "Season",
+      "value": "1"
+    }
+  ],
+  "properties": {
+    "files": [
+      {
+        "uri": "https://solanacity.io/collectibles/5636.gif",
+        "type": "image/gif"
+      }
+    ],
+    "category": "image"
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "name": "Demon Wings",
+  "symbol": "SCC",
+  "description": "RARE back from Sol City.",
+  "image": "https://solanacity.io/collectibles/9732.gif",
+  "attributes": [
+    {
+      "trait_type": "Rarity",
+      "value": "RARE"
+    },
+    {
+      "trait_type": "Slot",
+      "value": "back"
+    },
+    {
+      "trait_type": "Season",
+      "value": "1"
+    }
+  ],
+  "properties": {
+    "files": [
+      {
+        "uri": "https://solanacity.io/collectibles/9732.gif",
+        "type": "image/gif"
+      }
+    ],
+    "category": "image"
+  }
+}

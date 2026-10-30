@@ -1,0 +1,29 @@
+{
+  "name": "Cyber Visor",
+  "symbol": "SCC",
+  "description": "RARE accessory from Sol City.",
+  "image": "https://solanacity.io/collectibles/11785.gif",
+  "attributes": [
+    {
+      "trait_type": "Rarity",
+      "value": "RARE"
+    },
+    {
+      "trait_type": "Slot",
+      "value": "accessory"
+    },
+    {
+      "trait_type": "Season",
+      "value": "1"
+    }
+  ],
+  "properties": {
+    "files": [
+      {
+        "uri": "https://solanacity.io/collectibles/11785.gif",
+        "type": "image/gif"
+      }
+    ],
+    "category": "image"
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "name": "Golden Pants",
+  "symbol": "SCC",
+  "description": "RARE pants from Sol City.",
+  "image": "https://solanacity.io/collectibles/5639.gif",
+  "attributes": [
+    {
+      "trait_type": "Rarity",
+      "value": "RARE"
+    },
+    {
+      "trait_type": "Slot",
+      "value": "pants"
+    },
+    {
+      "trait_type": "Season",
+      "value": "1"
+    }
+  ],
+  "properties": {
+    "files": [
+      {
+        "uri": "https://solanacity.io/collectibles/5639.gif",
+        "type": "image/gif"
+      }
+    ],
+    "category": "image"
+  }
+}
