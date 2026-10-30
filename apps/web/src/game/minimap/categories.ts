@@ -34,6 +34,10 @@ const CATEGORY_OVERRIDES: Partial<Record<string, MinimapCategory>> = {
   "solsentry-crash": "defi",
   "cloak-vitin": "defi",
   "pegana-raffx": "defi",
+  // Exa Energia's two hosts speak for one company, whose action is only a link
+  // to its site, so they would read as Community; they are a Protocols stand.
+  "exa-luiz": "defi",
+  "exa-diogo": "defi",
   "dungeons-moles": "games",
   // A "placeholder" action until the Halloween mini-games are built, but he is
   // a games NPC on the legend from the day he lands, not a community link.
@@ -67,7 +71,11 @@ export const LANDMARK_LAYERS: Record<string, string> = {
   BuildMagicBlock: "MagicBlock",
   BuildMonkeDAo: "MonkeDAO",
   BuildSTEarn: "Superteam Earn",
-  BuildSTBrLighthouse: "ST Brasil Lighthouse",
+  BuildSTBrLighthouse: "Superteam Brasil",
+  BuildSTKZ: "ST Kazakhstan",
+  BuildHome: "Home's Journey",
+  BuildExaEnergia: "Exa Energia",
+  BuildHiveBits: "HiveBits",
   BuildIndies: "Indies on Solana",
   BuildKGMachine: "Keep Green",
   BuildGreenHouse: "Greenhouse",
