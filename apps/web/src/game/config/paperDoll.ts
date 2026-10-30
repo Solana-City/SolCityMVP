@@ -539,11 +539,21 @@ export function getEnabledVariants(category: LayerCategory): LayerVariant[] {
  */
 export const TEST_UNLOCK_ALL_HATS = false;
 
+/**
+ * TESTING: the animated effect hats, free to everyone while their art is being
+ * tried out in the real game. Unlike the switch above this is safe with the
+ * chain as it stands: both are quest-block items, which the program skips when
+ * it checks a look, so wearing one cannot get an outfit rejected. Empty this
+ * list when they are meant to be earned, or sold. SHIPPED_FREE_ITEMS below does
+ * not read it, so the pool and the catalog are untouched.
+ */
+const TEST_FREE_EFFECT_HATS = ["Halo", "Royal_crown"];
+
 const FREE_ITEMS: Partial<Record<LayerCategory, "*" | string[]>> = {
   skin: "*",
   eyesFace: "*",
   hair: "*",
-  hat: TEST_UNLOCK_ALL_HATS ? "*" : ["hat_black"],
+  hat: TEST_UNLOCK_ALL_HATS ? "*" : ["hat_black", ...TEST_FREE_EFFECT_HATS],
   tshirt: ["Blue_tshirt", "White_tshirt"],
   pants: ["Blue_pants", "Grey_pants"],
 };
