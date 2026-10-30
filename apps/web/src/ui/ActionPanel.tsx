@@ -34,6 +34,10 @@ import Presence, { useLast } from "@/ui/Presence";
 /** Every protocol NPC's app window uses the map legend's "Protocols" color. */
 const PROTOCOLS_COLOR = CATEGORY_META.defi.color;
 
+/** The face on the swap and send windows' title, unless the NPC that opened
+    them brings its own (NPCAction.logo). */
+const JUPITER_LOGO = <ProtocolLogo sheet="Jupiter Joe.png" />;
+
 /** Pratik: how Superteam Earn pays, before the bounty list. */
 const EARN_INTRO: IntroSpec = {
   id: "earn",
@@ -224,8 +228,8 @@ function ActionPanelBody({ action, closing, onClose }: { action: NPCAction; clos
       {action.type === "tutor" && <CloseButton onClick={onClose} style={{ position: "absolute", top: isTouch ? 8 : 16, right: isTouch ? 8 : 16 }} />}
 
       {action.type === "tutor"           && <TutorPanel           onClose={onClose} />}
-      {action.type === "swap"            && <JupiterPanel onClose={onClose} tab="swap" swapTo={action.swapTo} />}
-      {action.type === "transfer"        && <JupiterPanel onClose={onClose} tab="send" to={action.recipient} toName={action.recipientName} token={action.token} />}
+      {action.type === "swap"            && <JupiterPanel onClose={onClose} tab="swap" swapTo={action.swapTo} logo={action.logo && <ProtocolLogo {...action.logo} />} />}
+      {action.type === "transfer"        && <JupiterPanel onClose={onClose} tab="send" to={action.recipient} toName={action.recipientName} token={action.token} logo={action.logo && <ProtocolLogo {...action.logo} />} />}
       {action.type === "bounties"        && <ProtocolIntroGate spec={EARN_INTRO}><BountiesPanel onClose={onClose} /></ProtocolIntroGate>}
       {action.type === "private-payment" && (
         <MagicBlockHub onClose={onClose}><PrivatePaymentPanel onClose={onClose} /></MagicBlockHub>
@@ -290,7 +294,7 @@ type JupiterTab = "swap" | "send";
  * already dismissed the swap walkthrough still gets the sending one the first
  * time they open SEND, and neither comes back twice.
  */
-function JupiterPanel({ onClose, tab: initialTab, to, toName, token, swapTo }: {
+function JupiterPanel({ onClose, tab: initialTab, to, toName, token, swapTo, logo }: {
   onClose: () => void;
   tab: JupiterTab;
   to?: string;
@@ -299,14 +303,16 @@ function JupiterPanel({ onClose, tab: initialTab, to, toName, token, swapTo }: {
   token?: string;
   /** Which token SWAP opens buying. See NPCAction.swapTo. */
   swapTo?: string;
+  /** The face on both tabs' title, in place of Jupiter's. See NPCAction.logo. */
+  logo?: React.ReactNode;
 }) {
   // Opened from a player's card, SEND is the point, so it starts there.
   const [tab, setTab] = useState<JupiterTab>(initialTab);
   const tabs = <PanelTabs tab={tab} onTab={setTab} />;
 
   return tab === "swap"
-    ? <ProtocolIntroGate spec={SWAP_INTRO}><SwapPanel onClose={onClose} tabs={tabs} swapTo={swapTo} /></ProtocolIntroGate>
-    : <ProtocolIntroGate spec={TRANSFER_INTRO}><TransferPanel onClose={onClose} to={to} toName={toName} token={token} tabs={tabs} /></ProtocolIntroGate>;
+    ? <ProtocolIntroGate spec={SWAP_INTRO}><SwapPanel onClose={onClose} tabs={tabs} swapTo={swapTo} logo={logo} /></ProtocolIntroGate>
+    : <ProtocolIntroGate spec={TRANSFER_INTRO}><TransferPanel onClose={onClose} to={to} toName={toName} token={token} tabs={tabs} logo={logo} /></ProtocolIntroGate>;
 }
 
 function PanelTabs({ tab, onTab }: { tab: JupiterTab; onTab: (t: JupiterTab) => void }) {
@@ -343,11 +349,13 @@ function PanelTab({ label, active, onClick }: { label: string; active: boolean; 
 
 // ── Swap Panel (Jupiter Swap V2: /order + /execute) ───────────────────
 
-function SwapPanel({ onClose, tabs, swapTo }: {
+function SwapPanel({ onClose, tabs, swapTo, logo }: {
   onClose: () => void;
   tabs?: React.ReactNode;
   /** Token to open buying, when an NPC sends the player here for one. */
   swapTo?: string;
+  /** The title's face, when it is not Jupiter's. */
+  logo?: React.ReactNode;
 }) {
   const { connected, publicKey, signTransaction } = useWallet();
   const [inputToken,  setInputToken]  = useState("SOL");
@@ -446,7 +454,7 @@ function SwapPanel({ onClose, tabs, swapTo }: {
   if (status === "done" && result) {
     return (
       <>
-        <PanelTitleBar title="TOKEN SWAP" onClose={onClose} color={PROTOCOLS_COLOR} logo={<ProtocolLogo sheet="Jupiter Joe.png" />} />
+        <PanelTitleBar title="TOKEN SWAP" onClose={onClose} color={PROTOCOLS_COLOR} logo={logo ?? JUPITER_LOGO} />
         <div className="text-center py-6">
           <div style={{ fontSize: 22, color: "#B7E928" }}>OK</div>
           <div style={{ fontFamily: '"Press Start 2P", monospace', fontSize: "8px", color: "#B7E928", marginTop: 8 }}>
@@ -470,7 +478,7 @@ function SwapPanel({ onClose, tabs, swapTo }: {
   if (status === "error" && result) {
     return (
       <>
-        <PanelTitleBar title="TOKEN SWAP" onClose={onClose} color={PROTOCOLS_COLOR} logo={<ProtocolLogo sheet="Jupiter Joe.png" />} />
+        <PanelTitleBar title="TOKEN SWAP" onClose={onClose} color={PROTOCOLS_COLOR} logo={logo ?? JUPITER_LOGO} />
         <div className="text-center py-6">
           <div style={{ fontSize: "9px", color: "#ff4444", marginBottom: 12 }}>{result.error}</div>
           <button onClick={() => { setStatus("idle"); setResult(null); setQuote(null); }}
@@ -482,7 +490,7 @@ function SwapPanel({ onClose, tabs, swapTo }: {
 
   return (
     <>
-      <PanelTitleBar title="TOKEN SWAP" onClose={onClose} color={PROTOCOLS_COLOR} logo={<ProtocolLogo sheet="Jupiter Joe.png" />} />
+      <PanelTitleBar title="TOKEN SWAP" onClose={onClose} color={PROTOCOLS_COLOR} logo={logo ?? JUPITER_LOGO} />
       {tabs}
 
       {/* ⚠️ mainnet note */}
@@ -545,13 +553,15 @@ function SwapPanel({ onClose, tabs, swapTo }: {
  * only thing standing between practice money and real money, so it says which
  * one is loaded in plain words and the confirm button repeats it.
  */
-function TransferPanel({ onClose, to, toName, token: initialToken, tabs }: {
+function TransferPanel({ onClose, to, toName, token: initialToken, tabs, logo }: {
   onClose: () => void;
   to?: string;
   toName?: string;
   /** Opens on this catalog entry instead of the practice default. */
   token?: string;
   tabs?: React.ReactNode;
+  /** The title's face, when it is not Jupiter's. */
+  logo?: React.ReactNode;
 }) {
   const { connected, publicKey, signTransaction, sendTransaction } = useWallet();
   const { connection } = useConnection();
@@ -641,7 +651,7 @@ function TransferPanel({ onClose, to, toName, token: initialToken, tabs }: {
   if (status === "done" && result?.signature) {
     return (
       <>
-        <PanelTitleBar title="SEND TOKENS" onClose={onClose} color={PROTOCOLS_COLOR} logo={<ProtocolLogo sheet="Jupiter Joe.png" />} />
+        <PanelTitleBar title="SEND TOKENS" onClose={onClose} color={PROTOCOLS_COLOR} logo={logo ?? JUPITER_LOGO} />
         <div className="text-center py-6">
           <div style={{ fontSize: 22, color: "#B7E928" }}>OK</div>
           <div style={{ fontFamily: '"Press Start 2P", monospace', fontSize: "8px", color: "#B7E928", marginTop: 8 }}>TRANSFER SENT</div>
@@ -659,7 +669,7 @@ function TransferPanel({ onClose, to, toName, token: initialToken, tabs }: {
   if (status === "error" && result) {
     return (
       <>
-        <PanelTitleBar title="SEND TOKENS" onClose={onClose} color={PROTOCOLS_COLOR} logo={<ProtocolLogo sheet="Jupiter Joe.png" />} />
+        <PanelTitleBar title="SEND TOKENS" onClose={onClose} color={PROTOCOLS_COLOR} logo={logo ?? JUPITER_LOGO} />
         <div className="text-center py-6">
           <div style={{ fontSize: "9px", color: "#ff4444", marginBottom: 12 }}>{result.error}</div>
           <button onClick={() => { setStatus("idle"); setResult(null); }} {...retryFeel.handlers} style={btnStyle("#333344", "#888899", retryFeel)} className="px-4 py-2">Try again</button>
@@ -670,7 +680,7 @@ function TransferPanel({ onClose, to, toName, token: initialToken, tabs }: {
 
   return (
     <>
-      <PanelTitleBar title="SEND TOKENS" onClose={onClose} color={PROTOCOLS_COLOR} logo={<ProtocolLogo sheet="Jupiter Joe.png" />} />
+      <PanelTitleBar title="SEND TOKENS" onClose={onClose} color={PROTOCOLS_COLOR} logo={logo ?? JUPITER_LOGO} />
       {tabs}
 
       <SendTokenBox token={token} onTokenChange={(id) => { setTokenId(id); setResult(null); }}>

@@ -27,6 +27,12 @@ export interface NPCAction {
    * panel should not make them find it in the dropdown. Defaults to USDC.
    */
   swapTo?: string;
+  /**
+   * The NPC's own face on the title of the window a "swap" or "transfer" action
+   * opens. Those windows are Jupiter's, so without this they show Jupiter
+   * Joe, whoever sent the player there. Same fields as ProtocolLogo.
+   */
+  logo?: { sheet: string; sheetWidth?: number; sheetHeight?: number };
 }
 
 /** A picture + a word or two, shown on an NPC's last dialog line. */
@@ -806,7 +812,10 @@ const NPC_SEEDS: NPCSeed[] = [
       { label: "$NECTAR" },
       { label: "HONEY SOON" },
     ],
-    action: { type: "swap", label: "Swap $NECTAR", swapTo: "NECTAR" },
+    action: {
+      type: "swap", label: "Swap $NECTAR", swapTo: "NECTAR",
+      logo: { sheet: "Queen Bea.png", sheetWidth: 384, sheetHeight: 64 },
+    },
     extraAction: { type: "link", label: "hivebits.io", url: "https://hivebits.io/" },
     spriteKey: "Queen Bea",
     // Static animated, like the other stand keepers: one row of 6 frames at
