@@ -189,13 +189,19 @@ pub fn tie_break(seed: u32, round: u32) -> bool {
 }
 
 pub mod battle;
+pub mod team;
 pub use battle::{replay, Action, Battle, Build, Side};
+pub use team::{decode_team, replay_team, TeamAction, TeamBattle, TeamStatus, TEAM_BYTES, TEAM_SIZE};
 
 // What the TypeScript engine did, generated from it. Test-only, so none of
 // it reaches the program.
 #[cfg(test)]
 #[path = "vectors.generated.rs"]
 mod vectors;
+
+#[cfg(test)]
+#[path = "team_vectors.generated.rs"]
+mod team_vectors;
 
 /// The port, judged against the engine it was ported from.
 ///
@@ -234,6 +240,43 @@ mod vector_tests {
                         got.statuses[i].stages, want.slots[i].stages,
                         "{}: {} {:?} stages", v.name, side, slot,
                     );
+                }
+            }
+        }
+    }
+
+    /// The squad format, which is the one ranked plays.
+    ///
+    /// The 1v1 set above isolates the arithmetic; this one adds everything
+    /// the squad layer puts on top of it: stages dropped on the way out, the
+    /// free substitution after a mech falls, and the retarget that stops a
+    /// switch from dodging the attack aimed at the mech that left.
+    #[test]
+    fn every_squad_vector_replays_to_the_same_battle() {
+        use super::team::replay_team;
+        use super::team_vectors::TEAM_VECTORS;
+
+        assert!(!TEAM_VECTORS.is_empty(), "no squad vectors; regenerate them");
+        for v in TEAM_VECTORS {
+            let b = replay_team(&v.p1, &v.p2, v.seed, v.invert_ties, v.rounds)
+                .unwrap_or_else(|e| panic!("{}: the squad does not assemble: {:?}", v.name, e));
+
+            assert_eq!(b.winner(), v.winner, "{}: wrong winner", v.name);
+
+            for (name, want, got) in [("p1", &v.end_p1, &b.p1), ("p2", &v.end_p2, &b.p2)] {
+                assert_eq!(got.active, want.active, "{}: {} has the wrong mech out", v.name, name);
+                for (u, (wu, gu)) in want.units.iter().zip(got.units.iter()).enumerate() {
+                    assert_eq!(gu.is_defeated(), wu.defeated, "{}: {} mech {} defeated", v.name, name, u);
+                    for i in 0..4 {
+                        assert_eq!(
+                            gu.statuses[i].current_hp, wu.slots[i].hp,
+                            "{}: {} mech {} slot {:?} hp", v.name, name, u, Slot::ALL[i],
+                        );
+                        assert_eq!(
+                            gu.statuses[i].stages, wu.slots[i].stages,
+                            "{}: {} mech {} slot {:?} stages", v.name, name, u, Slot::ALL[i],
+                        );
+                    }
                 }
             }
         }

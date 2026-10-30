@@ -6,7 +6,12 @@
  * Two files, both generated so that neither is transcribed by hand:
  *
  *   programs/sol-mechs-engine/src/catalog.generated.rs   the DATA
- *   programs/sol-mechs-engine/src/vectors.generated.rs   the BEHAVIOUR
+ *   programs/sol-mechs-engine/src/vectors.generated.rs   the BEHAVIOUR, 1v1
+ *   programs/sol-mechs-engine/src/team_vectors.generated.rs the BEHAVIOUR, 3v3
+ *
+ * The 3v3 set is the one ranked actually plays. The 1v1 set is not redundant:
+ * it isolates the arithmetic, so a failure there says the damage formula
+ * drifted while a failure only in the squad set says the switching did.
  *
  * Both as Rust, which is why neither brings a dependency with it: a JSON
  * vector file would need serde_json in the crate just to be read by a test,
@@ -55,6 +60,10 @@ import {
   createBattle, resolveRound, availableMoves, legalTargets, isDefeated,
   type BattleState, type RoundActions, type PlayerSide, type BattleAction,
 } from "../src/game/solmechs/engine/BattleEngine";
+import {
+  createTeamBattle, resolveTeamRound, resolveForcedSwitches, activeUnit, switchableIndices,
+  type TeamAction, type TeamRoundActions, type TeamSide,
+} from "../src/game/solmechs/engine/TeamBattle";
 import {
   MODULE_SLOTS,
   type MechBuild, type ModuleSlot, type StatBlock, type MoveDefinition,
@@ -303,6 +312,174 @@ interface Vector {
   end: Snapshot;
 }
 
+// ── 3v3 ───────────────────────────────────────────────────────────────────
+
+interface TeamVector {
+  name: string;
+  p1: MechBuild[];
+  p2: MechBuild[];
+  seed: number;
+  invertTies: boolean;
+  rounds: TeamRoundActions[];
+  winner: string | null;
+  endP1: TeamSnapshot;
+  endP2: TeamSnapshot;
+}
+
+interface TeamSnapshot {
+  active: number;
+  units: Array<{ defeated: boolean; slots: Record<string, { hp: number; stages: Record<string, number> }> }>;
+}
+
+function teamSnapshot(side: TeamSide): TeamSnapshot {
+  return {
+    active: side.activeIndex,
+    units: side.units.map((unit) => {
+      const slots: TeamSnapshot["units"][number]["slots"] = {};
+      for (const slot of MODULE_SLOTS) {
+        const st = unit.partStatuses[slot];
+        slots[slot] = { hp: st.currentHP, stages: { ...st.buffs } as Record<string, number> };
+      }
+      return { defeated: isDefeated(unit), slots };
+    }),
+  };
+}
+
+/**
+ * Plays a squad battle to its end with seeded choices.
+ *
+ * Switching is chosen sometimes rather than never, because the switch path is
+ * where the squad layer differs from the 1v1 one: dropped stages, the forced
+ * substitution after a loss, and the retarget that stops a switch from
+ * dodging the attack aimed at the mech that left.
+ */
+function playTeam(p1: MechBuild[], p2: MechBuild[], seed: number, invertTies: boolean, maxRounds: number) {
+  const rnd = lcg(seed ^ 0x5eed);
+  let state = createTeamBattle({ mechs: p1 }, { mechs: p2 }, { seed, invertTies });
+  const rounds: TeamRoundActions[] = [];
+
+  const choose = (side: PlayerSide): TeamAction | null => {
+    const me = side === "p1" ? state.p1 : state.p2;
+    const foe = side === "p1" ? state.p2 : state.p1;
+    const unit = activeUnit(me);
+    const reserves = switchableIndices(me);
+    // One round in six is a substitution when there is anything to send.
+    if (reserves.length > 0 && rnd() < 1 / 6) {
+      return { kind: "switch", side, toIndex: reserves[Math.floor(rnd() * reserves.length)] };
+    }
+    const moves = availableMoves(unit);
+    if (moves.length === 0) return null;
+    const chosen = moves[Math.floor(rnd() * moves.length)];
+    const targets = legalTargets(activeUnit(foe));
+    if (targets.length === 0) return null;
+    return {
+      kind: "move", side,
+      sourceSlot: chosen.slot,
+      moveIndex: chosen.moveIndex,
+      targetSlot: targets[Math.floor(rnd() * targets.length)] as ModuleSlot,
+    };
+  };
+
+  for (let i = 0; i < maxRounds && state.status.kind !== "finished"; i++) {
+    if (state.status.kind === "awaiting-switch") {
+      // A forced substitution is recorded AS the round, which is how
+      // replayTeam reads it back.
+      const round: TeamRoundActions = { p1: null, p2: null };
+      for (const side of state.status.sides) {
+        const me = side === "p1" ? state.p1 : state.p2;
+        const options = switchableIndices(me);
+        if (options.length === 0) continue;
+        const pick = options[Math.floor(rnd() * options.length)];
+        if (side === "p1") round.p1 = { kind: "switch", side, toIndex: pick };
+        else round.p2 = { kind: "switch", side, toIndex: pick };
+      }
+      rounds.push(round);
+      state = resolveForcedSwitches(state, {
+        p1: round.p1?.kind === "switch" ? round.p1.toIndex : undefined,
+        p2: round.p2?.kind === "switch" ? round.p2.toIndex : undefined,
+      }).state;
+      continue;
+    }
+    const round: TeamRoundActions = { p1: choose("p1"), p2: choose("p2") };
+    rounds.push(round);
+    state = resolveTeamRound(state, round).state;
+  }
+
+  return {
+    rounds,
+    winner: state.status.kind === "finished" ? state.status.winner : null,
+    endP1: teamSnapshot(state.p1),
+    endP2: teamSnapshot(state.p2),
+  };
+}
+
+function rustTeamAction(a: TeamAction | null): string {
+  if (!a) return "None";
+  if (a.kind === "switch") return `Some(TeamAction::Switch { to: ${a.toIndex} })`;
+  return `Some(TeamAction::Move { source: ${rustSlot(a.sourceSlot)}, `
+    + `move_index: ${a.moveIndex}, target: ${rustSlot(a.targetSlot)} })`;
+}
+
+function rustTeamSide(t: TeamSnapshot): string {
+  const units = t.units.map((u) => {
+    const slots = MODULE_SLOTS.map((slot) => {
+      const st = u.slots[slot];
+      return `VSlot { hp: ${st.hp}, stages: [${STAGE_ORDER.map((k) => st.stages[k] ?? 0).join(", ")}] }`;
+    }).join(", ");
+    return `VSide { defeated: ${u.defeated}, slots: [${slots}] }`;
+  }).join(", ");
+  return `VSquad { active: ${t.active}, units: [${units}] }`;
+}
+
+function emitTeamVectors(vs: TeamVector[]): string {
+  const body = vs.map((v) => [
+    "    TeamVector {",
+    `        name: ${JSON.stringify(v.name)},`,
+    `        p1: [${v.p1.map(rustBuild).join(", ")}],`,
+    `        p2: [${v.p2.map(rustBuild).join(", ")}],`,
+    `        seed: ${v.seed},`,
+    `        invert_ties: ${v.invertTies},`,
+    "        rounds: &[",
+    ...v.rounds.map((r) => `            (${rustTeamAction(r.p1)}, ${rustTeamAction(r.p2)}),`),
+    "        ],",
+    `        winner: ${v.winner === null ? "None" : `Some(Side::${v.winner === "p1" ? "P1" : "P2"})`},`,
+    `        end_p1: ${rustTeamSide(v.endP1)},`,
+    `        end_p2: ${rustTeamSide(v.endP2)},`,
+    "    },",
+  ].join("\n")).join("\n");
+
+  return `// GENERATED by apps/web/scripts/export-battle-engine.ts. Do not edit.
+//
+// The squad format, which is the one ranked plays.
+
+use crate::battle::{Build, Side};
+use crate::team::TeamAction;
+use crate::vectors::{VSide, VSlot};
+use crate::Slot;
+
+pub struct VSquad {
+    pub active: usize,
+    pub units: [VSide; 3],
+}
+
+pub struct TeamVector {
+    pub name: &'static str,
+    pub p1: [Build; 3],
+    pub p2: [Build; 3],
+    pub seed: u32,
+    pub invert_ties: bool,
+    pub rounds: &'static [(Option<TeamAction>, Option<TeamAction>)],
+    pub winner: Option<Side>,
+    pub end_p1: VSquad,
+    pub end_p2: VSquad,
+}
+
+pub const TEAM_VECTORS: &[TeamVector] = &[
+${body}
+];
+`;
+}
+
 function main() {
   // The presets rather than builds assembled here. Parts are slot-specific,
   // so walking a flat list produces builds the engine would refuse, and these
@@ -323,7 +500,6 @@ function main() {
     }
   }
 
-  mkdirSync(OUT, { recursive: true });
   mkdirSync(SRC, { recursive: true });
   const rustPath = join(SRC, "catalog.generated.rs");
   writeFileSync(rustPath, emitRust());
@@ -331,6 +507,34 @@ function main() {
 
   const path = join(SRC, "vectors.generated.rs");
   writeFileSync(path, emitVectors(vectors));
+
+  // ── 3v3 ───────────────────────────────────────────────────────────────
+  //
+  // Squads of three DISTINCT presets: `validateTeam` refuses the same part on
+  // two mechs, and each preset is a different family, so distinct presets are
+  // a legal squad by construction.
+  const teamVectors: TeamVector[] = [];
+  for (let a = 0; a < builds.length; a++) {
+    const p1 = [0, 1, 2].map((k) => builds[(a + k) % builds.length]);
+    for (let b = 0; b < builds.length; b++) {
+      const p2 = [0, 1, 2].map((k) => builds[(b + k + 1) % builds.length]);
+      const seed = 7000 + a * 37 + b;
+      const invertTies = (a + b) % 2 === 1;
+      const played = playTeam(p1, p2, seed, invertTies, 120);
+      teamVectors.push({
+        name: `${names[a]} squad vs ${names[b]} squad`,
+        p1, p2, seed, invertTies,
+        rounds: played.rounds,
+        winner: played.winner,
+        endP1: played.endP1,
+        endP2: played.endP2,
+      });
+    }
+  }
+  const teamPath = join(SRC, "team_vectors.generated.rs");
+  writeFileSync(teamPath, emitTeamVectors(teamVectors));
+  const settled = teamVectors.filter((v) => v.winner !== null).length;
+  console.log(`${teamVectors.length} squad vectors, ${settled} settled`);
 
   const finished = vectors.filter((v) => v.end.status === "finished").length;
   console.log(`${vectors.length} vectors, ${finished} fought to a finish`);
