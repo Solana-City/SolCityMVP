@@ -1700,6 +1700,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "sol-mechs-engine"
+version = "0.1.0"
+
+[[package]]
 name = "solana-frozen-abi"
 version = "1.18.26"
 source = "registry+https://github.com/rust-lang/crates.io-index"
