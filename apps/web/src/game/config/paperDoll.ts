@@ -318,7 +318,11 @@ export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
     // the booster pool BEFORE the pool's on-chain indices were first deployed.
     { id: "Cap_Sol",    name: "Cap Sol",    textureKey: "pd-hat-Cap_Sol",    file: "hat/Cap_Sol.png",
       unlockVia: "quest", unlockHint: "Come back 7 days in a row" },
-    { id: "Cap_blue",   name: "Cap Blue",   textureKey: "pd-hat-Cap_blue",   file: "hat/Cap_blue.png" },
+    // "Sol Cap Blue" and not "Cap Blue": this is the Sol cap in blue, and a
+    // plain blue cap joined the catalog on 2026-10-30. The ID does not move,
+    // because the id is what the catalog index is built from and the index is
+    // what a wallet owns. Only the label a player reads changes.
+    { id: "Cap_blue",   name: "Sol Cap Blue", textureKey: "pd-hat-Cap_blue",   file: "hat/Cap_blue.png" },
     { id: "Cap_kid",    name: "Cap Kid",    textureKey: "pd-hat-Cap_kid",    file: "hat/Cap_kid.png" },
     { id: "Crown",      name: "Crown",      textureKey: "pd-hat-Crown",      file: "hat/Crown.png" },
     { id: "Cylinder",   name: "Cylinder",   textureKey: "pd-hat-Cylinder",   file: "hat/Cylinder.png" },
