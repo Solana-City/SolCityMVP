@@ -243,9 +243,15 @@ function acquireHairTexture(
   if (hat && hatCoverage === "band") {
     const hatMask = getHatOpaqueMask(scene, hat);
     if (hatMask) {
-      const n = Math.min(hatMask.mask.length, w * h);
-      for (let i = 0; i < n; i++) {
-        if (hatMask.mask[i]) { data[i * 4 + 3] = 0; masked = true; }
+      // By x and y, each sheet with its own width: an effect hat is a long row
+      // of cells (the Royal Crown is 3072 wide) over a hair sheet 256 wide, and
+      // one flat index into both reads the wrong pixels. Only the first four
+      // cells line up with the hair's walk frames, which is all it needs.
+      const mw = Math.min(hatMask.w, w), mh = Math.min(hatMask.h, h);
+      for (let y = 0; y < mh; y++) {
+        for (let x = 0; x < mw; x++) {
+          if (hatMask.mask[y * hatMask.w + x]) { data[(y * w + x) * 4 + 3] = 0; masked = true; }
+        }
       }
     }
   } else if (hat) {
@@ -803,7 +809,7 @@ export class AvatarSprite {
         sprite.y = -2 - this.hairLift(fx.effect, facing) * 0.5;
       }
       // Walking, the body's own frame picks the cell, so the effect moves with
-      // the head. Standing, effectCell decides (see its "standing" rule).
+      // the head. Standing, effectCell plays the whole sheet on the clock.
       const body = this.layerSprites.get("skin");
       const walkPhase = this.isWalking && body ? Number(body.frame.name) % SPRITE_COLS : null;
       const frame = fx.row * frames + effectCell(fx.effect, now, walkPhase);
