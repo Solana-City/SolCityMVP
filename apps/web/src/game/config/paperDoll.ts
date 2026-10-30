@@ -98,6 +98,15 @@ export interface LayerVariant {
      * the bare head, so a tall style does not poke through the effect.
      */
     clearsHair?: boolean;
+    /**
+     * Skips the bob the artist drew into the sheet. It is groups of
+     * SPRITE_COLS cells, and inside a group the cells alternate between a pose
+     * and the same pose one pixel lower (a head bobbing as it walks). A halo
+     * floats, so that bob is part of it. A crown sits ON the head, and a head
+     * that stands still does not bob, so it plays the first cell of each group
+     * only: the sparkle still moves, one step per frame of `fps`.
+     */
+    steady?: boolean;
   };
 }
 
@@ -121,12 +130,15 @@ export const SPRITE_ROWS = 4;
  * The sheet carries the whole animation for every angle, and it does not care
  * whether the body walks: the clock walks the cells at `fps`, and the facing
  * only picks the ROW. So a turn changes the picture and keeps the rhythm.
+ * A `steady` effect walks the first cell of each group instead (see there).
  *
  * One rule for the game, the wardrobe tile and the large preview, so the three
  * cannot drift apart.
  */
 export function effectCell(effect: NonNullable<LayerVariant["effect"]>, nowMs: number): number {
-  return Math.floor((nowMs / 1000) * effect.fps) % effect.frames;
+  const step = Math.floor((nowMs / 1000) * effect.fps);
+  if (effect.steady) return (step % (effect.frames / SPRITE_COLS)) * SPRITE_COLS;
+  return step % effect.frames;
 }
 
 export const DIRECTION_ROW: Record<Direction, number> = {
@@ -375,7 +387,7 @@ export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
     // the hair between them and left bare skin showing through the crown.
     { id: "Royal_crown", name: "Royal Crown", textureKey: "pd-hat-Royal_crown", file: "hat/Royal_crown.png",
       hatCoverage: "band", unlockVia: "quest", unlockHint: "Test item",
-      effect: { frames: 48, fps: 1000 / 150 } },
+      effect: { frames: 48, fps: 1000 / 150, steady: true } },
     // The colourway caps, 2026-10-30. Appended, never inserted: a booster
     // item's catalog index is its position in this lane, and a wallet owns
     // the index, not the name.
