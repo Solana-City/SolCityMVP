@@ -689,9 +689,22 @@ pub mod sol_city_collectibles {
                 rungs += 1;
             }
 
-            // 3. An index inside the first rung that has one to give. Something
-            //    the wallet does not own beats a duplicate at the same rarity,
-            //    and a duplicate beats nothing at all.
+            // 3. An index inside the first rung that has one to give.
+            //
+            // WHAT THE WALLET ALREADY OWNS IS NOT CONSULTED, and that is a
+            // decision, not an omission. This used to probe up to 32 entries
+            // looking for something the buyer did not own and only then fall
+            // back to a duplicate, which meant owning an item RAISED the
+            // chance of drawing a different one. A pack was quietly a
+            // completion engine.
+            //
+            // The supply of an item is not one per wallet and never was: the
+            // catalog has eighty entries and the season mints many of each,
+            // which is the whole reason a secondary market exists. Two of the
+            // same item is a normal outcome, and a draw that avoids it is
+            // taking the scarcity it is supposed to be selling.
+            //
+            // Owner's call, 2026-10-31.
             let mut picked: Option<u16> = None;
             for rung in 0..rungs {
                 let r = ladder[rung];
@@ -699,15 +712,13 @@ pub mod sol_city_collectibles {
                 if list.is_empty() { continue; }
                 let offset = (roll(1 + rung) as usize) % list.len();
                 let probes = list.len().min(MAX_BUCKET_PROBES);
-                let mut duplicate: Option<u16> = None;
                 for step in 0..probes {
                     let index = list[(offset + step) % list.len()];
                     // No item twice in the same pack.
                     if picks.contains(&index) { continue; }
-                    if duplicate.is_none() { duplicate = Some(index); }
-                    if !unlocks.owns(index) { picked = Some(index); break; }
+                    picked = Some(index);
+                    break;
                 }
-                if picked.is_none() { picked = duplicate; }
                 if picked.is_some() { break; }
             }
 
