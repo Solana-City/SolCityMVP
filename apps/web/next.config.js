@@ -5,10 +5,27 @@ const nextConfig = {
   reactStrictMode: false,
   // Phaser 3 is CommonJS; transpiling it removes the ESM/CJS interop warning.
   transpilePackages: ["phaser"],
+  // No image optimizer (audit R-13). Nothing in the app uses next/image, so
+  // `/_next/image` only ever served as an endpoint for Next.js 14's open
+  // optimizer advisories, which have no fix on the 14 line. Turned off here;
+  // the upgrade to a supported Next.js is still owed before mainnet.
+  images: { unoptimized: true },
   // Baseline response headers. A full Content-Security-Policy is left out on
   // purpose: Phaser, the wallet adapters and the RPC hosts make it a project of
   // its own, and a wrong one blanks the game. SAMEORIGIN stops another site
   // from framing the city around a click; the game never frames itself.
+  //
+  // Added with the security pass (audit R-23), each one chosen because it
+  // cannot blank the game:
+  // - frame-ancestors is the CSP form of SAMEORIGIN, and the only directive
+  //   sent, so it constrains framing and nothing else.
+  // - HSTS, because a session key lives in this origin's storage and must
+  //   never be served over plain HTTP. No `preload`: that is a commitment for
+  //   the domain owner to make, not a header to slip in.
+  // - Permissions-Policy turns off the device APIs the city never uses.
+  //   Clipboard is left alone: copying an address is a feature.
+  // - COOP same-origin-allow-popups isolates the window from pages it did not
+  //   open, while keeping the wallet popups we DO open working.
   async headers() {
     return [
       {
@@ -17,6 +34,13 @@ const nextConfig = {
           { key: "X-Content-Type-Options", value: "nosniff" },
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
           { key: "X-Frame-Options", value: "SAMEORIGIN" },
+          { key: "Content-Security-Policy", value: "frame-ancestors 'self'" },
+          { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains" },
+          {
+            key: "Permissions-Policy",
+            value: "camera=(), microphone=(), geolocation=(), payment=(), usb=(), serial=(), hid=(), bluetooth=()",
+          },
+          { key: "Cross-Origin-Opener-Policy", value: "same-origin-allow-popups" },
         ],
       },
     ];
