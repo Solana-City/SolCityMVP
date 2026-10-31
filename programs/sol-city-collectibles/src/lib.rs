@@ -2137,7 +2137,7 @@ pub struct OpenPackFromAsset<'info> {
     #[account(address = VRF_PROGRAM_ID)]
     pub vrf_program: UncheckedAccount<'info>,
     /// CHECK: the slot hashes sysvar the VRF reads, pinned to the sysvar.
-    #[account(address = solana_program::sysvar::slot_hashes::ID)]
+    #[account(address = anchor_lang::solana_program::sysvar::slot_hashes::ID)]
     pub slot_hashes: UncheckedAccount<'info>,
     pub system_program: Program<'info, System>,
 }
