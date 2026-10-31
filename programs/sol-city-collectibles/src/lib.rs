@@ -774,13 +774,30 @@ pub mod sol_city_collectibles {
     // is an admin key that can change payouts; see the note on PackConfig.
 
     /// Creates the config. Once, ever: a second call fails, which is the point.
+/// Only the program's upgrade authority may call this.
+///
+/// It used to be whoever called first. On mainnet that is a front-run worth
+/// taking: `treasury_token_account` is where every pack payment lands, and
+/// nothing rotates it, so the first caller owns the pack economy and the
+/// only cure is an upgrade.
+///
+/// The upgrade authority rather than a hard-coded key, for two reasons. It
+/// grants nobody anything new, since whoever can replace the program can
+/// already set any config it likes. And it travels: the same binary is
+/// correct on devnet and mainnet, and moving to a different multisig is a
+/// transfer of upgrade authority rather than a redeploy.
+///
+/// The admin is an ARGUMENT, not the signer. The deployer authorises, and
+/// the key that ends up holding the config can be the multisig instead,
+/// which is the separation the security pass asks for (R-05).
     pub fn init_pack_config(
         ctx: Context<InitPackConfig>,
+        admin: Pubkey,
         currency_mint: Pubkey,
         treasury_token_account: Pubkey,
     ) -> Result<()> {
         let cfg = &mut ctx.accounts.config;
-        cfg.admin = ctx.accounts.admin.key();
+        cfg.admin = admin;
         cfg.currency_mint = currency_mint;
         cfg.treasury_token_account = treasury_token_account;
         // Zero, meaning no season is open yet, and that is not a placeholder.
@@ -956,8 +973,12 @@ pub mod sol_city_collectibles {
     }
 
     /// Creates the mint configuration. Once.
+    /// Only the program's upgrade authority may call this. Same reasoning as
+    /// `init_pack_config`, and the same stakes: this one names the tree, the
+    /// collection and the immutable base URI.
     pub fn init_mint_config(
         ctx: Context<InitMintConfig>,
+        admin: Pubkey,
         merkle_tree: Pubkey,
         collection_mint: Pubkey,
         royalty_recipient: Pubkey,
@@ -968,13 +989,33 @@ pub mod sol_city_collectibles {
         require!(symbol.len() <= 8, CollectiblesError::WrongMintTarget);
         require!(base_uri.len() <= 160, CollectiblesError::WrongMintTarget);
         let cfg = &mut ctx.accounts.mint_config;
-        cfg.admin = ctx.accounts.admin.key();
+        cfg.admin = admin;
         cfg.merkle_tree = merkle_tree;
         cfg.collection_mint = collection_mint;
         cfg.royalty_recipient = royalty_recipient;
         cfg.seller_fee_basis_points = seller_fee_basis_points;
         cfg.symbol = symbol;
         cfg.base_uri = base_uri;
+        Ok(())
+    }
+
+    /// Hands the pack config to a different admin.
+    ///
+    /// Without this, a key set once at init is the key forever and the only
+    /// correction is a program upgrade. That is the wrong shape even when
+    /// nothing has gone wrong: the plan is for the admin to become a
+    /// multisig, and moving to one should not need a redeploy.
+    ///
+    /// Guarded by the CURRENT admin, not by the upgrade authority, so that
+    /// freezing the program later does not freeze the ability to rotate.
+    pub fn set_pack_admin(ctx: Context<AdminPackConfig>, new_admin: Pubkey) -> Result<()> {
+        ctx.accounts.config.admin = new_admin;
+        Ok(())
+    }
+
+    /// Hands the mint config to a different admin. See `set_pack_admin`.
+    pub fn set_mint_admin(ctx: Context<AdminMintConfig>, new_admin: Pubkey) -> Result<()> {
+        ctx.accounts.mint_config.admin = new_admin;
         Ok(())
     }
 
@@ -1971,11 +2012,20 @@ impl PackConfig {
 }
 #[derive(Accounts)]
 pub struct InitMintConfig<'info> {
+    /// The upgrade authority, which pays and authorises. See InitPackConfig.
     #[account(mut)]
-    pub admin: Signer<'info>,
+    pub payer: Signer<'info>,
+    /// CHECK: this program, used only to reach its ProgramData.
+    #[account(constraint = program.programdata_address()? == Some(program_data.key())
+        @ CollectiblesError::NotPackAdmin)]
+    pub program: Program<'info, crate::program::SolCityCollectibles>,
+    /// The deployer's claim, checked rather than taken on trust.
+    #[account(constraint = program_data.upgrade_authority_address == Some(payer.key())
+        @ CollectiblesError::NotPackAdmin)]
+    pub program_data: Account<'info, ProgramData>,
     #[account(
         init,
-        payer = admin,
+        payer = payer,
         space = 8 + MintConfig::INIT_SPACE,
         seeds = [MINT_CONFIG_SEED],
         bump,
@@ -2079,11 +2129,21 @@ pub struct ClaimOwnedFromAsset<'info> {
 
 #[derive(Accounts)]
 pub struct InitPackConfig<'info> {
+    /// The upgrade authority, which pays and authorises. NOT the admin: that
+    /// is an argument, so the config can be handed to a different key.
     #[account(mut)]
-    pub admin: Signer<'info>,
+    pub payer: Signer<'info>,
+    /// CHECK: this program, used only to reach its ProgramData.
+    #[account(constraint = program.programdata_address()? == Some(program_data.key())
+        @ CollectiblesError::NotPackAdmin)]
+    pub program: Program<'info, crate::program::SolCityCollectibles>,
+    /// The deployer's claim, checked rather than taken on trust.
+    #[account(constraint = program_data.upgrade_authority_address == Some(payer.key())
+        @ CollectiblesError::NotPackAdmin)]
+    pub program_data: Account<'info, ProgramData>,
     #[account(
         init,
-        payer = admin,
+        payer = payer,
         space = 8 + PackConfig::INIT_SPACE,
         seeds = [PACK_CONFIG_SEED],
         bump,

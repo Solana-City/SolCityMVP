@@ -135,6 +135,21 @@ async function submit(
   }
 }
 
+/**
+ * The ProgramData account, which holds the upgrade authority.
+ *
+ * `init_pack_config` and `init_mint_config` now check that the signer IS
+ * that authority: whoever calls first used to become admin, and on mainnet
+ * that is a front-run worth taking, because the treasury account is set
+ * there and nothing rotated it.
+ */
+function programDataPda(programId: PublicKey): PublicKey {
+  return PublicKey.findProgramAddressSync(
+    [programId.toBuffer()],
+    new PublicKey("BPFLoaderUpgradeab1e11111111111111111111111"),
+  )[0];
+}
+
 async function main() {
   const walletPath = process.argv[2];
   if (!walletPath || walletPath.startsWith("--")) {
@@ -182,12 +197,22 @@ async function main() {
     await submit(admin, [new TransactionInstruction({
       programId: PROGRAM,
       keys: [
+        // The payer must be the program's UPGRADE AUTHORITY now, and the
+        // admin it installs is the first argument rather than the signer.
         { pubkey: admin.publicKey,          isSigner: true,  isWritable: true  },
+        { pubkey: PROGRAM,                  isSigner: false, isWritable: false },
+        { pubkey: programDataPda(PROGRAM),  isSigner: false, isWritable: false },
         { pubkey: config,                   isSigner: false, isWritable: true  },
         { pubkey: SystemProgram.programId,  isSigner: false, isWritable: false },
       ],
       data: Buffer.concat([
-        disc("init_pack_config"), USDC_MINT.toBuffer(), treasuryAta.toBuffer(),
+        disc("init_pack_config"),
+        // Admin, which can and on mainnet should be the multisig rather
+        // than the deployer.
+        (process.env.SOLCITY_PACK_ADMIN
+          ? new PublicKey(process.env.SOLCITY_PACK_ADMIN)
+          : admin.publicKey).toBuffer(),
+        USDC_MINT.toBuffer(), treasuryAta.toBuffer(),
       ]),
     })], "init_pack_config");
   }

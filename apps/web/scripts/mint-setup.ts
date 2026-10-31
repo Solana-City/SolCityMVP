@@ -116,6 +116,21 @@ const editionPda = (mint: PublicKey) => PublicKey.findProgramAddressSync(
   TOKEN_METADATA_PROGRAM_ID,
 )[0];
 
+/**
+ * The ProgramData account, which holds the upgrade authority.
+ *
+ * `init_pack_config` and `init_mint_config` now check that the signer IS
+ * that authority: whoever calls first used to become admin, and on mainnet
+ * that is a front-run worth taking, because the treasury account is set
+ * there and nothing rotated it.
+ */
+function programDataPda(programId: PublicKey): PublicKey {
+  return PublicKey.findProgramAddressSync(
+    [programId.toBuffer()],
+    new PublicKey("BPFLoaderUpgradeab1e11111111111111111111111"),
+  )[0];
+}
+
 async function main() {
   const adminPath = process.argv[2];
   if (!adminPath || adminPath.startsWith("--")) throw new Error("Pass the admin wallet keypair path");
@@ -251,6 +266,11 @@ async function main() {
   console.log("4. init_mint_config");
   const data = Buffer.concat([
     disc("init_mint_config"),
+    // Admin first, and it need not be the signer: the signer only has to be
+    // the upgrade authority.
+    (process.env.SOLCITY_MINT_ADMIN
+      ? new PublicKey(process.env.SOLCITY_MINT_ADMIN)
+      : admin.publicKey).toBuffer(),
     tree.publicKey.toBuffer(),
     collectionMint.publicKey.toBuffer(),
     ROYALTY_RECIPIENT.toBuffer(),
@@ -261,8 +281,10 @@ async function main() {
   await sendAndPoll(conn, new Transaction().add(new TransactionInstruction({
     programId: PROGRAM,
     keys: [
-      { pubkey: admin.publicKey,         isSigner: true,  isWritable: true },
-      { pubkey: mintConfig,              isSigner: false, isWritable: true },
+      { pubkey: admin.publicKey,         isSigner: true,  isWritable: true  },
+      { pubkey: PROGRAM,                 isSigner: false, isWritable: false },
+      { pubkey: programDataPda(PROGRAM), isSigner: false, isWritable: false },
+      { pubkey: mintConfig,              isSigner: false, isWritable: true  },
       { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
     ],
     data,
