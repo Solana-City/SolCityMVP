@@ -18,123 +18,7 @@ const CHAT_PREFIX = "solcity-chat:";
 const LOOK_PREFIX = "solcity-look:"; // solcity-look:<wallet>:<k=v|k=v...>
 const EXPR_PREFIX = "solcity-expr:"; // solcity-expr:<wallet>:<textureKey>
 
-// Loadout is encoded pipe/eq (NO quotes) — matches the on-chain PlayerState
-// `loadout` String, capped at #[max_len(120)]. Category KEYS are abbreviated to
-// one char so a FULL outfit (all 8 layers, incl. hat/accessory/back) fits under
-// 120 — otherwise the last-encoded layer (hat) was truncated, which is exactly
-// why remote players showed up without their hats. Decode accepts both the
-// short keys and the old full-word keys so pre-existing loadouts still render.
-const LOADOUT_KEY_ABBR: Record<string, string> = {
-  skin: "s", hair: "h", eyesFace: "e", tshirt: "t",
-  pants: "p", hat: "H", accessory: "a", back: "b",
-  // Not a layer: the hair swatch (game/config/hairPalette.ts). Omitted
-  // entirely when the style is worn in the colour it was drawn in, which is
-  // the common case, so the usual loadout does not get longer.
-  hairColor: "c",
-};
-const LOADOUT_ABBR_KEY: Record<string, string> = Object.fromEntries(
-  Object.entries(LOADOUT_KEY_ABBR).map(([full, abbr]) => [abbr, full]),
-);
-/**
- * Fixed emit order, hair colour LAST.
- *
- * The program caps this at 120 bytes with cap_bytes, which truncates the END,
- * and a full 8-layer outfit already runs over that (see HAIR_COLOR_SPEC.md,
- * "Known issue"). Object key order used to decide what fell off the cliff.
- * Pinning the order makes the colour the first casualty instead of a layer:
- * losing it renders the style as drawn, where losing the hat renders no hat.
- */
-const LOADOUT_EMIT_ORDER: (keyof Loadout)[] = [
-  "skin", "eyesFace", "pants", "tshirt", "back", "accessory", "hair", "hat", "hairColor",
-];
-
-/**
- * Send the loadout as catalog indices rather than variant ids.
- *
- * The switch for `WARDROBE_ONCHAIN.md` phase 2. Reading both formats shipped
- * first and on its own, so that by the time this is turned on every client has
- * long been able to understand the result. Turning it on is one line here; it
- * waits on something granting booster unlocks on chain, because the program
- * rejects the whole outfit of a player wearing an item their snapshot does not
- * hold.
- */
-const LOADOUT_AS_INDICES = false;
-
-function encodeLoadout(l: Loadout): string {
-  const out: string[] = [];
-  for (const k of LOADOUT_EMIT_ORDER) {
-    const v = l[k];
-    if (!v) continue;
-    // The swatch goes as its palette index: "c=13" rather than "c=chestnut" is
-    // six bytes that would otherwise push a layer past the cap.
-    if (k === "hairColor") {
-      const i = hairColorIndex(v);
-      if (i >= 0) out.push(`c=${i}`);
-      continue;
-    }
-    // The catalog index, not the variant id, once LOADOUT_AS_INDICES is on.
-    //
-    // This is what makes wardrobe enforcement possible at all: the program
-    // parses every value as a u16 and skips what it cannot parse, so while
-    // ids go over the wire it checks nothing. Indices are also shorter, which
-    // buys room against the 120-byte cap.
-    //
-    // STILL OFF, and the old reason has expired. Grants DO exist on chain
-    // (open_booster, proven end to end with real USDC), TEST_UNLOCK_ALL_HATS
-    // is false, globalIndexOf is built and round-trip tested, and the
-    // wardrobe now reads what a wallet owns off the chain. What remains is
-    // narrower and sharper:
-    //
-    // The program checks `player.unlocked`, the SNAPSHOT, not UnlockState.
-    // `sync_unlocks` is what copies one to the other, and it can only run
-    // while BOTH accounts are writable in the same place. They never are
-    // during a session: the player PDA is delegated to the rollup and
-    // UnlockState is base-only and never delegated. So a pack bought MID
-    // SESSION lands in UnlockState, the client can see it, and the snapshot
-    // the program enforces against does not have it until the next connect.
-    //
-    // Turn this on today and that player's whole outfit write is rejected,
-    // freezing them in their last synced look for everyone else, with no clue
-    // why. The fix is a grant the rollup can see, which is a program change,
-    // so this rides the next deploy rather than a flag. See WARDROBE_ONCHAIN.md.
-    const index = LOADOUT_AS_INDICES ? globalIndexOf(k as LayerCategory, v) : -1;
-    out.push(`${LOADOUT_KEY_ABBR[k] ?? k}=${index >= 0 ? index : v}`);
-  }
-  return out.join("|");
-}
-function decodeLoadout(s: string): Loadout {
-  const out: Loadout = {};
-  for (const part of s.split("|")) {
-    const i = part.indexOf("=");
-    if (i === -1) continue;
-    const rawK = part.slice(0, i), v = part.slice(i + 1);
-    const k = LOADOUT_ABBR_KEY[rawK] ?? rawK; // short key → full; full stays full
-    if (!k || !v) continue;
-    if (k === "hairColor") {
-      // Numeric is what we send. A swatch id is accepted too: it is what the
-      // first build to carry colour broadcast, and a peer may still be on it.
-      const byIndex = /^\d+$/.test(v) ? hairColorAtIndex(Number(v)) : v;
-      if (byIndex) out.hairColor = byIndex;
-      continue;
-    }
-    // An index as well as an id, the same way hairColor above takes both.
-    //
-    // The wire is moving from variant ids ("h=Afro") to catalog indices
-    // ("h=194"), because the program parses every value as a u16 and can only
-    // enforce what it can read. Both are understood here for as long as it
-    // takes every client to update: a service worker can keep an old build
-    // alive for days, and a peer that cannot read the new format renders a
-    // bald, naked avatar rather than a person.
-    //
-    // No ambiguity to resolve: no variant id is all digits.
-    const asIndex = /^\d+$/.test(v) ? itemAtGlobalIndex(Number(v)) : undefined;
-    (out as Record<string, string>)[k] = asIndex ? asIndex.variant.id : v;
-  }
-  // A peer on an older build still broadcasts Brown_hair or a coloured Magawk,
-  // which are no longer wardrobe entries. Without this they render as no hair
-  // at all, so the rewrite happens on the way in, not just on our own save.
-  return migrateHairColor(out);
-}
+import { encodeLoadout, decodeLoadout } from "./loadoutCodec";
 import {
   ConnectionMagicRouter,
   delegationRecordPdaFromDelegatedAccount,
@@ -173,14 +57,11 @@ import {
 import { BASE_RPC_PRIMARY, resilientBaseFetch } from "../solana/baseRpc";
 import { setHuntFromChain, clearHuntFromChain } from "../minigames/whereIsNPC/WhereIsNPCGame";
 import { transactionLog } from "../telemetry/transactionLog";
-import { migrateHairColor, type Loadout } from "../config/paperDoll";
-import { hairColorAtIndex, hairColorIndex } from "../config/hairPalette";
+import type { Loadout } from "../config/paperDoll";
 import { ER_VALIDATORS, probeValidators, nearestValidator } from "./erValidators";
-import { globalIndexOf, itemAtGlobalIndex } from "@/game/config/catalogIndex";
 import { setOnChainUnlocks } from "@/game/config/wardrobeUnlocks";
 import { syncHeldToWardrobe } from "@/game/solana/mint";
 import { gameSlotOf, GAME_SLOT_CAP } from "@/game/minigames/slots";
-import type { LayerCategory } from "@/game/config/paperDoll";
 import { walletRequest } from "@/game/solana/walletBus";
 import { prepareWalletTx, sendWalletSigned, WalletTxRejected } from "@/game/solana/walletTx";
 
@@ -1084,7 +965,7 @@ export class OnChainMultiplayer {
     if (!w) return;
     const entry = transactionLog.record({ kind: "system", layer: "base", label: "Outfit broadcast", status: "pending" });
     try {
-      const sig = await this.sendMemo(`${LOOK_PREFIX}${w}:${encodeLoadout(loadout)}`);
+      const sig = await this.sendMemo(`${LOOK_PREFIX}${w}:${encodeLoadout(loadout, w)}`);
       transactionLog.markConfirmed(entry.id, sig);
     } catch (e: any) {
       transactionLog.markFailed(entry.id, e?.message ?? "look memo failed");
@@ -1625,7 +1506,7 @@ export class OnChainMultiplayer {
       // pick it up from the same position poll (no base-layer memo).
       if (isProgramDeployed() && this.wallet) {
         const sk = this.sessionKeys.getSessionPublicKey();
-        this.sendSessionIx(buildUpdateLookSessionIx(this.wallet, sk, encodeLoadout(loadout)), {
+        this.sendSessionIx(buildUpdateLookSessionIx(this.wallet, sk, encodeLoadout(loadout, walletStr)), {
           kind: "outfit", label: "Outfit change",
         });
       }
@@ -2163,7 +2044,9 @@ export class OnChainMultiplayer {
     //    re-announce is needed when someone new joins).
     if (this.localLoadout && this.wallet) {
       const sk = this.sessionKeys.getSessionPublicKey();
-      this.sendSessionIx(buildUpdateLookSessionIx(this.wallet, sk, encodeLoadout(this.localLoadout)));
+      this.sendSessionIx(buildUpdateLookSessionIx(
+        this.wallet, sk, encodeLoadout(this.localLoadout, this.wallet.toBase58()),
+      ));
     }
   }
 
@@ -2735,6 +2618,19 @@ export class OnChainMultiplayer {
    * delegated, measured 2026-10-31 with a control; the validator clones it.
    * That is what lets this run mid-session at all.
    */
+  /**
+   * Re-copies what this wallet owns into the snapshot the program checks
+   * outfits against, now rather than at the next connect.
+   *
+   * Called the moment a pack draw lands. The outfit write fails closed now
+   * (audit R-10), so a new pack item put on before the snapshot has it would
+   * be refused; this closes that window from the side that knows when it
+   * opened.
+   */
+  async refreshUnlockSnapshot(): Promise<void> {
+    if (this.wallet && isProgramDeployed()) await this.syncUnlocksOnBase(this.wallet);
+  }
+
   private async syncUnlocksOnBase(wallet: PublicKey): Promise<void> {
     try {
       // ONE fetch, two jobs. The account is read here anyway to decide

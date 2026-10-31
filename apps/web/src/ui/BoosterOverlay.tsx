@@ -26,6 +26,7 @@ import { useEscape } from "@/ui/useEscape";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { PublicKey } from "@solana/web3.js";
 import { BOOSTER_ONCHAIN } from "@/game/solana/program";
+import { getNetwork } from "@/game/multiplayer/OnChainMultiplayer";
 import { itemAtGlobalIndex } from "@/game/config/catalogIndex";
 import { rarityOf } from "@/game/config/packs";
 import { getVariant } from "@/game/config/paperDoll";
@@ -220,6 +221,11 @@ export default function BoosterOverlay({
       // pack item now, so the reveal would otherwise offer hats the wardrobe
       // still refuses to put on.
       await syncOwnedToWardrobe(conn, me);
+      // And into the snapshot the PROGRAM checks outfits against, which is a
+      // different copy. Outfit writes fail closed now, so putting on a new
+      // item before this lands would be refused. Not awaited: it is a session
+      // transaction, and the reveal should not wait on it.
+      void getNetwork()?.refreshUnlockSnapshot();
 
       const rolled: PackDrop[] = [];
       for (const index of granted) {

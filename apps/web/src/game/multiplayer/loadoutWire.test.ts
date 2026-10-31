@@ -1,5 +1,69 @@
 import { describe, it, expect } from "vitest";
-import { globalIndexOf, itemAtGlobalIndex } from "@/game/config/catalogIndex";
+import { Keypair } from "@solana/web3.js";
+import { globalIndexOf, itemAtGlobalIndex, BOOSTER_BLOCK_START } from "@/game/config/catalogIndex";
+import { getBoosterPool, getChainFreeItems } from "@/game/config/paperDoll";
+import { setOnChainUnlocks } from "@/game/config/wardrobeUnlocks";
+import { encodeLoadout, decodeLoadout } from "./loadoutCodec";
+
+/** An UnlockState account body owning exactly `owned`, as the program lays it out. */
+function unlockStateBytes(owned: number[]): Uint8Array {
+  const buf = Buffer.alloc(8 + 32 + 4 + owned.length * 2 + 4 + 1 + 12);
+  let o = 8 + 32;
+  buf.writeUInt32LE(owned.length, o); o += 4;
+  for (const i of [...owned].sort((a, b) => a - b)) { buf.writeUInt16LE(i, o); o += 2; }
+  buf.writeUInt32LE(0, o);
+  return new Uint8Array(buf);
+}
+
+/**
+ * Wardrobe enforcement fails closed now (audit R-10): the program refuses any
+ * loadout value that is not a catalog index, and any pack item the wearer's
+ * snapshot does not hold, and a refusal takes down the WHOLE outfit. So what
+ * goes out has to be exactly what the program will accept.
+ */
+describe("what goes out on the wire", () => {
+  const wallet = Keypair.generate().publicKey.toBase58();
+  const pack = getBoosterPool()[0];
+  const free = getChainFreeItems()[0];
+  const packIndex = globalIndexOf(pack.category, pack.variant.id);
+  const freeIndex = globalIndexOf(free.category, free.variant.id);
+
+  it("is indices, never variant ids", () => {
+    setOnChainUnlocks(wallet, unlockStateBytes([]));
+    const wire = encodeLoadout({ [free.category]: free.variant.id }, wallet);
+    expect(wire).toMatch(/^[a-zA-Z]+=\d+$/);
+    expect(wire.endsWith(`=${freeIndex}`)).toBe(true);
+  });
+
+  it("leaves out a pack item the wallet does not own on chain", () => {
+    expect(packIndex).toBeGreaterThanOrEqual(BOOSTER_BLOCK_START);
+    setOnChainUnlocks(wallet, unlockStateBytes([]));
+    const wire = encodeLoadout({ [pack.category]: pack.variant.id }, wallet);
+    expect(wire).toBe("");
+  });
+
+  it("sends a pack item the wallet owns", () => {
+    setOnChainUnlocks(wallet, unlockStateBytes([packIndex]));
+    const wire = encodeLoadout({ [pack.category]: pack.variant.id }, wallet);
+    expect(wire.endsWith(`=${packIndex}`)).toBe(true);
+  });
+
+  it("drops an item the catalog no longer has rather than sending its id", () => {
+    const wire = encodeLoadout({ hat: "no_such_hat_anywhere" }, wallet);
+    expect(wire).toBe("");
+  });
+});
+
+describe("what is read back", () => {
+  it("reads an index only in its own category's slot (audit R-38)", () => {
+    const hat = getBoosterPool().find((r) => r.category === "hat")
+      ?? getChainFreeItems().find((r) => r.category === "hat")!;
+    const hatIndex = globalIndexOf("hat", hat.variant.id);
+    expect(decodeLoadout(`H=${hatIndex}`).hat).toBe(hat.variant.id);
+    // The same number in the accessory slot names nothing that is worn.
+    expect(decodeLoadout(`a=${hatIndex}`).accessory).toBeUndefined();
+  });
+});
 
 /**
  * The wardrobe wire is moving from variant ids to catalog indices, and the two

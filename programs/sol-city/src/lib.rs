@@ -441,6 +441,8 @@ pub enum SolCityError {
     BadLinkState,
     #[msg("Delegate buffer is not the canonical one for this account")]
     InvalidDelegateBuffer,
+    #[msg("Loadout values must be catalog indices")]
+    LoadoutNotIndex,
     // Appended, never inserted. Anchor numbers these by POSITION, so a
     // variant added in the middle silently renumbers every one after it
     // and any client matching on a code starts reporting the wrong thing.
@@ -640,24 +642,24 @@ pub mod sol_city {
         // is rejected. Peers can then never see a pack cosmetic this wallet
         // never drew.
         //
-        // TWO DELIBERATE HOLES, and together they mean this currently enforces
-        // NOTHING. Read both before "fixing" either.
+        // FAILS CLOSED (audit R-10). A value that does not parse as an index
+        // used to be skipped, while the client still sent variant ids, and that
+        // made this check nothing at all: "H=Crown" walked straight past it and
+        // every reader rendered the crown. It is refused now. The client sends
+        // indices, and the old reason for waiting is gone: sync_unlocks runs on
+        // the rollup mid-session (measured 2026-10-31), so a pack bought during
+        // a session reaches the snapshot without an undelegate.
         //
-        //   1. A value that does not parse as a number is SKIPPED, not
-        //      rejected. The client still sends variant ids ("sk=Light"):
-        //      the global index table that WARDROBE_ONCHAIN.md Phase 2
-        //      specifies was never built. Rejecting a non-number would reject
-        //      every outfit from every player, so until that table ships this
-        //      loop sees nothing it can check.
-        //   2. The quest block, [FREE_ITEM_COUNT, ENFORCED_FROM), is skipped
-        //      outright. No instruction grants a quest bit on chain now that
-        //      claim_free_outfit is out, so enforcing it would make all ten
-        //      quest outfits unwearable.
+        // What is checked is what is STORED (audit R-31). The string used to be
+        // validated whole and then cut to 120 bytes, and a cut can turn one
+        // index into another ("H=1612" into "H=161"), which was then stored
+        // unchecked. Cutting first means the bytes peers read are the bytes
+        // that passed.
         //
-        // Both close by themselves, which is the whole reason this ships as a
-        // no-op instead of waiting: when the client sends indices, (1) stops
-        // matching and booster enforcement turns on with NO further deploy;
-        // when something grants quest bits, (2) is a one-line change.
+        // ONE DELIBERATE HOLE remains: the quest block, [FREE_ITEM_COUNT,
+        // ENFORCED_FROM), is skipped. Nothing grants quest items on chain, so
+        // enforcing it would make every quest outfit unwearable.
+        let loadout = cap_bytes(loadout, 120);
         for part in loadout.split('|') {
             let key = part.split('=').next().unwrap_or("");
             // "c" is the hair colour swatch, not a catalog item. Every swatch
@@ -671,12 +673,9 @@ pub mod sol_city {
                 Some(v) if !v.is_empty() => v,
                 _ => continue, // empty slot / no value = nothing worn there
             };
-            // Hole (1): not a catalog index, so there is nothing to check.
-            let idx: u16 = match val.parse() {
-                Ok(i) => i,
-                Err(_) => continue,
-            };
-            // Free items, and hole (2), the quest block.
+            // Not a catalog index: refused, not skipped (see above).
+            let idx: u16 = val.parse().map_err(|_| error!(SolCityError::LoadoutNotIndex))?;
+            // Free items, and the quest block.
             if idx < ENFORCED_FROM {
                 continue;
             }
@@ -689,7 +688,7 @@ pub mod sol_city {
                 SolCityError::ItemNotUnlocked
             );
         }
-        player.loadout = cap_bytes(loadout, 120);
+        player.loadout = loadout;
         player.last_active = Clock::get()?.unix_timestamp;
         Ok(())
     }
