@@ -265,29 +265,78 @@ fn delegate_pda<'info>(
     let mut signer_seeds: Vec<&[u8]> = seeds.to_vec();
     signer_seeds.push(&bump_arr);
 
-    let (_, buffer_bump) =
+    let (expected_buffer, buffer_bump) =
         Pubkey::find_program_address(&[BUFFER_SEED, pda_key.as_ref()], &crate::ID);
+    // The buffer is checked here and not with seeds on the account structs, so
+    // the account list and the IDL stay exactly as they are. Without it the
+    // only thing standing between a caller and a buffer of their choosing is
+    // the PDA signature the System Program happens to demand below, and the
+    // funded branch further down asks for less than create_account does.
+    require_keys_eq!(
+        delegate_buffer.key(),
+        expected_buffer,
+        SolCityError::InvalidDelegateBuffer
+    );
     let buffer_bump_arr = [buffer_bump];
     let buffer_signer_seeds: &[&[u8]] = &[BUFFER_SEED, pda_key.as_ref(), &buffer_bump_arr];
 
     let data_len = pda.data_len();
     let rent = SolanaRent::get()?;
 
-    invoke_signed(
-        &system_instruction::create_account(
-            authority.key,
-            delegate_buffer.key,
-            rent.minimum_balance(data_len),
-            data_len as u64,
-            &crate::ID,
-        ),
-        &[
-            authority.to_account_info(),
-            delegate_buffer.to_account_info(),
-            system_program.to_account_info(),
-        ],
-        &[buffer_signer_seeds],
-    )?;
+    if delegate_buffer.lamports() == 0 {
+        invoke_signed(
+            &system_instruction::create_account(
+                authority.key,
+                delegate_buffer.key,
+                rent.minimum_balance(data_len),
+                data_len as u64,
+                &crate::ID,
+            ),
+            &[
+                authority.to_account_info(),
+                delegate_buffer.to_account_info(),
+                system_program.to_account_info(),
+            ],
+            &[buffer_signer_seeds],
+        )?;
+    } else {
+        // The buffer address is public and derivable, and create_account
+        // refuses any address that already holds lamports. Without this branch
+        // a stranger sending ~0.0009 SOL to a player's buffer blocked that
+        // player's delegate, and delegate_hunt for everyone, until an upgrade
+        // (audit R-04). Same shape as process_undelegation: top up to rent,
+        // give it its space, take ownership. Whatever the stranger sent comes
+        // back to `authority` at the close below, so funding it is a gift.
+        let shortfall = rent
+            .minimum_balance(data_len)
+            .saturating_sub(delegate_buffer.lamports());
+        if shortfall > 0 {
+            invoke(
+                &system_instruction::transfer(authority.key, delegate_buffer.key, shortfall),
+                &[
+                    authority.to_account_info(),
+                    delegate_buffer.to_account_info(),
+                    system_program.to_account_info(),
+                ],
+            )?;
+        }
+        invoke_signed(
+            &system_instruction::allocate(delegate_buffer.key, data_len as u64),
+            &[
+                delegate_buffer.to_account_info(),
+                system_program.to_account_info(),
+            ],
+            &[buffer_signer_seeds],
+        )?;
+        invoke_signed(
+            &system_instruction::assign(delegate_buffer.key, &crate::ID),
+            &[
+                delegate_buffer.to_account_info(),
+                system_program.to_account_info(),
+            ],
+            &[buffer_signer_seeds],
+        )?;
+    }
 
     {
         let src = pda.data.borrow();
@@ -350,11 +399,23 @@ fn delegate_pda<'info>(
     // The buffer was scratch space for the copy. Closing it hands its rent
     // back to whoever funded it, which is why delegating costs a fee and not
     // a deposit.
+    //
+    // And it is closed all the way: no data, no space, owned by the System
+    // Program again. Moving the lamports alone left a copy of the PDA owned by
+    // this program, and if anything credited the address later in the same
+    // transaction that copy survived, and the funded branch above could not
+    // allocate over it (audit R-50).
     {
         let lamports = delegate_buffer.lamports();
         **delegate_buffer.try_borrow_mut_lamports()? -= lamports;
         **authority.try_borrow_mut_lamports()? += lamports;
     }
+    {
+        let mut data = delegate_buffer.try_borrow_mut_data()?;
+        sol_memset(&mut data, 0, data_len);
+    }
+    delegate_buffer.realloc(0, false)?;
+    delegate_buffer.assign(&anchor_lang::solana_program::system_program::id());
     Ok(())
 }
 
@@ -378,6 +439,8 @@ pub enum SolCityError {
     FriendListFull,
     #[msg("That is not a link state this program knows")]
     BadLinkState,
+    #[msg("Delegate buffer is not the canonical one for this account")]
+    InvalidDelegateBuffer,
     // Appended, never inserted. Anchor numbers these by POSITION, so a
     // variant added in the middle silently renumbers every one after it
     // and any client matching on a code starts reporting the wrong thing.
