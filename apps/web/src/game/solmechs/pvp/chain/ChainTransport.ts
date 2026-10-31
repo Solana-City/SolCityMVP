@@ -385,10 +385,11 @@ export class ChainTransport implements PvpTransport {
     onStatus: (phase: SearchPhase, detail?: string) => void,
     signal: AbortSignal,
   ): Promise<P.DuelistAccount> {
-    // Solana City derives its session key from a wallet signature, so the key
-    // is the same on every device. Load that one first: the key this browser
-    // merely last stored could differ, and the Duelist would then point at a
-    // key the city does not use — costing a `set_session` approval.
+    // The city's session key for THIS wallet in this browser, the same slot
+    // the city loads, so the Duelist points at the key the city uses and no
+    // `set_session` approval is needed. One random key per wallet per
+    // browser since the security pass (audit R-07): on a new device it
+    // differs from the Duelist's, and that device pays one approval once.
     await this.sessionKeys.ensureForWallet(this.wallet);
 
     const lobby = P.lobbyPda(this.program);

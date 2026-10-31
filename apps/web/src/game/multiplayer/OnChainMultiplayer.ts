@@ -654,6 +654,11 @@ export class OnChainMultiplayer {
 
     // Session key authorization happens inside startMagicBlockMultiplayer (real)
     // or in the simulation branch below, routed to the correct connection.
+    //
+    // First, THIS wallet's key: one random key per wallet per browser (audit
+    // R-07, R-15). It used to be a single slot every wallet in the browser
+    // shared. Loading it never prompts.
+    await this.sessionKeys.ensureForWallet(walletPublicKey);
 
     this._connected = true;
 
@@ -1765,6 +1770,9 @@ export class OnChainMultiplayer {
     // Set when a returning player's delegation should also top the session
     // key up, instead of asking for a signature of its own.
     let fundWithDelegation = 0;
+    // Set when the delegation should also AUTHORIZE this browser's key: a
+    // returning player on a device whose key the base copy does not name.
+    let authorizeWithDelegation = false;
     try {
       const existing = await this.baseRpcWithRetry(() => this.baseConnection.getAccountInfo(playerPDA));
       pdaReady = existing !== null;
@@ -1917,6 +1925,16 @@ export class OnChainMultiplayer {
           this.sessionKeys["authorized"] = true;
           fundWithDelegation = needsFunding ? SESSION_FUND_LAMPORTS : 0;
           console.log("✓ PDA on base already authorizes this session key — no prompt");
+        } else if (!baseKey?.equals(sessionKey)) {
+          // A key the base copy does not name: a new device, or the first
+          // visit since keys stopped being derived. Authorized INSIDE the
+          // delegation the player signs next, with its funding, so this costs
+          // no popup of its own. The snapshot sync that normally precedes
+          // the delegation needs an authorized key, so it runs on the rollup
+          // right after instead.
+          authorizeWithDelegation = true;
+          fundWithDelegation = needsFunding ? SESSION_FUND_LAMPORTS : 0;
+          console.log("… new session key for this device — authorized with the delegation (1 sign prompt)");
         } else {
           this.progress("Authorizing session…");
           console.log("✓ PDA on base — auth" + (needsFunding ? " + fund (1 sign prompt)" : ""));
@@ -1959,7 +1977,19 @@ export class OnChainMultiplayer {
       } else if (!isDelegated) {
         this.progress("Delegating to rollup (sign)…");
         console.log("… delegating PDA to ephemeral rollup (1 sign prompt)");
-        this.useEphemeral = await this.delegateToEphemeral(wallet, fundWithDelegation);
+        this.useEphemeral = await this.delegateToEphemeral(wallet, fundWithDelegation, authorizeWithDelegation);
+        if (authorizeWithDelegation) {
+          if (this.useEphemeral) {
+            this.sessionKeys["authorized"] = true;
+            // The sync the delegation skipped, now that the key can sign.
+            await this.syncUnlocksOnBase(wallet);
+          } else {
+            // The delegation, and the authorization riding in it, did not
+            // land. Authorize on base on its own so the session still works
+            // there: the one case where this costs a second approval.
+            await this.sessionKeys.authorize(wallet, this.baseConnection, undefined, fundWithDelegation);
+          }
+        }
       } else {
         this.useEphemeral = true;
         console.log("✓ already delegated — using ephemeral rollup");
@@ -2383,19 +2413,20 @@ export class OnChainMultiplayer {
    * confirmed on-chain (its delegation record exists) — getSignatureStatuses on
    * the router is unreliable, so a delegated PDA is proven by the record.
    */
-  private async delegateToEphemeral(wallet: PublicKey, fundSessionLamports = 0): Promise<boolean> {
+  private async delegateToEphemeral(
+    wallet: PublicKey, fundSessionLamports = 0, authorizeSession = false,
+  ): Promise<boolean> {
     const [playerPDA] = derivePlayerPDA(wallet);
     const entry = transactionLog.record({
       kind: "delegate", layer: "base",
       label: "Delegate PDA → Ephemeral Rollup", status: "pending",
     });
     try {
-      // The snapshot the wardrobe is checked against, refreshed while both
-      // accounts are still writable in the same place. UnlockState is never
-      // delegated and a delegated player PDA can only be written on the
-      // rollup, so base-before-delegate is the last chance. An unlock earned
-      // after this moment is not wearable until the next delegation.
-      await this.syncUnlocksOnBase(wallet);
+      // The snapshot the wardrobe is checked against, refreshed on base first
+      // when the key can already sign for it. A key being authorized in this
+      // very transaction cannot, so the caller syncs on the rollup afterwards
+      // instead, which works mid-session (measured 2026-10-31).
+      if (!authorizeSession) await this.syncUnlocksOnBase(wallet);
 
       // The NEAREST rollup, not a fixed one. This is the only moment the
       // choice is free: it is written into the delegation record, and moving
@@ -2415,6 +2446,11 @@ export class OnChainMultiplayer {
         tx.add(SystemProgram.transfer({
           fromPubkey: wallet, toPubkey: this.sessionKeys.getSessionPublicKey(), lamports: fundSessionLamports,
         }));
+      }
+      // Before the delegation, which copies the account into its buffer: the
+      // copy has to carry the new key, or the rollup would hold the old one.
+      if (authorizeSession) {
+        tx.add(buildAuthorizeSessionIx(wallet, this.sessionKeys.getSessionPublicKey()));
       }
       tx.add(ix);
 

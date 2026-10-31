@@ -13,17 +13,40 @@ import { clusterKey } from "@/game/config/clusterStorage";
 import { walletRequest } from "@/game/solana/walletBus";
 import { prepareWalletTx, sendWalletSigned } from "@/game/solana/walletTx";
 
-const STORAGE_KEY = clusterKey("sol-city-session-key");
+/**
+ * Where a wallet's session key lives: one slot PER WALLET, `<prefix>-<wallet>`.
+ *
+ * `v2` because the keys stored before it were derived from a fixed message
+ * (see `ensureForWallet`), and those must not be picked up again. The old
+ * slots are deleted as each wallet moves over.
+ */
+const STORAGE_PREFIX = clusterKey("sol-city-session-key-v2");
+/** The pre-v2 slots: one shared by every wallet, and one per wallet. */
+const LEGACY_SHARED = clusterKey("sol-city-session-key");
 
 /**
- * Manages an ephemeral keypair for the game session.
+ * Manages the session key: a keypair the wallet authorizes once on chain
+ * (`authorize_session`), which then signs every in-game write with no popup.
  *
- * Flow:
- *   1. Player connects Phantom
- *   2. SessionKeyManager.create() generates a fresh Keypair
- *   3. authorize() calls `authorize_session` on-chain — one wallet popup
- *   4. All position updates are signed by the session key (no more popups)
- *   5. On disconnect, revoke() calls `revoke_session` on-chain
+ * ── A RANDOM key per wallet, per browser (audit R-07, R-15) ─────────────────
+ *
+ * It used to be DERIVED, from the wallet's signature over one fixed message,
+ * so that every device produced the same key and none ever had to authorize
+ * again. That made the key exactly as safe as that signature: any page that
+ * got a player to sign the same text owned their session key for good, with
+ * no way to replace it, because re-deriving gave the same key again. It is
+ * the "game-wallet phishing" Ailton's audit found in Dungeons & Moles.
+ *
+ * Now each browser makes its own random key for each wallet and keeps it.
+ * Same device, nothing changes: the key is still there next time and nothing
+ * is asked. A new device authorizes its own key, in a transaction the player
+ * was signing anyway where the flow allows it, and authorizing it replaces
+ * the old one on chain. That is the trade, chosen on purpose (owner's call,
+ * 2026-10-31): moving between two devices costs one approval on the switch,
+ * and in exchange a leaked key dies the next time the player logs in.
+ *
+ * Kept per wallet, not in one shared slot, so two wallets in one browser no
+ * longer sign with each other's key.
  *
  * In simulation mode (program not deployed) authorize() is a no-op.
  */
@@ -31,67 +54,43 @@ export class SessionKeyManager {
   private sessionKey: Keypair;
   private mainWallet: PublicKey | null = null;
   private authorized = false;
-  /** Wallet whose deterministic session key is currently loaded (base58). */
-  private derivedForWallet: string | null = null;
+  /** Wallet whose key is currently loaded (base58). */
+  private loadedForWallet: string | null = null;
 
   constructor() {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) {
-      try {
-        const bytes = Uint8Array.from(JSON.parse(stored));
-        this.sessionKey = Keypair.fromSecretKey(bytes);
-      } catch {
-        this.sessionKey = Keypair.generate();
-      }
-    } else {
-      this.sessionKey = Keypair.generate();
-    }
-    this.persist();
+    // A placeholder until a wallet is known. Never stored: a key with no
+    // wallet is a key nobody can authorize.
+    this.sessionKey = Keypair.generate();
   }
 
   /**
-   * Ensures the session key is the DETERMINISTIC one for this wallet: derived
-   * from a fixed message the wallet signs once. Because ed25519 signatures are
-   * deterministic, the same wallet yields the same session key on every
-   * device/browser — so it always matches the key the ER already authorized and
-   * never needs a re-authorize (the step that used to hang / wedge wallets).
+   * Loads THIS wallet's session key, or creates one. Never prompts.
    *
-   * Cached per-wallet in localStorage, so only the FIRST connect in a given
-   * browser shows the one-time "sign message" prompt; reconnects are silent.
-   * Falls back to the existing random key if the wallet can't sign messages.
+   * The name is kept from when this derived the key from a signature; it now
+   * only picks the right slot. Call it before reading the key for a wallet.
    */
   async ensureForWallet(walletPublicKey: PublicKey): Promise<void> {
     const w = walletPublicKey.toBase58();
-    if (this.derivedForWallet === w) return;
+    if (this.loadedForWallet === w) return;
 
-    const cacheKey = `${STORAGE_KEY}-${w}`;
-    const cached = typeof localStorage !== "undefined" ? localStorage.getItem(cacheKey) : null;
-    if (cached) {
-      try {
-        this.sessionKey = Keypair.fromSecretKey(Uint8Array.from(JSON.parse(cached)));
-        this.derivedForWallet = w;
-        this.persist();
-        return;
-      } catch { /* corrupt cache — re-derive below */ }
-    }
-
+    const slot = `${STORAGE_PREFIX}-${w}`;
+    let loaded: Keypair | null = null;
     try {
-      const message = new TextEncoder().encode(
-        `Solana City — session key\nWallet: ${w}\n` +
-        `Signing derives your in-game session key. Only sign on solanacity.io.`
-      );
-      const signature = await this.requestWalletSignMessage(message);
-      const hash = await crypto.subtle.digest("SHA-256", signature as BufferSource);
-      this.sessionKey = Keypair.fromSeed(new Uint8Array(hash));
-      this.derivedForWallet = w;
-      try { localStorage.setItem(cacheKey, JSON.stringify(Array.from(this.sessionKey.secretKey))); } catch {}
-      this.persist();
-      console.log(`[SessionKey] derived deterministic key ${this.sessionKey.publicKey.toBase58().slice(0, 8)}… for ${w.slice(0, 8)}…`);
-    } catch (err: any) {
-      // Non-fatal: keep the existing (random) key. Cross-device sync just won't
-      // be automatic for this wallet, but the session still works in-browser.
-      console.warn("[SessionKey] deterministic derivation skipped:", err?.message);
-    }
+      const stored = localStorage.getItem(slot);
+      if (stored) loaded = Keypair.fromSecretKey(Uint8Array.from(JSON.parse(stored)));
+    } catch { /* unreadable or corrupt: a new key below */ }
+
+    this.sessionKey = loaded ?? Keypair.generate();
+    this.loadedForWallet = w;
+    this.authorized = false;
+    this.persist();
+
+    // The derived key and the shared slot go. Leaving them would keep the
+    // phishable secret on disk long after nothing reads it.
+    try {
+      localStorage.removeItem(`${LEGACY_SHARED}-${w}`);
+      localStorage.removeItem(LEGACY_SHARED);
+    } catch { /* storage blocked: nothing to clean */ }
   }
 
   getSessionKey(): Keypair       { return this.sessionKey; }
@@ -206,23 +205,16 @@ export class SessionKeyManager {
    */
   rotateKey(): void {
     this.sessionKey = Keypair.generate();
+    this.authorized = false;
     this.persist();
   }
 
-  /**
-   * Asks the wallet (via WalletSignBridge) to sign a raw message, returning the
-   * signature bytes. Used only to derive the deterministic session key.
-   */
-  private requestWalletSignMessage(message: Uint8Array): Promise<Uint8Array> {
-    return walletRequest<Uint8Array>(
-      "wallet:needSignMessage", "wallet:signedMessage", "wallet:signMessageError", message,
-    );
-  }
-
+  /** Into this wallet's own slot. Nothing is stored before a wallet is known. */
   private persist(): void {
+    if (!this.loadedForWallet) return;
     try {
       localStorage.setItem(
-        STORAGE_KEY,
+        `${STORAGE_PREFIX}-${this.loadedForWallet}`,
         JSON.stringify(Array.from(this.sessionKey.secretKey))
       );
     } catch {}
