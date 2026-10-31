@@ -4,27 +4,33 @@
  * The game already has a session key per player, authorized on-chain as the
  * `session_authority` of the wallet's player PDA. A request signed by that
  * key is as good as one signed by the wallet for low-stakes actions (DMs,
- * daily check-in): the server checks the key against the PDA once (rollup
- * first, then base) and caches the match for a day.
+ * daily check-in): the server checks the key against the PDA, reading only
+ * the copy that is CURRENT, and remembers a match for a few minutes.
  *
  * Keys:
- *   auth:sk:<sessionKey>  -> the wallet it belongs to (1 day)
+ *   auth:sk:<sessionKey>  -> the wallet it belongs to (5 minutes)
+ *
+ * Both changed with the security pass (audit R-16). A match used to be
+ * cached for a day, and either copy of the account was accepted, the
+ * rollup's or the base one, which is frozen at whatever it held when the
+ * account was delegated. A key the player had replaced kept passing for up
+ * to a day, and a stale base copy could vouch for it indefinitely.
  */
 import { createPublicKey, verify } from "crypto";
 import { PublicKey } from "@solana/web3.js";
 import { get, setex } from "@/lib/kv";
-import { derivePlayerPDA } from "@/game/solana/program";
+import { derivePlayerPDA, DELEGATION_PROGRAM_ID } from "@/game/solana/program";
 import { BASE_RPC_ENDPOINTS } from "@/game/solana/baseRpc";
 
 const ER_RPC = "https://devnet.magicblock.app";
-const SK_CACHE_SECS = 86_400;
+/** How long a verified match is trusted before the chain is asked again. */
+const SK_CACHE_SECS = 5 * 60;
 /**
- * A warm server instance remembers a match for a few minutes, so a busy
- * client (quest and event writes, one per action) costs the store nothing
- * beyond the first request on that instance. Short, because the store entry
- * is the one that lasts a day.
+ * A warm server instance remembers a match for a minute, so a busy client
+ * (quest and event writes, one per action) costs the store nothing beyond the
+ * first request on that instance.
  */
-const MEM_CACHE_MS = 10 * 60_000;
+const MEM_CACHE_MS = 60_000;
 const MEM_CACHE_MAX = 5_000;
 const owners = new Map<string, { wallet: string; until: number }>();
 
@@ -55,7 +61,9 @@ export function verifyEd25519(signer: string, message: string, signatureB64: str
 
 // ── Session key ownership ───────────────────────────────────────────────────
 
-async function readAccount(endpoint: string, address: string): Promise<Buffer | null> {
+async function readAccount(
+  endpoint: string, address: string,
+): Promise<{ data: Buffer; owner: string } | null> {
   try {
     const res = await fetch(endpoint, {
       method: "POST",
@@ -68,8 +76,11 @@ async function readAccount(endpoint: string, address: string): Promise<Buffer | 
       signal: AbortSignal.timeout(6_000),
     });
     const body = await res.json();
-    const data = body?.result?.value?.data?.[0];
-    return typeof data === "string" ? Buffer.from(data, "base64") : null;
+    const value = body?.result?.value;
+    const data = value?.data?.[0];
+    return typeof data === "string" && typeof value?.owner === "string"
+      ? { data: Buffer.from(data, "base64"), owner: value.owner }
+      : null;
   } catch {
     return null;
   }
@@ -93,14 +104,23 @@ export async function verifySessionOwner(wallet: string, sessionKey: string): Pr
   if ((await get(`auth:sk:${sessionKey}`)) === wallet) { remember(sessionKey, wallet); return true; }
   let pda: string;
   try { pda = derivePlayerPDA(new PublicKey(wallet))[0].toBase58(); } catch { return false; }
-  for (const endpoint of [ER_RPC, ...BASE_RPC_ENDPOINTS]) {
-    const data = await readAccount(endpoint, pda);
-    if (data && sessionAuthorityOf(data, wallet) === sessionKey) {
-      await setex(`auth:sk:${sessionKey}`, wallet, SK_CACHE_SECS);
-      remember(sessionKey, wallet);
-      return true;
-    }
+
+  // Which copy is current is decided by BASE: a delegated account is owned by
+  // the delegation program there, and then only the rollup's copy is live;
+  // otherwise the base copy is. The first base endpoint that answers decides.
+  let base: { data: Buffer; owner: string } | null = null;
+  for (const endpoint of BASE_RPC_ENDPOINTS) {
+    base = await readAccount(endpoint, pda);
+    if (base) break;
   }
-  return false;
+  if (!base) return false;
+  const current = base.owner === DELEGATION_PROGRAM_ID.toBase58()
+    ? await readAccount(ER_RPC, pda)
+    : base;
+  if (!current || sessionAuthorityOf(current.data, wallet) !== sessionKey) return false;
+
+  await setex(`auth:sk:${sessionKey}`, wallet, SK_CACHE_SECS);
+  remember(sessionKey, wallet);
+  return true;
 }
 

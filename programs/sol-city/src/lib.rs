@@ -482,6 +482,16 @@ pub mod sol_city {
     }
 
     pub fn authorize_session(ctx: Context<AuthorizeSession>, session_key: Pubkey) -> Result<()> {
+        // Two keys that are never a session key (audit R-07). The default key
+        // is the all-zero address, which a client bug produces rather than a
+        // player. The wallet itself would turn every session-signed write into
+        // one only the wallet can make, which is what the session key exists to
+        // avoid, and would put the wallet's own key in browser storage.
+        require!(session_key != Pubkey::default(), SolCityError::InvalidSessionKey);
+        require!(
+            session_key != ctx.accounts.authority.key(),
+            SolCityError::InvalidSessionKey
+        );
         ctx.accounts.player.session_authority = Some(session_key);
         Ok(())
     }
