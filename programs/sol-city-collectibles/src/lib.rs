@@ -131,15 +131,6 @@ pub const VERIFY_LEAF_DISCRIMINATOR: [u8; 8] = [124, 220, 22, 223, 104, 10, 250,
 /// and VRF ones above, so this program still depends on `anchor-lang` alone.
 pub const TOKEN_PROGRAM_ID: Pubkey = pubkey!("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
 
-/// How far the draw walks a rarity bucket looking for something the wallet
-/// does not already own before it settles for a duplicate.
-///
-/// A cap rather than the whole bucket because the callback runs on the
-/// oracle's compute budget, and a season holds a few hundred indices per
-/// rarity. The behaviour it gives up is invisible: a wallet that owns
-/// thirty-two consecutive indices of one rarity owns nearly all of it, and
-/// a duplicate is the honest answer there anyway.
-pub const MAX_BUCKET_PROBES: usize = 32;
 /// Treasury that receives pack payments (the game wallet).
 pub const TREASURY: Pubkey = pubkey!("9592QS34mPUwqA7sPAkug1kcuFddjn59QPQMzzCgKhEp");
 
@@ -705,21 +696,33 @@ pub mod sol_city_collectibles {
             // taking the scarcity it is supposed to be selling.
             //
             // Owner's call, 2026-10-31.
+            // EVERY ITEM IS AN INDEPENDENT DRAW. Nothing already drawn is
+            // excluded, inside this pack or across a bundle.
+            //
+            // This used to skip anything already in `picks`, and `picks`
+            // spanned the whole BUNDLE, which made ten packs bought together
+            // a sample WITHOUT REPLACEMENT: fifty items that could not
+            // repeat each other, where fifty bought one at a time would.
+            // Buying in bulk was strictly the better product, and against a
+            // small enough season table it handed over the entire set.
+            //
+            // Dropping it per pack as well, and not only per bundle, is the
+            // owner's call of 2026-10-31 and follows from how supply works:
+            // a season mints many of each item, two of the same is a normal
+            // outcome, and the duplicates are what a secondary market is made
+            // of. The arithmetic that follows is a duplicate somewhere in a
+            // pack of five about 15% of the time, nearly all of it in common.
+            //
+            // It also retires the other half of the bug. There is no longer a
+            // state where nothing can be picked, so no item is ever charged
+            // for and left undelivered.
             let mut picked: Option<u16> = None;
             for rung in 0..rungs {
                 let r = ladder[rung];
                 let list = &drops.drops[r];
                 if list.is_empty() { continue; }
-                let offset = (roll(1 + rung) as usize) % list.len();
-                let probes = list.len().min(MAX_BUCKET_PROBES);
-                for step in 0..probes {
-                    let index = list[(offset + step) % list.len()];
-                    // No item twice in the same pack.
-                    if picks.contains(&index) { continue; }
-                    picked = Some(index);
-                    break;
-                }
-                if picked.is_some() { break; }
+                picked = Some(list[(roll(1 + rung) as usize) % list.len()]);
+                break;
             }
 
             // Nothing left anywhere: the whole season is already in this pack.
