@@ -7,6 +7,8 @@ import type { NPCAction } from "@/game/config/npcRegistry";
 import type { EarnListing, EarnListingType } from "@/game/solana/superteamEarn";
 import { transactionLog } from "@/game/telemetry/transactionLog";
 import { prepareWalletTx } from "@/game/solana/walletTx";
+import { guardThirdPartyTx } from "@/game/solana/thirdPartyTxGuard";
+import { mainnetConnection } from "@/game/solana/mainnetRpc";
 import { profileManager } from "@/game/config/profileManager";
 import {
   SEND_TOKENS, DEFAULT_SEND_TOKEN, getSendToken, explorerUrl,
@@ -420,8 +422,17 @@ function SwapPanel({ onClose, tabs, swapTo, logo }: {
         });
       }
 
+      // Built by Jupiter, so looked at before the wallet sees it (audit R-12):
+      // nothing that hands over the player's tokens, and no more taken than
+      // the quote's input plus a 1% margin.
+      const tx = jup.deserializeTransaction(order.transaction!);
+      await guardThirdPartyTx(tx, {
+        conn: mainnetConnection(),
+        owner: publicKey,
+        spend: [{ mint: order.inputMint, amount: BigInt(order.inAmount) }],
+      });
       // Wallet signs only; Jupiter /execute lands it on mainnet.
-      const signed = await signTransaction(jup.deserializeTransaction(order.transaction!) as any);
+      const signed = await signTransaction(tx as any);
       setStatus("submitting");
       const executed = await jup.executeOrder(signed as any, order.requestId);
       const signature = executed.signature ?? "";
@@ -1059,7 +1070,9 @@ function PrivatePaymentPanel({ onClose }: { onClose: () => void }) {
     try {
       const mb = await import("@/game/solana/magicblockPayments");
       const txData = await mb.buildDeposit(publicKey.toBase58(), parsed, cluster);
-      await mb.signAndSubmit(txData, signTransaction as any, authToken, cluster);
+      await mb.signAndSubmit(txData, signTransaction as any, authToken, cluster, {
+        owner: publicKey, usdcOut: mb.usdcUnits(parsed),
+      });
       await refreshBalance();
       setStatus("ready");
     } catch (e: any) {
@@ -1081,7 +1094,9 @@ function PrivatePaymentPanel({ onClose }: { onClose: () => void }) {
     try {
       const mb = await import("@/game/solana/magicblockPayments");
       const txData = await mb.buildPrivateTransfer(publicKey.toBase58(), recipient, parsed, authToken, cluster);
-      await mb.signAndSubmit(txData, signTransaction as any, authToken, cluster);
+      await mb.signAndSubmit(txData, signTransaction as any, authToken, cluster, {
+        owner: publicKey, usdcOut: mb.usdcUnits(parsed),
+      });
       setLastAction("send");
       setStatus("done");
       emitGameEvent("game:transfer");
@@ -1108,7 +1123,10 @@ function PrivatePaymentPanel({ onClose }: { onClose: () => void }) {
     try {
       const mb = await import("@/game/solana/magicblockPayments");
       const txData = await mb.buildWithdraw(publicKey.toBase58(), parsed, authToken, cluster);
-      await mb.signAndSubmit(txData, signTransaction as any, authToken, cluster);
+      // A withdraw only moves USDC in, so nothing may go out but fees.
+      await mb.signAndSubmit(txData, signTransaction as any, authToken, cluster, {
+        owner: publicKey, usdcOut: BigInt(0),
+      });
       await refreshBalance();
       setLastAction("withdraw");
       setStatus("done");

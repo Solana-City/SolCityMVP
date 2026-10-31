@@ -1,4 +1,5 @@
-import { Connection, Transaction, VersionedTransaction } from "@solana/web3.js";
+import { Connection, PublicKey, Transaction, VersionedTransaction } from "@solana/web3.js";
+import { guardThirdPartyTx } from "./thirdPartyTxGuard";
 
 export const PAYMENTS_API   = "https://payments.magicblock.app";
 
@@ -154,11 +155,27 @@ export async function buildWithdraw(
 
 // ── Sign & submit ─────────────────────────────────────────────────────────────
 
+/** A USDC amount as typed, in the token's smallest unit, rounded as the builders round it. */
+export function usdcUnits(amountUsdc: number): bigint {
+  return BigInt(Math.round(amountUsdc * 10 ** USDC_DECIMALS));
+}
+
+/**
+ * Who is paying, and how much USDC the action is meant to move out of their
+ * own accounts: the deposit or transfer amount, or 0 for a withdraw, which
+ * only moves money IN. In the token's smallest unit.
+ */
+export interface PaymentIntent {
+  owner: PublicKey;
+  usdcOut: bigint;
+}
+
 export async function signAndSubmit(
   txData: TxData,
   signTransaction: (tx: Transaction | VersionedTransaction) => Promise<Transaction | VersionedTransaction>,
   token: string,
-  clusterKey: ClusterKey = "mainnet"
+  clusterKey: ClusterKey,
+  intent: PaymentIntent,
 ): Promise<string> {
   const c = CLUSTERS[clusterKey];
   const buffer = Buffer.from(txData.transactionBase64, "base64");
@@ -167,14 +184,23 @@ export async function signAndSubmit(
       ? VersionedTransaction.deserialize(buffer)
       : Transaction.from(buffer);
 
-  const signed = await signTransaction(tx);
-
   const rpcUrl =
     txData.sendTo === "ephemeral"
       ? `${c.ephemeralRpc}?token=${token}`
       : c.solanaRpc;
 
   const conn = new Connection(rpcUrl, "confirmed");
+
+  // Built by the payments API, so looked at before the wallet sees it (audit
+  // R-12): nothing that hands over the player's tokens, and no more USDC out
+  // of their accounts than the amount they typed, simulated where it lands.
+  await guardThirdPartyTx(tx, {
+    conn,
+    owner: intent.owner,
+    spend: intent.usdcOut > BigInt(0) ? [{ mint: c.usdcMint, amount: intent.usdcOut }] : [],
+  });
+
+  const signed = await signTransaction(tx);
   const sig = await conn.sendRawTransaction((signed as Transaction).serialize(), {
     skipPreflight: false,
     maxRetries: 3,

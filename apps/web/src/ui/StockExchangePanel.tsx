@@ -17,6 +17,10 @@ import {
 const SECTORS = (Object.keys(SECTOR_LABELS) as StockSector[]).filter((sct) => STOCKS.some((s) => s.sector === sct));
 import { getShareTrades, setShareTrades } from "@/game/chat/tradeBroadcast";
 import { ORDER_TTL_MS, deserializeTransaction, fromSmallestUnit, type OrderResponse } from "@/game/solana/jupiterSwap";
+import { PublicKey } from "@solana/web3.js";
+import { guardThirdPartyTx, type Spend } from "@/game/solana/thirdPartyTxGuard";
+import { mainnetConnection } from "@/game/solana/mainnetRpc";
+import { baseConnection } from "@/game/solana/baseRpc";
 import { transactionLog } from "@/game/telemetry/transactionLog";
 import { profileManager } from "@/game/config/profileManager";
 import { chamferBox } from "@/ui/chamfer";
@@ -36,6 +40,11 @@ const BUY_USD = [1, 5, 10, 25];
 /** Read once per page load; ?stocks=mainnet|devnet switches it (see getStockVenue). */
 const IS_DEVNET = typeof window !== "undefined" && getStockVenue() === "devnet";
 const SELL_PCT = [0.25, 0.5, 1];
+
+/** Where an order lands, so it is simulated there. */
+const venueConnection = () => (IS_DEVNET ? baseConnection() : mainnetConnection());
+/** What an order says the player gives up: its input, in its input mint. */
+const orderSpend = (o: OrderResponse): Spend[] => [{ mint: o.inputMint, amount: BigInt(o.inAmount) }];
 
 // ── Cost basis (local, per wallet) for the P&L on "MY STOCKS" ─────────────
 type Basis = Record<string, { usd: number; amount: number }>;
@@ -338,8 +347,14 @@ function TradeView(props: {
       if (Date.now() - quotedAt.current > ORDER_TTL_MS) {
         o = (await requestOrder()) ?? order;
       }
+      // Built by the venue, so looked at before the wallet sees it (audit
+      // R-12): no handover of the player's tokens, no more taken than quoted.
+      const tx = deserializeTransaction(o.transaction!);
+      await guardThirdPartyTx(tx, {
+        conn: venueConnection(), owner: new PublicKey(wallet), spend: orderSpend(o),
+      });
       setStatus("signing");
-      const signed = await signTransaction(deserializeTransaction(o.transaction!));
+      const signed = await signTransaction(tx);
       setStatus("submitting");
       const res = await submitStockOrder(o, signed as any);
       const outRaw = res.outAmount;
@@ -580,6 +595,14 @@ function BasketView(props: {
     let signed: unknown[];
     try {
       const txs = ready.map(({ l }) => deserializeTransaction(l.order!.transaction!));
+      // Every leg checked before the one prompt (audit R-12). One bad leg
+      // stops the whole basket: signing the rest would be signing beside it.
+      const owner = new PublicKey(wallet);
+      for (let i = 0; i < txs.length; i++) {
+        await guardThirdPartyTx(txs[i], {
+          conn: venueConnection(), owner, spend: orderSpend(ready[i].l.order!),
+        });
+      }
       signed = signAllTransactions ? await signAllTransactions(txs) : await Promise.all(txs.map((t) => signTransaction!(t)));
     } catch (e: any) {
       const msg = /reject|cancel|denied/i.test(e?.message ?? "") ? "Signature cancelled." : (e?.message ?? "Signing failed.");
