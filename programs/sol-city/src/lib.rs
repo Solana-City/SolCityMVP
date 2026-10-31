@@ -917,7 +917,19 @@ pub mod sol_city {
     /// `kick_ball_session` needed two delegated accounts at once, the ball and
     /// the kicker, and those are never on the same rollup for everybody.
     ///
-    /// Admin-run, once. Nothing undelegates it: the hunt is a fixture.
+    /// Run by the program's UPGRADE AUTHORITY, and nobody else (audit R-09).
+    ///
+    /// The comment above used to say "admin-run", and nothing enforced it:
+    /// any signer could hand the city-wide hunt to a validator of their own
+    /// choosing, and since no sol-city instruction brings it back, it would
+    /// stay there. Gated on the upgrade authority rather than a stored key,
+    /// the same choice the collectibles program made for its configs: it
+    /// grants nobody anything new, since whoever can replace the program can
+    /// already do this, and it moves with the authority when that becomes a
+    /// multisig, where this turns into a proposal.
+    ///
+    /// The validator is still the caller's choice, as the first remaining
+    /// account; the caller is now someone who can be trusted with it.
     pub fn delegate_hunt(ctx: Context<DelegateHunt>) -> Result<()> {
         delegate_pda(
             &ctx.accounts.payer,
@@ -1300,8 +1312,17 @@ pub struct ClaimFind<'info> {
 /// `authority`, and the session key is checked against the stored bytes.
 #[derive(Accounts)]
 pub struct DelegateHunt<'info> {
+    /// The program's upgrade authority, which signs and pays.
     #[account(mut)]
     pub payer: Signer<'info>,
+    /// CHECK: this program, used only to reach its ProgramData.
+    #[account(constraint = program.programdata_address()? == Some(program_data.key())
+        @ SolCityError::InvalidAuthority)]
+    pub program: Program<'info, crate::program::SolCity>,
+    /// The deployer's claim, checked rather than taken on trust (audit R-09).
+    #[account(constraint = program_data.upgrade_authority_address == Some(payer.key())
+        @ SolCityError::InvalidAuthority)]
+    pub program_data: Account<'info, ProgramData>,
     /// CHECK: PDA by seeds. Unchecked because the delegation CPI reassigns its
     /// owner midway, and Anchor would write a stale copy back over it.
     #[account(mut, seeds = [HUNT_SEED], bump)]
