@@ -79,6 +79,10 @@ pub const MINT_CONFIG_SEED: &[u8] = b"mint_config";
 /// anyone could mint from would be a tree anyone could mint anything from.
 pub const MINT_AUTHORITY_SEED: &[u8] = b"mint_authority";
 
+/// Seed of the marker that says "this tree was once the mint tree", followed
+/// by the tree's address. See `set_mint_tree` and `AcceptedTree`.
+pub const ACCEPTED_TREE_SEED: &[u8] = b"accepted_tree";
+
 /// Most assets one wallet can mint. Two bytes each, same as `owned`.
 pub const PLAYER_MINT_CAP: usize = 256;
 
@@ -212,6 +216,12 @@ fn openable_pack(
     drops_total: usize,
 ) -> Result<PackDef> {
     let def = *cfg.pack(pack_id).ok_or(CollectiblesError::UnknownPack)?;
+    // Only a season that has opened: its drop table is frozen from that moment
+    // and not before, so a pack of a later season would draw from a table the
+    // admin can still rewrite (audit R-58). Never refuses a pack that was
+    // sold, because packs are only sold in the current season and the season
+    // only moves forward: an old pack's season is always at or below it.
+    require!(def.season <= cfg.current_season, CollectiblesError::WrongSeason);
     require!(def.size > 0, CollectiblesError::InvalidPoolCount);
     require!(def.size as usize <= BOOSTER_PACK_SIZE, CollectiblesError::InvalidPoolCount);
 
@@ -1089,7 +1099,76 @@ pub mod sol_city_collectibles {
     /// The collection does NOT move with it. Assets already minted keep
     /// pointing at the tree that holds them, which is where they live; a tree
     /// is storage, and the collection is identity.
-    pub fn set_mint_tree(ctx: Context<AdminMintConfig>, merkle_tree: Pubkey) -> Result<()> {
+    ///
+    /// And they keep WORKING (audit R-11). Before this, moving the tree
+    /// stranded every sealed pack and every claimable cosmetic in the old one:
+    /// opening and claiming only accepted the current tree, so a pack somebody
+    /// had paid for could no longer be opened. The tree being left now gets an
+    /// AcceptedTree marker, paid by the admin, and opening and claiming accept
+    /// a leaf in any tree that has one. A pack opens with the terms it was
+    /// sold with, whichever tree holds it.
+    pub fn set_mint_tree(ctx: Context<SetMintTree>, merkle_tree: Pubkey) -> Result<()> {
+        let old = ctx.accounts.mint_config.merkle_tree;
+        let marker = &ctx.accounts.retired_tree_marker;
+
+        // Nothing to retire on a first assignment or a no-op, and a tree that
+        // was retired before (rotated away, back, and away again) already has
+        // its marker.
+        if old != Pubkey::default() && old != merkle_tree && marker.owner != &crate::ID {
+            let (_, bump) = Pubkey::find_program_address(
+                &[ACCEPTED_TREE_SEED, old.as_ref()],
+                &crate::ID,
+            );
+            let bump_arr = [bump];
+            let signer: &[&[u8]] = &[ACCEPTED_TREE_SEED, old.as_ref(), &bump_arr];
+            let space = 8 + AcceptedTree::INIT_SPACE;
+            let rent = SolanaRent::get()?;
+            let admin = &ctx.accounts.admin;
+            let system_program = &ctx.accounts.system_program;
+
+            if marker.lamports() == 0 {
+                invoke_signed(
+                    &system_instruction::create_account(
+                        admin.key, marker.key, rent.minimum_balance(space), space as u64, &crate::ID,
+                    ),
+                    &[admin.to_account_info(), marker.to_account_info(), system_program.to_account_info()],
+                    &[signer],
+                )?;
+            } else {
+                // The address is derivable, so it can be pre-funded, and a
+                // pre-funded address refuses create_account. Same answer as the
+                // delegate buffer in sol-city (audit R-04): top up, allocate,
+                // assign. Otherwise one lamport would freeze the tree in place.
+                let shortfall = rent.minimum_balance(space).saturating_sub(marker.lamports());
+                if shortfall > 0 {
+                    invoke(
+                        &system_instruction::transfer(admin.key, marker.key, shortfall),
+                        &[admin.to_account_info(), marker.to_account_info(), system_program.to_account_info()],
+                    )?;
+                }
+                invoke_signed(
+                    &system_instruction::allocate(marker.key, space as u64),
+                    &[marker.to_account_info(), system_program.to_account_info()],
+                    &[signer],
+                )?;
+                invoke_signed(
+                    &system_instruction::assign(marker.key, &crate::ID),
+                    &[marker.to_account_info(), system_program.to_account_info()],
+                    &[signer],
+                )?;
+            }
+
+            let mut data = marker.try_borrow_mut_data()?;
+            // Discriminator then the tree, exactly as Anchor would have written
+            // it, so the Option<Account<AcceptedTree>> on the open and claim
+            // side reads it like any other account. Spelled with the trait's
+            // path, the way catalog spells it, rather than trusting the prelude.
+            anchor_lang::AccountSerialize::try_serialize(
+                &AcceptedTree { tree: old },
+                &mut &mut data[..],
+            )?;
+        }
+
         ctx.accounts.mint_config.merkle_tree = merkle_tree;
         Ok(())
     }
@@ -1381,13 +1460,20 @@ pub mod sol_city_collectibles {
         metadata: MetadataArgs,
     ) -> Result<()> {
         let cfg = &ctx.accounts.mint_config;
-        require_keys_eq!(
-            ctx.accounts.merkle_tree.key(), cfg.merkle_tree, CollectiblesError::WrongMintTarget
-        );
+        // The current tree, or one this program used to mint into: a cosmetic
+        // bought second-hand from before a tree rotation is still that
+        // cosmetic (audit R-11).
+        require_accepted_tree(
+            &ctx.accounts.merkle_tree.key(), cfg, ctx.accounts.accepted_tree.is_some(),
+        )?;
         require!(
             !ctx.accounts.unlock_state.owns(index),
             CollectiblesError::AlreadyOwned
         );
+        // A quest or event cosmetic never exists as an asset, so there is
+        // nothing honest to claim. mint_unlock already refuses to make one;
+        // this is the same rule on the way back in (audit R-60).
+        require!(is_mintable(index), CollectiblesError::ItemNotMintable);
         // Not while a draw is in flight: a claim grows `owned` into the room
         // the callback was paid for. See mint_unlock (audit R-06).
         require!(!ctx.accounts.unlock_state.pending, CollectiblesError::BoosterPending);
@@ -1526,11 +1612,15 @@ pub mod sol_city_collectibles {
             &ctx.accounts.drops.key(),
             ctx.accounts.drops.total(),
         )?;
-        require_keys_eq!(
-            ctx.accounts.merkle_tree.key(),
-            ctx.accounts.mint_config.merkle_tree,
-            CollectiblesError::WrongMintTarget
-        );
+        // The current tree, or one this program used to mint into. A pack sold
+        // before a tree rotation still opens, and opens as itself: `def` above
+        // came from its pack id, whose season, size and odds are frozen, and
+        // nothing below depends on which tree holds it (audit R-11).
+        require_accepted_tree(
+            &ctx.accounts.merkle_tree.key(),
+            &ctx.accounts.mint_config,
+            ctx.accounts.accepted_tree.is_some(),
+        )?;
 
         // (1) This metadata is THAT pack. Same string mint_pack wrote, built
         // from a base that cannot change, so naming another pack's id here
@@ -2018,6 +2108,39 @@ pub struct MintConfig {
     pub base_uri: String,
 }
 
+/// A tree that used to be the mint tree, and whose assets still count.
+///
+/// Written by `set_mint_tree` for the tree it moves away from, and by nothing
+/// else, so its existence at ["accepted_tree", tree] is the proof that this
+/// program once minted into that tree. A tree a caller made up has no marker
+/// and cannot get one.
+///
+/// It exists for the sealed pack bought before a rotation (audit R-11). Its
+/// leaf stays in the old tree forever, and the owner's call of 2026-10-31 is
+/// that such a pack must open, and open as itself: its pack id, season, size
+/// and odds were frozen when it was sold, and none of that depends on which
+/// tree holds it. Without the marker it could not be opened at all, and the
+/// same went for claiming a cosmetic bought second-hand from the old tree.
+///
+/// Minting is NOT accepted against a marker: new assets go to the current
+/// tree only. A marker is for spending and proving what already exists.
+#[account]
+#[derive(InitSpace)]
+pub struct AcceptedTree {
+    pub tree: Pubkey,
+}
+
+/// Whether a leaf in `tree` may be spent or claimed here: the current mint
+/// tree, or one this program used to mint into (a marker was passed, and the
+/// account struct's seeds tie that marker to `tree`).
+fn require_accepted_tree(tree: &Pubkey, cfg: &MintConfig, marker_passed: bool) -> Result<()> {
+    require!(
+        *tree == cfg.merkle_tree || marker_passed,
+        CollectiblesError::WrongMintTarget
+    );
+    Ok(())
+}
+
 /// What one season can drop, by rarity.
 ///
 /// ── Why a list per rarity and not a rarity per index ─────────────────────
@@ -2235,6 +2358,32 @@ pub struct ClaimOwnedFromAsset<'info> {
     #[account(address = ACCOUNT_COMPRESSION_ID)]
     pub compression_program: UncheckedAccount<'info>,
     pub system_program: Program<'info, System>,
+    /// The marker for `merkle_tree`, when that is a tree this program used to
+    /// mint into. Absent (the program id in its slot) for the current tree.
+    /// Seeded on the tree, so a marker for one tree cannot vouch for another.
+    #[account(seeds = [ACCEPTED_TREE_SEED, merkle_tree.key().as_ref()], bump)]
+    pub accepted_tree: Option<Account<'info, AcceptedTree>>,
+}
+
+/// Moving minting to a new tree, and leaving a marker for the old one.
+#[derive(Accounts)]
+pub struct SetMintTree<'info> {
+    #[account(
+        mut,
+        seeds = [MINT_CONFIG_SEED],
+        bump,
+        constraint = mint_config.admin == admin.key() @ CollectiblesError::NotPackAdmin,
+    )]
+    pub mint_config: Account<'info, MintConfig>,
+    /// Signs, and pays for the marker.
+    #[account(mut)]
+    pub admin: Signer<'info>,
+    /// CHECK: the AcceptedTree marker for the tree being LEFT, i.e. the one
+    /// still in the config while constraints run. Created in the body when
+    /// it does not exist yet; its address is fixed by these seeds.
+    #[account(mut, seeds = [ACCEPTED_TREE_SEED, mint_config.merkle_tree.as_ref()], bump)]
+    pub retired_tree_marker: UncheckedAccount<'info>,
+    pub system_program: Program<'info, System>,
 }
 
 #[derive(Accounts)]
@@ -2324,6 +2473,11 @@ pub struct OpenPackFromAsset<'info> {
     #[account(address = anchor_lang::solana_program::sysvar::slot_hashes::ID)]
     pub slot_hashes: UncheckedAccount<'info>,
     pub system_program: Program<'info, System>,
+    /// The marker for `merkle_tree`, when the pack lives in a tree this
+    /// program used to mint into. Absent (the program id in its slot) for the
+    /// current tree. Seeded on the tree, so it vouches for that tree only.
+    #[account(seeds = [ACCEPTED_TREE_SEED, merkle_tree.key().as_ref()], bump)]
+    pub accepted_tree: Option<Account<'info, AcceptedTree>>,
 }
 
 /// Buying a pack sealed. No UnlockState and no VRF: nothing is drawn here.

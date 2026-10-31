@@ -11,6 +11,7 @@ import { ixDiscriminator, buildInitUnlockStateIx } from "./instructions";
 import { prepareWalletTx } from "./walletTx";
 import {
   deriveMintConfigPDA, deriveMintAuthorityPDA, pendingMintIndices, buildMintPendingTxs,
+  acceptedTreeSlot,
   type MintConfigAccount, type SignedMints, type SignAllTx,
 } from "./mint";
 import { baseConnection, type OnChainPack, type PackConfigAccount } from "./packs";
@@ -223,6 +224,15 @@ export interface AssetProof {
   root: PublicKey;
   proof: PublicKey[];
   nodeIndex: number;
+  /**
+   * The tree the asset actually lives in, as the indexer reports it.
+   *
+   * Not assumed to be the config's tree: after `set_mint_tree` a pack bought
+   * earlier still lives in the tree it was minted into, and it has to be
+   * burned THERE. Using the current tree would produce a proof that does not
+   * burn, and the pack would look unopenable.
+   */
+  tree: PublicKey;
 }
 
 /**
@@ -250,7 +260,7 @@ export async function getAssetProof(conn: Connection, assetId: PublicKey): Promi
   });
   if (!res.ok) throw new Error(`the indexer answered ${res.status}`);
   const body = await res.json() as {
-    result?: { root: string; proof: string[]; node_index: number; leaf: string };
+    result?: { root: string; proof: string[]; node_index: number; leaf: string; tree_id: string };
     error?: { message?: string };
   };
   if (body.error || !body.result) {
@@ -260,6 +270,7 @@ export async function getAssetProof(conn: Connection, assetId: PublicKey): Promi
     root: new PublicKey(body.result.root),
     proof: body.result.proof.map((p) => new PublicKey(p)),
     nodeIndex: body.result.node_index,
+    tree: new PublicKey(body.result.tree_id),
   };
 }
 
@@ -273,8 +284,10 @@ export function buildOpenPackFromAssetIx(params: {
   metadata: Buffer;
 }): TransactionInstruction {
   const { opener, pack, mintConfig, clientSeed, proof, nonce, metadata } = params;
+  // The tree the pack lives in, which after a rotation is not the config's.
+  const tree = proof.tree;
   const [treeConfig] = PublicKey.findProgramAddressSync(
-    [mintConfig.merkleTree.toBuffer()], BUBBLEGUM_PROGRAM_ID,
+    [tree.toBuffer()], BUBBLEGUM_PROGRAM_ID,
   );
 
   const seed = Buffer.alloc(32);
@@ -307,7 +320,7 @@ export function buildOpenPackFromAssetIx(params: {
       { pubkey: deriveSeasonDropsPDA(pack.season)[0], isSigner: false, isWritable: false },
       { pubkey: deriveMintConfigPDA(),           isSigner: false, isWritable: false },
       { pubkey: treeConfig,                      isSigner: false, isWritable: true  },
-      { pubkey: mintConfig.merkleTree,           isSigner: false, isWritable: true  },
+      { pubkey: tree,                            isSigner: false, isWritable: true  },
       { pubkey: LOG_WRAPPER_ID,                  isSigner: false, isWritable: false },
       { pubkey: COMPRESSION_PROGRAM_ID,          isSigner: false, isWritable: false },
       { pubkey: BUBBLEGUM_PROGRAM_ID,            isSigner: false, isWritable: false },
@@ -316,6 +329,9 @@ export function buildOpenPackFromAssetIx(params: {
       { pubkey: VRF_PROGRAM_ID,                  isSigner: false, isWritable: false },
       { pubkey: SYSVAR_SLOT_HASHES_PUBKEY,       isSigner: false, isWritable: false },
       { pubkey: SystemProgram.programId,         isSigner: false, isWritable: false },
+      // `accepted_tree`: the program id when the pack is in the current tree,
+      // the old tree's marker when it was minted before a rotation.
+      { pubkey: acceptedTreeSlot(tree, mintConfig), isSigner: false, isWritable: false },
       // The proof: one node per tree level the canopy does not already hold.
       ...proof.proof.map((node) => ({
         pubkey: node, isSigner: false, isWritable: false,

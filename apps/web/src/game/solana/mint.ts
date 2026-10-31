@@ -51,6 +51,28 @@ function derivePda(seed: string, programId = SOL_CITY_COLLECTIBLES_PROGRAM_ID): 
 export const deriveMintConfigPDA = () => derivePda("mint_config");
 /** Signs every mint, as the tree's delegate and the collection's authority. */
 export const deriveMintAuthorityPDA = () => derivePda("mint_authority");
+/**
+ * The marker `set_mint_tree` leaves for a tree it moves away from. Its
+ * existence is what lets a sealed pack or a cosmetic in that old tree still be
+ * opened or claimed after a rotation.
+ */
+export const deriveAcceptedTreePDA = (tree: PublicKey) =>
+  PublicKey.findProgramAddressSync(
+    [Buffer.from("accepted_tree"), tree.toBuffer()], SOL_CITY_COLLECTIBLES_PROGRAM_ID,
+  )[0];
+
+/**
+ * The account to pass in an instruction's `accepted_tree` slot for a leaf
+ * that lives in `tree`.
+ *
+ * Nothing for the current tree, which Anchor spells as the program id in an
+ * optional account's place. The marker for any other tree: if it does not
+ * exist the program refuses, which is right, since then the tree is not one
+ * this program ever minted into.
+ */
+export function acceptedTreeSlot(tree: PublicKey, config: MintConfigAccount): PublicKey {
+  return tree.equals(config.merkleTree) ? SOL_CITY_COLLECTIBLES_PROGRAM_ID : deriveAcceptedTreePDA(tree);
+}
 
 /**
  * Reads what the program will mint into. Null before `init_mint_config` has
