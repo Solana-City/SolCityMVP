@@ -145,6 +145,15 @@ pub const TREASURY: Pubkey = pubkey!("9592QS34mPUwqA7sPAkug1kcuFddjn59QPQMzzCgKh
 
 /// MagicBlock VRF program.
 pub const VRF_PROGRAM_ID: Pubkey = pubkey!("Vrf1RNUjXmQGjmQrQLvJHs9SNkvDJEsRVFPkfSQUwGz");
+
+/// Bubblegum, as an address this program names rather than accepts.
+///
+/// Re-exported from the crate so there is ONE spelling of it. A CPI target
+/// taken from an account the caller supplies is a CPI the caller chooses,
+/// and for the burn in `open_pack_from_asset` that was the whole security
+/// of the instruction: "the burn is the proof" is only true if the burn
+/// happened in Bubblegum.
+pub const BUBBLEGUM_ID: Pubkey = mpl_bubblegum::ID;
 /// Default base-layer oracle queue.
 pub const VRF_DEFAULT_QUEUE: Pubkey = pubkey!("Cuj97ggrhhidhbu39TijNVqE74xvKJ69gDervRUXAxGh");
 /// Seed of both identity PDAs: ours ["identity"] signs the request; the VRF
@@ -1436,9 +1445,22 @@ pub mod sol_city_collectibles {
             metas.push(SolAccountMeta::new_readonly(node.key(), false));
             infos.push(node.clone());
         }
+        // THE CONSTANT, NOT THE ACCOUNT.
+        //
+        // This read `ctx.accounts.bubblegum_program.key()`, which let the
+        // caller choose where the burn went. Any program that returns Ok
+        // satisfied the check above, and SPL Noop is already deployed and
+        // does exactly that: a draw then cost no pack and no payment, could
+        // be repeated, and `mint_pending` turned the result into real
+        // verified-collection cNFTs.
+        //
+        // The account is address-pinned as well, so the failure is a clear
+        // `ConstraintAddress` before any work happens rather than a CPI into
+        // the wrong place. Both, because the pin documents the requirement
+        // and the constant enforces it even if the pin is ever loosened.
         invoke(
             &SolInstruction {
-                program_id: ctx.accounts.bubblegum_program.key(),
+                program_id: BUBBLEGUM_ID,
                 accounts: metas,
                 data,
             },
@@ -2005,7 +2027,11 @@ pub struct MintUnlock<'info> {
     pub compression_program: UncheckedAccount<'info>,
     /// CHECK: Token Metadata. Checked by Bubblegum.
     pub token_metadata_program: UncheckedAccount<'info>,
-    /// CHECK: Bubblegum itself, the program being called.
+    /// CHECK: Bubblegum itself, the program being called. Pinned rather than
+    /// trusted to the generated CPI: the mint path is how a cosmetic becomes
+    /// a tradable asset, and a mint into somebody else's program is a cNFT
+    /// this collection never issued.
+    #[account(address = BUBBLEGUM_ID)]
     pub bubblegum_program: UncheckedAccount<'info>,
     pub system_program: Program<'info, System>,
 }
@@ -2094,17 +2120,24 @@ pub struct OpenPackFromAsset<'info> {
     pub log_wrapper: UncheckedAccount<'info>,
     /// CHECK: SPL Account Compression, passed through to Bubblegum.
     pub compression_program: UncheckedAccount<'info>,
-    /// CHECK: Bubblegum itself, the burn CPI target.
+    /// CHECK: Bubblegum itself, the burn CPI target. PINNED: the burn is
+    /// what proves the caller held the pack, and a burn in a program of the
+    /// caller's choosing proves nothing.
+    #[account(address = BUBBLEGUM_ID)]
     pub bubblegum_program: UncheckedAccount<'info>,
-    /// CHECK: the VRF oracle queue.
-    #[account(mut)]
+    /// CHECK: the VRF oracle queue, pinned. An unpinned queue is a draw
+    /// answered by a caller-chosen oracle.
+    #[account(mut, address = VRF_DEFAULT_QUEUE)]
     pub oracle_queue: AccountInfo<'info>,
     /// CHECK: our own VRF identity PDA, which signs the callback.
     #[account(mut, seeds = [VRF_IDENTITY_SEED], bump)]
     pub program_identity: UncheckedAccount<'info>,
-    /// CHECK: the VRF program, pinned by address in the CPI.
+    /// CHECK: the VRF program. The CPI already names the constant; this pin
+    /// makes the refusal happen before any work rather than inside it.
+    #[account(address = VRF_PROGRAM_ID)]
     pub vrf_program: UncheckedAccount<'info>,
-    /// CHECK: the slot hashes sysvar the VRF reads.
+    /// CHECK: the slot hashes sysvar the VRF reads, pinned to the sysvar.
+    #[account(address = solana_program::sysvar::slot_hashes::ID)]
     pub slot_hashes: UncheckedAccount<'info>,
     pub system_program: Program<'info, System>,
 }
@@ -2155,7 +2188,9 @@ pub struct MintPack<'info> {
     pub compression_program: UncheckedAccount<'info>,
     /// CHECK: Token Metadata, passed through to Bubblegum.
     pub token_metadata_program: UncheckedAccount<'info>,
-    /// CHECK: Bubblegum itself, the CPI target.
+    /// CHECK: Bubblegum itself, the CPI target. Pinned, same reason as the
+    /// cosmetic mint: an unpinned target is a pack asset minted elsewhere.
+    #[account(address = BUBBLEGUM_ID)]
     pub bubblegum_program: UncheckedAccount<'info>,
     pub system_program: Program<'info, System>,
 }
