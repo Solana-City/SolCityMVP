@@ -6,7 +6,7 @@ import { PublicKey } from "@solana/web3.js";
 import { itemAtGlobalIndex, BOOSTER_BLOCK_START } from "@/game/config/catalogIndex";
 import { getVariant } from "@/game/config/paperDoll";
 import { rarityOf, RARITY_COLOR } from "@/game/config/packs";
-import { baseConnection, ownedIndices } from "@/game/solana/packs";
+import { baseConnection, ownedIndices, hasPendingDraw } from "@/game/solana/packs";
 import { readMintConfig, mintedIndices, mintCosmetic, type MintConfigAccount } from "@/game/solana/mint";
 
 /**
@@ -36,6 +36,10 @@ export default function MintSection({ wallet }: { wallet: string | null }) {
   const [busy, setBusy] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [justMinted, setJustMinted] = useState<number[]>([]);
+  // A pack still waiting on the oracle. The program refuses a mint while it
+  // waits, since the mint would take the room the draw was paid for, so the
+  // buttons say so instead of failing in the wallet.
+  const [drawPending, setDrawPending] = useState(false);
 
   const refresh = useCallback(async () => {
     if (!wallet) return;
@@ -47,6 +51,7 @@ export default function MintSection({ wallet }: { wallet: string | null }) {
       const key = new PublicKey(wallet);
       setOwned(await ownedIndices(conn, key));
       setMinted(await mintedIndices(conn, key));
+      setDrawPending(await hasPendingDraw(conn, key));
     } catch {
       // An unreachable RPC shows nothing rather than an empty wardrobe: the
       // player owns what they own, and this panel is not the record of it.
@@ -94,6 +99,12 @@ export default function MintSection({ wallet }: { wallet: string | null }) {
         }}>{error}</div>
       )}
 
+      {drawPending && mintable.length > 0 && (
+        <div style={{ color: "#ffd479", marginBottom: 8 }}>
+          A pack is still being drawn. Minting opens again once it lands.
+        </div>
+      )}
+
       {mintable.length === 0 ? (
         <div style={{ color: "#6f7696" }}>Every pack item you own is already an asset.</div>
       ) : (
@@ -111,7 +122,7 @@ export default function MintSection({ wallet }: { wallet: string | null }) {
                   {variant?.name ?? entry!.variant.id}
                 </span>
                 <button
-                  disabled={busy !== null}
+                  disabled={busy !== null || drawPending}
                   onClick={() => void mint(index)}
                   style={{
                     fontSize: 8, padding: "4px 10px", cursor: busy ? "default" : "pointer",

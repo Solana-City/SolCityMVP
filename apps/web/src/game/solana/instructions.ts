@@ -76,6 +76,7 @@ const DISC = {
   claimFind:               ixDiscriminator("claim_find"),
   initUnlockState:         ixDiscriminator("init_unlock_state"),
   openBooster:             ixDiscriminator("open_booster"),
+  retryDraw:               ixDiscriminator("retry_draw"),
   publishProfileSession:   ixDiscriminator("publish_profile_session"),
 } as const;
 
@@ -782,6 +783,44 @@ export function buildOpenBoosterIx(params: {
       { pubkey: SystemProgram.programId,   isSigner: false, isWritable: false },
     ],
     data,
+  });
+}
+
+/**
+ * `retry_draw(client_seed)`: asks the VRF again for a pack that was paid for
+ * and never answered.
+ *
+ * `season` is the one frozen on the wallet's pending draw, read from
+ * UnlockState, not the shop's current season: the program re-derives the drop
+ * table from the draw and refuses any other. Nothing is paid; the accounts are
+ * open_booster's VRF half in the same order as `RetryDraw`.
+ */
+export function buildRetryDrawIx(params: {
+  payer: PublicKey;
+  season: number;
+  clientSeed: Uint8Array; // exactly 32 bytes
+}): TransactionInstruction {
+  const { payer, season, clientSeed } = params;
+  const seed = Buffer.alloc(32);
+  Buffer.from(clientSeed).copy(seed, 0, 0, 32);
+
+  const [unlockPda] = deriveUnlockPDA(payer);
+  const [dropsPda] = deriveSeasonDropsPDA(season);
+  const [vrfIdentity] = deriveVrfIdentityPDA();
+
+  return new TransactionInstruction({
+    programId: SOL_CITY_COLLECTIBLES_PROGRAM_ID,
+    keys: [
+      { pubkey: payer,                     isSigner: true,  isWritable: true  },
+      { pubkey: unlockPda,                 isSigner: false, isWritable: false },
+      { pubkey: dropsPda,                  isSigner: false, isWritable: false },
+      { pubkey: VRF_QUEUE_DEVNET,          isSigner: false, isWritable: true  },
+      { pubkey: vrfIdentity,               isSigner: false, isWritable: false },
+      { pubkey: VRF_PROGRAM_ID,            isSigner: false, isWritable: false },
+      { pubkey: SYSVAR_SLOT_HASHES_PUBKEY, isSigner: false, isWritable: false },
+      { pubkey: SystemProgram.programId,   isSigner: false, isWritable: false },
+    ],
+    data: Buffer.concat([DISC.retryDraw, seed]),
   });
 }
 

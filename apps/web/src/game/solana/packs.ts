@@ -6,7 +6,7 @@ import {
   SOL_CITY_COLLECTIBLES_PROGRAM_ID, derivePackConfigPDA, deriveUnlockPDA,
   decodeUnlockState, RARITY_COUNT,
 } from "./program";
-import { buildOpenBoosterIx, buildInitUnlockStateIx } from "./instructions";
+import { buildOpenBoosterIx, buildInitUnlockStateIx, buildRetryDrawIx } from "./instructions";
 import { baseConnection } from "./baseRpc";
 import { prepareWalletTx } from "./walletTx";
 import {
@@ -286,6 +286,53 @@ export async function awaitDraw(
     }
   }
   return { granted: [], timedOut: true };
+}
+
+/**
+ * Whether this wallet has a pack paid for and still waiting on the oracle.
+ *
+ * While it does, the program refuses every other write to the unlock account
+ * (a mint, a claim, an event grant), because each would take the room the
+ * draw was paid for. The UI asks this so it can say so instead of offering a
+ * button that will fail.
+ */
+export async function hasPendingDraw(conn: Connection, wallet: PublicKey): Promise<boolean> {
+  const info = await conn.getAccountInfo(deriveUnlockPDA(wallet)[0]);
+  return info ? (decodeUnlockState(info.data)?.pending ?? false) : false;
+}
+
+/**
+ * Asks the oracle again for a draw that was paid for and never answered, and
+ * waits for it.
+ *
+ * Costs the VRF request and a fee, never the pack: the program keeps the
+ * pack, its odds and its season exactly as they were frozen at payment. If
+ * the original answer turns up after all, whichever lands first resolves the
+ * pack and the other is refused, so asking again can never draw twice.
+ */
+export async function retryStuckDraw(args: {
+  conn: Connection;
+  wallet: PublicKey;
+  signAllTransactions: SignAllTx;
+  revealTimeoutMs?: number;
+}): Promise<{ granted: number[]; timedOut: boolean; packId: number | null }> {
+  const { conn, wallet, signAllTransactions } = args;
+  const info = await conn.getAccountInfo(deriveUnlockPDA(wallet)[0]);
+  const state = info ? decodeUnlockState(info.data) : null;
+  if (!state?.pending) return { granted: [], timedOut: false, packId: null };
+
+  const before = new Set(state.owned);
+  const clientSeed = new Uint8Array(32);
+  (globalThis.crypto ?? ({} as Crypto)).getRandomValues?.(clientSeed);
+  const { blockhash, lastValidBlockHeight } = await conn.getLatestBlockhash();
+  const tx = new Transaction({ recentBlockhash: blockhash, feePayer: wallet }).add(
+    buildRetryDrawIx({ payer: wallet, season: state.draw.season, clientSeed }),
+  );
+  const [signed] = await signAllTransactions([await prepareWalletTx(conn, tx)]);
+  const signature = await conn.sendRawTransaction(signed.serialize(), { skipPreflight: false });
+  await conn.confirmTransaction({ signature, blockhash, lastValidBlockHeight }, "confirmed");
+  const result = await awaitDraw(conn, wallet, before, args.revealTimeoutMs ?? 45_000);
+  return { ...result, packId: state.draw.packId };
 }
 
 /** Program id, re-exported so a caller does not need two imports. Packs live

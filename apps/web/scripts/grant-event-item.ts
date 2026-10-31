@@ -33,13 +33,21 @@
  * (6034), deliberately rather than quietly: "already had it" and "just got
  * it" are different facts when handing out collectibles. Caught here and
  * counted separately, so a second pass over the same snapshot reads cleanly.
+ *
+ * A wallet with a pack still waiting on the oracle is deferred, not granted.
+ * The program refuses the grant then (BoosterPending), because writing into
+ * the account would take the room the draw was paid for and lose the
+ * player's pack. Checked here first so the dry run says so too; a later pass
+ * picks them up.
  */
 import { readFileSync } from "fs";
 import {
   Keypair, PublicKey, SystemProgram, Transaction, TransactionInstruction,
 } from "@solana/web3.js";
 import { devnetConnection, sendAndPoll } from "./_rpc";
-import { SOL_CITY_COLLECTIBLES_PROGRAM_ID, deriveUnlockPDA } from "../src/game/solana/program";
+import {
+  SOL_CITY_COLLECTIBLES_PROGRAM_ID, deriveUnlockPDA, decodeUnlockState,
+} from "../src/game/solana/program";
 import { ixDiscriminator } from "../src/game/solana/instructions";
 import { globalIndexOf } from "../src/game/config/catalogIndex";
 import type { LayerCategory } from "../src/game/config/paperDoll";
@@ -127,7 +135,7 @@ async function main(): Promise<void> {
   console.log(`admin     ${admin.publicKey.toBase58()}`);
   console.log(send ? "\nSENDING\n" : "\nDRY RUN - nothing is sent. Add --send.\n");
 
-  let granted = 0, already = 0, noAccount = 0, failed = 0;
+  let granted = 0, already = 0, noAccount = 0, deferred = 0, failed = 0;
 
   for (const [i, walletStr] of snapshot.wallets.entries()) {
     const n = `${i + 1}/${snapshot.wallets.length}`;
@@ -145,6 +153,11 @@ async function main(): Promise<void> {
     if (!info) {
       console.log(`  ${n} ${walletStr.slice(0, 8)}…  no UnlockState yet, skipped`);
       noAccount++;
+      continue;
+    }
+    if (decodeUnlockState(info.data)?.pending) {
+      console.log(`  ${n} ${walletStr.slice(0, 8)}…  pack draw in flight, deferred`);
+      deferred++;
       continue;
     }
 
@@ -180,6 +193,10 @@ async function main(): Promise<void> {
   if (noAccount) {
     console.log(`no UnlockState  ${noAccount}  (they have never connected here)`);
     console.log("Run this again after they do. Nothing is lost.");
+  }
+  if (deferred) {
+    console.log(`deferred        ${deferred}  (a pack draw was in flight)`);
+    console.log("Run this again in a minute. Nothing is lost.");
   }
   if (failed) console.log(`failed          ${failed}`);
 }

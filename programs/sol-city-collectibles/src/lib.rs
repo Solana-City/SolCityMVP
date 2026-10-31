@@ -465,6 +465,8 @@ pub enum CollectiblesError {
     ItemNotMintable,
     #[msg("This wallet has nothing left to mint")]
     NothingToMint,
+    #[msg("This wallet has no pack waiting to be drawn")]
+    NoDrawPending,
     // Appended, never inserted. Anchor numbers these by POSITION, so a
     // variant added in the middle silently renumbers every one after it
     // and any client matching on a code starts reporting the wrong thing.
@@ -615,6 +617,17 @@ pub mod sol_city_collectibles {
         ctx: Context<CallbackOpenBooster>,
         randomness: [u8; 32],
     ) -> Result<()> {
+        // Only a paid draw that is still waiting may be resolved. `draw` is
+        // never cleared, so without this a second answer for the same request,
+        // or a late answer to one already resolved, would grant the same pack
+        // again. Refused rather than ignored, so a mistake shows up as a
+        // failed transaction instead of as nothing (audit R-29, D-12).
+        //
+        // It also makes retry_draw safe: when the original answer and the
+        // retried one both arrive, the first resolves the pack and the second
+        // lands here.
+        require!(ctx.accounts.unlock_state.pending, CollectiblesError::NoDrawPending);
+
         // The table must be the one this pack was paid against. The oracle
         // passes the accounts we named at request time, so this is a check on
         // the oracle rather than on the buyer, and it is cheap enough to make
@@ -737,6 +750,58 @@ pub mod sol_city_collectibles {
 
         unlocks.pending = false;
         emit!(BoosterOpened { authority: unlocks.authority, indices: picks });
+        Ok(())
+    }
+
+    /// Asks the VRF again for a draw that was paid for and never answered.
+    ///
+    /// The recovery for an oracle that does not reply (audit R-06, D-4). Before
+    /// this, a pack paid for and left unanswered was money taken and a wallet
+    /// locked for good: `pending` only clears in the callback, and every way to
+    /// buy or open another pack checks it.
+    ///
+    /// What it can change is nothing. The pack, its size, its odds and its
+    /// season stay exactly as they were frozen at payment, nothing is charged
+    /// and nothing is refunded; the only new thing is the randomness request.
+    ///
+    /// Why the wallet and not the admin: the admin key is on its way to a
+    /// multisig, and a stuck draw should not need a proposal to be unstuck.
+    ///
+    /// Why there is no waiting period: the randomness does not exist until the
+    /// callback applies it, so asking twice gives a player two answers they
+    /// cannot see and cannot choose between. Whichever arrives first resolves
+    /// the pack and the other is refused (NoDrawPending). Nothing else can
+    /// touch the account while it waits, since every writer refuses a pending
+    /// wallet. A timer would need a slot stored on UnlockState, which is a
+    /// layout change on every wallet, to protect against nothing. The client
+    /// offers the retry only after a wait, which is a matter of manners, and
+    /// the VRF fee each request costs is the wallet's own.
+    pub fn retry_draw(ctx: Context<RetryDraw>, client_seed: [u8; 32]) -> Result<()> {
+        require!(ctx.accounts.unlock_state.pending, CollectiblesError::NoDrawPending);
+        // The table the pack was paid against, re-derived from the frozen
+        // draw rather than taken from the caller.
+        let (expected, _) = Pubkey::find_program_address(
+            &[SEASON_DROPS_SEED, &ctx.accounts.unlock_state.draw.season.to_le_bytes()],
+            &crate::ID,
+        );
+        require_keys_eq!(
+            ctx.accounts.drops.key(),
+            expected,
+            CollectiblesError::WrongDropTable
+        );
+
+        request_draw(
+            client_seed,
+            &ctx.accounts.payer,
+            &ctx.accounts.unlock_state.to_account_info(),
+            &ctx.accounts.drops.to_account_info(),
+            &ctx.accounts.oracle_queue,
+            &ctx.accounts.program_identity,
+            &ctx.accounts.vrf_program,
+            &ctx.accounts.slot_hashes,
+            &ctx.accounts.system_program,
+            ctx.bumps.program_identity,
+        )?;
         Ok(())
     }
 
@@ -1064,6 +1129,12 @@ pub mod sol_city_collectibles {
 
         {
             let unlocks = &ctx.accounts.unlock_state;
+            // Not while a draw is in flight. open_booster grew this account by
+            // exactly the room the callback needs, and a mint here writes into
+            // that room. The callback then cannot serialize, `pending` never
+            // clears, and the paid draw is lost with the wallet locked behind
+            // it (audit R-06). Same rule mint_pending already has.
+            require!(!unlocks.pending, CollectiblesError::BoosterPending);
             require!(unlocks.owns(index), CollectiblesError::ItemNotOwned);
             // A quest or event cosmetic is not a thing that can be sold, so it
             // is not a thing that can be minted. Without this a wallet could
@@ -1317,6 +1388,9 @@ pub mod sol_city_collectibles {
             !ctx.accounts.unlock_state.owns(index),
             CollectiblesError::AlreadyOwned
         );
+        // Not while a draw is in flight: a claim grows `owned` into the room
+        // the callback was paid for. See mint_unlock (audit R-06).
+        require!(!ctx.accounts.unlock_state.pending, CollectiblesError::BoosterPending);
 
         // (1) This metadata is that cosmetic. The URI is built the same way
         // mint_unlock built it, from a base that cannot change.
@@ -1696,6 +1770,10 @@ pub mod sol_city_collectibles {
             index >= FREE_ITEM_COUNT && index < ENFORCED_FROM,
             CollectiblesError::NotAnEventItem
         );
+        // Not while that wallet's draw is in flight, even from the admin: the
+        // grant would take the room the callback was paid for and lose the
+        // player's draw (audit R-06). The grant script defers such wallets.
+        require!(!ctx.accounts.unlock_state.pending, CollectiblesError::BoosterPending);
 
         // Room first, funded by the admin, then the write. Same order as
         // mint_unlock and for the same reason: growing the account after the
@@ -1764,6 +1842,38 @@ pub struct OpenBooster<'info> {
     #[account(address = TOKEN_PROGRAM_ID)]
     pub token_program: UncheckedAccount<'info>,
     /// CHECK: MagicBlock VRF oracle queue (base devnet).
+    #[account(mut, address = VRF_DEFAULT_QUEUE)]
+    pub oracle_queue: AccountInfo<'info>,
+    /// CHECK: this program's identity PDA; signs the VRF request.
+    #[account(seeds = [VRF_IDENTITY_SEED], bump)]
+    pub program_identity: UncheckedAccount<'info>,
+    /// CHECK: MagicBlock VRF program.
+    #[account(address = VRF_PROGRAM_ID)]
+    pub vrf_program: UncheckedAccount<'info>,
+    /// CHECK: SlotHashes sysvar, read by the VRF program.
+    #[account(address = anchor_lang::solana_program::sysvar::slot_hashes::ID)]
+    pub slot_hashes: UncheckedAccount<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+/// The VRF half of OpenBooster and nothing else: a retry pays for no pack and
+/// writes no config, so it has no token accounts and no config to name.
+#[derive(Accounts)]
+pub struct RetryDraw<'info> {
+    #[account(mut)]
+    pub payer: Signer<'info>,
+    // Read only: the retry writes nothing to it. The callback it asks for is
+    // what writes, and that names the account itself.
+    #[account(
+        seeds = [UNLOCKS_SEED, payer.key().as_ref()],
+        bump,
+        constraint = unlock_state.authority == payer.key() @ CollectiblesError::WrongUnlockOwner,
+    )]
+    pub unlock_state: Account<'info, UnlockState>,
+    /// The season's drop table. Address-checked against the frozen draw in
+    /// the instruction body.
+    pub drops: Account<'info, SeasonDrops>,
+    /// CHECK: MagicBlock VRF oracle queue.
     #[account(mut, address = VRF_DEFAULT_QUEUE)]
     pub oracle_queue: AccountInfo<'info>,
     /// CHECK: this program's identity PDA; signs the VRF request.

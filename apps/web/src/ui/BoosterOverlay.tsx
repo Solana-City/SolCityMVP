@@ -32,7 +32,7 @@ import { getVariant } from "@/game/config/paperDoll";
 import {
   baseConnection, readPackConfig, currencyBalance, buyPack, packUnavailableReason,
   type PackConfigAccount,
-  syncOwnedToWardrobe, awaitDraw, ownedIndices,
+  syncOwnedToWardrobe, awaitDraw, ownedIndices, hasPendingDraw, retryStuckDraw,
 } from "@/game/solana/packs";
 
 /**
@@ -117,6 +117,16 @@ export default function BoosterOverlay({
   const [tab, setTab] = useState<"buy" | "mine">("buy");
   const [sealing, setSealing] = useState<number | null>(null);
   const [mintNote, setMintNote] = useState<string | null>(null);
+  /**
+   * A pack this wallet paid for that the oracle has not answered.
+   *
+   * Checked when the overlay opens as well as after a timeout, because the
+   * draw that got stuck may be from yesterday. While it is set the program
+   * refuses every other pack for this wallet, so the overlay offers the one
+   * thing that helps: asking the oracle again.
+   */
+  const [stuck, setStuck] = useState(false);
+  const [retrying, setRetrying] = useState(false);
 
   const setSkip = useCallback((on: boolean) => {
     setSkipReveal(on);
@@ -141,6 +151,7 @@ export default function BoosterOverlay({
         if (cancelled) return;
         setConfig(cfg);
         if (cfg) setBalance(await currencyBalance(conn, new PublicKey(wallet), cfg.currencyMint));
+        if (!cancelled) setStuck(await hasPendingDraw(conn, new PublicKey(wallet)));
       } catch { /* the preview prices stay on screen */ }
     })();
     return () => { cancelled = true; };
@@ -323,6 +334,7 @@ export default function BoosterOverlay({
       const { granted, timedOut } = await awaitDraw(conn, me, before);
       if (timedOut) {
         setError("Opened, but the draw has not landed yet. It will appear in your wardrobe.");
+        setStuck(true);
         setPhase("choose");
         return;
       }
@@ -399,6 +411,7 @@ export default function BoosterOverlay({
       });
       if (result.timedOut) {
         setError("Paid, but the draw has not landed yet. It will appear in your wardrobe.");
+        setStuck(true);
         setPhase("choose");
         return;
       }
@@ -413,6 +426,39 @@ export default function BoosterOverlay({
     }
   }, [wallet, signAllTransactions, config, count, revealAndMint]);
 
+
+  /**
+   * Asks the oracle again for the stuck draw, then reveals it like any other.
+   *
+   * The pack and its odds are the ones frozen when it was paid for; nothing is
+   * charged. The mint is not pre-signed here, so settleMints asks for it, which
+   * is acceptable on a path that only exists because something went wrong.
+   */
+  const retryStuck = useCallback(async () => {
+    if (!wallet || !signAllTransactions || retrying) return;
+    setRetrying(true);
+    setError(null);
+    try {
+      const conn = baseConnection();
+      const me = new PublicKey(wallet);
+      const { granted, timedOut, packId } = await retryStuckDraw({
+        conn, wallet: me, signAllTransactions,
+      });
+      if (timedOut) {
+        setError("Asked again, and the oracle is still quiet. Try once more in a minute.");
+        return;
+      }
+      setStuck(false);
+      if (granted.length > 0) {
+        setPack(PACKS.find((p) => p.onChainId === packId) ?? PACKS[0]);
+        await revealAndMint(granted, conn, me, null, granted);
+      }
+    } catch (err) {
+      setError((err as Error).message?.split("\n")[0] ?? "Could not ask again.");
+    } finally {
+      setRetrying(false);
+    }
+  }, [wallet, signAllTransactions, retrying, revealAndMint]);
 
   const backToPacks = () => { setPhase("choose"); setDrops([]); setPack(null); setError(null); };
   // Not mid-opening, same as the backdrop: the pack is already being granted.
@@ -484,6 +530,29 @@ export default function BoosterOverlay({
                 border: "1px solid #ff9aa6",
                 background: "rgba(255,154,166,0.08)",
               }}>{error}</div>
+            )}
+            {BOOSTER_ONCHAIN && stuck && (
+              <div style={{
+                fontSize: 8, color: "#ffd479", lineHeight: 1.8,
+                padding: "8px 10px", marginBottom: 12,
+                border: "1px solid #ffd479",
+                background: "rgba(255,212,121,0.08)",
+                display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10,
+              }}>
+                <span>A pack you paid for is still waiting on the oracle. Nothing is lost.</span>
+                <button
+                  disabled={retrying}
+                  onClick={() => void retryStuck()}
+                  style={{
+                    fontFamily: "inherit", fontSize: 8, padding: "4px 10px",
+                    border: "1px solid #ffd479", background: "transparent",
+                    color: retrying ? "#6f7696" : "#ffd479",
+                    cursor: retrying ? "default" : "pointer", whiteSpace: "nowrap",
+                  }}
+                >
+                  {retrying ? "ASKING…" : "ASK AGAIN"}
+                </button>
+              </div>
             )}
             {BOOSTER_ONCHAIN && balance !== null && balance === BigInt(0) && (
               <div style={{ fontSize: 8, color: "#aaaacc", lineHeight: 1.8, marginBottom: 12 }}>
