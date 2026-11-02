@@ -1226,12 +1226,17 @@ pub struct UpdatePlayerSession<'info> {
 
 #[derive(Accounts)]
 pub struct SyncUnlocks<'info> {
+    /// ANYONE may sync any player (audit R-21). The instruction only copies
+    /// what the collectibles program says this wallet owns into the snapshot
+    /// outfits are checked against, so the one thing it can do is make the
+    /// snapshot true. It used to need the player's own session key, which
+    /// meant a seller whose wear-right a buyer's claim had taken back simply
+    /// never synced, and kept wearing the item. Now the buyer's client syncs
+    /// the seller right after the claim.
     #[account(
         mut,
         seeds = [PLAYER_SEED, player.authority.as_ref()],
         bump,
-        constraint = player.session_authority == Some(session_authority.key())
-            @ SolCityError::InvalidSessionKey,
     )]
     pub player: Account<'info, PlayerState>,
     /// The one account this program reads that another program owns.
@@ -1252,6 +1257,8 @@ pub struct SyncUnlocks<'info> {
         seeds::program = sol_city_catalog::COLLECTIBLES_PROGRAM_ID,
     )]
     pub unlock_state: Account<'info, UnlockState>,
+    /// Whoever sends it. Usually the player's own session key; after a claim,
+    /// the buyer's. Name kept so the account list does not change.
     pub session_authority: Signer<'info>,
 }
 

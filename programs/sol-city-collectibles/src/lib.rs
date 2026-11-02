@@ -83,6 +83,10 @@ pub const MINT_AUTHORITY_SEED: &[u8] = b"mint_authority";
 /// by the tree's address. See `set_mint_tree` and `AcceptedTree`.
 pub const ACCEPTED_TREE_SEED: &[u8] = b"accepted_tree";
 
+/// Seed of a wallet's WearLog, followed by the wallet: which asset each of
+/// its wear-rights came from. See `WearLog`.
+pub const WEAR_LOG_SEED: &[u8] = b"wear_log";
+
 /// Most assets one wallet can mint. Two bytes each, same as `owned`.
 pub const PLAYER_MINT_CAP: usize = 256;
 
@@ -477,6 +481,8 @@ pub enum CollectiblesError {
     NothingToMint,
     #[msg("This wallet has no pack waiting to be drawn")]
     NoDrawPending,
+    #[msg("That is not the wallet this asset's wear-right came from")]
+    WrongPreviousHolder,
     // Appended, never inserted. Anchor numbers these by POSITION, so a
     // variant added in the middle silently renumbers every one after it
     // and any client matching on a code starts reporting the wrong thing.
@@ -1252,6 +1258,20 @@ pub mod sol_city_collectibles {
 
         let metadata = cosmetic_metadata(cfg, index);
 
+        // Where this wear-right will come from from now on: the asset about
+        // to exist (audit R-21). Opened and grown before the mint, so the
+        // asset is never there without its entry.
+        let payer_key = ctx.accounts.payer.key();
+        let mut log = open_wear_log(
+            &ctx.accounts.wear_log.to_account_info(),
+            &payer_key,
+            &ctx.accounts.payer.to_account_info(),
+            &ctx.accounts.system_program.to_account_info(),
+            1,
+        )?;
+        let nonce = next_leaf_nonce(&ctx.accounts.tree_config.to_account_info())?;
+        let asset = get_asset_id(&ctx.accounts.merkle_tree.key(), nonce);
+
         let bump = ctx.bumps.mint_authority;
         let seeds: &[&[u8]] = &[MINT_AUTHORITY_SEED, &[bump]];
         MintToCollectionV1Cpi {
@@ -1277,6 +1297,8 @@ pub mod sol_city_collectibles {
         .invoke_signed(&[seeds])?;
 
         // Recorded only once the asset exists.
+        log.entries.push(WearEntry { index, asset });
+        save_wear_log(&ctx.accounts.wear_log.to_account_info(), &log)?;
         let unlocks = &mut ctx.accounts.unlock_state;
         unlocks.insert_minted(index);
         emit!(UnlockMinted { authority: unlocks.authority, index });
@@ -1380,10 +1402,25 @@ pub mod sol_city_collectibles {
             }
         }
 
+        // Room for one wear-log entry per asset, before any is minted (audit
+        // R-21). The log's address depends on the wallet alone, so this
+        // pre-signed transaction already names it.
+        let payer_key = ctx.accounts.payer.key();
+        let mut log = open_wear_log(
+            &ctx.accounts.wear_log.to_account_info(),
+            &payer_key,
+            &ctx.accounts.payer.to_account_info(),
+            &ctx.accounts.system_program.to_account_info(),
+            todo.len(),
+        )?;
+        let tree = ctx.accounts.merkle_tree.key();
+
         let authority = ctx.accounts.unlock_state.authority;
         let bump = ctx.bumps.mint_authority;
         let seeds: &[&[u8]] = &[MINT_AUTHORITY_SEED, &[bump]];
         for index in todo {
+            // Read fresh each time: every mint moves the tree's counter on.
+            let nonce = next_leaf_nonce(&ctx.accounts.tree_config.to_account_info())?;
             MintToCollectionV1Cpi {
                 __program: &ctx.accounts.bubblegum_program,
                 tree_config: &ctx.accounts.tree_config,
@@ -1412,8 +1449,10 @@ pub mod sol_city_collectibles {
             // failure halfway through leaves the account describing exactly
             // what was minted and the rest still waiting.
             ctx.accounts.unlock_state.insert_minted(index);
+            log.entries.push(WearEntry { index, asset: get_asset_id(&tree, nonce) });
             emit!(UnlockMinted { authority, index });
         }
+        save_wear_log(&ctx.accounts.wear_log.to_account_info(), &log)?;
         Ok(())
     }
 
@@ -1550,6 +1589,53 @@ pub mod sol_city_collectibles {
         // it as well, sell both, and repeat: the supply the season table
         // exists to fix would become whatever the market could absorb.
         unlocks.insert_minted(index);
+
+        // ── One asset, one wearer (audit R-21) ───────────────────────────
+        //
+        // The claimer's right now comes from THIS asset, so their log says so.
+        let asset = get_asset_id(&tree, nonce);
+        let claimer = ctx.accounts.claimer.key();
+        let mut own_log = open_wear_log(
+            &ctx.accounts.wear_log.to_account_info(),
+            &claimer,
+            &ctx.accounts.claimer.to_account_info(),
+            &ctx.accounts.system_program.to_account_info(),
+            1,
+        )?;
+        own_log.entries.push(WearEntry { index, asset });
+        save_wear_log(&ctx.accounts.wear_log.to_account_info(), &own_log)?;
+
+        // And whoever's right came from it before loses it. Both accounts are
+        // checked against each other and against this asset, so a caller can
+        // only ever take the index from the wallet whose log names THIS
+        // asset, which is the wallet it was minted or last claimed to.
+        if let (Some(prev_log), Some(prev_unlocks)) =
+            (ctx.accounts.previous_log.as_mut(), ctx.accounts.previous_unlocks.as_mut())
+        {
+            let prev = prev_log.wallet;
+            require_keys_neq!(prev, claimer, CollectiblesError::WrongPreviousHolder);
+            let (log_pda, _) =
+                Pubkey::find_program_address(&[WEAR_LOG_SEED, prev.as_ref()], &crate::ID);
+            require_keys_eq!(prev_log.key(), log_pda, CollectiblesError::WrongPreviousHolder);
+            let (unlocks_pda, _) =
+                Pubkey::find_program_address(&[UNLOCKS_SEED, prev.as_ref()], &crate::ID);
+            require_keys_eq!(prev_unlocks.key(), unlocks_pda, CollectiblesError::WrongPreviousHolder);
+
+            let at = prev_log
+                .entries
+                .iter()
+                .position(|e| e.asset == asset && e.index == index)
+                .ok_or(CollectiblesError::WrongPreviousHolder)?;
+            prev_log.entries.swap_remove(at);
+            // The right goes only if no OTHER asset still backs it. `minted`
+            // stays: it records that this wallet was handed an asset for the
+            // index, and keeping it is what stops them minting a fresh one.
+            if !prev_log.entries.iter().any(|e| e.index == index) {
+                if let Ok(i) = prev_unlocks.owned.binary_search(&index) {
+                    prev_unlocks.owned.remove(i);
+                }
+            }
+        }
         Ok(())
     }
     /// Moves the open season. This is how a season opens, and how the one
@@ -2130,6 +2216,133 @@ pub struct AcceptedTree {
     pub tree: Pubkey,
 }
 
+/// Where a wallet's wear-rights came from: one entry per cosmetic it holds the
+/// right to wear BECAUSE of an asset, naming that asset (audit R-21).
+///
+/// The problem it answers. Minting moved nothing: `owned` kept the index, and a
+/// compressed NFT moves on Bubblegum without this program hearing about it. So
+/// whoever sold an item could keep wearing it, as could every wallet it passed
+/// through. The owner's rule, 2026-10-31: a seller loses the right when they
+/// sell, and no new signature is asked of anybody for it.
+///
+/// How it holds without new signatures. The entry is written by the mint and
+/// the claim, which the player signs anyway, and the address is fixed by the
+/// wallet alone, so a mint signed before its draw still knows it. When a
+/// buyer claims the asset (which they sign to be able to wear it), the claim
+/// finds the entry naming THAT asset in the previous holder's log and takes
+/// the index out of their `owned`. One asset, one wearer.
+///
+/// What it does not do: a buyer who never claims leaves the seller wearing it.
+/// The client's own wardrobe already stops a seller from putting it on (it
+/// asks the indexer what is held); this closes it on chain at the claim.
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, InitSpace)]
+pub struct WearEntry {
+    pub index: u16,
+    pub asset: Pubkey,
+}
+
+#[account]
+pub struct WearLog {
+    pub wallet: Pubkey,
+    pub entries: Vec<WearEntry>,
+}
+
+impl WearLog {
+    pub fn size_for(entries: usize) -> usize {
+        8 + 32 + 4 + entries * WearEntry::INIT_SPACE
+    }
+}
+
+/// Opens `wallet`'s WearLog with room for `extra` more entries, creating it
+/// the first time, and returns what it holds.
+///
+/// `payer` funds the account and its growth. Creation takes the pre-funded
+/// branch when the address already holds lamports, as everywhere else in the
+/// security pass: the address is derivable, and one lamport sent to it must
+/// not stop a player from ever minting (the R-04 shape).
+fn open_wear_log<'info>(
+    log: &AccountInfo<'info>,
+    wallet: &Pubkey,
+    payer: &AccountInfo<'info>,
+    system_program: &AccountInfo<'info>,
+    extra: usize,
+) -> Result<WearLog> {
+    let (expected, bump) = Pubkey::find_program_address(&[WEAR_LOG_SEED, wallet.as_ref()], &crate::ID);
+    require_keys_eq!(*log.key, expected, CollectiblesError::WrongPreviousHolder);
+    let bump_arr = [bump];
+    let signer: &[&[u8]] = &[WEAR_LOG_SEED, wallet.as_ref(), &bump_arr];
+    let rent = SolanaRent::get()?;
+
+    let current = if log.owner == &crate::ID {
+        let data = log.try_borrow_data()?;
+        <WearLog as anchor_lang::AccountDeserialize>::try_deserialize(&mut &data[..])?
+    } else {
+        let space = WearLog::size_for(extra);
+        if log.lamports() == 0 {
+            invoke_signed(
+                &system_instruction::create_account(payer.key, log.key, rent.minimum_balance(space), space as u64, &crate::ID),
+                &[payer.clone(), log.clone(), system_program.clone()],
+                &[signer],
+            )?;
+        } else {
+            let shortfall = rent.minimum_balance(space).saturating_sub(log.lamports());
+            if shortfall > 0 {
+                invoke(
+                    &system_instruction::transfer(payer.key, log.key, shortfall),
+                    &[payer.clone(), log.clone(), system_program.clone()],
+                )?;
+            }
+            invoke_signed(
+                &system_instruction::allocate(log.key, space as u64),
+                &[log.clone(), system_program.clone()],
+                &[signer],
+            )?;
+            invoke_signed(
+                &system_instruction::assign(log.key, &crate::ID),
+                &[log.clone(), system_program.clone()],
+                &[signer],
+            )?;
+        }
+        return Ok(WearLog { wallet: *wallet, entries: Vec::new() });
+    };
+
+    // Grown before anything is minted, funded by the payer, so a full log can
+    // never be the reason an asset exists without its entry.
+    let needed = WearLog::size_for(current.entries.len() + extra);
+    if log.data_len() < needed {
+        let topup = rent.minimum_balance(needed).saturating_sub(log.lamports());
+        if topup > 0 {
+            invoke(
+                &system_instruction::transfer(payer.key, log.key, topup),
+                &[payer.clone(), log.clone(), system_program.clone()],
+            )?;
+        }
+        log.realloc(needed, false)?;
+    }
+    Ok(current)
+}
+
+/// Writes a WearLog back over its account.
+fn save_wear_log(log: &AccountInfo, value: &WearLog) -> Result<()> {
+    let mut data = log.try_borrow_mut_data()?;
+    anchor_lang::AccountSerialize::try_serialize(value, &mut &mut data[..])
+}
+
+/// The nonce Bubblegum will give the next leaf it mints into this tree, which
+/// together with the tree is the asset's id.
+///
+/// Read from the tree config BEFORE the mint: Bubblegum takes `num_minted` as
+/// the nonce and then increments it. TreeConfig is discriminator (8),
+/// tree_creator (32), tree_delegate (32), total_mint_capacity (8), then
+/// num_minted (8). A wrong tree config fails the mint CPI itself, so a forged
+/// one here can only produce a transaction that reverts.
+fn next_leaf_nonce(tree_config: &AccountInfo) -> Result<u64> {
+    require_keys_eq!(*tree_config.owner, BUBBLEGUM_ID, CollectiblesError::WrongMintTarget);
+    let data = tree_config.try_borrow_data()?;
+    require!(data.len() >= 88, CollectiblesError::WrongMintTarget);
+    Ok(u64::from_le_bytes(data[80..88].try_into().unwrap()))
+}
+
 /// Whether a leaf in `tree` may be spent or claimed here: the current mint
 /// tree, or one this program used to mint into (a marker was passed, and the
 /// account struct's seeds tie that marker to `tree`).
@@ -2331,6 +2544,10 @@ pub struct MintUnlock<'info> {
     #[account(address = BUBBLEGUM_ID)]
     pub bubblegum_program: UncheckedAccount<'info>,
     pub system_program: Program<'info, System>,
+    /// CHECK: the payer's WearLog (audit R-21), created on first use and
+    /// checked against its seeds in `open_wear_log`.
+    #[account(mut)]
+    pub wear_log: UncheckedAccount<'info>,
 }
 
 /// Claiming the grant for an asset this wallet holds.
@@ -2363,6 +2580,19 @@ pub struct ClaimOwnedFromAsset<'info> {
     /// Seeded on the tree, so a marker for one tree cannot vouch for another.
     #[account(seeds = [ACCEPTED_TREE_SEED, merkle_tree.key().as_ref()], bump)]
     pub accepted_tree: Option<Account<'info, AcceptedTree>>,
+    /// CHECK: the claimer's WearLog (audit R-21), created on first use and
+    /// checked against its seeds in `open_wear_log`.
+    #[account(mut)]
+    pub wear_log: UncheckedAccount<'info>,
+    /// The WearLog of whoever held this asset's wear-right before, when there
+    /// was one. Its address and its entry are checked in the body. Absent (the
+    /// program id) for an asset nobody has a right from yet.
+    #[account(mut)]
+    pub previous_log: Option<Account<'info, WearLog>>,
+    /// That previous holder's UnlockState, which loses the index. Its address
+    /// is checked in the body against the wallet the log names.
+    #[account(mut)]
+    pub previous_unlocks: Option<Account<'info, UnlockState>>,
 }
 
 /// Moving minting to a new tree, and leaving a marker for the old one.
