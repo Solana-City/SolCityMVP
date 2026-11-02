@@ -190,14 +190,12 @@ fn cap_bytes(s: String, max: usize) -> String {
 /// Called before any CPI, while the owner is still this program: on the base
 /// layer before delegating, and on the rollup, where a delegated account
 /// keeps its original owner, before scheduling a commit.
-fn require_player_bytes(player: &UncheckedAccount, err: SolCityError) -> Result<()> {
-    require_keys_eq!(*player.owner, crate::ID, err);
+fn is_player_account(player: &UncheckedAccount) -> bool {
+    if *player.owner != crate::ID {
+        return false;
+    }
     let data = player.data.borrow();
-    require!(
-        data.len() >= 8 && data[..8] == <PlayerState as anchor_lang::Discriminator>::DISCRIMINATOR,
-        err
-    );
-    Ok(())
+    data.len() >= 8 && data[..8] == <PlayerState as anchor_lang::Discriminator>::DISCRIMINATOR
 }
 
 /// Checks a delegated PlayerState’s stored `session_authority` by reading the
@@ -210,7 +208,7 @@ fn require_stored_session_authority(
     player: &UncheckedAccount,
     signer: &Pubkey,
 ) -> Result<()> {
-    require_player_bytes(player, SolCityError::InvalidSessionKey)?;
+    require!(is_player_account(player), SolCityError::InvalidSessionKey);
     let data = player.data.borrow();
     require!(
         data.len() >= SESSION_AUTHORITY_TAG_OFFSET + 1 + 32,
@@ -826,7 +824,7 @@ pub mod sol_city {
         // bytes because this account is an UncheckedAccount: the delegation
         // CPI reassigns its owner halfway through, and Anchor would write a
         // stale copy back over it.
-        require_player_bytes(&ctx.accounts.player, SolCityError::InvalidAuthority)?;
+        require!(is_player_account(&ctx.accounts.player), SolCityError::InvalidAuthority);
         {
             let data = ctx.accounts.player.data.borrow();
             require!(data.len() >= 8 + 32, SolCityError::InvalidAuthority);
