@@ -2667,6 +2667,36 @@ export class OnChainMultiplayer {
     if (this.wallet && isProgramDeployed()) await this.syncUnlocksOnBase(this.wallet);
   }
 
+  /**
+   * Brings ANOTHER player's outfit snapshot up to date (audit R-21).
+   *
+   * After our claim takes a cosmetic's wear-right from its previous holder,
+   * their UnlockState no longer has it, but the snapshot their outfits are
+   * checked against still does until somebody syncs it, and they have no
+   * reason to. sync_unlocks lets anyone send it now, since all it can do is
+   * copy the truth. Signed and paid by our session key: free on a rollup, a
+   * base fee otherwise. Sent to every rollup when their account is delegated,
+   * because only the one that holds it will accept it. Best effort: their own
+   * next session syncs it as well.
+   */
+  async syncUnlocksFor(target: PublicKey): Promise<void> {
+    if (!isProgramDeployed()) return;
+    try {
+      const sk = this.sessionKeys.getSessionPublicKey();
+      const delegated = await this.isPdaDelegated(derivePlayerPDA(target)[0]);
+      const conns = delegated ? this.erReadConnections.map((r) => r.conn) : [this.baseConnection];
+      await Promise.allSettled(conns.map(async (conn) => {
+        const { blockhash } = await conn.getLatestBlockhash();
+        const tx = new Transaction({ recentBlockhash: blockhash, feePayer: sk })
+          .add(buildSyncUnlocksIx(target, sk));
+        this.sessionKeys.signTransaction(tx);
+        await conn.sendRawTransaction(tx.serialize(), { skipPreflight: true });
+      }));
+    } catch (err: any) {
+      console.warn("[Multiplayer] sync for another player skipped:", err?.message);
+    }
+  }
+
   private async syncUnlocksOnBase(wallet: PublicKey): Promise<void> {
     try {
       // ONE fetch, two jobs. The account is read here anyway to decide

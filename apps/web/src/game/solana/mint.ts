@@ -75,6 +75,31 @@ export function acceptedTreeSlot(tree: PublicKey, config: MintConfigAccount): Pu
 }
 
 /**
+ * A wallet's WearLog: which asset each of its wear-rights came from (audit
+ * R-21). Written by every mint and claim; read by a buyer's claim to take the
+ * right back from whoever held it before.
+ */
+export const deriveWearLogPDA = (wallet: PublicKey) =>
+  PublicKey.findProgramAddressSync(
+    [Buffer.from("wear_log"), wallet.toBuffer()], SOL_CITY_COLLECTIBLES_PROGRAM_ID,
+  )[0];
+
+/** A WearLog's entries, or null when the bytes are not one. */
+export function decodeWearLog(data: Uint8Array): { wallet: PublicKey; entries: { index: number; asset: PublicKey }[] } | null {
+  const buf = Buffer.from(data);
+  if (buf.length < 8 + 32 + 4) return null;
+  const wallet = new PublicKey(buf.subarray(8, 40));
+  const n = buf.readUInt32LE(40);
+  if (44 + n * 34 > buf.length) return null;
+  const entries: { index: number; asset: PublicKey }[] = [];
+  for (let i = 0; i < n; i++) {
+    const at = 44 + i * 34;
+    entries.push({ index: buf.readUInt16LE(at), asset: new PublicKey(buf.subarray(at + 2, at + 34)) });
+  }
+  return { wallet, entries };
+}
+
+/**
  * Reads what the program will mint into. Null before `init_mint_config` has
  * been run, which is the state until the collection and tree exist.
  */
@@ -260,6 +285,9 @@ function mintAccountMetas(payer: PublicKey, config: MintConfigAccount) {
     { pubkey: TOKEN_METADATA_PROGRAM_ID, isSigner: false, isWritable: false },
     { pubkey: BUBBLEGUM_PROGRAM_ID,      isSigner: false, isWritable: false },
     { pubkey: SystemProgram.programId,   isSigner: false, isWritable: false },
+    // Where each minted wear-right came from (audit R-21). Depends on the
+    // wallet alone, which is what keeps a pre-signed mint_pending valid.
+    { pubkey: deriveWearLogPDA(payer),   isSigner: false, isWritable: true  },
   ];
 }
 

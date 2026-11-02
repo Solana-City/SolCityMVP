@@ -8,6 +8,9 @@ import { getVariant } from "@/game/config/paperDoll";
 import { rarityOf, RARITY_COLOR } from "@/game/config/packs";
 import { baseConnection, ownedIndices, hasPendingDraw } from "@/game/solana/packs";
 import { readMintConfig, mintedIndices, mintCosmetic, type MintConfigAccount } from "@/game/solana/mint";
+import { heldCosmetics, claimCosmetic, type HeldCosmetic } from "@/game/solana/claim";
+import { syncOwnedToWardrobe } from "@/game/solana/packs";
+import { getNetwork } from "@/game/multiplayer/OnChainMultiplayer";
 
 /**
  * Turning cosmetics you own into assets you hold.
@@ -24,9 +27,10 @@ import { readMintConfig, mintedIndices, mintCosmetic, type MintConfigAccount } f
  * The player pays. A compressed mint is a transaction fee and nothing else,
  * which is the whole reason the pack economy went with cNFTs.
  *
- * Nothing here explains what selling does, deliberately. The honest sentence
- * is long and easy to misread, and the behaviour it describes is one the owner
- * may want to change rather than document. See the note on mint_unlock.
+ * And the other direction: a cosmetic BOUGHT from somebody else is in the
+ * wallet but not in our program, so nobody sees you wear it until it is
+ * claimed. Claiming is one approval, and it also takes the right to wear that
+ * item away from whoever held it before (audit R-21): one asset, one wearer.
  */
 export default function MintSection({ wallet }: { wallet: string | null }) {
   const { signTransaction } = useWallet();
@@ -40,6 +44,9 @@ export default function MintSection({ wallet }: { wallet: string | null }) {
   // waits, since the mint would take the room the draw was paid for, so the
   // buttons say so instead of failing in the wallet.
   const [drawPending, setDrawPending] = useState(false);
+  // Held in the wallet, not yet known to the program: bought elsewhere.
+  const [claimable, setClaimable] = useState<HeldCosmetic[]>([]);
+  const [claiming, setClaiming] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     if (!wallet) return;
@@ -49,9 +56,17 @@ export default function MintSection({ wallet }: { wallet: string | null }) {
       setConfig(cfg);
       if (!cfg) return;
       const key = new PublicKey(wallet);
-      setOwned(await ownedIndices(conn, key));
+      const nowOwned = await ownedIndices(conn, key);
+      setOwned(nowOwned);
       setMinted(await mintedIndices(conn, key));
       setDrawPending(await hasPendingDraw(conn, key));
+      // Not awaited into the rest: an indexer that is down leaves the claim
+      // list empty and nothing else.
+      heldCosmetics(conn, key, cfg)
+        .then((held) => setClaimable(held.filter(
+          (h) => h.index >= BOOSTER_BLOCK_START && !nowOwned.includes(h.index),
+        )))
+        .catch(() => setClaimable([]));
     } catch {
       // An unreachable RPC shows nothing rather than an empty wardrobe: the
       // player owns what they own, and this panel is not the record of it.
@@ -75,6 +90,29 @@ export default function MintSection({ wallet }: { wallet: string | null }) {
     }
   }, [wallet, signTransaction]);
 
+  const claim = useCallback(async (item: HeldCosmetic) => {
+    if (!wallet || !signTransaction || !config) return;
+    setClaiming(item.assetId.toBase58());
+    setError(null);
+    try {
+      const conn = baseConnection();
+      const key = new PublicKey(wallet);
+      const { previousHolder } = await claimCosmetic({
+        conn, wallet: key, item, config, signTransaction,
+      });
+      // Wearable now: into the wardrobe's view and the program's snapshot.
+      await syncOwnedToWardrobe(conn, key);
+      void getNetwork()?.refreshUnlockSnapshot();
+      // And off the previous holder, whose snapshot otherwise keeps it.
+      if (previousHolder) void getNetwork()?.syncUnlocksFor(previousHolder);
+      await refresh();
+    } catch (err) {
+      setError((err as Error).message?.split("\n")[0] ?? "The claim failed.");
+    } finally {
+      setClaiming(null);
+    }
+  }, [wallet, signTransaction, config, refresh]);
+
   if (!wallet || !config) return null;
 
   const mintable = owned
@@ -83,7 +121,7 @@ export default function MintSection({ wallet }: { wallet: string | null }) {
     .filter((x) => x.entry !== undefined);
 
   const held = minted.length;
-  if (mintable.length === 0 && held === 0) return null;
+  if (mintable.length === 0 && held === 0 && claimable.length === 0) return null;
 
   return (
     <div style={{ marginTop: 14, fontSize: 8, lineHeight: 1.8 }}>
@@ -132,6 +170,42 @@ export default function MintSection({ wallet }: { wallet: string | null }) {
                   }}
                 >
                   {busy === index ? "MINTING…" : "MINT"}
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {claimable.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 10 }}>
+          <div style={{ color: "#aaaacc" }}>IN YOUR WALLET, NOT YET WEARABLE</div>
+          {claimable.map((item) => {
+            const entry = itemAtGlobalIndex(item.index);
+            if (!entry) return null;
+            const variant = getVariant(entry.category, entry.variant.id);
+            const rarity = rarityOf(entry.category, entry.variant.id);
+            const key = item.assetId.toBase58();
+            return (
+              <div key={key} style={{
+                display: "flex", alignItems: "center", justifyContent: "space-between",
+                gap: 10, padding: "6px 8px", background: "rgba(255,255,255,0.03)",
+              }}>
+                <span>
+                  <span style={{ color: RARITY_COLOR[rarity] }}>■{" "}</span>
+                  {variant?.name ?? entry.variant.id}
+                </span>
+                <button
+                  disabled={claiming !== null || drawPending}
+                  onClick={() => void claim(item)}
+                  style={{
+                    fontSize: 8, padding: "4px 10px", cursor: claiming ? "default" : "pointer",
+                    border: "1px solid #ffd479", background: "transparent",
+                    color: claiming === key ? "#6f7696" : "#ffd479",
+                    fontFamily: "inherit",
+                  }}
+                >
+                  {claiming === key ? "CLAIMING…" : "WEAR IT"}
                 </button>
               </div>
             );
