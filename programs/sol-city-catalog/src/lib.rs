@@ -62,6 +62,30 @@ pub const QUEST_FREE_SLOTS: u16 = 1024;
 /// Where enforcement starts, which is where the booster block starts.
 pub const ENFORCED_FROM: u16 = FREE_ITEM_COUNT + QUEST_FREE_SLOTS;
 
+/// The booster block: sixteen category lanes of 2048, the client's
+/// `CATEGORY_LANES * LANE_SIZE.booster`. Pack items live here.
+pub const BOOSTER_BLOCK_SIZE: u16 = 16 * 2048;
+
+/// Event items, above the booster block (owner's call, 2026-11-02).
+///
+/// They used to share the quest block, which meant they could never be
+/// minted or sold and the city never checked who wore one. An event item is
+/// scarce by its window, the way a pack item is scarce by its odds, so it
+/// belongs with the tradable items: here it is above ENFORCED_FROM, so the
+/// city checks the wearer and `is_mintable` lets it become an asset. It is
+/// kept OUT of the booster block so a season's drop table can never list one:
+/// an event item is granted for having been there, never drawn.
+///
+/// Sixteen lanes of 64, the client's `LANE_SIZE.event`.
+pub const EVENT_BLOCK_START: u16 = ENFORCED_FROM + BOOSTER_BLOCK_SIZE;
+pub const EVENT_BLOCK_SIZE: u16 = 16 * 64;
+pub const EVENT_BLOCK_END: u16 = EVENT_BLOCK_START + EVENT_BLOCK_SIZE;
+
+/// Whether an index is an event item: granted by an admin, then tradable.
+pub fn is_event_item(index: u16) -> bool {
+    (EVENT_BLOCK_START..EVENT_BLOCK_END).contains(&index)
+}
+
 /// Per-wallet unlock store, seeds ["unlocks", wallet].
 pub const UNLOCKS_SEED: &[u8] = b"unlocks";
 
@@ -188,10 +212,14 @@ impl UnlockState {
 
 /// Whether a catalog index can exist as an asset at all.
 ///
-/// Below ENFORCED_FROM live the free items and the quest and event block,
-/// and none of them is tradable: a quest cosmetic is proof you did the thing,
-/// and an asset is proof you bought something. Minting one would put it on a
-/// marketplace, where the proof becomes a price.
+/// Below ENFORCED_FROM live the free items and the quest block, and neither
+/// is tradable: a quest cosmetic is proof you did the thing, and an asset is
+/// proof you own something. Minting one would put it on a marketplace, where
+/// the proof becomes a price.
+///
+/// Everything at or above it can be: pack items, and event items, which moved
+/// out of the quest block to EVENT_BLOCK_START so they could be (owner's
+/// call, 2026-11-02).
 ///
 /// A property of the catalog rather than of a wallet, so it lives next to the
 /// block constants that define it.
@@ -276,5 +304,23 @@ mod tests {
         assert!(!is_mintable(FREE_ITEM_COUNT));
         assert!(!is_mintable(ENFORCED_FROM - 1));
         assert!(is_mintable(ENFORCED_FROM));
+    }
+
+    #[test]
+    fn event_items_sit_above_the_booster_block_and_can_be_minted() {
+        // Right after the booster block, which the client sizes as 16 lanes
+        // of 2048: an overlap would let a drop table list an event item, or
+        // an event grant reach a pack item.
+        assert_eq!(EVENT_BLOCK_START, ENFORCED_FROM + 16 * 2048);
+        assert_eq!(EVENT_BLOCK_END, EVENT_BLOCK_START + 16 * 64);
+        assert!(!is_event_item(EVENT_BLOCK_START - 1));
+        assert!(is_event_item(EVENT_BLOCK_START));
+        assert!(is_event_item(EVENT_BLOCK_END - 1));
+        assert!(!is_event_item(EVENT_BLOCK_END));
+        // Tradable, and enforced by the city when worn.
+        assert!(is_mintable(EVENT_BLOCK_START));
+        assert!(EVENT_BLOCK_START >= ENFORCED_FROM);
+        // Quest items still are not.
+        assert!(!is_event_item(FREE_ITEM_COUNT));
     }
 }

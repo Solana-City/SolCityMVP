@@ -6,13 +6,15 @@ import {
   QUEST_FREE_SLOTS,
   QUEST_BLOCK_START,
   BOOSTER_BLOCK_START,
+  EVENT_BLOCK_START,
+  EVENT_BLOCK_END,
   globalIndexOf,
   itemAtGlobalIndex,
   assignedIndices,
   catalogLength,
 } from "./catalogIndex";
 import {
-  LAYER_ORDER, getChainFreeItems, getQuestItems, getBoosterPool,
+  LAYER_ORDER, getChainFreeItems, getQuestItems, getBoosterPool, getEventItems,
 } from "./paperDoll";
 
 /**
@@ -26,6 +28,9 @@ describe("the global catalog index", () => {
     expect(QUEST_BLOCK_START).toBe(FREE_ITEM_COUNT);
     expect(BOOSTER_BLOCK_START).toBe(FREE_ITEM_COUNT + QUEST_FREE_SLOTS);
     expect(BOOSTER_BLOCK_START).toBe(1536);
+    // EVENT_BLOCK_START / EVENT_BLOCK_END in sol-city-catalog.
+    expect(EVENT_BLOCK_START).toBe(1536 + 16 * 2048);
+    expect(EVENT_BLOCK_END).toBe(EVENT_BLOCK_START + 16 * 64);
   });
 
   it("pins LAYER_ORDER, because a category's position IS its lane", () => {
@@ -54,6 +59,7 @@ describe("the global catalog index", () => {
       { rows: getChainFreeItems(), start: 0, size: LANE_SIZE.free },
       { rows: getQuestItems(), start: QUEST_BLOCK_START, size: LANE_SIZE.quest },
       { rows: getBoosterPool(), start: BOOSTER_BLOCK_START, size: LANE_SIZE.booster },
+      { rows: getEventItems(), start: EVENT_BLOCK_START, size: LANE_SIZE.event },
     ];
     for (const { rows, start, size } of blocks) {
       const seen = new Map<string, number>();
@@ -119,8 +125,16 @@ describe("the global catalog index", () => {
         expect(i).toBeLessThan(BOOSTER_BLOCK_START);
       }
       // What the program enforces against: append_season_drops refuses any
-      // index below BOOSTER_BLOCK_START.
-      if (e.block === "booster") expect(i).toBeGreaterThanOrEqual(BOOSTER_BLOCK_START);
+      // index below BOOSTER_BLOCK_START, or at or above EVENT_BLOCK_START.
+      if (e.block === "booster") {
+        expect(i).toBeGreaterThanOrEqual(BOOSTER_BLOCK_START);
+        expect(i).toBeLessThan(EVENT_BLOCK_START);
+      }
+      // admin_grant_event_item accepts exactly this range.
+      if (e.block === "event") {
+        expect(i).toBeGreaterThanOrEqual(EVENT_BLOCK_START);
+        expect(i).toBeLessThan(EVENT_BLOCK_END);
+      }
     }
   });
 
@@ -150,8 +164,17 @@ describe("the global catalog index", () => {
       [832, "accessory:Trader_shades"],
       [960, "hat:Cap_Sol"], [961, "hat:city_cap"],
       [962, "hat:turkish_head"], [963, "hat:STB_cap"],
-      [964, "hat:Seeker_hat"], [965, "hat:Pumpkin_head"],
-      [966, "hat:Miner_hat"], [967, "hat:Halo"], [968, "hat:Royal_crown"],
+      // Pumpkin_head left on 2026-11-02 for the event block, on purpose:
+      // event items are tradable and quest items are not. Nothing in this
+      // block is on chain yet, so the three hats after it moving up is free.
+      [964, "hat:Seeker_hat"],
+      [965, "hat:Miner_hat"], [966, "hat:Halo"], [967, "hat:Royal_crown"],
+    ]);
+  });
+
+  it("pins the event block, index by index", () => {
+    expect(assigned("event")).toEqual([
+      [EVENT_BLOCK_START + 7 * LANE_SIZE.event, "hat:Pumpkin_head"],
     ]);
   });
 
@@ -204,7 +227,7 @@ describe("the global catalog index", () => {
   });
 });
 
-function assigned(block: "free" | "quest" | "booster"): [number, string][] {
+function assigned(block: "free" | "quest" | "booster" | "event"): [number, string][] {
   return assignedIndices()
     .map((i) => [i, itemAtGlobalIndex(i)!] as const)
     .filter(([, e]) => e.block === block)

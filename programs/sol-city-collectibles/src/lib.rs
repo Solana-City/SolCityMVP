@@ -52,7 +52,7 @@ declare_id!("EptRxVBysFzJEz52r58c2yCkpDGvF55aBPj1eCkWaphz");
 pub use sol_city_catalog::{
     UnlockState, PendingDraw,
     FREE_ITEM_COUNT, QUEST_FREE_SLOTS, ENFORCED_FROM, UNLOCKS_SEED, RARITY_COUNT,
-    is_mintable,
+    EVENT_BLOCK_START, is_mintable, is_event_item,
 };
 
 // ── Outfit booster ─────────────────────────────────────────────────────────
@@ -477,7 +477,7 @@ pub enum CollectiblesError {
     AssetIsNotThatItem,
     #[msg("This wallet already owns that cosmetic")]
     AlreadyOwned,
-    #[msg("Only a quest or event cosmetic can be granted this way")]
+    #[msg("Only an event cosmetic can be granted this way")]
     NotAnEventItem,
     #[msg("A pack's season, size and odds cannot change once it exists")]
     PackTermsFrozen,
@@ -1005,8 +1005,13 @@ pub mod sol_city_collectibles {
         // Every index must name a slot the program actually enforces. Checked
         // here because the callback cannot afford to: this is the last moment
         // there is somebody to return an error to.
+        // And never an event item: those are granted for having been there,
+        // and a drop table that listed one would sell it.
         for index in indices.iter() {
-            require!(*index >= ENFORCED_FROM, CollectiblesError::InvalidPoolCount);
+            require!(
+                *index >= ENFORCED_FROM && *index < EVENT_BLOCK_START,
+                CollectiblesError::InvalidPoolCount
+            );
         }
 
         {
@@ -1344,8 +1349,8 @@ pub mod sol_city_collectibles {
     ///
     ///   * `owns` is the permission, and it is the only source of indices:
     ///     the caller names nothing, so they cannot name something else.
-    ///   * `is_mintable` keeps the quest and event block out. Those are not
-    ///     tradable and never become assets.
+    ///   * `is_mintable` keeps the quest block out. Quest items are not
+    ///     tradable and never become assets; pack and event items are.
     ///   * `is_minted` is what makes it once per wallet. A cosmetic bought on
     ///     a marketplace is recorded there the moment it is claimed, so this
     ///     will not mint a second asset for something the wallet already has.
@@ -1963,15 +1968,18 @@ pub mod sol_city_collectibles {
     ///
     /// ── The range guard is the point ─────────────────────────────────────
     ///
-    /// Only the quest and event block, never the booster block. A grant path
-    /// that reached pack items would be a button that mints the shop's own
+    /// Only the EVENT block, never the booster block. A grant path that
+    /// reached pack items would be a button that mints the shop's own
     /// inventory out of nothing, and the scarcity those items are sold on is
     /// the only thing they have. The admin cannot reach them here, and that
     /// is deliberate rather than an oversight to be "fixed" later.
     ///
-    /// The free block is excluded too, for a duller reason: an item below
-    /// FREE_ITEM_COUNT is already wearable by everybody, so granting one
-    /// would spend rent to say nothing.
+    /// Event items used to sit in the quest block and could therefore never
+    /// be minted or sold. They have their own block now, above the booster
+    /// one (owner's call, 2026-11-02): once granted, an event item is a
+    /// cosmetic like any pack item, mintable, tradable, and checked by the
+    /// city when worn. Quest items stay out of reach here: nothing on chain
+    /// grants them, and they are never tradable.
     ///
     /// Idempotence is NOT silent. Running the admin's script twice over the
     /// same snapshot fails on the second pass rather than quietly doing
@@ -1981,10 +1989,7 @@ pub mod sol_city_collectibles {
         ctx: Context<AdminGrantEventItem>,
         index: u16,
     ) -> Result<()> {
-        require!(
-            index >= FREE_ITEM_COUNT && index < ENFORCED_FROM,
-            CollectiblesError::NotAnEventItem
-        );
+        require!(is_event_item(index), CollectiblesError::NotAnEventItem);
         // Not while that wallet's draw is in flight, even from the admin: the
         // grant would take the room the callback was paid for and lose the
         // player's draw (audit R-06). The grant script defers such wallets.

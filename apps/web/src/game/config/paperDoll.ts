@@ -626,11 +626,28 @@ export function getChainFreeItems(): { category: LayerCategory; variant: LayerVa
 /**
  * Every item reserved to a quest or an NPC, in LAYER_ORDER, disabled ones
  * included. Same reasoning as above: the order is an on-chain index.
+ *
+ * Quest items only. Event items left this list on 2026-11-02: they are
+ * tradable, so they live in their own block (`getEventItems`).
  */
 export function getQuestItems(): { category: LayerCategory; variant: LayerVariant }[] {
   return LAYER_ORDER.flatMap((category) =>
     LAYER_VARIANTS[category]
-      .filter((variant) => !!variant.unlockVia)
+      .filter((variant) => variant.unlockVia === "quest")
+      .map((variant) => ({ category, variant })),
+  );
+}
+
+/**
+ * Every EVENT item, in LAYER_ORDER, disabled ones included: granted by an
+ * admin to the people who took part, then theirs to mint, sell and wear.
+ * The order is an on-chain index, so a new event item goes at the END of its
+ * category's list.
+ */
+export function getEventItems(): { category: LayerCategory; variant: LayerVariant }[] {
+  return LAYER_ORDER.flatMap((category) =>
+    LAYER_VARIANTS[category]
+      .filter((variant) => variant.unlockVia === "event")
       .map((variant) => ({ category, variant })),
   );
 }

@@ -49,7 +49,7 @@ import {
   SOL_CITY_COLLECTIBLES_PROGRAM_ID, deriveUnlockPDA, decodeUnlockState,
 } from "../src/game/solana/program";
 import { ixDiscriminator } from "../src/game/solana/instructions";
-import { globalIndexOf } from "../src/game/config/catalogIndex";
+import { globalIndexOf, EVENT_BLOCK_START, EVENT_BLOCK_END } from "../src/game/config/catalogIndex";
 import type { LayerCategory } from "../src/game/config/paperDoll";
 
 const PACK_CONFIG_SEED = "pack_config";
@@ -57,9 +57,13 @@ const PACK_CONFIG_SEED = "pack_config";
 /** CollectiblesError::AlreadyOwned. Anchor numbers by position from 6000. */
 const ALREADY_OWNED_HEX = "0x" + (6000 + 21).toString(16);
 
-/** The program's own guard, mirrored so the dry run can explain a refusal. */
-const FREE_ITEM_COUNT = 512;
-const ENFORCED_FROM = 1536;
+/**
+ * The program's own guard (`is_event_item`), mirrored so the dry run can
+ * explain a refusal. Event items have their own block since 2026-11-02, above
+ * the booster block, so that once granted they can be minted and sold.
+ */
+const EVENT_FIRST = EVENT_BLOCK_START;
+const EVENT_LAST = EVENT_BLOCK_END;
 
 interface Snapshot {
   kind: string;
@@ -114,13 +118,14 @@ async function main(): Promise<void> {
     console.error(`"${item}" is not in the catalog. Nothing sent.`);
     process.exit(1);
   }
-  if (index < FREE_ITEM_COUNT || index >= ENFORCED_FROM) {
+  if (index < EVENT_FIRST || index >= EVENT_LAST) {
     // Said here as well as on chain, because the on-chain refusal arrives one
     // failed transaction at a time and this arrives before any are sent.
     console.error(
-      `${item} is index ${index}, outside the quest and event block ` +
-      `[${FREE_ITEM_COUNT}, ${ENFORCED_FROM}). The program will refuse it: ` +
-      `a pack item cannot be granted, only drawn.`,
+      `${item} is index ${index}, outside the event block ` +
+      `[${EVENT_FIRST}, ${EVENT_LAST}). The program will refuse it: a pack ` +
+      `item is only drawn, and a quest item is never granted on chain. ` +
+      `Is it marked unlockVia: "event" in paperDoll.ts?`,
     );
     process.exit(1);
   }

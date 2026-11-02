@@ -5,6 +5,7 @@ import {
   getChainFreeItems,
   getQuestItems,
   getBoosterPool,
+  getEventItems,
 } from "./paperDoll";
 
 /**
@@ -21,7 +22,8 @@ import {
  *
  *   [0, FREE_ITEM_COUNT)                       free, never checked
  *   [FREE_ITEM_COUNT, BOOSTER_BLOCK_START)     quest and NPC rewards
- *   [BOOSTER_BLOCK_START, ...)                 booster pool
+ *   [BOOSTER_BLOCK_START, EVENT_BLOCK_START)   booster pool
+ *   [EVENT_BLOCK_START, EVENT_BLOCK_END)       event items, tradable
  *
  * Each block is then cut into LANES, one per layer category, and an item sits
  * in its own category's lane. Every one of these is a reserved SIZE and the
@@ -77,7 +79,7 @@ export const CATEGORY_LANES = 16;
  * where seasons land, a few hundred items a season across the categories, so
  * two thousand a lane is something like fifty seasons.
  */
-export const LANE_SIZE = { free: 32, quest: 64, booster: 2048 } as const;
+export const LANE_SIZE = { free: 32, quest: 64, booster: 2048, event: 64 } as const;
 
 /** Mirrors FREE_ITEM_COUNT in the program. A reserved size, not a count. */
 export const FREE_ITEM_COUNT = CATEGORY_LANES * LANE_SIZE.free;
@@ -95,11 +97,24 @@ export const QUEST_BLOCK_START = FREE_ITEM_COUNT;
  */
 export const BOOSTER_BLOCK_START = FREE_ITEM_COUNT + QUEST_FREE_SLOTS;
 
+/**
+ * First index of the event block, right after the booster block. Mirrors
+ * EVENT_BLOCK_START in sol-city-catalog.
+ *
+ * Event items lived in the quest block until 2026-11-02, which made them
+ * impossible to mint or sell. The owner's call is that they are tradable
+ * like pack items, so they sit above BOOSTER_BLOCK_START (enforced when
+ * worn, mintable) but outside the booster block, where a drop table could
+ * list them.
+ */
+export const EVENT_BLOCK_START = BOOSTER_BLOCK_START + CATEGORY_LANES * LANE_SIZE.booster;
+export const EVENT_BLOCK_END = EVENT_BLOCK_START + CATEGORY_LANES * LANE_SIZE.event;
+
 export interface CatalogEntry {
   category: LayerCategory;
   variant: LayerVariant;
   /** Which block it came from, for anything that needs to reason about tiers. */
-  block: "free" | "quest" | "booster";
+  block: "free" | "quest" | "booster" | "event";
 }
 
 /**
@@ -149,6 +164,7 @@ function buildTable(): (CatalogEntry | undefined)[] {
   placeLane(table, getChainFreeItems(), 0, LANE_SIZE.free, "free");
   placeLane(table, getQuestItems(), QUEST_BLOCK_START, LANE_SIZE.quest, "quest");
   placeLane(table, getBoosterPool(), BOOSTER_BLOCK_START, LANE_SIZE.booster, "booster");
+  placeLane(table, getEventItems(), EVENT_BLOCK_START, LANE_SIZE.event, "event");
   return table;
 }
 
