@@ -103,6 +103,13 @@ pub const ACCEPTED_TREE_SEED: &[u8] = b"accepted_tree";
 /// its wear-rights came from. See `WearLog`.
 pub const WEAR_LOG_SEED: &[u8] = b"wear_log";
 
+/// Seed of an event's drop: ["event_drop", id as u16 LE]. See `EventDrop`.
+pub const EVENT_DROP_SEED: &[u8] = b"event_drop";
+
+/// Longest proof `claim_event_item` will walk: room for 2^24 winners, and a
+/// bound on the hashing one claim can ask for.
+pub const MAX_EVENT_PROOF: usize = 24;
+
 /// Most assets one wallet can mint. Two bytes each, same as `owned`.
 pub const PLAYER_MINT_CAP: usize = 256;
 
@@ -520,6 +527,10 @@ pub enum CollectiblesError {
     AlreadyMigrated,
     #[msg("The pack costs more than the price shown")]
     PriceChanged,
+    #[msg("This wallet is not on that event's list")]
+    NotOnEventList,
+    #[msg("That proof is longer than any event list")]
+    EventProofTooLong,
     // Appended, never inserted. Anchor numbers these by POSITION, so a
     // variant added in the middle silently renumbers every one after it
     // and any client matching on a code starts reporting the wrong thing.
@@ -2134,6 +2145,87 @@ pub mod sol_city_collectibles {
         require!(unlocks.insert_owned(index), CollectiblesError::AlreadyOwned);
         Ok(())
     }
+
+    // Event drops ------------------------------------------------------------
+    //
+    // How a winner gets an event cosmetic: they claim it themselves. The admin
+    // publishes ONE root per event, whatever the number of winners, and each
+    // winner proves their place in the list when they claim. So the admin pays
+    // for one small account per event, and every winner pays for their own
+    // claim, the same as for their first pack.
+    //
+    // `admin_grant_event_item` above stays for the odd correction. It needs
+    // the winner's UnlockState to exist already, which this does not.
+
+    /// Opens an event drop: who may claim `index` is whoever is under `root`.
+    pub fn init_event_drop(
+        ctx: Context<InitEventDrop>,
+        id: u16,
+        index: u16,
+        root: [u8; 32],
+    ) -> Result<()> {
+        require!(is_event_item(index), CollectiblesError::NotAnEventItem);
+        let drop = &mut ctx.accounts.event_drop;
+        drop.id = id;
+        drop.index = index;
+        drop.root = root;
+        Ok(())
+    }
+
+    /// Replaces an event's list, for a winner left out of the first one. The
+    /// cosmetic stays what it was: a drop never changes what it hands out.
+    pub fn set_event_root(ctx: Context<SetEventRoot>, _id: u16, root: [u8; 32]) -> Result<()> {
+        ctx.accounts.event_drop.root = root;
+        Ok(())
+    }
+
+    /// A winner takes their event cosmetic.
+    ///
+    /// The proof is the path from this wallet's leaf to the drop's root; the
+    /// site builds it from the published list. A wallet claims once, because
+    /// a second claim finds the index already owned.
+    pub fn claim_event_item(
+        ctx: Context<ClaimEventItem>,
+        _id: u16,
+        proof: Vec<[u8; 32]>,
+    ) -> Result<()> {
+        require!(proof.len() <= MAX_EVENT_PROOF, CollectiblesError::EventProofTooLong);
+        let drop = &ctx.accounts.event_drop;
+        let leaf = event_leaf(drop.id, &ctx.accounts.claimer.key());
+        require!(on_event_list(&drop.root, leaf, &proof), CollectiblesError::NotOnEventList);
+        let index = drop.index;
+        // Same reason as the admin grant: writing now would take the room a
+        // paid draw is waiting for (audit R-06).
+        require!(!ctx.accounts.unlock_state.pending, CollectiblesError::BoosterPending);
+
+        // Room first, funded by the claimer, then the write.
+        {
+            let info = ctx.accounts.unlock_state.to_account_info();
+            let needed = UnlockState::size_for(
+                ctx.accounts.unlock_state.owned.len() + 1,
+                ctx.accounts.unlock_state.minted.len(),
+            );
+            if info.data_len() < needed {
+                let rent = SolanaRent::get()?;
+                let topup = rent.minimum_balance(needed).saturating_sub(info.lamports());
+                if topup > 0 {
+                    invoke(
+                        &system_instruction::transfer(ctx.accounts.claimer.key, info.key, topup),
+                        &[
+                            ctx.accounts.claimer.to_account_info(),
+                            info.clone(),
+                            ctx.accounts.system_program.to_account_info(),
+                        ],
+                    )?;
+                }
+                info.realloc(needed, false)?;
+            }
+        }
+
+        let unlocks = &mut ctx.accounts.unlock_state;
+        require!(unlocks.insert_owned(index), CollectiblesError::AlreadyOwned);
+        Ok(())
+    }
 }
 
 // ── Outfit booster accounts ────────────────────────────────────────────────
@@ -2953,6 +3045,63 @@ pub struct AdminGrantEventItem<'info> {
 }
 
 #[derive(Accounts)]
+#[instruction(id: u16)]
+pub struct InitEventDrop<'info> {
+    #[account(mut)]
+    pub admin: Signer<'info>,
+    #[account(
+        seeds = [PACK_CONFIG_SEED],
+        bump,
+        constraint = config.admin == admin.key() @ CollectiblesError::NotPackAdmin,
+    )]
+    pub config: Account<'info, PackConfig>,
+    #[account(
+        init,
+        payer = admin,
+        space = 8 + EventDrop::INIT_SPACE,
+        seeds = [EVENT_DROP_SEED, &id.to_le_bytes()],
+        bump,
+    )]
+    pub event_drop: Account<'info, EventDrop>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+#[instruction(id: u16)]
+pub struct SetEventRoot<'info> {
+    pub admin: Signer<'info>,
+    #[account(
+        seeds = [PACK_CONFIG_SEED],
+        bump,
+        constraint = config.admin == admin.key() @ CollectiblesError::NotPackAdmin,
+    )]
+    pub config: Account<'info, PackConfig>,
+    #[account(mut, seeds = [EVENT_DROP_SEED, &id.to_le_bytes()], bump)]
+    pub event_drop: Account<'info, EventDrop>,
+}
+
+#[derive(Accounts)]
+#[instruction(id: u16)]
+pub struct ClaimEventItem<'info> {
+    #[account(mut)]
+    pub claimer: Signer<'info>,
+    // Must already exist, as for a pack: the client sends init_unlock_state
+    // in the same transaction when it does not.
+    #[account(
+        mut,
+        seeds = [UNLOCKS_SEED, claimer.key().as_ref()],
+        bump,
+        constraint = unlock_state.authority == claimer.key() @ CollectiblesError::WrongUnlockOwner,
+    )]
+    pub unlock_state: Account<'info, UnlockState>,
+    #[account(seeds = [EVENT_DROP_SEED, &id.to_le_bytes()], bump)]
+    pub event_drop: Account<'info, EventDrop>,
+    #[account(seeds = [PACK_CONFIG_SEED], bump, constraint = !config.paused @ CollectiblesError::Paused)]
+    pub config: Account<'info, PackConfig>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
 #[instruction(season: u16)]
 pub struct InitSeasonDrops<'info> {
     #[account(mut)]
@@ -3024,6 +3173,79 @@ pub struct MigratePackConfig<'info> {
     #[account(mut)]
     pub admin: Signer<'info>,
     pub system_program: Program<'info, System>,
+}
+
+/// Who may claim one event cosmetic, as a single Merkle root.
+///
+/// The list itself is published by the site, as leaf hashes, and each winner
+/// proves their own place in it. So this account is the same size for ten
+/// winners or ten thousand.
+#[account]
+#[derive(InitSpace)]
+pub struct EventDrop {
+    pub id: u16,
+    /// Catalog index of the cosmetic, in the event block.
+    pub index: u16,
+    pub root: [u8; 32],
+}
+
+/// A winner's leaf. The event id is in it, so a proof for one event is no
+/// proof for another; the prefix keeps a leaf from ever passing for a node.
+pub fn event_leaf(id: u16, wallet: &Pubkey) -> [u8; 32] {
+    hashv(&[b"solcity:event-leaf", &id.to_le_bytes(), wallet.as_ref()]).to_bytes()
+}
+
+/// Two children, in sorted order, so a proof needs no left/right flags.
+fn event_node(a: &[u8; 32], b: &[u8; 32]) -> [u8; 32] {
+    let (lo, hi) = if a <= b { (a, b) } else { (b, a) };
+    hashv(&[b"solcity:event-node", lo, hi]).to_bytes()
+}
+
+pub fn on_event_list(root: &[u8; 32], leaf: [u8; 32], proof: &[[u8; 32]]) -> bool {
+    proof.iter().fold(leaf, |acc, sibling| event_node(&acc, sibling)) == *root
+}
+
+#[cfg(test)]
+mod event_drops {
+    use super::*;
+
+    fn hex32(s: &str) -> [u8; 32] {
+        let mut out = [0u8; 32];
+        for i in 0..32 {
+            out[i] = u8::from_str_radix(&s[2 * i..2 * i + 2], 16).unwrap();
+        }
+        out
+    }
+
+    // Three wallets [1;32], [2;32], [3;32] in event 1, built by
+    // apps/web/src/game/solana/eventDrops.ts. The client test pins the same
+    // root, so the two sides cannot drift apart.
+    const ROOT: &str = "8849ed3ecd2f15719c8c3a44a51fb7732e287949e67efb8fa1e6e173c293d3f0";
+    const PROOF_2: [&str; 2] = [
+        "76538fc7df6737b28e382e8174d44fc86b985d016950db7eb9a55e2a6f8d24d6",
+        "81be021b6a1b1af81c7a7da23ec7b41c8f71e80fdd02edffb8ff55f94105f658",
+    ];
+
+    #[test]
+    fn a_winner_on_the_client_list_passes() {
+        let proof: Vec<[u8; 32]> = PROOF_2.iter().map(|p| hex32(p)).collect();
+        let leaf = event_leaf(1, &Pubkey::new_from_array([2; 32]));
+        assert!(on_event_list(&hex32(ROOT), leaf, &proof));
+    }
+
+    #[test]
+    fn another_wallet_or_event_does_not() {
+        let proof: Vec<[u8; 32]> = PROOF_2.iter().map(|p| hex32(p)).collect();
+        let stranger = event_leaf(1, &Pubkey::new_from_array([9; 32]));
+        assert!(!on_event_list(&hex32(ROOT), stranger, &proof));
+        let other_event = event_leaf(2, &Pubkey::new_from_array([2; 32]));
+        assert!(!on_event_list(&hex32(ROOT), other_event, &proof));
+    }
+
+    #[test]
+    fn the_drop_account_is_small_and_fixed() {
+        assert_eq!(EventDrop::INIT_SPACE, 2 + 2 + 32);
+    }
 }
 
 #[cfg(test)]

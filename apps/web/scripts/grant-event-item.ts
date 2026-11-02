@@ -1,6 +1,10 @@
 /**
  * Sol City — hand a frozen list of winners the cosmetic they earned.
  *
+ * NOT the usual path any more. Winners claim their reward themselves, from
+ * the wardrobe, against a list published with `event-drop.ts`, and pay for
+ * their own claim. This stays for the odd correction, as a Squads batch.
+ *
  * The second half of the Halloween claim. `freeze-winners.ts` takes the cut;
  * this walks it and sends one `admin_grant_event_item` per wallet, which
  * writes the catalog index into that wallet's `UnlockState.owned`. From then

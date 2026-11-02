@@ -11,6 +11,7 @@ import { readMintConfig, mintedIndices, mintCosmetic, type MintConfigAccount } f
 import { heldCosmetics, claimCosmetic, type HeldCosmetic } from "@/game/solana/claim";
 import { syncOwnedToWardrobe } from "@/game/solana/packs";
 import { getNetwork } from "@/game/multiplayer/OnChainMultiplayer";
+import { claimableDrops, claimEventDrop, type ClaimableDrop } from "@/game/solana/eventDrops";
 
 /**
  * Turning cosmetics you own into assets you hold.
@@ -31,6 +32,10 @@ import { getNetwork } from "@/game/multiplayer/OnChainMultiplayer";
  * wallet but not in our program, so nobody sees you wear it until it is
  * claimed. Claiming is one approval, and it also takes the right to wear that
  * item away from whoever held it before (audit R-21): one asset, one wearer.
+ *
+ * And event rewards: a wallet on an event's winners list claims the cosmetic
+ * here, one approval, and from then on it is wearable and mintable like any
+ * pack item. See eventDrops.ts.
  */
 export default function MintSection({ wallet }: { wallet: string | null }) {
   const { signTransaction } = useWallet();
@@ -47,6 +52,8 @@ export default function MintSection({ wallet }: { wallet: string | null }) {
   // Held in the wallet, not yet known to the program: bought elsewhere.
   const [claimable, setClaimable] = useState<HeldCosmetic[]>([]);
   const [claiming, setClaiming] = useState<string | null>(null);
+  // Event rewards this wallet won and has not claimed yet.
+  const [drops, setDrops] = useState<ClaimableDrop[]>([]);
 
   const refresh = useCallback(async () => {
     if (!wallet) return;
@@ -67,6 +74,7 @@ export default function MintSection({ wallet }: { wallet: string | null }) {
           (h) => h.index >= BOOSTER_BLOCK_START && !nowOwned.includes(h.index),
         )))
         .catch(() => setClaimable([]));
+      claimableDrops(conn, key, nowOwned).then(setDrops).catch(() => setDrops([]));
     } catch {
       // An unreachable RPC shows nothing rather than an empty wardrobe: the
       // player owns what they own, and this panel is not the record of it.
@@ -113,6 +121,26 @@ export default function MintSection({ wallet }: { wallet: string | null }) {
     }
   }, [wallet, signTransaction, config, refresh]);
 
+  const claimDrop = useCallback(async (drop: ClaimableDrop) => {
+    if (!wallet || !signTransaction) return;
+    setClaiming(`drop:${drop.id}`);
+    setError(null);
+    try {
+      const conn = baseConnection();
+      const key = new PublicKey(wallet);
+      await claimEventDrop({ conn, wallet: key, drop, signTransaction });
+      // Wearable now, as after any claim: the wardrobe's view and the snapshot
+      // the program checks outfits against.
+      await syncOwnedToWardrobe(conn, key);
+      void getNetwork()?.refreshUnlockSnapshot();
+      await refresh();
+    } catch (err) {
+      setError((err as Error).message?.split("\n")[0] ?? "The claim failed.");
+    } finally {
+      setClaiming(null);
+    }
+  }, [wallet, signTransaction, refresh]);
+
   if (!wallet || !config) return null;
 
   const mintable = owned
@@ -121,7 +149,7 @@ export default function MintSection({ wallet }: { wallet: string | null }) {
     .filter((x) => x.entry !== undefined);
 
   const held = minted.length;
-  if (mintable.length === 0 && held === 0 && claimable.length === 0) return null;
+  if (mintable.length === 0 && held === 0 && claimable.length === 0 && drops.length === 0) return null;
 
   return (
     <div style={{ marginTop: 14, fontSize: 8, lineHeight: 1.8 }}>
@@ -137,14 +165,52 @@ export default function MintSection({ wallet }: { wallet: string | null }) {
         }}>{error}</div>
       )}
 
-      {drawPending && mintable.length > 0 && (
+      {drops.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 10 }}>
+          <div style={{ color: "#ffd479" }}>EVENT REWARD{drops.length > 1 ? "S" : ""} TO CLAIM</div>
+          {drops.map((drop) => {
+            const entry = itemAtGlobalIndex(drop.index);
+            if (!entry) return null;
+            const variant = getVariant(entry.category, entry.variant.id);
+            const rarity = rarityOf(entry.category, entry.variant.id);
+            const key = `drop:${drop.id}`;
+            return (
+              <div key={key} style={{
+                display: "flex", alignItems: "center", justifyContent: "space-between",
+                gap: 10, padding: "6px 8px", background: "rgba(255,212,121,0.06)",
+              }}>
+                <span>
+                  <span style={{ color: RARITY_COLOR[rarity] }}>■{" "}</span>
+                  {variant?.name ?? entry.variant.id}
+                </span>
+                <button
+                  disabled={claiming !== null || drawPending}
+                  onClick={() => void claimDrop(drop)}
+                  style={{
+                    fontSize: 8, padding: "4px 10px", cursor: claiming ? "default" : "pointer",
+                    border: "1px solid #ffd479", background: "transparent",
+                    color: claiming === key ? "#6f7696" : "#ffd479",
+                    fontFamily: "inherit",
+                  }}
+                >
+                  {claiming === key ? "CLAIMING…" : "CLAIM"}
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {drawPending && (mintable.length > 0 || drops.length > 0) && (
         <div style={{ color: "#ffd479", marginBottom: 8 }}>
           A pack is still being drawn. Minting opens again once it lands.
         </div>
       )}
 
       {mintable.length === 0 ? (
-        <div style={{ color: "#6f7696" }}>Every pack item you own is already an asset.</div>
+        drops.length > 0 ? null : (
+          <div style={{ color: "#6f7696" }}>Every pack item you own is already an asset.</div>
+        )
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           {mintable.map(({ index, entry }) => {
