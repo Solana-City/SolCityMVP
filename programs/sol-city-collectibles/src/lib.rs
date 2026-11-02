@@ -45,6 +45,22 @@ use anchor_lang::solana_program::{
 
 declare_id!("EptRxVBysFzJEz52r58c2yCkpDGvF55aBPj1eCkWaphz");
 
+// security.txt: see the same block in sol-city. Only in the deployable binary.
+#[cfg(not(feature = "no-entrypoint"))]
+#[cfg_attr(target_os = "solana", link_section = ".security.txt")]
+#[allow(dead_code)]
+#[no_mangle]
+pub static security_txt: &str = concat!(
+    "=======BEGIN SECURITY.TXT V1=======\0",
+    "name\0", "Solana City Collectibles\0",
+    "project_url\0", "https://solanacity.io\0",
+    "contacts\0", "link:https://github.com/Solana-City/SolCityMVP/security/advisories/new\0",
+    "policy\0", "https://github.com/Solana-City/SolCityMVP/blob/main/SECURITY.md\0",
+    "preferred_languages\0", "en,pt\0",
+    "source_code\0", "https://github.com/Solana-City/SolCityMVP\0",
+    "=======END SECURITY.TXT V1=======\0"
+);
+
 // The shared vocabulary, defined in a crate that is NOT a program. That is
 // what keeps any program from depending on another program, so the
 // `no-entrypoint` feature never enters this build graph at all. See the note

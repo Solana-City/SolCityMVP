@@ -25,6 +25,25 @@ use anchor_lang::solana_program::{
 
 declare_id!("HPvDFVnruSXHwKKP44eUvRh8oYqBaHCeQbK1sKWT1aU2");
 
+// security.txt, in the format `solana-security-txt` defines and explorers
+// read: who to tell about a bug, and where the rules are. Written out rather
+// than taken from the crate's macro so the build gains no dependency; the
+// bytes are the same ones the macro emits. Only in the deployable binary.
+#[cfg(not(feature = "no-entrypoint"))]
+#[cfg_attr(target_os = "solana", link_section = ".security.txt")]
+#[allow(dead_code)]
+#[no_mangle]
+pub static security_txt: &str = concat!(
+    "=======BEGIN SECURITY.TXT V1=======\0",
+    "name\0", "Solana City\0",
+    "project_url\0", "https://solanacity.io\0",
+    "contacts\0", "link:https://github.com/Solana-City/SolCityMVP/security/advisories/new\0",
+    "policy\0", "https://github.com/Solana-City/SolCityMVP/blob/main/SECURITY.md\0",
+    "preferred_languages\0", "en,pt\0",
+    "source_code\0", "https://github.com/Solana-City/SolCityMVP\0",
+    "=======END SECURITY.TXT V1=======\0"
+);
+
 // Bumped to "player_v3" when PlayerState gained `unlocked` (the on-chain snapshot
 // that update_look_session enforces against) and `loadout` became index-based.
 // New PDAs are fresh at the new size; existing v2 accounts are ignored — every
@@ -236,6 +255,19 @@ fn schedule_magic_commit<'info>(
         ],
     )?;
     Ok(())
+}
+
+/// The rollup validator a delegate instruction names, from its remaining
+/// accounts: none, or exactly one.
+///
+/// Read as hostile input (audit R-36, and the Solana Foundation's pre-mainnet
+/// checklist, item 4): anything past the first account used to be ignored, so
+/// a malformed list was accepted as long as its first entry looked right.
+/// The key is only DATA written into the delegation record, never an account
+/// this program reads, so its owner is not ours to check.
+fn preferred_validator(remaining: &[AccountInfo]) -> Result<Option<Pubkey>> {
+    require!(remaining.len() <= 1, SolCityError::InvalidAuthority);
+    Ok(remaining.first().map(|acc| *acc.key))
 }
 
 
@@ -799,7 +831,7 @@ pub mod sol_city {
             &ctx.accounts.system_program,
             &[PLAYER_SEED, authority_key.as_ref()],
             ctx.bumps.player,
-            ctx.remaining_accounts.first().map(|acc| *acc.key),
+            preferred_validator(ctx.remaining_accounts)?,
         )
     }
 
@@ -953,7 +985,7 @@ pub mod sol_city {
             &ctx.accounts.system_program,
             &[HUNT_SEED],
             ctx.bumps.hunt,
-            ctx.remaining_accounts.first().map(|acc| *acc.key),
+            preferred_validator(ctx.remaining_accounts)?,
         )
     }
 

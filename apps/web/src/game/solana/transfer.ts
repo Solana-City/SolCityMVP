@@ -7,7 +7,7 @@ import {
 import {
   getAssociatedTokenAddress,
   createTransferInstruction,
-  createAssociatedTokenAccountInstruction,
+  createAssociatedTokenAccountIdempotentInstruction,
   getAccount,
 } from "@solana/spl-token";
 
@@ -66,11 +66,16 @@ export async function buildSplTransfer(
   }
 
   // The recipient's account has to exist before anything can land in it.
+  //
+  // IDEMPOTENT, because the ATA address is public: if anybody creates it
+  // between our check and this transaction landing (or it simply appears a
+  // moment late on this RPC), the plain create fails and takes the transfer
+  // down with it. The idempotent one succeeds either way.
   try {
     await getAccount(connection, toAta);
   } catch {
     tx.add(
-      createAssociatedTokenAccountInstruction(from, toAta, to, mint)
+      createAssociatedTokenAccountIdempotentInstruction(from, toAta, to, mint)
     );
   }
 
