@@ -48,6 +48,7 @@ export const VIGNETTES: Record<VignetteId, Vignette> = {
       Radio:      "dog_radio_sheet.png",
       Brown:      "dog_brown_sheet.png",
       Dark_brown: "dog_dark_brown_sheet.png",
+      Kizil:      "dog_kizil_sheet.png",
     },
     defaultSheet: "dog_human_sheet.png",
     // 452x113: four square frames of a hand working down the dog's head.
@@ -66,6 +67,7 @@ export const VIGNETTES: Record<VignetteId, Vignette> = {
       Radio:      "tea_radio_sheet.png",
       Brown:      "tea_brown_sheet.png",
       Dark_brown: "tea_dark_brown_sheet.png",
+      Kizil:      "tea_kizil_sheet.png",
     },
     defaultSheet: "tea_human_sheet.png",
     // 904x113: eight square frames, the cup lifted, drunk from and set back
