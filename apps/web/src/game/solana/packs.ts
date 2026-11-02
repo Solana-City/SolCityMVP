@@ -47,6 +47,8 @@ export interface PackConfigAccount {
   /** Only packs of this season can be bought. Zero means nothing is open. */
   currentSeason: number;
   packs: OnChainPack[];
+  /** The emergency stop: nothing sells, opens or mints while it is set. */
+  paused: boolean;
 }
 
 const MAX_PACKS = 8;
@@ -80,14 +82,21 @@ export async function readPackConfig(conn: Connection): Promise<PackConfigAccoun
     const enabled = d.readUInt8(o) === 1; o += 1;
     all.push({ id, season, price, size, weights, enabled });
   }
-  const packCount = d.readUInt8(o);
-  return { admin, currencyMint, treasuryTokenAccount, currentSeason, packs: all.slice(0, packCount) };
+  const packCount = d.readUInt8(o); o += 1;
+  // Absent on a config written before the pause existed, which the program
+  // cannot load at all until `migrate_pack_config` grows it.
+  const paused = o < d.length && d.readUInt8(o) === 1;
+  return {
+    admin, currencyMint, treasuryTokenAccount, currentSeason,
+    packs: all.slice(0, packCount), paused,
+  };
 }
 
 /** Whether this pack can be bought right now, and why not when it cannot. */
 export function packUnavailableReason(
   pack: OnChainPack, config: PackConfigAccount,
 ): string | null {
+  if (config.paused) return "The shop is paused for maintenance.";
   if (!pack.enabled) return "This pack is not on sale.";
   if (config.currentSeason === 0) return "No season is open yet.";
   if (pack.season !== config.currentSeason) return "This pack belongs to a season that has closed.";

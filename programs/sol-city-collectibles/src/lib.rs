@@ -507,6 +507,12 @@ pub enum CollectiblesError {
     NoDrawPending,
     #[msg("That is not the wallet this asset's wear-right came from")]
     WrongPreviousHolder,
+    #[msg("The shop is paused")]
+    Paused,
+    #[msg("Only the pack admin or the pauser may pause, and only the admin may resume")]
+    NotPauser,
+    #[msg("The pack config already has the current layout")]
+    AlreadyMigrated,
     // Appended, never inserted. Anchor numbers these by POSITION, so a
     // variant added in the middle silently renumbers every one after it
     // and any client matching on a code starts reporting the wrong thing.
@@ -924,6 +930,8 @@ pub mod sol_city_collectibles {
         cfg.current_season = 0;
         cfg.packs = [PackDef::default(); MAX_PACKS];
         cfg.pack_count = 0;
+        cfg.paused = false;
+        cfg.pauser = admin;
         Ok(())
     }
 
@@ -1115,6 +1123,7 @@ pub mod sol_city_collectibles {
         cfg.seller_fee_basis_points = seller_fee_basis_points;
         cfg.symbol = symbol;
         cfg.base_uri = base_uri;
+        cfg.paused = false;
         Ok(())
     }
 
@@ -1127,14 +1136,88 @@ pub mod sol_city_collectibles {
     ///
     /// Guarded by the CURRENT admin, not by the upgrade authority, so that
     /// freezing the program later does not freeze the ability to rotate.
+    ///
+    /// A pauser that was just the old admin moves with it. Otherwise handing
+    /// the config to the multisig would leave the deploy key able to pause.
     pub fn set_pack_admin(ctx: Context<AdminPackConfig>, new_admin: Pubkey) -> Result<()> {
-        ctx.accounts.config.admin = new_admin;
+        let cfg = &mut ctx.accounts.config;
+        if cfg.pauser == cfg.admin {
+            cfg.pauser = new_admin;
+        }
+        cfg.admin = new_admin;
         Ok(())
     }
 
     /// Hands the mint config to a different admin. See `set_pack_admin`.
     pub fn set_mint_admin(ctx: Context<AdminMintConfig>, new_admin: Pubkey) -> Result<()> {
         ctx.accounts.mint_config.admin = new_admin;
+        Ok(())
+    }
+
+    /// Chooses the key that may pause. The admin itself is a valid answer and
+    /// the default.
+    pub fn set_pauser(ctx: Context<AdminPackConfig>, pauser: Pubkey) -> Result<()> {
+        ctx.accounts.config.pauser = pauser;
+        Ok(())
+    }
+
+    /// Closes or reopens the shop: both configs in one write, so packs and
+    /// mints never disagree about whether it is open.
+    ///
+    /// Pausing takes the admin or the pauser; resuming takes the admin. The
+    /// mint config is optional only because a deployment can sell packs
+    /// before minting is set up; when it exists, the pause script passes it.
+    pub fn set_paused(ctx: Context<SetPaused>, paused: bool) -> Result<()> {
+        let cfg = &mut ctx.accounts.config;
+        let who = ctx.accounts.authority.key();
+        let allowed = who == cfg.admin || (paused && who == cfg.pauser);
+        require!(allowed, CollectiblesError::NotPauser);
+        cfg.paused = paused;
+        if let Some(mint_config) = ctx.accounts.mint_config.as_mut() {
+            mint_config.paused = paused;
+        }
+        Ok(())
+    }
+
+    /// Grows a pack config written before `paused` and `pauser` existed.
+    ///
+    /// Anchor cannot load such an account as a PackConfig (it is 33 bytes
+    /// short), so this reads it raw: owner and address by constraint, the
+    /// discriminator and the admin from the bytes. The new bytes come up
+    /// zeroed, which is "not paused"; the pauser is set to the admin. Only an
+    /// account of exactly the old size is accepted, so it runs once.
+    pub fn migrate_pack_config(ctx: Context<MigratePackConfig>) -> Result<()> {
+        let info = ctx.accounts.config.to_account_info();
+        let new_len = 8 + PackConfig::INIT_SPACE;
+        let old_len = new_len - 1 - 32;
+        require!(info.data_len() == old_len, CollectiblesError::AlreadyMigrated);
+        {
+            let data = info.try_borrow_data()?;
+            require!(
+                data[..8] == <PackConfig as anchor_lang::Discriminator>::DISCRIMINATOR,
+                CollectiblesError::NotPackAdmin
+            );
+            // `admin` is the first field.
+            require!(
+                data[8..40] == ctx.accounts.admin.key().to_bytes(),
+                CollectiblesError::NotPackAdmin
+            );
+        }
+        let rent = SolanaRent::get()?;
+        let topup = rent.minimum_balance(new_len).saturating_sub(info.lamports());
+        if topup > 0 {
+            invoke(
+                &system_instruction::transfer(ctx.accounts.admin.key, info.key, topup),
+                &[
+                    ctx.accounts.admin.to_account_info(),
+                    info.clone(),
+                    ctx.accounts.system_program.to_account_info(),
+                ],
+            )?;
+        }
+        info.realloc(new_len, true)?;
+        let mut data = info.try_borrow_mut_data()?;
+        data[old_len + 1..new_len].copy_from_slice(&ctx.accounts.admin.key().to_bytes());
         Ok(())
     }
 
@@ -2061,7 +2144,7 @@ pub struct OpenBooster<'info> {
     pub unlock_state: Account<'info, UnlockState>,
     /// What this pack costs and what it draws from. Read only: a purchase
     /// never writes the table.
-    #[account(seeds = [PACK_CONFIG_SEED], bump)]
+    #[account(seeds = [PACK_CONFIG_SEED], bump, constraint = !config.paused @ CollectiblesError::Paused)]
     pub config: Account<'info, PackConfig>,
     /// The season's drop table. Address-checked against the pack's season in
     /// the instruction body, since a seeds constraint cannot read the config.
@@ -2252,6 +2335,9 @@ pub struct MintConfig {
     /// host does.
     #[max_len(160)]
     pub base_uri: String,
+    /// Stops minting and claiming. Written only by `set_paused`, together
+    /// with the pack config's flag; see PackConfig::pauser.
+    pub paused: bool,
 }
 
 /// A tree that used to be the mint tree, and whose assets still count.
@@ -2509,6 +2595,19 @@ pub struct PackConfig {
     pub current_season: u16,
     pub packs: [PackDef; MAX_PACKS],
     pub pack_count: u8,
+    // Appended so the fields above keep their offsets for the client's
+    // hand-written decoder. Accounts created before these existed are grown
+    // by `migrate_pack_config`.
+    /// Stops buying, opening, minting, claiming and event grants (audit
+    /// R-44). Draws already paid for still resolve: the VRF callback and
+    /// `retry_draw` do not read it, so nobody is left holding a paid pack
+    /// with nothing in it.
+    pub paused: bool,
+    /// May pause but not resume. Starts as the admin, so no extra key exists
+    /// unless one is chosen: a key held by whoever is on call pauses in
+    /// minutes when reaching a second multisig signer would take hours, and
+    /// the worst it can do is close the shop until the admin reopens it.
+    pub pauser: Pubkey,
 }
 
 impl PackConfig {
@@ -2570,7 +2669,7 @@ pub struct MintUnlock<'info> {
         constraint = unlock_state.authority == payer.key() @ CollectiblesError::WrongUnlockOwner,
     )]
     pub unlock_state: Account<'info, UnlockState>,
-    #[account(seeds = [MINT_CONFIG_SEED], bump)]
+    #[account(seeds = [MINT_CONFIG_SEED], bump, constraint = !mint_config.paused @ CollectiblesError::Paused)]
     pub mint_config: Account<'info, MintConfig>,
     /// CHECK: the PDA that is the tree delegate and collection authority. It
     /// signs the CPI; Bubblegum checks it against the tree and collection.
@@ -2626,7 +2725,7 @@ pub struct ClaimOwnedFromAsset<'info> {
         constraint = unlock_state.authority == claimer.key() @ CollectiblesError::WrongUnlockOwner,
     )]
     pub unlock_state: Account<'info, UnlockState>,
-    #[account(seeds = [MINT_CONFIG_SEED], bump)]
+    #[account(seeds = [MINT_CONFIG_SEED], bump, constraint = !mint_config.paused @ CollectiblesError::Paused)]
     pub mint_config: Account<'info, MintConfig>,
     /// CHECK: address-checked against mint_config.merkle_tree.
     pub merkle_tree: UncheckedAccount<'info>,
@@ -2727,11 +2826,11 @@ pub struct OpenPackFromAsset<'info> {
         constraint = unlock_state.authority == opener.key() @ CollectiblesError::WrongUnlockOwner,
     )]
     pub unlock_state: Account<'info, UnlockState>,
-    #[account(seeds = [PACK_CONFIG_SEED], bump)]
+    #[account(seeds = [PACK_CONFIG_SEED], bump, constraint = !config.paused @ CollectiblesError::Paused)]
     pub config: Account<'info, PackConfig>,
     /// The season's table, checked against the pack's season in the body.
     pub drops: Account<'info, SeasonDrops>,
-    #[account(seeds = [MINT_CONFIG_SEED], bump)]
+    #[account(seeds = [MINT_CONFIG_SEED], bump, constraint = !mint_config.paused @ CollectiblesError::Paused)]
     pub mint_config: Account<'info, MintConfig>,
     /// CHECK: Bubblegum's tree config, which Bubblegum checks against the tree.
     #[account(mut)]
@@ -2775,13 +2874,13 @@ pub struct OpenPackFromAsset<'info> {
 pub struct MintPack<'info> {
     #[account(mut)]
     pub payer: Signer<'info>,
-    #[account(seeds = [PACK_CONFIG_SEED], bump)]
+    #[account(seeds = [PACK_CONFIG_SEED], bump, constraint = !config.paused @ CollectiblesError::Paused)]
     pub config: Account<'info, PackConfig>,
     /// The season's table. Read only for its total: a pack cannot be sold
     /// against a season that could not fill it. Its address is checked in the
     /// body, because the season comes off the config at runtime.
     pub drops: Account<'info, SeasonDrops>,
-    #[account(seeds = [MINT_CONFIG_SEED], bump)]
+    #[account(seeds = [MINT_CONFIG_SEED], bump, constraint = !mint_config.paused @ CollectiblesError::Paused)]
     pub mint_config: Account<'info, MintConfig>,
     /// CHECK: the PDA that is the tree delegate and collection authority.
     #[account(seeds = [MINT_AUTHORITY_SEED], bump)]
@@ -2831,6 +2930,7 @@ pub struct AdminGrantEventItem<'info> {
         seeds = [PACK_CONFIG_SEED],
         bump,
         constraint = config.admin == admin.key() @ CollectiblesError::NotPackAdmin,
+        constraint = !config.paused @ CollectiblesError::Paused,
     )]
     pub config: Account<'info, PackConfig>,
     #[account(
@@ -2893,6 +2993,61 @@ pub struct AdminPackConfig<'info> {
     )]
     pub config: Account<'info, PackConfig>,
     pub admin: Signer<'info>,
+}
+
+#[derive(Accounts)]
+pub struct SetPaused<'info> {
+    #[account(mut, seeds = [PACK_CONFIG_SEED], bump)]
+    pub config: Account<'info, PackConfig>,
+    #[account(mut, seeds = [MINT_CONFIG_SEED], bump)]
+    pub mint_config: Option<Account<'info, MintConfig>>,
+    /// Checked in the body: the admin, or the pauser when pausing.
+    pub authority: Signer<'info>,
+}
+
+#[derive(Accounts)]
+pub struct MigratePackConfig<'info> {
+    /// CHECK: loaded raw because Anchor cannot deserialize the old layout.
+    /// Address and owner pinned here; discriminator and admin in the body.
+    #[account(mut, seeds = [PACK_CONFIG_SEED], bump, owner = crate::ID)]
+    pub config: UncheckedAccount<'info>,
+    #[account(mut)]
+    pub admin: Signer<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+#[cfg(test)]
+mod pause_layout {
+    use super::*;
+
+    /// The devnet config was written at 275 bytes; `migrate_pack_config`
+    /// accepts exactly that size and grows it by the two pause fields.
+    #[test]
+    fn the_migration_grows_the_old_size_by_the_pause_fields() {
+        assert_eq!(8 + PackConfig::INIT_SPACE, 275 + 1 + 32);
+    }
+
+    /// The migration writes the pauser into the last 32 bytes and leaves
+    /// `paused` as the zero byte before them. That only holds while they are
+    /// the last two fields.
+    #[test]
+    fn the_pause_fields_are_the_last_bytes() {
+        let pauser = Pubkey::new_unique();
+        let cfg = PackConfig {
+            admin: Pubkey::default(),
+            currency_mint: Pubkey::default(),
+            treasury_token_account: Pubkey::default(),
+            current_season: 0,
+            packs: [PackDef::default(); MAX_PACKS],
+            pack_count: 0,
+            paused: true,
+            pauser,
+        };
+        let bytes = cfg.try_to_vec().unwrap();
+        assert_eq!(bytes.len(), PackConfig::INIT_SPACE);
+        assert_eq!(&bytes[bytes.len() - 32..], pauser.as_ref());
+        assert_eq!(bytes[bytes.len() - 33], 1);
+    }
 }
 
 #[cfg(test)]

@@ -72,6 +72,9 @@ function usdc(dollars: number): bigint {
   return BigInt(Math.round(dollars * 1_000_000));
 }
 
+/** PackConfig before `paused` and `pauser` were appended (33 bytes). */
+const OLD_PACK_CONFIG_LEN = 275;
+
 /** Indices per append. 200 u16 is 400 bytes, well inside a transaction. */
 const APPEND_CHUNK = 200;
 
@@ -191,7 +194,21 @@ async function main() {
 
   // ── 2. The config ───────────────────────────────────────────────────────
   console.log("\n2. pack config");
-  if (await exists(config)) {
+  const configInfo = await conn.getAccountInfo(config);
+  if (configInfo && configInfo.data.length === OLD_PACK_CONFIG_LEN) {
+    // Written before the pause fields existed. Nothing that reads the config
+    // works until it is grown, admin instructions included.
+    console.log("  have it, in the layout from before the pause: migrating");
+    await submit(admin, [new TransactionInstruction({
+      programId: PROGRAM,
+      keys: [
+        { pubkey: config,                  isSigner: false, isWritable: true  },
+        { pubkey: admin.publicKey,         isSigner: true,  isWritable: true  },
+        { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+      ],
+      data: disc("migrate_pack_config"),
+    })], "migrate_pack_config");
+  } else if (configInfo) {
     console.log("  have it already (init_pack_config would fail, which is the point)");
   } else {
     await submit(admin, [new TransactionInstruction({

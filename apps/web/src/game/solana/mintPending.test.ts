@@ -19,6 +19,7 @@ describe("the pre-signed mint", () => {
     sellerFeeBasisPoints: 500,
     symbol: "SCC",
     baseUri: "https://example.test/",
+    paused: false,
   };
   const wallet = Keypair.generate().publicKey;
   // Any 32 bytes in base58 will do: nothing here reaches a network.

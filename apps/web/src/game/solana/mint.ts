@@ -42,6 +42,8 @@ export interface MintConfigAccount {
   sellerFeeBasisPoints: number;
   symbol: string;
   baseUri: string;
+  /** The emergency stop, set together with the pack config's. */
+  paused: boolean;
 }
 
 function derivePda(seed: string, programId = SOL_CITY_COLLECTIBLES_PROGRAM_ID): PublicKey {
@@ -120,9 +122,10 @@ export async function readMintConfig(conn: Connection): Promise<MintConfigAccoun
   };
   const symbol = readStr();
   const baseUri = readStr();
+  const paused = o < d.length && d.readUInt8(o) === 1;
   return {
     admin, merkleTree, collectionMint, royaltyRecipient,
-    sellerFeeBasisPoints, symbol, baseUri,
+    sellerFeeBasisPoints, symbol, baseUri, paused,
   };
 }
 

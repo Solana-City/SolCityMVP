@@ -19,6 +19,7 @@ const config: MintConfigAccount = {
   sellerFeeBasisPoints: 500,
   symbol: "SCC",
   baseUri: "https://example.test/",
+  paused: false,
 };
 const claimer = Keypair.generate().publicKey;
 const seller = Keypair.generate().publicKey;
