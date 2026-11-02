@@ -1,5 +1,9 @@
 # Anchor Program Deploy — Solana Playground
 
+> **Superseded.** Playground builds sBPFv0, which SIMD-0500 refuses for deploy
+> and upgrade. Build with `npm run programs:build` or take the `sol_city-v3`
+> artifact from CI, and deploy with the Agave CLI 4.3.0+. Kept for history.
+
 ## Why this is needed
 
 While the Program ID is `111111...`, multiplayer runs via **BroadcastChannel** (multiple tabs in the same browser). For real **cross-browser and cross-device** multiplayer via MagicBlock ephemeral rollups, the program must be deployed to devnet.

@@ -24,7 +24,11 @@ program is live (same rule as `REDEPLOY_CHECKLIST.md`).
   CPI (Playground cannot build `ephemeral-vrf-sdk`); scoped identity, see
   REDEPLOY_CHECKLIST.md "FINAL SCOPE".
 
-### Deploy (Solana Playground) — do this next
+### Deploy (Solana Playground) — historical
+
+Superseded: Playground builds sBPFv0. Deploys now use the sBPFv3 build
+(`npm run programs:build` or the `sol_city-v3` CI artifact).
+
 1. Open the program in beta.solpg.io and build. No extra crates are needed.
 2. Deploy to devnet (upgrade authority = game wallet). Program id unchanged
    (`HPvDFVnruSXHwKKP44eUvRh8oYqBaHCeQbK1sKWT1aU2`).

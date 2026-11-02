@@ -1,9 +1,9 @@
 /**
  * Sol Mechs PvP — chain configuration.
  *
- * The program id is unknown until the program is deployed (Solana Playground,
- * see REDEPLOY_CHECKLIST.md). Until NEXT_PUBLIC_SOLMECHS_PROGRAM is set, PvP
- * runs on the local two-tab transport instead.
+ * The program id comes from NEXT_PUBLIC_SOLMECHS_PROGRAM (deploy steps in
+ * SOLMECHS_DEPLOY.md). Until it is set, PvP runs on the local two-tab
+ * transport instead.
  */
 import { PublicKey } from "@solana/web3.js";
 

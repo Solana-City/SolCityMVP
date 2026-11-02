@@ -59,8 +59,8 @@ ConstraintAddress, a duelist PDA seeded for another wallet with ConstraintSeeds,
 and claim_free_outfit is not callable at all.
 
 No Rust tests, no LiteSVM, no Mollusk. The dev machine has no SBF or MSVC
-toolchain, so Solana Playground is the compiler and devnet is the integration
-environment. Both programs compile clean there.
+toolchain, so CI is the compiler (sBPFv3, `.github/workflows/programs.yml`)
+and devnet is the integration environment.
 
 ## KNOWN GAPS
 

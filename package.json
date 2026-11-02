@@ -12,7 +12,9 @@
     "map:collision": "node apps/web/scripts/patch-map-collision.mjs",
     "test": "npm run test -w apps/web",
     "lint": "npm run lint -w apps/web",
-    "typecheck": "npm run typecheck -w apps/web"
+    "typecheck": "npm run typecheck -w apps/web",
+    "programs:build": "bash scripts/build-programs.sh",
+    "programs:verify": "node scripts/verify-sbpf.mjs"
   },
   "dependencies": {
     "react": "19.3.1",

@@ -4,9 +4,9 @@ The program is `programs/sol-mechs/src/lib.rs`: casual PvP, friendly duels, and
 the ranked season ladder. It is a separate program from `sol-city` — its own id
 and upgrade authority, and nothing in the city program changes.
 
-It has never been compiled on this machine (no C++ linker / WSL here), so the
-first build in Playground is also the first compile. If it reports an error,
-paste it back and it gets fixed.
+CI (`.github/workflows/programs.yml`) builds it as sBPFv3 on every push that
+touches `programs/**`. Devnet still runs an older sBPFv0 build from
+Playground; the next deploy replaces it with v3.
 
 ## 0. The two keypairs
 
@@ -21,31 +21,45 @@ Both live with the game wallet, in
 `declare_id!` in `lib.rs` is already that program id, so nothing has to be
 edited after the deploy. Both files are secrets: never commit them.
 
-## 1. Build and deploy (Solana Playground, ~15 min)
+## 1. Build and deploy (sBPFv3, ~10 min)
 
-1. Open <https://beta.solpg.io> and **connect first**: click the wallet in the
-   bottom-left status bar and let it create the throwaway Playground wallet.
-   The import options only appear once a wallet is connected — that is the
-   chicken-and-egg that cost an afternoon last time.
-2. In the wallet panel, **import `id.json`** and switch to it, so the deploy is
-   paid and owned by the game wallet. Check the balance (devnet, needs ~4 SOL;
-   `solana airdrop 5` in the Playground terminal tops it up).
-3. Create a new **Anchor** project named `sol-mechs`.
-4. In **Build & Deploy → Program Credentials**, import
-   `sol-mechs-program.json`. The panel must then show program id
-   `6sv4G2HuFdrcAFBRA2X4jTSRmZj2MJS5t66zRUqy5vxJ`, matching `declare_id!`.
-5. Replace `src/lib.rs` with `programs/sol-mechs/src/lib.rs` from this repo.
-6. `Cargo.toml` needs only `anchor-lang = "0.30.1"` (same as `sol-city`).
-7. **Build**, then **Deploy** to devnet.
-8. Set `NEXT_PUBLIC_SOLMECHS_PROGRAM=6sv4G2HuFdrcAFBRA2X4jTSRmZj2MJS5t66zRUqy5vxJ`
+Every deploy and upgrade is sBPFv3. SIMD-0500 (Agave 4.4) refuses v0, v1 and v2
+for deploy and upgrade, and Solana Playground, `anchor build` and a plain
+`cargo build-sbf` all produce v0. Do not deploy from any of them.
+
+Needs the Agave CLI 4.3.0 or newer (`solana --version`):
+`sh -c "$(curl -sSfL https://release.anza.xyz/v4.3.0/install)"`.
+
+1. Get `sol_mechs.so`, either from CI (GitHub → Actions → programs → the run
+   of the commit being deployed → artifact `sol_city-v3`, which carries all
+   three programs) or locally with `npm run programs:build` from the repo root
+   (it lands in `target/deploy/`).
+2. Check it: `node scripts/verify-sbpf.mjs sol_mechs.so` must list
+   `declare_id sol-mechs 6sv4…` and end in "all checks passed".
+3. Deploy, or upgrade: the same command does both. The program keypair fixes
+   the id; `id.json` pays (devnet, ~4 SOL) and is the upgrade authority.
+
+   ```
+   solana program deploy sol_mechs.so \
+     --program-id <Burners>/sol-mechs-program.json \
+     --keypair <Burners>/id.json --upgrade-authority <Burners>/id.json \
+     --url devnet
+   ```
+
+   If the CLI says the program account is too small for the new file, run
+   `solana program extend 6sv4G2HuFdrcAFBRA2X4jTSRmZj2MJS5t66zRUqy5vxJ <bytes>`
+   with the difference and deploy again.
+4. Check what is on chain: `node scripts/verify-sbpf.mjs --onchain sol-mechs`
+   must end in "all checks passed".
+5. Set `NEXT_PUBLIC_SOLMECHS_PROGRAM=6sv4G2HuFdrcAFBRA2X4jTSRmZj2MJS5t66zRUqy5vxJ`
    in Vercel (and in `apps/web/.env.local` for local runs), then redeploy the
    site.
 
 Without that env var the client keeps using the two-tab local transport, so
 nothing breaks while the deploy is in flight.
 
-**Upgrading later** is the same flow: connect, import both keypairs, paste the
-new `lib.rs`, Build, Deploy. Same program id, same authority, no client change.
+**Upgrading later** is the same flow: steps 1 to 4. Same program id, same
+authority, no client change.
 
 Check what landed:
 
@@ -72,7 +86,8 @@ open to everyone and no Battle Pass is needed. `treasury` is the account that
 receives the non-pool share of energy purchases.
 
 The easiest way to send both is Playground's generated UI (the "Test" tab),
-which builds a form from the IDL — no script needed.
+which builds a form from the IDL — no script needed. Use Playground only to
+send these: never Deploy from it, because it builds v0.
 
 Season dates are unix SECONDS (not ms).
 

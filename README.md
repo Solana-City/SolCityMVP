@@ -99,10 +99,15 @@ Open http://localhost:3000
 # Vercel (frontend)
 vercel --prod
 
-# Anchor program (on-chain)
-anchor build
-anchor deploy --provider.cluster devnet
+# Programs (on-chain): sBPFv3 only, needs the Agave CLI 4.3.0+
+npm run programs:build          # or the sol_city-v3 artifact from CI
+solana program deploy target/deploy/sol_city.so \
+  --program-id HPvDFVnruSXHwKKP44eUvRh8oYqBaHCeQbK1sKWT1aU2 --url devnet
+npm run programs:verify -- --onchain sol-city
 ```
+
+`anchor build` and Solana Playground produce sBPFv0, which SIMD-0500 refuses
+for deploy and upgrade. Use `scripts/build-programs.sh` or the CI artifact.
 
 ## Project structure
 

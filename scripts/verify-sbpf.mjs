@@ -9,7 +9,9 @@
  *
  *   node scripts/verify-sbpf.mjs <file.so> [...]
  *   node scripts/verify-sbpf.mjs --onchain all [--url <rpc>]
- *   node scripts/verify-sbpf.mjs --onchain <program-id> [--url <rpc>]
+ *   node scripts/verify-sbpf.mjs --onchain <name|id>[,...] [--url <rpc>]
+ *
+ * Names are the keys of PROGRAMS below, e.g. --onchain sol-city,sol-city-collectibles.
  *
  * --url defaults to public devnet. Pass the mainnet RPC to check mainnet.
  *
@@ -135,12 +137,12 @@ async function main() {
   let ok = true;
   if (o >= 0) {
     const which = args[o + 1];
-    const ids = which === "all" ? Object.values(PROGRAMS) : [which];
+    const ids = which === "all" ? Object.values(PROGRAMS) : which.split(",").map((w) => PROGRAMS[w] ?? w);
     for (const id of ids) ok = (await onchain(url, id)) && ok;
   } else {
     const files = args.filter((a) => !a.startsWith("--"));
     if (!files.length) {
-      console.log("usage: node scripts/verify-sbpf.mjs <file.so> | --onchain <id|all> [--url <rpc>]");
+      console.log("usage: node scripts/verify-sbpf.mjs <file.so> | --onchain <name|id|all>[,...] [--url <rpc>]");
       process.exit(2);
     }
     for (const f of files) ok = check(f, readFileSync(f), null) && ok;

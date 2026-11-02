@@ -54,7 +54,7 @@ use anchor_lang::solana_program::{
 };
 
 // The program keypair lives with the game wallet (Burners/SolanaCity/
-// sol-mechs-program.json); import it in Playground so this id stays fixed.
+// sol-mechs-program.json); pass it as --program-id so this id stays fixed.
 declare_id!("6sv4G2HuFdrcAFBRA2X4jTSRmZj2MJS5t66zRUqy5vxJ");
 
 pub const DUELIST_SEED: &[u8] = b"mech_duelist";
