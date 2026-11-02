@@ -7,14 +7,14 @@ name: programs
 # means every mistake waits until deploy day to show itself.
 #
 # A Linux runner has none of those problems. This gives the programs a real
-# type check on every push, a real artifact, and an answer to whether they
-# build for sBPFv3, without anything being installed locally.
+# type check on every push, and the sBPFv3 artifact that gets deployed,
+# without anything being installed locally.
 
 on:
   push:
-    paths: ["programs/**", "Cargo.toml", "Cargo.lock", ".github/workflows/programs.yml"]
+    paths: ["programs/**", "Cargo.toml", "Cargo.lock", ".github/workflows/programs.yml", "scripts/verify-sbpf.mjs"]
   pull_request:
-    paths: ["programs/**", "Cargo.toml", "Cargo.lock", ".github/workflows/programs.yml"]
+    paths: ["programs/**", "Cargo.toml", "Cargo.lock", ".github/workflows/programs.yml", "scripts/verify-sbpf.mjs"]
   workflow_dispatch:
 
 env:
@@ -53,18 +53,13 @@ jobs:
   # The artifact. Builds the BPF object the way a deploy would, and checks what
   # came out rather than trusting the exit code: a build can succeed and still
   # be the wrong sBPF version or carry the wrong program id.
+  # sBPFv3 only. SIMD-0500 (Agave 4.4) refuses v0, v1 and v2 for deploy,
+  # upgrade and finalize, and both programs on devnet have run as v3 since
+  # before the security pass, rollup included. A v0 artifact is one nobody
+  # can ship, so building it only invites deploying the wrong file.
   build:
-    name: build-sbf (${{ matrix.arch }})
+    name: build-sbf (v3)
     runs-on: ubuntu-latest
-    continue-on-error: ${{ matrix.arch == 'v3' }}
-    strategy:
-      fail-fast: false
-      matrix:
-        # v0 is what deploys today. v3 is what SIMD-0500 will require from
-        # Agave 4.4 onward, and is allowed to fail: anchor-lang is pinned at
-        # 0.30.1 and the supported floor for v3 is 0.31.2, so this job exists
-        # partly to tell us exactly how it fails.
-        arch: [v0, v3]
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -95,11 +90,9 @@ jobs:
       - name: Build
         id: build
         run: |
-          ARCH=""
-          if [ "${{ matrix.arch }}" = "v3" ]; then ARCH="--arch v3"; fi
-          cargo build-sbf $ARCH --manifest-path programs/sol-mechs/Cargo.toml
-          cargo build-sbf $ARCH --manifest-path programs/sol-city/Cargo.toml
-          cargo build-sbf $ARCH --manifest-path programs/sol-city-collectibles/Cargo.toml
+          cargo build-sbf --arch v3 --manifest-path programs/sol-mechs/Cargo.toml
+          cargo build-sbf --arch v3 --manifest-path programs/sol-city/Cargo.toml
+          cargo build-sbf --arch v3 --manifest-path programs/sol-city-collectibles/Cargo.toml
 
       - name: Inspect the artifact
         if: steps.build.outcome == 'success'
@@ -127,6 +120,14 @@ jobs:
           echo "=== sol_mechs ==="
           SM=$(find target -name 'sol_mechs.so' | head -1)
           ls -la "$SM" && readelf -h "$SM" | grep -i flags
+
+      # The gate the inspection above only prints: a build can exit 0 and
+      # still be v0, and a v0 file is refused on deploy once SIMD-0500 is on.
+      - name: Every artifact is sBPFv3
+        run: |
+          for F in $(find target -name 'sol_city.so' -o -name 'sol_city_collectibles.so' -o -name 'sol_mechs.so'); do
+            node scripts/verify-sbpf.mjs "$F"
+          done
 
       - name: Check the declare_id is the one we deploy to
         if: steps.build.outcome == 'success'
@@ -166,7 +167,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: steps.build.outcome == 'success'
         with:
-          name: sol_city-${{ matrix.arch }}
+          name: sol_city-v3
           path: |
             target/**/sol_city.so
             target/**/sol_city_collectibles.so

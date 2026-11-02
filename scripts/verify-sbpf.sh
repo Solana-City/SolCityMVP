@@ -4,9 +4,12 @@
 # actually carries, plus the declare_id it was built with.
 #
 # Why this exists: SIMD-0500, expected in Agave 4.4 (November 2026), makes
-# sBPFv3 the only format accepted for deploy, upgrade and finalize. Both of our
-# programs are currently v0. A build can exit 0 and still be v0, so the header
-# is the only thing worth trusting.
+# sBPFv3 the only format accepted for deploy, upgrade and finalize. sol-city and
+# collectibles run as v3 on devnet; sol-mechs is still v0 there. A build can
+# exit 0 and still be v0, so the header is the only thing worth trusting.
+#
+# scripts/verify-sbpf.mjs does the same in plain Node (no readelf, python or
+# solana CLI), knows all three program ids, and is what CI gates on.
 #
 # Usage:
 #   scripts/verify-sbpf.sh target/deploy/sol_city.so
