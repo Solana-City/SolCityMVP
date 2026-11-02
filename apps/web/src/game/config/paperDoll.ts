@@ -183,6 +183,9 @@ export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
     { id: "Radio",      name: "Radio",      textureKey: "pd-skin-Radio",      file: "skin/Radio.png" },
     { id: "Brown",      name: "Brown",      textureKey: "pd-skin-Brown",      file: "skin/Brown.png" },
     { id: "Dark_brown", name: "Dark Brown", textureKey: "pd-skin-Dark_brown", file: "skin/Dark_brown.png" },
+    // 2026-11-03. Appended; position is the index. Free like every other base,
+    // and drawn for the tea and Caramel Dog vignettes too (see vignettes.ts).
+    { id: "Kizil",      name: "Kizil",      textureKey: "pd-skin-Kizil",      file: "skin/Kizil.png" },
   ],
   eyesFace: [
     // Pulled from the wardrobe on 2026-11-03. Disabled, not deleted: it is

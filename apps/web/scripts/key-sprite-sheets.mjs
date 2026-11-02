@@ -22,7 +22,11 @@
  *
  * Idempotent: a second run finds nothing and rewrites nothing.
  *
- *     node scripts/key-sprite-sheets.mjs [--dry]
+ *     node scripts/key-sprite-sheets.mjs [--dry] [path ...]
+ *
+ * With no path it walks public/assets/sprites. Sheets that live elsewhere (the
+ * tea and pet vignettes are drawn per base skin and load as raw PNGs) are
+ * passed as files or folders, and get the same rules.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -30,8 +34,10 @@ import { fileURLToPath } from "node:url";
 import { PNG } from "pngjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const SPRITES = path.join(HERE, "..", "public", "assets", "sprites");
+const ASSETS = path.join(HERE, "..", "public", "assets");
+const SPRITES = path.join(ASSETS, "sprites");
 const DRY = process.argv.includes("--dry");
+const ROOTS = process.argv.slice(2).filter((a) => !a.startsWith("--")).map((a) => path.resolve(a));
 
 const CHROMA = [215, 123, 186];
 const TOLERANCE = 30;
@@ -86,25 +92,23 @@ function flood(png) {
 }
 
 const files = [];
-(function walk(dir) {
-  for (const name of fs.readdirSync(dir)) {
-    const p = path.join(dir, name);
-    if (fs.statSync(p).isDirectory()) { walk(p); continue; }
-    if (p.endsWith(".png")) files.push(p);
-  }
-})(SPRITES);
+function walk(p) {
+  if (!fs.statSync(p).isDirectory()) { if (p.endsWith(".png")) files.push(p); return; }
+  for (const name of fs.readdirSync(p)) walk(path.join(p, name));
+}
+for (const root of ROOTS.length ? ROOTS : [SPRITES]) walk(root);
 
 let touched = 0;
 let keptPink = 0;
 for (const file of files.sort()) {
-  const rel = path.relative(SPRITES, file).replace(/\\/g, "/");
+  const rel = path.relative(ASSETS, file).replace(/\\/g, "/");
   const png = PNG.sync.read(fs.readFileSync(file));
 
   // Only a sheet whose frame corner IS the key needs the pass — the same test
   // BootScene uses, so this never touches art the artist exported clean.
   if (!(png.data[3] !== 0 && isKey(png.data, 0))) continue;
 
-  const skin = rel.startsWith("paperdoll/skin/");
+  const skin = rel.startsWith("sprites/paperdoll/skin/");
   const cleared = skin ? flood(png) : flat(png);
   const left = (() => {
     let n = 0;
