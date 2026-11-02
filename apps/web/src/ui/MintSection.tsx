@@ -19,7 +19,8 @@ import { claimableDrops, claimEventDrop, type ClaimableDrop } from "@/game/solan
  * Shows nothing at all until minting is set up on chain: `readMintConfig`
  * returns null until the collection and tree exist, and a button that can only
  * fail is worse than no button. It switches itself on the moment the setup
- * script has run.
+ * script has run. The one exception is an event reward to claim, which needs
+ * the drop and not the mint.
  *
  * Only pack items are offered. Free and quest cosmetics are below
  * BOOSTER_BLOCK_START, and the program refuses to mint them for the reason
@@ -59,14 +60,17 @@ export default function MintSection({ wallet }: { wallet: string | null }) {
     if (!wallet) return;
     try {
       const conn = baseConnection();
-      const cfg = await readMintConfig(conn);
-      setConfig(cfg);
-      if (!cfg) return;
       const key = new PublicKey(wallet);
       const nowOwned = await ownedIndices(conn, key);
       setOwned(nowOwned);
-      setMinted(await mintedIndices(conn, key));
       setDrawPending(await hasPendingDraw(conn, key));
+      // Before the mint check: claiming an event reward does not need minting
+      // to be set up, only the drop.
+      claimableDrops(conn, key, nowOwned).then(setDrops).catch(() => setDrops([]));
+      const cfg = await readMintConfig(conn);
+      setConfig(cfg);
+      if (!cfg) return;
+      setMinted(await mintedIndices(conn, key));
       // Not awaited into the rest: an indexer that is down leaves the claim
       // list empty and nothing else.
       heldCosmetics(conn, key, cfg)
@@ -74,7 +78,6 @@ export default function MintSection({ wallet }: { wallet: string | null }) {
           (h) => h.index >= BOOSTER_BLOCK_START && !nowOwned.includes(h.index),
         )))
         .catch(() => setClaimable([]));
-      claimableDrops(conn, key, nowOwned).then(setDrops).catch(() => setDrops([]));
     } catch {
       // An unreachable RPC shows nothing rather than an empty wardrobe: the
       // player owns what they own, and this panel is not the record of it.
@@ -141,9 +144,10 @@ export default function MintSection({ wallet }: { wallet: string | null }) {
     }
   }, [wallet, signTransaction, refresh]);
 
-  if (!wallet || !config) return null;
+  if (!wallet || (!config && drops.length === 0)) return null;
 
-  const mintable = owned
+  // No mint config, no MINT buttons: only an event claim brought us here.
+  const mintable = (config ? owned : [])
     .filter((i) => i >= BOOSTER_BLOCK_START && !minted.includes(i))
     .map((i) => ({ index: i, entry: itemAtGlobalIndex(i) }))
     .filter((x) => x.entry !== undefined);
