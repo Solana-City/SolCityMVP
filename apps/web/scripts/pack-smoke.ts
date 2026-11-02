@@ -115,6 +115,7 @@ async function main() {
       payer: buyer.publicKey,
       packId: pack.id,
       season: pack.season,
+      maxPrice: pack.price,
       clientSeed,
       treasuryTokenAccount: config.treasuryTokenAccount,
       buyerTokenAccount: buyerAta,

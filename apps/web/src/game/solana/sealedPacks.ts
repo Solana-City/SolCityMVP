@@ -137,7 +137,10 @@ export function buildMintPackIx(params: {
 }): TransactionInstruction {
   const { payer, pack, config, mintConfig } = params;
   const t = treeAccounts(mintConfig);
-  const data = Buffer.concat([ixDiscriminator("mint_pack"), Buffer.from([pack.id])]);
+  // The pack id, then the price shown as a cap (audit R-40).
+  const price = Buffer.alloc(8);
+  price.writeBigUInt64LE(pack.price);
+  const data = Buffer.concat([ixDiscriminator("mint_pack"), Buffer.from([pack.id]), price]);
 
   return new TransactionInstruction({
     programId: SOL_CITY_COLLECTIBLES_PROGRAM_ID,

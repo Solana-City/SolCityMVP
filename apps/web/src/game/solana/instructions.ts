@@ -98,6 +98,12 @@ function packU16LE(value: number): Buffer {
   return buf;
 }
 
+function packU64LE(value: bigint): Buffer {
+  const buf = Buffer.alloc(8);
+  buf.writeBigUInt64LE(value, 0);
+  return buf;
+}
+
 /**
  * Anchor's `String` type: 4-byte LE length prefix + UTF-8 bytes. The
  * on-chain struct enforces max_len = 20 via #[max_len(20)], so we cap here.
@@ -601,16 +607,23 @@ export function buildDelegateIx(
 
 /**
  * Builds `initialize_hunt` — creates the single global HuntState account.
- * Call ONCE ever, after deploy (any funded signer as payer). `init` makes
- * a second call fail harmlessly.
+ * Call ONCE ever, after deploy, signed by the program's upgrade authority
+ * (audit R-66): scripts/hunt-setup.ts. `init` makes a second call fail
+ * harmlessly.
  */
 export function buildInitializeHuntIx(payer: PublicKey): TransactionInstruction {
   const [huntPda] = deriveHuntPDA();
+  const [programData] = PublicKey.findProgramAddressSync(
+    [SOL_CITY_PROGRAM_ID.toBuffer()],
+    new PublicKey("BPFLoaderUpgradeab1e11111111111111111111111"),
+  );
   return new TransactionInstruction({
     programId: SOL_CITY_PROGRAM_ID,
     keys: [
       { pubkey: huntPda,                 isSigner: false, isWritable: true },
       { pubkey: payer,                   isSigner: true,  isWritable: true },
+      { pubkey: SOL_CITY_PROGRAM_ID,     isSigner: false, isWritable: false },
+      { pubkey: programData,             isSigner: false, isWritable: false },
       { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
     ],
     data: DISC.initializeHunt,
@@ -736,6 +749,12 @@ export function buildOpenBoosterIx(params: {
   packId: number;
   /** From PackConfig.packs[].season, not the clock. */
   season: number;
+  /**
+   * The per-pack price the buyer was shown, in the currency's smallest unit
+   * (audit R-40). The program refuses the sale if the pack costs more by the
+   * time the transaction lands.
+   */
+  maxPrice: bigint;
   clientSeed: Uint8Array; // exactly 32 bytes
   /** From PackConfig.treasuryTokenAccount. The program address-checks it. */
   treasuryTokenAccount: PublicKey;
@@ -763,8 +782,10 @@ export function buildOpenBoosterIx(params: {
   const buyerTokenAccount =
     params.buyerTokenAccount ??
     getAssociatedTokenAddressSync(USDC_MINT_DEVNET, payer);
-  // packId, the 32-byte seed, then the bundle count, in that order.
-  const data = Buffer.concat([DISC.openBooster, packU8(packId), seed, packU8(count)]);
+  // packId, the 32-byte seed, the bundle count, then the price cap.
+  const data = Buffer.concat([
+    DISC.openBooster, packU8(packId), seed, packU8(count), packU64LE(params.maxPrice),
+  ]);
 
   return new TransactionInstruction({
     programId: SOL_CITY_COLLECTIBLES_PROGRAM_ID,

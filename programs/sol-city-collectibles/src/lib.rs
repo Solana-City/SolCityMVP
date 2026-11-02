@@ -211,8 +211,13 @@ fn sellable_pack(
     pack_id: u8,
     drops_key: &Pubkey,
     drops_total: usize,
+    max_price: u64,
 ) -> Result<PackDef> {
     let def = openable_pack(cfg, pack_id, drops_key, drops_total)?;
+    // The price the buyer was shown, per pack (audit R-40). A price raised
+    // between the screen and the landing refuses the sale instead of
+    // charging the new one.
+    require!(def.price <= max_price, CollectiblesError::PriceChanged);
     // The two extra conditions that apply to a SALE and never to an opening.
     //
     // A retired season, or a pack taken off sale, must still open: somebody
@@ -513,6 +518,8 @@ pub enum CollectiblesError {
     NotPauser,
     #[msg("The pack config already has the current layout")]
     AlreadyMigrated,
+    #[msg("The pack costs more than the price shown")]
+    PriceChanged,
     // Appended, never inserted. Anchor numbers these by POSITION, so a
     // variant added in the middle silently renumbers every one after it
     // and any client matching on a code starts reporting the wrong thing.
@@ -553,6 +560,7 @@ pub mod sol_city_collectibles {
         pack_id: u8,
         client_seed: [u8; 32],
         count: u8,
+        max_price: u64,
     ) -> Result<()> {
         require!(count > 0, CollectiblesError::BadBundleCount);
         // Shared with mint_pack, because the two purchase paths have to agree
@@ -563,6 +571,7 @@ pub mod sol_city_collectibles {
             pack_id,
             &ctx.accounts.drops.key(),
             ctx.accounts.drops.total(),
+            max_price,
         )?;
         let cfg = &ctx.accounts.config;
 
@@ -1987,12 +1996,13 @@ pub mod sol_city_collectibles {
     /// The season is checked HERE as well as at opening. A sealed pack sold
     /// against a season with nothing in it would be an asset that can never
     /// resolve, and its buyer would find that out months later.
-    pub fn mint_pack(ctx: Context<MintPack>, pack_id: u8) -> Result<()> {
+    pub fn mint_pack(ctx: Context<MintPack>, pack_id: u8, max_price: u64) -> Result<()> {
         let def = sellable_pack(
             &ctx.accounts.config,
             pack_id,
             &ctx.accounts.drops.key(),
             ctx.accounts.drops.total(),
+            max_price,
         )?;
 
         require_keys_eq!(

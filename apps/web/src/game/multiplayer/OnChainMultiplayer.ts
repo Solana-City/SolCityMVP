@@ -45,7 +45,6 @@ import {
   buildRecordSwapSessionIx,
   buildSetLinkSessionIx,
   buildRecordTransferSessionIx,
-  buildInitializeHuntIx,
   buildClaimFindIx,
   isProgramDeployed,
 } from "../solana/instructions";
@@ -1349,22 +1348,6 @@ export class OnChainMultiplayer {
     return { signature: null, error };
   }
 
-  /** Creates the global hunt account if it doesn't exist yet (first player ever).
-   *  `init` makes a concurrent double-create fail harmlessly. */
-  private async ensureHuntInitialized(): Promise<void> {
-    if (!this.wallet || !isProgramDeployed()) return;
-    try {
-      const [huntPda] = deriveHuntPDA();
-      const info = await this.baseConnection.getAccountInfo(huntPda);
-      if (info) return; // already initialized
-      const sessionKey = this.sessionKeys.getSessionPublicKey();
-      await this.sendHuntIx(buildInitializeHuntIx(sessionKey));
-      console.log("[Hunt] initialize_hunt sent (first player)");
-    } catch (err: any) {
-      console.warn("[Hunt] init check failed:", err?.message);
-    }
-  }
-
   /** Reads the on-chain hunt and pushes round + deadline into WhereIsNPCGame,
    *  so every client targets the same citizen and shares the countdown. */
   /**
@@ -1399,7 +1382,7 @@ export class OnChainMultiplayer {
     try {
       const [huntPda] = deriveHuntPDA();
       const info = await this.baseConnection.getAccountInfo(huntPda);
-      if (!info) return; // not initialized yet (ensureHuntInitialized will make it)
+      if (!info) return; // not created yet: scripts/hunt-setup.ts after deploy
       const hunt = decodeHuntState(info.data, this.chainNowSecs());
       if (hunt) setHuntFromChain(hunt.round, hunt.deadline, this.resolveWinner(hunt.winner));
     } catch { /* transient RPC — keep the last known round */ }
@@ -2058,9 +2041,9 @@ export class OnChainMultiplayer {
       setInterval(() => this.logReadPaths(), 60_000),
     ];
 
-    // Ensure the global hunt exists (first player ever creates it), then seed
-    // the round immediately so the target syncs without waiting for the poll.
-    this.ensureHuntInitialized().then(() => this.pollHunt());
+    // Seed the round immediately so the target syncs without waiting for the
+    // poll. The hunt itself is created once at deploy (scripts/hunt-setup.ts).
+    this.pollHunt();
 
     // 6. Cross-device chat/outfit/expression now ride the ER PlayerState fields
     //    (read off the position poll), so the base-layer Memo + onLogs channel

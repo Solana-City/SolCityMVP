@@ -217,6 +217,8 @@ export async function buyPack(args: {
     payer: wallet,
     packId: pack.id,
     season: pack.season,
+    // The price on screen came from this same read of the config.
+    maxPrice: pack.price,
     clientSeed,
     treasuryTokenAccount: config.treasuryTokenAccount,
     buyerTokenAccount: getAssociatedTokenAddressSync(config.currencyMint, wallet),
