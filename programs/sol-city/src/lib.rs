@@ -182,6 +182,24 @@ fn cap_bytes(s: String, max: usize) -> String {
     s[..end].to_string()
 }
 
+/// The two checks `Account<PlayerState>` would have made, for the places that
+/// read a player's bytes through an UncheckedAccount (audit R-52): owned by
+/// this program and carrying PlayerState's discriminator. The seeds already
+/// pin the address; this makes the bytes behind it mean what they are read as.
+///
+/// Called before any CPI, while the owner is still this program: on the base
+/// layer before delegating, and on the rollup, where a delegated account
+/// keeps its original owner, before scheduling a commit.
+fn require_player_bytes(player: &UncheckedAccount, err: SolCityError) -> Result<()> {
+    require_keys_eq!(*player.owner, crate::ID, err);
+    let data = player.data.borrow();
+    require!(
+        data.len() >= 8 && data[..8] == <PlayerState as anchor_lang::Discriminator>::DISCRIMINATOR,
+        err
+    );
+    Ok(())
+}
+
 /// Checks a delegated PlayerState’s stored `session_authority` by reading the
 /// bytes, for the instructions that take the account unchecked.
 ///
@@ -192,6 +210,7 @@ fn require_stored_session_authority(
     player: &UncheckedAccount,
     signer: &Pubkey,
 ) -> Result<()> {
+    require_player_bytes(player, SolCityError::InvalidSessionKey)?;
     let data = player.data.borrow();
     require!(
         data.len() >= SESSION_AUTHORITY_TAG_OFFSET + 1 + 32,
@@ -807,6 +826,7 @@ pub mod sol_city {
         // bytes because this account is an UncheckedAccount: the delegation
         // CPI reassigns its owner halfway through, and Anchor would write a
         // stale copy back over it.
+        require_player_bytes(&ctx.accounts.player, SolCityError::InvalidAuthority)?;
         {
             let data = ctx.accounts.player.data.borrow();
             require!(data.len() >= 8 + 32, SolCityError::InvalidAuthority);
@@ -862,6 +882,9 @@ pub mod sol_city {
     // round and fails the guard. Exactly one winner per round, as before.
 
     /// Creates the global hunt account (call once, ever, after deploy).
+    ///
+    /// Only the upgrade authority may (audit R-66). Open to any signer, the
+    /// first caller on a fresh deploy chose when round zero started.
     pub fn initialize_hunt(ctx: Context<InitializeHunt>) -> Result<()> {
         let hunt = &mut ctx.accounts.hunt;
         hunt.anchor_round = 0;
@@ -1340,8 +1363,16 @@ pub struct InitializeHunt<'info> {
         bump,
     )]
     pub hunt: Account<'info, HuntState>,
+    /// The program's upgrade authority, which signs and pays.
     #[account(mut)]
     pub payer: Signer<'info>,
+    /// CHECK: this program, used only to reach its ProgramData.
+    #[account(constraint = program.programdata_address()? == Some(program_data.key())
+        @ SolCityError::InvalidAuthority)]
+    pub program: Program<'info, crate::program::SolCity>,
+    #[account(constraint = program_data.upgrade_authority_address == Some(payer.key())
+        @ SolCityError::InvalidAuthority)]
+    pub program_data: Account<'info, ProgramData>,
     pub system_program: Program<'info, System>,
 }
 
