@@ -37,5 +37,11 @@ We read reports in English or Portuguese.
 We acknowledge a report within 3 business days and keep you updated while we
 fix it. We will credit you when the fix ships, unless you prefer otherwise.
 
+## Rewards
+
+There is no paid bug bounty yet. Valid reports get public credit, and we may
+add an in-game thank-you, such as a cosmetic. If that changes, this page will
+say so.
+
 The same contact is published inside both program binaries
 (`security.txt`) and at https://solanacity.io/.well-known/security.txt.
