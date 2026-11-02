@@ -133,7 +133,9 @@ function decodeLoadout(s: string): Loadout {
   // A peer on an older build still broadcasts Brown_hair or a coloured Magawk,
   // which are no longer wardrobe entries. Without this they render as no hair
   // at all, so the rewrite happens on the way in, not just on our own save.
-  return migrateHairColor(out);
+  // Same for a face that has since been pulled, and a wallet whose on-chain
+  // outfit still names index 32 (Happy).
+  return migrateRetiredFace(migrateHairColor(out));
 }
 import {
   ConnectionMagicRouter,
@@ -173,7 +175,7 @@ import {
 import { BASE_RPC_PRIMARY, resilientBaseFetch } from "../solana/baseRpc";
 import { setHuntFromChain, clearHuntFromChain } from "../minigames/whereIsNPC/WhereIsNPCGame";
 import { transactionLog } from "../telemetry/transactionLog";
-import { migrateHairColor, type Loadout } from "../config/paperDoll";
+import { migrateHairColor, migrateRetiredFace, type Loadout } from "../config/paperDoll";
 import { hairColorAtIndex, hairColorIndex } from "../config/hairPalette";
 import { ER_VALIDATORS, probeValidators, nearestValidator } from "./erValidators";
 import { globalIndexOf, itemAtGlobalIndex } from "@/game/config/catalogIndex";
