@@ -63,7 +63,9 @@ open class WebShellViewClient(
             }
 
             else -> {
-                launch(Intent(Intent.ACTION_VIEW, url))
+                // Any other scheme (mailto:, tel:, an app's own) reaches only
+                // the handlers a browser could reach, as with intent: below.
+                launch(Intent(Intent.ACTION_VIEW, url).addCategory(Intent.CATEGORY_BROWSABLE))
                 true
             }
         }
@@ -86,19 +88,40 @@ open class WebShellViewClient(
         }
     }
 
+    /**
+     * An intent: link is built by the page, so it gets what Chrome allows it
+     * and no more (audit R-24): no explicit component or selector, which could
+     * otherwise reach a non-exported-to-browsers activity in any app, no URI
+     * permission grants, and only activities that declare BROWSABLE. The site
+     * itself sends none; this is for whatever else ends up in the WebView.
+     */
     private fun handleIntentScheme(url: String) {
         try {
-            val intent = Intent.parseUri(url, Intent.URI_INTENT_SCHEME)
+            val intent = Intent.parseUri(url, Intent.URI_INTENT_SCHEME).apply {
+                addCategory(Intent.CATEGORY_BROWSABLE)
+                component = null
+                selector = null
+                flags = flags and URI_GRANT_FLAGS.inv()
+            }
             if (intent.resolveActivity(context.packageManager) != null) {
                 context.startActivity(intent)
             } else {
-                val fallback = intent.getStringExtra("browser_fallback_url")
-                if (fallback != null) {
-                    context.startActivity(Intent(Intent.ACTION_VIEW, fallback.toUri()))
+                // Only a web page as the fallback, never another intent: link.
+                val fallback = intent.getStringExtra("browser_fallback_url")?.toUri()
+                if (fallback?.scheme == "https" || fallback?.scheme == "http") {
+                    context.startActivity(Intent(Intent.ACTION_VIEW, fallback))
                 }
             }
         } catch (_: Exception) {
-            // No handler available, silently ignore.
+            // Malformed link or no handler available, silently ignore.
         }
+    }
+
+    private companion object {
+        const val URI_GRANT_FLAGS =
+            Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
+                Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION or
+                Intent.FLAG_GRANT_PREFIX_URI_PERMISSION
     }
 }

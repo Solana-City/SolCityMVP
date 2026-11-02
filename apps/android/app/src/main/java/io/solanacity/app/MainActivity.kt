@@ -235,7 +235,9 @@ class MainActivity : ComponentActivity() {
                 appendUserAgentMarkers(settings.userAgentString, BuildConfig.VERSION_NAME)
             if (BuildConfig.DEBUG) Log.i(TAG, "UA: ${settings.userAgentString}")
 
-            CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
+            // Off (audit R-47): the game embeds no iframes or third-party SDKs
+            // that would need cookies set from another site.
+            CookieManager.getInstance().setAcceptThirdPartyCookies(this, false)
 
             addJavascriptInterface(SolCityBridge(context), SolCityBridge.JS_NAME)
 
