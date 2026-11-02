@@ -460,7 +460,10 @@ pub mod sol_city {
         let player = &mut ctx.accounts.player;
         player.authority = ctx.accounts.authority.key();
         player.session_authority = None;
-        player.display_name = display_name;
+        // Cut to the 20 bytes the account and every reader assume (audit
+        // R-20). Longer was stored as sent, so one long name could push the
+        // fields after it out of the space reserved for them.
+        player.display_name = cap_bytes(display_name, 20);
         player.x = 512;
         player.y = 288;
         player.direction = 0;

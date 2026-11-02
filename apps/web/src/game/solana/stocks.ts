@@ -263,8 +263,17 @@ const VENUE_KEY = "solcity:stocks:venue";
  * NEXT_PUBLIC_NETWORK (mainnet-beta -> mainnet, anything else -> devnet).
  * A ?stocks=mainnet or ?stocks=devnet URL param overrides it and sticks for
  * this browser, so the mainnet path can be demoed on the devnet deploy.
+ *
+ * NOT on a mainnet build (audit R-46). There the devnet venue is a test
+ * market with a public seed, and a link carrying ?stocks=devnet could have a
+ * player trading play tokens in a panel that looks real. A mainnet build is
+ * mainnet, whatever the URL says.
  */
 export function getStockVenue(): StockVenue {
+  const env = process.env.NEXT_PUBLIC_STOCKS_NETWORK || process.env.NEXT_PUBLIC_NETWORK;
+  if (process.env.NEXT_PUBLIC_NETWORK === "mainnet-beta" || process.env.NEXT_PUBLIC_NETWORK === "mainnet") {
+    return "mainnet";
+  }
   if (typeof window !== "undefined") {
     try {
       const param = new URLSearchParams(window.location.search).get("stocks");
@@ -273,7 +282,6 @@ export function getStockVenue(): StockVenue {
       if (saved === "mainnet" || saved === "devnet") return saved;
     } catch { /* storage blocked */ }
   }
-  const env = process.env.NEXT_PUBLIC_STOCKS_NETWORK || process.env.NEXT_PUBLIC_NETWORK;
   return env === "mainnet" || env === "mainnet-beta" ? "mainnet" : "devnet";
 }
 

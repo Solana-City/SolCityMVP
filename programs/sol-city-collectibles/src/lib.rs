@@ -262,6 +262,14 @@ fn take_payment<'info>(
     token_program: &AccountInfo<'info>,
     amount: u64,
 ) -> Result<()> {
+    // Paying from the treasury into the treasury is no payment at all (audit
+    // R-41). It only works for whoever controls the treasury, but the shop
+    // should not be the place that finds out.
+    require_keys_neq!(
+        buyer_token_account.key(),
+        treasury_token_account.key(),
+        CollectiblesError::InvalidTreasury
+    );
     let mut data = Vec::with_capacity(9);
     data.push(3u8);
     data.extend_from_slice(&amount.to_le_bytes());
@@ -671,16 +679,21 @@ pub mod sol_city_collectibles {
             // single item, and running off the end of a fixed 32 bytes is how
             // the last item of a pack would quietly stop being random.
             let bytes = hashv(&[&randomness, &[item]]).to_bytes();
-            let roll = |k: usize| -> u16 {
-                let i = (k * 2) % 32;
-                ((bytes[i] as u16) << 8) | bytes[(i + 1) % 32] as u16
+            // FOUR bytes per roll, not two (audit R-19). A u16 taken modulo the
+            // 10,000 basis points of the weights favours 0..5535, which landed
+            // on common and under-delivered every other tier by about 8%
+            // relative to the posted odds. Over 2^32 the same bias is below one
+            // part in 400,000. Eight rolls fit the 32 bytes.
+            let roll = |k: usize| -> u32 {
+                let i = (k * 4) % 32;
+                u32::from_le_bytes([bytes[i], bytes[i + 1], bytes[i + 2], bytes[i + 3]])
             };
 
             // 1. The rarity, against the pack's weights. Walking the
             //    cumulative weight in RARITY_ORDER, so common is tried first
             //    and a zero weight is simply never selected.
             let mut wanted = RARITY_COUNT - 1;
-            let mut ticket = (roll(0) as u32) % total.max(1);
+            let mut ticket = roll(0) % total.max(1);
             for r in 0..RARITY_COUNT {
                 let w = draw.weights[r] as u32;
                 if ticket < w { wanted = r; break; }
@@ -910,6 +923,10 @@ pub mod sol_city_collectibles {
         // Season 0 is "nothing open". A pack claiming it would sell while the
         // config was still being set up.
         require!(def.season > 0, CollectiblesError::WrongSeason);
+        // A pack is never free (audit R-41). A zero price is a typo that
+        // would hand the season out to anyone who asked, and there is no
+        // giveaway path that goes through the shop.
+        require!(def.price > 0, CollectiblesError::BadBundleCount);
 
         let cfg = &mut ctx.accounts.config;
         let count = cfg.pack_count as usize;
@@ -1516,6 +1533,20 @@ pub mod sol_city_collectibles {
         // Not while a draw is in flight: a claim grows `owned` into the room
         // the callback was paid for. See mint_unlock (audit R-06).
         require!(!ctx.accounts.unlock_state.pending, CollectiblesError::BoosterPending);
+        // The same ceiling minting has (audit R-62): `minted` is bounded so the
+        // account is, and a claim records into it too.
+        require!(
+            ctx.accounts.unlock_state.is_minted(index)
+                || ctx.accounts.unlock_state.minted.len() < PLAYER_MINT_CAP,
+            CollectiblesError::MintCapReached
+        );
+        // Our collection, verified (audit R-18). The leaf hashes this metadata,
+        // so a leaf carrying another collection, or ours unverified, cannot be
+        // presented as one of our cosmetics even if its URI happens to match.
+        require!(
+            metadata.collection.as_ref().map_or(false, |c| c.verified && c.key == cfg.collection_mint),
+            CollectiblesError::AssetIsNotThatItem
+        );
 
         // (1) This metadata is that cosmetic. The URI is built the same way
         // mint_unlock built it, from a base that cannot change.
@@ -1713,6 +1744,14 @@ pub mod sol_city_collectibles {
         // produces a hash that will not burn.
         let expected_uri = format!("{}pack-{}.json", ctx.accounts.mint_config.base_uri, pack_id);
         require!(metadata.uri == expected_uri, CollectiblesError::AssetIsNotThatItem);
+        // And it is in our collection, verified (audit R-18): the burn proves
+        // the leaf exists, this proves the leaf is one of our packs.
+        require!(
+            metadata.collection.as_ref().map_or(false, |c| {
+                c.verified && c.key == ctx.accounts.mint_config.collection_mint
+            }),
+            CollectiblesError::AssetIsNotThatItem
+        );
 
         // (2) Burn it. Both hashes come from the metadata above, so a caller
         // cannot burn one asset while claiming the contents of another.

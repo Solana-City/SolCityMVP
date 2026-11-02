@@ -6,6 +6,13 @@ import { getStockByTicker } from "@/game/solana/stockCatalog";
 // here they can. Only catalog tickers are proxied, never arbitrary URLs.
 export const revalidate = 86400;
 
+/**
+ * Image types a logo may arrive as. SVG is one (the SpaceX logo is SVG), and
+ * is safe here only because of the sandbox CSP sent with every response:
+ * opened directly, an SVG's script does not run.
+ */
+const SAFE_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif", "image/svg+xml"]);
+
 /** 1x1 fully transparent PNG, served in place of a failed upstream logo. */
 const TRANSPARENT_PNG = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
@@ -22,9 +29,17 @@ export async function GET(_req: NextRequest, { params }: { params: { ticker: str
       headers: { "User-Agent": "SolanaCity/1.0" },
     });
     if (!res.ok) throw new Error(`upstream ${res.status}`);
+    // Only image types, sandboxed (audit R-26). These bytes are served from
+    // the game's own origin, so an upstream answering with HTML would have
+    // been a page running as solanacity.io. Anything else counts as a failed
+    // logo and falls back to the transparent pixel below.
+    const upstreamType = (res.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase();
+    if (!SAFE_IMAGE_TYPES.has(upstreamType)) throw new Error(`upstream type ${upstreamType || "none"}`);
     return new NextResponse(await res.arrayBuffer(), {
       headers: {
-        "Content-Type": res.headers.get("content-type") ?? "image/png",
+        "Content-Type": upstreamType,
+        "X-Content-Type-Options": "nosniff",
+        "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox",
         "Cache-Control": "public, max-age=86400, s-maxage=604800, stale-while-revalidate=604800",
       },
     });
