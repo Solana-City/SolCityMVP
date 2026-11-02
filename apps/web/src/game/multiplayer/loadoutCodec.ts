@@ -1,4 +1,6 @@
-import { migrateHairColor, type Loadout, type LayerCategory } from "../config/paperDoll";
+import {
+  migrateHairColor, migrateRetiredFace, type Loadout, type LayerCategory,
+} from "../config/paperDoll";
 import { hairColorAtIndex, hairColorIndex } from "../config/hairPalette";
 import { globalIndexOf, itemAtGlobalIndex, BOOSTER_BLOCK_START } from "../config/catalogIndex";
 import { getOnChainUnlocks, unlockKeyOf } from "../config/wardrobeUnlocks";
@@ -117,5 +119,7 @@ export function decodeLoadout(s: string): Loadout {
   // A peer on an older build still broadcasts Brown_hair or a coloured Magawk,
   // which are no longer wardrobe entries. Without this they render as no hair
   // at all, so the rewrite happens on the way in, not just on our own save.
-  return migrateHairColor(out);
+  // Same for a face that has since been pulled, and a wallet whose on-chain
+  // outfit still names index 32 (Happy).
+  return migrateRetiredFace(migrateHairColor(out));
 }

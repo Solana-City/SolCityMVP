@@ -14,7 +14,8 @@ import {
   catalogLength,
 } from "./catalogIndex";
 import {
-  LAYER_ORDER, getChainFreeItems, getQuestItems, getBoosterPool, getEventItems,
+  LAYER_ORDER, DEFAULT_LOADOUT, getChainFreeItems, getQuestItems, getBoosterPool,
+  getEventItems, getEnabledVariants, migrateRetiredFace,
 } from "./paperDoll";
 
 /**
@@ -224,6 +225,27 @@ describe("the global catalog index", () => {
       [15888, "hat:Cap_light_grey"], [15889, "hat:Cap_orange"],
       [15890, "hat:Cap_red"],
     ]);
+  });
+});
+
+describe("a face pulled from the wardrobe", () => {
+  it("keeps its slot, so the faces after it do not move up", () => {
+    // Happy was pulled 2026-11-03. Disabling hides it from the picker and the
+    // crowd; 33..38 are already in wallets and must stay where they are.
+    expect(globalIndexOf("eyesFace", "Happy")).toBe(32);
+    expect(globalIndexOf("eyesFace", "Normal_solana")).toBe(33);
+    expect(getEnabledVariants("eyesFace").map((v) => v.id)).not.toContain("Happy");
+  });
+
+  it("moves a loadout still wearing it to a face that is on offer", () => {
+    const on = getEnabledVariants("eyesFace").map((v) => v.id);
+    expect(on).toContain(DEFAULT_LOADOUT.eyesFace);
+    for (const retired of ["Happy", "Nya", "Sleepy"]) {
+      expect(on, retired).toContain(migrateRetiredFace({ eyesFace: retired }).eyesFace);
+    }
+    // A face that is still on offer is left alone, and so is a loadout with none.
+    expect(migrateRetiredFace({ eyesFace: "Normal_red" }).eyesFace).toBe("Normal_red");
+    expect(migrateRetiredFace({}).eyesFace).toBeUndefined();
   });
 });
 

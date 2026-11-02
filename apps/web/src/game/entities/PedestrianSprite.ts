@@ -2,7 +2,7 @@ import * as Phaser from "phaser";
 import { AvatarSprite } from "./AvatarSprite";
 import { playFoundStar } from "./HuntFoundFx";
 import { TILE_SIZE } from "../config/constants";
-import { getEnabledVariants, type Loadout, DIRECTION_ROW, SPRITE_COLS } from "../config/paperDoll";
+import { DEFAULT_LOADOUT, getEnabledVariants, type Loadout, DIRECTION_ROW, SPRITE_COLS } from "../config/paperDoll";
 import { CROWD_HAIR_COLORS } from "../config/hairPalette";
 
 // Fast seeded PRNG (mulberry32)
@@ -28,10 +28,11 @@ export function makePedestrianLoadout(seed: number): Loadout {
     ? "Light"
     : pick(getEnabledVariants("skin").filter(v => v.id !== "Light"), rng).id;
 
-  // 90% Happy, 10% spread across the other face variants
+  // 90% the default face, 10% spread across the other face variants
+  const defaultFace = DEFAULT_LOADOUT.eyesFace!;
   const eyesFace = rng() < 0.90
-    ? "Happy"
-    : pick(getEnabledVariants("eyesFace").filter(v => v.id !== "Happy"), rng).id;
+    ? defaultFace
+    : pick(getEnabledVariants("eyesFace").filter(v => v.id !== defaultFace), rng).id;
   // Avatar hair (blue arrow) is very rare — 2% of hair picks. The mohawk is
   // its own rare 6% bucket rather than a slot in the common pool: it used to
   // be three colour variants, which made mohawks collectively as common as a

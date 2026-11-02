@@ -185,17 +185,21 @@ export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
     { id: "Dark_brown", name: "Dark Brown", textureKey: "pd-skin-Dark_brown", file: "skin/Dark_brown.png" },
   ],
   eyesFace: [
-    { id: "Happy",        name: "Happy",        textureKey: "pd-eyesFace-Happy",        file: "eyesFace/Happy.png" },
+    // Pulled from the wardrobe on 2026-11-03. Disabled, not deleted: it is
+    // index 32 and every face after it is numbered from there. RETIRED_FACES
+    // below moves anyone still wearing it to a face that is still on offer.
+    { id: "Happy",        name: "Happy",        textureKey: "pd-eyesFace-Happy",        file: "eyesFace/Happy.png", enabled: false },
     // Replaced the Terminator face on 2026-10-30, IN PLACE. The old one
     // carried someone else's character name and was not going to ship, but
     // removing a free item renumbers every face after it, and a catalog index
     // is what a wallet owns. Taking over the slot keeps Normal Blue at 34.
-    { id: "Normal_solana", name: "Normal Solana", textureKey: "pd-eyesFace-Normal_solana", file: "eyesFace/Normal_solana.png" },
-    { id: "Normal_blue",  name: "Normal Blue",  textureKey: "pd-eyesFace-Normal_blue",  file: "eyesFace/Normal_blue.png" },
-    { id: "Normal_green", name: "Normal Green", textureKey: "pd-eyesFace-Normal_green", file: "eyesFace/Normal_green.png" },
-    { id: "Normal_grey",  name: "Normal Grey",  textureKey: "pd-eyesFace-Normal_grey",  file: "eyesFace/Normal_grey.png" },
-    { id: "Normal_orange",name: "Normal Orange",textureKey: "pd-eyesFace-Normal_orange",file: "eyesFace/Normal_orange.png" },
-    { id: "Normal_red",   name: "Normal Red",   textureKey: "pd-eyesFace-Normal_red",   file: "eyesFace/Normal_red.png" },
+    // The ids keep "Normal_" for the same reason; only the label dropped it.
+    { id: "Normal_solana", name: "Solana Eyes", textureKey: "pd-eyesFace-Normal_solana", file: "eyesFace/Normal_solana.png" },
+    { id: "Normal_blue",  name: "Blue Eyes",    textureKey: "pd-eyesFace-Normal_blue",  file: "eyesFace/Normal_blue.png" },
+    { id: "Normal_green", name: "Green Eyes",   textureKey: "pd-eyesFace-Normal_green", file: "eyesFace/Normal_green.png" },
+    { id: "Normal_grey",  name: "Grey Eyes",    textureKey: "pd-eyesFace-Normal_grey",  file: "eyesFace/Normal_grey.png" },
+    { id: "Normal_orange",name: "Orange Eyes",  textureKey: "pd-eyesFace-Normal_orange",file: "eyesFace/Normal_orange.png" },
+    { id: "Normal_red",   name: "Red Eyes",     textureKey: "pd-eyesFace-Normal_red",   file: "eyesFace/Normal_red.png" },
     // Nya + Sleepy were static faces; they're now triggerable expressions
     // (see EXPRESSIONS below), so they no longer appear in the wardrobe.
   ],
@@ -405,7 +409,7 @@ export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
 /** Default starter loadout. Hat, accessory start empty (optional). */
 export const DEFAULT_LOADOUT: Loadout = {
   skin: "Light",
-  eyesFace: "Happy",
+  eyesFace: "Normal_solana",
   pants: "Blue_pants",
   tshirt: "Blue_tshirt",
   hair: "Black_hair",
@@ -688,6 +692,26 @@ export function migrateHairColor(loadout: Loadout): Loadout {
   return loadout;
 }
 
+/**
+ * Faces that are no longer in the wardrobe, each mapped to the face that takes
+ * its place. Nya and Sleepy became expressions; Happy was pulled on 2026-11-03.
+ * A disabled face is not loaded, so a loadout still naming one renders with no
+ * face at all.
+ */
+const RETIRED_FACES: Record<string, string> = {
+  Happy:  "Normal_solana",
+  Nya:    "Normal_solana",
+  Sleepy: "Normal_solana",
+};
+
+/** Rewrites a retired face in place. Safe to call on any loadout, and on one
+ *  that arrived from the network for the same reason as migrateHairColor. */
+export function migrateRetiredFace(loadout: Loadout): Loadout {
+  const moved = loadout.eyesFace ? RETIRED_FACES[loadout.eyesFace] : undefined;
+  if (moved) loadout.eyesFace = moved;
+  return loadout;
+}
+
 const STORAGE_KEY = clusterKey("solcity:loadout");
 
 export function saveLoadout(loadout: Loadout): void {
@@ -703,9 +727,9 @@ export function loadSavedLoadout(): Loadout {
       // labeling) — remap existing saves so returning players don't lose
       // their skin layer entirely.
       if ((loadout.skin as string) === "Human") loadout.skin = "Light";
-      // Nya/Sleepy became expressions, not selectable faces — anyone who had
-      // one saved as their static face falls back to Happy so they keep a face.
-      if (loadout.eyesFace === "Nya" || loadout.eyesFace === "Sleepy") loadout.eyesFace = "Happy";
+      // Nya/Sleepy became expressions and Happy was pulled — anyone who had
+      // one saved as their static face moves to a face that still exists.
+      migrateRetiredFace(loadout);
       migrateHairColor(loadout);
       return loadout;
     }
