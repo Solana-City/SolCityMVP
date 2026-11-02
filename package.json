@@ -15,15 +15,17 @@
     "typecheck": "npm run typecheck -w apps/web"
   },
   "dependencies": {
-    "react": "18.3.1",
-    "react-dom": "18.3.1"
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
   },
   "overrides": {
-    "react": "18.3.1",
-    "react-dom": "18.3.1",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
     "@metaplex-foundation/umi": "0.9.2"
   },
   "devDependencies": {
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
     "jimp": "^1.6.1",
     "pngjs": "^7.0.0"
   }

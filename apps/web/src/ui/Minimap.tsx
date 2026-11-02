@@ -247,7 +247,7 @@ function toScreen(v: View, w: number, h: number, x: number, y: number) {
  * contentRect is immune to all of that, and to whatever animation a window
  * wears next.
  */
-function useCanvasSize(ref: React.RefObject<HTMLElement>) {
+function useCanvasSize(ref: React.RefObject<HTMLElement | null>) {
   const [size, setSize] = useState({ w: 0, h: 0 });
   useEffect(() => {
     const el = ref.current;

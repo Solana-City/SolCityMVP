@@ -28,8 +28,8 @@ export default function Presence({ show, children }: { show: boolean; children: 
   return (
     <div
       className="sc-presence" data-state={show ? "open" : "closed"} style={{ display: "contents" }}
-      // React 18 does not know `inert`; an empty string is what puts the attribute on.
-      {...(show ? {} : ({ inert: "" } as Record<string, unknown>))}
+      // React 19 knows `inert` as a boolean attribute.
+      inert={!show}
     >
       {children}
     </div>

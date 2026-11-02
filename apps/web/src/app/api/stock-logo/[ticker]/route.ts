@@ -19,7 +19,8 @@ const TRANSPARENT_PNG = Buffer.from(
   "base64",
 );
 
-export async function GET(_req: NextRequest, { params }: { params: { ticker: string } }) {
+export async function GET(_req: NextRequest, props: { params: Promise<{ ticker: string }> }) {
+  const params = await props.params;
   const stock = getStockByTicker(params.ticker.toUpperCase());
   if (!stock) return new NextResponse("unknown ticker", { status: 404 });
 
