@@ -1,12 +1,12 @@
 {
   "name": "Lotus Pants",
   "symbol": "SCC",
-  "description": "RARE pants from Sol City.",
+  "description": "COMMON pants from Sol City.",
   "image": "https://solanacity.io/collectibles/5648.gif",
   "attributes": [
     {
       "trait_type": "Rarity",
-      "value": "RARE"
+      "value": "COMMON"
     },
     {
       "trait_type": "Slot",
