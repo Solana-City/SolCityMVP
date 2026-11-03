@@ -1528,7 +1528,7 @@ export class OnChainMultiplayer {
       const info = await this.baseConnection.getAccountInfo(huntPda);
       if (!info) return; // not initialized yet (ensureHuntInitialized will make it)
       const hunt = decodeHuntState(info.data, this.chainNowSecs());
-      if (hunt) setHuntFromChain(hunt.round, hunt.deadline, this.resolveWinner(hunt.winner));
+      if (hunt) setHuntFromChain(hunt.round, hunt.deadline, this.resolveWinner(hunt.winner), this.clockSkewMs);
     } catch { /* transient RPC — keep the last known round */ }
   }
 
@@ -1571,7 +1571,7 @@ export class OnChainMultiplayer {
     // why the next citizen's timer appeared minutes late instead of at once.
     // The data was in hand the whole time.
     if (roundMoved && hunt) {
-      setHuntFromChain(hunt.round, hunt.deadline, this.resolveWinner(hunt.winner));
+      setHuntFromChain(hunt.round, hunt.deadline, this.resolveWinner(hunt.winner), this.clockSkewMs);
     }
     const won = roundMoved && !!hunt && hunt.winner.equals(sessionKey);
     if (won && sent.signature) {
