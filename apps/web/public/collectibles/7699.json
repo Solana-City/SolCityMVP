@@ -1,12 +1,12 @@
 {
   "name": "Neon Longsleeve",
   "symbol": "SCC",
-  "description": "UNCOMMON tshirt from Sol City.",
+  "description": "COMMON tshirt from Sol City.",
   "image": "https://solanacity.io/collectibles/7699.gif",
   "attributes": [
     {
       "trait_type": "Rarity",
-      "value": "UNCOMMON"
+      "value": "COMMON"
     },
     {
       "trait_type": "Slot",

@@ -1,12 +1,12 @@
 {
-  "name": "Red Hat",
+  "name": "Halo",
   "symbol": "SCC",
-  "description": "COMMON hat from Sol City.",
+  "description": "LEGENDARY hat from Sol City.",
   "image": "https://solanacity.io/collectibles/15881.gif",
   "attributes": [
     {
       "trait_type": "Rarity",
-      "value": "COMMON"
+      "value": "LEGENDARY"
     },
     {
       "trait_type": "Slot",

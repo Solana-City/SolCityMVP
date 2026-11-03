@@ -1,12 +1,12 @@
 {
-  "name": "Pirate",
+  "name": "Straw Hat",
   "symbol": "SCC",
-  "description": "RARE hat from Sol City.",
+  "description": "UNCOMMON hat from Sol City.",
   "image": "https://solanacity.io/collectibles/15878.gif",
   "attributes": [
     {
       "trait_type": "Rarity",
-      "value": "RARE"
+      "value": "UNCOMMON"
     },
     {
       "trait_type": "Slot",

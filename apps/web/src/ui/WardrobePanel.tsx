@@ -21,6 +21,7 @@ import {
   SPRITE_FRAME_WIDTH,
   SPRITE_FRAME_HEIGHT,
   DIRECTION_ROW,
+  showsFromBehind,
 } from "@/game/config/paperDoll";
 import { profileManager } from "@/game/config/profileManager";
 import { isVariantUnlocked, unlockItem } from "@/game/config/wardrobeUnlocks";
@@ -790,7 +791,7 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
                             <ChromaPreview
                               file={v.file}
                               size={size}
-                              facingUp={activeCategory === "back"}
+                              facingUp={showsFromBehind(activeCategory, v)}
                               crop
                               effect={v.effect}
                               hairColor={activeCategory === "hair" ? wornHairColor : undefined}

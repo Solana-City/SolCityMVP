@@ -1,12 +1,12 @@
 {
-  "name": "White Solana T-Shirt",
+  "name": "Dragon T-Shirt",
   "symbol": "SCC",
-  "description": "UNCOMMON tshirt from Sol City.",
+  "description": "RARE tshirt from Sol City.",
   "image": "https://solanacity.io/collectibles/7705.gif",
   "attributes": [
     {
       "trait_type": "Rarity",
-      "value": "UNCOMMON"
+      "value": "RARE"
     },
     {
       "trait_type": "Slot",

@@ -10,17 +10,17 @@ const FPS = 1000 / 150;
 const at = (ms: number) => ms;
 
 describe("effectCell", () => {
-  const halo = { frames: 24, fps: FPS };
+  const plain = { frames: 24, fps: FPS };
   const crown = { frames: 48, fps: FPS, steady: true };
   const trousers = { frames: 48, fps: FPS, walkSynced: true };
 
   it("walks every cell of a plain effect, one per 150 ms", () => {
-    expect(effectCell(halo, at(0))).toBe(0);
-    expect(effectCell(halo, at(149))).toBe(0);
-    expect(effectCell(halo, at(150))).toBe(1);
-    expect(effectCell(halo, at(150 * 23))).toBe(23);
+    expect(effectCell(plain, at(0))).toBe(0);
+    expect(effectCell(plain, at(149))).toBe(0);
+    expect(effectCell(plain, at(150))).toBe(1);
+    expect(effectCell(plain, at(150 * 23))).toBe(23);
     // 24 cells at 150 ms is a 3.6 s loop.
-    expect(effectCell(halo, at(3600))).toBe(0);
+    expect(effectCell(plain, at(3600))).toBe(0);
   });
 
   it("plays only the first cell of each group when steady", () => {
@@ -52,7 +52,7 @@ describe("effectCell", () => {
   });
 
   it("never leaves the sheet", () => {
-    for (const fx of [halo, crown, trousers]) {
+    for (const fx of [plain, crown, trousers]) {
       for (let ms = 0; ms < 4000; ms += 37) {
         for (let col = 0; col < SPRITE_COLS; col++) {
           const cell = effectCell(fx, ms, col);

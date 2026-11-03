@@ -1,0 +1,29 @@
+{
+  "name": "Indies Longsleeve",
+  "symbol": "SCC",
+  "description": "EVENT tshirt from Sol City.",
+  "image": "https://solanacity.io/collectibles/34496.gif",
+  "attributes": [
+    {
+      "trait_type": "Rarity",
+      "value": "EVENT"
+    },
+    {
+      "trait_type": "Slot",
+      "value": "tshirt"
+    },
+    {
+      "trait_type": "Season",
+      "value": "1"
+    }
+  ],
+  "properties": {
+    "files": [
+      {
+        "uri": "https://solanacity.io/collectibles/34496.gif",
+        "type": "image/gif"
+      }
+    ],
+    "category": "image"
+  }
+}

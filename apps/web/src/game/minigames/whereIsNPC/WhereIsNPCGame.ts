@@ -29,14 +29,19 @@ let onChainWinner: string | null = null;
 /** Called by the hunt poll. `deadlineSecs` is the on-chain unix deadline.
  *  `winnerWallet` is who claimed the round before this one, when the poll could
  *  put a wallet to the session key the chain records; null when nobody found
- *  that citizen, or when the finder is not someone this client knows. */
+ *  that citizen, or when the finder is not someone this client knows.
+ *  `clockSkewMs` is device clock minus chain clock. The deadline is on the
+ *  chain's clock and the countdown reads the device's, so it is shifted here
+ *  once: devnet ran 76s ahead of real time on 2026-11-03, which held the
+ *  display at 5:00 for the first 76s of every citizen. */
 export function setHuntFromChain(
   round: number,
   deadlineSecs: number,
   winnerWallet: string | null = null,
+  clockSkewMs = 0,
 ): void {
   onChainRound = round >>> 0;
-  onChainDeadlineMs = deadlineSecs * 1000;
+  onChainDeadlineMs = deadlineSecs * 1000 + clockSkewMs;
   onChainWinner = winnerWallet;
 }
 
@@ -144,11 +149,9 @@ let citizenDeadline = Date.now() + CITIZEN_MS;
 
 /** Time left before the current citizen rotates if not found. Driven by the
  *  on-chain deadline when the shared hunt is live, else the local timer.
- *  Capped at CITIZEN_MS (5 min): the round IS 300 on-chain seconds, but the
- *  devnet validator clock can drift ahead of real time, which would otherwise
- *  make `deadline − now` read as MORE than 5:00. Clamping keeps the display a
- *  clean 0–5:00 and still shows the true remaining for anyone who joined
- *  mid-round (that value is already ≤ 5:00). */
+ *  Capped at CITIZEN_MS (5 min) as a backstop: setHuntFromChain already moves
+ *  the deadline onto the device clock, but only by a skew the multiplayer
+ *  layer has learned, and it learns nothing under 60s. */
 export function getCitizenMsRemaining(): number {
   if (onChainDeadlineMs !== null) {
     return Math.min(CITIZEN_MS, Math.max(0, onChainDeadlineMs - Date.now()));

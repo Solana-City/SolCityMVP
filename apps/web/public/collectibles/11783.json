@@ -1,12 +1,12 @@
 {
   "name": "Thug Shades",
   "symbol": "SCC",
-  "description": "RARE accessory from Sol City.",
+  "description": "UNCOMMON accessory from Sol City.",
   "image": "https://solanacity.io/collectibles/11783.gif",
   "attributes": [
     {
       "trait_type": "Rarity",
-      "value": "RARE"
+      "value": "UNCOMMON"
     },
     {
       "trait_type": "Slot",

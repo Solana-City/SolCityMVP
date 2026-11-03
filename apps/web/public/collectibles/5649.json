@@ -1,16 +1,16 @@
 {
-  "name": "Golden Suit",
+  "name": "Lotus Short Pants",
   "symbol": "SCC",
-  "description": "RARE tshirt from Sol City.",
-  "image": "https://solanacity.io/collectibles/7711.gif",
+  "description": "COMMON pants from Sol City.",
+  "image": "https://solanacity.io/collectibles/5649.gif",
   "attributes": [
     {
       "trait_type": "Rarity",
-      "value": "RARE"
+      "value": "COMMON"
     },
     {
       "trait_type": "Slot",
-      "value": "tshirt"
+      "value": "pants"
     },
     {
       "trait_type": "Season",
@@ -20,7 +20,7 @@
   "properties": {
     "files": [
       {
-        "uri": "https://solanacity.io/collectibles/7711.gif",
+        "uri": "https://solanacity.io/collectibles/5649.gif",
         "type": "image/gif"
       }
     ],

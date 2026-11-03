@@ -1,12 +1,12 @@
 {
   "name": "Brilliant Ring",
   "symbol": "SCC",
-  "description": "RARE accessory from Sol City.",
+  "description": "COMMON accessory from Sol City.",
   "image": "https://solanacity.io/collectibles/11782.gif",
   "attributes": [
     {
       "trait_type": "Rarity",
-      "value": "RARE"
+      "value": "COMMON"
     },
     {
       "trait_type": "Slot",

@@ -1,12 +1,12 @@
 {
-  "name": "Cap Kid",
+  "name": "Kid Cap",
   "symbol": "SCC",
-  "description": "COMMON hat from Sol City.",
+  "description": "UNCOMMON hat from Sol City.",
   "image": "https://solanacity.io/collectibles/15873.gif",
   "attributes": [
     {
       "trait_type": "Rarity",
-      "value": "COMMON"
+      "value": "UNCOMMON"
     },
     {
       "trait_type": "Slot",

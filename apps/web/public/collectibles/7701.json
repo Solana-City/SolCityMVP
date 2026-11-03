@@ -1,12 +1,12 @@
 {
-  "name": "Indies Longsleeve",
+  "name": "Acid T-Shirt",
   "symbol": "SCC",
-  "description": "UNCOMMON tshirt from Sol City.",
+  "description": "COMMON tshirt from Sol City.",
   "image": "https://solanacity.io/collectibles/7701.gif",
   "attributes": [
     {
       "trait_type": "Rarity",
-      "value": "UNCOMMON"
+      "value": "COMMON"
     },
     {
       "trait_type": "Slot",

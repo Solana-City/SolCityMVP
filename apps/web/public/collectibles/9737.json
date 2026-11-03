@@ -1,0 +1,29 @@
+{
+  "name": "Yellow Backpack",
+  "symbol": "SCC",
+  "description": "COMMON back from Sol City.",
+  "image": "https://solanacity.io/collectibles/9737.gif",
+  "attributes": [
+    {
+      "trait_type": "Rarity",
+      "value": "COMMON"
+    },
+    {
+      "trait_type": "Slot",
+      "value": "back"
+    },
+    {
+      "trait_type": "Season",
+      "value": "1"
+    }
+  ],
+  "properties": {
+    "files": [
+      {
+        "uri": "https://solanacity.io/collectibles/9737.gif",
+        "type": "image/gif"
+      }
+    ],
+    "category": "image"
+  }
+}

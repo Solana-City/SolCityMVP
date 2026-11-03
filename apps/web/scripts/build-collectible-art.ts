@@ -11,13 +11,18 @@
  *
  *   npx tsx scripts/build-collectible-art.ts --only hat/Cap_Sol --scale 8
  *
+ *   --frame-ms   how long the card holds each frame cell; defaults to
+ *                CARD_FRAME_MS, which is what went to Arweave
+ *
  * ── What comes out ─────────────────────────────────────────────────────
  *
  * Per item, named by its CATALOG INDEX, because that is the only name the
  * chain knows: `mint_unlock` builds `<base_uri><index>.json` and nothing on
  * chain stores a filename.
  *
- *   <index>.gif    the animated card, four frames on a 400ms loop
+ *   <index>.gif    the animated card: the frame's four cells on its own
+ *                  clock, and an animated item playing its sheet on its own
+ *                  (see `timeline`), looped where the two meet again
  *   <index>.png    its first frame, for anything that will not animate
  *   <index>.json   the Metaplex metadata, pointing at the gif
  *
@@ -65,14 +70,28 @@ import { join, dirname, resolve } from "path";
 import { fileURLToPath } from "url";
 import { PNG } from "pngjs";
 import { GifFrame, GifUtil, GifCodec, BitmapImage } from "gifwrap";
-import { LAYER_ORDER, DIRECTION_ROW, SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT, getEnabledVariants } from "../src/game/config/paperDoll";
+import { LAYER_ORDER, DIRECTION_ROW, SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT, SPRITE_COLS, getEnabledVariants, effectCell, showsFromBehind } from "../src/game/config/paperDoll";
 import { tileKindOf, PACKS } from "../src/game/config/packs";
 import { globalIndexOf } from "../src/game/config/catalogIndex";
 import { FRAME_GEOMETRY, FRAME_SHEET, RARITY_LABEL, CURRENT_SEASON } from "../src/game/collections/seasons";
-import type { LayerCategory } from "../src/game/config/paperDoll";
+import type { LayerCategory, LayerVariant as Variant } from "../src/game/config/paperDoll";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PUBLIC = join(HERE, "..", "public");
+
+/**
+ * The card's frame cell. Not the game's 100: see where it is read. Changing
+ * it changes every picture, and the pictures on Arweave cannot change.
+ */
+const CARD_FRAME_MS = 150;
+
+/**
+ * The largest an item's pixel may be, in frame pixels. 2.2 is what trousers
+ * and backpacks reach when fitted (22x at scale 10), the biggest of any
+ * ordinary garment; only the rings and the Cyber Visor were above it, at up
+ * to 6.4, and read as giant next to everything else.
+ */
+const MAX_ITEM_ZOOM = 2.2;
 
 /** The magenta the sheets are keyed on, and the tolerance the runtime uses. */
 const CHROMA = { r: 215, g: 123, b: 186, tol: 30 };
@@ -142,24 +161,103 @@ function drawScaled(
   }
 }
 
-/** One cell of the card: the frame at `scale`, the item fitted to its window. */
-function composeCell(frame: Bitmap, cell: number, item: Bitmap, rowY: number, scale: number): Bitmap {
+type Box = { x: number; y: number; w: number; h: number };
+
+/**
+ * The ink of every cell the card will show, as one box. An animated item is
+ * fitted by this union, not cell by cell, or its size and position would
+ * twitch from frame to frame. The wardrobe tile measures it the same way.
+ */
+function inkUnion(b: Bitmap, cells: number[], rowY: number): Box | null {
+  let u: Box | null = null;
+  for (const c of cells) {
+    const ink = inkBox(b, c * SPRITE_FRAME_WIDTH, rowY);
+    if (!ink) continue;
+    if (!u) { u = ink; continue; }
+    const x1 = Math.max(u.x + u.w, ink.x + ink.w), y1 = Math.max(u.y + u.h, ink.y + ink.h);
+    u.x = Math.min(u.x, ink.x); u.y = Math.min(u.y, ink.y);
+    u.w = x1 - u.x; u.h = y1 - u.y;
+  }
+  return u;
+}
+
+/**
+ * One cell of the card: the frame at `scale`, item cell `itemCell` fitted to
+ * the window by `ink`, the box shared by every cell of this card.
+ */
+function composeCell(
+  frame: Bitmap, cell: number,
+  item: Bitmap, itemCell: number, rowY: number, ink: Box | null,
+  scale: number,
+): Bitmap {
   const { cell: C, window: win, fill } = FRAME_GEOMETRY;
   const side = C * scale;
   const out: Bitmap = { w: side, h: side, px: Buffer.alloc(side * side * 4) };
   drawScaled(out, frame, cell * C, 0, C, C, 0, 0, scale);
 
-  const ink = inkBox(item, 0, rowY);
   if (ink) {
     const availW = Math.floor(win.w * scale * fill);
     const availH = Math.floor(win.h * scale * fill);
     // The largest INTEGER magnification that still fits. Integer because a
     // fractional one resamples, and resampled pixel art stops being pixel art.
-    const k = Math.max(1, Math.min(Math.floor(availW / ink.w), Math.floor(availH / ink.h)));
+    const k = Math.max(1, Math.min(
+      Math.floor(availW / ink.w), Math.floor(availH / ink.h),
+      // A small item stays small: a 6px ring fitted to the window came out
+      // with pixels three times a pair of trousers'. No item's pixel may be
+      // larger than the largest an ordinary garment gets.
+      Math.floor(scale * MAX_ITEM_ZOOM),
+    ));
     const dx = win.x * scale + Math.floor((win.w * scale - ink.w * k) / 2);
     const dy = win.y * scale + Math.floor((win.h * scale - ink.h * k) / 2);
-    drawScaled(out, item, ink.x, rowY + ink.y, ink.w, ink.h, dx, dy, k);
+    drawScaled(out, item, itemCell * SPRITE_FRAME_WIDTH + ink.x, rowY + ink.y, ink.w, ink.h, dx, dy, k);
   }
+  return out;
+}
+
+const gcd = (a: number, b: number): number => (b ? gcd(b, a % b) : a);
+
+/**
+ * The card's timeline: which frame cell and which item cell to show, and for
+ * how long. A new GIF frame starts only where one of the two changes, so the
+ * loop is exact for both clocks and no longer than their common cycle.
+ *
+ * The item cell comes from effectCell, the same rule the game and the wardrobe
+ * use, called WITHOUT a walk column: a card does not walk, so a walkSynced
+ * garment shows its standing pose, exactly as the wardrobe tile does.
+ */
+function timeline(frameMs: number, effect: Variant["effect"], cellKey: (cell: number) => string) {
+  const frameLoop = frameMs * FRAME_GEOMETRY.cells;
+  if (!effect) {
+    return Array.from({ length: FRAME_GEOMETRY.cells }, (_, c) => ({ frameCell: c, itemCell: 0, ms: frameMs }));
+  }
+  const stepMs = Math.round(1000 / effect.fps);
+  const groups = effect.frames / SPRITE_COLS;
+  // The loop as the sheet DRAWS it, not as it is declared: the Halo is 48
+  // cells whose second half copies the first, so it repeats after 24. Found
+  // by comparing pixels, so a sheet that repeats is never rendered twice over.
+  const steps = effect.steady || effect.walkSynced ? groups : effect.frames;
+  const seq = Array.from({ length: steps }, (_, i) => cellKey(effectCell(effect, (i + 0.5) * stepMs)));
+  let drawn = steps;
+  for (let p = 1; p < steps; p++) {
+    if (steps % p === 0 && seq.every((k, i) => k === seq[(i + p) % steps])) { drawn = p; break; }
+  }
+  const itemLoop = stepMs * drawn;
+  const period = frameLoop / gcd(frameLoop, itemLoop) * itemLoop;
+  const cuts = new Set<number>();
+  for (let t = 0; t < period; t += frameMs) cuts.add(t);
+  for (let t = 0; t < period; t += stepMs) cuts.add(t);
+  const at = [...cuts].sort((a, b) => a - b);
+  const out: { frameCell: number; itemCell: number; ms: number }[] = [];
+  at.forEach((t0, i) => {
+    const t1 = at[i + 1] ?? period;
+    // Sampled mid-segment so float rounding at a boundary cannot pick a neighbour.
+    const mid = (t0 + t1) / 2;
+    out.push({
+      frameCell: Math.floor(mid / frameMs) % FRAME_GEOMETRY.cells,
+      itemCell: effectCell(effect, mid),
+      ms: t1 - t0,
+    });
+  });
   return out;
 }
 
@@ -169,11 +267,23 @@ function writePng(path: string, b: Bitmap) {
   writeFileSync(path, PNG.sync.write(png));
 }
 
-async function writeGif(path: string, cells: Bitmap[], centisecs: number) {
-  const frames = cells.map((b) => {
+/** At most 256 colours, every fully transparent pixel counting as one. */
+function fitsPalette(b: Bitmap): boolean {
+  const seen = new Set<number>();
+  for (let i = 0; i < b.px.length; i += 4) {
+    seen.add(b.px[i + 3] === 0 ? -1 : b.px.readUInt32BE(i));
+    if (seen.size > 256) return false;
+  }
+  return true;
+}
+
+async function writeGif(path: string, cells: Bitmap[], centisecs: number | number[]) {
+  const frames = cells.map((b, i) => {
     const img = new BitmapImage(b.w, b.h, Buffer.from(b.px));
-    GifUtil.quantizeDekker(img, 256);
-    return new GifFrame(img, { delayCentisecs: centisecs });
+    // Pixel art nearly always fits a GIF palette as drawn, and then nothing
+    // is quantized: the colours stay exact, and it is many times faster.
+    if (!fitsPalette(b)) GifUtil.quantizeDekker(img, 256);
+    return new GifFrame(img, { delayCentisecs: Array.isArray(centisecs) ? centisecs[i] : centisecs });
   });
   const gif = await new GifCodec().encodeGif(frames, { loops: 0 });
   writeFileSync(path, gif.buffer);
@@ -186,6 +296,15 @@ async function main() {
     return i < 0 ? undefined : argv[i + 1];
   };
   const scale = Number(arg("--scale") ?? 10);
+  // How long the CARD holds each frame cell. The game's own value stays in
+  // FRAME_GEOMETRY and is not touched by this.
+  //
+  // 150, the owner's call (2026-11-03): it is the item sheets' own cell, so
+  // a legendary loops in 12 GIF frames (the Halo in 24) instead of 48, and
+  // weighs about a quarter. The price is a frame border that turns at two
+  // thirds of the game's speed, on a card nobody sees beside the game.
+  const frameMs = Number(arg("--frame-ms") ?? CARD_FRAME_MS);
+  if (frameMs % 10) throw new Error("--frame-ms must be whole centiseconds, a GIF cannot hold anything finer");
   const only = arg("--only");
   // A trailing slash or the concatenation below silently makes nonsense, so
   // it is added here rather than demanded of whoever types the command.
@@ -219,14 +338,21 @@ async function main() {
       const item = removeChroma(readPng(join(PUBLIC, "assets", "sprites", "paperdoll", variant.file)));
       // Backpacks are barely visible from the front, so the grid shows their
       // back row; the card has to agree or the two disagree about the item.
-      const rowY = (category === "back" ? DIRECTION_ROW.up : DIRECTION_ROW.down) * SPRITE_FRAME_HEIGHT;
+      const rowY = (showsFromBehind(category, variant) ? DIRECTION_ROW.up : DIRECTION_ROW.down) * SPRITE_FRAME_HEIGHT;
 
-      const cells = Array.from(
-        { length: FRAME_GEOMETRY.cells },
-        (_, c) => composeCell(frameSheet(kind), c, item, rowY, scale),
-      );
+      const cellKey = (cell: number) => {
+        const rows: Buffer[] = [];
+        for (let y = 0; y < SPRITE_FRAME_HEIGHT; y++) {
+          const at = ((rowY + y) * item.w + cell * SPRITE_FRAME_WIDTH) * 4;
+          rows.push(item.px.subarray(at, at + SPRITE_FRAME_WIDTH * 4));
+        }
+        return Buffer.concat(rows).toString("base64");
+      };
+      const steps = timeline(frameMs, variant.effect, cellKey);
+      const ink = inkUnion(item, [...new Set(steps.map((s) => s.itemCell))], rowY);
+      const cells = steps.map((s) => composeCell(frameSheet(kind), s.frameCell, item, s.itemCell, rowY, ink, scale));
       writePng(join(outDir, `${index}.png`), cells[0]);
-      await writeGif(join(outDir, `${index}.gif`), cells, FRAME_GEOMETRY.loopMs / FRAME_GEOMETRY.cells / 10);
+      await writeGif(join(outDir, `${index}.gif`), cells, steps.map((s) => s.ms / 10));
       writeFileSync(join(outDir, `${index}.json`), JSON.stringify({
         name: variant.name,
         symbol: "SCC",
@@ -253,6 +379,7 @@ async function main() {
   // squares, and a sheet stretched to fit one would be the only resampled
   // thing in this whole script.
   for (const pack of PACKS) {
+    if (only && !`pack-${pack.onChainId}`.includes(only)) continue;
     const art = removeChroma(readPng(join(PUBLIC, pack.art.file)));
     const k = Math.max(1, Math.floor(FRAME_GEOMETRY.cell * scale * 0.8 / pack.art.frameHeight));
     const side = FRAME_GEOMETRY.cell * scale;
