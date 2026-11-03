@@ -1,12 +1,12 @@
 {
-  "name": "Crown",
+  "name": "Top Hat",
   "symbol": "SCC",
-  "description": "LEGENDARY hat from Sol City.",
+  "description": "UNCOMMON hat from Sol City.",
   "image": "https://solanacity.io/collectibles/15874.gif",
   "attributes": [
     {
       "trait_type": "Rarity",
-      "value": "LEGENDARY"
+      "value": "UNCOMMON"
     },
     {
       "trait_type": "Slot",

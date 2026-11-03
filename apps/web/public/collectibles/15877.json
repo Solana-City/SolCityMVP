@@ -1,12 +1,12 @@
 {
-  "name": "Ninja",
+  "name": "Pirate Hat",
   "symbol": "SCC",
-  "description": "LEGENDARY hat from Sol City.",
+  "description": "RARE hat from Sol City.",
   "image": "https://solanacity.io/collectibles/15877.gif",
   "attributes": [
     {
       "trait_type": "Rarity",
-      "value": "LEGENDARY"
+      "value": "RARE"
     },
     {
       "trait_type": "Slot",

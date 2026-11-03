@@ -1,12 +1,12 @@
 {
-  "name": "Dude Coat",
+  "name": "Red Coat",
   "symbol": "SCC",
-  "description": "RARE tshirt from Sol City.",
+  "description": "UNCOMMON tshirt from Sol City.",
   "image": "https://solanacity.io/collectibles/7708.gif",
   "attributes": [
     {
       "trait_type": "Rarity",
-      "value": "RARE"
+      "value": "UNCOMMON"
     },
     {
       "trait_type": "Slot",

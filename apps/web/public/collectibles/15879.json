@@ -1,12 +1,12 @@
 {
-  "name": "Straw Hat",
+  "name": "Wizard Hat",
   "symbol": "SCC",
-  "description": "UNCOMMON hat from Sol City.",
+  "description": "RARE hat from Sol City.",
   "image": "https://solanacity.io/collectibles/15879.gif",
   "attributes": [
     {
       "trait_type": "Rarity",
-      "value": "UNCOMMON"
+      "value": "RARE"
     },
     {
       "trait_type": "Slot",

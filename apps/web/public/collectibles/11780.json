@@ -1,12 +1,12 @@
 {
   "name": "Round Glasses",
   "symbol": "SCC",
-  "description": "UNCOMMON accessory from Sol City.",
+  "description": "COMMON accessory from Sol City.",
   "image": "https://solanacity.io/collectibles/11780.gif",
   "attributes": [
     {
       "trait_type": "Rarity",
-      "value": "UNCOMMON"
+      "value": "COMMON"
     },
     {
       "trait_type": "Slot",

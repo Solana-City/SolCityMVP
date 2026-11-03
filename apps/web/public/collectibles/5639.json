@@ -1,12 +1,12 @@
 {
   "name": "Golden Pants",
   "symbol": "SCC",
-  "description": "RARE pants from Sol City.",
+  "description": "LEGENDARY pants from Sol City.",
   "image": "https://solanacity.io/collectibles/5639.gif",
   "attributes": [
     {
       "trait_type": "Rarity",
-      "value": "RARE"
+      "value": "LEGENDARY"
     },
     {
       "trait_type": "Slot",

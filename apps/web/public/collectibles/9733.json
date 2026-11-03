@@ -1,0 +1,29 @@
+{
+  "name": "Hourglass Backpack",
+  "symbol": "SCC",
+  "description": "LEGENDARY back from Sol City.",
+  "image": "https://solanacity.io/collectibles/9733.gif",
+  "attributes": [
+    {
+      "trait_type": "Rarity",
+      "value": "LEGENDARY"
+    },
+    {
+      "trait_type": "Slot",
+      "value": "back"
+    },
+    {
+      "trait_type": "Season",
+      "value": "1"
+    }
+  ],
+  "properties": {
+    "files": [
+      {
+        "uri": "https://solanacity.io/collectibles/9733.gif",
+        "type": "image/gif"
+      }
+    ],
+    "category": "image"
+  }
+}

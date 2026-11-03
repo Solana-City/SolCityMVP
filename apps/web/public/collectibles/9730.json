@@ -1,12 +1,12 @@
 {
   "name": "Red Backpack",
   "symbol": "SCC",
-  "description": "UNCOMMON back from Sol City.",
+  "description": "COMMON back from Sol City.",
   "image": "https://solanacity.io/collectibles/9730.gif",
   "attributes": [
     {
       "trait_type": "Rarity",
-      "value": "UNCOMMON"
+      "value": "COMMON"
     },
     {
       "trait_type": "Slot",

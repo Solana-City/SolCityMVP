@@ -1,12 +1,12 @@
 {
-  "name": "Dragon T-Shirt",
+  "name": "Doctor Coat",
   "symbol": "SCC",
-  "description": "RARE tshirt from Sol City.",
+  "description": "UNCOMMON tshirt from Sol City.",
   "image": "https://solanacity.io/collectibles/7706.gif",
   "attributes": [
     {
       "trait_type": "Rarity",
-      "value": "RARE"
+      "value": "UNCOMMON"
     },
     {
       "trait_type": "Slot",

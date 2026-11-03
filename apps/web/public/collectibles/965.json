@@ -1,12 +1,12 @@
 {
-  "name": "Pumpkin Head",
+  "name": "Seeker Hat",
   "symbol": "SCC",
-  "description": "EVENT hat from Sol City.",
+  "description": "QUEST hat from Sol City.",
   "image": "https://solanacity.io/collectibles/965.gif",
   "attributes": [
     {
       "trait_type": "Rarity",
-      "value": "EVENT"
+      "value": "QUEST"
     },
     {
       "trait_type": "Slot",
