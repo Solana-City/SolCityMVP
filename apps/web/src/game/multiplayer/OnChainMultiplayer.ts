@@ -1815,13 +1815,25 @@ export class OnChainMultiplayer {
       const rentFloor = await this.baseConnection
         .getMinimumBalanceForRentExemption(0)
         .catch(() => 650_240);
-      // Enough for a few hundred base-layer writes on top of the floor. Finds
-      // and cranks are the only ones, at 5,000 lamports each.
-      const SESSION_FUND_LAMPORTS = rentFloor + 2_500_000;
+      // What the key is topped up TO: the floor plus fifty base-layer writes.
+      //
+      // Only base writes cost the key anything, at 5,000 lamports each, and
+      // there are few of them: a hunt claim (at most one per five-minute
+      // round, and only by whoever found the citizen) and sync_unlocks while
+      // not delegated. Walking, chat, outfits, expressions and commits all go
+      // to the rollup, where a transaction costs nothing. Fifty is hours of
+      // play. It used to be five hundred, which parked ~0.0025 SOL of the
+      // player's money in a browser key that is lost if the browser forgets
+      // it.
+      const SESSION_TARGET_LAMPORTS = rentFloor + 250_000;
       const sessionBalance = await this.baseConnection.getBalance(sessionKey).catch(() => 0);
-      // Top up well before the floor, so a session that runs long does not end
-      // it stranded one fee above the line.
-      const needsFunding = sessionBalance < rentFloor + 500_000;
+      // Top up while ten writes are still left, so a session never ends
+      // stranded one fee above the line.
+      const needsFunding = sessionBalance < rentFloor + 50_000;
+      // TO the target, not BY a fixed amount: a key that still holds some of
+      // its last top-up only needs the difference. From empty this is the
+      // whole target, which clears the rent floor a new account needs.
+      const SESSION_FUND_LAMPORTS = Math.max(0, SESSION_TARGET_LAMPORTS - sessionBalance);
 
       if (!existing) {
         this.progress("Creating your player (sign)…");
