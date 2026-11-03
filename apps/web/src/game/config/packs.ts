@@ -44,18 +44,24 @@ const RARITY_TABLE: Partial<Record<Rarity, Partial<Record<LayerCategory, string[
     tshirt: ["Suit_golden"],
     pants: ["Tail_demon", "Pants_golden"],
   },
+  // Rare was carrying 18 of the 95, nearly double the supply model's share,
+  // which left a specific rare barely easier to pull than a legendary while
+  // common and uncommon sat at the same per-item rate. Six came down.
   rare: {
     hat: ["Viking_hat", "Vizard_hat", "Pirate", "Ninja"],
-    accessory: ["Ring_brilliant", "Glasses_thug", "Blindfold_demon"],
+    accessory: ["Ring_brilliant", "Blindfold_demon"],
     back: ["Wings_angel", "Wings_demon", "Jetpack"],
-    tshirt: ["Tshirt_dragon", "Coat_doc", "Coat_dude", "Coat_red", "Suit_black"],
-    pants: ["Pants_lotus", "Short_pants_lotus", "Pants_white"],
+    tshirt: ["Tshirt_dragon", "Suit_black"],
+    pants: ["Pants_lotus"],
   },
   uncommon: {
     hat: ["Cylinder", "Straw_hat", "Horns_demon", "Cap_kid"],
     back: ["backpack_red"],
-    accessory: ["Glasses_steampunk", "Golden_ring", "Pirate", "Visor_cyber"],
-    tshirt: ["Longsleeve_acid", "Longsleeve_neon", "Longsleeve_chess", "Longsleeve_indies", "Tshirt_acid", "Tshirt_neon", "Tshirt_chess", "Tshirt_solana_white"],
+    accessory: ["Glasses_steampunk", "Golden_ring", "Pirate", "Visor_cyber", "Glasses_thug"],
+    // Longsleeve_indies is NOT here any more: it became an event item, so it
+    // sits in the quest block and never reaches a pack. Naming it would have
+    // put an uncommon badge on something no pack can draw.
+    tshirt: ["Longsleeve_acid", "Longsleeve_neon", "Longsleeve_chess", "Tshirt_acid", "Tshirt_neon", "Tshirt_chess", "Tshirt_solana_white", "Coat_doc", "Coat_red"],
     pants: ["Pants_chess_red", "Pants_chess_white", "Pants_acid", "Short_pants_acid", "Pants_neon", "Short_pants_neon", "Short_pants_purple_belt"],
   },
 };
