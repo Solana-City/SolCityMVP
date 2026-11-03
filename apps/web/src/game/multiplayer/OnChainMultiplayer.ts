@@ -1670,7 +1670,7 @@ export class OnChainMultiplayer {
         case "ball":
           // Straight to the scene, same event as the rollup path but with no
           // hop to wait for: another tab of this browser, already here.
-          (globalThis as any).__solCityGameEvents?.emit("ball:kick", { kick: msg.k, stale: false });
+          (globalThis as any).__solCityGameEvents?.emit("ball:kick", { kick: msg.k, stale: false, w: msg.w });
           break;
         case "leave":
           this.handlePlayerLeave(msg.w);
@@ -3226,7 +3226,7 @@ export class OnChainMultiplayer {
           // BeachBall ignores it once any live kick has arrived.
           if (ballTag) {
             const kick = decodeBallKick(ballTag);
-            if (kick) bus?.emit("ball:kick", { kick, stale: true, staleAt: messageAt });
+            if (kick) bus?.emit("ball:kick", { kick, stale: true, staleAt: messageAt, w: walletStr });
           }
         } else {
           // Expression is its own field and its own stamp, so it is read
@@ -3238,7 +3238,7 @@ export class OnChainMultiplayer {
           if (ballTag) {
             if (ballTag !== (updated as any)._ballTag) {
               const kick = decodeBallKick(ballTag);
-              if (kick) bus?.emit("ball:kick", { kick, stale: false });
+              if (kick) bus?.emit("ball:kick", { kick, stale: false, w: walletStr });
             }
           } else if (lastMessage && messageAt > ((updated as any)._msgAt ?? 0)) {
             (updated as any)._msgAt = messageAt;

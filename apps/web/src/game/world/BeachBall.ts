@@ -189,7 +189,17 @@ const MIN_KICK_SPEED = 10;
 const OFFSET_DECAY_PER_STEP = 0.74;
 /** Below this the offset is spent; above it a correction is not worth easing. */
 const OFFSET_MIN_PX = 0.3;
-const OFFSET_MAX_PX = 64;
+/**
+ * The largest correction that slides rather than cuts.
+ *
+ * It was 64, which is less than a remote kick's own head start: the kick is
+ * picked up REMOTE_LAG_MS into its roll, and at NUDGE_SPEED that alone is
+ * about 76px. So nearly every kick from somebody else was a cut, the sprite
+ * blinking from where it sat to where the roll had got to. Big enough now for
+ * that head start plus a prediction that was somewhat off; a remembered kick
+ * from a session we just joined is still a cut, see applyRemoteKick.
+ */
+const OFFSET_MAX_PX = 160;
 /** A kick nothing here saw coming, so it is worth a sound. */
 const SURPRISE_MS = 600;
 
@@ -204,7 +214,22 @@ export interface BallBody {
   kicks?: boolean;
   /** The player THIS browser drives, whose kicks go out to the city. */
   local?: boolean;
+  /** Whose body this is (their wallet), for KICKER_QUIET_MS. Absent for NPCs. */
+  id?: string;
 }
+
+/**
+ * How long a remote kicker's own body is ignored after their kick arrives.
+ *
+ * Their avatar here trails the real one by the network, so right after the
+ * real kick lands it is still walking up to where the ball WAS, and reaches
+ * the ball a moment later. Left to the physics, that late body either starts
+ * a second, predicted kick or bounces the ball back towards itself, and the
+ * next sample then corrects it again: the ball jumping about, which on screen
+ * looked like it vanishing and coming back. The real kick already said what
+ * that body did, so the body has nothing more to add until it has caught up.
+ */
+const KICKER_QUIET_MS = 900;
 
 /**
  * The layers that paint the ST Brasil beach: the sand itself and the
@@ -350,6 +375,8 @@ export class BeachBall {
    */
   private offX = 0;
   private offY = 0;
+  /** Remote kicker wallet -> until when their trailing body is ignored. */
+  private quietUntil = new Map<string, number>();
   /** Chain seconds of the best remembered touch adopted so far (see applyRemoteKick). */
   private bestStaleAt = 0;
 
@@ -397,8 +424,9 @@ export class BeachBall {
    * kick goes out to the city; everyone else's is a prediction that the real
    * kick will confirm or correct a moment later.
    */
-  update(bodies: BallBody[]): void {
+  update(all: BallBody[]): void {
     const now = Date.now();
+    const bodies = all.filter((b) => !b.id || (this.quietUntil.get(b.id) ?? 0) <= now);
     this.stepTo(now, bodies);
     // The local player first: their input is real where everyone else's is
     // inferred, so if two bodies reach the ball on the same frame the one
@@ -426,7 +454,8 @@ export class BeachBall {
    * puts a player who just walked in on the same ball as everybody else
    * instead of on the one that has not moved since the page loaded.
    */
-  applyRemoteKick(kick: BallKick, stale = false, staleAt = 0): boolean {
+  applyRemoteKick(kick: BallKick, stale = false, staleAt = 0, kicker?: string): boolean {
+    if (kicker && !stale) this.quietUntil.set(kicker, Date.now() + KICKER_QUIET_MS);
     if (stale) {
       // A touch that actually happened always beats a remembered one.
       if (this.seenLiveKick) return false;
@@ -464,7 +493,7 @@ export class BeachBall {
     // sliding the length of the beach would look far worse than a cut.
     const dx = from.x - this.x;
     const dy = from.y - this.y;
-    const eased = Math.hypot(dx, dy) <= OFFSET_MAX_PX;
+    const eased = !stale && Math.hypot(dx, dy) <= OFFSET_MAX_PX;
     this.offX = eased ? dx : 0;
     this.offY = eased ? dy : 0;
     this.draw();

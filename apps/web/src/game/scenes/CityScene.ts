@@ -1308,8 +1308,8 @@ export class CityScene extends Phaser.Scene {
 
     // Cross-device kick of the beach football: another player kicked it, so
     // replay their roll from the snapshot they sent (see world/BeachBall).
-    this.onGameEvent("ball:kick", ({ kick, stale, staleAt }: { kick: BallKick; stale: boolean; staleAt?: number }) => {
-      const surprising = this.beachBall?.applyRemoteKick(kick, stale, staleAt ?? 0);
+    this.onGameEvent("ball:kick", ({ kick, stale, staleAt, w }: { kick: BallKick; stale: boolean; staleAt?: number; w?: string }) => {
+      const surprising = this.beachBall?.applyRemoteKick(kick, stale, staleAt ?? 0, w);
       // Usually this kick was predicted here the moment the kicker's foot
       // arrived and has already made its noise, so `surprising` is false and
       // nothing sounds twice. And only when the ball is on screen: a touch on
@@ -2326,7 +2326,7 @@ export class CityScene extends Phaser.Scene {
     for (const [wallet, avatar] of this.remotePlayers) {
       if (Math.abs(avatar.x - bx) >= REACH || Math.abs(avatar.y - by) >= REACH) continue;
       const v = allowKicks ? this.remoteVelocity.get(wallet) : undefined;
-      near.push({ x: avatar.x, y: avatar.y, vx: v?.vx, vy: v?.vy, kicks: allowKicks });
+      near.push({ x: avatar.x, y: avatar.y, vx: v?.vx, vy: v?.vy, kicks: allowKicks, id: wallet });
     }
     for (const npc of this.npcSprites) {
       const at = npc.getPosition();
