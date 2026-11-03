@@ -228,12 +228,12 @@ type CardRule = { steps: number; cell: (step: number) => number };
  * an eight-pixel jump every 150 ms while the sparkle waits 600 ms to move:
  * it read as truncated, not smooth (owner, 2026-11-03).
  *
- * So the card steps the sparkle every 150 ms, one group per step, and keeps
- * the float at half that pace: two steps up, two steps down. The owner
- * picked this over dropping the float, which is what the Crown does.
+ * So the card steps the sparkle every 150 ms, one group per step, and drops
+ * the float: the first cell of each group, as the Crown plays. The owner
+ * tried keeping the float at half pace and preferred this.
  */
 const CARD_RULE: Record<string, CardRule> = {
-  "hat/Halo": { steps: 12, cell: (s) => (s % 12) * SPRITE_COLS + (Math.floor(s / 2) % 2) },
+  "hat/Halo": { steps: 12, cell: (s) => (s % 12) * SPRITE_COLS },
 };
 
 /**
