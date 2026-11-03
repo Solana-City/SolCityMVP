@@ -216,26 +216,6 @@ function composeCell(
 
 const gcd = (a: number, b: number): number => (b ? gcd(b, a % b) : a);
 
-/** Which sheet cell a card shows at each step of the item's clock. */
-type CardRule = { steps: number; cell: (step: number) => number };
-
-/**
- * Cards that do not play their sheet the way the game does.
- *
- * The Halo's sheet holds each sparkle for a group of four cells and spends
- * the group bobbing a pixel up and down. In the game that pixel is the
- * float. On a card the item is drawn eight times larger, so the same bob is
- * an eight-pixel jump every 150 ms while the sparkle waits 600 ms to move:
- * it read as truncated, not smooth (owner, 2026-11-03).
- *
- * So the card steps the sparkle every 150 ms, one group per step, and drops
- * the float: the first cell of each group, as the Crown plays. The owner
- * tried keeping the float at half pace and preferred this.
- */
-const CARD_RULE: Record<string, CardRule> = {
-  "hat/Halo": { steps: 12, cell: (s) => (s % 12) * SPRITE_COLS },
-};
-
 /**
  * The card's timeline: which frame cell and which item cell to show, and for
  * how long. A new GIF frame starts only where one of the two changes, so the
@@ -245,7 +225,7 @@ const CARD_RULE: Record<string, CardRule> = {
  * use, called WITHOUT a walk column: a card does not walk, so a walkSynced
  * garment shows its standing pose, exactly as the wardrobe tile does.
  */
-function timeline(frameMs: number, effect: Variant["effect"], cellKey: (cell: number) => string, cardRule?: CardRule) {
+function timeline(frameMs: number, effect: Variant["effect"], cellKey: (cell: number) => string) {
   const frameLoop = frameMs * FRAME_GEOMETRY.cells;
   if (!effect) {
     return Array.from({ length: FRAME_GEOMETRY.cells }, (_, c) => ({ frameCell: c, itemCell: 0, ms: frameMs }));
@@ -255,12 +235,8 @@ function timeline(frameMs: number, effect: Variant["effect"], cellKey: (cell: nu
   // The loop as the sheet DRAWS it, not as it is declared: the Halo is 48
   // cells whose second half copies the first, so it repeats after 24. Found
   // by comparing pixels, so a sheet that repeats is never rendered twice over.
-  const rule: CardRule = cardRule ?? {
-    steps: effect.steady || effect.walkSynced ? groups : effect.frames,
-    cell: (step) => effectCell(effect, (step + 0.5) * stepMs),
-  };
-  const steps = rule.steps;
-  const seq = Array.from({ length: steps }, (_, i) => cellKey(rule.cell(i)));
+  const steps = effect.steady || effect.walkSynced ? groups : effect.frames;
+  const seq = Array.from({ length: steps }, (_, i) => cellKey(effectCell(effect, (i + 0.5) * stepMs)));
   let drawn = steps;
   for (let p = 1; p < steps; p++) {
     if (steps % p === 0 && seq.every((k, i) => k === seq[(i + p) % steps])) { drawn = p; break; }
@@ -278,7 +254,7 @@ function timeline(frameMs: number, effect: Variant["effect"], cellKey: (cell: nu
     const mid = (t0 + t1) / 2;
     out.push({
       frameCell: Math.floor(mid / frameMs) % FRAME_GEOMETRY.cells,
-      itemCell: rule.cell(Math.floor(mid / stepMs)),
+      itemCell: effectCell(effect, mid),
       ms: t1 - t0,
     });
   });
@@ -372,7 +348,7 @@ async function main() {
         }
         return Buffer.concat(rows).toString("base64");
       };
-      const steps = timeline(frameMs, variant.effect, cellKey, CARD_RULE[`${category}/${variant.id}`]);
+      const steps = timeline(frameMs, variant.effect, cellKey);
       const ink = inkUnion(item, [...new Set(steps.map((s) => s.itemCell))], rowY);
       const cells = steps.map((s) => composeCell(frameSheet(kind), s.frameCell, item, s.itemCell, rowY, ink, scale));
       writePng(join(outDir, `${index}.png`), cells[0]);
