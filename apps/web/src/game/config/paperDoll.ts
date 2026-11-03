@@ -107,10 +107,11 @@ export interface LayerVariant {
     /**
      * Skips the bob the artist drew into the sheet. It is groups of
      * SPRITE_COLS cells, and inside a group the cells alternate between a pose
-     * and the same pose one pixel lower (a head bobbing as it walks). A halo
-     * floats, so that bob is part of it. A crown sits ON the head, and a head
-     * that stands still does not bob, so it plays the first cell of each group
-     * only: the sparkle still moves, one step per frame of `fps`.
+     * and the same pose one pixel lower (a head bobbing as it walks). A crown
+     * sits ON the head, and a head that stands still does not bob, so it
+     * plays the first cell of each group only: the sparkle still moves, one
+     * step per frame of `fps`. The Halo plays the same way: cell by cell its
+     * one-pixel bob read as a jerk, not a float.
      */
     steady?: boolean;
     /**
@@ -486,13 +487,18 @@ export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
     // sheet is 24 cells wide and the mask reads the first four as a walk.
     { id: "Halo", name: "Halo", textureKey: "pd-hat-Halo", file: "hat/Halo.png",
       hatCoverage: "band",
-      // DOM's timing: 150 ms a cell. The redrawn sheet is 48 cells, but cells
-      // 24-47 are a byte-for-byte copy of 0-23, so what you SEE loops every
-      // 24 cells, 3.6 s. Inside each group of four there are only two
-      // drawings, the pose and the same pose a pixel lower: that is the float,
-      // and it is why the Halo plays every cell. Read off the clock (see
+      // DOM's timing: 150 ms a step. The redrawn sheet is 48 cells, but cells
+      // 24-47 are a byte-for-byte copy of 0-23. Inside each group of four
+      // there are only two drawings, the pose and the same pose a pixel
+      // lower, and the sparkle only moves from one group to the next.
+      //
+      // steady since 2026-11-04. Played cell by cell, the halo hopped a pixel
+      // every 150 ms while its sparkle waited 600 ms to move; the owner saw it
+      // as truncated and jerky, on the card first and then in the game. One
+      // group per step moves the sparkle every 150 ms and drops the hop,
+      // which is what the Crown does. Read off the clock (see
       // AvatarSprite.tickEffects), so it holds whatever the frame rate does.
-      effect: { frames: 48, fps: 1000 / 150, clearsHair: true } },
+      effect: { frames: 48, fps: 1000 / 150, clearsHair: true, steady: true } },
     // The second effect sheet, and the first that is a crown rather than a
     // halo: 48 cells a row, twelve walk cycles drawn over the body. It took the
     // place of the static Crown, which was dropped: there is no plain crown,
