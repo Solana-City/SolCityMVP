@@ -143,10 +143,11 @@ export class CityScene extends Phaser.Scene {
   private recentJoins = new Map<string, number>();
   // Debounce transient wallet flaps: the adapter emits disconnect→connect on
   // auto-connect retries / re-renders. Acting on each disconnect tears the
-  // session down (commit_and_undelegate + rotateKey), and the rapid reconnect
-  // then reads the ER with a rotated key it can't match → InvalidSessionKey
-  // (6000) on every move. We delay the disconnect and cancel it if a reconnect
-  // for the same wallet arrives, so a flap never undelegates.
+  // session down (a commit, or a commit-and-undelegate once the allowance is
+  // spent; see delegationBudget.ts), and a reconnect racing an undelegate
+  // reads a rollup that is letting go of the account. We delay the disconnect
+  // and cancel it if a reconnect for the same wallet arrives, so a flap never
+  // sends either.
   private walletFlapTimer: ReturnType<typeof setTimeout> | null = null;
   private currentDirection: Direction = "down";
   private idleDelay = 0;

@@ -29,6 +29,7 @@ import {
   buildInitializePlayerIx,
   buildAuthorizeSessionIx,
   buildDelegateIx,
+  buildCommitPlayerSessionIx,
   buildCommitAndUndelegatePlayerSessionIx,
   buildInitUnlockStateIx,
   buildSyncUnlocksIx,
@@ -58,6 +59,7 @@ import { setHuntFromChain, clearHuntFromChain } from "../minigames/whereIsNPC/Wh
 import { transactionLog } from "../telemetry/transactionLog";
 import type { Loadout } from "../config/paperDoll";
 import { ER_VALIDATORS, probeValidators, nearestValidator } from "./erValidators";
+import { leaveAction, readCommits, recordCommit, resetCommits } from "./delegationBudget";
 import { setOnChainUnlocks } from "@/game/config/wardrobeUnlocks";
 import { syncHeldToWardrobe } from "@/game/solana/mint";
 import { gameSlotOf, GAME_SLOT_CAP } from "@/game/minigames/slots";
@@ -715,7 +717,13 @@ export class OnChainMultiplayer {
     console.log(`[Multiplayer] connected as ${walletStr.slice(0, 8)}… | program=${isProgramDeployed() ? "real" : "sim"}`);
   }
 
-  disconnect(): void {
+  /**
+   * Leaves the city. The account normally STAYS delegated (see
+   * delegationBudget.ts): ending a delegation is what MagicBlock bills, and a
+   * delegation that is still open lets the next visit in with no signature.
+   * `endDelegation` forces the undelegate, for the manual reset.
+   */
+  disconnect(opts: { endDelegation?: boolean } = {}): void {
     if (!this._connected) return;
 
     // Broadcast departure to other tabs
@@ -753,7 +761,7 @@ export class OnChainMultiplayer {
     clearHuntFromChain();
 
     if (isProgramDeployed() && this.wallet) {
-      this.commitAndUndelegatePlayer(this.wallet).catch(() => {});
+      this.leaveRollup(this.wallet, opts.endDelegation === true).catch(() => {});
     } else {
       const entry = transactionLog.record({
         kind: "undelegate", layer: "base",
@@ -789,7 +797,9 @@ export class OnChainMultiplayer {
     const displayName = this.knownPlayers.get(wallet.toBase58())?.displayName;
     const [playerPDA] = derivePlayerPDA(wallet);
 
-    this.disconnect();
+    // The one leave that must end the delegation: the point of a reset is a
+    // fresh one.
+    this.disconnect({ endDelegation: true });
 
     // Poll the BASE layer until ownership actually reverts to our program —
     // a fixed sleep here previously reconnected before the ephemeral
@@ -1906,9 +1916,10 @@ export class OnChainMultiplayer {
           }
         }
       } else if (!isDelegated) {
-        // Leaving the city undelegates but does not revoke on chain, so a
-        // player coming back in the same browser usually finds our key still
-        // authorized on base. Authorizing it again was a popup that changed
+        // Leaving usually keeps the delegation now, so this branch is the
+        // visit after one that ended it (allowance spent, or a manual reset).
+        // Ending it does not revoke on chain, so a player coming back in the
+        // same browser usually finds our key still authorized on base. Authorizing it again was a popup that changed
         // nothing; the top-up it carried now rides with the delegation. The
         // sync before delegating is session-signed, so the session key must
         // be able to pay for it: a key too close to the rent floor still goes
@@ -2471,6 +2482,8 @@ export class OnChainMultiplayer {
    * is simply lost.
    */
   private adoptNewDelegation(near: ReturnType<typeof nearestValidator>): void {
+    // A new delegation is a new commit allowance.
+    if (this.wallet) resetCommits(this.wallet.toBase58());
     const nearConn = this.erReadConnections.find(r => r.id === near.id);
     if (nearConn) {
       this.ephemeralConnection = nearConn.conn;
@@ -2728,6 +2741,48 @@ export class OnChainMultiplayer {
       );
     } catch (err: any) {
       console.warn("[Multiplayer] sync_unlocks skipped:", err?.message);
+    }
+  }
+
+  /**
+   * Commit and stay delegated, or end the delegation once its commit
+   * allowance is spent (or when asked to). Session-signed either way, so
+   * leaving never opens the wallet.
+   */
+  private async leaveRollup(wallet: PublicKey, endDelegation: boolean): Promise<void> {
+    // Not on the rollup: nothing to commit and nothing delegated to end.
+    if (!this.useEphemeral) return;
+    const w = wallet.toBase58();
+    if (leaveAction(readCommits(w), endDelegation) === "undelegate") {
+      await this.commitAndUndelegatePlayer(wallet);
+      resetCommits(w);
+    } else {
+      await this.commitPlayer(wallet);
+    }
+  }
+
+  /** Copies the live state onto the base layer, keeping the delegation. */
+  private async commitPlayer(wallet: PublicKey): Promise<void> {
+    const entry = transactionLog.record({
+      kind: "commit", layer: "ephemeral",
+      label: "Save session (stays on the rollup)", status: "pending",
+    });
+    try {
+      const sessionKey = this.sessionKeys.getSessionPublicKey();
+      // OUR instruction for the same reason as the undelegate below: the
+      // magic program only accepts a commit the account's owner asked for.
+      const ix = buildCommitPlayerSessionIx(wallet, sessionKey);
+      const { blockhash } = await this.ephemeralConnection.getLatestBlockhash();
+      const tx = new Transaction({ recentBlockhash: blockhash, feePayer: sessionKey }).add(ix);
+      this.sessionKeys.signTransaction(tx);
+      const sig = await this.ephemeralConnection.sendRawTransaction(tx.serialize(), {
+        skipPreflight: true,
+      });
+      recordCommit(wallet.toBase58());
+      transactionLog.markConfirmed(entry.id, sig);
+      console.log("[Multiplayer] committed, still delegated:", sig.slice(0, 12));
+    } catch (err: any) {
+      transactionLog.markFailed(entry.id, err?.message ?? "commit failed");
     }
   }
 
