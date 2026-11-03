@@ -243,13 +243,13 @@ export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
     { id: "Blue_tshirt",  name: "Blue T-Shirt",  textureKey: "pd-tshirt-Blue_tshirt",  file: "tshirt/Blue_tshirt.png" },
     { id: "White_tshirt", name: "White T-Shirt", textureKey: "pd-tshirt-White_tshirt", file: "tshirt/White_tshirt.png" },
     // Superteam Brasil set — earned, never dropped by a booster (see unlockVia).
-    { id: "STB_shirt", name: "Superteam Brasil Shirt", textureKey: "pd-tshirt-STB_shirt",
+    { id: "STB_shirt", name: "Superteam Brasil T-Shirt", textureKey: "pd-tshirt-STB_shirt",
       file: "tshirt/STB_shirt.png", unlockVia: "quest", unlockHint: "Talk to Kuka" },
     { id: "Brazilian_shirt", name: "Brazil Shirt", textureKey: "pd-tshirt-Brazilian_shirt",
       file: "tshirt/Brazilian_shirt.png", unlockVia: "quest", unlockHint: "Meet Kuka, Kite Pro, the Caramel Dog and every builder at a stand" },
     // Vibhu's gift, for opening his Breakpoint 2026 link. Earned by taking the
     // link, not by buying anything: nothing checks whether a ticket was bought.
-    { id: "Shirt_Solana", name: "Solana Shirt", textureKey: "pd-tshirt-Shirt_Solana",
+    { id: "Shirt_Solana", name: "Solana Longsleeve", textureKey: "pd-tshirt-Shirt_Solana",
       file: "tshirt/Shirt_Solana.png", unlockVia: "quest", unlockHint: "Open Vibhu's Breakpoint link" },
     // The clothing drop, 2026-10-30. Appended; position is the index.
     { id: "Longsleeve_black", name: "Black Longsleeve", textureKey: "pd-tshirt-Longsleeve_black", file: "tshirt/Longsleeve_black.png" },
@@ -289,7 +289,7 @@ export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
   ],
   accessory: [
     { id: "Golden_ring", name: "Golden Ring", textureKey: "pd-accessory-Golden_ring", file: "accessory/Golden_ring.png" },
-    { id: "Pirate",      name: "Pirate",      textureKey: "pd-accessory-Pirate",      file: "accessory/Pirate.png" },
+    { id: "Pirate",      name: "Pirate Eyepatch", textureKey: "pd-accessory-Pirate",      file: "accessory/Pirate.png" },
     { id: "Trader_shades", name: "Trader Shades", textureKey: "pd-accessory-Trader_shades",
       file: "accessory/Trader_shades.png", unlockVia: "quest", unlockHint: "Trade your first stock at Stocklana" },
     // Rings and eyewear, 2026-10-30. Appended for the same reason as the
@@ -341,15 +341,15 @@ export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
     // plain blue cap joined the catalog on 2026-10-30. The ID does not move,
     // because the id is what the catalog index is built from and the index is
     // what a wallet owns. Only the label a player reads changes.
-    { id: "Cap_blue",   name: "Sol Cap Blue", textureKey: "pd-hat-Cap_blue",   file: "hat/Cap_blue.png" },
+    { id: "Cap_blue",   name: "Solana Blue Cap", textureKey: "pd-hat-Cap_blue",   file: "hat/Cap_blue.png" },
     { id: "Cap_kid",    name: "Cap Kid",    textureKey: "pd-hat-Cap_kid",    file: "hat/Cap_kid.png" },
     { id: "Crown",      name: "Crown",      textureKey: "pd-hat-Crown",      file: "hat/Crown.png" },
     { id: "Cylinder",   name: "Cylinder",   textureKey: "pd-hat-Cylinder",   file: "hat/Cylinder.png" },
     { id: "Viking_hat", name: "Viking Hat", textureKey: "pd-hat-Viking_hat", file: "hat/Viking_hat.png" },
-    { id: "Ninja",      name: "Ninja",      textureKey: "pd-hat-Ninja",      file: "hat/Ninja.png", hatCoverage: "suppress" },
-    { id: "Pirate",     name: "Pirate",     textureKey: "pd-hat-Pirate",     file: "hat/Pirate.png" },
+    { id: "Ninja",      name: "Ninja Mask", textureKey: "pd-hat-Ninja",      file: "hat/Ninja.png", hatCoverage: "suppress" },
+    { id: "Pirate",     name: "Pirate Hat", textureKey: "pd-hat-Pirate",     file: "hat/Pirate.png" },
     { id: "Straw_hat",  name: "Straw Hat",  textureKey: "pd-hat-Straw_hat",  file: "hat/Straw_hat.png" },
-    { id: "Vizard_hat", name: "Wizard Hat", textureKey: "pd-hat-Vizard_hat", file: "hat/Vizard_hat.png" },
+    { id: "Vizard_hat", name: "Vizard Hat", textureKey: "pd-hat-Vizard_hat", file: "hat/Vizard_hat.png" },
     { id: "hat_black",  name: "Black Hat",  textureKey: "pd-hat-hat_black",  file: "hat/hat_black.png" },
     { id: "hat_red",    name: "Red Hat",    textureKey: "pd-hat-hat_red",    file: "hat/hat_red.png" },
     { id: "red_belt",   name: "Red Bandana",textureKey: "pd-hat-red_belt",   file: "hat/red_belt.png", hatCoverage: "band" },
@@ -393,7 +393,7 @@ export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
     //
     // The spriter's export is named Helmet_Ore.png, which no longer matches
     // anything here. Worth knowing before hunting for a file called Miner_hat.
-    { id: "Miner_hat", name: "Miner's Hat", textureKey: "pd-hat-Miner_hat",
+    { id: "Miner_hat", name: "Miners Hat", textureKey: "pd-hat-Miner_hat",
       file: "hat/Miner_hat.png", unlockVia: "quest",
       unlockHint: "Win ORE out of a claim" },
     // First animated effect sheet: 24 frames per direction row. A TEST item
