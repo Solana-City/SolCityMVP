@@ -176,6 +176,7 @@ describe("the global catalog index", () => {
       [5653, "pants:Pants_orange"],
       [5654, "pants:Short_pants_purple_belt"],
       [5655, "pants:Pants_white"], [5656, "pants:Short_pants_red_belt"],
+      [5657, "pants:Pants_blue_belt"], [5658, "pants:Pants_grey_belt"],
       [7680, "tshirt:Longsleeve_black"], [7681, "tshirt:Longsleeve_brown"],
       [7682, "tshirt:Longsleeve_dark_blue"],
       [7683, "tshirt:Longsleeve_dark_grey"],

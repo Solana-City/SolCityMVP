@@ -290,6 +290,12 @@ export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
     { id: "Short_pants_purple_belt", name: "Purple Belted Short Pants", textureKey: "pd-pants-Short_pants_purple_belt", file: "pants/Short_pants_purple_belt.png" },
     { id: "Pants_white", name: "White Pants", textureKey: "pd-pants-Pants_white", file: "pants/Pants_white.png" },
     { id: "Short_pants_red_belt", name: "Red Belted Short Pants", textureKey: "pd-pants-Short_pants_red_belt", file: "pants/Short_pants_red_belt.png" },
+    // Belted trousers, and NOT the free Blue Pants and Grey Pants they sit
+    // next to: a pixel compare put them at 0.988 of each other and I read
+    // that as one garment, but the belt is the whole difference and the
+    // owner says they are separate items. The starter pair keeps its own art.
+    { id: "Pants_blue_belt", name: "Blue Belted Pants", textureKey: "pd-pants-Pants_blue_belt", file: "pants/Pants_blue_belt.png" },
+    { id: "Pants_grey_belt", name: "Grey Belted Pants", textureKey: "pd-pants-Pants_grey_belt", file: "pants/Pants_grey_belt.png" },
   ],
   tshirt: [
     { id: "Blue_tshirt",  name: "Blue T-Shirt",  textureKey: "pd-tshirt-Blue_tshirt",  file: "tshirt/Blue_tshirt.png" },
@@ -297,7 +303,7 @@ export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
     // Superteam Brasil set — earned, never dropped by a booster (see unlockVia).
     { id: "STB_shirt", name: "Superteam Brasil T-Shirt", textureKey: "pd-tshirt-STB_shirt",
       file: "tshirt/STB_shirt.png", unlockVia: "quest", unlockHint: "Talk to Kuka" },
-    { id: "Brazilian_shirt", name: "Brazil Shirt", textureKey: "pd-tshirt-Brazilian_shirt",
+    { id: "Brazilian_shirt", name: "Brazil T-Shirt", textureKey: "pd-tshirt-Brazilian_shirt",
       file: "tshirt/Brazilian_shirt.png", unlockVia: "quest", unlockHint: "Meet Kuka, Kite Pro, the Caramel Dog and every builder at a stand" },
     // Vibhu's gift, for opening his Breakpoint 2026 link. Earned by taking the
     // link, not by buying anything: nothing checks whether a ticket was bought.
@@ -394,15 +400,15 @@ export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
   hat: [
     // Earned, not boxed: the reward for a 7-day check-in streak. Moved out of
     // the booster pool BEFORE the pool's on-chain indices were first deployed.
-    { id: "Cap_Sol",    name: "Cap Sol",    textureKey: "pd-hat-Cap_Sol",    file: "hat/Cap_Sol.png",
+    { id: "Cap_Sol",    name: "Solana Cap",    textureKey: "pd-hat-Cap_Sol",    file: "hat/Cap_Sol.png",
       unlockVia: "quest", unlockHint: "Come back 7 days in a row" },
     // "Sol Cap Blue" and not "Cap Blue": this is the Sol cap in blue, and a
     // plain blue cap joined the catalog on 2026-10-30. The ID does not move,
     // because the id is what the catalog index is built from and the index is
     // what a wallet owns. Only the label a player reads changes.
     { id: "Cap_blue",   name: "Solana Blue Cap", textureKey: "pd-hat-Cap_blue",   file: "hat/Cap_blue.png" },
-    { id: "Cap_kid",    name: "Cap Kid",    textureKey: "pd-hat-Cap_kid",    file: "hat/Cap_kid.png" },
-    { id: "Cylinder",   name: "Cylinder",   textureKey: "pd-hat-Cylinder",   file: "hat/Cylinder.png" },
+    { id: "Cap_kid",    name: "Kid Cap",    textureKey: "pd-hat-Cap_kid",    file: "hat/Cap_kid.png" },
+    { id: "Cylinder",   name: "Top Hat",   textureKey: "pd-hat-Cylinder",   file: "hat/Cylinder.png" },
     { id: "Viking_hat", name: "Viking Hat", textureKey: "pd-hat-Viking_hat", file: "hat/Viking_hat.png" },
     { id: "Ninja",      name: "Ninja Mask", textureKey: "pd-hat-Ninja",      file: "hat/Ninja.png", hatCoverage: "suppress" },
     { id: "Pirate",     name: "Pirate Hat", textureKey: "pd-hat-Pirate",     file: "hat/Pirate.png" },

@@ -24,14 +24,14 @@ describe("season drop lists", () => {
   it("season 1 is the open one and holds pack items", () => {
     expect(SEASONS.map((s) => s.n)).toEqual([1]);
     const counts = seasonDropCounts(1);
-    expect(RARITY_ORDER.reduce((n, r) => n + counts[r], 0)).toBe(102);
+    expect(RARITY_ORDER.reduce((n, r) => n + counts[r], 0)).toBe(104);
   });
 
   it("pins what season 1 would seed, per rarity", () => {
     expect(seasonDropLists(1)).toEqual({
       common: [
         5632, 5633, 5634, 5635, 5636, 5642, 5643, 5644, 5646, 5647, 5649, 5652,
-        5653, 5655, 5656,
+        5653, 5655, 5656, 5657, 5658,
         7680, 7681, 7682, 7683, 7684, 7685, 7686, 7687, 7688, 7689, 7690, 7691,
         7692, 7693, 7694, 7695, 7696, 7697, 7707,
         9729, 9730, 9734, 9735, 9736, 9737,
