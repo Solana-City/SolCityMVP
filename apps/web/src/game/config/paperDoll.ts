@@ -400,7 +400,7 @@ export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
     { id: "Ninja",      name: "Ninja Mask", textureKey: "pd-hat-Ninja",      file: "hat/Ninja.png", hatCoverage: "suppress" },
     { id: "Pirate",     name: "Pirate Hat", textureKey: "pd-hat-Pirate",     file: "hat/Pirate.png" },
     { id: "Straw_hat",  name: "Straw Hat",  textureKey: "pd-hat-Straw_hat",  file: "hat/Straw_hat.png" },
-    { id: "Vizard_hat", name: "Vizard Hat", textureKey: "pd-hat-Vizard_hat", file: "hat/Vizard_hat.png" },
+    { id: "Vizard_hat", name: "Wizard Hat", textureKey: "pd-hat-Vizard_hat", file: "hat/Vizard_hat.png" },
     { id: "hat_black",  name: "Solana Hat",  textureKey: "pd-hat-hat_black",  file: "hat/hat_black.png" },
     { id: "hat_red",    name: "Red Hat",    textureKey: "pd-hat-hat_red",    file: "hat/hat_red.png" },
     { id: "red_belt",   name: "Red Bandana",textureKey: "pd-hat-red_belt",   file: "hat/red_belt.png", hatCoverage: "band",
