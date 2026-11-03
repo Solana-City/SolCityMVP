@@ -354,7 +354,8 @@ export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
     { id: "Vizard_hat", name: "Vizard Hat", textureKey: "pd-hat-Vizard_hat", file: "hat/Vizard_hat.png" },
     { id: "hat_black",  name: "Solana Hat",  textureKey: "pd-hat-hat_black",  file: "hat/hat_black.png" },
     { id: "hat_red",    name: "Red Hat",    textureKey: "pd-hat-hat_red",    file: "hat/hat_red.png" },
-    { id: "red_belt",   name: "Red Bandana",textureKey: "pd-hat-red_belt",   file: "hat/red_belt.png", hatCoverage: "band" },
+    { id: "red_belt",   name: "Red Bandana",textureKey: "pd-hat-red_belt",   file: "hat/red_belt.png", hatCoverage: "band",
+      unlockVia: "quest", unlockHint: "Earned in the city" },
     // Earned from NPCs, so unlockVia keeps both out of the booster pool.
     // The donation route was dropped on 2026-10-20: the Donation Manager and
     // lib/donationWallet.ts both promise the player that donations buy nothing,
@@ -395,7 +396,7 @@ export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
     //
     // The spriter's export is named Helmet_Ore.png, which no longer matches
     // anything here. Worth knowing before hunting for a file called Miner_hat.
-    { id: "Miner_hat", name: "Miners Hat", textureKey: "pd-hat-Miner_hat",
+    { id: "Miner_hat", name: "Miner's Hat", textureKey: "pd-hat-Miner_hat",
       file: "hat/Miner_hat.png", unlockVia: "quest",
       unlockHint: "Win ORE out of a claim" },
     // First animated effect sheet: 24 frames per direction row. A TEST item

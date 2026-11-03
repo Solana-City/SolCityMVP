@@ -151,10 +151,10 @@ describe("the global catalog index", () => {
       [708, "tshirt:Tshirt_solana_city"],
       [768, "back:Seeker_backpack"],
       [832, "accessory:Trader_shades"],
-      [960, "hat:Cap_Sol"], [961, "hat:city_cap"],
-      [962, "hat:turkish_head"], [963, "hat:STB_cap"],
-      [964, "hat:Seeker_hat"], [965, "hat:Pumpkin_head"],
-      [966, "hat:Miner_hat"],
+      [960, "hat:Cap_Sol"], [961, "hat:red_belt"],
+      [962, "hat:city_cap"], [963, "hat:turkish_head"],
+      [964, "hat:STB_cap"], [965, "hat:Seeker_hat"],
+      [966, "hat:Pumpkin_head"], [967, "hat:Miner_hat"],
     ]);
   });
 
@@ -210,14 +210,14 @@ describe("the global catalog index", () => {
       [15874, "hat:Cylinder"], [15875, "hat:Viking_hat"],
       [15876, "hat:Ninja"], [15877, "hat:Pirate"],
       [15878, "hat:Straw_hat"], [15879, "hat:Vizard_hat"],
-      [15880, "hat:hat_red"], [15881, "hat:red_belt"],
-      [15882, "hat:Halo"], [15883, "hat:Royal_crown"],
-      [15884, "hat:Cap_black"], [15885, "hat:Cap_blue_plain"],
-      [15886, "hat:Cap_brown"], [15887, "hat:Cap_dark_grey"],
-      [15888, "hat:Cap_green"], [15889, "hat:Cap_light_grey"],
-      [15890, "hat:Cap_orange"], [15891, "hat:Cap_red"],
-      [15892, "hat:Horns_demon"], [15893, "hat:Fire_Skull"],
-      [15894, "hat:Cap_yellow"],
+      [15880, "hat:hat_red"],
+      [15881, "hat:Halo"], [15882, "hat:Royal_crown"],
+      [15883, "hat:Cap_black"], [15884, "hat:Cap_blue_plain"],
+      [15885, "hat:Cap_brown"], [15886, "hat:Cap_dark_grey"],
+      [15887, "hat:Cap_green"], [15888, "hat:Cap_light_grey"],
+      [15889, "hat:Cap_orange"], [15890, "hat:Cap_red"],
+      [15891, "hat:Horns_demon"], [15892, "hat:Fire_Skull"],
+      [15893, "hat:Cap_yellow"],
     ]);
   });
 });
