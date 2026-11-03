@@ -28,7 +28,7 @@ import { PublicKey } from "@solana/web3.js";
 import { BOOSTER_ONCHAIN } from "@/game/solana/program";
 import { itemAtGlobalIndex } from "@/game/config/catalogIndex";
 import { rarityOf } from "@/game/config/packs";
-import { getVariant } from "@/game/config/paperDoll";
+import { getVariant, showsFromBehind } from "@/game/config/paperDoll";
 import {
   baseConnection, readPackConfig, currencyBalance, buyPack, packUnavailableReason,
   type PackConfigAccount,
@@ -635,7 +635,7 @@ export default function BoosterOverlay({
                     <ChromaPreview
                       file={d.file}
                       size={innerSize(REVEAL_TILE)}
-                      facingUp={d.category === "back"}
+                      facingUp={showsFromBehind(d.category, getVariant(d.category, d.id))}
                       crop
                     />
                   </RarityFrame>

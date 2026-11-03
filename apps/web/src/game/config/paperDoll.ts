@@ -75,6 +75,12 @@ export interface LayerVariant {
   /** Overrides the default locked-item hint shown in the wardrobe. */
   unlockHint?: string;
   /**
+   * Shows this item from behind wherever it stands alone: the wardrobe tile,
+   * the pack reveal and its collectible card. Every back item already does;
+   * this is for one in another slot whose point is at the back, like a tail.
+   */
+  showFromBehind?: boolean;
+  /**
    * Which season (collection) this item belongs to. Absent means season 1,
    * which is everything that existed before seasons did.
    *
@@ -133,6 +139,15 @@ export interface LayerVariant {
  *
  * Files live in: public/assets/sprites/paperdoll/{category}/{Variant}.png
  */
+/**
+ * Whether an item shown on its own faces away. A backpack is two strap dots
+ * from the front, and a tail is not there at all. One rule for the wardrobe
+ * tile, the pack reveal and the collectible card, so they agree on the item.
+ */
+export function showsFromBehind(category: LayerCategory, variant?: Pick<LayerVariant, "showFromBehind">): boolean {
+  return category === "back" || !!variant?.showFromBehind;
+}
+
 export const SPRITE_FRAME_WIDTH = 64;
 export const SPRITE_FRAME_HEIGHT = 64;
 export const SPRITE_COLS = 4;
@@ -277,8 +292,10 @@ export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
     { id: "Short_pants_blue", name: "Blue Short Pants", textureKey: "pd-pants-Short_pants_blue", file: "pants/Short_pants_blue.png" },
     // A 48-cell sheet: the tail sways. Worn on the body, so walkSynced, like
     // the golden pair.
+    // Shown from behind on its own, the one pair of trousers that is: from
+    // the front the tail is not there.
     { id: "Tail_demon", name: "Demon Tail", textureKey: "pd-pants-Tail_demon", file: "pants/Tail_demon.png",
-      effect: { frames: 48, fps: 1000 / 150, walkSynced: true } },
+      effect: { frames: 48, fps: 1000 / 150, walkSynced: true }, showFromBehind: true },
     { id: "Short_pants_green_belt", name: "Green Belted Short Pants", textureKey: "pd-pants-Short_pants_green_belt", file: "pants/Short_pants_green_belt.png" },
     { id: "Short_pants_green", name: "Green Short Pants", textureKey: "pd-pants-Short_pants_green", file: "pants/Short_pants_green.png" },
     { id: "Pants_lotus", name: "Lotus Pants", textureKey: "pd-pants-Pants_lotus", file: "pants/Pants_lotus.png" },
