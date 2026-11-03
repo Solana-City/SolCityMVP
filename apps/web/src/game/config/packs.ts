@@ -55,11 +55,11 @@ const RARITY_TABLE: Partial<Record<Rarity, Partial<Record<LayerCategory, string[
     pants: [],
   },
   uncommon: {
-    hat: ["Cylinder", "Straw_hat", "Horns_demon", "Cap_kid"],
+    hat: ["Cylinder", "Straw_hat", "Horns_demon", "Cap_kid", "Cap_blue"],
     // backpack_red came down to common with the drop: a plain colourway reads
     // as one, and the back slot needed commons more than it needed tiers.
     back: ["Backpack_solana", "Backpack_heart", "Cape_wizard"],
-    accessory: ["Glasses_steampunk", "Golden_ring", "Pirate", "Visor_cyber", "Glasses_thug", "Ring_brilliant"],
+    accessory: ["Glasses_steampunk", "Pirate", "Visor_cyber", "Glasses_thug"],
     // Longsleeve_indies is NOT here any more: it became an event item, so it
     // sits in the quest block and never reaches a pack. Naming it would have
     // put an uncommon badge on something no pack can draw.
@@ -67,7 +67,7 @@ const RARITY_TABLE: Partial<Record<Rarity, Partial<Record<LayerCategory, string[
     // are the same garment as the eighteen commons in a different colour,
     // which is what common means here. Chess is a pattern and the Solana
     // shirt is branded, so those two stay.
-    tshirt: ["Longsleeve_chess", "Tshirt_chess", "Tshirt_solana_white", "Coat_doc", "Coat_red"],
+    tshirt: ["Longsleeve_chess", "Tshirt_chess", "Tshirt_solana_white", "Coat_doc", "Coat_red", "Coat_dude"],
     pants: ["Pants_chess_red", "Pants_chess_white"],
   },
 };
