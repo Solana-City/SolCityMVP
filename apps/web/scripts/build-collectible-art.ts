@@ -11,8 +11,8 @@
  *
  *   npx tsx scripts/build-collectible-art.ts --only hat/Cap_Sol --scale 8
  *
- *   --frame-ms   how long the card holds each frame cell; defaults to the
- *                game's own FRAME_GEOMETRY value
+ *   --frame-ms   how long the card holds each frame cell; defaults to
+ *                CARD_FRAME_MS, which is what went to Arweave
  *
  * ── What comes out ─────────────────────────────────────────────────────
  *
@@ -78,6 +78,12 @@ import type { LayerCategory, LayerVariant as Variant } from "../src/game/config/
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PUBLIC = join(HERE, "..", "public");
+
+/**
+ * The card's frame cell. Not the game's 100: see where it is read. Changing
+ * it changes every picture, and the pictures on Arweave cannot change.
+ */
+const CARD_FRAME_MS = 150;
 
 /** The magenta the sheets are keyed on, and the tolerance the runtime uses. */
 const CHROMA = { r: 215, g: 123, b: 186, tol: 30 };
@@ -278,7 +284,12 @@ async function main() {
   const scale = Number(arg("--scale") ?? 10);
   // How long the CARD holds each frame cell. The game's own value stays in
   // FRAME_GEOMETRY and is not touched by this.
-  const frameMs = Number(arg("--frame-ms") ?? FRAME_GEOMETRY.loopMs / FRAME_GEOMETRY.cells);
+  //
+  // 150, the owner's call (2026-11-03): it is the item sheets' own cell, so
+  // a legendary loops in 12 GIF frames (the Halo in 24) instead of 48, and
+  // weighs about a quarter. The price is a frame border that turns at two
+  // thirds of the game's speed, on a card nobody sees beside the game.
+  const frameMs = Number(arg("--frame-ms") ?? CARD_FRAME_MS);
   if (frameMs % 10) throw new Error("--frame-ms must be whole centiseconds, a GIF cannot hold anything finer");
   const only = arg("--only");
   // A trailing slash or the concatenation below silently makes nonsense, so
