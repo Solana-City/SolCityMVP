@@ -1,12 +1,12 @@
 {
   "name": "Acid Short Pants",
   "symbol": "SCC",
-  "description": "UNCOMMON pants from Sol City.",
+  "description": "COMMON pants from Sol City.",
   "image": "https://solanacity.io/collectibles/5641.gif",
   "attributes": [
     {
       "trait_type": "Rarity",
-      "value": "UNCOMMON"
+      "value": "COMMON"
     },
     {
       "trait_type": "Slot",
