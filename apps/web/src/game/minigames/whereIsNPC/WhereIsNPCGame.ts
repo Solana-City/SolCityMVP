@@ -159,6 +159,18 @@ export function getCitizenMsRemaining(): number {
   return Math.max(0, citizenDeadline - Date.now());
 }
 
+/**
+ * When the current citizen's round began, on the device clock. Under the
+ * on-chain hunt this is the chain's deadline minus the round length, shifted
+ * by the same clock correction as the countdown, so every client counts the
+ * citizen's walk from the same instant (huntWalk.ts). Offline it is the local
+ * timer's, which nobody else shares, and does not need to be.
+ */
+export function getCitizenStartMs(): number {
+  if (onChainDeadlineMs !== null) return onChainDeadlineMs - CITIZEN_MS;
+  return citizenDeadline - CITIZEN_MS;
+}
+
 /** Start a fresh full countdown — call whenever a new citizen becomes active.
  *  No-op under the on-chain hunt (the deadline comes from the chain). */
 export function resetCitizenTimer(): void {

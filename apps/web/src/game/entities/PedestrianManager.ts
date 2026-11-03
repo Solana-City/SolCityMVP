@@ -1,7 +1,7 @@
 import * as Phaser from "phaser";
 import { TILE_SIZE } from "../config/constants";
 import { PedestrianSprite, makePedestrianLoadout, type PedestrianContext } from "./PedestrianSprite";
-import { getTargetPedIndex, getTargetDistrict, getTargetSpot, advanceFindSlot, getCurrentSlot, resetCitizenTimer, ROTATION_BATCH_MS } from "../minigames/whereIsNPC/WhereIsNPCGame";
+import { getTargetPedIndex, getTargetDistrict, getTargetSpot, advanceFindSlot, getCurrentSlot, resetCitizenTimer, getCitizenStartMs, ROTATION_BATCH_MS } from "../minigames/whereIsNPC/WhereIsNPCGame";
 
 // The Canvas renderer on mobile redraws every sprite on the CPU each frame,
 // and each pedestrian is up to 7 layered sprites — a 96-strong crowd is
@@ -421,13 +421,7 @@ export class PedestrianManager {
 
   /**
    * Moves the hunted citizen into the district this round chose, and leashes
-   * it there.
-   *
-   * The move waits for the pedestrian to be off camera: a body that changes
-   * position without walking reads as a teleport, the same reason
-   * `rotateBatch` never recycles a citizen on screen. Off screen — which is
-   * nearly always, the city being far larger than the view — it happens on
-   * the spot. The retry is cheap and gives up as soon as the round moves on.
+   * it there. Immediately, so it is never in two places at once; see below.
    */
   private relocateTargetToDistrict(index: number): void {
     this.relocateTimer?.remove(false);
@@ -436,27 +430,39 @@ export class PedestrianManager {
 
     const slot = getCurrentSlot();
     const district = this.districts[getTargetDistrict(slot, this.districts.length)];
-    const spot = district.tiles[getTargetSpot(slot, district.tiles.length)];
-    const wx = spot.col * TILE_SIZE + TILE_SIZE / 2;
-    const wy = spot.row * TILE_SIZE + TILE_SIZE / 2;
+    const startIndex = getTargetSpot(slot, district.tiles.length);
+    const ped = this.pedestrians[index];
+    if (!ped) return;
 
     const place = () => {
-      // The round moved on while we were waiting for the player to look away.
+      // The round moved on during the fade.
       if (this.currentTargetIndex !== index) return;
-      const ped = this.pedestrians[index];
-      if (!ped) return;
-      if (this.isOnScreen(ped.x, ped.y)) {
-        this.relocateTimer = this.scene.time.delayedCall(700, place);
-        return;
-      }
-      ped.placeAt(wx, wy);
       ped.setLeash(district.rect);
-      // From here the round's citizen is driven by the wall clock, seeded on
-      // the slot — so (wx, wy), the district and every step after it are the
-      // same on every client, which is the whole promise of a shared hunt.
-      ped.setDeterministicWander({ x: wx, y: wy }, slot);
+      // From here the round's citizen walks the district's free tiles on the
+      // round's clock (huntWalk.ts), so its tile at any instant is the same
+      // on every client, which is the whole promise of a shared hunt.
+      ped.setDeterministicWander({
+        tiles: district.tiles, startIndex, seed: slot, startMs: getCitizenStartMs,
+      });
     };
-    place();
+
+    // It used to wait for the citizen to leave THIS player's screen before
+    // moving it, so a player who happened to be looking at it kept seeing it
+    // stroll elsewhere while everyone else saw it in the district: the same
+    // citizen in two places. Now it moves at once, faded out and back in when
+    // somebody is watching, so a teleport never shows.
+    const container = ped.getContainer();
+    if (container?.scene && this.isOnScreen(ped.x, ped.y)) {
+      this.scene.tweens.add({
+        targets: container, alpha: 0, duration: 200,
+        onComplete: () => {
+          place();
+          this.scene.tweens.add({ targets: container, alpha: 1, duration: 200 });
+        },
+      });
+    } else {
+      place();
+    }
   }
 
   refreshTarget(): void {
