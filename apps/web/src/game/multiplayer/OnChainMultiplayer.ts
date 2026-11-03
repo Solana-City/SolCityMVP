@@ -1116,17 +1116,32 @@ export class OnChainMultiplayer {
     const entry = transactionLog.record({
       kind: "friend", layer, label: `Friend link ${state}`, status: "pending",
     });
-    try {
+    const send = async (): Promise<string> => {
       const sessionKey = this.sessionKeys.getSessionPublicKey();
       const conn = this.useEphemeral ? this.ephemeralConnection : this.baseConnection;
       const tx = new Transaction()
-        .add(buildSetLinkSessionIx(this.wallet, sessionKey, peer, state));
+        .add(buildSetLinkSessionIx(this.wallet!, sessionKey, peer, state));
       tx.feePayer = sessionKey;
-      tx.recentBlockhash = await this.getMoveBlockhash(layer);
+      tx.recentBlockhash = await this.getMoveBlockhash(this.useEphemeral ? "ephemeral" : "base");
       this.sessionKeys.signTransaction(tx);
-      const sig = await OnChainMultiplayer.withTimeout(
+      return OnChainMultiplayer.withTimeout(
         conn.sendRawTransaction(tx.serialize(), { skipPreflight: true }), 6_000,
       );
+    };
+    try {
+      let sig: string;
+      try {
+        sig = await send();
+      } catch (err: any) {
+        // A rollup that holds only a COPY of the account refuses the write
+        // ("Transaction resulted in an error", InvalidWritableAccount). Find
+        // the one that holds the delegation and try once more there, with a
+        // blockhash from it.
+        this.cachedMoveBlockhash = null;
+        if (!this.useEphemeral || !this.wallet) throw err;
+        await this.pointWritesAtOwningValidator(derivePlayerPDA(this.wallet)[0]);
+        sig = await send();
+      }
       transactionLog.markConfirmed(entry.id, sig);
     } catch (err: any) {
       this.cachedMoveBlockhash = null;
@@ -1990,6 +2005,15 @@ export class OnChainMultiplayer {
         // Delegated: the ER copy is the authoritative session state.
         // Re-authorize on the rollup only if its stored key differs from ours
         // — when in sync this whole branch needs no wallet prompt.
+        //
+        // WHICH rollup first. Every rollup returns a copy of the account and
+        // only the delegated one is live: read from the default instead and
+        // the key looks stale (it is, on the copy), the wallet is asked to
+        // sign an authorize that the copy then refuses with
+        // InvalidWritableAccount, and the session's writes keep landing on
+        // the wrong rollup. Measured 2026-11-04: 48 failed writes on the US
+        // rollup for an account delegated to Asia, a friend accept among them.
+        await this.pointWritesAtOwningValidator(playerPDA);
         this.progress("Syncing session key…");
         await this.syncSessionKeyOnEr(wallet, playerPDA);
         if (needsFunding) {
