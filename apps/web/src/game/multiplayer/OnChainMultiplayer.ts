@@ -671,6 +671,9 @@ export class OnChainMultiplayer {
     // R-07, R-15). It used to be a single slot every wallet in the browser
     // shared. Loading it never prompts.
     await this.sessionKeys.ensureForWallet(walletPublicKey);
+    // Any key this browser just retired still holds the player's SOL. Sent
+    // home in the background, signed by that key, so it asks nothing.
+    this.sessionKeys.sweepRetired(this.baseConnection, walletPublicKey).catch(() => {});
 
     this._connected = true;
 

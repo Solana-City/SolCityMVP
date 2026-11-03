@@ -23,6 +23,8 @@ import { prepareWalletTx, sendWalletSigned } from "@/game/solana/walletTx";
 const STORAGE_PREFIX = clusterKey("sol-city-session-key-v2");
 /** The pre-v2 slots: one shared by every wallet, and one per wallet. */
 const LEGACY_SHARED = clusterKey("sol-city-session-key");
+/** The one signature a sweep pays for, out of the swept key itself. */
+const SWEEP_FEE_LAMPORTS = 5_000;
 
 /**
  * Manages the session key: a keypair the wallet authorizes once on chain
@@ -56,6 +58,8 @@ export class SessionKeyManager {
   private authorized = false;
   /** Wallet whose key is currently loaded (base58). */
   private loadedForWallet: string | null = null;
+  /** Discarded keys still on disk, waiting for sweepRetired. */
+  private retired: { slot: string; key: Keypair }[] = [];
 
   constructor() {
     // A placeholder until a wallet is known. Never stored: a key with no
@@ -85,12 +89,79 @@ export class SessionKeyManager {
     this.authorized = false;
     this.persist();
 
-    // The derived key and the shared slot go. Leaving them would keep the
-    // phishable secret on disk long after nothing reads it.
-    try {
-      localStorage.removeItem(`${LEGACY_SHARED}-${w}`);
-      localStorage.removeItem(LEGACY_SHARED);
-    } catch { /* storage blocked: nothing to clean */ }
+    // The derived key and the shared slot go, since leaving them would keep
+    // the phishable secret on disk long after nothing reads it. But not
+    // before their balance goes home: each was topped up with the player's
+    // SOL, and deleting it here used to strand that SOL for good. They are
+    // queued for sweepRetired, which deletes each slot once it is empty.
+    this.retired = [];
+    for (const slot of [`${LEGACY_SHARED}-${w}`, LEGACY_SHARED]) {
+      try {
+        const stored = localStorage.getItem(slot);
+        if (!stored) continue;
+        const key = Keypair.fromSecretKey(Uint8Array.from(JSON.parse(stored)));
+        if (key.publicKey.equals(this.sessionKey.publicKey)) {
+          localStorage.removeItem(slot);
+        } else {
+          this.retired.push({ slot, key });
+        }
+      } catch {
+        // Unreadable: there is no key to sweep, only a secret to delete.
+        try { localStorage.removeItem(slot); } catch { /* blocked */ }
+      }
+    }
+  }
+
+  /**
+   * Sends what a discarded session key still holds back to the wallet, then
+   * deletes it. Signed by that key alone, so it needs nothing from the
+   * player and opens no popup.
+   *
+   * Everything goes, rent floor included: a system account may be emptied to
+   * zero (it is the in-between, above zero and below the floor, that is
+   * refused). The key pays its own 5,000-lamport fee, so a balance no larger
+   * than that is dust and the slot is just deleted.
+   *
+   * The shared pre-v2 slot belonged to whichever wallet used this browser
+   * last, which in practice is the same person; it goes to the wallet
+   * connected now.
+   *
+   * Returns the lamports sent home. A failure keeps the slot for next time.
+   */
+  async sweepRetired(connection: Connection, wallet: PublicKey): Promise<number> {
+    if (!isProgramDeployed()) return 0;
+    let swept = 0;
+    for (const { slot, key } of this.retired.splice(0)) {
+      try {
+        const balance = await connection.getBalance(key.publicKey);
+        const amount = balance - SWEEP_FEE_LAMPORTS;
+        if (amount > 0) {
+          const { blockhash } = await connection.getLatestBlockhash();
+          const tx = new Transaction({ recentBlockhash: blockhash, feePayer: key.publicKey })
+            .add(SystemProgram.transfer({ fromPubkey: key.publicKey, toPubkey: wallet, lamports: amount }));
+          tx.sign(key);
+          const sig = await connection.sendRawTransaction(tx.serialize());
+          // Polled, not confirmed over a websocket, which these RPCs drop. A
+          // sweep that lands after we give up is harmless: next time the key
+          // reads empty and its slot is simply deleted.
+          let landed = false;
+          for (let i = 0; i < 10 && !landed; i++) {
+            await new Promise((r) => setTimeout(r, 1_000));
+            const st = (await connection.getSignatureStatuses([sig])).value[0];
+            if (st?.err) throw new Error(`sweep failed: ${JSON.stringify(st.err)}`);
+            landed = st?.confirmationStatus === "confirmed" || st?.confirmationStatus === "finalized";
+          }
+          if (!landed) throw new Error("sweep not confirmed yet");
+          swept += amount;
+          console.log(`[SessionKey] returned ${amount} lamports from a retired key: ${sig.slice(0, 12)}`);
+        }
+        localStorage.removeItem(slot);
+      } catch (err: any) {
+        // Kept on disk, so the next connect tries again.
+        console.warn("[SessionKey] retired key not swept yet:", err?.message);
+      }
+    }
+    return swept;
   }
 
   getSessionKey(): Keypair       { return this.sessionKey; }
