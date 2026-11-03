@@ -2,6 +2,8 @@ import { PublicKey } from "@solana/web3.js";
 import { Connection } from "@solana/web3.js";
 import { decodeHuntState, deriveHuntPDA } from "@/game/solana/program";
 import { BASE_RPC_PRIMARY } from "@/game/solana/baseRpc";
+import { DELEGATION_PROGRAM_ID, delegationRecordPdaFromDelegatedAccount } from "@magicblock-labs/ephemeral-rollups-sdk";
+import { ER_VALIDATORS } from "@/game/multiplayer/erValidators";
 
 /**
  * Reading the global Find Someone round, for the dev panel.
@@ -34,11 +36,23 @@ function connection(): Connection {
   return new Connection(BASE_RPC_PRIMARY, "confirmed");
 }
 
+/**
+ * Where the hunt is live: the rollup its delegation record names, or base.
+ * A delegated hunt's base copy is frozen at the moment it was delegated.
+ */
+async function huntConnection(base: Connection, pda: PublicKey): Promise<Connection> {
+  const rec = await base.getAccountInfo(delegationRecordPdaFromDelegatedAccount(pda));
+  if (!rec || !rec.owner.equals(DELEGATION_PROGRAM_ID) || rec.lamports === 0) return base;
+  const validator = new PublicKey(rec.data.subarray(8, 40)).toBase58();
+  const target = ER_VALIDATORS.find((v) => v.identity === validator);
+  return target ? new Connection(target.rpc, "confirmed") : base;
+}
+
 /** Reads the hunt without touching it. */
 export async function readHunt(): Promise<HuntStatus> {
   try {
     const [pda] = deriveHuntPDA();
-    const info = await connection().getAccountInfo(pda);
+    const info = await (await huntConnection(connection(), pda)).getAccountInfo(pda);
     if (!info) return EMPTY;
     const now = Math.floor(Date.now() / 1000);
     const hunt = decodeHuntState(info.data, now);
