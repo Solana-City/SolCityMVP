@@ -340,7 +340,7 @@ export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
     { id: "Tshirt_solana_white", name: "White Solana T-Shirt", textureKey: "pd-tshirt-Tshirt_solana_white", file: "tshirt/Tshirt_solana_white.png" },
     { id: "Tshirt_dragon", name: "Dragon T-Shirt", textureKey: "pd-tshirt-Tshirt_dragon", file: "tshirt/Tshirt_dragon.png" },
     { id: "Coat_doc", name: "Doctor Coat", textureKey: "pd-tshirt-Coat_doc", file: "tshirt/Coat_doc.png" },
-    { id: "Coat_dude", name: "Dude Coat", textureKey: "pd-tshirt-Coat_dude", file: "tshirt/Coat_dude.png" },
+    { id: "Coat_dude", name: "Grey Coat", textureKey: "pd-tshirt-Coat_dude", file: "tshirt/Coat_dude.png" },
     { id: "Coat_red", name: "Red Coat", textureKey: "pd-tshirt-Coat_red", file: "tshirt/Coat_red.png" },
     { id: "Suit_black", name: "Black Suit", textureKey: "pd-tshirt-Suit_black", file: "tshirt/Suit_black.png" },
     { id: "Suit_golden", name: "Golden Suit", textureKey: "pd-tshirt-Suit_golden", file: "tshirt/Suit_golden.png",
