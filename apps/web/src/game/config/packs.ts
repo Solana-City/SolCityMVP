@@ -36,9 +36,9 @@ export type { Rarity, RarityTheme, TileKind } from "@/game/collections/seasons";
  */
 const RARITY_TABLE: Partial<Record<Rarity, Partial<Record<LayerCategory, string[]>>>> = {
   legendary: {
-    // The two animated effect hats ride along as legendary. They are test items
-    // outside the pool for now, so this only names the tier they are meant for.
-    hat: ["Crown", "Royal_crown", "Halo", "Fire_Skull"],
+    // Both animated effect hats are in the pool now, not test items: the plain
+    // Crown was dropped and the Royal Crown took its place.
+    hat: ["Royal_crown", "Halo", "Fire_Skull"],
     accessory: ["Glasses_cyber"],
     back: ["Sands_of_time"],
     tshirt: ["Suit_golden"],

@@ -114,14 +114,17 @@ describe("outfit packs", () => {
   it("keeps the on-chain index of every item that already shipped", () => {
     // The pool order IS the index space the program stores as bits. Adding a
     // season appends; it must never renumber what a wallet already owns.
-    const shipped = ["back:backpack_brown", "hat:Crown", "accessory:Golden_ring"];
+    // This named hat:Crown until the plain Crown was dropped on purpose, which
+    // is the one thing that gets a name out of this list: the Royal Crown took
+    // its place and is what ships.
+    const shipped = ["back:backpack_brown", "hat:Royal_crown", "accessory:Golden_ring"];
     const table = boosterIndexTable().map((e) => `${e.category}:${e.id}`);
     for (const key of shipped) expect(table, key).toContain(key);
-    expect(table.indexOf("back:backpack_brown")).toBeLessThan(table.indexOf("hat:Crown"));
+    expect(table.indexOf("back:backpack_brown")).toBeLessThan(table.indexOf("hat:Royal_crown"));
   });
 
   it("reads an unlisted item as common", () => {
-    expect(rarityOf("hat", "Crown")).toBe("legendary");
+    expect(rarityOf("hat", "Royal_crown")).toBe("legendary");
     expect(rarityOf("hat", "not-an-item")).toBe("common");
   });
 

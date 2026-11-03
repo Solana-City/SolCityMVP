@@ -409,7 +409,7 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
   }, []);
 
   // Dev helper: unlock from the console until quests/NPCs/boosters are wired in.
-  //   solcityUnlock("hat", "Crown")
+  //   solcityUnlock("hat", "Royal_crown")
   useEffect(() => {
     (window as unknown as Record<string, unknown>).solcityUnlock =
       (cat: LayerCategory, id: string) => unlockItem(wallet, cat, id, getVariant(cat, id)?.name);

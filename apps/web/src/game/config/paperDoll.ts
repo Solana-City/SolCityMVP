@@ -238,6 +238,7 @@ export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
     { id: "Pants_orange", name: "Orange Pants", textureKey: "pd-pants-Pants_orange", file: "pants/Pants_orange.png" },
     { id: "Short_pants_purple_belt", name: "Purple Belted Short Pants", textureKey: "pd-pants-Short_pants_purple_belt", file: "pants/Short_pants_purple_belt.png" },
     { id: "Pants_white", name: "White Pants", textureKey: "pd-pants-Pants_white", file: "pants/Pants_white.png" },
+    { id: "Short_pants_red_belt", name: "Red Belted Short Pants", textureKey: "pd-pants-Short_pants_red_belt", file: "pants/Short_pants_red_belt.png" },
   ],
   tshirt: [
     { id: "Blue_tshirt",  name: "Blue T-Shirt",  textureKey: "pd-tshirt-Blue_tshirt",  file: "tshirt/Blue_tshirt.png" },
@@ -273,7 +274,9 @@ export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
     { id: "Longsleeve_acid", name: "Acid Longsleeve", textureKey: "pd-tshirt-Longsleeve_acid", file: "tshirt/Longsleeve_acid.png" },
     { id: "Longsleeve_neon", name: "Neon Longsleeve", textureKey: "pd-tshirt-Longsleeve_neon", file: "tshirt/Longsleeve_neon.png" },
     { id: "Longsleeve_chess", name: "Checkered Longsleeve", textureKey: "pd-tshirt-Longsleeve_chess", file: "tshirt/Longsleeve_chess.png" },
-    { id: "Longsleeve_indies", name: "Indies Longsleeve", textureKey: "pd-tshirt-Longsleeve_indies", file: "tshirt/Longsleeve_indies.png" },
+    { id: "Longsleeve_indies", name: "Indies Longsleeve", textureKey: "pd-tshirt-Longsleeve_indies",
+      file: "tshirt/Longsleeve_indies.png", unlockVia: "event",
+      unlockHint: "Given to the Indies season crew" },
     { id: "Tshirt_acid", name: "Acid T-Shirt", textureKey: "pd-tshirt-Tshirt_acid", file: "tshirt/Tshirt_acid.png" },
     { id: "Tshirt_neon", name: "Neon T-Shirt", textureKey: "pd-tshirt-Tshirt_neon", file: "tshirt/Tshirt_neon.png" },
     { id: "Tshirt_chess", name: "Checkered T-Shirt", textureKey: "pd-tshirt-Tshirt_chess", file: "tshirt/Tshirt_chess.png" },
@@ -343,14 +346,13 @@ export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
     // what a wallet owns. Only the label a player reads changes.
     { id: "Cap_blue",   name: "Solana Blue Cap", textureKey: "pd-hat-Cap_blue",   file: "hat/Cap_blue.png" },
     { id: "Cap_kid",    name: "Cap Kid",    textureKey: "pd-hat-Cap_kid",    file: "hat/Cap_kid.png" },
-    { id: "Crown",      name: "Crown",      textureKey: "pd-hat-Crown",      file: "hat/Crown.png" },
     { id: "Cylinder",   name: "Cylinder",   textureKey: "pd-hat-Cylinder",   file: "hat/Cylinder.png" },
     { id: "Viking_hat", name: "Viking Hat", textureKey: "pd-hat-Viking_hat", file: "hat/Viking_hat.png" },
     { id: "Ninja",      name: "Ninja Mask", textureKey: "pd-hat-Ninja",      file: "hat/Ninja.png", hatCoverage: "suppress" },
     { id: "Pirate",     name: "Pirate Hat", textureKey: "pd-hat-Pirate",     file: "hat/Pirate.png" },
     { id: "Straw_hat",  name: "Straw Hat",  textureKey: "pd-hat-Straw_hat",  file: "hat/Straw_hat.png" },
     { id: "Vizard_hat", name: "Vizard Hat", textureKey: "pd-hat-Vizard_hat", file: "hat/Vizard_hat.png" },
-    { id: "hat_black",  name: "Black Hat",  textureKey: "pd-hat-hat_black",  file: "hat/hat_black.png" },
+    { id: "hat_black",  name: "Solana Hat",  textureKey: "pd-hat-hat_black",  file: "hat/hat_black.png" },
     { id: "hat_red",    name: "Red Hat",    textureKey: "pd-hat-hat_red",    file: "hat/hat_red.png" },
     { id: "red_belt",   name: "Red Bandana",textureKey: "pd-hat-red_belt",   file: "hat/red_belt.png", hatCoverage: "band" },
     // Earned from NPCs, so unlockVia keeps both out of the booster pool.
@@ -403,19 +405,21 @@ export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
     // "band" so the hair mask erases only under the halo's own ink: the
     // sheet is 24 cells wide and the mask reads the first four as a walk.
     { id: "Halo", name: "Halo", textureKey: "pd-hat-Halo", file: "hat/Halo.png",
-      hatCoverage: "band", unlockVia: "quest", unlockHint: "Test item",
-      // DOM's timing: 150 ms a cell, so a 3.6 s loop. Read off the clock (see
+      hatCoverage: "band",
+      // DOM's timing: 150 ms a cell. The redrawn sheet is 48 cells, twice the
+      // first one, so the loop is 7.2 s. Read off the clock (see
       // AvatarSprite.tickEffects), so it holds whatever the frame rate does.
-      effect: { frames: 24, fps: 1000 / 150, clearsHair: true } },
+      effect: { frames: 48, fps: 1000 / 150, clearsHair: true } },
     // The second effect sheet, and the first that is a crown rather than a
-    // halo: 48 cells a row, twelve walk cycles drawn over the body, in the same
-    // place as the static Crown above. Appended AFTER the Halo on purpose (an
-    // index written to chain names an item). A hat worn ON the head, so unlike
+    // halo: 48 cells a row, twelve walk cycles drawn over the body. It took the
+    // place of the static Crown, which was dropped: there is no plain crown,
+    // only this one. Appended AFTER the Halo on purpose (an index written to
+    // chain names an item). A hat worn ON the head, so unlike
     // the Halo it masks the hair (clearsHair is unset). "band", not "full": from
     // the side its prongs have gaps, and the per-column cutoff of "full" erased
     // the hair between them and left bare skin showing through the crown.
     { id: "Royal_crown", name: "Royal Crown", textureKey: "pd-hat-Royal_crown", file: "hat/Royal_crown.png",
-      hatCoverage: "band", unlockVia: "quest", unlockHint: "Test item",
+      hatCoverage: "band",
       effect: { frames: 48, fps: 1000 / 150, steady: true } },
     // The colourway caps, 2026-10-30. Appended, never inserted: a booster
     // item's catalog index is its position in this lane, and a wallet owns
