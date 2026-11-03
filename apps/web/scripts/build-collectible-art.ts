@@ -70,7 +70,7 @@ import { join, dirname, resolve } from "path";
 import { fileURLToPath } from "url";
 import { PNG } from "pngjs";
 import { GifFrame, GifUtil, GifCodec, BitmapImage } from "gifwrap";
-import { LAYER_ORDER, DIRECTION_ROW, SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT, SPRITE_COLS, getEnabledVariants, effectCell } from "../src/game/config/paperDoll";
+import { LAYER_ORDER, DIRECTION_ROW, SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT, SPRITE_COLS, getEnabledVariants, effectCell, showsFromBehind } from "../src/game/config/paperDoll";
 import { tileKindOf, PACKS } from "../src/game/config/packs";
 import { globalIndexOf } from "../src/game/config/catalogIndex";
 import { FRAME_GEOMETRY, FRAME_SHEET, RARITY_LABEL, CURRENT_SEASON } from "../src/game/collections/seasons";
@@ -84,6 +84,14 @@ const PUBLIC = join(HERE, "..", "public");
  * it changes every picture, and the pictures on Arweave cannot change.
  */
 const CARD_FRAME_MS = 150;
+
+/**
+ * The largest an item's pixel may be, in frame pixels. 2.2 is what trousers
+ * and backpacks reach when fitted (22x at scale 10), the biggest of any
+ * ordinary garment; only the rings and the Cyber Visor were above it, at up
+ * to 6.4, and read as giant next to everything else.
+ */
+const MAX_ITEM_ZOOM = 2.2;
 
 /** The magenta the sheets are keyed on, and the tolerance the runtime uses. */
 const CHROMA = { r: 215, g: 123, b: 186, tol: 30 };
@@ -192,7 +200,13 @@ function composeCell(
     const availH = Math.floor(win.h * scale * fill);
     // The largest INTEGER magnification that still fits. Integer because a
     // fractional one resamples, and resampled pixel art stops being pixel art.
-    const k = Math.max(1, Math.min(Math.floor(availW / ink.w), Math.floor(availH / ink.h)));
+    const k = Math.max(1, Math.min(
+      Math.floor(availW / ink.w), Math.floor(availH / ink.h),
+      // A small item stays small: a 6px ring fitted to the window came out
+      // with pixels three times a pair of trousers'. No item's pixel may be
+      // larger than the largest an ordinary garment gets.
+      Math.floor(scale * MAX_ITEM_ZOOM),
+    ));
     const dx = win.x * scale + Math.floor((win.w * scale - ink.w * k) / 2);
     const dy = win.y * scale + Math.floor((win.h * scale - ink.h * k) / 2);
     drawScaled(out, item, itemCell * SPRITE_FRAME_WIDTH + ink.x, rowY + ink.y, ink.w, ink.h, dx, dy, k);
@@ -324,7 +338,7 @@ async function main() {
       const item = removeChroma(readPng(join(PUBLIC, "assets", "sprites", "paperdoll", variant.file)));
       // Backpacks are barely visible from the front, so the grid shows their
       // back row; the card has to agree or the two disagree about the item.
-      const rowY = (category === "back" ? DIRECTION_ROW.up : DIRECTION_ROW.down) * SPRITE_FRAME_HEIGHT;
+      const rowY = (showsFromBehind(category, variant) ? DIRECTION_ROW.up : DIRECTION_ROW.down) * SPRITE_FRAME_HEIGHT;
 
       const cellKey = (cell: number) => {
         const rows: Buffer[] = [];
