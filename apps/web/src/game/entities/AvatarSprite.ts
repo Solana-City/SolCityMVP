@@ -667,6 +667,24 @@ export class AvatarSprite {
     for (const sprite of this.animatedSprites()) sprite.setActive(on);
   }
 
+  /**
+   * Which column of the walk cycle the body is showing, 0..SPRITE_COLS-1.
+   *
+   * Read off a real layer rather than kept as a counter, because Phaser owns
+   * the walk: it drives those sprites itself at its own frame rate, and a
+   * second counter here would drift from what is on screen. Any layer will
+   * do — they all play the same animation — so this takes the first that is
+   * not itself an effect. Standing still, there is no animation and the pose
+   * is the idle one, column 0.
+   */
+  private walkColumn(): number {
+    for (const sprite of this.layerSprites.values()) {
+      if (this.effectSprites.has(sprite)) continue;
+      return sprite.frame.name !== undefined ? Number(sprite.frame.name) % SPRITE_COLS : 0;
+    }
+    return 0;
+  }
+
   /** All sprites that follow the walk cycle — the layers plus the shadow. */
   private animatedSprites(): Phaser.GameObjects.Sprite[] {
     const sprites: Phaser.GameObjects.Sprite[] = [...this.layerSprites.values()];
@@ -734,8 +752,14 @@ export class AvatarSprite {
 
       resolved.push({ category, textureKey, effect: variant.effect });
     }
-    // Effects are drawn last so they sit above every layer, a hat included.
-    resolved.sort((a, b) => Number(!!a.effect) - Number(!!b.effect));
+    // Overlay effects are drawn last so they sit above every layer, a hat
+    // included. A GARMENT effect is not an overlay: golden trousers are still
+    // trousers, so they keep their place in LAYER_ORDER and let the shirt and
+    // the hat cover them as any other pair would. walkSynced is what tells
+    // the two apart, and it is the same flag that keeps the garment stepping
+    // with the legs.
+    const onTop = (e?: LayerVariant["effect"]) => Number(!!e && !e.walkSynced);
+    resolved.sort((a, b) => onTop(a.effect) - onTop(b.effect));
 
     for (const { category, textureKey, effect } of resolved) {
       const sprite = this.scene.add.sprite(0, FOOT_Y_LOCAL, textureKey);
@@ -809,8 +833,9 @@ export class AvatarSprite {
         sprite.y = -2 - this.hairLift(fx.effect, facing) * 0.5;
       }
       // The sheet has the animation for every angle and ignores the walk: the
-      // clock picks the cell, the facing picks the row.
-      const frame = fx.row * frames + effectCell(fx.effect, now);
+      // clock picks the cell, the facing picks the row. A walkSynced effect is
+      // the exception — it is a garment, so it has to step with the legs.
+      const frame = fx.row * frames + effectCell(fx.effect, now, this.walkColumn());
       if (frame !== fx.shown) {
         fx.shown = frame;
         sprite.setFrame(frame);
@@ -829,6 +854,11 @@ export class AvatarSprite {
     // does, and every pedestrian in the city reuses the one texture.
     const layerKeys = this.sharedShadow
       ? [getVariant("skin", DEFAULT_LOADOUT.skin)?.textureKey].filter((k): k is string => !!k)
+      // Every effect sheet stays out, garments included. The silhouette is
+      // built from the 4x4 grid, and an effect sheet is 48 cells wide, so its
+      // first sixteen are four sparkle groups rather than a walk cycle. The
+      // body underneath still draws the legs, so a golden trouser costs the
+      // shadow its trim, not its shape.
       : [...this.layerSprites.values()].filter((s) => !this.effectSprites.has(s)).map((s) => s.texture.key);
     if (layerKeys.length === 0) return;
     const silhouette = acquireSilhouetteTexture(

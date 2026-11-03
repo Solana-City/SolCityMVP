@@ -107,6 +107,21 @@ export interface LayerVariant {
      * only: the sparkle still moves, one step per frame of `fps`.
      */
     steady?: boolean;
+    /**
+     * Keeps the walk. A halo floats beside the body and can ignore the legs;
+     * a garment cannot, because it IS the legs. The sheet is still groups of
+     * SPRITE_COLS cells, but here a group is one full walk cycle and the
+     * groups are the sparkle advancing: the COLUMN stays the walk frame and
+     * the GROUP steps on the clock at `fps`.
+     *
+     * Without this a golden trouser animates on its own rhythm while the legs
+     * underneath walk on theirs, and the two slide apart within a step.
+     *
+     * Off the walk there is no column to follow, so the wardrobe tile and the
+     * preview pass none and get the first pose of each group, exactly as
+     * `steady` does.
+     */
+    walkSynced?: boolean;
   };
 }
 
@@ -135,9 +150,20 @@ export const SPRITE_ROWS = 4;
  * One rule for the game, the wardrobe tile and the large preview, so the three
  * cannot drift apart.
  */
-export function effectCell(effect: NonNullable<LayerVariant["effect"]>, nowMs: number): number {
+export function effectCell(
+  effect: NonNullable<LayerVariant["effect"]>,
+  nowMs: number,
+  /**
+   * Which walk frame the body is on, 0..SPRITE_COLS-1. Only `walkSynced`
+   * reads it. Away from the game there is no walk, so it defaults to the
+   * standing pose.
+   */
+  walkCol = 0,
+): number {
   const step = Math.floor((nowMs / 1000) * effect.fps);
-  if (effect.steady) return (step % (effect.frames / SPRITE_COLS)) * SPRITE_COLS;
+  const groups = effect.frames / SPRITE_COLS;
+  if (effect.walkSynced) return (step % groups) * SPRITE_COLS + walkCol;
+  if (effect.steady) return (step % groups) * SPRITE_COLS;
   return step % effect.frames;
 }
 
@@ -219,7 +245,12 @@ export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
     { id: "Pants_green", name: "Green Pants", textureKey: "pd-pants-Pants_green", file: "pants/Pants_green.png" },
     { id: "Pants_chess_red", name: "Red Checkered Pants", textureKey: "pd-pants-Pants_chess_red", file: "pants/Pants_chess_red.png" },
     { id: "Pants_chess_white", name: "White Checkered Pants", textureKey: "pd-pants-Pants_chess_white", file: "pants/Pants_chess_white.png" },
-    { id: "Pants_golden", name: "Golden Pants", textureKey: "pd-pants-Pants_golden", file: "pants/Pants_golden.png" },
+    // Dom delivered these two as 48-cell effect sheets, not flat garments:
+    // twelve walk cycles with the gold travelling across them. They are
+    // walkSynced rather than steady because a trouser and a suit move with
+    // the body, so the column has to stay the walk frame.
+    { id: "Pants_golden", name: "Golden Pants", textureKey: "pd-pants-Pants_golden", file: "pants/Pants_golden.png",
+      effect: { frames: 48, fps: 1000 / 150, walkSynced: true } },
     // The 2026-11-03 drop, which is most of it. Appended; position is
     // the index.
     { id: "Pants_acid", name: "Acid Pants", textureKey: "pd-pants-Pants_acid", file: "pants/Pants_acid.png" },
@@ -286,7 +317,8 @@ export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
     { id: "Coat_dude", name: "Dude Coat", textureKey: "pd-tshirt-Coat_dude", file: "tshirt/Coat_dude.png" },
     { id: "Coat_red", name: "Red Coat", textureKey: "pd-tshirt-Coat_red", file: "tshirt/Coat_red.png" },
     { id: "Suit_black", name: "Black Suit", textureKey: "pd-tshirt-Suit_black", file: "tshirt/Suit_black.png" },
-    { id: "Suit_golden", name: "Golden Suit", textureKey: "pd-tshirt-Suit_golden", file: "tshirt/Suit_golden.png" },
+    { id: "Suit_golden", name: "Golden Suit", textureKey: "pd-tshirt-Suit_golden", file: "tshirt/Suit_golden.png",
+      effect: { frames: 48, fps: 1000 / 150, walkSynced: true } },
     { id: "Tshirt_solana_city", name: "Solana City T-Shirt", textureKey: "pd-tshirt-Tshirt_solana_city", file: "tshirt/Tshirt_solana_city.png",
       unlockVia: "quest", unlockHint: "Earned in the city" },
   ],
