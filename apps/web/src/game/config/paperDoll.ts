@@ -275,7 +275,10 @@ export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
     { id: "Short_pants_black_belt", name: "Black Belted Short Pants", textureKey: "pd-pants-Short_pants_black_belt", file: "pants/Short_pants_black_belt.png" },
     { id: "Short_pants_blue_belt", name: "Blue Belted Short Pants", textureKey: "pd-pants-Short_pants_blue_belt", file: "pants/Short_pants_blue_belt.png" },
     { id: "Short_pants_blue", name: "Blue Short Pants", textureKey: "pd-pants-Short_pants_blue", file: "pants/Short_pants_blue.png" },
-    { id: "Tail_demon", name: "Demon Tail", textureKey: "pd-pants-Tail_demon", file: "pants/Tail_demon.png" },
+    // A 48-cell sheet: the tail sways. Worn on the body, so walkSynced, like
+    // the golden pair.
+    { id: "Tail_demon", name: "Demon Tail", textureKey: "pd-pants-Tail_demon", file: "pants/Tail_demon.png",
+      effect: { frames: 48, fps: 1000 / 150, walkSynced: true } },
     { id: "Short_pants_green_belt", name: "Green Belted Short Pants", textureKey: "pd-pants-Short_pants_green_belt", file: "pants/Short_pants_green_belt.png" },
     { id: "Short_pants_green", name: "Green Short Pants", textureKey: "pd-pants-Short_pants_green", file: "pants/Short_pants_green.png" },
     { id: "Pants_lotus", name: "Lotus Pants", textureKey: "pd-pants-Pants_lotus", file: "pants/Pants_lotus.png" },
@@ -355,7 +358,11 @@ export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
     { id: "Blindfold_demon", name: "Demon Blindfold", textureKey: "pd-accessory-Blindfold_demon", file: "accessory/Blindfold_demon.png" },
     { id: "Visor_cyber", name: "Cyber Visor", textureKey: "pd-accessory-Visor_cyber", file: "accessory/Visor_cyber.png" },
     // The 2026-11-03 drop. Appended; position is the index.
-    { id: "Glasses_cyber", name: "Cyber Glasses", textureKey: "pd-accessory-Glasses_cyber", file: "accessory/Glasses_cyber.png" },
+    // A 48-cell sheet: the lenses animate. walkSynced so they stay on the
+    // face as the head bobs, and keep their place under the hat; a steady
+    // or plain effect is drawn above every layer, the hat included.
+    { id: "Glasses_cyber", name: "Cyber Glasses", textureKey: "pd-accessory-Glasses_cyber", file: "accessory/Glasses_cyber.png",
+      effect: { frames: 48, fps: 1000 / 150, walkSynced: true } },
   ],
   // STYLES ONLY — the colour is a separate axis (game/config/hairPalette.ts),
   // so a style is listed once and worn in any of the twenty swatches.
@@ -456,8 +463,11 @@ export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
     // sheet is 24 cells wide and the mask reads the first four as a walk.
     { id: "Halo", name: "Halo", textureKey: "pd-hat-Halo", file: "hat/Halo.png",
       hatCoverage: "band",
-      // DOM's timing: 150 ms a cell. The redrawn sheet is 48 cells, twice the
-      // first one, so the loop is 7.2 s. Read off the clock (see
+      // DOM's timing: 150 ms a cell. The redrawn sheet is 48 cells, but cells
+      // 24-47 are a byte-for-byte copy of 0-23, so what you SEE loops every
+      // 24 cells, 3.6 s. Inside each group of four there are only two
+      // drawings, the pose and the same pose a pixel lower: that is the float,
+      // and it is why the Halo plays every cell. Read off the clock (see
       // AvatarSprite.tickEffects), so it holds whatever the frame rate does.
       effect: { frames: 48, fps: 1000 / 150, clearsHair: true } },
     // The second effect sheet, and the first that is a crown rather than a
@@ -485,7 +495,11 @@ export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
     // The 2026-11-03 drop. Appended, never inserted: a booster item's
     // catalog index is its position in this lane.
     { id: "Horns_demon", name: "Demon Horns", textureKey: "pd-hat-Horns_demon", file: "hat/Horns_demon.png" },
-    { id: "Fire_Skull", name: "Fire Skull", textureKey: "pd-hat-Fire_Skull", file: "hat/Fire_Skull.png" },
+    // A 48-cell sheet, like the hourglass: the fire moves. walkSynced and not
+    // steady because the skull IS the head, so it steps with the walk and
+    // keeps its place in LAYER_ORDER. Off the walk the two are identical.
+    { id: "Fire_Skull", name: "Fire Skull", textureKey: "pd-hat-Fire_Skull", file: "hat/Fire_Skull.png",
+      effect: { frames: 48, fps: 1000 / 150, walkSynced: true } },
     { id: "Cap_yellow", name: "Yellow Cap", textureKey: "pd-hat-Cap_yellow", file: "hat/Cap_yellow.png" },
   ],
 };
