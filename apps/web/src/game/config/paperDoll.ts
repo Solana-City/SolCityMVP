@@ -107,6 +107,21 @@ export interface LayerVariant {
      * only: the sparkle still moves, one step per frame of `fps`.
      */
     steady?: boolean;
+    /**
+     * Keeps the walk. A halo floats beside the body and can ignore the legs;
+     * a garment cannot, because it IS the legs. The sheet is still groups of
+     * SPRITE_COLS cells, but here a group is one full walk cycle and the
+     * groups are the sparkle advancing: the COLUMN stays the walk frame and
+     * the GROUP steps on the clock at `fps`.
+     *
+     * Without this a golden trouser animates on its own rhythm while the legs
+     * underneath walk on theirs, and the two slide apart within a step.
+     *
+     * Off the walk there is no column to follow, so the wardrobe tile and the
+     * preview pass none and get the first pose of each group, exactly as
+     * `steady` does.
+     */
+    walkSynced?: boolean;
   };
 }
 
@@ -135,9 +150,20 @@ export const SPRITE_ROWS = 4;
  * One rule for the game, the wardrobe tile and the large preview, so the three
  * cannot drift apart.
  */
-export function effectCell(effect: NonNullable<LayerVariant["effect"]>, nowMs: number): number {
+export function effectCell(
+  effect: NonNullable<LayerVariant["effect"]>,
+  nowMs: number,
+  /**
+   * Which walk frame the body is on, 0..SPRITE_COLS-1. Only `walkSynced`
+   * reads it. Away from the game there is no walk, so it defaults to the
+   * standing pose.
+   */
+  walkCol = 0,
+): number {
   const step = Math.floor((nowMs / 1000) * effect.fps);
-  if (effect.steady) return (step % (effect.frames / SPRITE_COLS)) * SPRITE_COLS;
+  const groups = effect.frames / SPRITE_COLS;
+  if (effect.walkSynced) return (step % groups) * SPRITE_COLS + walkCol;
+  if (effect.steady) return (step % groups) * SPRITE_COLS;
   return step % effect.frames;
 }
 
@@ -174,6 +200,8 @@ export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
     // Wings, 2026-10-30. Appended; position is the index.
     { id: "Wings_angel", name: "Angel Wings", textureKey: "pd-back-Wings_angel", file: "back/Wings_angel.png" },
     { id: "Wings_demon", name: "Demon Wings", textureKey: "pd-back-Wings_demon", file: "back/Wings_demon.png" },
+    // The 2026-11-03 drop. Appended; position is the index.
+    { id: "Sands_of_time", name: "Hourglass Backpack", textureKey: "pd-back-Sands_of_time", file: "back/Sands_of_time.png" },
   ],
   skin: [
     { id: "Light",      name: "Light",      textureKey: "pd-skin-Light",      file: "skin/Light.png" },
@@ -217,19 +245,43 @@ export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
     { id: "Pants_green", name: "Green Pants", textureKey: "pd-pants-Pants_green", file: "pants/Pants_green.png" },
     { id: "Pants_chess_red", name: "Red Checkered Pants", textureKey: "pd-pants-Pants_chess_red", file: "pants/Pants_chess_red.png" },
     { id: "Pants_chess_white", name: "White Checkered Pants", textureKey: "pd-pants-Pants_chess_white", file: "pants/Pants_chess_white.png" },
-    { id: "Pants_golden", name: "Golden Pants", textureKey: "pd-pants-Pants_golden", file: "pants/Pants_golden.png" },
+    // Dom delivered these two as 48-cell effect sheets, not flat garments:
+    // twelve walk cycles with the gold travelling across them. They are
+    // walkSynced rather than steady because a trouser and a suit move with
+    // the body, so the column has to stay the walk frame.
+    { id: "Pants_golden", name: "Golden Pants", textureKey: "pd-pants-Pants_golden", file: "pants/Pants_golden.png",
+      effect: { frames: 48, fps: 1000 / 150, walkSynced: true } },
+    // The 2026-11-03 drop, which is most of it. Appended; position is
+    // the index.
+    { id: "Pants_acid", name: "Acid Pants", textureKey: "pd-pants-Pants_acid", file: "pants/Pants_acid.png" },
+    { id: "Short_pants_acid", name: "Acid Short Pants", textureKey: "pd-pants-Short_pants_acid", file: "pants/Short_pants_acid.png" },
+    { id: "Short_pants_black_belt", name: "Black Belted Short Pants", textureKey: "pd-pants-Short_pants_black_belt", file: "pants/Short_pants_black_belt.png" },
+    { id: "Short_pants_blue_belt", name: "Blue Belted Short Pants", textureKey: "pd-pants-Short_pants_blue_belt", file: "pants/Short_pants_blue_belt.png" },
+    { id: "Short_pants_blue", name: "Blue Short Pants", textureKey: "pd-pants-Short_pants_blue", file: "pants/Short_pants_blue.png" },
+    { id: "Tail_demon", name: "Demon Tail", textureKey: "pd-pants-Tail_demon", file: "pants/Tail_demon.png" },
+    { id: "Short_pants_green_belt", name: "Green Belted Short Pants", textureKey: "pd-pants-Short_pants_green_belt", file: "pants/Short_pants_green_belt.png" },
+    { id: "Short_pants_green", name: "Green Short Pants", textureKey: "pd-pants-Short_pants_green", file: "pants/Short_pants_green.png" },
+    { id: "Pants_lotus", name: "Lotus Pants", textureKey: "pd-pants-Pants_lotus", file: "pants/Pants_lotus.png" },
+    { id: "Short_pants_lotus", name: "Lotus Short Pants", textureKey: "pd-pants-Short_pants_lotus", file: "pants/Short_pants_lotus.png" },
+    { id: "Pants_neon", name: "Neon Pants", textureKey: "pd-pants-Pants_neon", file: "pants/Pants_neon.png" },
+    { id: "Short_pants_neon", name: "Neon Short Pants", textureKey: "pd-pants-Short_pants_neon", file: "pants/Short_pants_neon.png" },
+    { id: "Short_pants_orange_belt", name: "Orange Belted Short Pants", textureKey: "pd-pants-Short_pants_orange_belt", file: "pants/Short_pants_orange_belt.png" },
+    { id: "Pants_orange", name: "Orange Pants", textureKey: "pd-pants-Pants_orange", file: "pants/Pants_orange.png" },
+    { id: "Short_pants_purple_belt", name: "Purple Belted Short Pants", textureKey: "pd-pants-Short_pants_purple_belt", file: "pants/Short_pants_purple_belt.png" },
+    { id: "Pants_white", name: "White Pants", textureKey: "pd-pants-Pants_white", file: "pants/Pants_white.png" },
+    { id: "Short_pants_red_belt", name: "Red Belted Short Pants", textureKey: "pd-pants-Short_pants_red_belt", file: "pants/Short_pants_red_belt.png" },
   ],
   tshirt: [
     { id: "Blue_tshirt",  name: "Blue T-Shirt",  textureKey: "pd-tshirt-Blue_tshirt",  file: "tshirt/Blue_tshirt.png" },
     { id: "White_tshirt", name: "White T-Shirt", textureKey: "pd-tshirt-White_tshirt", file: "tshirt/White_tshirt.png" },
     // Superteam Brasil set — earned, never dropped by a booster (see unlockVia).
-    { id: "STB_shirt", name: "Superteam Brasil Shirt", textureKey: "pd-tshirt-STB_shirt",
+    { id: "STB_shirt", name: "Superteam Brasil T-Shirt", textureKey: "pd-tshirt-STB_shirt",
       file: "tshirt/STB_shirt.png", unlockVia: "quest", unlockHint: "Talk to Kuka" },
     { id: "Brazilian_shirt", name: "Brazil Shirt", textureKey: "pd-tshirt-Brazilian_shirt",
       file: "tshirt/Brazilian_shirt.png", unlockVia: "quest", unlockHint: "Meet Kuka, Kite Pro, the Caramel Dog and every builder at a stand" },
     // Vibhu's gift, for opening his Breakpoint 2026 link. Earned by taking the
     // link, not by buying anything: nothing checks whether a ticket was bought.
-    { id: "Shirt_Solana", name: "Solana Shirt", textureKey: "pd-tshirt-Shirt_Solana",
+    { id: "Shirt_Solana", name: "Solana Longsleeve", textureKey: "pd-tshirt-Shirt_Solana",
       file: "tshirt/Shirt_Solana.png", unlockVia: "quest", unlockHint: "Open Vibhu's Breakpoint link" },
     // The clothing drop, 2026-10-30. Appended; position is the index.
     { id: "Longsleeve_black", name: "Black Longsleeve", textureKey: "pd-tshirt-Longsleeve_black", file: "tshirt/Longsleeve_black.png" },
@@ -253,7 +305,9 @@ export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
     { id: "Longsleeve_acid", name: "Acid Longsleeve", textureKey: "pd-tshirt-Longsleeve_acid", file: "tshirt/Longsleeve_acid.png" },
     { id: "Longsleeve_neon", name: "Neon Longsleeve", textureKey: "pd-tshirt-Longsleeve_neon", file: "tshirt/Longsleeve_neon.png" },
     { id: "Longsleeve_chess", name: "Checkered Longsleeve", textureKey: "pd-tshirt-Longsleeve_chess", file: "tshirt/Longsleeve_chess.png" },
-    { id: "Longsleeve_indies", name: "Indies Longsleeve", textureKey: "pd-tshirt-Longsleeve_indies", file: "tshirt/Longsleeve_indies.png" },
+    { id: "Longsleeve_indies", name: "Indies Longsleeve", textureKey: "pd-tshirt-Longsleeve_indies",
+      file: "tshirt/Longsleeve_indies.png", unlockVia: "event",
+      unlockHint: "Given to the Indies season crew" },
     { id: "Tshirt_acid", name: "Acid T-Shirt", textureKey: "pd-tshirt-Tshirt_acid", file: "tshirt/Tshirt_acid.png" },
     { id: "Tshirt_neon", name: "Neon T-Shirt", textureKey: "pd-tshirt-Tshirt_neon", file: "tshirt/Tshirt_neon.png" },
     { id: "Tshirt_chess", name: "Checkered T-Shirt", textureKey: "pd-tshirt-Tshirt_chess", file: "tshirt/Tshirt_chess.png" },
@@ -263,13 +317,14 @@ export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
     { id: "Coat_dude", name: "Dude Coat", textureKey: "pd-tshirt-Coat_dude", file: "tshirt/Coat_dude.png" },
     { id: "Coat_red", name: "Red Coat", textureKey: "pd-tshirt-Coat_red", file: "tshirt/Coat_red.png" },
     { id: "Suit_black", name: "Black Suit", textureKey: "pd-tshirt-Suit_black", file: "tshirt/Suit_black.png" },
-    { id: "Suit_golden", name: "Golden Suit", textureKey: "pd-tshirt-Suit_golden", file: "tshirt/Suit_golden.png" },
+    { id: "Suit_golden", name: "Golden Suit", textureKey: "pd-tshirt-Suit_golden", file: "tshirt/Suit_golden.png",
+      effect: { frames: 48, fps: 1000 / 150, walkSynced: true } },
     { id: "Tshirt_solana_city", name: "Solana City T-Shirt", textureKey: "pd-tshirt-Tshirt_solana_city", file: "tshirt/Tshirt_solana_city.png",
       unlockVia: "quest", unlockHint: "Earned in the city" },
   ],
   accessory: [
     { id: "Golden_ring", name: "Golden Ring", textureKey: "pd-accessory-Golden_ring", file: "accessory/Golden_ring.png" },
-    { id: "Pirate",      name: "Pirate",      textureKey: "pd-accessory-Pirate",      file: "accessory/Pirate.png" },
+    { id: "Pirate",      name: "Pirate Eyepatch", textureKey: "pd-accessory-Pirate",      file: "accessory/Pirate.png" },
     { id: "Trader_shades", name: "Trader Shades", textureKey: "pd-accessory-Trader_shades",
       file: "accessory/Trader_shades.png", unlockVia: "quest", unlockHint: "Trade your first stock at Stocklana" },
     // Rings and eyewear, 2026-10-30. Appended for the same reason as the
@@ -282,6 +337,8 @@ export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
     { id: "Glasses_thug", name: "Thug Shades", textureKey: "pd-accessory-Glasses_thug", file: "accessory/Glasses_thug.png" },
     { id: "Blindfold_demon", name: "Demon Blindfold", textureKey: "pd-accessory-Blindfold_demon", file: "accessory/Blindfold_demon.png" },
     { id: "Visor_cyber", name: "Cyber Visor", textureKey: "pd-accessory-Visor_cyber", file: "accessory/Visor_cyber.png" },
+    // The 2026-11-03 drop. Appended; position is the index.
+    { id: "Glasses_cyber", name: "Cyber Glasses", textureKey: "pd-accessory-Glasses_cyber", file: "accessory/Glasses_cyber.png" },
   ],
   // STYLES ONLY — the colour is a separate axis (game/config/hairPalette.ts),
   // so a style is listed once and worn in any of the twenty swatches.
@@ -319,18 +376,18 @@ export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
     // plain blue cap joined the catalog on 2026-10-30. The ID does not move,
     // because the id is what the catalog index is built from and the index is
     // what a wallet owns. Only the label a player reads changes.
-    { id: "Cap_blue",   name: "Sol Cap Blue", textureKey: "pd-hat-Cap_blue",   file: "hat/Cap_blue.png" },
+    { id: "Cap_blue",   name: "Solana Blue Cap", textureKey: "pd-hat-Cap_blue",   file: "hat/Cap_blue.png" },
     { id: "Cap_kid",    name: "Cap Kid",    textureKey: "pd-hat-Cap_kid",    file: "hat/Cap_kid.png" },
-    { id: "Crown",      name: "Crown",      textureKey: "pd-hat-Crown",      file: "hat/Crown.png" },
     { id: "Cylinder",   name: "Cylinder",   textureKey: "pd-hat-Cylinder",   file: "hat/Cylinder.png" },
     { id: "Viking_hat", name: "Viking Hat", textureKey: "pd-hat-Viking_hat", file: "hat/Viking_hat.png" },
-    { id: "Ninja",      name: "Ninja",      textureKey: "pd-hat-Ninja",      file: "hat/Ninja.png", hatCoverage: "suppress" },
-    { id: "Pirate",     name: "Pirate",     textureKey: "pd-hat-Pirate",     file: "hat/Pirate.png" },
+    { id: "Ninja",      name: "Ninja Mask", textureKey: "pd-hat-Ninja",      file: "hat/Ninja.png", hatCoverage: "suppress" },
+    { id: "Pirate",     name: "Pirate Hat", textureKey: "pd-hat-Pirate",     file: "hat/Pirate.png" },
     { id: "Straw_hat",  name: "Straw Hat",  textureKey: "pd-hat-Straw_hat",  file: "hat/Straw_hat.png" },
-    { id: "Vizard_hat", name: "Wizard Hat", textureKey: "pd-hat-Vizard_hat", file: "hat/Vizard_hat.png" },
-    { id: "hat_black",  name: "Black Hat",  textureKey: "pd-hat-hat_black",  file: "hat/hat_black.png" },
+    { id: "Vizard_hat", name: "Vizard Hat", textureKey: "pd-hat-Vizard_hat", file: "hat/Vizard_hat.png" },
+    { id: "hat_black",  name: "Solana Hat",  textureKey: "pd-hat-hat_black",  file: "hat/hat_black.png" },
     { id: "hat_red",    name: "Red Hat",    textureKey: "pd-hat-hat_red",    file: "hat/hat_red.png" },
-    { id: "red_belt",   name: "Red Bandana",textureKey: "pd-hat-red_belt",   file: "hat/red_belt.png", hatCoverage: "band" },
+    { id: "red_belt",   name: "Red Bandana",textureKey: "pd-hat-red_belt",   file: "hat/red_belt.png", hatCoverage: "band",
+      unlockVia: "quest", unlockHint: "Earned in the city" },
     // Earned from NPCs, so unlockVia keeps both out of the booster pool.
     // The donation route was dropped on 2026-10-20: the Donation Manager and
     // lib/donationWallet.ts both promise the player that donations buy nothing,
@@ -381,19 +438,21 @@ export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
     // "band" so the hair mask erases only under the halo's own ink: the
     // sheet is 24 cells wide and the mask reads the first four as a walk.
     { id: "Halo", name: "Halo", textureKey: "pd-hat-Halo", file: "hat/Halo.png",
-      hatCoverage: "band", unlockVia: "quest", unlockHint: "Test item",
-      // DOM's timing: 150 ms a cell, so a 3.6 s loop. Read off the clock (see
+      hatCoverage: "band",
+      // DOM's timing: 150 ms a cell. The redrawn sheet is 48 cells, twice the
+      // first one, so the loop is 7.2 s. Read off the clock (see
       // AvatarSprite.tickEffects), so it holds whatever the frame rate does.
-      effect: { frames: 24, fps: 1000 / 150, clearsHair: true } },
+      effect: { frames: 48, fps: 1000 / 150, clearsHair: true } },
     // The second effect sheet, and the first that is a crown rather than a
-    // halo: 48 cells a row, twelve walk cycles drawn over the body, in the same
-    // place as the static Crown above. Appended AFTER the Halo on purpose (an
-    // index written to chain names an item). A hat worn ON the head, so unlike
+    // halo: 48 cells a row, twelve walk cycles drawn over the body. It took the
+    // place of the static Crown, which was dropped: there is no plain crown,
+    // only this one. Appended AFTER the Halo on purpose (an index written to
+    // chain names an item). A hat worn ON the head, so unlike
     // the Halo it masks the hair (clearsHair is unset). "band", not "full": from
     // the side its prongs have gaps, and the per-column cutoff of "full" erased
     // the hair between them and left bare skin showing through the crown.
     { id: "Royal_crown", name: "Royal Crown", textureKey: "pd-hat-Royal_crown", file: "hat/Royal_crown.png",
-      hatCoverage: "band", unlockVia: "quest", unlockHint: "Test item",
+      hatCoverage: "band",
       effect: { frames: 48, fps: 1000 / 150, steady: true } },
     // The colourway caps, 2026-10-30. Appended, never inserted: a booster
     // item's catalog index is its position in this lane, and a wallet owns
@@ -406,6 +465,11 @@ export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
     { id: "Cap_light_grey", name: "Light Grey Cap", textureKey: "pd-hat-Cap_light_grey", file: "hat/Cap_light_grey.png" },
     { id: "Cap_orange", name: "Orange Cap", textureKey: "pd-hat-Cap_orange", file: "hat/Cap_orange.png" },
     { id: "Cap_red", name: "Red Cap", textureKey: "pd-hat-Cap_red", file: "hat/Cap_red.png" },
+    // The 2026-11-03 drop. Appended, never inserted: a booster item's
+    // catalog index is its position in this lane.
+    { id: "Horns_demon", name: "Demon Horns", textureKey: "pd-hat-Horns_demon", file: "hat/Horns_demon.png" },
+    { id: "Fire_Skull", name: "Fire Skull", textureKey: "pd-hat-Fire_Skull", file: "hat/Fire_Skull.png" },
+    { id: "Cap_yellow", name: "Yellow Cap", textureKey: "pd-hat-Cap_yellow", file: "hat/Cap_yellow.png" },
   ],
 };
 

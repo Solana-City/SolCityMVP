@@ -161,21 +161,23 @@ describe("the global catalog index", () => {
   it("pins the quest block, index by index", () => {
     expect(assigned("quest")).toEqual([
       [704, "tshirt:STB_shirt"], [705, "tshirt:Brazilian_shirt"],
+      // Longsleeve_indies and Pumpkin_head are unlockVia "event", so they
+      // live in the event block: event items are tradable and quest items
+      // are not. Nothing in this block is on chain yet, so the items after
+      // them moving up is free.
       [706, "tshirt:Shirt_Solana"], [707, "tshirt:Tshirt_solana_city"],
       [768, "back:Seeker_backpack"],
       [832, "accessory:Trader_shades"],
-      [960, "hat:Cap_Sol"], [961, "hat:city_cap"],
-      [962, "hat:turkish_head"], [963, "hat:STB_cap"],
-      // Pumpkin_head left on 2026-11-02 for the event block, on purpose:
-      // event items are tradable and quest items are not. Nothing in this
-      // block is on chain yet, so the three hats after it moving up is free.
-      [964, "hat:Seeker_hat"],
-      [965, "hat:Miner_hat"], [966, "hat:Halo"], [967, "hat:Royal_crown"],
+      [960, "hat:Cap_Sol"], [961, "hat:red_belt"],
+      [962, "hat:city_cap"], [963, "hat:turkish_head"],
+      [964, "hat:STB_cap"], [965, "hat:Seeker_hat"],
+      [966, "hat:Miner_hat"],
     ]);
   });
 
   it("pins the event block, index by index", () => {
     expect(assigned("event")).toEqual([
+      [EVENT_BLOCK_START + 3 * LANE_SIZE.event, "tshirt:Longsleeve_indies"],
       [EVENT_BLOCK_START + 7 * LANE_SIZE.event, "hat:Pumpkin_head"],
     ]);
   });
@@ -186,6 +188,18 @@ describe("the global catalog index", () => {
       [5634, "pants:Pants_black"], [5635, "pants:Pants_black_belt"],
       [5636, "pants:Pants_green"], [5637, "pants:Pants_chess_red"],
       [5638, "pants:Pants_chess_white"], [5639, "pants:Pants_golden"],
+      [5640, "pants:Pants_acid"], [5641, "pants:Short_pants_acid"],
+      [5642, "pants:Short_pants_black_belt"],
+      [5643, "pants:Short_pants_blue_belt"],
+      [5644, "pants:Short_pants_blue"], [5645, "pants:Tail_demon"],
+      [5646, "pants:Short_pants_green_belt"],
+      [5647, "pants:Short_pants_green"], [5648, "pants:Pants_lotus"],
+      [5649, "pants:Short_pants_lotus"], [5650, "pants:Pants_neon"],
+      [5651, "pants:Short_pants_neon"],
+      [5652, "pants:Short_pants_orange_belt"],
+      [5653, "pants:Pants_orange"],
+      [5654, "pants:Short_pants_purple_belt"],
+      [5655, "pants:Pants_white"], [5656, "pants:Short_pants_red_belt"],
       [7680, "tshirt:Longsleeve_black"], [7681, "tshirt:Longsleeve_brown"],
       [7682, "tshirt:Longsleeve_dark_blue"],
       [7683, "tshirt:Longsleeve_dark_grey"],
@@ -199,15 +213,14 @@ describe("the global catalog index", () => {
       [7695, "tshirt:Tshirt_yellow"], [7696, "tshirt:Tshirt_green"],
       [7697, "tshirt:Tshirt_red"], [7698, "tshirt:Longsleeve_acid"],
       [7699, "tshirt:Longsleeve_neon"], [7700, "tshirt:Longsleeve_chess"],
-      [7701, "tshirt:Longsleeve_indies"], [7702, "tshirt:Tshirt_acid"],
-      [7703, "tshirt:Tshirt_neon"], [7704, "tshirt:Tshirt_chess"],
-      [7705, "tshirt:Tshirt_solana_white"], [7706, "tshirt:Tshirt_dragon"],
-      [7707, "tshirt:Coat_doc"], [7708, "tshirt:Coat_dude"],
-      [7709, "tshirt:Coat_red"], [7710, "tshirt:Suit_black"],
-      [7711, "tshirt:Suit_golden"],
+      [7701, "tshirt:Tshirt_acid"], [7702, "tshirt:Tshirt_neon"],
+      [7703, "tshirt:Tshirt_chess"], [7704, "tshirt:Tshirt_solana_white"],
+      [7705, "tshirt:Tshirt_dragon"], [7706, "tshirt:Coat_doc"],
+      [7707, "tshirt:Coat_dude"], [7708, "tshirt:Coat_red"],
+      [7709, "tshirt:Suit_black"], [7710, "tshirt:Suit_golden"],
       [9728, "back:Jetpack"], [9729, "back:backpack_brown"],
       [9730, "back:backpack_red"], [9731, "back:Wings_angel"],
-      [9732, "back:Wings_demon"],
+      [9732, "back:Wings_demon"], [9733, "back:Sands_of_time"],
       [11776, "accessory:Golden_ring"], [11777, "accessory:Pirate"],
       [11778, "accessory:Ring_bronze"], [11779, "accessory:Ring_silver"],
       [11780, "accessory:Glasses_round"],
@@ -216,15 +229,19 @@ describe("the global catalog index", () => {
       [11783, "accessory:Glasses_thug"],
       [11784, "accessory:Blindfold_demon"],
       [11785, "accessory:Visor_cyber"],
-      [15872, "hat:Cap_blue"], [15873, "hat:Cap_kid"], [15874, "hat:Crown"],
-      [15875, "hat:Cylinder"], [15876, "hat:Viking_hat"],
-      [15877, "hat:Ninja"], [15878, "hat:Pirate"], [15879, "hat:Straw_hat"],
-      [15880, "hat:Vizard_hat"], [15881, "hat:hat_red"],
-      [15882, "hat:red_belt"], [15883, "hat:Cap_black"],
-      [15884, "hat:Cap_blue_plain"], [15885, "hat:Cap_brown"],
-      [15886, "hat:Cap_dark_grey"], [15887, "hat:Cap_green"],
-      [15888, "hat:Cap_light_grey"], [15889, "hat:Cap_orange"],
-      [15890, "hat:Cap_red"],
+      [11786, "accessory:Glasses_cyber"],
+      [15872, "hat:Cap_blue"], [15873, "hat:Cap_kid"],
+      [15874, "hat:Cylinder"], [15875, "hat:Viking_hat"],
+      [15876, "hat:Ninja"], [15877, "hat:Pirate"],
+      [15878, "hat:Straw_hat"], [15879, "hat:Vizard_hat"],
+      [15880, "hat:hat_red"],
+      [15881, "hat:Halo"], [15882, "hat:Royal_crown"],
+      [15883, "hat:Cap_black"], [15884, "hat:Cap_blue_plain"],
+      [15885, "hat:Cap_brown"], [15886, "hat:Cap_dark_grey"],
+      [15887, "hat:Cap_green"], [15888, "hat:Cap_light_grey"],
+      [15889, "hat:Cap_orange"], [15890, "hat:Cap_red"],
+      [15891, "hat:Horns_demon"], [15892, "hat:Fire_Skull"],
+      [15893, "hat:Cap_yellow"],
     ]);
   });
 });

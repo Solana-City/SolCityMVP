@@ -36,23 +36,33 @@ export type { Rarity, RarityTheme, TileKind } from "@/game/collections/seasons";
  */
 const RARITY_TABLE: Partial<Record<Rarity, Partial<Record<LayerCategory, string[]>>>> = {
   legendary: {
-    // The two animated effect hats ride along as legendary. They are test items
-    // outside the pool for now, so this only names the tier they are meant for.
-    hat: ["Crown", "Ninja", "Royal_crown", "Halo"],
+    // Both animated effect hats are in the pool now, not test items: the plain
+    // Crown was dropped and the Royal Crown took its place.
+    hat: ["Royal_crown", "Halo", "Fire_Skull"],
+    accessory: ["Glasses_cyber"],
+    back: ["Sands_of_time"],
+    tshirt: ["Suit_golden"],
+    pants: ["Tail_demon", "Pants_golden"],
   },
+  // Rare was carrying 18 of the 95, nearly double the supply model's share,
+  // which left a specific rare barely easier to pull than a legendary while
+  // common and uncommon sat at the same per-item rate. Six came down.
   rare: {
-    hat: ["Viking_hat", "Vizard_hat", "Pirate"],
-    accessory: ["Golden_ring", "Pirate", "Ring_brilliant", "Glasses_thug", "Blindfold_demon", "Visor_cyber"],
-    back: ["Wings_angel", "Wings_demon"],
-    tshirt: ["Tshirt_dragon", "Coat_doc", "Coat_dude", "Coat_red", "Suit_black", "Suit_golden"],
-    pants: ["Pants_golden"],
+    hat: ["Viking_hat", "Vizard_hat", "Pirate", "Ninja"],
+    accessory: ["Ring_brilliant", "Blindfold_demon"],
+    back: ["Wings_angel", "Wings_demon", "Jetpack"],
+    tshirt: ["Tshirt_dragon", "Suit_black"],
+    pants: ["Pants_lotus"],
   },
   uncommon: {
-    hat: ["Cylinder", "Straw_hat"],
+    hat: ["Cylinder", "Straw_hat", "Horns_demon", "Cap_kid"],
     back: ["backpack_red"],
-    accessory: ["Glasses_round", "Glasses_steampunk"],
-    tshirt: ["Longsleeve_acid", "Longsleeve_neon", "Longsleeve_chess", "Longsleeve_indies", "Tshirt_acid", "Tshirt_neon", "Tshirt_chess", "Tshirt_solana_white"],
-    pants: ["Pants_chess_red", "Pants_chess_white"],
+    accessory: ["Glasses_steampunk", "Golden_ring", "Pirate", "Visor_cyber", "Glasses_thug"],
+    // Longsleeve_indies is NOT here any more: it became an event item, so it
+    // sits in the quest block and never reaches a pack. Naming it would have
+    // put an uncommon badge on something no pack can draw.
+    tshirt: ["Longsleeve_acid", "Longsleeve_neon", "Longsleeve_chess", "Tshirt_acid", "Tshirt_neon", "Tshirt_chess", "Tshirt_solana_white", "Coat_doc", "Coat_red"],
+    pants: ["Pants_chess_red", "Pants_chess_white", "Pants_acid", "Short_pants_acid", "Pants_neon", "Short_pants_neon", "Short_pants_purple_belt"],
   },
 };
 
