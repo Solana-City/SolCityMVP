@@ -63,8 +63,12 @@ const RARITY_TABLE: Partial<Record<Rarity, Partial<Record<LayerCategory, string[
     // Longsleeve_indies is NOT here any more: it became an event item, so it
     // sits in the quest block and never reaches a pack. Naming it would have
     // put an uncommon badge on something no pack can draw.
-    tshirt: ["Longsleeve_chess", "Tshirt_acid", "Tshirt_neon", "Tshirt_chess", "Tshirt_solana_white", "Coat_doc", "Coat_red"],
-    pants: ["Pants_chess_red", "Pants_chess_white", "Pants_acid", "Short_pants_acid", "Pants_neon", "Short_pants_neon", "Short_pants_purple_belt"],
+    // Acid and neon are gone from both cuts, and from the legs below. They
+    // are the same garment as the eighteen commons in a different colour,
+    // which is what common means here. Chess is a pattern and the Solana
+    // shirt is branded, so those two stay.
+    tshirt: ["Longsleeve_chess", "Tshirt_chess", "Tshirt_solana_white", "Coat_doc", "Coat_red"],
+    pants: ["Pants_chess_red", "Pants_chess_white", "Short_pants_purple_belt"],
   },
 };
 
