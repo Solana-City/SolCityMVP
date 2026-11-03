@@ -201,7 +201,24 @@ export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
     { id: "Wings_angel", name: "Angel Wings", textureKey: "pd-back-Wings_angel", file: "back/Wings_angel.png" },
     { id: "Wings_demon", name: "Demon Wings", textureKey: "pd-back-Wings_demon", file: "back/Wings_demon.png" },
     // The 2026-11-03 drop. Appended; position is the index.
-    { id: "Sands_of_time", name: "Hourglass Backpack", textureKey: "pd-back-Sands_of_time", file: "back/Sands_of_time.png" },
+    //
+    // The hourglass sheet is 48 cells, not 4, and it came in that way: the
+    // sand falls. It was declared flat when it landed, which silently broke
+    // its facing, because the walk animation starts a row at row * SPRITE_COLS
+    // and on a 48-cell sheet row 1 begins at cell 48, not cell 4. It is a
+    // garment worn on the body, so walkSynced, exactly like the golden pair.
+    { id: "Sands_of_time", name: "Hourglass Backpack", textureKey: "pd-back-Sands_of_time", file: "back/Sands_of_time.png",
+      effect: { frames: 48, fps: 1000 / 150, walkSynced: true } },
+    // The backpack drop, 2026-11-03. The back slot held six items against the
+    // shirt's thirty-one, so most packs carried nothing for it; these are
+    // mostly commons for that reason. Appended; position is the index.
+    { id: "Backpack_blue", name: "Blue Backpack", textureKey: "pd-back-Backpack_blue", file: "back/Backpack_blue.png" },
+    { id: "Backpack_green", name: "Green Backpack", textureKey: "pd-back-Backpack_green", file: "back/Backpack_green.png" },
+    { id: "Backpack_white", name: "White Backpack", textureKey: "pd-back-Backpack_white", file: "back/Backpack_white.png" },
+    { id: "Backpack_yellow", name: "Yellow Backpack", textureKey: "pd-back-Backpack_yellow", file: "back/Backpack_yellow.png" },
+    { id: "Backpack_solana", name: "Solana Backpack", textureKey: "pd-back-Backpack_solana", file: "back/Backpack_solana.png" },
+    { id: "Backpack_heart", name: "Heart Backpack", textureKey: "pd-back-Backpack_heart", file: "back/Backpack_heart.png" },
+    { id: "Cape_wizard", name: "Wizard Cape", textureKey: "pd-back-Cape_wizard", file: "back/Cape_wizard.png" },
   ],
   skin: [
     { id: "Light",      name: "Light",      textureKey: "pd-skin-Light",      file: "skin/Light.png" },

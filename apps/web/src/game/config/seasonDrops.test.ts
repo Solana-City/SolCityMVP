@@ -24,7 +24,7 @@ describe("season drop lists", () => {
   it("season 1 is the open one and holds pack items", () => {
     expect(SEASONS.map((s) => s.n)).toEqual([1]);
     const counts = seasonDropCounts(1);
-    expect(RARITY_ORDER.reduce((n, r) => n + counts[r], 0)).toBe(95);
+    expect(RARITY_ORDER.reduce((n, r) => n + counts[r], 0)).toBe(102);
   });
 
   it("pins what season 1 would seed, per rarity", () => {
@@ -34,14 +34,16 @@ describe("season drop lists", () => {
         5653, 5655, 5656,
         7680, 7681, 7682, 7683, 7684, 7685, 7686, 7687, 7688, 7689, 7690, 7691,
         7692, 7693, 7694, 7695, 7696, 7697, 7707,
-        9729, 11778, 11779, 11780,
+        9729, 9730, 9734, 9735, 9736, 9737,
+        11778, 11779, 11780,
         15872, 15880, 15883, 15884, 15885, 15886, 15887, 15888, 15889, 15890,
         15893,
       ],
       uncommon: [
         5637, 5638, 5640, 5641, 5650, 5651, 5654,
         7698, 7699, 7700, 7701, 7702, 7703, 7704, 7706, 7708,
-        9730, 11776, 11777, 11781, 11783, 11785,
+        9738, 9739, 9740,
+        11776, 11777, 11781, 11783, 11785,
         15873, 15874, 15878, 15891,
       ],
       rare: [

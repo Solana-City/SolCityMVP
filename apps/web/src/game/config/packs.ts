@@ -56,7 +56,9 @@ const RARITY_TABLE: Partial<Record<Rarity, Partial<Record<LayerCategory, string[
   },
   uncommon: {
     hat: ["Cylinder", "Straw_hat", "Horns_demon", "Cap_kid"],
-    back: ["backpack_red"],
+    // backpack_red came down to common with the drop: a plain colourway reads
+    // as one, and the back slot needed commons more than it needed tiers.
+    back: ["Backpack_solana", "Backpack_heart", "Cape_wizard"],
     accessory: ["Glasses_steampunk", "Golden_ring", "Pirate", "Visor_cyber", "Glasses_thug"],
     // Longsleeve_indies is NOT here any more: it became an event item, so it
     // sits in the quest block and never reaches a pack. Naming it would have
