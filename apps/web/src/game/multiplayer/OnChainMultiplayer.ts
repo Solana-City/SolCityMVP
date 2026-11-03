@@ -60,7 +60,8 @@ import { transactionLog } from "../telemetry/transactionLog";
 import type { Loadout } from "../config/paperDoll";
 import { ER_VALIDATORS, probeValidators, nearestValidator } from "./erValidators";
 import { leaveAction, readCommits, recordCommit, resetCommits } from "./delegationBudget";
-import { DIR_LEFT, PresenceTracker, activityKey } from "./presence";
+import { DIR_LEFT, PresenceTracker, activityKey, HIDE_AFTER_MS } from "./presence";
+import { buildMarkPresentSessionIx, decodePresenceBoard, derivePresenceBoardPDA } from "../solana/presenceBoard";
 import { setOnChainUnlocks } from "@/game/config/wardrobeUnlocks";
 import { syncHeldToWardrobe } from "@/game/solana/mint";
 import { gameSlotOf, GAME_SLOT_CAP } from "@/game/minigames/slots";
@@ -134,6 +135,19 @@ const SWEEP_CONFIG = {
 };
 
 /**
+ * The first stage of the sweep: just enough of every account to reach
+ * last_active, at the worst case for the variable fields before it
+ * (discriminator 8, authority 32, Some session key 33, a 20-byte name 24,
+ * then x, y, direction, outfit, score and three counts 20, then last_active
+ * 8). The full read follows only for the accounts that are fresh.
+ */
+const SWEEP_HEAD_BYTES = 125;
+const SWEEP_HEAD_CONFIG = {
+  commitment: "confirmed" as const,
+  dataSlice: { offset: 0, length: SWEEP_HEAD_BYTES },
+};
+
+/**
  * `last_active` off a sliced PlayerState, for picking the fresher of two
  * copies of the same PDA. Only the low 32 bits, which is all the decoder
  * reads and is good until 2106.
@@ -182,7 +196,12 @@ type BCMsg =
   | { t: "look";  w: string; l: Loadout }
   | { t: "expr";  w: string; e: string }
   | { t: "ball";  w: string; k: BallKick }
-  | { t: "leave"; w: string };
+  | { t: "leave"; w: string }
+  // Another tab of this browser is now playing this wallet (see playHere).
+  | { t: "takeover"; w: string; tab: string };
+
+/** Window event the "playing in another tab" overlay listens to. */
+export const OTHER_TAB_EVENT = "solcity:other-tab";
 
 // Throttle position broadcasts. Every other screen can only be as current as
 // the last sample, so this interval is a floor under the delay players see.
@@ -837,6 +856,7 @@ export class OnChainMultiplayer {
   // ── Send input ────────────────────────────────────────────────────────
 
   sendInput(x: number, y: number, direction: string, isWalking: boolean, buffIndex: number | null = null): void {
+    if (this.suspended) return; // another tab is playing this wallet
     const roundX = Math.round(x);
     const roundY = Math.round(y);
     const dirNum = DIR_NUM[direction] ?? 0;
@@ -867,6 +887,7 @@ export class OnChainMultiplayer {
     const minGap = stopped ? 0 : isEvent ? POS_EVENT_MIN_MS : POS_THROTTLE_MS;
     if (now - this.lastPosSent < minGap) return;
     this.lastPosSent = now;
+    this.noteLocalActivity();
 
     this.lastPos = { x: roundX, y: roundY, direction: dirNum, isWalking, buffIndex };
 
@@ -955,8 +976,70 @@ export class OnChainMultiplayer {
    * minutes and stay gone until they moved again. A cheap re-write of the
    * position we already hold keeps them present without any visible motion.
    */
+  // ── Presence board (presenceBoard.ts) ───────────────────────────────────
+
+  /** Last time this player did something: moved, chatted, emoted, dressed. */
+  private lastLocalActivityAt = Date.now();
+  /** Taken off the board for being AFK too long, until they act again. */
+  private selfHidden = false;
+  /** Board marks that failed, so a missing board is not retried every tick. */
+  private boardMarkFailures = 0;
+
+  /** The identity of the rollup our account is delegated to, which is the board we mark. */
+  private ownValidator(): PublicKey | null {
+    const read = this.erReadConnections.find((r) => r.conn === this.ephemeralConnection);
+    const v = read && ER_VALIDATORS.find((x) => x.id === read.id);
+    return v ? new PublicKey(v.identity) : null;
+  }
+
+  /** Present or gone, on our rollup's board. Free and silent; a failure costs nothing. */
+  private async markPresent(present: boolean): Promise<void> {
+    if (!this.wallet || !this.useEphemeral || !isProgramDeployed() || this.suspended) return;
+    // Three misses in a row: no board here yet (before presence-setup ran).
+    // Try again only now and then rather than on every heartbeat.
+    if (present && this.boardMarkFailures >= 3 && Math.random() > 0.1) return;
+    const validator = this.ownValidator();
+    if (!validator) return;
+    try {
+      const sk = this.sessionKeys.getSessionPublicKey();
+      const { blockhash } = await this.ephemeralConnection.getLatestBlockhash();
+      const tx = new Transaction({ recentBlockhash: blockhash, feePayer: sk })
+        .add(buildMarkPresentSessionIx(this.wallet, sk, validator, present));
+      this.sessionKeys.signTransaction(tx);
+      await this.ephemeralConnection.sendRawTransaction(tx.serialize(), { skipPreflight: true });
+      this.boardMarkFailures = 0;
+    } catch (err: any) {
+      if (++this.boardMarkFailures === 3) console.warn("[Presence] board mark failing:", err?.message);
+    }
+  }
+
+  /** Any real action. Brings a player who had hidden themselves for being AFK back. */
+  private noteLocalActivity(): void {
+    this.lastLocalActivityAt = Date.now();
+    if (this.selfHidden) {
+      this.selfHidden = false;
+      void this.markPresent(true);
+    }
+  }
+
+  /**
+   * Every 30s: still here, say so. AFK past HIDE_AFTER_MS: leave the board,
+   * which is the same moment everybody else stops drawing us (presence.ts).
+   */
+  private presenceHeartbeat(): void {
+    if (!this._connected || this.suspended) return;
+    if (Date.now() - this.lastLocalActivityAt > HIDE_AFTER_MS) {
+      if (!this.selfHidden) {
+        this.selfHidden = true;
+        void this.markPresent(false);
+      }
+      return;
+    }
+    void this.markPresent(true);
+  }
+
   private heartbeat(): void {
-    if (!this._connected || !this.wallet || !isProgramDeployed()) return;
+    if (!this._connected || !this.wallet || !isProgramDeployed() || this.suspended) return;
     if (this.lastPos.x < 0) return; // no position written yet this session
     if (Date.now() - this.lastChainSendAt < HEARTBEAT_MS) return;
     this.pushPosition(this.lastPos.x, this.lastPos.y, packDirection(this.lastPos.direction, this.lastPos.isWalking, this.lastPos.buffIndex));
@@ -964,6 +1047,7 @@ export class OnChainMultiplayer {
 
   sendChat(text: string): void {
     if (!this.wallet) return;
+    this.noteLocalActivity();
     // Layer 1: BroadcastChannel (same browser, instant)
     this.bc?.postMessage({ t: "chat", w: this.wallet.toBase58(), text } satisfies BCMsg);
     // Layer 2: cross-device — write the message onto our ER PDA. Others read
@@ -1357,8 +1441,63 @@ export class OnChainMultiplayer {
 
   /** Sends a session-signed instruction to the hunt on BASE, fire-and-forget
    *  with one fresh-blockhash retry. Returns the signature, or null on failure. */
+  /**
+   * Where the hunt lives: the rollup it is delegated to, or base.
+   *
+   * Read from the hunt's delegation record, the only authority on it (every
+   * rollup returns a copy). Delegated, a claim is a free rollup transaction
+   * and the session key needs no SOL for it; on base it costs the key 5,000
+   * lamports, as before. Cached for 30s, so an admin moving the hunt
+   * (scripts/presence-setup.ts --hunt, or undelegate_hunt) is followed within
+   * one poll or two, without asking base on every 3s tick.
+   */
+  private huntConn: Connection | null = null;
+  private huntConnAt = 0;
+  private huntOnRollup = false;
+  private async huntConnection(): Promise<Connection> {
+    if (this.huntConn && Date.now() - this.huntConnAt < 30_000) return this.huntConn;
+    try {
+      const [huntPda] = deriveHuntPDA();
+      const rec = await this.baseRpcWithRetry(
+        () => this.baseConnection.getAccountInfo(delegationRecordPdaFromDelegatedAccount(huntPda)),
+      );
+      let conn: Connection = this.baseConnection;
+      let onRollup = false;
+      if (rec && rec.owner.equals(DELEGATION_PROGRAM_ID) && rec.lamports !== 0) {
+        const validator = new PublicKey(rec.data.subarray(8, 40)).toBase58();
+        const target = ER_VALIDATORS.find((v) => v.identity === validator);
+        const read = target && this.erReadConnections.find((r) => r.id === target.id);
+        if (read) { conn = read.conn; onRollup = true; }
+      }
+      if (onRollup !== this.huntOnRollup) {
+        console.log(`[Hunt] the hunt is ${onRollup ? "on a rollup: finds are free" : "on base"}`);
+      }
+      this.huntConn = conn;
+      this.huntOnRollup = onRollup;
+      this.huntConnAt = Date.now();
+    } catch { /* keep the last answer */ }
+    return this.huntConn ?? this.baseConnection;
+  }
+
   private async sendHuntIx(ix: TransactionInstruction): Promise<HuntSend> {
     const sessionKey = this.sessionKeys.getSessionPublicKey();
+    const conn = await this.huntConnection();
+    if (this.huntOnRollup) {
+      // On the hunt's rollup: free, instant, and with no failover underneath.
+      try {
+        const { blockhash } = await conn.getLatestBlockhash();
+        const tx = new Transaction({ recentBlockhash: blockhash, feePayer: sessionKey }).add(ix);
+        this.sessionKeys.signTransaction(tx);
+        return {
+          signature: await OnChainMultiplayer.withTimeout(conn.sendRawTransaction(tx.serialize()), 8_000),
+          error: null,
+        };
+      } catch (err: any) {
+        // Moved under us, maybe: ask the record again next time.
+        this.huntConnAt = 0;
+        return { signature: null, error: err?.message ?? String(err) };
+      }
+    }
     let error = "no attempt was made";
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
@@ -1425,7 +1564,8 @@ export class OnChainMultiplayer {
     }
     try {
       const [huntPda] = deriveHuntPDA();
-      const info = await this.baseConnection.getAccountInfo(huntPda);
+      // From wherever it lives: a delegated hunt's base copy is frozen.
+      const info = await (await this.huntConnection()).getAccountInfo(huntPda);
       if (!info) return; // not created yet: scripts/hunt-setup.ts after deploy
       const hunt = decodeHuntState(info.data, this.chainNowSecs());
       if (hunt) setHuntFromChain(hunt.round, hunt.deadline, this.resolveWinner(hunt.winner), this.clockSkewMs);
@@ -1454,7 +1594,7 @@ export class OnChainMultiplayer {
       await new Promise((r) => setTimeout(r, i === 0 ? 700 : 500));
       try {
         const [huntPda] = deriveHuntPDA();
-        const info = await this.baseConnection.getAccountInfo(huntPda);
+        const info = await (await this.huntConnection()).getAccountInfo(huntPda);
         hunt = info ? decodeHuntState(info.data, this.chainNowSecs()) : null;
       } catch { /* transient RPC: try again */ }
       if (hunt && hunt.round !== round) break;
@@ -1542,6 +1682,7 @@ export class OnChainMultiplayer {
   /** Broadcast a new paper-doll loadout so others re-render our avatar. */
   updateLoadout(loadout: Loadout): void {
     this.localLoadout = loadout;
+    this.noteLocalActivity();
     const walletStr = this.wallet?.toBase58();
     if (walletStr) {
       const local = this.knownPlayers.get(walletStr);
@@ -1587,6 +1728,7 @@ export class OnChainMultiplayer {
   sendExpression(textureKey: string): void {
     const walletStr = this.wallet?.toBase58();
     if (!walletStr) return;
+    this.noteLocalActivity();
     this.bc?.postMessage({ t: "expr", w: walletStr, e: textureKey } satisfies BCMsg); // same-tab
     // Cross-device: write the expression onto our ER PDA (session key, seamless),
     // lightly throttled. Others read expression + expression_at off the poll.
@@ -1628,6 +1770,40 @@ export class OnChainMultiplayer {
     });
   }
 
+  // ── One playing tab per wallet ──────────────────────────────────────────
+  //
+  // Two tabs of one browser share the wallet, the session key and the
+  // delegation, and used to both write positions, so the avatar flickered
+  // between them. The newest tab plays; the others go quiet and show "Play
+  // here", which takes it back. Switching costs nothing: same key, same
+  // delegation, no signature, no SOL.
+
+  private readonly tabId = Math.random().toString(36).slice(2);
+  /** Another tab is playing this wallet: this one reads, and writes nothing. */
+  private suspended = false;
+
+  private suspendForOtherTab(): void {
+    if (this.suspended) return;
+    this.suspended = true;
+    console.log("[Multiplayer] another tab took over; this one is paused");
+    try { window.dispatchEvent(new CustomEvent(OTHER_TAB_EVENT, { detail: { playing: false } })); } catch { /* no window */ }
+  }
+
+  /** Called on connect, and by the overlay's "Play here". */
+  playHere(): void {
+    if (!this.wallet) return;
+    this.suspended = false;
+    this.bc?.postMessage({ t: "takeover", w: this.wallet.toBase58(), tab: this.tabId } satisfies BCMsg);
+    // Force the next move out, so the city sees this tab's position at once.
+    this.lastPos = { x: -1, y: -1, direction: -1, isWalking: false, buffIndex: null };
+    this.lastLocalActivityAt = Date.now();
+    this.selfHidden = false;
+    void this.markPresent(true);
+    try { window.dispatchEvent(new CustomEvent(OTHER_TAB_EVENT, { detail: { playing: true } })); } catch { /* no window */ }
+  }
+
+  isSuspended(): boolean { return this.suspended; }
+
   // ── Layer 1: BroadcastChannel ─────────────────────────────────────────
 
   private startBroadcastChannel(walletStr: string, displayName?: string): void {
@@ -1640,6 +1816,12 @@ export class OnChainMultiplayer {
     this.bc.onmessage = (event: MessageEvent<BCMsg>) => {
       const msg = event.data;
       if (!msg?.t || !msg?.w) return;
+      // Before the own-wallet filter below, on purpose: it is exactly another
+      // tab with OUR wallet that this message is about.
+      if (msg.t === "takeover") {
+        if (msg.w === walletStr && msg.tab !== this.tabId) this.suspendForOtherTab();
+        return;
+      }
       if (msg.w === walletStr) return; // ignore own messages
 
       switch (msg.t) {
@@ -1687,6 +1869,10 @@ export class OnChainMultiplayer {
       score: this.localScore,
       l: this.localLoadout,
     } satisfies BCMsg);
+
+    // The newest tab plays: any other tab of this wallet goes quiet.
+    this.suspended = false;
+    this.bc.postMessage({ t: "takeover", w: walletStr, tab: this.tabId } satisfies BCMsg);
 
     // Ensure clean broadcast on tab close
     window.addEventListener("beforeunload", () => {
@@ -1869,7 +2055,15 @@ export class OnChainMultiplayer {
       const sessionBalance = await this.baseConnection.getBalance(sessionKey).catch(() => 0);
       // Top up while ten writes are still left, so a session never ends
       // stranded one fee above the line.
-      const needsFunding = sessionBalance < rentFloor + 50_000;
+      //
+      // Or not at all. With the hunt on a rollup, the key pays for NOTHING on
+      // base: a claim is a rollup transaction, rollup transactions cost
+      // nothing even from a key that has never held SOL (measured on the US
+      // and Asia rollups 2026-11-04), and the wardrobe sync rides in the
+      // wallet's own delegation signature (delegateToEphemeral). So no SOL is
+      // parked in a browser key, and nothing is lost if the browser forgets it.
+      await this.huntConnection();
+      const needsFunding = !this.huntOnRollup && sessionBalance < rentFloor + 50_000;
       // TO the target, not BY a fixed amount: a key that still holds some of
       // its last top-up only needs the difference. From empty this is the
       // whole target, which clears the rent floor a new account needs.
@@ -1974,32 +2168,24 @@ export class OnChainMultiplayer {
         // Leaving usually keeps the delegation now, so this branch is the
         // visit after one that ended it (allowance spent, or a manual reset).
         // Ending it does not revoke on chain, so a player coming back in the
-        // same browser usually finds our key still authorized on base. Authorizing it again was a popup that changed
-        // nothing; the top-up it carried now rides with the delegation. The
-        // sync before delegating is session-signed, so the session key must
-        // be able to pay for it: a key too close to the rent floor still goes
-        // the old way, with the funding first.
+        // same browser usually finds our key still authorized on base.
+        // Authorizing it again was a popup that changed nothing; any top-up
+        // rides with the delegation, and so does the wardrobe sync (in the
+        // wallet's signature, see delegateToEphemeral), so the key's balance
+        // decides nothing here.
         const baseKey = this.readSessionAuthority(existing.data);
-        const canPayForSync = sessionBalance >= rentFloor + 10_000;
-        if (baseKey?.equals(sessionKey) && canPayForSync) {
+        if (baseKey?.equals(sessionKey)) {
           this.sessionKeys["authorized"] = true;
           fundWithDelegation = needsFunding ? SESSION_FUND_LAMPORTS : 0;
           console.log("✓ PDA on base already authorizes this session key — no prompt");
-        } else if (!baseKey?.equals(sessionKey)) {
+        } else {
           // A key the base copy does not name: a new device, or the first
           // visit since keys stopped being derived. Authorized INSIDE the
-          // delegation the player signs next, with its funding, so this costs
-          // no popup of its own. The snapshot sync that normally precedes
-          // the delegation needs an authorized key, so it runs on the rollup
-          // right after instead.
+          // delegation the player signs next, with any funding, so this costs
+          // no popup of its own.
           authorizeWithDelegation = true;
           fundWithDelegation = needsFunding ? SESSION_FUND_LAMPORTS : 0;
           console.log("… new session key for this device — authorized with the delegation (1 sign prompt)");
-        } else {
-          this.progress("Authorizing session…");
-          console.log("✓ PDA on base — auth" + (needsFunding ? " + fund (1 sign prompt)" : ""));
-          await this.sessionKeys.authorize(wallet, this.baseConnection, undefined, needsFunding ? SESSION_FUND_LAMPORTS : 0);
-          console.log("✓ session authorized");
         }
       } else {
         // Delegated: the ER copy is the authoritative session state.
@@ -2088,6 +2274,12 @@ export class OnChainMultiplayer {
 
     // Others read the rollup only: on base we are invisible to the city.
     this.setOnline(this.useEphemeral);
+    // On our rollup's presence board, so the boards' readers find us without
+    // a sweep. Then every 30s (presenceHeartbeat, below).
+    this.lastLocalActivityAt = Date.now();
+    this.selfHidden = false;
+    this.boardMarkFailures = 0;
+    void this.markPresent(true);
 
     // 2. Discover existing players from the ER (getProgramAccounts on the
     //    ephemeral endpoint returns exactly the delegated/online players).
@@ -2121,6 +2313,8 @@ export class OnChainMultiplayer {
       setInterval(() => this.heartbeat(), 10_000),
       // Fade the AFK, and hide the long-AFK (presence.ts).
       setInterval(() => this.tickPresence(), 2_000),
+      // Still here, on our rollup's board; off it once AFK too long.
+      setInterval(() => this.presenceHeartbeat(), 30_000),
       // Keep a fresh rollup blockhash in hand while the player is moving. The
       // send path used to fetch one every ~2s inline, so one move in four paid
       // a full extra round trip to the validator before it could even be
@@ -2158,20 +2352,104 @@ export class OnChainMultiplayer {
    * up stuck at 512,288. The ER is the authoritative live view.
    * (Method name kept for its callers.)
    */
+  /** Which boards are delegated, re-read from base once a minute. */
+  private boardsDelegated: boolean[] = [];
+  private boardsCheckedAt = 0;
+  /** When the full sweep last ran; see discoverPlayersFromBase. */
+  private lastFullSweepAt = 0;
+
+  /**
+   * Discovery from the presence boards: three small accounts that list who
+   * is here, instead of every PlayerState ever delegated. Only accounts we
+   * do not already know are fetched, from the rollup whose board named them;
+   * known ones the 250ms poll already follows.
+   *
+   * Returns true when every rollup has a live (delegated) board, which is
+   * when the full sweep can step back. A board's base copy is never written,
+   * so a board that is not delegated is not a list of anybody, and its rollup
+   * still needs the sweep.
+   */
+  private async discoverFromBoards(): Promise<boolean> {
+    if (Date.now() - this.boardsCheckedAt > 60_000) {
+      this.boardsCheckedAt = Date.now();
+      this.boardsDelegated = await Promise.all(this.erReadConnections.map(async ({ id }) => {
+        const v = ER_VALIDATORS.find((x) => x.id === id);
+        if (!v) return false;
+        try {
+          const rec = await this.baseConnection.getAccountInfo(
+            delegationRecordPdaFromDelegatedAccount(derivePresenceBoardPDA(new PublicKey(v.identity))),
+          );
+          return !!rec && rec.owner.equals(DELEGATION_PROGRAM_ID) && rec.lamports !== 0;
+        } catch { return this.boardsDelegated[this.erReadConnections.findIndex((r) => r.id === id)] ?? false; }
+      }));
+    }
+    const nowSecs = this.chainNowSecs();
+    await Promise.all(this.erReadConnections.map(async ({ id, conn }, idx) => {
+      if (!this.boardsDelegated[idx]) return;
+      const v = ER_VALIDATORS.find((x) => x.id === id);
+      if (!v) return;
+      try {
+        const info = await conn.getAccountInfo(derivePresenceBoardPDA(new PublicKey(v.identity)));
+        if (!info) return;
+        const fresh = decodePresenceBoard(info.data, nowSecs)
+          .filter((w) => !this.knownPlayers.has(w) && !this.presence.isDormant(w));
+        for (let i = 0; i < fresh.length; i += 100) {
+          const pdas = fresh.slice(i, i + 100).map((w) => derivePlayerPDA(new PublicKey(w))[0]);
+          const infos = await conn.getMultipleAccountsInfo(pdas, {
+            commitment: "confirmed", dataSlice: { offset: 0, length: PLAYER_READ_BYTES },
+          });
+          infos.forEach((acc, j) => {
+            if (!acc || acc.data.length < CURRENT_PLAYER_MIN_LEN) return;
+            const key = pdas[j].toBase58();
+            this.playerRollup.set(key, idx);
+            this.decodeAndUpdatePlayer(key, acc.data);
+          });
+        }
+      } catch (err: any) {
+        console.warn(`[Presence] board read failed on ${id}:`, err?.message);
+      }
+    }));
+    return this.boardsDelegated.length === this.erReadConnections.length
+      && this.boardsDelegated.every(Boolean);
+  }
+
   private async discoverPlayersFromBase(_self: PublicKey): Promise<void> {
     try {
+      // The boards first. While every rollup has one, the full sweep below
+      // runs once a minute instead of every 5s, only to catch players on a
+      // build that does not mark a board yet.
+      const boardsCover = await this.discoverFromBoards();
+      if (boardsCover && Date.now() - this.lastFullSweepAt < 60_000) return;
+      this.lastFullSweepAt = Date.now();
+
       // Every rollup, in parallel, because a player's PDA lives on exactly the
       // one they delegated to and is invisible on the others. In parallel so
       // the sweep costs the SLOWEST endpoint rather than the sum: measured
       // 2026-10-25 from Vietnam, that is ~300ms for three against ~300ms for
       // the one US endpoint alone.
       //
+      // TWO stages, because every account the program ever delegated comes
+      // back here and almost none of them are online: first only the bytes up
+      // to last_active (SWEEP_HEAD_BYTES, about a fifth of a full read), then
+      // the full read for just the fresh ones, from the rollup that had them.
+      //
       // A rollup that fails is skipped, not fatal. Losing one means not seeing
       // the players on it, which is strictly better than seeing nobody.
+      const nowMs = Date.now() - this.clockSkewMs;
       const perValidator = await Promise.all(
         this.erReadConnections.map(async ({ id, conn }) => {
           try {
-            return await conn.getProgramAccounts(SOL_CITY_PROGRAM_ID, SWEEP_CONFIG);
+            const heads = await conn.getProgramAccounts(SOL_CITY_PROGRAM_ID, SWEEP_HEAD_CONFIG);
+            const fresh = heads.filter((h) => nowMs - lastActiveOf(h.account.data) * 1000 <= 120_000);
+            const out: { pubkey: PublicKey; account: AccountInfo<Buffer> }[] = [];
+            for (let i = 0; i < fresh.length; i += 100) {
+              const keys = fresh.slice(i, i + 100).map((h) => h.pubkey);
+              const full = await conn.getMultipleAccountsInfo(keys, {
+                commitment: "confirmed", dataSlice: SWEEP_CONFIG.dataSlice,
+              });
+              full.forEach((acc, j) => { if (acc) out.push({ pubkey: keys[j], account: acc }); });
+            }
+            return out;
           } catch (err: any) {
             console.warn(`[Multiplayer] ER sweep failed on ${id}:`, err?.message);
             return [];
@@ -2493,11 +2771,14 @@ export class OnChainMultiplayer {
       label: "Delegate PDA → Ephemeral Rollup", status: "pending",
     });
     try {
-      // The snapshot the wardrobe is checked against, refreshed on base first
-      // when the key can already sign for it. A key being authorized in this
-      // very transaction cannot, so the caller syncs on the rollup afterwards
-      // instead, which works mid-session (measured 2026-10-31).
-      if (!authorizeSession) await this.syncUnlocksOnBase(wallet);
+      // The snapshot the wardrobe is checked against, refreshed in THIS
+      // transaction, signed by the wallet. sync_unlocks lets anyone sign it
+      // (audit R-21: it can only make the snapshot true), so it no longer has
+      // to be a separate session-key write on base, which was the one base
+      // fee left that made the key need SOL. Before the delegation, which
+      // copies the account into its buffer.
+      await this.refreshUnlockView(wallet);
+      const hasUnlocks = await this.accountExists(deriveUnlockPDA(wallet)[0]);
 
       // The NEAREST rollup, not a fixed one. This is the only moment the
       // choice is free: it is written into the delegation record, and moving
@@ -2523,6 +2804,7 @@ export class OnChainMultiplayer {
       if (authorizeSession) {
         tx.add(buildAuthorizeSessionIx(wallet, this.sessionKeys.getSessionPublicKey()));
       }
+      if (hasUnlocks) tx.add(buildSyncUnlocksIx(wallet, wallet));
       tx.add(ix);
 
       const sig = await this.signAndSendViaWallet(tx);
@@ -2818,10 +3100,17 @@ export class OnChainMultiplayer {
   private async leaveRollup(wallet: PublicKey, endDelegation: boolean): Promise<void> {
     // Not on the rollup: nothing to commit and nothing delegated to end.
     if (!this.useEphemeral) return;
+    // A paused tab is not the one playing: a logout from it would take the
+    // player who IS playing, in the other tab, out of the city.
+    if (this.suspended) return;
     const w = wallet.toBase58();
     // Before the commit, so the city drops us now rather than two minutes
     // from now: everyone reads the rollup, where this lands at once and free.
-    await this.sendLeaveMark(wallet, { ...this.lastPos });
+    // Off the board too, or its readers would fetch us again until our slot
+    // went stale.
+    const pos = { ...this.lastPos };
+    await this.markPresent(false);
+    await this.sendLeaveMark(wallet, pos);
     if (leaveAction(readCommits(w), endDelegation) === "undelegate") {
       await this.commitAndUndelegatePlayer(wallet);
       resetCommits(w);
@@ -3387,7 +3676,7 @@ export class OnChainMultiplayer {
     ix: TransactionInstruction,
     log?: { kind: "outfit" | "chat" | "expression" | "ball" | "profile"; label: string },
   ): Promise<void> {
-    if (!this.wallet || !isProgramDeployed()) return;
+    if (!this.wallet || !isProgramDeployed() || this.suspended) return;
     const sessionKey = this.sessionKeys.getSessionPublicKey();
 
     // Ask the chain before writing on base, rather than trusting a flag that
