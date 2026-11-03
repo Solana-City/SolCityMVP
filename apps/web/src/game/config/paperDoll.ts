@@ -174,6 +174,8 @@ export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
     // Wings, 2026-10-30. Appended; position is the index.
     { id: "Wings_angel", name: "Angel Wings", textureKey: "pd-back-Wings_angel", file: "back/Wings_angel.png" },
     { id: "Wings_demon", name: "Demon Wings", textureKey: "pd-back-Wings_demon", file: "back/Wings_demon.png" },
+    // The 2026-11-03 drop. Appended; position is the index.
+    { id: "Sands_of_time", name: "Hourglass Backpack", textureKey: "pd-back-Sands_of_time", file: "back/Sands_of_time.png" },
   ],
   skin: [
     { id: "Light",      name: "Light",      textureKey: "pd-skin-Light",      file: "skin/Light.png" },
@@ -218,6 +220,24 @@ export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
     { id: "Pants_chess_red", name: "Red Checkered Pants", textureKey: "pd-pants-Pants_chess_red", file: "pants/Pants_chess_red.png" },
     { id: "Pants_chess_white", name: "White Checkered Pants", textureKey: "pd-pants-Pants_chess_white", file: "pants/Pants_chess_white.png" },
     { id: "Pants_golden", name: "Golden Pants", textureKey: "pd-pants-Pants_golden", file: "pants/Pants_golden.png" },
+    // The 2026-11-03 drop, which is most of it. Appended; position is
+    // the index.
+    { id: "Pants_acid", name: "Acid Pants", textureKey: "pd-pants-Pants_acid", file: "pants/Pants_acid.png" },
+    { id: "Short_pants_acid", name: "Acid Short Pants", textureKey: "pd-pants-Short_pants_acid", file: "pants/Short_pants_acid.png" },
+    { id: "Short_pants_black_belt", name: "Black Belted Short Pants", textureKey: "pd-pants-Short_pants_black_belt", file: "pants/Short_pants_black_belt.png" },
+    { id: "Short_pants_blue_belt", name: "Blue Belted Short Pants", textureKey: "pd-pants-Short_pants_blue_belt", file: "pants/Short_pants_blue_belt.png" },
+    { id: "Short_pants_blue", name: "Blue Short Pants", textureKey: "pd-pants-Short_pants_blue", file: "pants/Short_pants_blue.png" },
+    { id: "Tail_demon", name: "Demon Tail", textureKey: "pd-pants-Tail_demon", file: "pants/Tail_demon.png" },
+    { id: "Short_pants_green_belt", name: "Green Belted Short Pants", textureKey: "pd-pants-Short_pants_green_belt", file: "pants/Short_pants_green_belt.png" },
+    { id: "Short_pants_green", name: "Green Short Pants", textureKey: "pd-pants-Short_pants_green", file: "pants/Short_pants_green.png" },
+    { id: "Pants_lotus", name: "Lotus Pants", textureKey: "pd-pants-Pants_lotus", file: "pants/Pants_lotus.png" },
+    { id: "Short_pants_lotus", name: "Lotus Short Pants", textureKey: "pd-pants-Short_pants_lotus", file: "pants/Short_pants_lotus.png" },
+    { id: "Pants_neon", name: "Neon Pants", textureKey: "pd-pants-Pants_neon", file: "pants/Pants_neon.png" },
+    { id: "Short_pants_neon", name: "Neon Short Pants", textureKey: "pd-pants-Short_pants_neon", file: "pants/Short_pants_neon.png" },
+    { id: "Short_pants_orange_belt", name: "Orange Belted Short Pants", textureKey: "pd-pants-Short_pants_orange_belt", file: "pants/Short_pants_orange_belt.png" },
+    { id: "Pants_orange", name: "Orange Pants", textureKey: "pd-pants-Pants_orange", file: "pants/Pants_orange.png" },
+    { id: "Short_pants_purple_belt", name: "Purple Belted Short Pants", textureKey: "pd-pants-Short_pants_purple_belt", file: "pants/Short_pants_purple_belt.png" },
+    { id: "Pants_white", name: "White Pants", textureKey: "pd-pants-Pants_white", file: "pants/Pants_white.png" },
   ],
   tshirt: [
     { id: "Blue_tshirt",  name: "Blue T-Shirt",  textureKey: "pd-tshirt-Blue_tshirt",  file: "tshirt/Blue_tshirt.png" },
@@ -282,6 +302,8 @@ export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
     { id: "Glasses_thug", name: "Thug Shades", textureKey: "pd-accessory-Glasses_thug", file: "accessory/Glasses_thug.png" },
     { id: "Blindfold_demon", name: "Demon Blindfold", textureKey: "pd-accessory-Blindfold_demon", file: "accessory/Blindfold_demon.png" },
     { id: "Visor_cyber", name: "Cyber Visor", textureKey: "pd-accessory-Visor_cyber", file: "accessory/Visor_cyber.png" },
+    // The 2026-11-03 drop. Appended; position is the index.
+    { id: "Glasses_cyber", name: "Cyber Glasses", textureKey: "pd-accessory-Glasses_cyber", file: "accessory/Glasses_cyber.png" },
   ],
   // STYLES ONLY — the colour is a separate axis (game/config/hairPalette.ts),
   // so a style is listed once and worn in any of the twenty swatches.
@@ -406,6 +428,11 @@ export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
     { id: "Cap_light_grey", name: "Light Grey Cap", textureKey: "pd-hat-Cap_light_grey", file: "hat/Cap_light_grey.png" },
     { id: "Cap_orange", name: "Orange Cap", textureKey: "pd-hat-Cap_orange", file: "hat/Cap_orange.png" },
     { id: "Cap_red", name: "Red Cap", textureKey: "pd-hat-Cap_red", file: "hat/Cap_red.png" },
+    // The 2026-11-03 drop. Appended, never inserted: a booster item's
+    // catalog index is its position in this lane.
+    { id: "Horns_demon", name: "Demon Horns", textureKey: "pd-hat-Horns_demon", file: "hat/Horns_demon.png" },
+    { id: "Fire_Skull", name: "Fire Skull", textureKey: "pd-hat-Fire_Skull", file: "hat/Fire_Skull.png" },
+    { id: "Cap_yellow", name: "Yellow Cap", textureKey: "pd-hat-Cap_yellow", file: "hat/Cap_yellow.png" },
   ],
 };
 
