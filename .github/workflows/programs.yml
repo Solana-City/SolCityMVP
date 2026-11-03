@@ -46,7 +46,7 @@ jobs:
       # places. These tests are what make that safe rather than hopeful, so
       # they are a gate and not a warning.
       - name: Tests
-        run: cargo test --locked -p sol-city-catalog -p sol-city-collectibles -p sol-mechs-engine
+        run: cargo test --locked -p sol-city -p sol-city-catalog -p sol-city-collectibles -p sol-mechs-engine
       - name: Warnings, reported but not fatal
         run: cargo clippy --locked -p sol-city -p sol-city-collectibles -p sol-city-catalog -- -W clippy::all || true
 

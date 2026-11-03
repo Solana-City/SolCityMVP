@@ -62,6 +62,25 @@ pub const HUNT_SEED: &[u8] = b"hunt_v2";
 /// How long a citizen sticks around before it rotates unfound (seconds).
 pub const CITIZEN_DURATION_SECS: i64 = 300;
 
+// ── Presence: who is in the city, one small board per rollup ───────────────
+/// Seeds ["presence", validator identity]: one board per rollup.
+///
+/// Players stay delegated between visits, so "every delegated PlayerState"
+/// is everyone who ever played, and reading all of them to find who is here
+/// costs every client the whole roster every few seconds. A board lists only
+/// who is present right now, so a client reads three small accounts instead.
+/// One per rollup because a rollup transaction can only write accounts
+/// delegated to that rollup: each player marks the board of the rollup their
+/// own account lives on.
+pub const PRESENCE_SEED: &[u8] = b"presence";
+/// Slots per board. 240 keeps the account (8 + 32 + 240 * 40 = 9,640 bytes)
+/// inside the 10,240 a single `init` can allocate; three boards hold 720
+/// players at once. More means a realloc on base before delegating.
+pub const PRESENCE_SLOTS: usize = 240;
+/// A slot older than this is free (seconds). Matches the clients' two-minute
+/// freshness window, and a present player re-marks itself every 30s.
+pub const PRESENCE_TTL_SECS: i64 = 120;
+
 // ── Social: a profile other players can read, and friends ──────────────────
 /// Achievement bitset capacity in bytes -> 256 achievements. The CLIENT owns
 /// the index->achievement table (achievementRegistry order): append-only,
@@ -492,6 +511,8 @@ pub enum SolCityError {
     InvalidDelegateBuffer,
     #[msg("Loadout values must be catalog indices")]
     LoadoutNotIndex,
+    #[msg("A presence board can only be delegated to its own rollup")]
+    PresenceValidatorMismatch,
     // Appended, never inserted. Anchor numbers these by POSITION, so a
     // variant added in the middle silently renumbers every one after it
     // and any client matching on a code starts reporting the wrong thing.
@@ -1010,6 +1031,137 @@ pub mod sol_city {
         )
     }
 
+    /// Brings the hunt home from its rollup: commits it and undelegates it.
+    ///
+    /// The way back `delegate_hunt` was missing (noted with R-09). Sent ON THE
+    /// ROLLUP that holds the hunt.
+    ///
+    /// Open to any signer, on purpose. Gating it on the upgrade authority
+    /// would make it unusable on mainnet: that authority is a Squads vault,
+    /// and Squads executes on the base layer, never on a rollup. And it is
+    /// safe open: all it can do is return the hunt to base with its state
+    /// committed, where it already worked before it was delegated, and where
+    /// the clients follow it (they read the delegation record). The worst a
+    /// stranger can do is cost the admin a re-delegation.
+    pub fn undelegate_hunt(ctx: Context<UndelegateHunt>) -> Result<()> {
+        schedule_magic_commit(
+            MAGIC_IX_COMMIT_AND_UNDELEGATE,
+            &ctx.accounts.payer.to_account_info(),
+            &ctx.accounts.magic_context.to_account_info(),
+            &ctx.accounts.magic_program.to_account_info(),
+            &ctx.accounts.hunt.to_account_info(),
+            true,
+        )
+    }
+
+    // ── Presence boards ──────────────────────────────────────────────────
+
+    /// Creates the presence board for one rollup. Upgrade authority only,
+    /// like `initialize_hunt`: base layer, so a Squads proposal can run it.
+    pub fn init_presence_board(ctx: Context<InitPresenceBoard>, validator: Pubkey) -> Result<()> {
+        let mut board = ctx.accounts.board.load_init()?;
+        board.validator = validator;
+        Ok(())
+    }
+
+    /// Delegates a board to the rollup it is for, and only to that one.
+    pub fn delegate_presence_board(ctx: Context<DelegatePresenceBoard>, validator: Pubkey) -> Result<()> {
+        // The rollup named in the remaining accounts must be the board's own:
+        // a board on any other rollup is one its players cannot write.
+        let target = preferred_validator(ctx.remaining_accounts)?;
+        require!(target == Some(validator), SolCityError::PresenceValidatorMismatch);
+        delegate_pda(
+            &ctx.accounts.payer,
+            &ctx.accounts.board,
+            &ctx.accounts.delegate_buffer,
+            &ctx.accounts.delegation_record,
+            &ctx.accounts.delegation_metadata,
+            &ctx.accounts.system_program,
+            &[PRESENCE_SEED, validator.as_ref()],
+            ctx.bumps.board,
+            target,
+        )
+    }
+
+    /// Brings a board home. Open to any signer, for the same reasons as
+    /// `undelegate_hunt`: it only returns the board to base, and the clients
+    /// fall back to reading the players directly while it is not delegated.
+    pub fn undelegate_presence_board(ctx: Context<UndelegatePresenceBoard>, _validator: Pubkey) -> Result<()> {
+        schedule_magic_commit(
+            MAGIC_IX_COMMIT_AND_UNDELEGATE,
+            &ctx.accounts.payer.to_account_info(),
+            &ctx.accounts.magic_context.to_account_info(),
+            &ctx.accounts.magic_program.to_account_info(),
+            &ctx.accounts.board.to_account_info(),
+            true,
+        )
+    }
+
+    /// Marks this player present on their rollup's board, or takes them off.
+    ///
+    /// Session-signed, on the rollup, so it costs nothing and asks nothing.
+    /// The client calls it on arrival and with each heartbeat (present), and
+    /// on logout or after a long AFK (absent). A slot is the wallet and when it
+    /// last said so; readers treat anything older than PRESENCE_TTL_SECS as
+    /// gone, so a tab that simply closes falls off on its own.
+    ///
+    /// The player's account is read, never written: it is what proves the
+    /// signer is this wallet's session key.
+    pub fn mark_present_session(
+        ctx: Context<MarkPresentSession>,
+        _validator: Pubkey,
+        present: bool,
+    ) -> Result<()> {
+        let player = &ctx.accounts.player;
+        require!(
+            player.session_authority == Some(ctx.accounts.session_authority.key()),
+            SolCityError::InvalidSessionKey
+        );
+        let me = player.authority;
+        let now = Clock::get()?.unix_timestamp;
+        let mut board = ctx.accounts.board.load_mut()?;
+
+        let mut mine: Option<usize> = None;
+        let mut free: Option<usize> = None;
+        let mut oldest = 0usize;
+        for (i, slot) in board.slots.iter().enumerate() {
+            if slot.wallet == me {
+                mine = Some(i);
+                break;
+            }
+            let expired = slot.wallet == Pubkey::default()
+                || now.saturating_sub(slot.seen) > PRESENCE_TTL_SECS;
+            if free.is_none() && expired {
+                free = Some(i);
+            }
+            if slot.seen < board.slots[oldest].seen {
+                oldest = i;
+            }
+        }
+
+        if present {
+            // A full board drops whoever has been quiet longest, which is the
+            // least wrong thing to lose: they are the likeliest to be gone.
+            let at = mine.or(free).unwrap_or(oldest);
+            board.slots[at] = PresenceSlot { wallet: me, seen: now };
+        } else if let Some(at) = mine {
+            board.slots[at] = PresenceSlot::default();
+        }
+        Ok(())
+    }
+
+    /// Closes the player's account and returns its rent to the wallet.
+    ///
+    /// The PlayerState is the largest thing a player pays for (its rent is
+    /// most of a first login), and until now nothing could ever give it back.
+    /// Wallet-signed, base layer only: a delegated account is owned by the
+    /// delegation program, which Account<PlayerState> refuses, so the client
+    /// ends the delegation first. Nothing here touches the collectibles
+    /// program's UnlockState.
+    pub fn close_player(_ctx: Context<ClosePlayer>) -> Result<()> {
+        Ok(())
+    }
+
     // ── Carrying rollup state back to the base layer ───────────────────
     //
     // A delegated account is only ever read on the rollup, and its base copy
@@ -1426,6 +1578,129 @@ pub struct DelegateHunt<'info> {
     pub system_program: Program<'info, System>,
 }
 
+/// Sent on the rollup that holds the hunt. Any signer; see undelegate_hunt.
+#[derive(Accounts)]
+pub struct UndelegateHunt<'info> {
+    /// Pays the (zero) rollup fee and signs the magic program's schedule.
+    #[account(mut)]
+    pub payer: Signer<'info>,
+    /// CHECK: PDA by seeds. Unchecked for the reason CommitAndUndelegate's
+    /// player is: the magic program locks it mid-instruction.
+    #[account(mut, seeds = [HUNT_SEED], bump)]
+    pub hunt: UncheckedAccount<'info>,
+    /// CHECK: MagicBlock's scheduling context, pinned by address.
+    #[account(mut, address = MAGIC_CONTEXT_ID)]
+    pub magic_context: UncheckedAccount<'info>,
+    /// CHECK: MagicBlock's magic program, pinned by address.
+    #[account(address = MAGIC_PROGRAM_ID)]
+    pub magic_program: UncheckedAccount<'info>,
+}
+
+#[derive(Accounts)]
+#[instruction(validator: Pubkey)]
+pub struct InitPresenceBoard<'info> {
+    #[account(
+        init,
+        payer = payer,
+        space = 8 + std::mem::size_of::<PresenceBoard>(),
+        seeds = [PRESENCE_SEED, validator.as_ref()],
+        bump,
+    )]
+    pub board: AccountLoader<'info, PresenceBoard>,
+    /// The program's upgrade authority, which signs and pays.
+    #[account(mut)]
+    pub payer: Signer<'info>,
+    /// CHECK: this program, used only to reach its ProgramData.
+    #[account(constraint = program.programdata_address()? == Some(program_data.key())
+        @ SolCityError::InvalidAuthority)]
+    pub program: Program<'info, crate::program::SolCity>,
+    #[account(constraint = program_data.upgrade_authority_address == Some(payer.key())
+        @ SolCityError::InvalidAuthority)]
+    pub program_data: Account<'info, ProgramData>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+#[instruction(validator: Pubkey)]
+pub struct DelegatePresenceBoard<'info> {
+    /// The program's upgrade authority, which signs and pays.
+    #[account(mut)]
+    pub payer: Signer<'info>,
+    /// CHECK: this program, used only to reach its ProgramData.
+    #[account(constraint = program.programdata_address()? == Some(program_data.key())
+        @ SolCityError::InvalidAuthority)]
+    pub program: Program<'info, crate::program::SolCity>,
+    #[account(constraint = program_data.upgrade_authority_address == Some(payer.key())
+        @ SolCityError::InvalidAuthority)]
+    pub program_data: Account<'info, ProgramData>,
+    /// CHECK: PDA by seeds. Unchecked because the delegation CPI reassigns its
+    /// owner midway, and Anchor would write a stale copy back over it.
+    #[account(mut, seeds = [PRESENCE_SEED, validator.as_ref()], bump)]
+    pub board: UncheckedAccount<'info>,
+    /// CHECK: our own program id, pinned; the CPI names crate::ID in its metas.
+    #[account(address = crate::ID)]
+    pub owner_program: UncheckedAccount<'info>,
+    /// CHECK: delegate buffer PDA, seeds ["buffer", board.key()].
+    #[account(mut)]
+    pub delegate_buffer: UncheckedAccount<'info>,
+    /// CHECK: delegation record PDA, owned by the delegation program.
+    #[account(mut)]
+    pub delegation_record: UncheckedAccount<'info>,
+    /// CHECK: delegation metadata PDA, owned by the delegation program.
+    #[account(mut)]
+    pub delegation_metadata: UncheckedAccount<'info>,
+    /// CHECK: MagicBlock delegation program, pinned by address.
+    #[account(address = DELEGATION_PROGRAM_ID)]
+    pub delegation_program: UncheckedAccount<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+/// Sent on the board's rollup. Any signer; see undelegate_presence_board.
+#[derive(Accounts)]
+#[instruction(validator: Pubkey)]
+pub struct UndelegatePresenceBoard<'info> {
+    #[account(mut)]
+    pub payer: Signer<'info>,
+    /// CHECK: PDA by seeds, locked by the magic program mid-instruction.
+    #[account(mut, seeds = [PRESENCE_SEED, validator.as_ref()], bump)]
+    pub board: UncheckedAccount<'info>,
+    /// CHECK: MagicBlock's scheduling context, pinned by address.
+    #[account(mut, address = MAGIC_CONTEXT_ID)]
+    pub magic_context: UncheckedAccount<'info>,
+    /// CHECK: MagicBlock's magic program, pinned by address.
+    #[account(address = MAGIC_PROGRAM_ID)]
+    pub magic_program: UncheckedAccount<'info>,
+}
+
+#[derive(Accounts)]
+#[instruction(validator: Pubkey)]
+pub struct MarkPresentSession<'info> {
+    #[account(mut, seeds = [PRESENCE_SEED, validator.as_ref()], bump)]
+    pub board: AccountLoader<'info, PresenceBoard>,
+    /// Read only: it proves the signer is this wallet's session key. Owner,
+    /// discriminator and seeds all checked by Account<PlayerState>.
+    #[account(seeds = [PLAYER_SEED, player.authority.as_ref()], bump)]
+    pub player: Account<'info, PlayerState>,
+    pub session_authority: Signer<'info>,
+}
+
+#[derive(Accounts)]
+pub struct ClosePlayer<'info> {
+    /// Owner, discriminator and seeds checked by Account<PlayerState>, which
+    /// is also what refuses a delegated account (owned by the delegation
+    /// program). The rent goes to the wallet that owns it.
+    #[account(
+        mut,
+        seeds = [PLAYER_SEED, authority.key().as_ref()],
+        bump,
+        constraint = player.authority == authority.key() @ SolCityError::InvalidAuthority,
+        close = authority,
+    )]
+    pub player: Account<'info, PlayerState>,
+    #[account(mut)]
+    pub authority: Signer<'info>,
+}
+
 #[derive(Accounts)]
 pub struct CommitPlayerSession<'info> {
     /// CHECK: seeds tie it to `authority`; the session key is verified in the body.
@@ -1481,6 +1756,28 @@ pub struct InitializeAfterUndelegation<'info> {
     #[account(mut)]
     pub payer: UncheckedAccount<'info>,
     pub system_program: Program<'info, System>,
+}
+
+/// One rollup's list of who is in the city right now (see PRESENCE_SEED).
+///
+/// Zero-copy: at 9.6 KB, Anchor's normal account path would build the whole
+/// thing on the 4 KB BPF stack. The layout is FIXED and the clients read it
+/// by offset: 8 discriminator, then `validator`, then PRESENCE_SLOTS slots of
+/// 40 bytes (wallet, then `seen` as i64 unix seconds). Append-only, like
+/// every other account here.
+#[account(zero_copy)]
+pub struct PresenceBoard {
+    pub validator: Pubkey,
+    pub slots: [PresenceSlot; PRESENCE_SLOTS],
+}
+
+#[zero_copy]
+#[derive(Default)]
+pub struct PresenceSlot {
+    /// The player's wallet; Pubkey::default() is an empty slot.
+    pub wallet: Pubkey, // 0
+    /// When they last said they were here, unix seconds.
+    pub seen: i64,      // 32, ends at 40
 }
 
 #[account]
@@ -1634,4 +1931,18 @@ pub struct Link {
     pub peer: Pubkey,
     /// LINK_WANT or LINK_DECLINED. Never 0 within `links_len`.
     pub state: u8,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The clients read a board by offset (presenceBoard.ts), and one `init`
+    /// can allocate at most 10,240 bytes. Both are pinned here.
+    #[test]
+    fn presence_board_fits_one_init_and_keeps_its_layout() {
+        assert_eq!(std::mem::size_of::<PresenceSlot>(), 40);
+        assert_eq!(std::mem::size_of::<PresenceBoard>(), 32 + 40 * PRESENCE_SLOTS);
+        assert!(8 + std::mem::size_of::<PresenceBoard>() <= 10_240);
+    }
 }

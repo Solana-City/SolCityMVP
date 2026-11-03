@@ -38,3 +38,8 @@ solana-program = "1.18.26"
 # A crate that is not a program has no entrypoint to leak. No program depends
 # on another program now, so that cannot happen rather than being checked for.
 sol-city-catalog = { path = "../sol-city-catalog" }
+# Direct for the same reason as solana-program above: anchor's `zero_copy`
+# attribute expands to absolute `::bytemuck::` paths, which resolve only when
+# the crate belongs to this one. PresenceBoard is the zero-copy account that
+# needs it; same version and features sol-mechs already locks.
+bytemuck = { version = "1", features = ["derive", "min_const_generics"] }
