@@ -138,6 +138,8 @@ export class CityScene extends Phaser.Scene {
   private youLabel: Phaser.GameObjects.Text | null = null;
   /** Buff badge per remote wallet, so an arriving flag can toggle it. */
   private remoteBuffBadges = new Map<string, Phaser.GameObjects.Image>();
+  /** The AFK tag over a remote player's name, while they are AFK. */
+  private remoteAfkMarks = new Map<string, Phaser.GameObjects.Text>();
   // Debounce "entered the city" — wallet reconnects clear knownPlayers and
   // re-discover the same players, which would spam the chat on every reconnect.
   private recentJoins = new Map<string, number>();
@@ -1699,7 +1701,13 @@ export class CityScene extends Phaser.Scene {
       const target = this.remoteTarget.get(wallet);
       if (target) this.followRemote(remote, target, followDt, followNow);
       remote.updateDepth();
-      this.followNameLabel(this.nameLabels.get(wallet) ?? null, remote);
+      const nameLabel = this.nameLabels.get(wallet) ?? null;
+      this.followNameLabel(nameLabel, remote);
+      const afkMark = this.remoteAfkMarks.get(wallet);
+      if (afkMark && nameLabel) {
+        afkMark.setVisible(nameLabel.visible);
+        afkMark.setPosition(nameLabel.x, nameLabel.y - nameLabel.height - 1);
+      }
       const c = remote.getContainer();
       const prev = this.remoteDust.get(wallet);
       if (prev) {
@@ -1942,6 +1950,41 @@ export class CityScene extends Phaser.Scene {
       if (wallet === this.network.sessionId) return;
       this.applyRemoteExpression(wallet, textureKey);
     });
+
+    this.network.onPlayerAfk((wallet, afk) => {
+      if (wallet === this.network.sessionId) return;
+      this.setRemoteAfk(wallet, afk);
+    });
+  }
+
+  /**
+   * An AFK player is drawn faded, with a marker over their name.
+   *
+   * PROVISIONAL: the marker is a text tag until there is art made for it.
+   * Swap the Text for that sprite here; nothing else depends on its shape.
+   */
+  private setRemoteAfk(wallet: string, afk: boolean): void {
+    const avatar = this.remotePlayers.get(wallet);
+    if (!avatar) return;
+    const alpha = afk ? 0.45 : 1;
+    avatar.getContainer().setAlpha(alpha);
+    this.nameLabels.get(wallet)?.setAlpha(alpha);
+    const mark = this.remoteAfkMarks.get(wallet);
+    if (!afk) {
+      mark?.destroy();
+      this.remoteAfkMarks.delete(wallet);
+      return;
+    }
+    if (mark) return;
+    const tag = this.add.text(0, 0, "AFK", {
+      fontSize: "4px", fontFamily: '"Press Start 2P", monospace',
+      color: "#b8bce0", align: "center",
+      resolution: 4,
+      stroke: "#0a0a1e",
+      strokeThickness: 2,
+    }).setOrigin(0.5, 1);
+    tag.setDepth(NAME_DEPTH);
+    this.remoteAfkMarks.set(wallet, tag);
   }
 
   private addRemotePlayer(wallet: string, player: OnChainPlayer): void {
@@ -2017,6 +2060,8 @@ export class CityScene extends Phaser.Scene {
 
     this.remoteBuffBadges.get(wallet)?.destroy();
     this.remoteBuffBadges.delete(wallet);
+    this.remoteAfkMarks.get(wallet)?.destroy();
+    this.remoteAfkMarks.delete(wallet);
 
     const bubble = this.activeBubbles.get(wallet);
     if (bubble) {

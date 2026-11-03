@@ -60,6 +60,7 @@ import { transactionLog } from "../telemetry/transactionLog";
 import type { Loadout } from "../config/paperDoll";
 import { ER_VALIDATORS, probeValidators, nearestValidator } from "./erValidators";
 import { leaveAction, readCommits, recordCommit, resetCommits } from "./delegationBudget";
+import { DIR_LEFT, PresenceTracker, activityKey } from "./presence";
 import { setOnChainUnlocks } from "@/game/config/wardrobeUnlocks";
 import { syncHeldToWardrobe } from "@/game/solana/mint";
 import { gameSlotOf, GAME_SLOT_CAP } from "@/game/minigames/slots";
@@ -403,6 +404,9 @@ export class OnChainMultiplayer {
   private removeCallbacks: RemoveCallback[] = [];
   private changeCallbacks: PlayerCallback[] = [];
   private exprCallbacks:   ExprCallback[]   = [];
+  private afkCallbacks:    ((wallet: string, afk: boolean) => void)[] = [];
+  /** Who is active, AFK or asleep, as seen from here. See presence.ts. */
+  private presence = new PresenceTracker();
 
   // Local player's current paper-doll loadout, broadcast so others render the
   // real look instead of a placeholder. Debounced so wardrobe live-preview
@@ -774,6 +778,7 @@ export class OnChainMultiplayer {
     }
 
     this._connected = false;
+    this.presence.clearSeen();
     this.sessionKeys.revoke(this.routerConnection);
     // Tell the scene to tear down every remote avatar before wiping the
     // registry, so a reconnect re-adds fresh ones instead of stacking new
@@ -1478,6 +1483,26 @@ export class OnChainMultiplayer {
   onPlayerRemove(cb: RemoveCallback): void { this.removeCallbacks.push(cb); }
   onPlayerChange(cb: PlayerCallback): void { this.changeCallbacks.push(cb); }
   onPlayerExpression(cb: ExprCallback): void { this.exprCallbacks.push(cb); }
+  /** A remote player went AFK (true) or came back (false). */
+  onPlayerAfk(cb: (wallet: string, afk: boolean) => void): void { this.afkCallbacks.push(cb); }
+
+  /**
+   * Moves everyone along active -> afk -> hidden. Hidden goes dormant and
+   * leaves the city, which is also what stops polling them.
+   */
+  private tickPresence(): void {
+    const self = this.wallet?.toBase58();
+    for (const { wallet, state } of this.presence.tick(Date.now())) {
+      if (wallet === self) continue;
+      if (state === "hidden") {
+        console.log(`[Multiplayer] ${wallet.slice(0, 8)} AFK too long, hidden until they move`);
+        this.presence.sleep(wallet);
+        this.handlePlayerLeave(wallet);
+      } else {
+        for (const cb of this.afkCallbacks) cb(wallet, state === "afk");
+      }
+    }
+  }
 
   /** Returns all currently known players (self included). */
   getActivePlayers(): OnChainPlayer[] {
@@ -2070,6 +2095,8 @@ export class OnChainMultiplayer {
       setInterval(() => this.pollHunt(), 3_000),
       // Keep a standing player inside everyone's freshness window.
       setInterval(() => this.heartbeat(), 10_000),
+      // Fade the AFK, and hide the long-AFK (presence.ts).
+      setInterval(() => this.tickPresence(), 2_000),
       // Keep a fresh rollup blockhash in hand while the player is moving. The
       // send path used to fetch one every ~2s inline, so one move in four paid
       // a full extra round trip to the validator before it could even be
@@ -2768,11 +2795,37 @@ export class OnChainMultiplayer {
     // Not on the rollup: nothing to commit and nothing delegated to end.
     if (!this.useEphemeral) return;
     const w = wallet.toBase58();
+    // Before the commit, so the city drops us now rather than two minutes
+    // from now: everyone reads the rollup, where this lands at once and free.
+    await this.sendLeaveMark(wallet, { ...this.lastPos });
     if (leaveAction(readCommits(w), endDelegation) === "undelegate") {
       await this.commitAndUndelegatePlayer(wallet);
       resetCommits(w);
     } else {
       await this.commitPlayer(wallet);
+    }
+  }
+
+  /**
+   * The last position write of a session, with DIR_LEFT set. Readers drop
+   * the player on sight and keep them out until a write without it.
+   */
+  private async sendLeaveMark(
+    wallet: PublicKey,
+    pos: { x: number; y: number; direction: number; isWalking: boolean; buffIndex: number | null },
+  ): Promise<void> {
+    if (pos.x < 0) return; // nothing written this session: nobody saw us
+    try {
+      const sessionKey = this.sessionKeys.getSessionPublicKey();
+      const dir = packDirection(pos.direction, false, pos.buffIndex) | DIR_LEFT;
+      const ix = buildUpdatePositionSessionIx(wallet, sessionKey, pos.x, pos.y, dir);
+      const { blockhash } = await this.ephemeralConnection.getLatestBlockhash();
+      const tx = new Transaction({ recentBlockhash: blockhash, feePayer: sessionKey }).add(ix);
+      this.sessionKeys.signTransaction(tx);
+      await this.ephemeralConnection.sendRawTransaction(tx.serialize(), { skipPreflight: true });
+    } catch (err: any) {
+      // Only costs the instant drop: the freshness window still removes us.
+      console.warn("[Multiplayer] leave mark not sent:", err?.message);
     }
   }
 
@@ -3044,6 +3097,24 @@ export class OnChainMultiplayer {
         }
         return;
       }
+
+      // Presence (presence.ts). A logout's last write carries DIR_LEFT: drop
+      // the player now rather than two minutes from now. A player who went
+      // dormant (logged out, or AFK too long) stays out until their account
+      // actually changes; their heartbeat alone does not bring them back.
+      const left = (rawDirection & DIR_LEFT) !== 0;
+      const activity = activityKey({
+        x, y, facing: direction, left, expressionAt, messageAt, loadout: loadoutStr,
+      });
+      if (left) {
+        // Always re-slept with THIS key, even if already dormant: a player
+        // hidden for being AFK who then logs out must wake on their next
+        // write, and that write differs from this one by the left bit alone.
+        this.presence.sleep(walletStr, activity, lastActiveLo);
+        if (isKnown) this.handlePlayerLeave(walletStr);
+        return;
+      }
+      if (this.presence.sight(walletStr, activity, lastActiveLo, Date.now()) === "ignore") return;
 
       // Only update if this data is newer than what we have.
       const existing = this.knownPlayers.get(walletStr);
@@ -3563,6 +3634,7 @@ export class OnChainMultiplayer {
     // Unsubscribe even for an unknown wallet: leaving is also how a ghost is
     // pruned, and a leaked subscription per prune is what exhausts the socket.
     this.unsubscribeFromPlayerWallet(wallet);
+    this.presence.forget(wallet);
     if (!this.knownPlayers.has(wallet)) return;
     this.knownPlayers.delete(wallet);
     for (const cb of this.removeCallbacks) cb(wallet);
