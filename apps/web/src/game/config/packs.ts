@@ -38,22 +38,23 @@ const RARITY_TABLE: Partial<Record<Rarity, Partial<Record<LayerCategory, string[
   legendary: {
     // The two animated effect hats ride along as legendary. They are test items
     // outside the pool for now, so this only names the tier they are meant for.
-    hat: ["Crown", "Ninja", "Royal_crown", "Halo", "Fire_Skull"],
+    hat: ["Crown", "Royal_crown", "Halo", "Fire_Skull"],
     accessory: ["Glasses_cyber"],
     back: ["Sands_of_time"],
-    pants: ["Tail_demon"],
+    tshirt: ["Suit_golden"],
+    pants: ["Tail_demon", "Pants_golden"],
   },
   rare: {
-    hat: ["Viking_hat", "Vizard_hat", "Pirate"],
-    accessory: ["Golden_ring", "Pirate", "Ring_brilliant", "Glasses_thug", "Blindfold_demon", "Visor_cyber"],
-    back: ["Wings_angel", "Wings_demon"],
-    tshirt: ["Tshirt_dragon", "Coat_doc", "Coat_dude", "Coat_red", "Suit_black", "Suit_golden"],
-    pants: ["Pants_golden", "Pants_lotus", "Short_pants_lotus", "Pants_white"],
+    hat: ["Viking_hat", "Vizard_hat", "Pirate", "Ninja"],
+    accessory: ["Ring_brilliant", "Glasses_thug", "Blindfold_demon"],
+    back: ["Wings_angel", "Wings_demon", "Jetpack"],
+    tshirt: ["Tshirt_dragon", "Coat_doc", "Coat_dude", "Coat_red", "Suit_black"],
+    pants: ["Pants_lotus", "Short_pants_lotus", "Pants_white"],
   },
   uncommon: {
-    hat: ["Cylinder", "Straw_hat", "Horns_demon"],
+    hat: ["Cylinder", "Straw_hat", "Horns_demon", "Cap_kid"],
     back: ["backpack_red"],
-    accessory: ["Glasses_round", "Glasses_steampunk"],
+    accessory: ["Glasses_steampunk", "Golden_ring", "Pirate", "Visor_cyber"],
     tshirt: ["Longsleeve_acid", "Longsleeve_neon", "Longsleeve_chess", "Longsleeve_indies", "Tshirt_acid", "Tshirt_neon", "Tshirt_chess", "Tshirt_solana_white"],
     pants: ["Pants_chess_red", "Pants_chess_white", "Pants_acid", "Short_pants_acid", "Pants_neon", "Short_pants_neon", "Short_pants_purple_belt"],
   },
