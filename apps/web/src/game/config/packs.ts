@@ -68,7 +68,7 @@ const RARITY_TABLE: Partial<Record<Rarity, Partial<Record<LayerCategory, string[
     // which is what common means here. Chess is a pattern and the Solana
     // shirt is branded, so those two stay.
     tshirt: ["Longsleeve_chess", "Tshirt_chess", "Tshirt_solana_white", "Coat_doc", "Coat_red"],
-    pants: ["Pants_chess_red", "Pants_chess_white", "Short_pants_purple_belt"],
+    pants: ["Pants_chess_red", "Pants_chess_white"],
   },
 };
 
