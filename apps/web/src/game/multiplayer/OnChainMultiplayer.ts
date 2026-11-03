@@ -572,9 +572,20 @@ export class OnChainMultiplayer {
   // idle and lands in an empty city. We learn the offset instead of trusting
   // the device: when a player's last_active increases, we just watched that
   // write happen, so chain time and device time are the same instant.
-  /** wallet → last_active (unix seconds) at the previous sighting. */
+  /** player PDA → last_active (unix seconds) at the previous sighting. */
   private lastSeenTs = new Map<string, number>();
   private clockSkewMs = 0;       // device clock minus chain clock
+  /** wallet → its current-seed PlayerState PDA, so the sweep hashes each once. */
+  private canonicalPdas = new Map<string, string>();
+
+  private canonicalPlayerPda(walletStr: string, authority: PublicKey): string {
+    let pda = this.canonicalPdas.get(walletStr);
+    if (pda === undefined) {
+      pda = derivePlayerPDA(authority)[0].toBase58();
+      this.canonicalPdas.set(walletStr, pda);
+    }
+    return pda;
+  }
   private moveRttMs = 0;         // smoothed send -> accepted, for the renderer
   /** Moves that cost more than one round trip, since the last report. */
   private moveCost = { retries: 0, coldHash: 0, total: 0 };
@@ -2871,6 +2882,17 @@ export class OnChainMultiplayer {
       const walletStr = authority.toBase58();
       offset += 32;
 
+      // Only the wallet's CURRENT PlayerState speaks for it. The sweep also
+      // returns PDAs from older seeds that a wallet delegated and never took
+      // back (5 of 17 on 2026-11-03), and they decode under the same
+      // authority. Read as the player, a stale copy dropped the live one
+      // through the freshness gate, and a stale copy followed by a less stale
+      // one looked like last_active advancing, which taught the clock a
+      // "skew" of days: every ghost from that window walked back in, and the
+      // hunt counted down to a deadline days gone. The poll and the push only
+      // ever read the canonical PDA, so only the sweep needs this check.
+      if (slot === undefined && pda !== this.canonicalPlayerPda(walletStr, authority)) return;
+
       // session_authority: Option<Pubkey> — 1 tag byte + 32 if tag=1
       const hasSession = buf.readUInt8(offset) === 1;
       if (hasSession) {
@@ -2976,9 +2998,10 @@ export class OnChainMultiplayer {
       // nothing, since it may be a ghost that stopped writing weeks ago, and
       // learning "skew" from one made every ghost look alive (a 14-day "skew"
       // was measured exactly that way). Only a gross difference counts as
-      // skew; small ones are ordinary propagation delay.
-      const prevTs = this.lastSeenTs.get(walletStr);
-      this.lastSeenTs.set(walletStr, lastActiveLo);
+      // skew; small ones are ordinary propagation delay. Keyed by the PDA, not
+      // the wallet: two accounts of one wallet are two clocks, not one moving.
+      const prevTs = this.lastSeenTs.get(pda);
+      this.lastSeenTs.set(pda, lastActiveLo);
       if (prevTs !== undefined && lastActiveLo > prevTs) {
         const skew = Date.now() - lastActiveLo * 1000;
         const next = Math.abs(skew) > 60_000 ? skew : 0;
