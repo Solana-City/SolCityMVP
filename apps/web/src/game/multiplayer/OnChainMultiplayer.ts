@@ -486,6 +486,30 @@ export class OnChainMultiplayer {
   /** player PDA → last_active (unix seconds) at the previous sighting. */
   private lastSeenTs = new Map<string, number>();
   private clockSkewMs = 0;       // device clock minus chain clock
+  /** Set once measureChainClock has an answer; peers stop teaching the clock then. */
+  private chainClockMeasured = false;
+
+  /**
+   * Device clock against the chain clock, from the chain itself: the time of
+   * the latest block. Every client measures it the same way, so every client
+   * lands on the same correction (within the 1s the block time is rounded
+   * to), from its first second in the city. Devnet ran 76s ahead of real time
+   * on 2026-11-05, base and rollups alike, so this is not a rounding error:
+   * it moves the shared hunt by 76 steps.
+   */
+  private async measureChainClock(): Promise<void> {
+    try {
+      const slot = await this.baseConnection.getSlot();
+      const blockTime = await this.baseConnection.getBlockTime(slot);
+      if (blockTime === null) return;
+      const skew = Date.now() - blockTime * 1000;
+      if (!this.chainClockMeasured || Math.abs(skew - this.clockSkewMs) > 1_500) {
+        console.log(`[Multiplayer] chain clock is ${Math.round(-skew / 1000)}s from this device`);
+      }
+      this.clockSkewMs = skew;
+      this.chainClockMeasured = true;
+    } catch { /* keep the last answer, or the peer fallback */ }
+  }
   /** wallet → its current-seed PlayerState PDA, so the sweep hashes each once. */
   private canonicalPdas = new Map<string, string>();
 
@@ -1267,7 +1291,7 @@ export class OnChainMultiplayer {
       const tx = new Transaction()
         .add(buildSetLinkSessionIx(this.wallet!, sessionKey, peer, state));
       tx.feePayer = sessionKey;
-      tx.recentBlockhash = await this.getMoveBlockhash(this.useEphemeral ? "ephemeral" : "base");
+      tx.recentBlockhash = await this.getMoveBlockhash(this.useEphemeral ? "ephemeral" : "base", conn);
       this.sessionKeys.signTransaction(tx);
       return OnChainMultiplayer.withTimeout(
         conn.sendRawTransaction(tx.serialize(), { skipPreflight: true }), 6_000,
@@ -1417,7 +1441,7 @@ export class OnChainMultiplayer {
         : buildRecordTransferSessionIx(this.wallet!, sessionKey);
       const tx = new Transaction().add(ix);
       tx.feePayer = sessionKey;
-      tx.recentBlockhash = await this.getMoveBlockhash(layer);
+      tx.recentBlockhash = await this.getMoveBlockhash(layer, conn);
       this.sessionKeys.signTransaction(tx);
       const sig = await OnChainMultiplayer.withTimeout(
         conn.sendRawTransaction(tx.serialize(), { skipPreflight: true }), 6_000,
@@ -1460,7 +1484,7 @@ export class OnChainMultiplayer {
           : buildRecordGameScoreSessionIx(this.wallet, sessionKey, gameSlot, scoreDelta, success);
         const tx = new Transaction().add(ix);
         tx.feePayer = sessionKey;
-        tx.recentBlockhash = await this.getMoveBlockhash(layer);
+        tx.recentBlockhash = await this.getMoveBlockhash(layer, conn);
         this.sessionKeys.signTransaction(tx);
         const sig = await OnChainMultiplayer.withTimeout(
           conn.sendRawTransaction(tx.serialize(), { skipPreflight: true }), 6_000,
@@ -2390,6 +2414,8 @@ export class OnChainMultiplayer {
       setInterval(() => this.tickPresence(), 2_000),
       // Still here, on our rollup's board; off it once AFK too long.
       setInterval(() => this.presenceHeartbeat(), 30_000),
+      // Clocks drift; keep the correction current.
+      setInterval(() => void this.measureChainClock(), 300_000),
       // Keep a fresh rollup blockhash in hand while the player is moving. The
       // send path used to fetch one every ~2s inline, so one move in four paid
       // a full extra round trip to the validator before it could even be
@@ -2397,6 +2423,10 @@ export class OnChainMultiplayer {
       setInterval(() => this.prefetchMoveBlockhash(), 1_200),
       setInterval(() => this.logReadPaths(), 60_000),
     ];
+
+    // The chain clock before the hunt, so the first citizen is where
+    // everyone else sees it, not 76 steps away.
+    await this.measureChainClock();
 
     // Seed the round immediately so the target syncs without waiting for the
     // poll. The hunt itself is created once at deploy (scripts/hunt-setup.ts).
@@ -2466,8 +2496,13 @@ export class OnChainMultiplayer {
       try {
         const info = await conn.getAccountInfo(derivePresenceBoardPDA(new PublicKey(v.identity)));
         if (!info) return;
+        // Dormant players are fetched too. Someone who logged out and came
+        // back is dormant here until we see their account change, and the
+        // board is the first place that says they are back: skipping them
+        // left a returning player invisible until the once-a-minute sweep.
+        // presence.sight still ignores them if nothing actually changed.
         const fresh = decodePresenceBoard(info.data, nowSecs)
-          .filter((w) => !this.knownPlayers.has(w) && !this.presence.isDormant(w));
+          .filter((w) => !this.knownPlayers.has(w));
         for (let i = 0; i < fresh.length; i += 100) {
           const pdas = fresh.slice(i, i + 100).map((w) => derivePlayerPDA(new PublicKey(w))[0]);
           const infos = await conn.getMultipleAccountsInfo(pdas, {
@@ -3456,7 +3491,11 @@ export class OnChainMultiplayer {
       // the wallet: two accounts of one wallet are two clocks, not one moving.
       const prevTs = this.lastSeenTs.get(pda);
       this.lastSeenTs.set(pda, lastActiveLo);
-      if (prevTs !== undefined && lastActiveLo > prevTs) {
+      // Only a fallback now: measureChainClock asks the chain directly, the
+      // same way on every device. Learning from peers happened at a
+      // different moment on each one, which put the first hunt citizen in a
+      // different place on each screen until both had seen somebody move.
+      if (!this.chainClockMeasured && prevTs !== undefined && lastActiveLo > prevTs) {
         const skew = Date.now() - lastActiveLo * 1000;
         const next = Math.abs(skew) > 60_000 ? skew : 0;
         if (next !== 0 && Math.abs(next - this.clockSkewMs) > 60_000) {
@@ -3643,7 +3682,16 @@ export class OnChainMultiplayer {
    * base layer blockhashes live ~60s+ (cache 20s). If a cached hash ever
    * expires early the tx is dropped and the status verifier flags it.
    */
-  private cachedMoveBlockhash: { hash: string; fetchedAt: number; layer: "ephemeral" | "base" } | null = null;
+  /**
+   * The last blockhash, AND the endpoint it came from. A blockhash is only
+   * valid on the chain that issued it, and each rollup is its own chain: a
+   * hash from the US rollup sent to the Asian one is refused before it runs
+   * ("transaction verification error: Blockhash not found"). Keyed by layer
+   * alone, the cache handed exactly that to a write sent just after the
+   * client learned its account lives on another rollup; it is what broke a
+   * friend accept on 2026-11-04.
+   */
+  private cachedMoveBlockhash: { hash: string; fetchedAt: number; layer: "ephemeral" | "base"; endpoint: string } | null = null;
 
   /**
    * Refreshes the cached blockhash in the background while the player is
@@ -3661,19 +3709,20 @@ export class OnChainMultiplayer {
     this.getMoveBlockhash(layer).catch(() => { /* next tick retries */ });
   }
 
-  private async getMoveBlockhash(layer: "ephemeral" | "base"): Promise<string> {
+  /** `target` is where the transaction will be SENT; the hash comes from the same place. */
+  private async getMoveBlockhash(layer: "ephemeral" | "base", target?: Connection): Promise<string> {
     // Shorter TTL on the ER: its blockhash validity window is tight, and a
     // slightly stale cached hash was the dominant cause of dropped ("null
     // signature") moves during movement bursts. 2s keeps enough reuse to batch.
     const ttlMs = layer === "ephemeral" ? 2_000 : 20_000;
     const now = Date.now();
     const cached = this.cachedMoveBlockhash;
-    if (cached && cached.layer === layer && now - cached.fetchedAt < ttlMs) {
+    const conn = target ?? (layer === "ephemeral" ? this.ephemeralConnection : this.baseConnection);
+    if (cached && cached.layer === layer && cached.endpoint === conn.rpcEndpoint && now - cached.fetchedAt < ttlMs) {
       return cached.hash;
     }
-    const conn = layer === "ephemeral" ? this.ephemeralConnection : this.baseConnection;
     const { blockhash } = await OnChainMultiplayer.withTimeout(conn.getLatestBlockhash(), 5_000);
-    this.cachedMoveBlockhash = { hash: blockhash, fetchedAt: now, layer };
+    this.cachedMoveBlockhash = { hash: blockhash, fetchedAt: now, layer, endpoint: conn.rpcEndpoint };
     return blockhash;
   }
 
@@ -3702,13 +3751,14 @@ export class OnChainMultiplayer {
           // reports twice the latency of the network is usually this rather
           // than the network.
           const hashWasCold = !this.cachedMoveBlockhash;
-          tx.recentBlockhash = await this.getMoveBlockhash("ephemeral");
+          const target = this.ephemeralConnection;
+          tx.recentBlockhash = await this.getMoveBlockhash("ephemeral", target);
           if (hashWasCold || attempt > 0) this.noteMoveCost(attempt, hashWasCold);
           this.sessionKeys.signTransaction(tx);
           // Actual execution outcome is verified by trackMoveConfirmation
           // (sampled getSignatureStatuses) in the caller.
           return await OnChainMultiplayer.withTimeout(
-            this.ephemeralConnection.sendRawTransaction(tx.serialize(), { skipPreflight: true }),
+            target.sendRawTransaction(tx.serialize(), { skipPreflight: true }),
             6_000,
           );
         } catch (err: any) {
@@ -3782,7 +3832,6 @@ export class OnChainMultiplayer {
       } catch { /* unreachable base RPC — fall through and let the send decide */ }
     }
 
-    const conn = this.useEphemeral ? this.ephemeralConnection : this.baseConnection;
     const layer = this.useEphemeral ? "ephemeral" : "base";
     // Surface these ER writes in the ONCHAIN LOG too — each under its own kind
     // (outfit / expression / chat / ball) so they're independently filterable.
@@ -3791,10 +3840,18 @@ export class OnChainMultiplayer {
       : null;
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
-        if (attempt === 1) this.cachedMoveBlockhash = null;
+        if (attempt === 1) {
+          this.cachedMoveBlockhash = null;
+          // The first send may have gone to a rollup holding only a copy of
+          // the account (an early write, before login found the owning one).
+          if (this.useEphemeral && this.wallet) {
+            await this.pointWritesAtOwningValidator(derivePlayerPDA(this.wallet)[0]);
+          }
+        }
+        const conn = this.useEphemeral ? this.ephemeralConnection : this.baseConnection;
         const tx = new Transaction().add(ix);
         tx.feePayer = sessionKey;
-        tx.recentBlockhash = await this.getMoveBlockhash(layer);
+        tx.recentBlockhash = await this.getMoveBlockhash(layer, conn);
         this.sessionKeys.signTransaction(tx);
         const sig = await OnChainMultiplayer.withTimeout(
           conn.sendRawTransaction(tx.serialize(), { skipPreflight: true }), 6_000,
