@@ -235,6 +235,17 @@ export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
     { id: "Backpack_solana", name: "Solana Backpack", textureKey: "pd-back-Backpack_solana", file: "back/Backpack_solana.png" },
     { id: "Backpack_heart", name: "Heart Backpack", textureKey: "pd-back-Backpack_heart", file: "back/Backpack_heart.png" },
     { id: "Cape_wizard", name: "Wizard Cape", textureKey: "pd-back-Cape_wizard", file: "back/Cape_wizard.png" },
+    // The 2026-11-04 drop: seven capes, the katanas and butterfly wings.
+    // Appended; position is the index.
+    { id: "Cape_black", name: "Black Cape", textureKey: "pd-back-Cape_black", file: "back/Cape_black.png" },
+    { id: "Cape_blue", name: "Blue Cape", textureKey: "pd-back-Cape_blue", file: "back/Cape_blue.png" },
+    { id: "Cape_green", name: "Green Cape", textureKey: "pd-back-Cape_green", file: "back/Cape_green.png" },
+    { id: "Cape_red", name: "Red Cape", textureKey: "pd-back-Cape_red", file: "back/Cape_red.png" },
+    { id: "Cape_acid", name: "Acid Cape", textureKey: "pd-back-Cape_acid", file: "back/Cape_acid.png" },
+    { id: "Cape_neon", name: "Neon Cape", textureKey: "pd-back-Cape_neon", file: "back/Cape_neon.png" },
+    { id: "Cape_lotus", name: "Lotus Cape", textureKey: "pd-back-Cape_lotus", file: "back/Cape_lotus.png" },
+    { id: "Swords", name: "Crossed Katanas", textureKey: "pd-back-Swords", file: "back/Swords.png" },
+    { id: "Wings_butterfly", name: "Butterfly Wings", textureKey: "pd-back-Wings_butterfly", file: "back/Wings_butterfly.png" },
   ],
   skin: [
     { id: "Light",      name: "Light",      textureKey: "pd-skin-Light",      file: "skin/Light.png" },
@@ -314,6 +325,19 @@ export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
     // owner says they are separate items. The starter pair keeps its own art.
     { id: "Pants_blue_belt", name: "Blue Belted Pants", textureKey: "pd-pants-Pants_blue_belt", file: "pants/Pants_blue_belt.png" },
     { id: "Pants_grey_belt", name: "Gray Belted Pants", textureKey: "pd-pants-Pants_grey_belt", file: "pants/Pants_grey_belt.png" },
+    // The 2026-11-04 drop: skirts, the first rare trousers, and a second
+    // tail. Appended; position is the index.
+    { id: "Skirt_black", name: "Black Skirt", textureKey: "pd-pants-Skirt_black", file: "pants/Skirt_black.png" },
+    { id: "Skirt_green", name: "Green Skirt", textureKey: "pd-pants-Skirt_green", file: "pants/Skirt_green.png" },
+    { id: "Skirt_red", name: "Red Skirt", textureKey: "pd-pants-Skirt_red", file: "pants/Skirt_red.png" },
+    { id: "Skirt_yellow", name: "Yellow Skirt", textureKey: "pd-pants-Skirt_yellow", file: "pants/Skirt_yellow.png" },
+    { id: "Skirt_acid", name: "Acid Skirt", textureKey: "pd-pants-Skirt_acid", file: "pants/Skirt_acid.png" },
+    { id: "Skirt_neon", name: "Neon Skirt", textureKey: "pd-pants-Skirt_neon", file: "pants/Skirt_neon.png" },
+    { id: "Pants_flame_blue", name: "Blue Flame Pants", textureKey: "pd-pants-Pants_flame_blue", file: "pants/Pants_flame_blue.png" },
+    { id: "Pants_flame_red", name: "Red Flame Pants", textureKey: "pd-pants-Pants_flame_red", file: "pants/Pants_flame_red.png" },
+    // From behind on its own, like the Demon Tail: from the front the tail
+    // is not there.
+    { id: "Tail_dino", name: "Dino Tail", textureKey: "pd-pants-Tail_dino", file: "pants/Tail_dino.png", showFromBehind: true },
   ],
   tshirt: [
     { id: "Blue_tshirt",  name: "Blue T-Shirt",  textureKey: "pd-tshirt-Blue_tshirt",  file: "tshirt/Blue_tshirt.png" },
@@ -387,6 +411,19 @@ export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
     // or plain effect is drawn above every layer, the hat included.
     { id: "Glasses_cyber", name: "Cyber Glasses", textureKey: "pd-accessory-Glasses_cyber", file: "accessory/Glasses_cyber.png",
       effect: { frames: 48, fps: 1000 / 150, walkSynced: true } },
+    // The 2026-11-04 drop: earrings, colour glasses, and two novelties.
+    // Appended; position is the index. All share the one accessory slot, so
+    // earrings and glasses replace each other.
+    { id: "Ear_golden_earrings", name: "Golden Earrings", textureKey: "pd-accessory-Ear_golden_earrings", file: "accessory/Ear_golden_earrings.png" },
+    { id: "Ear_silver_earrings", name: "Silver Earrings", textureKey: "pd-accessory-Ear_silver_earrings", file: "accessory/Ear_silver_earrings.png" },
+    { id: "Ear_heart_earrings", name: "Heart Earrings", textureKey: "pd-accessory-Ear_heart_earrings", file: "accessory/Ear_heart_earrings.png" },
+    { id: "Glasses_blue", name: "Blue Glasses", textureKey: "pd-accessory-Glasses_blue", file: "accessory/Glasses_blue.png" },
+    { id: "Glasses_green", name: "Green Glasses", textureKey: "pd-accessory-Glasses_green", file: "accessory/Glasses_green.png" },
+    { id: "Glasses_grey", name: "Gray Glasses", textureKey: "pd-accessory-Glasses_grey", file: "accessory/Glasses_grey.png" },
+    { id: "Glasses_orange", name: "Orange Glasses", textureKey: "pd-accessory-Glasses_orange", file: "accessory/Glasses_orange.png" },
+    { id: "Glasses_red", name: "Red Glasses", textureKey: "pd-accessory-Glasses_red", file: "accessory/Glasses_red.png" },
+    { id: "Glasses_funny", name: "Funny Glasses", textureKey: "pd-accessory-Glasses_funny", file: "accessory/Glasses_funny.png" },
+    { id: "Nose_clown", name: "Clown Nose", textureKey: "pd-accessory-Nose_clown", file: "accessory/Nose_clown.png" },
   ],
   // STYLES ONLY — the colour is a separate axis (game/config/hairPalette.ts),
   // so a style is listed once and worn in any of the twenty swatches.

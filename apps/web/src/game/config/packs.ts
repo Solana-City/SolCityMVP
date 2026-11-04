@@ -49,17 +49,28 @@ const RARITY_TABLE: Partial<Record<Rarity, Partial<Record<LayerCategory, string[
   // common and uncommon sat at the same per-item rate. Six came down.
   rare: {
     hat: ["Viking_hat", "Vizard_hat", "Pirate", "Ninja"],
-    accessory: ["Blindfold_demon"],
-    back: ["Wings_angel", "Wings_demon", "Jetpack"],
+    accessory: ["Blindfold_demon", "Glasses_funny"],
+    back: ["Wings_angel", "Wings_demon", "Jetpack", "Swords", "Wings_butterfly"],
     tshirt: ["Tshirt_dragon", "Suit_black"],
-    pants: [],
+    // The first rare trousers, 2026-11-04: until then the slot had none.
+    pants: ["Pants_flame_blue", "Pants_flame_red", "Tail_dino"],
   },
   uncommon: {
     hat: ["Cylinder", "Straw_hat", "Horns_demon", "Cap_kid", "Cap_blue"],
     // backpack_red came down to common with the drop: a plain colourway reads
     // as one, and the back slot needed commons more than it needed tiers.
-    back: ["Backpack_solana", "Backpack_heart", "Cape_wizard"],
-    accessory: ["Glasses_steampunk", "Pirate", "Visor_cyber", "Glasses_thug"],
+    // The seven capes are uncommon by the owner's rule, a silhouette of its
+    // own, like the Wizard Cape: colour alone would have made them common.
+    back: [
+      "Backpack_solana", "Backpack_heart", "Cape_wizard",
+      "Cape_black", "Cape_blue", "Cape_green", "Cape_red", "Cape_acid", "Cape_neon", "Cape_lotus",
+    ],
+    // All three earrings are uncommon, the owner's call, the plain gold and
+    // silver pair included. The colour glasses are common.
+    accessory: [
+      "Glasses_steampunk", "Pirate", "Visor_cyber", "Glasses_thug",
+      "Ear_golden_earrings", "Ear_silver_earrings", "Ear_heart_earrings", "Nose_clown",
+    ],
     // Longsleeve_indies is NOT here any more: it became an event item, so it
     // sits in the quest block and never reaches a pack. Naming it would have
     // put an uncommon badge on something no pack can draw.
