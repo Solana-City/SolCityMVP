@@ -1,12 +1,12 @@
 {
   "name": "Red Flame Pants",
   "symbol": "SCC",
-  "description": "RARE pants from Sol City.",
+  "description": "UNCOMMON pants from Sol City.",
   "image": "https://solanacity.io/collectibles/5666.gif",
   "attributes": [
     {
       "trait_type": "Rarity",
-      "value": "RARE"
+      "value": "UNCOMMON"
     },
     {
       "trait_type": "Slot",
