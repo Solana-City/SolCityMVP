@@ -19,6 +19,8 @@
  */
 
 import { Connection } from "@solana/web3.js";
+import { SOLANA_CLUSTER } from "../config/clusterStorage";
+import { MAINNET_RPCS } from "./mainnetRpc";
 
 // Free Helius devnet key — client-side and low-risk; override with
 // NEXT_PUBLIC_HELIUS_DEVNET. Kept first because when it's up it's fastest and
@@ -27,10 +29,15 @@ const HELIUS_DEVNET =
   (typeof process !== "undefined" && process.env.NEXT_PUBLIC_HELIUS_DEVNET) ||
   "https://devnet.helius-rpc.com/?api-key=92175bf8-4484-4c09-a60a-4d08ee821058";
 
-export const BASE_RPC_ENDPOINTS: readonly string[] = [
-  HELIUS_DEVNET,
-  "https://api.devnet.solana.com",
-];
+/**
+ * Per cluster, from NEXT_PUBLIC_SOLANA_CLUSTER. Mainnet reuses mainnetRpc's
+ * list (Helius first, the public endpoint behind it) rather than growing a
+ * second copy. Note the Helius key is domain-locked to solanacity.io, so a
+ * mainnet build on localhost runs on the public endpoint alone.
+ */
+export const BASE_RPC_ENDPOINTS: readonly string[] = SOLANA_CLUSTER === "mainnet"
+  ? MAINNET_RPCS
+  : [HELIUS_DEVNET, "https://api.devnet.solana.com"];
 
 // Primary endpoint reported as Connection.rpcEndpoint; the fetch below ignores
 // it and walks the full list, so this is cosmetic.

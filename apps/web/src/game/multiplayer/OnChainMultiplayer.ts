@@ -59,6 +59,7 @@ import { setHuntFromChain, clearHuntFromChain } from "../minigames/whereIsNPC/Wh
 import { transactionLog } from "../telemetry/transactionLog";
 import type { Loadout } from "../config/paperDoll";
 import { ER_VALIDATORS, probeValidators, nearestValidator } from "./erValidators";
+import { SOLANA_CLUSTER } from "@/game/config/clusterStorage";
 import { leaveAction, readCommits, recordCommit, resetCommits } from "./delegationBudget";
 import { DIR_LEFT, PresenceTracker, activityKey, HIDE_AFTER_MS } from "./presence";
 import { buildMarkPresentSessionIx, decodePresenceBoard, derivePresenceBoardPDA } from "../solana/presenceBoard";
@@ -71,11 +72,13 @@ import { prepareWalletTx, sendWalletSigned, WalletTxRejected } from "@/game/sola
 // ── Endpoints ──────────────────────────────────────────────────────────
 
 const ENDPOINTS = {
-  magicRouter:  "https://devnet-router.magicblock.app",
-  // US, chosen 2026-10-22. Verified 2026-10-25: this host answers getIdentity
-  // with MUS3hc9…, and the old devnet.magicblock.app answers MAS1Dt9… (Asia).
-  ephemeral:    "https://devnet-us.magicblock.app",
-  solanaDevnet: "https://api.devnet.solana.com",
+  // Follows NEXT_PUBLIC_SOLANA_CLUSTER, like the rollup list it sits next to.
+  magicRouter:  SOLANA_CLUSTER === "mainnet"
+    ? "https://router.magicblock.app"
+    : "https://devnet-router.magicblock.app",
+  // The US rollup, the default target until the delegation record says where
+  // this wallet lives. Taken from the list so the two cannot disagree.
+  ephemeral:    ER_VALIDATORS[0].rpc,
 } as const;
 
 /**

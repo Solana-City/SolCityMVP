@@ -25,6 +25,8 @@
  * likely by having one ball per validator.
  */
 
+import { SOLANA_CLUSTER } from "../config/clusterStorage";
+
 export interface ErValidator {
   /** Short, stable id. Used in logs and as a map key. */
   id: "us" | "as" | "eu";
@@ -39,12 +41,27 @@ export interface ErValidator {
  * Measured 2026-10-25 by asking each host's `getIdentity`, not copied from
  * documentation. `devnet.magicblock.app` with no region is the Asian one.
  */
+/**
+ * Mainnet runs the SAME three validators under the same identities, on hosts
+ * without the `devnet-` prefix: measured 2026-11-04 with getIdentity on
+ * us/as/eu.magicblock.app and against the mainnet router's getRoutes. So a
+ * PDA seeded by an identity (the presence boards) has the same address on
+ * both clusters, and only the host changes with NEXT_PUBLIC_SOLANA_CLUSTER.
+ *
+ * The mainnet router also lists Tokyo (as-tyo) and Buenos Aires (sa), which
+ * devnet has no equivalent of. Adding one means a board for it
+ * (presence-setup.ts) and a row here, nothing else.
+ */
+const HOST = SOLANA_CLUSTER === "mainnet"
+  ? { us: "https://us.magicblock.app", as: "https://as.magicblock.app", eu: "https://eu.magicblock.app" }
+  : { us: "https://devnet-us.magicblock.app", as: "https://devnet-as.magicblock.app", eu: "https://devnet-eu.magicblock.app" };
+
 export const ER_VALIDATORS: readonly ErValidator[] = [
-  { id: "us", label: "US", rpc: "https://devnet-us.magicblock.app",
+  { id: "us", label: "US", rpc: HOST.us,
     identity: "MUS3hc9TCw4cGC12vHNoYcCGzJG1txjgQLZWVoeNHNd" },
-  { id: "as", label: "Asia", rpc: "https://devnet-as.magicblock.app",
+  { id: "as", label: "Asia", rpc: HOST.as,
     identity: "MAS1Dt9qreoRMQ14YQuhg8UTZMMzDdKhmkZMECCzk57" },
-  { id: "eu", label: "Europe", rpc: "https://devnet-eu.magicblock.app",
+  { id: "eu", label: "Europe", rpc: HOST.eu,
     identity: "MEUGGrYPxKk17hCr7wpT6s8dtNokZj5U2L57vjYMS8e" },
 ];
 
