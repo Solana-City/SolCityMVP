@@ -81,6 +81,29 @@ pub const PRESENCE_SLOTS: usize = 240;
 /// freshness window, and a present player re-marks itself every 30s.
 pub const PRESENCE_TTL_SECS: i64 = 120;
 
+// ── The beach football: one shared ball, on one rollup ─────────────────────
+/// Seeds ["beach_ball"]. A new name, so the deleted ball of player_v3 can
+/// never be mistaken for this one.
+///
+/// The ball used to be no account at all: each kick rode the kicker's own
+/// chat field, so two players kicking at once were ordered differently on
+/// every screen, a kick wiped the kicker's last chat line (and a chat line
+/// the kick), and a newcomer could find the ball wherever an old touch left
+/// it. The earlier on-chain ball could not work because its kick wrote the
+/// ball AND the kicker's PlayerState, which live on different rollups. This
+/// one is written alone, like the hunt: a kick touches only the ball, so a
+/// player on any rollup can send it to the ball's rollup.
+pub const BALL_SEED: &[u8] = b"beach_ball";
+/// Two rollup slots (about 100 ms at the rollups' 50 ms blocks) between
+/// kicks. Below the client's own 350 ms dribble cooldown, so no honest kick
+/// is ever refused; it only stops a script from flooding the account.
+pub const BALL_MIN_KICK_SLOTS: u64 = 2;
+/// Kick velocity bound, px/s per axis: well above the client's 190 px/s kick
+/// times its fastest buff, well below anything that would teleport the ball.
+pub const BALL_MAX_SPEED: i32 = 1_000;
+/// Position bound, px: the city map is far smaller.
+pub const BALL_MAX_COORD: i32 = 100_000;
+
 // ── Social: a profile other players can read, and friends ──────────────────
 /// Achievement bitset capacity in bytes -> 256 achievements. The CLIENT owns
 /// the index->achievement table (achievementRegistry order): append-only,
@@ -513,6 +536,10 @@ pub enum SolCityError {
     LoadoutNotIndex,
     #[msg("A presence board can only be delegated to its own rollup")]
     PresenceValidatorMismatch,
+    #[msg("A kick must be inside the city and slower than the ball can go")]
+    BallKickInvalid,
+    #[msg("The ball was kicked a moment ago")]
+    BallKickTooSoon,
     // Appended, never inserted. Anchor numbers these by POSITION, so a
     // variant added in the middle silently renumbers every one after it
     // and any client matching on a code starts reporting the wrong thing.
@@ -917,6 +944,84 @@ pub mod sol_city {
     /// Re-anchoring to `now` is what gives the next citizen a FULL five minutes
     /// instead of the remainder of a wall-clock slot, which is the same thing
     /// the client's per-citizen timer was written to guarantee.
+    // ── The beach football ─────────────────────────────────────────────────
+
+    /// Creates the ball. Upgrade authority only, base layer (a Squads
+    /// proposal on mainnet), like the hunt and the presence boards.
+    pub fn init_ball(ctx: Context<InitBall>) -> Result<()> {
+        let ball = &mut ctx.accounts.ball;
+        ball.seq = 0;
+        Ok(())
+    }
+
+    /// Puts the ball on one rollup. Upgrade authority only, base layer.
+    pub fn delegate_ball(ctx: Context<DelegateBall>) -> Result<()> {
+        delegate_pda(
+            &ctx.accounts.payer,
+            &ctx.accounts.ball,
+            &ctx.accounts.delegate_buffer,
+            &ctx.accounts.delegation_record,
+            &ctx.accounts.delegation_metadata,
+            &ctx.accounts.system_program,
+            &[BALL_SEED],
+            ctx.bumps.ball,
+            preferred_validator(ctx.remaining_accounts)?,
+        )
+    }
+
+    /// Brings the ball home. Open to any signer, as undelegate_hunt is and
+    /// for the same reason: Squads cannot sign on a rollup, and all this can
+    /// do is return the ball to base with its state committed.
+    pub fn undelegate_ball(ctx: Context<UndelegateBall>) -> Result<()> {
+        schedule_magic_commit(
+            MAGIC_IX_COMMIT_AND_UNDELEGATE,
+            &ctx.accounts.payer.to_account_info(),
+            &ctx.accounts.magic_context.to_account_info(),
+            &ctx.accounts.magic_program.to_account_info(),
+            &ctx.accounts.ball.to_account_info(),
+            true,
+        )
+    }
+
+    /// One kick: where the ball was and how fast it left. Every client runs
+    /// the same roll from it.
+    ///
+    /// Touches the ball alone, signed by the kicker's session key, so it
+    /// works from any rollup. The kicker is not checked against a PlayerState
+    /// on purpose: that account lives on another rollup, where this one only
+    /// holds a stale copy. What a stranger could do with that is kick a beach
+    /// ball, and the bounds below keep even that ordinary.
+    pub fn kick_ball_session(
+        ctx: Context<KickBall>,
+        x: i32,
+        y: i32,
+        vx: i32,
+        vy: i32,
+    ) -> Result<()> {
+        require!(
+            (0..=BALL_MAX_COORD).contains(&x) && (0..=BALL_MAX_COORD).contains(&y),
+            SolCityError::BallKickInvalid
+        );
+        require!(
+            vx.abs() <= BALL_MAX_SPEED && vy.abs() <= BALL_MAX_SPEED,
+            SolCityError::BallKickInvalid
+        );
+        let slot = Clock::get()?.slot;
+        let ball = &mut ctx.accounts.ball;
+        require!(
+            ball.seq == 0 || slot >= ball.kicked_slot.saturating_add(BALL_MIN_KICK_SLOTS),
+            SolCityError::BallKickTooSoon
+        );
+        ball.x = x;
+        ball.y = y;
+        ball.vx = vx;
+        ball.vy = vy;
+        ball.seq = ball.seq.wrapping_add(1);
+        ball.kicked_slot = slot;
+        ball.kicker = ctx.accounts.kicker.key();
+        Ok(())
+    }
+
     pub fn claim_find(ctx: Context<ClaimFind>, round: u32) -> Result<()> {
         let now = Clock::get()?.unix_timestamp;
         let hunt = &mut ctx.accounts.hunt;
@@ -1527,6 +1632,81 @@ pub struct InitializeHunt<'info> {
 }
 
 #[derive(Accounts)]
+pub struct InitBall<'info> {
+    #[account(init, payer = payer, space = 8 + BallState::INIT_SPACE, seeds = [BALL_SEED], bump)]
+    pub ball: Account<'info, BallState>,
+    /// The program's upgrade authority, which signs and pays.
+    #[account(mut)]
+    pub payer: Signer<'info>,
+    /// CHECK: this program, used only to reach its ProgramData.
+    #[account(constraint = program.programdata_address()? == Some(program_data.key())
+        @ SolCityError::InvalidAuthority)]
+    pub program: Program<'info, crate::program::SolCity>,
+    #[account(constraint = program_data.upgrade_authority_address == Some(payer.key())
+        @ SolCityError::InvalidAuthority)]
+    pub program_data: Account<'info, ProgramData>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct DelegateBall<'info> {
+    /// The program's upgrade authority, which signs and pays.
+    #[account(mut)]
+    pub payer: Signer<'info>,
+    /// CHECK: this program, used only to reach its ProgramData.
+    #[account(constraint = program.programdata_address()? == Some(program_data.key())
+        @ SolCityError::InvalidAuthority)]
+    pub program: Program<'info, crate::program::SolCity>,
+    #[account(constraint = program_data.upgrade_authority_address == Some(payer.key())
+        @ SolCityError::InvalidAuthority)]
+    pub program_data: Account<'info, ProgramData>,
+    /// CHECK: PDA by seeds. Unchecked because the delegation CPI reassigns its
+    /// owner midway, and Anchor would write a stale copy back over it.
+    #[account(mut, seeds = [BALL_SEED], bump)]
+    pub ball: UncheckedAccount<'info>,
+    /// CHECK: our own program id, pinned; the CPI names crate::ID in its metas.
+    #[account(address = crate::ID)]
+    pub owner_program: UncheckedAccount<'info>,
+    /// CHECK: delegate buffer PDA, seeds ["buffer", ball.key()].
+    #[account(mut)]
+    pub delegate_buffer: UncheckedAccount<'info>,
+    /// CHECK: delegation record PDA, owned by the delegation program.
+    #[account(mut)]
+    pub delegation_record: UncheckedAccount<'info>,
+    /// CHECK: delegation metadata PDA, owned by the delegation program.
+    #[account(mut)]
+    pub delegation_metadata: UncheckedAccount<'info>,
+    /// CHECK: MagicBlock delegation program, pinned by address.
+    #[account(address = DELEGATION_PROGRAM_ID)]
+    pub delegation_program: UncheckedAccount<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+/// Sent on the ball's rollup. Any signer; see undelegate_ball.
+#[derive(Accounts)]
+pub struct UndelegateBall<'info> {
+    #[account(mut)]
+    pub payer: Signer<'info>,
+    /// CHECK: PDA by seeds, locked by the magic program mid-instruction.
+    #[account(mut, seeds = [BALL_SEED], bump)]
+    pub ball: UncheckedAccount<'info>,
+    /// CHECK: MagicBlock's scheduling context, pinned by address.
+    #[account(mut, address = MAGIC_CONTEXT_ID)]
+    pub magic_context: UncheckedAccount<'info>,
+    /// CHECK: MagicBlock's magic program, pinned by address.
+    #[account(address = MAGIC_PROGRAM_ID)]
+    pub magic_program: UncheckedAccount<'info>,
+}
+
+#[derive(Accounts)]
+pub struct KickBall<'info> {
+    #[account(mut, seeds = [BALL_SEED], bump)]
+    pub ball: Account<'info, BallState>,
+    /// The kicker's session key. Recorded, so a client can skip its own echo.
+    pub kicker: Signer<'info>,
+}
+
+#[derive(Accounts)]
 pub struct ClaimFind<'info> {
     #[account(mut, seeds = [HUNT_SEED], bump)]
     pub hunt: Account<'info, HuntState>,
@@ -1780,6 +1960,22 @@ pub struct PresenceSlot {
     pub seen: i64,      // 32, ends at 40
 }
 
+/// The last kick of the beach football. Read by the client by offset
+/// (ball.ts): 8 discriminator, x i32, y i32, vx i32, vy i32, seq u32,
+/// kicked_slot u64, kicker Pubkey. Append-only.
+#[account]
+#[derive(InitSpace)]
+pub struct BallState {
+    pub x: i32,
+    pub y: i32,
+    pub vx: i32,
+    pub vy: i32,
+    /// Bumped on every kick; 0 means never kicked.
+    pub seq: u32,
+    pub kicked_slot: u64,
+    pub kicker: Pubkey,
+}
+
 #[account]
 #[derive(InitSpace)]
 pub struct HuntState {
@@ -1939,6 +2135,13 @@ mod tests {
 
     /// The clients read a board by offset (presenceBoard.ts), and one `init`
     /// can allocate at most 10,240 bytes. Both are pinned here.
+    #[test]
+    fn ball_layout_is_what_the_client_reads() {
+        // Five 4-byte fields, the slot and the kicker: the offsets ball.ts
+        // reads after the discriminator.
+        assert_eq!(BallState::INIT_SPACE, 4 * 5 + 8 + 32);
+    }
+
     #[test]
     fn presence_board_fits_one_init_and_keeps_its_layout() {
         assert_eq!(std::mem::size_of::<PresenceSlot>(), 40);
