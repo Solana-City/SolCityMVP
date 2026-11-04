@@ -2,7 +2,7 @@
   "name": "Gray Belted Pants",
   "symbol": "SCC",
   "description": "COMMON pants from Sol City.",
-  "image": "https://solanacity.io/collectibles/5658.gif",
+  "image": "https://arweave.net/MZqilZqS2mWh-8xXVMY71IeN7X8t33sjcSz-br_i80Q/5658.gif",
   "attributes": [
     {
       "trait_type": "Rarity",
@@ -20,7 +20,7 @@
   "properties": {
     "files": [
       {
-        "uri": "https://solanacity.io/collectibles/5658.gif",
+        "uri": "https://arweave.net/MZqilZqS2mWh-8xXVMY71IeN7X8t33sjcSz-br_i80Q/5658.gif",
         "type": "image/gif"
       }
     ],

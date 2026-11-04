@@ -2,7 +2,7 @@
   "name": "White Solana T-Shirt",
   "symbol": "SCC",
   "description": "UNCOMMON tshirt from Sol City.",
-  "image": "https://solanacity.io/collectibles/7704.gif",
+  "image": "https://arweave.net/MZqilZqS2mWh-8xXVMY71IeN7X8t33sjcSz-br_i80Q/7704.gif",
   "attributes": [
     {
       "trait_type": "Rarity",
@@ -20,7 +20,7 @@
   "properties": {
     "files": [
       {
-        "uri": "https://solanacity.io/collectibles/7704.gif",
+        "uri": "https://arweave.net/MZqilZqS2mWh-8xXVMY71IeN7X8t33sjcSz-br_i80Q/7704.gif",
         "type": "image/gif"
       }
     ],

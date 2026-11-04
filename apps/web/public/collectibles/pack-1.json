@@ -2,7 +2,7 @@
   "name": "Sol City STREET PACK",
   "symbol": "SCC",
   "description": "Everyday city wear. Sealed: 5 items, drawn when it is opened.",
-  "image": "https://solanacity.io/collectibles/pack-1.gif",
+  "image": "https://arweave.net/MZqilZqS2mWh-8xXVMY71IeN7X8t33sjcSz-br_i80Q/pack-1.gif",
   "attributes": [
     {
       "trait_type": "Kind",
@@ -20,7 +20,7 @@
   "properties": {
     "files": [
       {
-        "uri": "https://solanacity.io/collectibles/pack-1.gif",
+        "uri": "https://arweave.net/MZqilZqS2mWh-8xXVMY71IeN7X8t33sjcSz-br_i80Q/pack-1.gif",
         "type": "image/gif"
       }
     ],
