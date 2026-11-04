@@ -881,26 +881,20 @@ export function migrateRetiredFace(loadout: Loadout): Loadout {
  * second wallet logged in on the same browser (several test wallets on one
  * seed phrase, 2026-11-05) put on the first one's outfit and pushed it onto
  * its own account. Before any wallet connects, the browser-wide slot is
- * used, and the first wallet to connect adopts it once.
+ * used for the guest; a wallet starts from its account on chain.
  */
 const LEGACY_KEY = clusterKey("solcity:loadout");
 const keyForWallet = (wallet: string) => clusterKey(`solcity:loadout:${wallet}`);
 let loadoutWallet: string | null = null;
 const storageKey = () => (loadoutWallet ? keyForWallet(loadoutWallet) : LEGACY_KEY);
 
-/** Whose outfit saveLoadout and loadSavedLoadout read and write from now on. */
+/**
+ * Whose outfit saveLoadout and loadSavedLoadout read and write from now on.
+ * The browser-wide slot is NOT handed to the first wallet: it may well be
+ * another account's, and the chain already holds each account's own outfit.
+ */
 export function setLoadoutWallet(wallet: string | null): void {
   loadoutWallet = wallet;
-  if (!wallet) return;
-  try {
-    if (localStorage.getItem(keyForWallet(wallet)) === null) {
-      const legacy = localStorage.getItem(LEGACY_KEY);
-      if (legacy !== null) {
-        localStorage.setItem(keyForWallet(wallet), legacy);
-        localStorage.removeItem(LEGACY_KEY);
-      }
-    }
-  } catch { /* storage blocked: nothing saved to move */ }
 }
 
 /** Whether this wallet has an outfit saved in this browser. */

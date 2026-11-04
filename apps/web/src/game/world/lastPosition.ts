@@ -1,4 +1,4 @@
-import { clusterKey } from "@/game/config/clusterStorage";
+import { clusterKeyForWallet } from "@/game/config/currentWallet";
 /**
  * Where the player was standing, kept across reloads.
  *
@@ -13,7 +13,8 @@ import { clusterKey } from "@/game/config/clusterStorage";
  * starts at the fountain.
  */
 
-const KEY = clusterKey("solcity:last-position");
+// Per wallet: a new account does not start where another one stopped.
+const key = () => clusterKeyForWallet("solcity:last-position");
 const MAX_AGE_MS = 30 * 60_000;
 
 export interface SavedPosition {
@@ -24,14 +25,14 @@ export interface SavedPosition {
 
 export function saveLastPosition(x: number, y: number): void {
   try {
-    localStorage.setItem(KEY, JSON.stringify({ x: Math.round(x), y: Math.round(y), at: Date.now() }));
+    localStorage.setItem(key(), JSON.stringify({ x: Math.round(x), y: Math.round(y), at: Date.now() }));
   } catch { /* storage blocked — the fountain it is */ }
 }
 
 /** The stored spot, or null when there is none, it is stale, or it is unreadable. */
 export function readLastPosition(): SavedPosition | null {
   try {
-    const raw = localStorage.getItem(KEY);
+    const raw = localStorage.getItem(key());
     if (!raw) return null;
     const p = JSON.parse(raw) as SavedPosition;
     if (typeof p?.x !== "number" || typeof p?.y !== "number" || typeof p?.at !== "number") return null;
@@ -43,5 +44,5 @@ export function readLastPosition(): SavedPosition | null {
 }
 
 export function clearLastPosition(): void {
-  try { localStorage.removeItem(KEY); } catch { /* ignore */ }
+  try { localStorage.removeItem(key()); } catch { /* ignore */ }
 }

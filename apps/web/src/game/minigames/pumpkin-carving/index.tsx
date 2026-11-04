@@ -42,7 +42,7 @@ import { track } from "@/game/telemetry/track";
 import { HowToPlay, readHowToSeen } from "./HowToPlay";
 import { attemptsLeft, spendAttempt, foundToday, PUMPKINS_PER_HUNT } from "@/game/halloween/pumpkinHunt";
 import { CARVING_BOARD } from "@/game/halloween/event";
-import { clusterKey } from "@/game/config/clusterStorage";
+import { clusterKeyForWallet } from "@/game/config/currentWallet";
 
 const FONT = '"Press Start 2P", monospace';
 /** A mini-game's window wears the map legend's "Mini-games" colour, like the rest of the games. */
@@ -88,12 +88,13 @@ function buzz(pattern: number | number[]): void {
  * The best carve on this device. The city board is per wallet and needs the
  * network; this is the player's own mark to beat, there from the first try.
  */
-const BEST_KEY = clusterKey("solcity:pumpkinCarving:best");
+// Per wallet: one account's best is not another's (currentWallet.ts).
+const bestKey = () => clusterKeyForWallet("solcity:pumpkinCarving:best");
 function readBest(): number {
-  try { return Number(localStorage.getItem(BEST_KEY)) || 0; } catch { return 0; }
+  try { return Number(localStorage.getItem(bestKey())) || 0; } catch { return 0; }
 }
 function saveBest(value: number): void {
-  try { localStorage.setItem(BEST_KEY, String(value)); } catch { /* storage blocked */ }
+  try { localStorage.setItem(bestKey(), String(value)); } catch { /* storage blocked */ }
 }
 
 /** The touch loupe: its size in css px, and how far above the finger it floats. */

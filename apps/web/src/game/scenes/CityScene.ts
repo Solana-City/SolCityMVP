@@ -44,6 +44,7 @@ import { hasAlreadyFoundCurrent, markCurrentFound, unmarkCurrentFound, isCitizen
 import { ProfileManager, profileManager } from "../config/profileManager";
 import { AchievementEngine } from "../progression/achievementEngine";
 import { startProfilePublisher, achievementAtIndex } from "../social/profilePublisher";
+import { setCurrentWallet } from "../config/currentWallet";
 import { startFriendPresence } from "../social/friendPresence";
 import { onMiniGameFinished, onStockTraded, watchNpcConversations, stopWatchingNpcConversations } from "../progression/outfitRewards";
 import { soundManager } from "../audio/SoundManager";
@@ -1053,6 +1054,8 @@ export class CityScene extends Phaser.Scene {
         try {
           this.profile.setWallet(walletAddress);
           setLoadoutWallet(walletAddress);
+          // Mechs, buffs, best scores, last position: this wallet's too.
+          setCurrentWallet(walletAddress);
           const chain = await this.network.readOwnProfile(new PublicKey(walletAddress)).catch(() => null);
           if (chain) {
             const ids = [...chain.achievementBits]

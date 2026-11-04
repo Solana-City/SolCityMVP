@@ -14,9 +14,10 @@ import type { MechBuild, MechId } from "./data/types";
 import { PRESET_BUILDS, getMatrix, getPart } from "./data/catalog";
 import { MECH_IDS } from "./data/types";
 import { TEAM_SIZE } from "./data/team";
-import { clusterKey } from "@/game/config/clusterStorage";
+import { clusterKeyForWallet } from "@/game/config/currentWallet";
 
-const STORAGE_KEY = clusterKey("solcity:solmechs");
+// Per wallet: one account's mechs and parts are never another's (currentWallet.ts).
+const storageKey = () => clusterKeyForWallet("solcity:solmechs");
 
 export interface HangarState {
   /**
@@ -84,7 +85,7 @@ function isMechId(v: unknown): v is MechId {
 
 export function loadHangar(): HangarState {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(storageKey());
     if (!raw) return { ...DEFAULT_HANGAR };
     const parsed = JSON.parse(raw) as Partial<HangarState>;
 
@@ -119,7 +120,7 @@ export function loadHangar(): HangarState {
 
 export function saveHangar(state: HangarState): void {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    localStorage.setItem(storageKey(), JSON.stringify(state));
   } catch {}
 }
 

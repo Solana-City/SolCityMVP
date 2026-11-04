@@ -1,4 +1,4 @@
-import { clusterKey } from "@/game/config/clusterStorage";
+import { clusterKeyForWallet, onCurrentWalletChange } from "@/game/config/currentWallet";
 /**
  * Timed buffs the player picks up around the city.
  *
@@ -80,7 +80,8 @@ export interface ActiveBuff {
   remainingMs: number;
 }
 
-const STORAGE_KEY = clusterKey("solcity.buffs.v1");
+// Per wallet (currentWallet.ts): a buff one account drank is not another's.
+const storageKey = () => clusterKeyForWallet("solcity.buffs.v1");
 /** How often an expiry is swept, which is also how often the HUD can redraw. */
 const SWEEP_MS = 250;
 
@@ -99,7 +100,7 @@ function load(): void {
   loaded = true;
   if (typeof window === "undefined") return;
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
+    const raw = window.localStorage.getItem(storageKey());
     if (!raw) return;
     const stored = JSON.parse(raw) as Record<string, unknown>;
     for (const [id, until] of Object.entries(stored)) {
@@ -115,7 +116,7 @@ function load(): void {
 function save(): void {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(Object.fromEntries(expiries)));
+    window.localStorage.setItem(storageKey(), JSON.stringify(Object.fromEntries(expiries)));
   } catch {
     // Private mode. The buff still runs for the rest of this session.
   }
@@ -131,6 +132,14 @@ function prune(): boolean {
   if (dropped) save();
   return dropped;
 }
+
+// Another account logged in: its buffs, not the last one's.
+onCurrentWalletChange(() => {
+  loaded = false;
+  expiries.clear();
+  load();
+  emit();
+});
 
 function emit(): void {
   for (const fn of listeners) fn();
