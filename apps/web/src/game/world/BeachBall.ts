@@ -170,7 +170,10 @@ const MAX_CATCHUP_MS = 4_000;
  * — and getting that wrong by a minute is far worse than getting this wrong
  * by a fraction of a second, which only shifts where the roll is picked up.
  */
-const REMOTE_LAG_MS = 400;
+// 0 since 2026-11-05: a remote kick now starts where and when it arrives, in
+// step with the kicker's avatar, which reaches us just as late. Starting it
+// 400ms in put the ball ahead of the foot that kicked it.
+const REMOTE_LAG_MS = 0;
 
 /** A kick, which is to say walking into it. */
 const NUDGE_SPEED = 190;
@@ -432,7 +435,10 @@ export class BeachBall {
     // inferred, so if two bodies reach the ball on the same frame the one
     // holding the keyboard is the one that gets the touch.
     for (const body of bodies) if (body.local) this.tryNudge(body, now);
-    for (const body of bodies) if (body.kicks && !body.local) this.tryNudge(body, now);
+    // Other players no longer start a predicted kick here: their avatar
+    // trails the real one, so the prediction never matched the real kick and
+    // the correction that followed was the jank testers saw. Their kick comes
+    // over the chain instead.
     this.draw();
   }
 
