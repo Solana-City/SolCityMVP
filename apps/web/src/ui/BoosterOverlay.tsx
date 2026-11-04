@@ -63,6 +63,10 @@ const REVEAL_TILE = 72;
 
 /** This wallet receives the shop's payments, and the program will not let it pay itself. */
 const TREASURY_WALLET_MSG = "This wallet is the shop's treasury and can't buy from itself. Use another wallet.";
+const NO_SIGNER_MSG = "Your wallet can't sign here. Reconnect it and try again.";
+const LOADING_MSG = "The shop is still loading. Try again in a moment.";
+/** No mint config on chain: a pack could be paid for and never become wearable. */
+const MINT_NOT_READY_MSG = "Minting isn't set up on this network yet, so packs aren't on sale.";
 
 export default function BoosterOverlay({
   wallet, onClose,
@@ -292,7 +296,10 @@ export default function BoosterOverlay({
 
   /** Buys `count` of this pack sealed, in one approval. */
   const seal = useCallback(async (chosen: PackDef) => {
-    if (!wallet || !signAllTransactions || !config || !mintConfig) return;
+    if (!wallet) return;
+    if (!signAllTransactions) { setError(NO_SIGNER_MSG); return; }
+    if (!config) { setError(LOADING_MSG); return; }
+    if (!mintConfig) { setError(MINT_NOT_READY_MSG); return; }
     const onChain = config.packs.find((p) => p.id === chosen.onChainId);
     if (!onChain) { setError("This pack is not on sale yet."); return; }
     const why = buyerIsTreasury(config, new PublicKey(wallet))
@@ -323,7 +330,10 @@ export default function BoosterOverlay({
 
   /** Burns one sealed pack and waits for its reveal. */
   const openSealed = useCallback(async (entry: { assetId: PublicKey; packId: number; nonce: number }) => {
-    if (!wallet || !signAllTransactions || !config || !mintConfig) return;
+    if (!wallet) return;
+    if (!signAllTransactions) { setError(NO_SIGNER_MSG); return; }
+    if (!config) { setError(LOADING_MSG); return; }
+    if (!mintConfig) { setError(MINT_NOT_READY_MSG); return; }
     const onChain = config.packs.find((p) => p.id === entry.packId);
     if (!onChain) { setError("That pack is not one this city knows."); return; }
     const card = PACKS.find((p) => p.onChainId === entry.packId) ?? PACKS[0];
@@ -363,6 +373,17 @@ export default function BoosterOverlay({
   const anotherFeel = useButtonFeel();
   const doneFeel = useButtonFeel();
 
+  // The price on a pack's card. With the paid draw on it is what the program
+  // charges, in its own currency (USDC, 6 decimals): the card used to show
+  // the preview's fixed SOL figure while the wallet was asked for USDC.
+  const packPriceLabel = (p: PackDef): string => {
+    if (BOOSTER_ONCHAIN) {
+      const onChain = config?.packs.find((x) => x.id === p.onChainId);
+      return onChain ? `${(Number(onChain.price) / 1e6).toFixed(2)} USDC` : "...";
+    }
+    return `${p.priceSol} SOL`;
+  };
+
   // The latest openOnChain, which is declared below this and closes over the
   // current config and signer. Called through a ref so `open` never runs a
   // stale copy from the first render, when the config was still null.
@@ -380,33 +401,35 @@ export default function BoosterOverlay({
       // browser, so everyone else saw the player without them (devnet,
       // 2026-11-05). Say what is missing instead.
       if (!signAllTransactions) {
-        setError("Your wallet can't sign here. Reconnect it and try again.");
+        setError(NO_SIGNER_MSG);
         setPhase("choose");
         return;
       }
-      if (!config) {
-        // Not loaded yet, or the load failed: read it now rather than ask the
-        // player to wait for something that may never come, and when it
-        // fails, show WHY. A shop that sat on "still loading" told nobody
-        // anything (devnet, 2026-11-05).
-        void (async () => {
-          try {
-            const cfg = await readPackConfig(baseConnection());
-            if (!cfg) {
-              setError("The shop is not set up on this network yet.");
-              setPhase("choose");
-              return;
-            }
-            setConfig(cfg);
-            await openOnChainRef.current?.(chosen, cfg);
-          } catch (err) {
-            setError(`Couldn't reach the shop: ${String((err as Error)?.message ?? err).split("\n")[0].slice(0, 120)}`);
+      // Whatever has not loaded is read now rather than waited for, and a
+      // failure says WHY: a shop that sat on "still loading" told nobody
+      // anything (devnet, 2026-11-05).
+      void (async () => {
+        try {
+          const conn = baseConnection();
+          const cfg = config ?? await readPackConfig(conn);
+          if (!cfg) {
+            setError("The shop is not set up on this network yet.");
             setPhase("choose");
+            return;
           }
-        })();
-        return;
-      }
-      void openOnChainRef.current?.(chosen);
+          if (!config) setConfig(cfg);
+          // No mint config means the items could be paid for and never
+          // minted, and an unminted item cannot be worn, so the sale is
+          // refused (devnet, 2026-11-05: "5 still to mint" after a paid pack).
+          const mc = mintConfig ?? await readMintConfig(conn);
+          if (!mc) { setError(MINT_NOT_READY_MSG); setPhase("choose"); return; }
+          if (!mintConfig) setMintConfig(mc);
+          await openOnChainRef.current?.(chosen, cfg);
+        } catch (err) {
+          setError(`Couldn't reach the shop: ${String((err as Error)?.message ?? err).split("\n")[0].slice(0, 120)}`);
+          setPhase("choose");
+        }
+      })();
       return;
     }
     const rolled = rollPack(wallet, chosen);
@@ -429,7 +452,7 @@ export default function BoosterOverlay({
       setDrops(rolled);
       setPhase("revealed");
     }, skipReveal ? 0 : 650);
-  }, [wallet, config, signAllTransactions]);
+  }, [wallet, config, mintConfig, signAllTransactions]);
 
   /**
    * The paid draw.
@@ -563,7 +586,7 @@ export default function BoosterOverlay({
           {phase === "choose" ? "OUTFIT PACKS" : pack?.name}
         </div>
         <div className="booster-sub" style={{ fontSize: 6, color: "#FFD700", opacity: 0.7, letterSpacing: 1, marginBottom: 18 }}>
-          SEASON {CURRENT_SEASON} · PREVIEW · RANDOMNESS → MAGICBLOCK VRF
+          SEASON {CURRENT_SEASON}{BOOSTER_ONCHAIN ? "" : " · PREVIEW"} · RANDOMNESS → MAGICBLOCK VRF
         </div>
 
         {!wallet ? (
@@ -684,6 +707,7 @@ export default function BoosterOverlay({
                   <PackCard
                     key={p.id}
                     pack={p}
+                    priceLabel={packPriceLabel(p)}
                     onOpen={() => open(p)}
                     onSeal={() => void seal(p)}
                     sealing={sealing === p.onChainId}
@@ -802,8 +826,10 @@ export default function BoosterOverlay({
  * never open. So they are two buttons of equal standing rather than a
  * primary action with a modifier hidden beside it.
  */
-function PackCard({ pack, onOpen, onSeal, sealing }: {
+function PackCard({ pack, priceLabel, onOpen, onSeal, sealing }: {
   pack: PackDef;
+  /** What one pack costs: the on-chain price when the paid draw is on. */
+  priceLabel: string;
   onOpen: () => void;
   onSeal: () => void;
   sealing: boolean;
@@ -843,7 +869,7 @@ function PackCard({ pack, onOpen, onSeal, sealing }: {
       </div>
 
       <div style={{ fontSize: 6, color: "#7a7aa0", letterSpacing: 0.5 }}>
-        {pack.size} PIECES · {pack.priceSol} SOL
+        {pack.size} PIECES · {priceLabel}
       </div>
       <ChamferGlow glow={`drop-shadow(0 0 10px ${pack.accent}55)`} style={{ display: "block", width: "100%" }}>
         <button
