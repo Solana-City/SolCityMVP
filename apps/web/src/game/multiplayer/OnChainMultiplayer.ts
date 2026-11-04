@@ -63,6 +63,7 @@ import { SOLANA_CLUSTER } from "@/game/config/clusterStorage";
 import { leaveAction, readCommits, recordCommit, resetCommits } from "./delegationBudget";
 import { DIR_LEFT, PresenceTracker, activityKey, HIDE_AFTER_MS } from "./presence";
 import { buildMarkPresentSessionIx, decodePresenceBoard, derivePresenceBoardPDA, buildClosePlayerIx } from "../solana/presenceBoard";
+import { buildKickBallIx, decodeBall, deriveBallPDA } from "../solana/ball";
 import { setOnChainUnlocks } from "@/game/config/wardrobeUnlocks";
 import { syncHeldToWardrobe } from "@/game/solana/mint";
 import { gameSlotOf, GAME_SLOT_CAP } from "@/game/minigames/slots";
@@ -1852,9 +1853,80 @@ export class OnChainMultiplayer {
     this.bc?.postMessage({ t: "ball", w: walletStr, k: kick } satisfies BCMsg); // same-tab
     if (!isProgramDeployed()) return;
     const sk = this.sessionKeys.getSessionPublicKey();
+    if (this.ballLive) {
+      void this.sendKickToBall(kick);
+      return;
+    }
+    // No ball account on a rollup yet: the old path, the kick on our chat field.
     this.sendSessionIx(buildSendChatSessionIx(this.wallet!, sk, encodeBallKick(kick)), {
       kind: "ball", label: "Ball kick",
     });
+  }
+
+  // ── The beach football as one account (ball.ts) ────────────────────────
+
+  private ballConn: Connection | null = null;
+  private ballConnAt = 0;
+  /** The ball is an account delegated to a rollup: kicks and reads go there. */
+  private ballLive = false;
+  /** The last kick sequence applied; null until the first read. */
+  private lastBallSeq: number | null = null;
+
+  /** Where the ball lives, from its delegation record. Cached 30s, like the hunt. */
+  private async ballConnection(): Promise<Connection | null> {
+    if (Date.now() - this.ballConnAt < 30_000) return this.ballConn;
+    this.ballConnAt = Date.now();
+    try {
+      const rec = await this.baseConnection.getAccountInfo(delegationRecordPdaFromDelegatedAccount(deriveBallPDA()));
+      let conn: Connection | null = null;
+      if (rec && rec.owner.equals(DELEGATION_PROGRAM_ID) && rec.lamports !== 0) {
+        const validator = new PublicKey(rec.data.subarray(8, 40)).toBase58();
+        const target = ER_VALIDATORS.find((v) => v.identity === validator);
+        conn = (target && this.erReadConnections.find((r) => r.id === target.id)?.conn) ?? null;
+      }
+      if (!!conn !== this.ballLive) console.log(`[Ball] the ball is ${conn ? "an account on a rollup" : "client-side (no ball account)"}`);
+      this.ballConn = conn;
+      this.ballLive = !!conn;
+    } catch { /* keep the last answer */ }
+    return this.ballConn;
+  }
+
+  /**
+   * Reads the ball and hands a new kick to the scene. The first read is the
+   * ball as the city left it (stale: replayed to rest); after that, each new
+   * sequence number is a live kick, except our own, which already rolled here.
+   */
+  private async pollBall(): Promise<void> {
+    if (!isProgramDeployed() || this.suspended) return;
+    const conn = await this.ballConnection();
+    if (!conn) return;
+    try {
+      const info = await conn.getAccountInfo(deriveBallPDA());
+      const ball = info ? decodeBall(info.data) : null;
+      if (!ball || ball.seq === 0 || ball.seq === this.lastBallSeq) return;
+      const first = this.lastBallSeq === null;
+      this.lastBallSeq = ball.seq;
+      if (!first && ball.kicker === this.sessionKeys.getSessionPublicKey().toBase58()) return;
+      const kick = { x: ball.x, y: ball.y, vx: ball.vx, vy: ball.vy, seq: ball.seq % 1000 };
+      (globalThis as any).__solCityGameEvents?.emit("ball:kick", {
+        kick, stale: first, staleAt: first ? 1 : 0, w: this.sessionToWallet.get(ball.kicker),
+      });
+    } catch { /* next tick */ }
+  }
+
+  /** Our kick, to the ball's rollup: free, session-signed, no popup. */
+  private async sendKickToBall(kick: BallKick): Promise<void> {
+    const conn = this.ballConn;
+    if (!conn) return;
+    try {
+      const sk = this.sessionKeys.getSessionPublicKey();
+      const { blockhash } = await conn.getLatestBlockhash();
+      const tx = new Transaction({ recentBlockhash: blockhash, feePayer: sk }).add(buildKickBallIx(sk, kick));
+      this.sessionKeys.signTransaction(tx);
+      await conn.sendRawTransaction(tx.serialize(), { skipPreflight: true });
+    } catch (err: any) {
+      console.warn("[Ball] kick not sent:", err?.message);
+    }
   }
 
   // ── One playing tab per wallet ──────────────────────────────────────────
@@ -2503,6 +2575,8 @@ export class OnChainMultiplayer {
       setInterval(() => this.presenceHeartbeat(), 30_000),
       // Clocks drift; keep the correction current.
       setInterval(() => void this.measureChainClock(), 300_000),
+      // The ball, when it is an account: one small read, as often as moves.
+      setInterval(() => void this.pollBall(), 250),
       // Keep a fresh rollup blockhash in hand while the player is moving. The
       // send path used to fetch one every ~2s inline, so one move in four paid
       // a full extra round trip to the validator before it could even be
@@ -3720,7 +3794,7 @@ export class OnChainMultiplayer {
           // the only record of where the ball actually IS, so a player walking
           // in takes it rather than starting on a ball nobody else can see.
           // BeachBall ignores it once any live kick has arrived.
-          if (ballTag) {
+          if (ballTag && !this.ballLive) {
             const kick = decodeBallKick(ballTag);
             if (kick) bus?.emit("ball:kick", { kick, stale: true, staleAt: messageAt, w: walletStr });
           }
@@ -3732,7 +3806,7 @@ export class OnChainMultiplayer {
             for (const cb of this.exprCallbacks) cb(walletStr, expression);
           }
           if (ballTag) {
-            if (ballTag !== (updated as any)._ballTag) {
+            if (ballTag !== (updated as any)._ballTag && !this.ballLive) {
               const kick = decodeBallKick(ballTag);
               if (kick) bus?.emit("ball:kick", { kick, stale: false, w: walletStr });
             }

@@ -6,6 +6,7 @@
  *   npx tsx scripts/presence-setup.ts <upgrade-authority.json>     # dry run
  *   npx tsx scripts/presence-setup.ts <upgrade-authority.json> --send
  *   npx tsx scripts/presence-setup.ts <upgrade-authority.json> --hunt us --send
+ *   npx tsx scripts/presence-setup.ts <upgrade-authority.json> --ball us --send
  *
  * Per board: create it if missing, then delegate it to its own rollup if it is
  * not delegated yet. Both take the upgrade authority and run on BASE, so on
@@ -15,6 +16,11 @@
  * find free (claim_find on the rollup) and is what lets a session key hold no
  * SOL at all. The clients follow the hunt's delegation record, so it can be
  * done at any time; `undelegate_hunt` on that rollup brings it back.
+ *
+ * `--ball <us|as|eu>` creates the beach football's account if missing and
+ * delegates it to that rollup. Kicks then go there, and the client stops
+ * carrying them on the kicker's chat field. `undelegate_ball` on that rollup
+ * brings it back (any signer).
  *
  * Env:
  *   SOLCITY_RPC   RPC (default: devnet, see scripts/_rpc.ts)
@@ -34,6 +40,7 @@ import {
 } from "../src/game/solana/presenceBoard";
 import { ixDiscriminator } from "../src/game/solana/instructions";
 import { ER_VALIDATORS } from "../src/game/multiplayer/erValidators";
+import { deriveBallPDA, buildInitBallIx, buildDelegateBallIx } from "../src/game/solana/ball";
 
 const PROGRAM = new PublicKey("HPvDFVnruSXHwKKP44eUvRh8oYqBaHCeQbK1sKWT1aU2");
 const DELEGATION = new PublicKey("DELeGGvXpWV2fqJUhqcF5ZSYMS4JTLjteaAMARRSaeSh");
@@ -43,6 +50,7 @@ const conn = devnetConnection();
 const args = process.argv.slice(2);
 const send = args.includes("--send");
 const huntAt = args.includes("--hunt") ? args[args.indexOf("--hunt") + 1] : null;
+const ballAt = args.includes("--ball") ? args[args.indexOf("--ball") + 1] : null;
 
 /** Where an account lives: missing, on base, or delegated to a validator. */
 async function whereIs(account: PublicKey): Promise<string> {
@@ -89,6 +97,7 @@ async function main() {
       console.log(`board ${v.label.padEnd(7)} ${board.toBase58()}  ${await whereIs(board)}`);
     }
     console.log(`hunt          ${hunt.toBase58()}  ${await whereIs(hunt)}`);
+    console.log(`ball          ${deriveBallPDA().toBase58()}  ${await whereIs(deriveBallPDA())}`);
   };
 
   if (args[0] === "status") { await status(); return; }
@@ -116,6 +125,16 @@ async function main() {
     const where = await whereIs(hunt);
     if (where === "on the base layer") plan.push({ label: `delegate hunt to ${v.label}`, ix: delegateHuntIx(payer.publicKey, new PublicKey(v.identity)) });
     else console.log(`\nhunt is ${where}: nothing to do for --hunt`);
+  }
+
+  if (ballAt) {
+    const v = ER_VALIDATORS.find((x) => x.id === ballAt);
+    if (!v) throw new Error(`--ball takes one of: ${ER_VALIDATORS.map((x) => x.id).join(", ")}`);
+    const where = await whereIs(deriveBallPDA());
+    if (where === "missing") plan.push({ label: "create ball", ix: buildInitBallIx(payer.publicKey) });
+    if (where === "missing" || where === "on the base layer") {
+      plan.push({ label: `delegate ball to ${v.label}`, ix: buildDelegateBallIx(payer.publicKey, new PublicKey(v.identity)) });
+    } else console.log(`\nball is ${where}: nothing to do for --ball`);
   }
 
   if (plan.length === 0) { console.log("\nnothing to do"); return; }
