@@ -20,7 +20,7 @@ describe("the sealed pack's metadata encoding", () => {
   const creator = Keypair.generate().publicKey;
 
   const encode = () => encodeMetadataArgs({
-    name: "Sol City Pack #1",
+    name: "SolanaCity Pack #1",
     symbol: "SCC",
     uri: "https://example.test/pack-1.json",
     sellerFeeBasisPoints: 500,
@@ -30,14 +30,14 @@ describe("the sealed pack's metadata encoding", () => {
 
   it("writes each string as a 4-byte length and its bytes", () => {
     const b = encode();
-    expect(b.readUInt32LE(0)).toBe("Sol City Pack #1".length);
-    const afterName = 4 + "Sol City Pack #1".length;
+    expect(b.readUInt32LE(0)).toBe("SolanaCity Pack #1".length);
+    const afterName = 4 + "SolanaCity Pack #1".length;
     expect(b.readUInt32LE(afterName)).toBe("SCC".length);
   });
 
   it("puts the royalty where the program reads it", () => {
     const b = encode();
-    const at = 4 + "Sol City Pack #1".length + 4 + "SCC".length
+    const at = 4 + "SolanaCity Pack #1".length + 4 + "SCC".length
       + 4 + "https://example.test/pack-1.json".length;
     expect(b.readUInt16LE(at)).toBe(500);
     expect(b[at + 2]).toBe(1);   // primary_sale_happened
@@ -55,7 +55,7 @@ describe("the sealed pack's metadata encoding", () => {
    */
   it("rebuilds the collection as VERIFIED, which is not what mint_pack passed", () => {
     const b = encode();
-    const at = 4 + "Sol City Pack #1".length + 4 + "SCC".length
+    const at = 4 + "SolanaCity Pack #1".length + 4 + "SCC".length
       + 4 + "https://example.test/pack-1.json".length;
     // sfbp(2) + sale(1) + mutable(1) + edition None(1) + standard Some(2)
     const collectionAt = at + 2 + 1 + 1 + 1 + 2;

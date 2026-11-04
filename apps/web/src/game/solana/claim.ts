@@ -147,7 +147,7 @@ export function buildClaimOwnedIx(params: {
   // The cosmetic's metadata exactly as mint_unlock wrote it, which is what the
   // leaf hashes and what the program rebuilds the URI from.
   const metadata = encodeMetadataArgs({
-    name: `Sol City #${item.index}`,
+    name: `SolanaCity #${item.index}`,
     symbol: config.symbol,
     uri: `${config.baseUri}${item.index}.json`,
     sellerFeeBasisPoints: config.sellerFeeBasisPoints,

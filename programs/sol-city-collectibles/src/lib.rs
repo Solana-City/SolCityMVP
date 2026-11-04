@@ -409,7 +409,7 @@ fn request_draw<'info>(
 /// field of this program put together.
 fn cosmetic_metadata(cfg: &MintConfig, index: u16) -> MetadataArgs {
     MetadataArgs {
-        name: format!("Sol City #{}", index),
+        name: format!("SolanaCity #{}", index),
         symbol: cfg.symbol.clone(),
         uri: format!("{}{}.json", cfg.base_uri, index),
         seller_fee_basis_points: cfg.seller_fee_basis_points,
@@ -440,7 +440,7 @@ fn cosmetic_metadata(cfg: &MintConfig, index: u16) -> MetadataArgs {
 /// chain stores either name.
 fn sealed_pack_metadata(cfg: &MintConfig, pack_id: u8) -> MetadataArgs {
     MetadataArgs {
-        name: format!("Sol City Pack #{}", pack_id),
+        name: format!("SolanaCity Pack #{}", pack_id),
         symbol: cfg.symbol.clone(),
         uri: format!("{}pack-{}.json", cfg.base_uri, pack_id),
         seller_fee_basis_points: cfg.seller_fee_basis_points,

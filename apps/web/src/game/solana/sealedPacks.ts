@@ -98,7 +98,7 @@ export function encodeMetadataArgs(args: {
 /** The metadata `mint_pack` wrote for a sealed pack of this id. */
 export function sealedPackMetadata(config: MintConfigAccount, packId: number): Buffer {
   return encodeMetadataArgs({
-    name: `Sol City Pack #${packId}`,
+    name: `SolanaCity Pack #${packId}`,
     symbol: config.symbol,
     uri: `${config.baseUri}pack-${packId}.json`,
     sellerFeeBasisPoints: config.sellerFeeBasisPoints,
