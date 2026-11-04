@@ -86,6 +86,14 @@ const PUBLIC = join(HERE, "..", "public");
 const CARD_FRAME_MS = 150;
 
 /**
+ * The collection symbol, written into every metadata JSON. It MUST equal
+ * SYMBOL in mint-setup.ts, which the program stores and every cNFT carries:
+ * marketplaces compare the two. "SolanaCity Cosmetics" / SOLCITY, the
+ * owner's call on 2026-11-05 (the JSON said SCC until then).
+ */
+const SYMBOL = "SOLCITY";
+
+/**
  * The largest an item's pixel may be, in frame pixels. 2.2 is what trousers
  * and backpacks reach when fitted (22x at scale 10), the biggest of any
  * ordinary garment; only the rings and the Cyber Visor were above it, at up
@@ -355,7 +363,7 @@ async function main() {
       await writeGif(join(outDir, `${index}.gif`), cells, steps.map((s) => s.ms / 10));
       writeFileSync(join(outDir, `${index}.json`), JSON.stringify({
         name: variant.name,
-        symbol: "SCC",
+        symbol: SYMBOL,
         description: `${RARITY_LABEL[kind]} ${category} from Sol City.`,
         image: `${imageBase}${index}.gif`,
         attributes: [
@@ -400,7 +408,7 @@ async function main() {
     await writeGif(join(outDir, `pack-${pack.onChainId}.gif`), cells, 12);
     writeFileSync(join(outDir, `pack-${pack.onChainId}.json`), JSON.stringify({
       name: `Sol City ${pack.name}`,
-      symbol: "SCC",
+      symbol: SYMBOL,
       description: `${pack.blurb} Sealed: ${pack.size} items, drawn when it is opened.`,
       image: `${imageBase}pack-${pack.onChainId}.gif`,
       attributes: [
