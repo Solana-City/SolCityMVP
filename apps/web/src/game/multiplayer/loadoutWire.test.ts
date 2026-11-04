@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { Keypair } from "@solana/web3.js";
 import { globalIndexOf, itemAtGlobalIndex, BOOSTER_BLOCK_START } from "@/game/config/catalogIndex";
-import { getBoosterPool, getChainFreeItems } from "@/game/config/paperDoll";
+import { getBoosterPool, getChainFreeItems, DEFAULT_LOADOUT } from "@/game/config/paperDoll";
 import { setOnChainUnlocks } from "@/game/config/wardrobeUnlocks";
 import { encodeLoadout, decodeLoadout } from "./loadoutCodec";
 
@@ -36,10 +36,20 @@ describe("what goes out on the wire", () => {
   });
 
   it("leaves out a pack item the wallet does not own on chain", () => {
-    expect(packIndex).toBeGreaterThanOrEqual(BOOSTER_BLOCK_START);
+    const hat = getBoosterPool().find((r) => r.category === "hat")!;
+    expect(globalIndexOf("hat", hat.variant.id)).toBeGreaterThanOrEqual(BOOSTER_BLOCK_START);
     setOnChainUnlocks(wallet, unlockStateBytes([]));
-    const wire = encodeLoadout({ [pack.category]: pack.variant.id }, wallet);
-    expect(wire).toBe("");
+    expect(encodeLoadout({ hat: hat.variant.id }, wallet)).toBe("");
+  });
+
+  it("sends the free default for a shirt or trousers it cannot send", () => {
+    // Left off, they showed the player in their underwear to everyone else.
+    setOnChainUnlocks(wallet, unlockStateBytes([]));
+    for (const slot of ["pants", "tshirt"] as const) {
+      const item = getBoosterPool().find((r) => r.category === slot)!;
+      const wire = encodeLoadout({ [slot]: item.variant.id }, wallet);
+      expect(decodeLoadout(wire)[slot]).toBe(DEFAULT_LOADOUT[slot]);
+    }
   });
 
   it("sends a pack item the wallet owns", () => {

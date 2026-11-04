@@ -1,5 +1,5 @@
 import {
-  migrateHairColor, migrateRetiredFace, type Loadout, type LayerCategory,
+  migrateHairColor, migrateRetiredFace, DEFAULT_LOADOUT, type Loadout, type LayerCategory,
 } from "../config/paperDoll";
 import { hairColorAtIndex, hairColorIndex } from "../config/hairPalette";
 import { globalIndexOf, itemAtGlobalIndex, BOOSTER_BLOCK_START } from "../config/catalogIndex";
@@ -36,6 +36,12 @@ const LOADOUT_ABBR_KEY: Record<string, string> = Object.fromEntries(
  * Pinning the order makes the colour the first casualty instead of a layer:
  * losing it renders the style as drawn, where losing the hat renders no hat.
  */
+/** The free garment sent in place of one the wallet cannot send. */
+const COVERING_DEFAULT: Partial<Record<keyof Loadout, string>> = {
+  pants: DEFAULT_LOADOUT.pants,
+  tshirt: DEFAULT_LOADOUT.tshirt,
+};
+
 const LOADOUT_EMIT_ORDER: (keyof Loadout)[] = [
   "skin", "eyesFace", "pants", "tshirt", "back", "accessory", "hair", "hat", "hairColor",
 ];
@@ -74,9 +80,20 @@ export function encodeLoadout(l: Loadout, wallet: string | null): string {
     // The snapshot the program checks is kept current mid-session now:
     // sync_unlocks runs on the rollup (measured 2026-10-31), and the pack
     // overlay calls refreshUnlockSnapshot as soon as a draw lands.
-    const index = globalIndexOf(k as LayerCategory, v);
-    if (index < 0) continue;
-    if (index >= BOOSTER_BLOCK_START && !owned.has(unlockKeyOf(k as LayerCategory, v))) continue;
+    let index = globalIndexOf(k as LayerCategory, v);
+    const sendable = index >= 0
+      && (index < BOOSTER_BLOCK_START || owned.has(unlockKeyOf(k as LayerCategory, v)));
+    if (!sendable) {
+      // A shirt or trousers that cannot go out is swapped for the free
+      // default rather than left off: dropped, it showed the player in their
+      // underwear to everyone else (devnet, 2026-11-05: a wallet with nothing
+      // unlocked on chain wearing pack items). A hat or a backpack that
+      // cannot go out is simply not worn, which reads as a choice.
+      const fallback = COVERING_DEFAULT[k];
+      if (!fallback) continue;
+      index = globalIndexOf(k as LayerCategory, fallback);
+      if (index < 0) continue;
+    }
     out.push(`${LOADOUT_KEY_ABBR[k] ?? k}=${index}`);
   }
   return out.join("|");
