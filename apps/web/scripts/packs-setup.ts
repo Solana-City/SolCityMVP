@@ -56,6 +56,8 @@ import { CURRENT_SEASON, RARITY_ORDER } from "../src/game/collections/seasons";
 // the mint moved out on 2026-10-29. Deriving a PackConfig from the city id
 // does not fail, it just points at an address nothing lives at.
 const PROGRAM = new PublicKey("EptRxVBysFzJEz52r58c2yCkpDGvF55aBPj1eCkWaphz");
+/** Devnet's genesis hash: what `--test-price` checks the RPC against. */
+const DEVNET_GENESIS = "EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG";
 const USDC_MINT = new PublicKey(
   process.env.SOLCITY_USDC_MINT ?? "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
 );
@@ -213,6 +215,12 @@ async function main() {
     if (!conn.rpcEndpoint.includes("devnet")) throw new Error("--test-price is devnet only, and this RPC is not devnet");
     if (USDC_MINT.toBase58() !== "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU") {
       throw new Error("--test-price is devnet only, and this is not the devnet USDC mint");
+    }
+    // The name of a URL proves nothing; the chain says which chain it is.
+    // Every cluster has its own genesis hash, and devnet's never changes.
+    const genesis = await conn.getGenesisHash();
+    if (genesis !== DEVNET_GENESIS) {
+      throw new Error(`--test-price is devnet only, and this RPC answers with genesis ${genesis}, not devnet's`);
     }
   }
   const admin = load(walletPath);
