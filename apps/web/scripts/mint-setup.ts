@@ -61,8 +61,15 @@ const COLLECTION_NAME = "SolanaCity Cosmetics";
 const SYMBOL = "SOLCITY";
 /** 500 = 5%. Marketplaces choose whether to honour it; the chain does not. */
 const SELLER_FEE_BASIS_POINTS = 500;
-/** Devnet: the donations wallet. Mainnet needs its own, see the checklist. */
-const ROYALTY_RECIPIENT = new PublicKey("FSej8rHNsJhDBqJ7Ugi5uqmzFcw4fyXGBAvPW97vUExm");
+/**
+ * Who the royalties name. A test wallet on devnet, its own on mainnet
+ * (owner's call, 2026-11-05), so `SOLCITY_ROYALTY_RECIPIENT` is REQUIRED off
+ * devnet: main() refuses to run without it once the RPC turns out not to be
+ * devnet. On devnet it defaults to the test admin.
+ */
+const DEVNET_GENESIS = "EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG";
+const DEVNET_ROYALTY_DEFAULT = "9592QS34mPUwqA7sPAkug1kcuFddjn59QPQMzzCgKhEp";
+const ROYALTY_RECIPIENT = new PublicKey(process.env.SOLCITY_ROYALTY_RECIPIENT ?? DEVNET_ROYALTY_DEFAULT);
 const COLLECTION_URI = process.env.SOLCITY_COLLECTION_URI
   ?? "https://arweave.net/PLACEHOLDER-collection.json";
 const BASE_URI = process.env.SOLCITY_BASE_URI ?? "https://arweave.net/PLACEHOLDER/";
@@ -134,6 +141,11 @@ function programDataPda(programId: PublicKey): PublicKey {
 async function main() {
   const adminPath = process.argv[2];
   if (!adminPath || adminPath.startsWith("--")) throw new Error("Pass the admin wallet keypair path");
+  // Mainnet gets its own royalty wallet, never the devnet default. Asked of
+  // the chain itself, since a URL's name proves nothing.
+  if ((await conn.getGenesisHash()) !== DEVNET_GENESIS && !process.env.SOLCITY_ROYALTY_RECIPIENT) {
+    throw new Error("Not devnet: set SOLCITY_ROYALTY_RECIPIENT to the mainnet royalty wallet");
+  }
   const admin = load(adminPath);
 
   const [mintAuthority] = PublicKey.findProgramAddressSync(
