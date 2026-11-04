@@ -210,6 +210,8 @@ type BCMsg =
 
 /** Window event the "playing in another tab" overlay listens to. */
 export const OTHER_TAB_EVENT = "solcity:other-tab";
+/** Window event for the "authorize this device" prompt (DeviceAuthPrompt). */
+export const DEVICE_AUTH_EVENT = "solcity:device-auth";
 
 // Throttle position broadcasts. Every other screen can only be as current as
 // the last sample, so this interval is a floor under the delay players see.
@@ -1890,6 +1892,30 @@ export class OnChainMultiplayer {
 
   isSuspended(): boolean { return this.suspended; }
 
+  // ── This device's key, authorized by a tap ─────────────────────────────
+
+  private needsDeviceAuth = false;
+  private setNeedsDeviceAuth(on: boolean): void {
+    if (on === this.needsDeviceAuth) return;
+    this.needsDeviceAuth = on;
+    try { window.dispatchEvent(new CustomEvent(DEVICE_AUTH_EVENT, { detail: { needed: on } })); } catch { /* no window */ }
+  }
+
+  /**
+   * Authorizes this browser's session key on the rollup holding the account.
+   * Called from a button, so it runs inside the tap that lets a phone open
+   * the wallet. Throws with the wallet's reason when it still cannot.
+   */
+  async authorizeThisDevice(): Promise<void> {
+    if (!this.wallet) throw new Error("Connect your wallet first.");
+    const [pda] = derivePlayerPDA(this.wallet);
+    await this.pointWritesAtOwningValidator(pda);
+    await this.syncSessionKeyOnEr(this.wallet, pda);
+    this.setNeedsDeviceAuth(false);
+    this.lastPos = { x: -1, y: -1, direction: -1, isWalking: false, buffIndex: null };
+    void this.markPresent(true);
+  }
+
   // ── Layer 1: BroadcastChannel ─────────────────────────────────────────
 
   private startBroadcastChannel(walletStr: string, displayName?: string): void {
@@ -2300,7 +2326,19 @@ export class OnChainMultiplayer {
         // rollup for an account delegated to Asia, a friend accept among them.
         await this.pointWritesAtOwningValidator(playerPDA);
         this.progress("Syncing session key…");
-        await this.syncSessionKeyOnEr(wallet, playerPDA);
+        try {
+          await this.syncSessionKeyOnEr(wallet, playerPDA);
+          this.setNeedsDeviceAuth(false);
+        } catch (err: any) {
+          // On a phone the wallet is opened by an Android intent, and Android
+          // only allows that right after a tap. This runs several awaits
+          // after the login tap, so the wallet never opened, nothing was
+          // sent, and the device went on writing with a key the rollup does
+          // not know: it saw the city and nobody saw it (Seeker, 2026-11-05).
+          // So ask for a tap instead (OtherTabOverlay's sibling, DeviceAuthPrompt).
+          console.warn("✗ this device's session key is not authorized:", err?.message);
+          this.setNeedsDeviceAuth(true);
+        }
         if (needsFunding) {
           this.progress("Funding session (sign)…");
           console.log("… funding session key (1 sign prompt)");
@@ -2733,6 +2771,12 @@ export class OnChainMultiplayer {
             // repeating the question.
             if (JSON.stringify(s.err).includes("InvalidWritableAccount")) {
               void this.relocateWrites();
+            }
+            // Custom 6000 is InvalidSessionKey: the rollup holds another key
+            // for this account (another device authorized after us, or ours
+            // never got authorized). Every write fails until a tap fixes it.
+            if (JSON.stringify(s.err).includes("\"Custom\":6000")) {
+              this.setNeedsDeviceAuth(true);
             }
           } else {
             transactionLog.markConfirmed(entryId, sig);
