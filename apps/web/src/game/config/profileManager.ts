@@ -184,6 +184,30 @@ export class ProfileManager {
     return true;
   }
 
+  /**
+   * True while an account is being loaded (wallet switch, then the chain
+   * merge). The achievement engine stays silent meanwhile: what loads is
+   * the account's past, not something the player just did.
+   */
+  private hydrating = false;
+  isHydrating(): boolean { return this.hydrating; }
+  beginHydration(): void { this.hydrating = true; }
+  endHydration(): void { this.hydrating = false; }
+
+  /**
+   * The account's on-chain record wins over this browser's cache: its
+   * published achievements are added, and its score is taken when higher (a
+   * local score can only be ahead by writes not yet landed, for THIS wallet,
+   * since the cache is per wallet).
+   */
+  mergeFromChain(chain: { score: number; achievementIds: string[] }): void {
+    const ids = new Set(this.profile.unlockedAchievements);
+    for (const id of chain.achievementIds) ids.add(id);
+    this.profile.unlockedAchievements = [...ids];
+    this.profile.score = Math.max(this.profile.score, chain.score);
+    this.save();
+  }
+
   unlockAchievement(id: string): boolean {
     if (this.profile.unlockedAchievements.includes(id)) return false;
     this.profile.unlockedAchievements.push(id);

@@ -1893,12 +1893,15 @@ export class OnChainMultiplayer {
   isSuspended(): boolean { return this.suspended; }
 
   /**
-   * The outfit this wallet's account wears on chain, from the freshest copy
-   * (base and every rollup), or null when it has none. For a wallet with no
-   * outfit saved in this browser: it should put on its own, not inherit the
-   * previous wallet's.
+   * What this wallet's account holds on chain, from the freshest copy (base
+   * and every rollup): its outfit, score and published achievement bits, or
+   * null when it has no account. The chain is the source of truth for a
+   * player; the browser only caches it, per wallet, so one account can never
+   * pick up another's.
    */
-  async readOwnLoadout(wallet: PublicKey): Promise<Loadout | null> {
+  async readOwnProfile(wallet: PublicKey): Promise<{
+    loadout: Loadout | null; score: number; achievementBits: Set<number>;
+  } | null> {
     const [pda] = derivePlayerPDA(wallet);
     const conns = [this.baseConnection, ...this.erReadConnections.map((r) => r.conn)];
     const copies = await Promise.all(conns.map((c) => c.getAccountInfo(pda).catch(() => null)));
@@ -1910,13 +1913,24 @@ export class OnChainMultiplayer {
     if (!best) return null;
     try {
       let o = 8 + 32;
-      o += 1 + (best[o] ? 32 : 0);
-      o += 4 + best.readUInt32LE(o);
-      o += 4 + 4 + 1 + 1 + 4 + 2 + 2 + 2 + 8 + 8; // ... last_active, created_at
-      const len = best.readUInt32LE(o); o += 4;
-      if (len === 0 || len > 4096 || o + len > best.length) return null;
-      const loadout = decodeLoadout(best.subarray(o, o + len).toString("utf-8"));
-      return Object.keys(loadout).length ? loadout : null;
+      o += 1 + (best[o] ? 32 : 0);                     // session key
+      o += 4 + best.readUInt32LE(o);                   // display name
+      o += 4 + 4 + 1 + 1;                              // x y direction outfit
+      const score = best.readUInt32LE(o); o += 4;
+      o += 2 + 2 + 2 + 8 + 8;                          // counts, last_active, created_at
+      const readStr = (): string => {
+        const len = best!.readUInt32LE(o); o += 4;
+        if (len > 4096 || o + len > best!.length) throw new Error("bad string");
+        const out = best!.subarray(o, o + len).toString("utf-8"); o += len; return out;
+      };
+      const loadoutStr = readStr();
+      readStr(); o += 8;                               // expression, expression_at
+      readStr(); o += 8;                               // last_message, message_at
+      const bits = o + ACHIEVEMENT_BITS <= best.length
+        ? achievementIndices(best.subarray(o, o + ACHIEVEMENT_BITS))
+        : new Set<number>();
+      const loadout = loadoutStr ? decodeLoadout(loadoutStr) : null;
+      return { loadout: loadout && Object.keys(loadout).length ? loadout : null, score, achievementBits: bits };
     } catch { return null; }
   }
 

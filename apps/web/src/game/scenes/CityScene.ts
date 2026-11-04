@@ -43,7 +43,7 @@ import { PedestrianManager, cullContainer } from "../entities/PedestrianManager"
 import { hasAlreadyFoundCurrent, markCurrentFound, unmarkCurrentFound, isCitizenExpired, advanceFindSlot, resetCitizenTimer, isHuntOnChain, getRoundIndex } from "../minigames/whereIsNPC/WhereIsNPCGame";
 import { ProfileManager, profileManager } from "../config/profileManager";
 import { AchievementEngine } from "../progression/achievementEngine";
-import { startProfilePublisher } from "../social/profilePublisher";
+import { startProfilePublisher, achievementAtIndex } from "../social/profilePublisher";
 import { startFriendPresence } from "../social/friendPresence";
 import { onMiniGameFinished, onStockTraded, watchNpcConversations, stopWatchingNpcConversations } from "../progression/outfitRewards";
 import { soundManager } from "../audio/SoundManager";
@@ -1041,16 +1041,36 @@ export class CityScene extends Phaser.Scene {
         this.walletAddress = walletAddress;
         requestNames([walletAddress], true);
         showOwnName();
-        this.profile.setWallet(walletAddress);
-        // This wallet's outfit, not whichever wallet used this browser
-        // before it: saved here if it has been here, else what its account
-        // wears on chain, else the default.
-        setLoadoutWallet(walletAddress);
-        if (!hasSavedLoadout(walletAddress)) {
-          const onChain = await this.network.readOwnLoadout(new PublicKey(walletAddress)).catch(() => null);
-          saveLoadout(onChain ?? DEFAULT_LOADOUT);
+        // A login is a new session: the log starts empty, for the same
+        // wallet as much as for another one.
+        this.chat.clearLog();
+
+        // THIS account, loaded from the chain, which is its source of truth.
+        // The browser keeps only a per-wallet cache, so nothing of one
+        // account (outfit, profile, achievements, log) carries into another.
+        // Silent while it loads: an account's past is not a fresh unlock.
+        this.profile.beginHydration();
+        try {
+          this.profile.setWallet(walletAddress);
+          setLoadoutWallet(walletAddress);
+          const chain = await this.network.readOwnProfile(new PublicKey(walletAddress)).catch(() => null);
+          if (chain) {
+            const ids = [...chain.achievementBits]
+              .map((bit) => achievementAtIndex(bit)?.id)
+              .filter((id): id is string => !!id);
+            this.profile.mergeFromChain({ score: chain.score, achievementIds: ids });
+          }
+          // The account's own outfit; this browser's copy of it only when
+          // the chain has none yet; the default for a brand-new citizen.
+          const look = chain?.loadout
+            ?? (hasSavedLoadout(walletAddress) ? loadSavedLoadout() : DEFAULT_LOADOUT);
+          saveLoadout(look);
+          this.avatar.setLoadout(look);
+          // The HUD portrait follows the same event the wardrobe uses.
+          this.game.events.emit("wardrobe:loadout", look);
+        } finally {
+          this.profile.endHydration();
         }
-        this.avatar.setLoadout(loadSavedLoadout());
         // Jack O' Lantern's five, which are picked per wallet, so they can
         // only be put out once there is a wallet to pick them for.
         this.spawnPumpkins(walletAddress);

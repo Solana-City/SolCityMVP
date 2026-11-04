@@ -25,6 +25,8 @@ export class AchievementEngine {
   private primed = false;
   /** `unlockAchievement` saves, and a save re-enters here. See evaluate. */
   private evaluating = false;
+  /** Whose profile the last evaluation saw. A change means an account switch. */
+  private wallet: string | null = null;
 
   constructor(profileMgr: ProfileManager) {
     this.profileMgr = profileMgr;
@@ -51,7 +53,13 @@ export class AchievementEngine {
     // re-entrant call has nothing left to do.
     if (this.evaluating) return;
     this.evaluating = true;
-    const silent = !this.primed;
+    // Silent on the first pass, and whenever an account is being loaded or
+    // the profile now belongs to another wallet: that is the account's past
+    // arriving, not the player doing something. Toasting it flooded the
+    // screen on every wallet switch (2026-11-05).
+    const switched = profile.wallet !== this.wallet;
+    this.wallet = profile.wallet;
+    const silent = !this.primed || switched || this.profileMgr.isHydrating();
     try {
       this.evaluateOnce(profile, silent);
     } finally {
@@ -65,10 +73,10 @@ export class AchievementEngine {
     // engine robust against external resets (e.g. profileManager.resetProgress()
     // from the UI). If an achievement was cleared from the profile, it can
     // be re-earned and re-emit its unlock event.
-    const profileUnlocked = new Set(profile.unlockedAchievements);
-    for (const id of this.unlocked) {
-      if (!profileUnlocked.has(id)) this.unlocked.delete(id);
-    }
+    // Both ways, not just removals: a profile that arrives with achievements
+    // this cache has never seen (another wallet's, loaded on a switch) used
+    // to have each of them re-awarded and toasted.
+    this.unlocked = new Set(profile.unlockedAchievements);
 
     for (const ach of ACHIEVEMENTS) {
       // A retired track stays in the list so an already-published mask keeps

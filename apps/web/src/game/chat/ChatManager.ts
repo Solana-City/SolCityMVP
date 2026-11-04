@@ -157,6 +157,12 @@ export class ChatManager {
     }
   }
 
+  /** A new session (any login, same wallet or not) starts with an empty log. */
+  clearLog(): void {
+    this.log = [];
+    this.notifyLogListeners();
+  }
+
   getVisibleLog(): ChatMessage[] {
     if (this.activeChannel.startsWith("dm:")) {
       return this.log.filter((m) => m.channel === this.activeChannel);
