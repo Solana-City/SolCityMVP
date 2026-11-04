@@ -42,7 +42,7 @@ import {
   PROGRAM_ID as BUBBLEGUM_PROGRAM_ID,
 } from "@metaplex-foundation/mpl-bubblegum";
 import { sha256 } from "@noble/hashes/sha256";
-import { devnetConnection, sendAndPoll } from "./_rpc";
+import { devnetConnection, sendAndPoll, networkOf, Stopped } from "./_rpc";
 
 // The COLLECTIBLES program, not the city one: packs, seasons, unlocks and
 // the mint moved out on 2026-10-29. Deriving a PackConfig from the city id
@@ -67,7 +67,6 @@ const SELLER_FEE_BASIS_POINTS = 500;
  * devnet: main() refuses to run without it once the RPC turns out not to be
  * devnet. On devnet it defaults to the test admin.
  */
-const DEVNET_GENESIS = "EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG";
 const DEVNET_ROYALTY_DEFAULT = "9592QS34mPUwqA7sPAkug1kcuFddjn59QPQMzzCgKhEp";
 const ROYALTY_RECIPIENT = new PublicKey(process.env.SOLCITY_ROYALTY_RECIPIENT ?? DEVNET_ROYALTY_DEFAULT);
 const COLLECTION_URI = process.env.SOLCITY_COLLECTION_URI
@@ -140,11 +139,17 @@ function programDataPda(programId: PublicKey): PublicKey {
 
 async function main() {
   const adminPath = process.argv[2];
-  if (!adminPath || adminPath.startsWith("--")) throw new Error("Pass the admin wallet keypair path");
+  if (!adminPath || adminPath.startsWith("--")) {
+    throw new Stopped("no admin wallet given", "npx tsx scripts/mint-setup.ts <admin-wallet.json> [--send]");
+  }
   // Mainnet gets its own royalty wallet, never the devnet default. Asked of
   // the chain itself, since a URL's name proves nothing.
-  if ((await conn.getGenesisHash()) !== DEVNET_GENESIS && !process.env.SOLCITY_ROYALTY_RECIPIENT) {
-    throw new Error("Not devnet: set SOLCITY_ROYALTY_RECIPIENT to the mainnet royalty wallet");
+  const network = await networkOf(conn);
+  if (network !== "devnet" && !process.env.SOLCITY_ROYALTY_RECIPIENT) {
+    throw new Stopped(
+      `this RPC is ${network}, and SOLCITY_ROYALTY_RECIPIENT is not set`,
+      "export SOLCITY_ROYALTY_RECIPIENT=<the mainnet royalty wallet>; the devnet test wallet is never used off devnet",
+    );
   }
   const admin = load(adminPath);
 
@@ -181,12 +186,12 @@ async function main() {
   if (existing) {
     console.log(`\nMintConfig already exists (${existing.data.length} bytes).`);
     console.log("init_mint_config would fail. Use set_mint_tree to move trees.");
-    if (send) process.exit(1);
+    if (send) throw new Stopped("MintConfig already exists on this network", "running again would pay for a second collection and tree; use set_mint_tree to move trees");
   }
   console.log(send ? "\nSENDING\n" : "\nDRY RUN - nothing is sent. Add --send.\n");
   if (!send) return;
   if (BASE_URI.includes("PLACEHOLDER")) {
-    throw new Error("refusing to mint against a placeholder base URI");
+    throw new Stopped("SOLCITY_BASE_URI is still the placeholder, and a minted URI can never change", "export SOLCITY_BASE_URI=<the ArNS URL, ending in />");
   }
 
   // ── 1. The collection NFT ───────────────────────────────────────────────

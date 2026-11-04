@@ -44,7 +44,7 @@ import {
   createAssociatedTokenAccountInstruction,
 } from "@solana/spl-token";
 import { sha256 } from "@noble/hashes/sha256";
-import { devnetConnection, sendAndPoll } from "./_rpc";
+import { devnetConnection, sendAndPoll, networkOf, Stopped } from "./_rpc";
 import { PACKS } from "../src/game/config/packs";
 import { seasonDropLists } from "../src/game/config/seasonDrops";
 import { CURRENT_SEASON, RARITY_ORDER } from "../src/game/collections/seasons";
@@ -56,8 +56,6 @@ import { CURRENT_SEASON, RARITY_ORDER } from "../src/game/collections/seasons";
 // the mint moved out on 2026-10-29. Deriving a PackConfig from the city id
 // does not fail, it just points at an address nothing lives at.
 const PROGRAM = new PublicKey("EptRxVBysFzJEz52r58c2yCkpDGvF55aBPj1eCkWaphz");
-/** Devnet's genesis hash: what `--test-price` checks the RPC against. */
-const DEVNET_GENESIS = "EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG";
 const USDC_MINT = new PublicKey(
   process.env.SOLCITY_USDC_MINT ?? "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
 );
@@ -201,7 +199,7 @@ function programDataPda(programId: PublicKey): PublicKey {
 async function main() {
   const walletPath = process.argv[2];
   if (!walletPath || walletPath.startsWith("--")) {
-    throw new Error("Pass the admin wallet keypair path");
+    throw new Stopped("no admin wallet given", "npx tsx scripts/packs-setup.ts <admin-wallet.json> [--send]");
   }
   // `--test-price <usd>` puts every pack at one tiny price, for devnet
   // testing: opening enough packs to see every item costs cents instead of
@@ -211,16 +209,16 @@ async function main() {
   const testAt = process.argv.indexOf("--test-price");
   const testPrice = testAt > 0 ? Number(process.argv[testAt + 1]) : undefined;
   if (testPrice !== undefined) {
-    if (!(testPrice > 0)) throw new Error("--test-price needs a positive USD amount, e.g. 0.01");
-    if (!conn.rpcEndpoint.includes("devnet")) throw new Error("--test-price is devnet only, and this RPC is not devnet");
+    if (!(testPrice > 0)) throw new Stopped("--test-price needs a positive USD amount", "--test-price 0.01");
+    if (!conn.rpcEndpoint.includes("devnet")) throw new Stopped("--test-price is devnet only, and SOLCITY_RPC does not point at devnet", "drop --test-price, or point SOLCITY_RPC at devnet");
     if (USDC_MINT.toBase58() !== "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU") {
-      throw new Error("--test-price is devnet only, and this is not the devnet USDC mint");
+      throw new Stopped("--test-price is devnet only, and SOLCITY_USDC_MINT is not the devnet USDC", "drop --test-price, or unset SOLCITY_USDC_MINT");
     }
     // The name of a URL proves nothing; the chain says which chain it is.
     // Every cluster has its own genesis hash, and devnet's never changes.
-    const genesis = await conn.getGenesisHash();
-    if (genesis !== DEVNET_GENESIS) {
-      throw new Error(`--test-price is devnet only, and this RPC answers with genesis ${genesis}, not devnet's`);
+    const network = await networkOf(conn);
+    if (network !== "devnet") {
+      throw new Stopped(`--test-price is devnet only, and this RPC is ${network}`, "drop --test-price for this network");
     }
   }
   const admin = load(walletPath);
