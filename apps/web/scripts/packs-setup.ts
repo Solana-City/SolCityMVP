@@ -22,6 +22,7 @@
  *
  *   npx tsx scripts/packs-setup.ts <path-to-admin-wallet.json>            # dry run
  *   npx tsx scripts/packs-setup.ts <path-to-admin-wallet.json> --send
+ *   npx tsx scripts/packs-setup.ts <wallet.json> --test-price 0.01 --send   # devnet only
  *
  * Nothing is sent without `--send`. The dry run prints every price, every
  * weight and every index it would write, which is the point: a season's drop
@@ -200,6 +201,20 @@ async function main() {
   if (!walletPath || walletPath.startsWith("--")) {
     throw new Error("Pass the admin wallet keypair path");
   }
+  // `--test-price <usd>` puts every pack at one tiny price, for devnet
+  // testing: opening enough packs to see every item costs cents instead of
+  // hundreds of test dollars. The program refuses a zero price (R-41), so
+  // this is the cheapest it can be. Devnet only, checked twice: a mainnet
+  // pack at a test price would be a giveaway.
+  const testAt = process.argv.indexOf("--test-price");
+  const testPrice = testAt > 0 ? Number(process.argv[testAt + 1]) : undefined;
+  if (testPrice !== undefined) {
+    if (!(testPrice > 0)) throw new Error("--test-price needs a positive USD amount, e.g. 0.01");
+    if (!conn.rpcEndpoint.includes("devnet")) throw new Error("--test-price is devnet only, and this RPC is not devnet");
+    if (USDC_MINT.toBase58() !== "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU") {
+      throw new Error("--test-price is devnet only, and this is not the devnet USDC mint");
+    }
+  }
   const admin = load(walletPath);
   const treasuryOwner = process.env.SOLCITY_TREASURY
     ? new PublicKey(process.env.SOLCITY_TREASURY)
@@ -283,7 +298,7 @@ async function main() {
   // twice.
   console.log("\n3. packs");
   for (const pack of PACKS) {
-    const dollars = PRICE_USD[pack.id];
+    const dollars = testPrice ?? PRICE_USD[pack.id];
     if (dollars === undefined) throw new Error(`no USD price for pack "${pack.id}"`);
     const weights = RARITY_ORDER.map((r) => Math.round(pack.odds[r] * 100));
     const total = weights.reduce((a, b) => a + b, 0);
