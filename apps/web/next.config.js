@@ -116,9 +116,9 @@ module.exports = withPWA({
   // Collectible art is excluded for a third reason: the GAME NEVER ASKS FOR
   // IT. Those files exist so a wallet or a marketplace can show a cNFT, and
   // both fetch them over the internet, not through our service worker. They
-  // are served from this domain only because the program's `base_uri` is one
-  // immutable string and a host we control is the only kind that can still
-  // answer it after the catalog has grown twice. Precaching them would have
+  // are kept here as the record of what was uploaded: the cards a wallet
+  // reads come from Arweave, the pictures from their own manifest and the
+  // JSON through the ArNS name that is the program's `base_uri`. Precaching them would have
   // every player download eighty pictures of items most of them do not own.
   publicExcludes: [
     "!noprecache/**/*",
