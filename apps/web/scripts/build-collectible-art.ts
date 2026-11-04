@@ -2,12 +2,9 @@
  * Sol City - render every collectible as the picture a marketplace will show.
  *
  *   npx tsx scripts/build-collectible-art.ts \
- *     --out apps/web/public/collectibles \
- *     --base https://solanacity.io/collectibles/
- *
- *   npx tsx scripts/build-collectible-art.ts \
- *     --base https://solanacity.io/collectibles/ \
- *     --image-base https://arweave.net/<manifest-txid>/
+ *     --base https://<arns name>.arweave.net/ \
+ *     --image-base https://arweave.net/<gif manifest txid>/ \
+ *     --json-out <empty folder to upload>
  *
  *   npx tsx scripts/build-collectible-art.ts --only hat/Cap_Sol --scale 8
  *
@@ -47,13 +44,19 @@
  *
  * `--base` is where the JSON will be SERVED, and it has to match the
  * program's `base_uri` exactly, because the program builds its URLs from that
- * string and nothing else.
+ * string and nothing else. It is an ArNS name on Arweave (owner's call,
+ * 2026-11-05): a fixed URL that points at a manifest of the JSON, and is
+ * pointed at a new one when a season adds items or a name is corrected. A raw
+ * manifest cannot be `base_uri` itself, because it is frozen at upload and
+ * `base_uri` is one string for every season (see PACK_RULES).
  *
- * `--image-base` is where the pictures live, and it defaults to the same
- * place. They are separate because on mainnet they will not be the same
- * place: the JSON is served from a host we control, so the catalog can keep
- * growing, while the picture it points at is a permanent Arweave URL. See
- * PACK_RULES for why a raw Arweave manifest cannot be `base_uri` itself.
+ * `--image-base` is where the pictures live: their own manifest, permanent,
+ * never re-pointed. The JSON may change; the picture it names may not.
+ *
+ * `--json-out` writes the folder that is uploaded for `--base`: every item's
+ * and pack's JSON, plus the collection's. Upload the WHOLE folder each time:
+ * a manifest is a complete map, so one that left out last season's JSON would
+ * break every item minted before.
  *
  * Absolute, both of them. A relative `image` resolves differently in every
  * wallet that reads it, and some do not resolve it at all.
@@ -65,7 +68,7 @@
  * window, so both stay crisp and the item's pixels end up slightly larger
  * than the frame's. That is intentional and matches the reference art.
  */
-import { readFileSync, writeFileSync, mkdirSync } from "fs";
+import { readFileSync, writeFileSync, mkdirSync, readdirSync, copyFileSync } from "fs";
 import { join, dirname, resolve } from "path";
 import { fileURLToPath } from "url";
 import { PNG } from "pngjs";
@@ -92,6 +95,8 @@ const CARD_FRAME_MS = 150;
  * owner's call on 2026-11-05 (the JSON said SCC until then).
  */
 const SYMBOL = "SOLCITY";
+/** The collection's name. MUST equal COLLECTION_NAME in mint-setup.ts. */
+const COLLECTION_NAME = "SolanaCity Cosmetics";
 
 /**
  * The largest an item's pixel may be, in frame pixels. 2.2 is what trousers
@@ -317,7 +322,10 @@ async function main() {
   // A trailing slash or the concatenation below silently makes nonsense, so
   // it is added here rather than demanded of whoever types the command.
   const slash = (u: string) => (u.endsWith("/") ? u : u + "/");
-  const base = slash(arg("--base") ?? "https://solanacity.io/collectibles/");
+  const baseArg = arg("--base") ?? process.env.SOLCITY_BASE_URI;
+  const jsonOut = arg("--json-out");
+  if (jsonOut && !baseArg) throw new Error("--json-out needs --base: the collection image is named from it");
+  const base = slash(baseArg ?? "https://example.invalid/set-base/");
   const imageBase = slash(arg("--image-base") ?? base);
   // A path you pass means what you typed, relative to where you are. The
   // DEFAULT is outside the repo: this repository is public, and a render
@@ -422,6 +430,29 @@ async function main() {
       },
     }, null, 2) + "\n");
     console.log(`${"pack".padStart(5)}  ${pack.name}`);
+  }
+
+  // ── The upload folder for the metadata manifest ──────────────────────
+  if (jsonOut) {
+    const dir = resolve(jsonOut);
+    mkdirSync(dir, { recursive: true });
+    if (readdirSync(dir).length > 0) {
+      throw new Error(`--json-out ${dir} is not empty: it is uploaded whole, so it must hold only this render`);
+    }
+    for (const f of readdirSync(outDir).filter((f) => f.endsWith(".json"))) {
+      copyFileSync(join(outDir, f), join(dir, f));
+    }
+    // The collection's own metadata, read by mint-setup from
+    // `<base_uri>collection.json`. Its picture is the game's icon.
+    copyFileSync(join(PUBLIC, "icons", "icon-512.png"), join(dir, "collection.png"));
+    writeFileSync(join(dir, "collection.json"), JSON.stringify({
+      name: COLLECTION_NAME,
+      symbol: SYMBOL,
+      description: "Cosmetics worn in Sol City, the city that lives on Solana.",
+      image: `${base}collection.png`,
+      properties: { files: [{ uri: `${base}collection.png`, type: "image/png" }], category: "image" },
+    }, null, 2) + "\n");
+    console.log(`\nupload folder ${dir}: ${readdirSync(dir).length} files (every JSON, collection.json, collection.png)`);
   }
 
   console.log(`\n${made} collectibles and ${PACKS.length} packs rendered at ${FRAME_GEOMETRY.cell * scale}px into ${outDir}`);

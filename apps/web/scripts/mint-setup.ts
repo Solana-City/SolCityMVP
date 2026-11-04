@@ -56,7 +56,9 @@ const LOG_WRAPPER = new PublicKey("noopb9bkMVfRPU8AsbpTUg8AQkHtKwMYZiFUjNRtMmV")
 // The tree can be replaced with set_mint_tree when it fills; the rest of these
 // live in MintConfig and a future instruction can edit them. What CANNOT
 // change is BASE_URI for anything already minted: a metadata URI is immutable,
-// which is why it must not point at a host this project controls.
+// which is why it is an ArNS name on Arweave rather than a host this project
+// runs: the name stays fixed and is re-pointed at a new manifest of the JSON
+// when a season adds items (owner's call, 2026-11-05).
 const COLLECTION_NAME = "SolanaCity Cosmetics";
 const SYMBOL = "SOLCITY";
 /** 500 = 5%. Marketplaces choose whether to honour it; the chain does not. */
@@ -69,9 +71,9 @@ const SELLER_FEE_BASIS_POINTS = 500;
  */
 const DEVNET_ROYALTY_DEFAULT = "9592QS34mPUwqA7sPAkug1kcuFddjn59QPQMzzCgKhEp";
 const ROYALTY_RECIPIENT = new PublicKey(process.env.SOLCITY_ROYALTY_RECIPIENT ?? DEVNET_ROYALTY_DEFAULT);
-const COLLECTION_URI = process.env.SOLCITY_COLLECTION_URI
-  ?? "https://arweave.net/PLACEHOLDER-collection.json";
 const BASE_URI = process.env.SOLCITY_BASE_URI ?? "https://arweave.net/PLACEHOLDER/";
+/** The collection's JSON sits in the same manifest, written by build-collectible-art --json-out. */
+const COLLECTION_URI = process.env.SOLCITY_COLLECTION_URI ?? `${BASE_URI}collection.json`;
 
 /**
  * Tree shape. Depth 20 holds 1,048,576 assets and needs a 12-node proof,
