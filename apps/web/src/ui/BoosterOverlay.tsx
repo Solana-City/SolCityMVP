@@ -31,7 +31,7 @@ import { itemAtGlobalIndex } from "@/game/config/catalogIndex";
 import { rarityOf } from "@/game/config/packs";
 import { getVariant, showsFromBehind } from "@/game/config/paperDoll";
 import {
-  baseConnection, readPackConfig, currencyBalance, buyPack, packUnavailableReason,
+  baseConnection, readPackConfig, currencyBalance, buyPack, packUnavailableReason, buyerIsTreasury,
   type PackConfigAccount,
   syncOwnedToWardrobe, awaitDraw, ownedIndices, hasPendingDraw, retryStuckDraw,
 } from "@/game/solana/packs";
@@ -60,6 +60,9 @@ import {
 /** The framed item in the reveal. Bigger than a wardrobe tile: the reveal is
  *  the one moment the player is looking AT the item rather than for it. */
 const REVEAL_TILE = 72;
+
+/** This wallet receives the shop's payments, and the program will not let it pay itself. */
+const TREASURY_WALLET_MSG = "This wallet is the shop's treasury and can't buy from itself. Use another wallet.";
 
 export default function BoosterOverlay({
   wallet, onClose,
@@ -292,7 +295,9 @@ export default function BoosterOverlay({
     if (!wallet || !signAllTransactions || !config || !mintConfig) return;
     const onChain = config.packs.find((p) => p.id === chosen.onChainId);
     if (!onChain) { setError("This pack is not on sale yet."); return; }
-    const why = packUnavailableReason(onChain, config);
+    const why = buyerIsTreasury(config, new PublicKey(wallet))
+      ? TREASURY_WALLET_MSG
+      : packUnavailableReason(onChain, config);
     if (why) { setError(why); return; }
 
     setSealing(chosen.onChainId);
@@ -445,7 +450,9 @@ export default function BoosterOverlay({
     if (!wallet || !signAllTransactions || !cfgNow) return;
     const onChain = cfgNow.packs.find((p) => p.id === chosen.onChainId);
     if (!onChain) { setError("This pack is not on sale yet."); setPhase("choose"); return; }
-    const why = packUnavailableReason(onChain, cfgNow);
+    const why = buyerIsTreasury(cfgNow, new PublicKey(wallet))
+      ? TREASURY_WALLET_MSG
+      : packUnavailableReason(onChain, cfgNow);
     if (why) { setError(why); setPhase("choose"); return; }
 
     try {

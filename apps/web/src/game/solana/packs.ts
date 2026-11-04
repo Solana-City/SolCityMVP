@@ -349,3 +349,15 @@ export async function retryStuckDraw(args: {
 /** Program id, re-exported so a caller does not need two imports. Packs live
  *  in the collectibles program, not the city one. */
 export { SOL_CITY_COLLECTIBLES_PROGRAM_ID };
+
+/**
+ * Whether this wallet's payment account IS the shop's treasury.
+ *
+ * The program refuses that purchase (audit R-41: paying the treasury from
+ * itself is no payment) with a bare "Wrong treasury account". It happens to
+ * exactly one wallet, the one the treasury was set up with, which on devnet
+ * is the admin everyone tests with, so the shop says it in words instead.
+ */
+export function buyerIsTreasury(config: PackConfigAccount, wallet: PublicKey): boolean {
+  return getAssociatedTokenAddressSync(config.currencyMint, wallet).equals(config.treasuryTokenAccount);
+}
