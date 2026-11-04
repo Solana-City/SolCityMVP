@@ -73,7 +73,7 @@ import { join, dirname, resolve } from "path";
 import { fileURLToPath } from "url";
 import { PNG } from "pngjs";
 import { GifFrame, GifUtil, GifCodec, BitmapImage } from "gifwrap";
-import { LAYER_ORDER, DIRECTION_ROW, SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT, SPRITE_COLS, getEnabledVariants, effectCell, showsFromBehind } from "../src/game/config/paperDoll";
+import { CATEGORY_LABELS, LAYER_ORDER, DIRECTION_ROW, SPRITE_FRAME_WIDTH, SPRITE_FRAME_HEIGHT, SPRITE_COLS, getEnabledVariants, effectCell, showsFromBehind } from "../src/game/config/paperDoll";
 import { tileKindOf, PACKS } from "../src/game/config/packs";
 import { globalIndexOf } from "../src/game/config/catalogIndex";
 import { FRAME_GEOMETRY, FRAME_SHEET, RARITY_LABEL, CURRENT_SEASON } from "../src/game/collections/seasons";
@@ -229,6 +229,9 @@ function composeCell(
 
 const gcd = (a: number, b: number): number => (b ? gcd(b, a % b) : a);
 
+/** "LEGENDARY" -> "Legendary": how a marketplace trait reads (owner, 2026-11-05). */
+const titleCase = (s: string) => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
+
 /**
  * The card's timeline: which frame cell and which item cell to show, and for
  * how long. A new GIF frame starts only where one of the two changes, so the
@@ -372,11 +375,14 @@ async function main() {
       writeFileSync(join(outDir, `${index}.json`), JSON.stringify({
         name: variant.name,
         symbol: SYMBOL,
-        description: `${RARITY_LABEL[kind]} ${category} from Sol City.`,
+        description: `${titleCase(RARITY_LABEL[kind])} ${CATEGORY_LABELS[category].toLowerCase()} item from Solana City.`,
         image: `${imageBase}${index}.gif`,
         attributes: [
-          { trait_type: "Rarity", value: RARITY_LABEL[kind] },
-          { trait_type: "Slot", value: category },
+          { trait_type: "Rarity", value: titleCase(RARITY_LABEL[kind]) },
+          // The slot as the game names it (Head, Clothes, Legs, Back,
+          // Accessory), the same word the wardrobe and the pack reveal show;
+          // it used to be the code's own key, "hat" or "tshirt".
+          { trait_type: "Slot", value: CATEGORY_LABELS[category] },
           { trait_type: "Season", value: String(variant.season ?? 1) },
         ],
         properties: {
@@ -415,7 +421,7 @@ async function main() {
     // or the pack a player bought animates differently from the one they saw.
     await writeGif(join(outDir, `pack-${pack.onChainId}.gif`), cells, 12);
     writeFileSync(join(outDir, `pack-${pack.onChainId}.json`), JSON.stringify({
-      name: `Sol City ${pack.name}`,
+      name: `Solana City ${pack.name}`,
       symbol: SYMBOL,
       description: `${pack.blurb} Sealed: ${pack.size} items, drawn when it is opened.`,
       image: `${imageBase}pack-${pack.onChainId}.gif`,
@@ -448,7 +454,7 @@ async function main() {
     writeFileSync(join(dir, "collection.json"), JSON.stringify({
       name: COLLECTION_NAME,
       symbol: SYMBOL,
-      description: "Cosmetics worn in Sol City, the city that lives on Solana.",
+      description: "Cosmetics worn in Solana City.",
       image: `${base}collection.png`,
       properties: { files: [{ uri: `${base}collection.png`, type: "image/png" }], category: "image" },
     }, null, 2) + "\n");
