@@ -200,7 +200,12 @@ type BCMsg =
   | { t: "expr";  w: string; e: string }
   | { t: "ball";  w: string; k: BallKick }
   | { t: "leave"; w: string }
-  // Another tab of this browser is now playing this wallet (see playHere).
+  // One playing tab per wallet (see playHere):
+  // a new tab asks whether one is already playing,
+  | { t: "hello"; w: string; tab: string }
+  // the playing tab answers,
+  | { t: "playing"; w: string; tab: string }
+  // and "Play here" moves the game to the tab that sends this.
   | { t: "takeover"; w: string; tab: string };
 
 /** Window event the "playing in another tab" overlay listens to. */
@@ -1777,9 +1782,10 @@ export class OnChainMultiplayer {
   //
   // Two tabs of one browser share the wallet, the session key and the
   // delegation, and used to both write positions, so the avatar flickered
-  // between them. The newest tab plays; the others go quiet and show "Play
-  // here", which takes it back. Switching costs nothing: same key, same
-  // delegation, no signature, no SOL.
+  // between them. Like WhatsApp Web: the tab already playing keeps playing,
+  // and a newly opened one waits behind "Playing in another tab" with Play
+  // here, which moves the game to it (and the other tab then waits).
+  // Switching costs nothing: same key, same delegation, no signature, no SOL.
 
   private readonly tabId = Math.random().toString(36).slice(2);
   /** Another tab is playing this wallet: this one reads, and writes nothing. */
@@ -1821,8 +1827,19 @@ export class OnChainMultiplayer {
       if (!msg?.t || !msg?.w) return;
       // Before the own-wallet filter below, on purpose: it is exactly another
       // tab with OUR wallet that this message is about.
-      if (msg.t === "takeover") {
-        if (msg.w === walletStr && msg.tab !== this.tabId) this.suspendForOtherTab();
+      if (msg.t === "hello" || msg.t === "playing" || msg.t === "takeover") {
+        if (msg.w !== walletStr || msg.tab === this.tabId) return;
+        if (msg.t === "hello") {
+          // A newer tab asking. Only the one that is playing answers, so it
+          // keeps the game and the newcomer waits, as WhatsApp Web does.
+          if (!this.suspended) {
+            this.bc?.postMessage({ t: "playing", w: walletStr, tab: this.tabId } satisfies BCMsg);
+          }
+        } else {
+          // "playing": we are the newcomer and somebody has the game.
+          // "takeover": somebody pressed Play here.
+          this.suspendForOtherTab();
+        }
         return;
       }
       if (msg.w === walletStr) return; // ignore own messages
@@ -1873,9 +1890,11 @@ export class OnChainMultiplayer {
       l: this.localLoadout,
     } satisfies BCMsg);
 
-    // The newest tab plays: any other tab of this wallet goes quiet.
+    // Is another tab of this wallet already playing? It answers "playing" and
+    // keeps the game; this tab then waits behind "Playing in another tab"
+    // until Play here. Nobody answering means this tab is the only one.
     this.suspended = false;
-    this.bc.postMessage({ t: "takeover", w: walletStr, tab: this.tabId } satisfies BCMsg);
+    this.bc.postMessage({ t: "hello", w: walletStr, tab: this.tabId } satisfies BCMsg);
 
     // Ensure clean broadcast on tab close
     window.addEventListener("beforeunload", () => {
