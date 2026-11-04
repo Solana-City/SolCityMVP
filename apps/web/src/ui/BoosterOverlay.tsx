@@ -43,7 +43,8 @@ import {
  * Two draws live here, and which one runs is BOOSTER_ONCHAIN.
  *
  * OFF: client-side `Math.random`, granted into localStorage, free. The
- * preview, and still what a guest or a wallet with no currency sees.
+ * preview. Only when the switch is off: with it on, a connected wallet that
+ * cannot buy is told why rather than handed a free draw nobody else can see.
  *
  * ON: the real thing. `open_booster` charges the pack's price in the config's
  * currency, requests randomness from MagicBlock VRF, and an oracle callback
@@ -362,7 +363,23 @@ export default function BoosterOverlay({
     setPack(chosen);
     setPhase("opening");
     setError(null);
-    if (BOOSTER_ONCHAIN && config && signAllTransactions) {
+    if (BOOSTER_ONCHAIN) {
+      // Never the free preview for a connected wallet while the paid draw is
+      // on. It used to fall through to it silently whenever the config had
+      // not loaded yet or the wallet offered no signer: the pack "opened",
+      // nothing asked for a signature, and the items lived only in this
+      // browser, so everyone else saw the player without them (devnet,
+      // 2026-11-05). Say what is missing instead.
+      if (!signAllTransactions) {
+        setError("Your wallet can't sign here. Reconnect it and try again.");
+        setPhase("choose");
+        return;
+      }
+      if (!config) {
+        setError("The shop is still loading. Try again in a moment.");
+        setPhase("choose");
+        return;
+      }
       void openOnChain(chosen);
       return;
     }
