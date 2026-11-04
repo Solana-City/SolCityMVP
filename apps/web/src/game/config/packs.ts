@@ -53,7 +53,7 @@ const RARITY_TABLE: Partial<Record<Rarity, Partial<Record<LayerCategory, string[
     back: ["Wings_angel", "Wings_demon", "Jetpack", "Swords", "Wings_butterfly"],
     tshirt: ["Tshirt_dragon", "Suit_black"],
     // The first rare trousers, 2026-11-04: until then the slot had none.
-    pants: ["Pants_flame_blue", "Pants_flame_red", "Tail_dino"],
+    pants: ["Tail_dino"],
   },
   uncommon: {
     hat: ["Cylinder", "Straw_hat", "Horns_demon", "Cap_kid", "Cap_blue"],
@@ -79,7 +79,7 @@ const RARITY_TABLE: Partial<Record<Rarity, Partial<Record<LayerCategory, string[
     // which is what common means here. Chess is a pattern and the Solana
     // shirt is branded, so those two stay.
     tshirt: ["Longsleeve_chess", "Tshirt_chess", "Tshirt_solana_white", "Coat_doc", "Coat_red", "Coat_dude"],
-    pants: ["Pants_chess_red", "Pants_chess_white"],
+    pants: ["Pants_chess_red", "Pants_chess_white", "Pants_flame_blue", "Pants_flame_red"],
   },
 };
 
