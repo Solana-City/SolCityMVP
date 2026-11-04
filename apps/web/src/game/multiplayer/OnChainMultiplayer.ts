@@ -1901,6 +1901,8 @@ export class OnChainMultiplayer {
    */
   async readOwnProfile(wallet: PublicKey): Promise<{
     loadout: Loadout | null; score: number; achievementBits: Set<number>;
+    /** Where the account last stood, or null for one that never moved. */
+    position: { x: number; y: number } | null;
   } | null> {
     const [pda] = derivePlayerPDA(wallet);
     const conns = [this.baseConnection, ...this.erReadConnections.map((r) => r.conn)];
@@ -1915,6 +1917,7 @@ export class OnChainMultiplayer {
       let o = 8 + 32;
       o += 1 + (best[o] ? 32 : 0);                     // session key
       o += 4 + best.readUInt32LE(o);                   // display name
+      const x = best.readUInt32LE(o); const y = best.readUInt32LE(o + 4);
       o += 4 + 4 + 1 + 1;                              // x y direction outfit
       const score = best.readUInt32LE(o); o += 4;
       o += 2 + 2 + 2 + 8 + 8;                          // counts, last_active, created_at
@@ -1930,7 +1933,11 @@ export class OnChainMultiplayer {
         ? achievementIndices(best.subarray(o, o + ACHIEVEMENT_BITS))
         : new Set<number>();
       const loadout = loadoutStr ? decodeLoadout(loadoutStr) : null;
-      return { loadout: loadout && Object.keys(loadout).length ? loadout : null, score, achievementBits: bits };
+      return {
+        loadout: loadout && Object.keys(loadout).length ? loadout : null,
+        score, achievementBits: bits,
+        position: x > 1 && y > 1 ? { x, y } : null,
+      };
     } catch { return null; }
   }
 

@@ -135,6 +135,8 @@ export class CityScene extends Phaser.Scene {
   private remoteDust = new Map<string, { lastX: number; lastY: number; lastDustAt: number }>();
   private nameLabels = new Map<string, Phaser.GameObjects.Text>();
   private activeBubbles = new Map<string, ChatBubble>();
+  /** True when ?at= picked the spawn: a login does not move the player off it. */
+  private spawnedFromDeepLink = false;
   /** The local player's name tag. Drawn over the map, not inside the avatar. */
   private youLabel: Phaser.GameObjects.Text | null = null;
   /** Buff badge per remote wallet, so an arriving flag can toggle it. */
@@ -672,6 +674,7 @@ export class CityScene extends Phaser.Scene {
       console.log(`[CityScene] deep link ?at=${atParam} → ${atTarget.name}`);
     }
 
+    this.spawnedFromDeepLink = !!atTarget;
     const resume = !atTarget && readLastPosition();
     if (resume && !this.collisionLayers.some((l) => {
       const t = l.getTileAtWorldXY(resume.x, resume.y);
@@ -1069,6 +1072,20 @@ export class CityScene extends Phaser.Scene {
             ?? (hasSavedLoadout(walletAddress) ? loadSavedLoadout() : DEFAULT_LOADOUT);
           saveLoadout(look);
           this.avatar.setLoadout(look);
+
+          // Where THIS account stood: on chain first (the browser that
+          // opened this tab may never have seen it), else this wallet's own
+          // last spot here. The scene spawned before it knew the wallet, so
+          // a fresh tab always started at the fountain (2026-11-05). A deep
+          // link (?at=) still wins: the player asked for that place.
+          if (!this.spawnedFromDeepLink) {
+            const spot = chain?.position ?? readLastPosition();
+            if (spot && !this.isSolidAt(spot.x, spot.y)) {
+              const body = this.avatar.getContainer().body as Phaser.Physics.Arcade.Body | undefined;
+              if (body) body.reset(spot.x, spot.y);
+              else this.avatar.getContainer().setPosition(spot.x, spot.y);
+            }
+          }
           // The HUD portrait follows the same event the wardrobe uses.
           this.game.events.emit("wardrobe:loadout", look);
         } finally {
