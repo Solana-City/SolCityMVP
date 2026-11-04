@@ -876,15 +876,45 @@ export function migrateRetiredFace(loadout: Loadout): Loadout {
   return loadout;
 }
 
-const STORAGE_KEY = clusterKey("solcity:loadout");
+/**
+ * The saved outfit is PER WALLET. It used to be one slot per browser, so a
+ * second wallet logged in on the same browser (several test wallets on one
+ * seed phrase, 2026-11-05) put on the first one's outfit and pushed it onto
+ * its own account. Before any wallet connects, the browser-wide slot is
+ * used, and the first wallet to connect adopts it once.
+ */
+const LEGACY_KEY = clusterKey("solcity:loadout");
+const keyForWallet = (wallet: string) => clusterKey(`solcity:loadout:${wallet}`);
+let loadoutWallet: string | null = null;
+const storageKey = () => (loadoutWallet ? keyForWallet(loadoutWallet) : LEGACY_KEY);
+
+/** Whose outfit saveLoadout and loadSavedLoadout read and write from now on. */
+export function setLoadoutWallet(wallet: string | null): void {
+  loadoutWallet = wallet;
+  if (!wallet) return;
+  try {
+    if (localStorage.getItem(keyForWallet(wallet)) === null) {
+      const legacy = localStorage.getItem(LEGACY_KEY);
+      if (legacy !== null) {
+        localStorage.setItem(keyForWallet(wallet), legacy);
+        localStorage.removeItem(LEGACY_KEY);
+      }
+    }
+  } catch { /* storage blocked: nothing saved to move */ }
+}
+
+/** Whether this wallet has an outfit saved in this browser. */
+export function hasSavedLoadout(wallet: string): boolean {
+  try { return localStorage.getItem(keyForWallet(wallet)) !== null; } catch { return false; }
+}
 
 export function saveLoadout(loadout: Loadout): void {
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(loadout)); } catch {}
+  try { localStorage.setItem(storageKey(), JSON.stringify(loadout)); } catch {}
 }
 
 export function loadSavedLoadout(): Loadout {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(storageKey());
     if (raw) {
       const loadout = JSON.parse(raw) as Loadout;
       // "Human" was renamed to "Light" (color-based skin names, no racial

@@ -56,7 +56,22 @@ export class ProfileManager {
     return { ...this.profile };
   }
 
+  /**
+   * Switches the profile to this wallet's.
+   *
+   * The profile (name, score, achievements, streak) used to be one slot per
+   * browser, so a second wallet on the same browser showed the first one's.
+   * Now each wallet keeps its own copy too: switching saves the outgoing
+   * wallet's and loads the incoming one's, or starts it fresh. The first
+   * wallet ever to connect here keeps what was played before it connected.
+   */
   setWallet(wallet: string | null): void {
+    if (wallet && wallet !== this.profile.wallet) {
+      if (this.profile.wallet) this.writeFor(this.profile.wallet);
+      const own = this.readFor(wallet);
+      if (own) this.profile = own;
+      else if (this.profile.wallet) this.profile = this.defaults();
+    }
     this.profile.wallet = wallet;
     if (wallet && this.profile.displayName === "Citizen") {
       this.profile.displayName = `${wallet.slice(0, 4)}...${wallet.slice(-4)}`;
@@ -202,12 +217,45 @@ export class ProfileManager {
     this.listeners.push(cb);
   }
 
+  private writeFor(wallet: string): void {
+    try {
+      localStorage.setItem(clusterKey(`sol-city-profile:${wallet}`), JSON.stringify({ ...this.profile, wallet }));
+    } catch {}
+  }
+
+  private readFor(wallet: string): PlayerProfile | null {
+    try {
+      const raw = localStorage.getItem(clusterKey(`sol-city-profile:${wallet}`));
+      return raw ? ({ ...this.defaults(), ...JSON.parse(raw) } as PlayerProfile) : null;
+    } catch { return null; }
+  }
+
   private save(): void {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(this.profile));
     } catch {}
+    if (this.profile.wallet) this.writeFor(this.profile.wallet);
     for (const cb of this.listeners) cb(this.get());
     progressionBus.emit({ type: "profile-updated", profile: this.get() });
+  }
+
+  private defaults(): PlayerProfile {
+    return {
+      wallet: null,
+      displayName: "Citizen",
+      outfitId: "default",
+      score: 0,
+      swapCount: 0,
+      transferCount: 0,
+      bountyCount: 0,
+      counters: {},
+      unlockedOutfits: ["default"],
+      unlockedAchievements: [],
+      visitedNPCs: [],
+      discoveredZones: [],
+      joinedAt: Date.now(),
+      lastActive: Date.now(),
+    };
   }
 
   private load(): PlayerProfile {

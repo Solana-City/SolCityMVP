@@ -4,7 +4,7 @@ import { NAME_DEPTH, PLAYER_SPEED, TILE_SIZE } from "../config/constants";
 import { Direction } from "../entities/SimpleSprite";
 import { AvatarSprite } from "../entities/AvatarSprite";
 import { playExpressionFx, EXPRESSION_DURATION_MS } from "../entities/ExpressionFx";
-import { loadSavedLoadout, DEFAULT_LOADOUT, EXPRESSIONS, type Loadout, type Expression } from "../config/paperDoll";
+import { loadSavedLoadout, DEFAULT_LOADOUT, EXPRESSIONS, setLoadoutWallet, hasSavedLoadout, saveLoadout, type Loadout, type Expression } from "../config/paperDoll";
 import { OnChainMultiplayer, OnChainPlayer } from "../multiplayer/OnChainMultiplayer";
 import { ChatManager, getChannelColor, SELF_COLOR } from "../chat/ChatManager";
 import { containsLink, maskLinks } from "../chat/linkFilter";
@@ -1042,6 +1042,15 @@ export class CityScene extends Phaser.Scene {
         requestNames([walletAddress], true);
         showOwnName();
         this.profile.setWallet(walletAddress);
+        // This wallet's outfit, not whichever wallet used this browser
+        // before it: saved here if it has been here, else what its account
+        // wears on chain, else the default.
+        setLoadoutWallet(walletAddress);
+        if (!hasSavedLoadout(walletAddress)) {
+          const onChain = await this.network.readOwnLoadout(new PublicKey(walletAddress)).catch(() => null);
+          saveLoadout(onChain ?? DEFAULT_LOADOUT);
+        }
+        this.avatar.setLoadout(loadSavedLoadout());
         // Jack O' Lantern's five, which are picked per wallet, so they can
         // only be put out once there is a wallet to pick them for.
         this.spawnPumpkins(walletAddress);

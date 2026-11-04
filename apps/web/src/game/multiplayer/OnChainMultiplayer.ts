@@ -1892,6 +1892,34 @@ export class OnChainMultiplayer {
 
   isSuspended(): boolean { return this.suspended; }
 
+  /**
+   * The outfit this wallet's account wears on chain, from the freshest copy
+   * (base and every rollup), or null when it has none. For a wallet with no
+   * outfit saved in this browser: it should put on its own, not inherit the
+   * previous wallet's.
+   */
+  async readOwnLoadout(wallet: PublicKey): Promise<Loadout | null> {
+    const [pda] = derivePlayerPDA(wallet);
+    const conns = [this.baseConnection, ...this.erReadConnections.map((r) => r.conn)];
+    const copies = await Promise.all(conns.map((c) => c.getAccountInfo(pda).catch(() => null)));
+    let best: Buffer | null = null;
+    for (const info of copies) {
+      if (!info || info.data.length < 8 + 32 + 1) continue;
+      if (!best || lastActiveOf(info.data) > lastActiveOf(best)) best = Buffer.from(info.data);
+    }
+    if (!best) return null;
+    try {
+      let o = 8 + 32;
+      o += 1 + (best[o] ? 32 : 0);
+      o += 4 + best.readUInt32LE(o);
+      o += 4 + 4 + 1 + 1 + 4 + 2 + 2 + 2 + 8 + 8; // ... last_active, created_at
+      const len = best.readUInt32LE(o); o += 4;
+      if (len === 0 || len > 4096 || o + len > best.length) return null;
+      const loadout = decodeLoadout(best.subarray(o, o + len).toString("utf-8"));
+      return Object.keys(loadout).length ? loadout : null;
+    } catch { return null; }
+  }
+
   // ── This device's key, authorized by a tap ─────────────────────────────
 
   private needsDeviceAuth = false;
