@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { CATEGORY_LABELS } from "@/game/config/paperDoll";
 import {
   PACKS, RARITY_COLOR, RARITY_LABEL, RARITY_ORDER, rarityTheme, CURRENT_SEASON,
@@ -358,6 +358,10 @@ export default function BoosterOverlay({
   const anotherFeel = useButtonFeel();
   const doneFeel = useButtonFeel();
 
+  // The latest openOnChain, which is declared below this and closes over the
+  // current config and signer. Called through a ref so `open` never runs a
+  // stale copy from the first render, when the config was still null.
+  const openOnChainRef = useRef<((chosen: PackDef, fresh?: PackConfigAccount) => Promise<void>) | undefined>(undefined);
   const open = useCallback((chosen: PackDef) => {
     if (!wallet) return;
     setPack(chosen);
@@ -376,11 +380,28 @@ export default function BoosterOverlay({
         return;
       }
       if (!config) {
-        setError("The shop is still loading. Try again in a moment.");
-        setPhase("choose");
+        // Not loaded yet, or the load failed: read it now rather than ask the
+        // player to wait for something that may never come, and when it
+        // fails, show WHY. A shop that sat on "still loading" told nobody
+        // anything (devnet, 2026-11-05).
+        void (async () => {
+          try {
+            const cfg = await readPackConfig(baseConnection());
+            if (!cfg) {
+              setError("The shop is not set up on this network yet.");
+              setPhase("choose");
+              return;
+            }
+            setConfig(cfg);
+            await openOnChainRef.current?.(chosen, cfg);
+          } catch (err) {
+            setError(`Couldn't reach the shop: ${String((err as Error)?.message ?? err).split("\n")[0].slice(0, 120)}`);
+            setPhase("choose");
+          }
+        })();
         return;
       }
-      void openOnChain(chosen);
+      void openOnChainRef.current?.(chosen);
       return;
     }
     const rolled = rollPack(wallet, chosen);
@@ -403,7 +424,7 @@ export default function BoosterOverlay({
       setDrops(rolled);
       setPhase("revealed");
     }, skipReveal ? 0 : 650);
-  }, [wallet]);
+  }, [wallet, config, signAllTransactions]);
 
   /**
    * The paid draw.
@@ -419,17 +440,18 @@ export default function BoosterOverlay({
    * draw was paid or previewed. It is a mirror of the chain now, not the
    * record.
    */
-  const openOnChain = useCallback(async (chosen: PackDef) => {
-    if (!wallet || !signAllTransactions || !config) return;
-    const onChain = config.packs.find((p) => p.id === chosen.onChainId);
+  const openOnChain = useCallback(async (chosen: PackDef, fresh?: PackConfigAccount) => {
+    const cfgNow = fresh ?? config;
+    if (!wallet || !signAllTransactions || !cfgNow) return;
+    const onChain = cfgNow.packs.find((p) => p.id === chosen.onChainId);
     if (!onChain) { setError("This pack is not on sale yet."); setPhase("choose"); return; }
-    const why = packUnavailableReason(onChain, config);
+    const why = packUnavailableReason(onChain, cfgNow);
     if (why) { setError(why); setPhase("choose"); return; }
 
     try {
       const conn = baseConnection();
       const result = await buyPack({
-        conn, wallet: new PublicKey(wallet), signAllTransactions, pack: onChain, config,
+        conn, wallet: new PublicKey(wallet), signAllTransactions, pack: onChain, config: cfgNow,
         count,
       });
       if (result.timedOut) {
@@ -448,6 +470,7 @@ export default function BoosterOverlay({
       setPhase("choose");
     }
   }, [wallet, signAllTransactions, config, count, revealAndMint]);
+  openOnChainRef.current = openOnChain;
 
 
   /**
