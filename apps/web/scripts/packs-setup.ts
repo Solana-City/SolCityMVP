@@ -3,13 +3,22 @@
  *
  * Everything the pack economy needs that is not in the bytecode:
  *
- *   init_pack_config -> upsert_pack x3 -> init_season_drops -> append_season_drops x4
+ *   init_pack_config -> upsert_pack x3 -> init_season_drops
+ *   -> per rarity: clear_season_drops if it differs, then append_season_drops
  *
  * Idempotent by design, because it will be run again. Accounts that already
- * exist are left alone, `upsert_pack` replaces a pack of the same id, and
- * `append_season_drops` deduplicates on chain, so re-running it writes nothing
- * new. What it will NOT do is edit a season that has already opened: the
- * program refuses that, which is what makes a pending pack safe.
+ * exist are left alone, `upsert_pack` replaces a pack of the same id, and a
+ * rarity whose on-chain list already matches the catalogue is skipped.
+ *
+ * It CLEARS a rarity before refilling it, and that is not belt and braces.
+ * `append_season_drops` only adds: an item that changes tier keeps its place
+ * in the old list for ever, and appending the current lists on top would put
+ * one index under two rarities. Devnet was already in that state, with the
+ * Halo and the Royal Crown sitting in `common`, so a pack rolling a common
+ * could have paid out a legendary.
+ *
+ * What it will NOT do is edit a season that has already opened: the program
+ * refuses that, which is what makes a pending pack safe.
  *
  *   npx tsx scripts/packs-setup.ts <path-to-admin-wallet.json>            # dry run
  *   npx tsx scripts/packs-setup.ts <path-to-admin-wallet.json> --send
@@ -118,6 +127,39 @@ function dropsPda(season: number): PublicKey {
 async function exists(key: PublicKey): Promise<boolean> {
   return (await conn.getAccountInfo(key)) !== null;
 }
+
+/**
+ * The drop table as it stands on chain, one list per rarity, or null if the
+ * account is not there yet.
+ *
+ * Read because `append_season_drops` can only ADD. A rarity that was written
+ * once and then changed its mind leaves the old index behind for good, and on
+ * devnet it already has: the table held 18 indices from an older catalogue,
+ * and 14 of them had since moved tier, so "common" listed the Halo and the
+ * Royal Crown while "legendary" listed what is now a Top Hat. Appending the
+ * current lists on top of that would not fix it, it would put the same index
+ * in two rarities at once.
+ *
+ * Layout: 8 discriminator, 2 season, then four Vec<u16>, each a 4-byte length
+ * and that many little-endian u16.
+ */
+async function readDrops(key: PublicKey): Promise<number[][] | null> {
+  const info = await conn.getAccountInfo(key);
+  if (!info) return null;
+  const d = info.data;
+  let at = 10; // past the discriminator and the season
+  const lists: number[][] = [];
+  for (let r = 0; r < RARITY_ORDER.length; r++) {
+    const len = d.readUInt32LE(at); at += 4;
+    const list: number[] = [];
+    for (let i = 0; i < len; i++) { list.push(d.readUInt16LE(at)); at += 2; }
+    lists.push(list);
+  }
+  return lists;
+}
+
+const sameList = (a: number[], b: number[]) =>
+  a.length === b.length && a.every((v, i) => v === b[i]);
 
 async function submit(
   admin: Keypair, ixs: TransactionInstruction[], label: string,
@@ -293,11 +335,39 @@ async function main() {
   // that pins them is pinning what actually gets written.
   console.log("\n5. drops per rarity");
   const lists = seasonDropLists(CURRENT_SEASON);
+  const onChain = await readDrops(drops);
   for (let rarity = 0; rarity < RARITY_ORDER.length; rarity++) {
     const name = RARITY_ORDER[rarity];
     const indices = lists[name];
+    const already = onChain?.[rarity] ?? [];
     console.log(`  ${name.padEnd(9)} ${indices.length.toString().padStart(4)}  ` +
                 `${indices.slice(0, 12).join(",")}${indices.length > 12 ? ",..." : ""}`);
+
+    // Nothing to do: the chain already reads exactly like the catalogue.
+    // Checked rather than always rewritten so a second run is free, and so a
+    // run that changes nothing cannot empty a rarity and then fail mid-append.
+    if (sameList(already, indices)) { console.log(`    already correct on chain`); continue; }
+
+    // Otherwise wipe the rarity first. Appending alone cannot move an index
+    // that changed tier, and leaving it would list one item under two
+    // rarities (see readDrops).
+    if (already.length > 0) {
+      const stale = already.filter((i) => !indices.includes(i));
+      console.log(`    on chain ${already.length}` +
+                  (stale.length ? `, of which ${stale.length} no longer belong here: ${stale.join(",")}` : "") +
+                  ` -> clearing first`);
+      await submit(admin, [new TransactionInstruction({
+        programId: PROGRAM,
+        keys: [
+          { pubkey: admin.publicKey,         isSigner: true,  isWritable: true  },
+          { pubkey: config,                  isSigner: false, isWritable: false },
+          { pubkey: drops,                   isSigner: false, isWritable: true  },
+          { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+        ],
+        data: Buffer.concat([disc("clear_season_drops"), u8(rarity)]),
+      })], `clear ${name}`);
+    }
+
     if (indices.length === 0) continue;
     for (let at = 0; at < indices.length; at += APPEND_CHUNK) {
       const chunk = indices.slice(at, at + APPEND_CHUNK);
