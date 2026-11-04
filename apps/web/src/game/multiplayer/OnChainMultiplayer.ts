@@ -62,7 +62,7 @@ import { ER_VALIDATORS, probeValidators, nearestValidator } from "./erValidators
 import { SOLANA_CLUSTER } from "@/game/config/clusterStorage";
 import { leaveAction, readCommits, recordCommit, resetCommits } from "./delegationBudget";
 import { DIR_LEFT, PresenceTracker, activityKey, HIDE_AFTER_MS } from "./presence";
-import { buildMarkPresentSessionIx, decodePresenceBoard, derivePresenceBoardPDA } from "../solana/presenceBoard";
+import { buildMarkPresentSessionIx, decodePresenceBoard, derivePresenceBoardPDA, buildClosePlayerIx } from "../solana/presenceBoard";
 import { setOnChainUnlocks } from "@/game/config/wardrobeUnlocks";
 import { syncHeldToWardrobe } from "@/game/solana/mint";
 import { gameSlotOf, GAME_SLOT_CAP } from "@/game/minigames/slots";
@@ -826,6 +826,59 @@ export class OnChainMultiplayer {
    * delegate_pda entirely (it already looks delegated) and never re-prompts
    * for a fresh delegation signature.
    */
+  /** What closing the account returns: the PlayerState's lamports (its rent). */
+  async closeAccountRefundLamports(): Promise<number> {
+    if (!this.wallet) return 0;
+    return this.baseConnection.getBalance(derivePlayerPDA(this.wallet)[0]).catch(() => 0);
+  }
+
+  /**
+   * Closes this wallet's PlayerState for good and returns its rent
+   * (`close_player`). The Settings tab gates it behind two confirmations and
+   * a typed word; this does the work.
+   *
+   * The account must be on base, owned by this program, for close_player to
+   * take it. So a delegated account is first brought home: off the presence
+   * board, the leave mark, commit-and-undelegate (all session-signed, free),
+   * then wait for the delegation record to go. Then ONE wallet signature
+   * closes it. Throws with a readable message at the step that failed;
+   * nothing is closed unless the last step lands.
+   */
+  async closeAccount(onStep?: (step: string) => void): Promise<void> {
+    if (!this.wallet || !isProgramDeployed()) throw new Error("Connect your wallet first.");
+    if (this.suspended) throw new Error("Close the other tab first.");
+    const wallet = this.wallet;
+    const [pda] = derivePlayerPDA(wallet);
+
+    if (await this.isPdaDelegated(pda)) {
+      onStep?.("Leaving the city...");
+      await this.markPresent(false);
+      await this.sendLeaveMark(wallet, { ...this.lastPos });
+      await this.commitAndUndelegatePlayer(wallet);
+      resetCommits(wallet.toBase58());
+      let home = false;
+      for (let i = 0; i < 40 && !home; i++) {
+        await new Promise((r) => setTimeout(r, 1_000));
+        home = !(await this.isPdaDelegated(pda));
+      }
+      if (!home) throw new Error("The city is still saving your account. Try again in a minute.");
+    }
+    // Nothing may write to it from here on: it is about to stop existing.
+    this.useEphemeral = false;
+
+    onStep?.("Approve in your wallet...");
+    const { blockhash } = await this.baseRpcWithRetry(() => this.baseConnection.getLatestBlockhash());
+    const tx = new Transaction({ recentBlockhash: blockhash, feePayer: wallet }).add(buildClosePlayerIx(wallet));
+    await this.signAndSendViaWallet(tx);
+
+    onStep?.("Closing...");
+    for (let i = 0; i < 20; i++) {
+      await new Promise((r) => setTimeout(r, 1_000));
+      if (!(await this.baseConnection.getAccountInfo(pda).catch(() => ({})))) return;
+    }
+    throw new Error("Sent, but not confirmed yet. Reload in a minute to check.");
+  }
+
   async resetSession(): Promise<void> {
     if (!this.wallet) throw new Error("resetSession: not connected");
     const wallet = this.wallet;

@@ -23,7 +23,7 @@ import { QuestList, useQuestRows } from "@/ui/QuestCard";
 import { useButtonFeel, feelStyle } from "@/ui/useButtonFeel";
 import { PublicKey } from "@solana/web3.js";
 import { useNickname } from "@/ui/useNicknames";
-import type { OnChainMultiplayer } from "@/game/multiplayer/OnChainMultiplayer";
+import { getNetwork, type OnChainMultiplayer } from "@/game/multiplayer/OnChainMultiplayer";
 import {
   listFriends, listInboundRequests, listOutboundRequests,
 } from "@/game/social/friends";
@@ -922,6 +922,132 @@ function SettingsTab() {
           </Card>
         </label>
       </div>
+
+      <div className="md:col-span-2">
+        <CloseAccountSection />
+      </div>
+    </div>
+  );
+}
+
+// ── Close account ───────────────────────────────────────────────────────────
+
+const RED = "#ff5c7a";
+const CLOSE_WORD = "CLOSE";
+
+/**
+ * Closes the player's account and returns its deposit (close_player).
+ *
+ * Irreversible, so it is made hard to do by accident: a warning that says
+ * what goes and what comes back, then the word CLOSE typed by hand before the
+ * last button wakes up, and only then the wallet asks for its own approval.
+ */
+function CloseAccountSection() {
+  const { connected } = useWallet();
+  const [step, setStep] = useState<"idle" | "warn" | "type" | "working" | "done">("idle");
+  const [typed, setTyped] = useState("");
+  const [refund, setRefund] = useState<number | null>(null);
+  const [status, setStatus] = useState("");
+  const [error, setError] = useState("");
+
+  const cancel = () => { setStep("idle"); setTyped(""); setError(""); };
+
+  const open = async () => {
+    setError("");
+    setStep("warn");
+    const lamports = await getNetwork()?.closeAccountRefundLamports() ?? 0;
+    setRefund(lamports);
+  };
+
+  const close = async () => {
+    const net = getNetwork();
+    if (!net) { setError("The city is still connecting."); return; }
+    setStep("working");
+    try {
+      await net.closeAccount(setStatus);
+      setStep("done");
+      // A fresh page: the old session has nothing left to write to.
+      setTimeout(() => window.location.reload(), 2_500);
+    } catch (err) {
+      setError((err as Error).message?.split("\n")[0] ?? "That did not go through.");
+      setStep("type");
+    }
+  };
+
+  if (!connected) return null;
+  const sol = refund === null ? "..." : (refund / 1e9).toFixed(4);
+  const btn = (color: string, enabled = true): React.CSSProperties => ({
+    padding: "9px 14px", fontFamily: PIXEL, fontSize: 8, letterSpacing: 1,
+    color: enabled ? color : "#4a5068", background: "transparent",
+    border: `1px solid ${enabled ? color : "#2a3048"}`, cursor: enabled ? "pointer" : "default",
+  });
+
+  return (
+    <div>
+      <div style={{ fontSize: 9, color: "#cbd5e1", marginBottom: 10 }}>ACCOUNT</div>
+      <Card>
+        {step === "idle" && (
+          <div className="flex items-center justify-between" style={{ gap: 12, flexWrap: "wrap" }}>
+            <span style={{ fontSize: 7, color: "#7f88a8", lineHeight: 1.6 }}>
+              Close your account and get its deposit back.
+            </span>
+            <button onClick={open} style={btn(RED)}>CLOSE ACCOUNT</button>
+          </div>
+        )}
+
+        {step === "warn" && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <span style={{ fontSize: 9, color: RED }}>Close your account?</span>
+            <span style={{ fontSize: 7, color: "#aaaacc", lineHeight: 1.8 }}>
+              You get back about {sol} SOL. Your score, friends and city progress
+              are deleted for good. Your collectibles stay yours.
+            </span>
+            <div className="flex" style={{ gap: 10 }}>
+              <button onClick={cancel} style={btn("#aaaacc")}>CANCEL</button>
+              <button onClick={() => setStep("type")} style={btn(RED)}>CONTINUE</button>
+            </div>
+          </div>
+        )}
+
+        {step === "type" && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <span style={{ fontSize: 7, color: "#aaaacc", lineHeight: 1.8 }}>
+              Type {CLOSE_WORD} to confirm.
+            </span>
+            <input
+              value={typed}
+              onChange={(e) => setTyped(e.target.value)}
+              autoComplete="off"
+              spellCheck={false}
+              style={{
+                fontFamily: PIXEL, fontSize: 9, padding: "8px 10px", color: "#fff",
+                background: "rgba(255,255,255,0.04)", border: "1px solid #2a3048", outline: "none",
+              }}
+            />
+            {error && <span style={{ fontSize: 7, color: RED, lineHeight: 1.6 }}>{error}</span>}
+            <div className="flex" style={{ gap: 10 }}>
+              <button onClick={cancel} style={btn("#aaaacc")}>CANCEL</button>
+              <button
+                onClick={close}
+                disabled={typed.trim() !== CLOSE_WORD}
+                style={btn(RED, typed.trim() === CLOSE_WORD)}
+              >
+                CLOSE FOREVER
+              </button>
+            </div>
+          </div>
+        )}
+
+        {step === "working" && (
+          <span style={{ fontSize: 7, color: "#aaaacc", lineHeight: 1.8 }}>{status || "Working..."}</span>
+        )}
+
+        {step === "done" && (
+          <span style={{ fontSize: 7, color: GREEN, lineHeight: 1.8 }}>
+            Account closed. Your deposit is back in your wallet.
+          </span>
+        )}
+      </Card>
     </div>
   );
 }
