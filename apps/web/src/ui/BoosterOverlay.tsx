@@ -34,7 +34,7 @@ import {
   baseConnection, readPackConfig, currencyBalance, buyPack, packUnavailableReason, buyerIsTreasury,
   fundsShortfall, txErrorText,
   type PackConfigAccount,
-  syncOwnedToWardrobe, awaitDraw, ownedIndices, hasPendingDraw, retryStuckDraw,
+  syncOwnedToWardrobe, awaitDraw, hasPendingDraw, retryStuckDraw,
 } from "@/game/solana/packs";
 
 /**
@@ -347,17 +347,16 @@ export default function BoosterOverlay({
     setPhase("opening");
     setError(null);
     try {
-      const { presignedMints, leftover } = await openSealedPack({
+      const { presignedMints, leftover, before } = await openSealedPack({
         wallet: new PublicKey(wallet), assetId: entry.assetId, nonce: entry.nonce,
         pack: onChain, mintConfig, signAllTransactions,
       });
-      // From here it is the same reveal a bought-and-opened pack gets: the
-      // draw lands in UnlockState when the oracle answers.
       // The same wait a bought-and-opened pack gets, then the same reveal
       // and the same mint, because from the oracle's side nothing differs.
+      // `before` was read before the burn was sent: read here, after it had
+      // confirmed, a quick oracle could already be in it.
       const conn = baseConnection();
       const me = new PublicKey(wallet);
-      const before = new Set(await ownedIndices(conn, me));
       const { granted, timedOut } = await awaitDraw(conn, me, before);
       if (timedOut) {
         setError("Opened, but the draw has not landed yet. It will appear in your wardrobe.");

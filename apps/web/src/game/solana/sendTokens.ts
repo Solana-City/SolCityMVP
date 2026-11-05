@@ -1,4 +1,4 @@
-import { ComputeBudgetProgram, Connection, PublicKey, Transaction } from "@solana/web3.js";
+import { ComputeBudgetProgram, Connection, PublicKey, Transaction, type VersionedTransaction } from "@solana/web3.js";
 
 import { mainnetConnection } from "./mainnetRpc";
 
@@ -215,7 +215,7 @@ export async function awaitTransfer(
  */
 export async function sendAndConfirmTransfer(args: {
   connection: Connection;
-  signed: Transaction;
+  signed: Transaction | VersionedTransaction;
   lastValidBlockHeight: number;
 }): Promise<string> {
   const { connection, signed, lastValidBlockHeight } = args;

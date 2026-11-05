@@ -21,10 +21,14 @@
  * approved anyway, and then fail.
  */
 import {
+  type AddressLookupTableAccount,
   ComputeBudgetProgram,
   Connection,
+  PACKET_DATA_SIZE,
+  PublicKey,
   Transaction,
   TransactionInstruction,
+  TransactionMessage,
   VersionedTransaction,
 } from "@solana/web3.js";
 
@@ -113,6 +117,70 @@ export async function prepareWalletTx(conn: Connection, tx: Transaction): Promis
   }
   out.add(...tx.instructions);
   return out;
+}
+
+/**
+ * prepareWalletTx for a v0 transaction compiled against lookup tables.
+ *
+ * Same contract: simulated before anything signs, refused in words when the
+ * simulation fails, and handed back with compute and loaded-data limits
+ * measured from that simulation. Used where a legacy transaction cannot hold
+ * the accounts at all (opening a sealed pack, see lookupTable.ts).
+ *
+ * It also refuses a transaction that will not fit even so, with a sentence
+ * instead of the RPC's "VersionedTransaction too large: 2100 bytes".
+ */
+export async function prepareWalletTxV0(conn: Connection, args: {
+  payer: PublicKey;
+  blockhash: string;
+  instructions: TransactionInstruction[];
+  lookupTables: AddressLookupTableAccount[];
+}): Promise<VersionedTransaction> {
+  const { payer, blockhash, instructions, lookupTables } = args;
+  const compile = (ixs: TransactionInstruction[]) => new VersionedTransaction(
+    new TransactionMessage({ payerKey: payer, recentBlockhash: blockhash, instructions: ixs })
+      .compileToV0Message(lookupTables),
+  );
+
+  // Measured with both limits in it (the real ones are the same size), so the
+  // size checked here is the size the wallet will be handed.
+  const probe = compile([
+    ComputeBudgetProgram.setComputeUnitLimit({ units: MAX_CU }),
+    setLoadedAccountsDataSizeLimit(MAX_LOADED_BYTES),
+    ...instructions,
+  ]);
+  const size = serializedSize(probe);
+  if (size > PACKET_DATA_SIZE) {
+    throw new WalletTxRejected(
+      `This transaction is ${Number.isFinite(size) ? `${size} bytes` : "too large"} and the network takes ${PACKET_DATA_SIZE}. `
+      + "The lookup table for this cluster is missing or out of date.",
+    );
+  }
+
+  const { value } = await conn.simulateTransaction(probe, {
+    sigVerify: false,
+    replaceRecentBlockhash: true,
+    commitment: "confirmed",
+  });
+  if (value.err) throw new WalletTxRejected(describe(value.err, value.logs));
+
+  const budget: TransactionInstruction[] = [ComputeBudgetProgram.setComputeUnitLimit({
+    units: value.unitsConsumed
+      ? Math.min(MAX_CU, Math.ceil(value.unitsConsumed * 1.2) + 5_000)
+      : MAX_CU,
+  })];
+  const loaded = Number((value as { loadedAccountsDataSize?: number }).loadedAccountsDataSize ?? 0);
+  if (loaded > 0) {
+    budget.push(setLoadedAccountsDataSizeLimit(
+      Math.min(MAX_LOADED_BYTES, Math.ceil(loaded * 1.2) + 16 * 1024),
+    ));
+  }
+  return compile([...budget, ...instructions]);
+}
+
+/** Bytes on the wire, or Infinity when web3.js cannot even encode it. */
+export function serializedSize(tx: VersionedTransaction): number {
+  try { return tx.serialize().length; } catch { return Number.POSITIVE_INFINITY; }
 }
 
 /** Sends a wallet-signed transaction over our RPC, with preflight on. */

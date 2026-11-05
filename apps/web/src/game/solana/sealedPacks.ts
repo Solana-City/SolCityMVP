@@ -1,20 +1,22 @@
 import {
   Connection, PublicKey, SystemProgram, SYSVAR_SLOT_HASHES_PUBKEY,
-  Transaction, TransactionInstruction,
+  Transaction, TransactionInstruction, VersionedTransaction,
 } from "@solana/web3.js";
-import { getAssociatedTokenAddressSync } from "@solana/spl-token";
+import { ASSOCIATED_TOKEN_PROGRAM_ID, getAssociatedTokenAddressSync } from "@solana/spl-token";
 import {
   SOL_CITY_COLLECTIBLES_PROGRAM_ID, derivePackConfigPDA, deriveSeasonDropsPDA,
-  deriveUnlockPDA, deriveVrfIdentityPDA, VRF_QUEUE_DEVNET, VRF_PROGRAM_ID,
+  deriveUnlockPDA, deriveVrfIdentityPDA, decodeUnlockState, VRF_QUEUE_DEVNET, VRF_PROGRAM_ID,
 } from "./program";
 import { ixDiscriminator, buildInitUnlockStateIx } from "./instructions";
-import { prepareWalletTx } from "./walletTx";
+import { prepareWalletTx, prepareWalletTxV0 } from "./walletTx";
 import {
   deriveMintConfigPDA, deriveMintAuthorityPDA, pendingMintIndices, buildMintPendingTxs,
   acceptedTreeSlot,
-  type MintConfigAccount, type SignedMints, type SignAllTx,
+  type MintConfigAccount, type SignedMints,
 } from "./mint";
 import { baseConnection, type OnChainPack, type PackConfigAccount } from "./packs";
+import { readPackLookupTable } from "./lookupTable";
+import { sendAndConfirmTransfer } from "./sendTokens";
 
 /**
  * The sealed pack: bought as an asset, opened later by burning it.
@@ -269,12 +271,115 @@ export async function getAssetProof(conn: Connection, assetId: PublicKey): Promi
   if (body.error || !body.result) {
     throw new Error(body.error?.message ?? "no proof for that asset");
   }
+  const tree = new PublicKey(body.result.tree_id);
+  const full = body.result.proof.map((p) => new PublicKey(p));
   return {
     root: new PublicKey(body.result.root),
-    proof: body.result.proof.map((p) => new PublicKey(p)),
+    proof: trimProof(full, await treeShape(conn, tree)),
     nodeIndex: body.result.node_index,
-    tree: new PublicKey(body.result.tree_id),
+    tree,
   };
+}
+
+// ── The canopy ─────────────────────────────────────────────────────────────
+
+/** What a tree account says about its own proofs. */
+export interface TreeShape { maxDepth: number; canopyDepth: number }
+
+/**
+ * Depth and canopy, read from a ConcurrentMerkleTree account's bytes.
+ *
+ * spl-account-compression's layout: a 56-byte header (account type, header
+ * version, max_buffer_size u32 at 2, max_depth u32 at 6, authority, creation
+ * slot, padding), then the tree itself (three u64 counters, `buffer` change
+ * logs of root + path + index, and the rightmost proof), then the canopy,
+ * which is every node of its top levels: 2^(c+1) - 2 of them for depth c.
+ * The same arithmetic as the library's getCanopyDepth, without shipping it.
+ */
+export function treeShapeOf(data: Uint8Array): TreeShape {
+  const buf = Buffer.from(data);
+  const maxBuffer = buf.readUInt32LE(2);
+  const maxDepth = buf.readUInt32LE(6);
+  const header = 56;
+  const changeLog = 32 + 32 * maxDepth + 8;
+  const rightmost = 32 * maxDepth + 40;
+  const treeBytes = 24 + maxBuffer * changeLog + rightmost;
+  const canopyBytes = buf.length - header - treeBytes;
+  const canopyDepth = canopyBytes > 0 ? Math.max(0, Math.log2(canopyBytes / 32 + 2) - 1) : 0;
+  return { maxDepth, canopyDepth: Number.isInteger(canopyDepth) ? canopyDepth : 0 };
+}
+
+/**
+ * The proof with the nodes the canopy already holds taken off.
+ *
+ * The indexer returns the WHOLE path, leaf to root, one node per level: 20 on
+ * our depth-20 tree. Bubblegum only needs the levels below the canopy (12 at
+ * canopy 8) and fills the rest from the account. The 8 extra accounts were
+ * what pushed opening a sealed pack past the transaction size limit
+ * (devnet, 2026-11-05: 1575 bytes against 1232).
+ */
+export function trimProof(proof: PublicKey[], shape: TreeShape | null): PublicKey[] {
+  if (!shape) return proof;
+  return proof.slice(0, Math.max(0, shape.maxDepth - shape.canopyDepth));
+}
+
+const shapes = new Map<string, TreeShape>();
+
+/** A tree's shape never changes after creation, so it is read once. */
+async function treeShape(conn: Connection, tree: PublicKey): Promise<TreeShape | null> {
+  const key = tree.toBase58();
+  const known = shapes.get(key);
+  if (known) return known;
+  // Only the header and the sizes matter, but the canopy is measured from the
+  // account's length, so the account is read whole (60 KB, once).
+  const info = await conn.getAccountInfo(tree);
+  if (!info) return null;
+  const shape = treeShapeOf(info.data);
+  shapes.set(key, shape);
+  return shape;
+}
+
+/**
+ * Every account the pack instructions name that is the same for every
+ * player: what scripts/lookup-table-setup.ts puts in the lookup table.
+ *
+ * The program ids that are INVOKED at the top level (ours, ComputeBudget)
+ * are left out, because a transaction has to name those itself.
+ */
+export function packLookupTableAddresses(args: {
+  config: PackConfigAccount;
+  mintConfig: MintConfigAccount;
+  seasons: number[];
+}): PublicKey[] {
+  const { config, mintConfig, seasons } = args;
+  const t = treeAccounts(mintConfig);
+  const all = [
+    derivePackConfigPDA()[0],
+    deriveMintConfigPDA(),
+    deriveMintAuthorityPDA(),
+    deriveVrfIdentityPDA()[0],
+    ...seasons.map((s) => deriveSeasonDropsPDA(s)[0]),
+    config.treasuryTokenAccount,
+    config.currencyMint,
+    mintConfig.merkleTree,
+    t.treeConfig,
+    mintConfig.collectionMint,
+    t.collectionMetadata,
+    t.collectionEdition,
+    t.bubblegumSigner,
+    LOG_WRAPPER_ID,
+    COMPRESSION_PROGRAM_ID,
+    BUBBLEGUM_PROGRAM_ID,
+    TOKEN_METADATA_PROGRAM_ID,
+    TOKEN_PROGRAM_ID,
+    ASSOCIATED_TOKEN_PROGRAM_ID,
+    SystemProgram.programId,
+    VRF_QUEUE_DEVNET,
+    VRF_PROGRAM_ID,
+    SYSVAR_SLOT_HASHES_PUBKEY,
+  ];
+  const seen = new Set<string>();
+  return all.filter((k) => !seen.has(k.toBase58()) && !!seen.add(k.toBase58()));
 }
 
 export function buildOpenPackFromAssetIx(params: {
@@ -356,6 +461,10 @@ export function buildOpenPackFromAssetIx(params: {
  * The UnlockState is created first if the opener has never had one, which is
  * the normal case for somebody who was GIFTED a pack: they may never have
  * bought anything in the city at all.
+ *
+ * The opening is a v0 transaction against the pack lookup table: written out
+ * in full it does not fit (lookupTable.ts). The mints stay legacy; a wallet
+ * signs a batch of both kinds in one approval.
  */
 export async function openSealedPack(args: {
   wallet: PublicKey;
@@ -363,20 +472,91 @@ export async function openSealedPack(args: {
   nonce: number;
   pack: OnChainPack;
   mintConfig: MintConfigAccount;
-  signAllTransactions: SignAllTx;
+  signAllTransactions: SignAnyTx;
   conn?: Connection;
-}): Promise<{ signature: string; presignedMints: SignedMints; leftover: number[] }> {
+}): Promise<{
+  signature: string;
+  presignedMints: SignedMints;
+  leftover: number[];
+  /** What the opener owned before the burn, for awaitDraw. Read here,
+   *  BEFORE sending: an oracle that answers quickly would otherwise land
+   *  first, and the reveal would show nothing new. */
+  before: Set<number>;
+}> {
   const conn = args.conn ?? baseConnection();
-  const proof = await getAssetProof(conn, args.assetId);
+  const { tx: open, before } = await buildOpenSealedPackTx({ ...args, conn });
 
-  const clientSeed = new Uint8Array(32);
-  (globalThis.crypto ?? ({} as Crypto)).getRandomValues?.(clientSeed);
+  // Anything an earlier mint left behind comes first on chain, so it has to
+  // be counted here or this pack's last items have nothing to ride in.
+  const leftover = await pendingMintIndices(conn, args.wallet);
+
+  // The blockhash is taken again right before the wallet opens, for every
+  // transaction in the batch, as buyPack does: the reads and the simulation
+  // above take time the blockhash does not have to spare. Nothing is signed
+  // yet, so this is free.
+  const fresh = await conn.getLatestBlockhash();
+  open.message.recentBlockhash = fresh.blockhash;
+  // Only the opening can be simulated now: the mints read a draw that does
+  // not exist yet. They carry their own compute limits (buildMintPendingTxs).
+  const mintTxs = buildMintPendingTxs({
+    wallet: args.wallet,
+    config: args.mintConfig,
+    blockhash: fresh.blockhash,
+    items: leftover.length + args.pack.size,
+  });
+  const signed = await args.signAllTransactions([open, ...mintTxs]);
+
+  // Rebroadcast and confirmed by polling, the same as a pack bought to open
+  // now: one send through a lagging RPC was refused as "Blockhash not found"
+  // (sendAndConfirmTransfer, devnet 2026-11-05).
+  const signature = await sendAndConfirmTransfer({
+    connection: conn, signed: signed[0], lastValidBlockHeight: fresh.lastValidBlockHeight,
+  });
+  return {
+    signature,
+    presignedMints: {
+      txs: signed.slice(1) as Transaction[],
+      lastValidBlockHeight: fresh.lastValidBlockHeight,
+    },
+    leftover,
+    before,
+  };
+}
+
+/** A wallet's signAllTransactions, for a batch that mixes v0 and legacy. */
+export type SignAnyTx = (
+  txs: (Transaction | VersionedTransaction)[],
+) => Promise<(Transaction | VersionedTransaction)[]>;
+
+/**
+ * The opening transaction, built, sized and simulated, but not signed.
+ *
+ * Separate from openSealedPack so scripts/sealed-open-smoke.ts can check the
+ * exact transaction a player would be asked to sign against a real pack on
+ * chain, without anyone's key.
+ */
+export async function buildOpenSealedPackTx(args: {
+  wallet: PublicKey;
+  assetId: PublicKey;
+  nonce: number;
+  pack: OnChainPack;
+  mintConfig: MintConfigAccount;
+  conn: Connection;
+  clientSeed?: Uint8Array;
+}): Promise<{ tx: VersionedTransaction; before: Set<number>; proofNodes: number }> {
+  const { conn } = args;
+  const unlockPda = deriveUnlockPDA(args.wallet)[0];
+  const [proof, table, unlock] = await Promise.all([
+    getAssetProof(conn, args.assetId),
+    readPackLookupTable(conn),
+    conn.getAccountInfo(unlockPda),
+  ]);
+
+  const clientSeed = args.clientSeed ?? new Uint8Array(32);
+  if (!args.clientSeed) (globalThis.crypto ?? ({} as Crypto)).getRandomValues?.(clientSeed);
 
   const ixs: TransactionInstruction[] = [];
-  const unlockPda = deriveUnlockPDA(args.wallet)[0];
-  if (!(await conn.getAccountInfo(unlockPda))) {
-    ixs.push(buildInitUnlockStateIx(args.wallet));
-  }
+  if (!unlock) ixs.push(buildInitUnlockStateIx(args.wallet));
   ixs.push(buildOpenPackFromAssetIx({
     opener: args.wallet,
     pack: args.pack,
@@ -387,29 +567,12 @@ export async function openSealedPack(args: {
     metadata: sealedPackMetadata(args.mintConfig, args.pack.id),
   }));
 
-  // Anything an earlier mint left behind comes first on chain, so it has to
-  // be counted here or this pack's last items have nothing to ride in.
-  const leftover = await pendingMintIndices(conn, args.wallet);
-
-  const { blockhash, lastValidBlockHeight } = await conn.getLatestBlockhash();
-  const tx = new Transaction({ recentBlockhash: blockhash, feePayer: args.wallet }).add(...ixs);
-  const mintTxs = buildMintPendingTxs({
-    wallet: args.wallet,
-    config: args.mintConfig,
-    blockhash,
-    items: leftover.length + args.pack.size,
+  const { blockhash } = await conn.getLatestBlockhash();
+  const tx = await prepareWalletTxV0(conn, {
+    payer: args.wallet, blockhash, instructions: ixs, lookupTables: table ? [table] : [],
   });
-
-  // Only the opening can be simulated now: the mints read a draw that does
-  // not exist yet. They carry their own compute limits (buildMintPendingTxs).
-  const ready = await prepareWalletTx(conn, tx);
-  const signed = await args.signAllTransactions([ready, ...mintTxs]);
-  const signature = await conn.sendRawTransaction(signed[0].serialize(), { skipPreflight: false });
-  return {
-    signature,
-    presignedMints: { txs: signed.slice(1), lastValidBlockHeight },
-    leftover,
-  };
+  const before = new Set(unlock ? decodeUnlockState(unlock.data)?.owned ?? [] : []);
+  return { tx, before, proofNodes: proof.proof.length };
 }
 
 /**
