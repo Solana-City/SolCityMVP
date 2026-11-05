@@ -1,16 +1,16 @@
 {
   "name": "Demon Wings",
-  "symbol": "SCC",
-  "description": "RARE back from Sol City.",
+  "symbol": "SOLCITY",
+  "description": "Rare back item from Solana City.",
   "image": "https://arweave.net/MZqilZqS2mWh-8xXVMY71IeN7X8t33sjcSz-br_i80Q/9732.gif",
   "attributes": [
     {
       "trait_type": "Rarity",
-      "value": "RARE"
+      "value": "Rare"
     },
     {
       "trait_type": "Slot",
-      "value": "back"
+      "value": "Back"
     },
     {
       "trait_type": "Season",

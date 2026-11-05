@@ -1,16 +1,16 @@
 {
   "name": "Acid Short Pants",
-  "symbol": "SCC",
-  "description": "COMMON pants from Sol City.",
+  "symbol": "SOLCITY",
+  "description": "Common legs item from Solana City.",
   "image": "https://arweave.net/MZqilZqS2mWh-8xXVMY71IeN7X8t33sjcSz-br_i80Q/5641.gif",
   "attributes": [
     {
       "trait_type": "Rarity",
-      "value": "COMMON"
+      "value": "Common"
     },
     {
       "trait_type": "Slot",
-      "value": "pants"
+      "value": "Legs"
     },
     {
       "trait_type": "Season",

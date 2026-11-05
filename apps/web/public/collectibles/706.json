@@ -1,16 +1,16 @@
 {
   "name": "Solana Longsleeve",
-  "symbol": "SCC",
-  "description": "QUEST tshirt from Sol City.",
+  "symbol": "SOLCITY",
+  "description": "Quest clothes item from Solana City.",
   "image": "https://arweave.net/MZqilZqS2mWh-8xXVMY71IeN7X8t33sjcSz-br_i80Q/706.gif",
   "attributes": [
     {
       "trait_type": "Rarity",
-      "value": "QUEST"
+      "value": "Quest"
     },
     {
       "trait_type": "Slot",
-      "value": "tshirt"
+      "value": "Clothes"
     },
     {
       "trait_type": "Season",

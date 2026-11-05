@@ -1,16 +1,16 @@
 {
   "name": "Blue Flame Pants",
-  "symbol": "SCC",
-  "description": "UNCOMMON pants from Sol City.",
+  "symbol": "SOLCITY",
+  "description": "Uncommon legs item from Solana City.",
   "image": "https://arweave.net/MZqilZqS2mWh-8xXVMY71IeN7X8t33sjcSz-br_i80Q/5665.gif",
   "attributes": [
     {
       "trait_type": "Rarity",
-      "value": "UNCOMMON"
+      "value": "Uncommon"
     },
     {
       "trait_type": "Slot",
-      "value": "pants"
+      "value": "Legs"
     },
     {
       "trait_type": "Season",

@@ -1,16 +1,16 @@
 {
   "name": "Seeker Backpack",
-  "symbol": "SCC",
-  "description": "QUEST back from Sol City.",
+  "symbol": "SOLCITY",
+  "description": "Quest back item from Solana City.",
   "image": "https://arweave.net/MZqilZqS2mWh-8xXVMY71IeN7X8t33sjcSz-br_i80Q/768.gif",
   "attributes": [
     {
       "trait_type": "Rarity",
-      "value": "QUEST"
+      "value": "Quest"
     },
     {
       "trait_type": "Slot",
-      "value": "back"
+      "value": "Back"
     },
     {
       "trait_type": "Season",

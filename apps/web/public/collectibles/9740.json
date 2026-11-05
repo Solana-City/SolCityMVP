@@ -1,16 +1,16 @@
 {
   "name": "Wizard Cape",
-  "symbol": "SCC",
-  "description": "UNCOMMON back from Sol City.",
+  "symbol": "SOLCITY",
+  "description": "Uncommon back item from Solana City.",
   "image": "https://arweave.net/MZqilZqS2mWh-8xXVMY71IeN7X8t33sjcSz-br_i80Q/9740.gif",
   "attributes": [
     {
       "trait_type": "Rarity",
-      "value": "UNCOMMON"
+      "value": "Uncommon"
     },
     {
       "trait_type": "Slot",
-      "value": "back"
+      "value": "Back"
     },
     {
       "trait_type": "Season",

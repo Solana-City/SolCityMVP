@@ -1,16 +1,16 @@
 {
   "name": "Superteam Brasil Cap",
-  "symbol": "SCC",
-  "description": "QUEST hat from Sol City.",
+  "symbol": "SOLCITY",
+  "description": "Quest head item from Solana City.",
   "image": "https://arweave.net/MZqilZqS2mWh-8xXVMY71IeN7X8t33sjcSz-br_i80Q/964.gif",
   "attributes": [
     {
       "trait_type": "Rarity",
-      "value": "QUEST"
+      "value": "Quest"
     },
     {
       "trait_type": "Slot",
-      "value": "hat"
+      "value": "Head"
     },
     {
       "trait_type": "Season",

@@ -1,16 +1,16 @@
 {
   "name": "Red Hat",
-  "symbol": "SCC",
-  "description": "COMMON hat from Sol City.",
+  "symbol": "SOLCITY",
+  "description": "Common head item from Solana City.",
   "image": "https://arweave.net/MZqilZqS2mWh-8xXVMY71IeN7X8t33sjcSz-br_i80Q/15880.gif",
   "attributes": [
     {
       "trait_type": "Rarity",
-      "value": "COMMON"
+      "value": "Common"
     },
     {
       "trait_type": "Slot",
-      "value": "hat"
+      "value": "Head"
     },
     {
       "trait_type": "Season",

@@ -1,16 +1,16 @@
 {
   "name": "Wizard Hat",
-  "symbol": "SCC",
-  "description": "RARE hat from Sol City.",
+  "symbol": "SOLCITY",
+  "description": "Rare head item from Solana City.",
   "image": "https://arweave.net/MZqilZqS2mWh-8xXVMY71IeN7X8t33sjcSz-br_i80Q/15879.gif",
   "attributes": [
     {
       "trait_type": "Rarity",
-      "value": "RARE"
+      "value": "Rare"
     },
     {
       "trait_type": "Slot",
-      "value": "hat"
+      "value": "Head"
     },
     {
       "trait_type": "Season",
