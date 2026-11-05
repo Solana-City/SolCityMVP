@@ -223,7 +223,17 @@ export async function sendAndConfirmTransfer(args: {
 
   // The first send runs preflight, because a transaction that cannot work
   // should say so now, in words, rather than time out in a minute and a half.
-  const signature = await connection.sendRawTransaction(raw);
+  // Except "Blockhash not found": that is the simulating node lagging behind
+  // the one that handed out the blockhash (the base RPC fails over between
+  // hosts), not the transaction failing, and it was refused that way on
+  // devnet (2026-11-05). It was simulated before signing; the network decides.
+  let signature: string;
+  try {
+    signature = await connection.sendRawTransaction(raw);
+  } catch (err) {
+    if (!/Blockhash not found/i.test(String((err as Error)?.message ?? err))) throw err;
+    signature = await connection.sendRawTransaction(raw, { skipPreflight: true });
+  }
 
   let settled = false;
   const waiting = awaitTransfer(connection, signature, lastValidBlockHeight)

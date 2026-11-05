@@ -9,7 +9,7 @@ import {
 import { buildOpenBoosterIx, buildInitUnlockStateIx, buildRetryDrawIx } from "./instructions";
 import { baseConnection } from "./baseRpc";
 import { prepareWalletTx } from "./walletTx";
-import { awaitTransfer } from "./sendTokens";
+import { awaitTransfer, sendAndConfirmTransfer } from "./sendTokens";
 import {
   readMintConfig, pendingMintIndices, buildMintPendingTxs,
   type SignedMints, type SignAllTx,
@@ -259,11 +259,13 @@ export async function buyPack(args: {
   for (const t of [ready, ...mintTxs]) t.recentBlockhash = fresh.blockhash;
   const signed = await signAllTransactions([ready, ...mintTxs]);
 
-  const signature = await conn.sendRawTransaction(signed[0].serialize(), { skipPreflight: false });
-  // Polled, not confirmTransaction: that waits on a websocket, which the RPC
-  // refused, and then declared a purchase that had LANDED expired (devnet,
+  // Sent again every few seconds until it lands, and confirmed by polling,
+  // not confirmTransaction: that waits on a websocket, which the RPC refused,
+  // and then declared a purchase that had LANDED expired (devnet,
   // 2026-11-05), so the presigned mints were never sent.
-  await awaitTransfer(conn, signature, fresh.lastValidBlockHeight);
+  const signature = await sendAndConfirmTransfer({
+    connection: conn, signed: signed[0], lastValidBlockHeight: fresh.lastValidBlockHeight,
+  });
 
   const { granted, timedOut } = await awaitDraw(conn, wallet, before, timeout);
   return {
