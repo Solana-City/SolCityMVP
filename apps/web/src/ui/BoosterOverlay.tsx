@@ -32,6 +32,7 @@ import { rarityOf } from "@/game/config/packs";
 import { getVariant, showsFromBehind } from "@/game/config/paperDoll";
 import {
   baseConnection, readPackConfig, currencyBalance, buyPack, packUnavailableReason, buyerIsTreasury,
+  fundsShortfall, txErrorText,
   type PackConfigAccount,
   syncOwnedToWardrobe, awaitDraw, ownedIndices, hasPendingDraw, retryStuckDraw,
 } from "@/game/solana/packs";
@@ -287,7 +288,7 @@ export default function BoosterOverlay({
             );
           }
         } catch (err) {
-          setMintNote((err as Error).message?.split("\n")[0] ?? "The mint did not go through.");
+          setMintNote(txErrorText(err, "The mint did not go through."));
         } finally {
           setMinting(false);
         }
@@ -306,6 +307,10 @@ export default function BoosterOverlay({
       ? TREASURY_WALLET_MSG
       : packUnavailableReason(onChain, config);
     if (why) { setError(why); return; }
+    // Before the wallet opens: a wallet with no currency account failed in the
+    // program with a bare "InvalidAccountData".
+    const short = await fundsShortfall(baseConnection(), new PublicKey(wallet), config, onChain, count);
+    if (short) { setError(short); return; }
 
     setSealing(chosen.onChainId);
     setError(null);
@@ -322,7 +327,7 @@ export default function BoosterOverlay({
       setTab("mine");
       setTimeout(() => void refreshSealed(mintConfig), 2500);
     } catch (err) {
-      setError((err as Error).message?.split("\n")[0] ?? "The purchase failed.");
+      setError(txErrorText(err, "The purchase failed."));
     } finally {
       setSealing(null);
     }
@@ -365,7 +370,7 @@ export default function BoosterOverlay({
       await revealAndMint(granted, conn, me, presignedMints, owed);
       void refreshSealed(mintConfig);
     } catch (err) {
-      setError((err as Error).message?.split("\n")[0] ?? "That pack would not open.");
+      setError(txErrorText(err, "That pack would not open."));
       setPhase("choose");
     }
   }, [wallet, signAllTransactions, config, mintConfig, refreshSealed, revealAndMint]);
@@ -477,6 +482,10 @@ export default function BoosterOverlay({
       ? TREASURY_WALLET_MSG
       : packUnavailableReason(onChain, cfgNow);
     if (why) { setError(why); setPhase("choose"); return; }
+    // Before the wallet opens: a wallet with no currency account failed in the
+    // program with a bare "InvalidAccountData" (devnet, 2026-11-05).
+    const short = await fundsShortfall(baseConnection(), new PublicKey(wallet), cfgNow, onChain, count);
+    if (short) { setError(short); setPhase("choose"); return; }
 
     try {
       const conn = baseConnection();
@@ -496,7 +505,7 @@ export default function BoosterOverlay({
     } catch (err) {
       // The wallet's own message is the useful one: "insufficient funds",
       // "User rejected the request".
-      setError((err as Error).message?.split("\n")[0] ?? "The purchase failed.");
+      setError(txErrorText(err, "The purchase failed."));
       setPhase("choose");
     }
   }, [wallet, signAllTransactions, config, count, revealAndMint]);
@@ -530,7 +539,7 @@ export default function BoosterOverlay({
         await revealAndMint(granted, conn, me, null, granted);
       }
     } catch (err) {
-      setError((err as Error).message?.split("\n")[0] ?? "Could not ask again.");
+      setError(txErrorText(err, "Could not ask again."));
     } finally {
       setRetrying(false);
     }

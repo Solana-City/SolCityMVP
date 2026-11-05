@@ -14,6 +14,7 @@ import {
   type SignedMints, type SignAllTx,
 } from "./mint";
 import { setOnChainUnlocks } from "@/game/config/wardrobeUnlocks";
+import { SOLANA_CLUSTER } from "@/game/config/clusterStorage";
 
 /**
  * Buying a pack, on chain.
@@ -360,4 +361,41 @@ export { SOL_CITY_COLLECTIBLES_PROGRAM_ID };
  */
 export function buyerIsTreasury(config: PackConfigAccount, wallet: PublicKey): boolean {
   return getAssociatedTokenAddressSync(config.currencyMint, wallet).equals(config.treasuryTokenAccount);
+}
+
+/**
+ * Why this wallet cannot pay for `count` of `pack`, or null when it can.
+ *
+ * Checked BEFORE the wallet is asked to sign. A wallet with no token account
+ * for the currency at all made the program fail with a bare
+ * "InvalidAccountData" (devnet, 2026-11-05), because `currencyBalance`
+ * answers null for "no account", and the shop only warned on zero.
+ */
+export async function fundsShortfall(
+  conn: Connection, wallet: PublicKey, config: PackConfigAccount, pack: OnChainPack, count: number,
+): Promise<string | null> {
+  const need = pack.price * BigInt(Math.max(1, count));
+  const have = (await currencyBalance(conn, wallet, config.currencyMint)) ?? BigInt(0);
+  if (have >= need) return null;
+  const usdc = (n: bigint) => (Number(n) / 1e6).toFixed(2);
+  const faucet = SOLANA_CLUSTER === "mainnet" ? "" : " Get devnet USDC at faucet.circle.com (Solana Devnet).";
+  return `This needs ${usdc(need)} USDC and the wallet has ${usdc(have)}.${faucet}`;
+}
+
+/**
+ * A failed send in words: the program's own error message when the logs carry
+ * one, else the first line. web3.js puts the logs on the error and the useful
+ * part was being cut off, leaving only "Simulation failed." on screen.
+ */
+export function txErrorText(err: unknown, fallback: string): string {
+  const e = err as { message?: string; logs?: string[]; transactionLogs?: string[] } | null;
+  const logs = e?.logs ?? e?.transactionLogs ?? [];
+  const anchor = logs.find((l) => l.includes("Error Message:"));
+  if (anchor) return anchor.slice(anchor.indexOf("Error Message:") + 14).trim();
+  const failed = [...logs].reverse().find((l) => / failed: /.test(l));
+  if (failed) return failed.slice(failed.indexOf("failed: ") + 8).trim();
+  const msg = e?.message ?? "";
+  const inner = msg.match(/Message:\s*([^\n]+)/);
+  if (inner) return inner[1].trim().slice(0, 200);
+  return msg.split("\n")[0] || fallback;
 }
