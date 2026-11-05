@@ -26,6 +26,7 @@ import {
 } from "./program";
 import { ixDiscriminator, buildInitUnlockStateIx } from "./instructions";
 import { prepareWalletTx } from "./walletTx";
+import { awaitTransfer } from "./sendTokens";
 
 /**
  * The events with a reward to claim. A file that is not there yet (the list
@@ -220,6 +221,6 @@ export async function claimEventDrop(args: {
   tx.add(buildClaimEventItemIx(wallet, drop.id, drop.proof));
   const signed = await args.signTransaction(await prepareWalletTx(conn, tx));
   const signature = await conn.sendRawTransaction(signed.serialize(), { skipPreflight: false });
-  await conn.confirmTransaction({ signature, blockhash, lastValidBlockHeight }, "confirmed");
+  await awaitTransfer(conn, signature, lastValidBlockHeight);
   return signature;
 }

@@ -190,6 +190,13 @@ export async function awaitTransfer(
       // Past this height the blockhash cannot be accepted by anyone, so the
       // transaction is not slow, it is gone. Nothing was spent.
       if (height > lastValidBlockHeight) {
+        // One last look, through the full history: a status that lags the
+        // height must not be read as "dropped". On devnet a purchase that
+        // had landed was reported expired this way, and the player was told
+        // nothing was charged (2026-11-05).
+        const last = (await connection.getSignatureStatuses([signature], { searchTransactionHistory: true })).value[0];
+        if (last?.err) throw new Error(`The network rejected it: ${describeTxError(last.err)}`);
+        if (last?.confirmationStatus === "confirmed" || last?.confirmationStatus === "finalized") return;
         throw new Error("It did not go through in time and was dropped. Nothing left your wallet.");
       }
     }

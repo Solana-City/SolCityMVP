@@ -10,6 +10,7 @@ import {
   type MintConfigAccount,
 } from "./mint";
 import { encodeMetadataArgs, getAssetProof, type AssetProof } from "./sealedPacks";
+import { awaitTransfer } from "./sendTokens";
 
 /**
  * Claiming a cosmetic bought from somebody else, so it can be worn.
@@ -208,6 +209,6 @@ export async function claimCosmetic(args: {
   tx.add(buildClaimOwnedIx({ claimer: wallet, item, proof, config, previousHolder }));
   const signed = await args.signTransaction(await prepareWalletTx(conn, tx));
   const signature = await conn.sendRawTransaction(signed.serialize(), { skipPreflight: false });
-  await conn.confirmTransaction({ signature, blockhash, lastValidBlockHeight }, "confirmed");
+  await awaitTransfer(conn, signature, lastValidBlockHeight);
   return { signature, previousHolder };
 }

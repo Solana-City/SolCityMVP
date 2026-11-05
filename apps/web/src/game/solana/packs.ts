@@ -9,6 +9,7 @@ import {
 import { buildOpenBoosterIx, buildInitUnlockStateIx, buildRetryDrawIx } from "./instructions";
 import { baseConnection } from "./baseRpc";
 import { prepareWalletTx } from "./walletTx";
+import { awaitTransfer } from "./sendTokens";
 import {
   readMintConfig, pendingMintIndices, buildMintPendingTxs,
   type SignedMints, type SignAllTx,
@@ -259,8 +260,10 @@ export async function buyPack(args: {
   const signed = await signAllTransactions([ready, ...mintTxs]);
 
   const signature = await conn.sendRawTransaction(signed[0].serialize(), { skipPreflight: false });
-  await conn.confirmTransaction(
-    { signature, blockhash: fresh.blockhash, lastValidBlockHeight: fresh.lastValidBlockHeight }, "confirmed");
+  // Polled, not confirmTransaction: that waits on a websocket, which the RPC
+  // refused, and then declared a purchase that had LANDED expired (devnet,
+  // 2026-11-05), so the presigned mints were never sent.
+  await awaitTransfer(conn, signature, fresh.lastValidBlockHeight);
 
   const { granted, timedOut } = await awaitDraw(conn, wallet, before, timeout);
   return {
@@ -350,7 +353,7 @@ export async function retryStuckDraw(args: {
   );
   const [signed] = await signAllTransactions([await prepareWalletTx(conn, tx)]);
   const signature = await conn.sendRawTransaction(signed.serialize(), { skipPreflight: false });
-  await conn.confirmTransaction({ signature, blockhash, lastValidBlockHeight }, "confirmed");
+  await awaitTransfer(conn, signature, lastValidBlockHeight);
   const result = await awaitDraw(conn, wallet, before, args.revealTimeoutMs ?? 45_000);
   return { ...result, packId: state.draw.packId };
 }
