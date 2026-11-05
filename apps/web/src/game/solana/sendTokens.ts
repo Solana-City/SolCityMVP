@@ -217,9 +217,18 @@ export async function sendAndConfirmTransfer(args: {
   connection: Connection;
   signed: Transaction | VersionedTransaction;
   lastValidBlockHeight: number;
+  /** What the caller already knows about this transaction (did the wallet
+   *  change it?), carried into the diagnosis if it fails. */
+  context?: string;
 }): Promise<string> {
   const { connection, signed, lastValidBlockHeight } = args;
   const raw = signed.serialize();
+  const blockhash = signed instanceof Transaction ? signed.recentBlockhash : signed.message.recentBlockhash;
+
+  // What happened on the way, so a transaction that never lands says why
+  // instead of only that it timed out: "dropped" was all devnet showed for
+  // an afternoon of attempts, with nothing on chain (2026-11-05).
+  const notes: string[] = args.context ? [args.context] : [];
 
   // The first send runs preflight, because a transaction that cannot work
   // should say so now, in words, rather than time out in a minute and a half.
@@ -230,12 +239,16 @@ export async function sendAndConfirmTransfer(args: {
   let signature: string;
   try {
     signature = await connection.sendRawTransaction(raw);
+    notes.push("preflight ok");
   } catch (err) {
     if (!/Blockhash not found/i.test(String((err as Error)?.message ?? err))) throw err;
+    notes.push("preflight: blockhash not found");
     signature = await connection.sendRawTransaction(raw, { skipPreflight: true });
   }
 
   let settled = false;
+  let resent = 0;
+  let refused = "";
   const waiting = awaitTransfer(connection, signature, lastValidBlockHeight)
     .finally(() => { settled = true; });
 
@@ -246,11 +259,26 @@ export async function sendAndConfirmTransfer(args: {
       // Preflight is skipped from here: it has already passed once, and a
       // transaction the network has seen answers preflight with errors about
       // itself that are not worth surfacing.
-      await connection.sendRawTransaction(raw, { skipPreflight: true }).catch(() => {});
+      await connection.sendRawTransaction(raw, { skipPreflight: true })
+        .then(() => { resent++; })
+        .catch((e) => { refused ||= String((e as Error)?.message ?? e).split("\n")[0].slice(0, 80); });
     }
   })();
 
-  await waiting;
+  try {
+    await waiting;
+  } catch (err) {
+    const valid = blockhash
+      ? await connection.isBlockhashValid(blockhash, { commitment: "processed" })
+        .then((r) => (r.value ? "valid" : "not valid")).catch(() => "unknown")
+      : "missing";
+    notes.push(`resent ${resent}x`, `blockhash ${blockhash?.slice(0, 6)} ${valid}`);
+    if (refused) notes.push(`resend refused: ${refused}`);
+    if (err && typeof err === "object") {
+      try { (err as { diagnosis?: string }).diagnosis = notes.join("; "); } catch { /* frozen */ }
+    }
+    throw err;
+  }
   return signature;
 }
 

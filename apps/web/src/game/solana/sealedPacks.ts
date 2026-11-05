@@ -8,7 +8,7 @@ import {
   deriveUnlockPDA, deriveVrfIdentityPDA, decodeUnlockState, VRF_QUEUE_DEVNET, VRF_PROGRAM_ID,
 } from "./program";
 import { ixDiscriminator, buildInitUnlockStateIx } from "./instructions";
-import { atStep, prepareWalletTx, prepareWalletTxV0 } from "./walletTx";
+import { atStep, checkWalletKept, prepareWalletTx, prepareWalletTxV0 } from "./walletTx";
 import {
   deriveMintConfigPDA, deriveMintAuthorityPDA, pendingMintIndices, buildMintPendingTxs,
   acceptedTreeSlot,
@@ -504,13 +504,15 @@ export async function openSealedPack(args: {
     blockhash: fresh.blockhash,
     items: leftover.length + args.pack.size,
   });
+  const asked = { blockhash: fresh.blockhash, message: open.message.serialize() };
   const signed = await atStep("wallet", args.signAllTransactions([open, ...mintTxs]));
+  const kept = await atStep("wallet", checkWalletKept(conn, asked, signed[0]));
 
   // Rebroadcast and confirmed by polling, the same as a pack bought to open
   // now: one send through a lagging RPC was refused as "Blockhash not found"
   // (sendAndConfirmTransfer, devnet 2026-11-05).
   const signature = await atStep("network", sendAndConfirmTransfer({
-    connection: conn, signed: signed[0], lastValidBlockHeight: fresh.lastValidBlockHeight,
+    connection: conn, signed: signed[0], lastValidBlockHeight: fresh.lastValidBlockHeight, context: kept,
   }));
   return {
     signature,

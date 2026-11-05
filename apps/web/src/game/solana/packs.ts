@@ -8,7 +8,7 @@ import {
 } from "./program";
 import { buildOpenBoosterIx, buildInitUnlockStateIx, buildRetryDrawIx } from "./instructions";
 import { baseConnection } from "./baseRpc";
-import { atStep, prepareWalletTx, type WalletStep } from "./walletTx";
+import { atStep, checkWalletKept, prepareWalletTx, type WalletStep } from "./walletTx";
 import { awaitTransfer, sendAndConfirmTransfer } from "./sendTokens";
 import {
   readMintConfig, pendingMintIndices, buildMintPendingTxs,
@@ -265,14 +265,16 @@ export async function buyPack(args: {
   // every node and still leaves the approval most of a minute.
   const fresh = await conn.getLatestBlockhash("finalized");
   for (const t of [ready, ...mintTxs]) t.recentBlockhash = fresh.blockhash;
+  const asked = { blockhash: fresh.blockhash, message: ready.serializeMessage() };
   const signed = await atStep("wallet", signAllTransactions([ready, ...mintTxs]));
+  const kept = await atStep("wallet", checkWalletKept(conn, asked, signed[0]));
 
   // Sent again every few seconds until it lands, and confirmed by polling,
   // not confirmTransaction: that waits on a websocket, which the RPC refused,
   // and then declared a purchase that had LANDED expired (devnet,
   // 2026-11-05), so the presigned mints were never sent.
   const signature = await atStep("network", sendAndConfirmTransfer({
-    connection: conn, signed: signed[0], lastValidBlockHeight: fresh.lastValidBlockHeight,
+    connection: conn, signed: signed[0], lastValidBlockHeight: fresh.lastValidBlockHeight, context: kept,
   }));
 
   const { granted, timedOut } = await awaitDraw(conn, wallet, before, timeout);
@@ -416,7 +418,11 @@ export function txErrorText(err: unknown, fallback: string): string {
   const declined = (err as { code?: number } | null)?.code === 4001
     || /rejected|declined|cancel/i.test((err as { message?: string } | null)?.message ?? "");
   if (!step || declined) return text;
-  return `${text} (${step === "wallet" ? "in the wallet" : "on the network"})`;
+  const where = `${text} (${step === "wallet" ? "in the wallet" : "on the network"})`;
+  // What sendAndConfirmTransfer saw on the way, off mainnet only: it is for
+  // whoever is debugging the shop, not for a player.
+  const diagnosis = (err as { diagnosis?: string } | null)?.diagnosis;
+  return diagnosis && SOLANA_CLUSTER !== "mainnet" ? `${where} [${diagnosis}]` : where;
 }
 
 function baseErrorText(err: unknown, fallback: string): string {

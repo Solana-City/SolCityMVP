@@ -213,3 +213,44 @@ export async function atStep<T>(step: WalletStep, work: Promise<T>): Promise<T> 
     throw err;
   }
 }
+
+/** The blockhash a transaction of either kind was built on. */
+export function blockhashOf(tx: Transaction | VersionedTransaction): string | null {
+  return tx instanceof Transaction ? tx.recentBlockhash ?? null : tx.message.recentBlockhash;
+}
+
+function messageBytes(tx: Transaction | VersionedTransaction): Uint8Array {
+  return tx instanceof Transaction ? tx.serializeMessage() : tx.message.serialize();
+}
+
+/**
+ * Compares what the wallet signed with what it was handed.
+ *
+ * A wallet may change a transaction before signing it (Phantom adds priority
+ * fees to some, and re-picks the blockhash when it does). That is allowed, but
+ * a blockhash this network does not know can never land, and sending it only
+ * runs the clock out to "dropped" a minute later. So that case stops here, in
+ * words; any other change is returned as a note for the diagnosis.
+ *
+ * Call it with the unsigned transaction's message bytes taken BEFORE signing:
+ * the adapter may hand back the same object, signed.
+ */
+export async function checkWalletKept(
+  conn: Connection, asked: { blockhash: string; message: Uint8Array }, signed: Transaction | VersionedTransaction,
+): Promise<string> {
+  const got = blockhashOf(signed);
+  const same = Buffer.from(messageBytes(signed)).equals(Buffer.from(asked.message));
+  if (same) return "wallet kept the transaction";
+  if (got && got !== asked.blockhash) {
+    const valid = await conn.isBlockhashValid(got, { commitment: "processed" })
+      .then((r) => r.value).catch(() => true);
+    if (!valid) {
+      throw new WalletTxRejected(
+        "Your wallet signed this against a blockhash this network does not know, so it cannot go through. "
+        + "Check that the wallet is on the same network as the city (Phantom: Settings, Developer Settings, Testnet Mode). Nothing was charged.",
+      );
+    }
+    return `wallet changed the transaction and its blockhash (${got.slice(0, 6)})`;
+  }
+  return "wallet changed the transaction, same blockhash";
+}
