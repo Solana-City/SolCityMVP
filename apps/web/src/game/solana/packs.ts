@@ -388,7 +388,12 @@ export async function fundsShortfall(
  * part was being cut off, leaving only "Simulation failed." on screen.
  */
 export function txErrorText(err: unknown, fallback: string): string {
-  const e = err as { message?: string; logs?: string[]; transactionLogs?: string[] } | null;
+  const e = err as { message?: string; logs?: string[]; transactionLogs?: string[]; code?: number } | null;
+  // Phantom's 4100: it does not count this site as connected for the account
+  // in use, typically after switching accounts in the wallet.
+  if (e?.code === 4100 || /not been authorized by the user/i.test(e?.message ?? "")) {
+    return "Your wallet isn't connected to this site for this account. Disconnect the site in your wallet, reload, and connect again.";
+  }
   const logs = e?.logs ?? e?.transactionLogs ?? [];
   const anchor = logs.find((l) => l.includes("Error Message:"));
   if (anchor) return anchor.slice(anchor.indexOf("Error Message:") + 14).trim();
