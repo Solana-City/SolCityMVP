@@ -369,6 +369,8 @@ export default function BoosterOverlay({
       await revealAndMint(granted, conn, me, presignedMints, owed);
       void refreshSealed(mintConfig);
     } catch (err) {
+      // The whole error, logs and code included, for whoever opens the console.
+      console.error("[packs] opening a sealed pack failed", err);
       setError(txErrorText(err, "That pack would not open."));
       setPhase("choose");
     }
@@ -504,6 +506,7 @@ export default function BoosterOverlay({
     } catch (err) {
       // The wallet's own message is the useful one: "insufficient funds",
       // "User rejected the request".
+      console.error("[packs] open now failed", err);
       setError(txErrorText(err, "The purchase failed."));
       setPhase("choose");
     }

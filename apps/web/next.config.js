@@ -1,5 +1,23 @@
 const withPWA = require("@ducanh2912/next-pwa").default;
 
+// A mainnet build without the pack lookup table builds fine and then cannot
+// open a single sealed pack: the transaction is over the size limit without
+// it (src/game/solana/lookupTable.ts). Mainnet has no default address, since
+// the table only exists once scripts/lookup-table-setup.ts has run there, so
+// the build stops here instead of shipping a shop that sells packs nobody can
+// open. `next dev` is left alone.
+if (
+  process.env.NEXT_PUBLIC_SOLANA_CLUSTER === "mainnet"
+  && !process.env.NEXT_PUBLIC_PACK_LOOKUP_TABLE
+  && process.argv.includes("build")
+) {
+  throw new Error(
+    "NEXT_PUBLIC_PACK_LOOKUP_TABLE is not set for a mainnet build. Run "
+    + "`npx tsx scripts/lookup-table-setup.ts <deploy-key.json> --freeze --send` "
+    + "against mainnet (after packs-setup and mint-setup) and set the address it prints.",
+  );
+}
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: false,

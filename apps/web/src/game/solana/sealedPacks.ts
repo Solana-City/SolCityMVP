@@ -8,7 +8,7 @@ import {
   deriveUnlockPDA, deriveVrfIdentityPDA, decodeUnlockState, VRF_QUEUE_DEVNET, VRF_PROGRAM_ID,
 } from "./program";
 import { ixDiscriminator, buildInitUnlockStateIx } from "./instructions";
-import { prepareWalletTx, prepareWalletTxV0 } from "./walletTx";
+import { atStep, prepareWalletTx, prepareWalletTxV0 } from "./walletTx";
 import {
   deriveMintConfigPDA, deriveMintAuthorityPDA, pendingMintIndices, buildMintPendingTxs,
   acceptedTreeSlot,
@@ -493,8 +493,8 @@ export async function openSealedPack(args: {
   // The blockhash is taken again right before the wallet opens, for every
   // transaction in the batch, as buyPack does: the reads and the simulation
   // above take time the blockhash does not have to spare. Nothing is signed
-  // yet, so this is free.
-  const fresh = await conn.getLatestBlockhash();
+  // yet, so this is free. Finalized, for the wallet's RPC: see buyPack.
+  const fresh = await conn.getLatestBlockhash("finalized");
   open.message.recentBlockhash = fresh.blockhash;
   // Only the opening can be simulated now: the mints read a draw that does
   // not exist yet. They carry their own compute limits (buildMintPendingTxs).
@@ -504,14 +504,14 @@ export async function openSealedPack(args: {
     blockhash: fresh.blockhash,
     items: leftover.length + args.pack.size,
   });
-  const signed = await args.signAllTransactions([open, ...mintTxs]);
+  const signed = await atStep("wallet", args.signAllTransactions([open, ...mintTxs]));
 
   // Rebroadcast and confirmed by polling, the same as a pack bought to open
   // now: one send through a lagging RPC was refused as "Blockhash not found"
   // (sendAndConfirmTransfer, devnet 2026-11-05).
-  const signature = await sendAndConfirmTransfer({
+  const signature = await atStep("network", sendAndConfirmTransfer({
     connection: conn, signed: signed[0], lastValidBlockHeight: fresh.lastValidBlockHeight,
-  });
+  }));
   return {
     signature,
     presignedMints: {

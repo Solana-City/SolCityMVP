@@ -8,7 +8,7 @@ import {
 } from "./program";
 import { buildOpenBoosterIx, buildInitUnlockStateIx, buildRetryDrawIx } from "./instructions";
 import { baseConnection } from "./baseRpc";
-import { prepareWalletTx } from "./walletTx";
+import { atStep, prepareWalletTx, type WalletStep } from "./walletTx";
 import { awaitTransfer, sendAndConfirmTransfer } from "./sendTokens";
 import {
   readMintConfig, pendingMintIndices, buildMintPendingTxs,
@@ -255,17 +255,25 @@ export async function buyPack(args: {
   // the approval can take most of a blockhash's life, and the first one, taken
   // before the reads and the simulation above, expired on devnet
   // ("Blockhash not found", 2026-11-05). Nothing is signed yet, so this is free.
-  const fresh = await conn.getLatestBlockhash();
+  //
+  // FINALIZED, not the connection's "confirmed": the wallet simulates the
+  // batch on its own RPC, and a confirmed hash fresh from Helius can be newer
+  // than anything that node has seen, so the wallet refused it as "Blockhash
+  // not found" and nothing was ever sent (devnet, 2026-11-05: "open now" and
+  // opening a sealed pack both failed in Phantom, while "keep sealed", whose
+  // hash was a moment older, went through). A finalized hash is known to
+  // every node and still leaves the approval most of a minute.
+  const fresh = await conn.getLatestBlockhash("finalized");
   for (const t of [ready, ...mintTxs]) t.recentBlockhash = fresh.blockhash;
-  const signed = await signAllTransactions([ready, ...mintTxs]);
+  const signed = await atStep("wallet", signAllTransactions([ready, ...mintTxs]));
 
   // Sent again every few seconds until it lands, and confirmed by polling,
   // not confirmTransaction: that waits on a websocket, which the RPC refused,
   // and then declared a purchase that had LANDED expired (devnet,
   // 2026-11-05), so the presigned mints were never sent.
-  const signature = await sendAndConfirmTransfer({
+  const signature = await atStep("network", sendAndConfirmTransfer({
     connection: conn, signed: signed[0], lastValidBlockHeight: fresh.lastValidBlockHeight,
-  });
+  }));
 
   const { granted, timedOut } = await awaitDraw(conn, wallet, before, timeout);
   return {
@@ -401,6 +409,17 @@ export async function fundsShortfall(
  * part was being cut off, leaving only "Simulation failed." on screen.
  */
 export function txErrorText(err: unknown, fallback: string): string {
+  const text = baseErrorText(err, fallback);
+  // Where it broke, unless the player said no themselves (4001): the same
+  // words mean different fixes from the wallet and from the network.
+  const step = (err as { walletStep?: WalletStep } | null)?.walletStep;
+  const declined = (err as { code?: number } | null)?.code === 4001
+    || /rejected|declined|cancel/i.test((err as { message?: string } | null)?.message ?? "");
+  if (!step || declined) return text;
+  return `${text} (${step === "wallet" ? "in the wallet" : "on the network"})`;
+}
+
+function baseErrorText(err: unknown, fallback: string): string {
   const e = err as { message?: string; logs?: string[]; transactionLogs?: string[]; code?: number } | null;
   // A signed transaction whose blockhash ran out before it was sent: the
   // approval took too long. It never landed, so nothing was charged.

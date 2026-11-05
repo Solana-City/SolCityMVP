@@ -18,7 +18,9 @@ import { SOLANA_CLUSTER } from "@/game/config/clusterStorage";
  * new season) makes a transaction bigger, never wrong.
  *
  * Created by scripts/lookup-table-setup.ts. NEXT_PUBLIC_PACK_LOOKUP_TABLE
- * overrides the address; mainnet has none until that script is run there.
+ * overrides the address. Mainnet has no default: its table exists only once
+ * that script has run there (frozen, see the script), and next.config.js
+ * refuses a mainnet build without the variable.
  */
 const DEFAULTS: Record<string, string> = {
   // 2026-11-05, 23 addresses, authority the devnet test wallet (9592…KhEp),

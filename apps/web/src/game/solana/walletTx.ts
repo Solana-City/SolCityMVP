@@ -192,3 +192,24 @@ export function sendWalletSigned(
     preflightCommitment: "confirmed",
   });
 }
+
+/**
+ * Where a pack flow failed: in the wallet (it refused, or could not sign), or
+ * on the network (sending or confirming what it signed). An error with no
+ * step failed before the wallet opened.
+ *
+ * Shown after the message (txErrorText), because "the transaction expired"
+ * reads the same from the wallet and from the network, and the fix is not.
+ */
+export type WalletStep = "wallet" | "network";
+
+export async function atStep<T>(step: WalletStep, work: Promise<T>): Promise<T> {
+  try {
+    return await work;
+  } catch (err) {
+    if (err && typeof err === "object" && !("walletStep" in err)) {
+      try { (err as { walletStep?: WalletStep }).walletStep = step; } catch { /* frozen: left untagged */ }
+    }
+    throw err;
+  }
+}
