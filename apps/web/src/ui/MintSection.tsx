@@ -7,7 +7,7 @@ import { itemAtGlobalIndex, BOOSTER_BLOCK_START } from "@/game/config/catalogInd
 import { getVariant } from "@/game/config/paperDoll";
 import { rarityOf, RARITY_COLOR } from "@/game/config/packs";
 import { baseConnection, ownedIndices, hasPendingDraw } from "@/game/solana/packs";
-import { readMintConfig, mintedIndices, mintCosmetic, type MintConfigAccount } from "@/game/solana/mint";
+import { readMintConfig, type MintConfigAccount } from "@/game/solana/mint";
 import { heldCosmetics, claimCosmetic, type HeldCosmetic } from "@/game/solana/claim";
 import { syncOwnedToWardrobe } from "@/game/solana/packs";
 import { getNetwork } from "@/game/multiplayer/OnChainMultiplayer";
@@ -42,10 +42,7 @@ export default function MintSection({ wallet }: { wallet: string | null }) {
   const { signTransaction } = useWallet();
   const [config, setConfig] = useState<MintConfigAccount | null>(null);
   const [owned, setOwned] = useState<number[]>([]);
-  const [minted, setMinted] = useState<number[]>([]);
-  const [busy, setBusy] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [justMinted, setJustMinted] = useState<number[]>([]);
   // A pack still waiting on the oracle. The program refuses a mint while it
   // waits, since the mint would take the room the draw was paid for, so the
   // buttons say so instead of failing in the wallet.
@@ -70,7 +67,6 @@ export default function MintSection({ wallet }: { wallet: string | null }) {
       const cfg = await readMintConfig(conn);
       setConfig(cfg);
       if (!cfg) return;
-      setMinted(await mintedIndices(conn, key));
       // Not awaited into the rest: an indexer that is down leaves the claim
       // list empty and nothing else.
       heldCosmetics(conn, key, cfg)
@@ -85,21 +81,6 @@ export default function MintSection({ wallet }: { wallet: string | null }) {
   }, [wallet]);
 
   useEffect(() => { void refresh(); }, [refresh]);
-
-  const mint = useCallback(async (index: number) => {
-    if (!wallet || !signTransaction) return;
-    setBusy(index);
-    setError(null);
-    try {
-      await mintCosmetic({ wallet: new PublicKey(wallet), index, signTransaction });
-      setMinted((m) => [...m, index]);
-      setJustMinted((m) => [...m, index]);
-    } catch (err) {
-      setError((err as Error).message?.split("\n")[0] ?? "The mint failed.");
-    } finally {
-      setBusy(null);
-    }
-  }, [wallet, signTransaction]);
 
   const claim = useCallback(async (item: HeldCosmetic) => {
     if (!wallet || !signTransaction || !config) return;
@@ -146,20 +127,16 @@ export default function MintSection({ wallet }: { wallet: string | null }) {
 
   if (!wallet || (!config && drops.length === 0)) return null;
 
-  // No mint config, no MINT buttons: only an event claim brought us here.
-  const mintable = (config ? owned : [])
-    .filter((i) => i >= BOOSTER_BLOCK_START && !minted.includes(i))
-    .map((i) => ({ index: i, entry: itemAtGlobalIndex(i) }))
-    .filter((x) => x.entry !== undefined);
-
-  const held = minted.length;
-  if (mintable.length === 0 && held === 0 && claimable.length === 0 && drops.length === 0) return null;
+  // Only what needs a decision here: an event reward to claim, or an asset
+  // bought elsewhere to make wearable. Pack items whose mint did not land are
+  // no longer listed: they read "MINT NOW" on their own wardrobe tile
+  // (owner, 2026-11-05), so this section stays out of the way otherwise.
+  if (claimable.length === 0 && drops.length === 0) return null;
 
   return (
     <div style={{ marginTop: 14, fontSize: 8, lineHeight: 1.8 }}>
       <div style={{ color: "#aaaacc", marginBottom: 8 }}>
         COLLECTIBLES
-        {held > 0 && <span style={{ color: "#6f7696" }}>{"  "}{held} already yours</span>}
       </div>
 
       {error && (
@@ -205,45 +182,9 @@ export default function MintSection({ wallet }: { wallet: string | null }) {
         </div>
       )}
 
-      {drawPending && (mintable.length > 0 || drops.length > 0) && (
+      {drawPending && drops.length > 0 && (
         <div style={{ color: "#ffd479", marginBottom: 8 }}>
-          A pack is still being drawn. Minting opens again once it lands.
-        </div>
-      )}
-
-      {mintable.length === 0 ? (
-        drops.length > 0 ? null : (
-          <div style={{ color: "#6f7696" }}>Every pack item you own is already an asset.</div>
-        )
-      ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          {mintable.map(({ index, entry }) => {
-            const variant = getVariant(entry!.category, entry!.variant.id);
-            const rarity = rarityOf(entry!.category, entry!.variant.id);
-            return (
-              <div key={index} style={{
-                display: "flex", alignItems: "center", justifyContent: "space-between",
-                gap: 10, padding: "6px 8px", background: "rgba(255,255,255,0.03)",
-              }}>
-                <span>
-                  <span style={{ color: RARITY_COLOR[rarity] }}>■{" "}</span>
-                  {variant?.name ?? entry!.variant.id}
-                </span>
-                <button
-                  disabled={busy !== null || drawPending}
-                  onClick={() => void mint(index)}
-                  style={{
-                    fontSize: 8, padding: "4px 10px", cursor: busy ? "default" : "pointer",
-                    border: "1px solid #14F195", background: "transparent",
-                    color: busy === index ? "#6f7696" : "#14F195",
-                    fontFamily: "inherit",
-                  }}
-                >
-                  {busy === index ? "MINTING…" : "MINT"}
-                </button>
-              </div>
-            );
-          })}
+          A pack is still being drawn. Claiming opens again once it lands.
         </div>
       )}
 
@@ -283,11 +224,6 @@ export default function MintSection({ wallet }: { wallet: string | null }) {
         </div>
       )}
 
-      {justMinted.length > 0 && (
-        <div style={{ color: "#14F195", marginTop: 8 }}>
-          {justMinted.length} now in your wallet.
-        </div>
-      )}
     </div>
   );
 }

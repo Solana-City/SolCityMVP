@@ -94,6 +94,21 @@ export function isVariantUnlocked(
   return false;
 }
 
+/**
+ * A pack item this wallet OWNS on chain that is not an asset yet: drawn, but
+ * its mint did not land. Normally the mint rides the same approval as the
+ * pack and this never shows; it is the fallback, and the wardrobe offers the
+ * item as "MINT NOW" on its own tile rather than a separate list (owner,
+ * 2026-11-05). False while either answer is unknown.
+ */
+export function isOwedMint(wallet: string | null, category: LayerCategory, variant: LayerVariant): boolean {
+  if (!wallet || !BOOSTER_ONCHAIN || !isBoosterItem(category, variant.id)) return false;
+  const key = unlockKeyOf(category, variant.id);
+  const chain = onchainUnlocks.get(wallet);
+  const held = heldItems.get(wallet);
+  return !!chain && !!held && chain.has(key) && !held.has(key);
+}
+
 /** In the booster block of the catalog, which is the range the program checks. */
 function isBoosterItem(category: LayerCategory, id: string): boolean {
   const index = globalIndexOf(category, id);

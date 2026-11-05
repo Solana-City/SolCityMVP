@@ -24,7 +24,12 @@ import {
   showsFromBehind,
 } from "@/game/config/paperDoll";
 import { profileManager } from "@/game/config/profileManager";
-import { isVariantUnlocked, unlockItem } from "@/game/config/wardrobeUnlocks";
+import { isVariantUnlocked, isOwedMint, unlockItem } from "@/game/config/wardrobeUnlocks";
+import { useWallet } from "@solana/wallet-adapter-react";
+import { PublicKey } from "@solana/web3.js";
+import { mintCosmetic } from "@/game/solana/mint";
+import { txErrorText } from "@/game/solana/packs";
+import { globalIndexOf } from "@/game/config/catalogIndex";
 import { RARITY_LABEL, rarityTheme, tileKindOf, type TileKind } from "@/game/config/packs";
 import { RarityFrame, innerSize } from "@/ui/RarityFrame";
 
@@ -443,6 +448,30 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
     setTimeout(() => setFlash(null), 600);
   }, [wallet]);
 
+  // An item drawn from a pack whose mint did not land: its tile reads
+  // "MINT NOW", and tapping it mints that one item and wears it. The fallback
+  // for when the mint that rides the pack's approval misses; it replaces the
+  // separate MINT list (owner, 2026-11-05).
+  const { signTransaction } = useWallet();
+  const [mintingKey, setMintingKey] = useState<string | null>(null);
+  const [mintError, setMintError] = useState<{ key: string; text: string } | null>(null);
+  const mintNow = useCallback(async (category: LayerCategory, v: LayerVariant) => {
+    const key = `${category}:${v.id}`;
+    if (!wallet || mintingKey) return;
+    if (!signTransaction) { setMintError({ key, text: "Your wallet can't sign here. Reconnect it." }); return; }
+    setMintingKey(key);
+    setMintError(null);
+    try {
+      await mintCosmetic({ wallet: new PublicKey(wallet), index: globalIndexOf(category, v.id), signTransaction });
+      bumpUnlocks((n) => n + 1);
+      setLoadout((prev) => ({ ...prev, [category]: v.id }));
+    } catch (err) {
+      setMintError({ key, text: txErrorText(err, "The mint did not go through.") });
+    } finally {
+      setMintingKey(null);
+    }
+  }, [wallet, mintingKey, signTransaction]);
+
   const selectHairColor = useCallback((colorId: string) => {
     setLoadout(prev => ({ ...prev, hairColor: colorId }));
     setFlash(`hairColor:${colorId}`);
@@ -763,7 +792,10 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
                 {variants.map(v => {
                   const isSelected = currentVariantId === v.id;
                   const isFlashing = flash === `${activeCategory}:${v.id}`;
-                  const locked = !isVariantUnlocked(wallet, activeCategory, v);
+                  const unlocked = isVariantUnlocked(wallet, activeCategory, v);
+                  const owed = !unlocked && isOwedMint(wallet, activeCategory, v);
+                  const locked = !unlocked && !owed;
+                  const owedKey = `${activeCategory}:${v.id}`;
                   const hintFlashing = flash === `locked:${activeCategory}:${v.id}`;
                   const kind = tileKindOf(activeCategory, v);
                   return (
@@ -775,7 +807,7 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
                       hintFlashing={hintFlashing}
                       compact={isMobile}
                       kind={kind}
-                      onClick={() => selectVariant(activeCategory, v.id)}
+                      onClick={() => (owed ? void mintNow(activeCategory, v) : selectVariant(activeCategory, v.id))}
                     >
                       <div style={{ position: "relative", lineHeight: 0 }}>
                         {/* Cropped: the grid shows the hat, not the character
@@ -828,6 +860,14 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
                         }}>
                           {!v.unlockHint && <PixelImg src="/assets/ui/icon_pack02.png" size={10} />}
                           {unlockHintFor(v)}
+                        </span>
+                      )}
+                      {owed && (
+                        <span style={{
+                          fontSize: 6, letterSpacing: 0.5, textAlign: "center", lineHeight: 1.4,
+                          color: mintError?.key === owedKey ? "#ff9aa6" : "#B7E928",
+                        }}>
+                          {mintingKey === owedKey ? "MINTING…" : mintError?.key === owedKey ? mintError.text : "MINT NOW"}
                         </span>
                       )}
                     </VariantCard>
