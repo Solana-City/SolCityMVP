@@ -11,7 +11,7 @@ import { baseConnection } from "./baseRpc";
 import { atStep, checkWalletKept, prepareWalletTx, type WalletStep } from "./walletTx";
 import { awaitTransfer, sendAndConfirmTransfer } from "./sendTokens";
 import {
-  readMintConfig, pendingMintIndices, buildMintPendingTxs,
+  readMintConfig, pendingMintIndices,
   type SignedMints, type SignAllTx,
 } from "./mint";
 import { setOnChainUnlocks } from "@/game/config/wardrobeUnlocks";
@@ -235,46 +235,33 @@ export async function buyPack(args: {
   const mintConfig = await readMintConfig(conn);
   const leftover = mintConfig ? await pendingMintIndices(conn, wallet) : [];
 
-  const { blockhash, lastValidBlockHeight } = await conn.getLatestBlockhash();
+  const { blockhash } = await conn.getLatestBlockhash();
   const tx = new Transaction({ recentBlockhash: blockhash, feePayer: wallet }).add(...ixs);
-
-  // One approval, two kinds of transaction: the one that pays, and the ones
-  // that deliver. The second kind names no index, so it can be signed now and
-  // sent when the oracle has decided what the indices are.
-  const mintTxs = mintConfig
-    ? buildMintPendingTxs({
-        wallet, config: mintConfig, blockhash,
-        items: leftover.length + count * pack.size,
-      })
-    : [];
-  // Only the payment can be simulated now: the mints read a draw that does
-  // not exist yet. They carry their own compute limits (buildMintPendingTxs).
   const ready = await prepareWalletTx(conn, tx);
-  // The blockhash is taken again right before the wallet opens, for every
-  // transaction in the batch: a wallet that simulates each one before showing
-  // the approval can take most of a blockhash's life, and the first one, taken
-  // before the reads and the simulation above, expired on devnet
-  // ("Blockhash not found", 2026-11-05). Nothing is signed yet, so this is free.
+
+  // The payment is signed ALONE. It used to share one approval with the
+  // mint_pending transactions that deliver the items, but those cannot run
+  // until the oracle answers: the program refuses every mint while a draw is
+  // pending (BoosterPending), and the payment is what makes it pending. A
+  // wallet that simulates a batch in order sees the second transaction fail,
+  // and Phantom refused the batch outright with 4100, "not authorized", for
+  // every account (devnet, 2026-11-05), while a single transaction ("keep
+  // sealed", "MINT NOW") went through. The items are minted after the draw,
+  // with a second approval (settleMints, with no pre-signed mints).
   //
-  // FINALIZED, not the connection's "confirmed": the wallet simulates the
-  // batch on its own RPC, and a confirmed hash fresh from Helius can be newer
-  // than anything that node has seen, so the wallet refused it as "Blockhash
-  // not found" and nothing was ever sent (devnet, 2026-11-05: "open now" and
-  // opening a sealed pack both failed in Phantom, while "keep sealed", whose
-  // hash was a moment older, went through). A finalized hash is known to
-  // every node and still leaves the approval most of a minute.
-  const fresh = await conn.getLatestBlockhash("finalized");
-  for (const t of [ready, ...mintTxs]) t.recentBlockhash = fresh.blockhash;
+  // The blockhash is taken again right before the wallet opens: the reads and
+  // the simulation above take time it does not have to spare.
+  const fresh = await conn.getLatestBlockhash();
+  ready.recentBlockhash = fresh.blockhash;
   const asked = { blockhash: fresh.blockhash, message: ready.serializeMessage() };
-  const signed = await atStep("wallet", signAllTransactions([ready, ...mintTxs]));
-  const kept = await atStep("wallet", checkWalletKept(conn, asked, signed[0]));
+  const [signedTx] = await atStep("wallet", signAllTransactions([ready]));
+  const kept = await atStep("wallet", checkWalletKept(conn, asked, signedTx));
 
   // Sent again every few seconds until it lands, and confirmed by polling,
   // not confirmTransaction: that waits on a websocket, which the RPC refused,
-  // and then declared a purchase that had LANDED expired (devnet,
-  // 2026-11-05), so the presigned mints were never sent.
+  // and then declared a purchase that had LANDED expired (devnet, 2026-11-05).
   const signature = await atStep("network", sendAndConfirmTransfer({
-    connection: conn, signed: signed[0], lastValidBlockHeight: fresh.lastValidBlockHeight, context: kept,
+    connection: conn, signed: signedTx, lastValidBlockHeight: fresh.lastValidBlockHeight, context: kept,
   }));
 
   const { granted, timedOut } = await awaitDraw(conn, wallet, before, timeout);
@@ -282,9 +269,7 @@ export async function buyPack(args: {
     signature,
     granted,
     timedOut,
-    presignedMints: mintConfig
-      ? { txs: signed.slice(1), lastValidBlockHeight: fresh.lastValidBlockHeight }
-      : null,
+    presignedMints: null,
     owed: [...leftover, ...granted.filter((i) => !leftover.includes(i))].sort((a, b) => a - b),
   };
 }

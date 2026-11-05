@@ -2,9 +2,9 @@
  * Sol City — a sealed pack on devnet, end to end, with real money.
  *
  * Buys one sealed pack, waits for the indexer to see it, opens it, waits for
- * the VRF draw, and sends the mints signed at the opening: the same library
+ * the VRF draw, and mints what was drawn: the same library
  * calls BoosterOverlay makes ("KEEP SEALED", then "OPEN" under YOUR PACKS),
- * with a keypair standing in for the wallet's single approval.
+ * with a keypair standing in for the wallet's two approvals (open, then mint).
  *
  *   npx tsx scripts/sealed-pack-e2e.ts <buyer-keypair.json> [packId]
  *
@@ -46,7 +46,7 @@ async function main() {
   let wallet = kp.publicKey;
   const conn = devnetConnection();
 
-  // The wallet's one approval, for a batch of either kind.
+  // The wallet's approval, for a batch of either kind.
   const signAll = async <T extends Transaction | VersionedTransaction>(txs: T[]): Promise<T[]> =>
     txs.map((t) => {
       if (t instanceof VersionedTransaction) t.sign([kp]); else t.partialSign(kp);
@@ -102,14 +102,16 @@ async function main() {
   if (timedOut) throw new Error("opened, but the draw did not land in 45 s");
   console.log(`drawn       ${granted.length} new: ${granted.map((i) => itemAtGlobalIndex(i)?.variant.id ?? i).join(", ") || "(all duplicates)"}`);
 
-  // 3. MINT, with what was signed at the opening
+  // 3. MINT, a second approval now that the draw has landed
   const owed = [...leftover, ...granted.filter((i) => !leftover.includes(i))].sort((a, b) => a - b);
-  const { minted, failed } = await settleMints({ conn, wallet, presigned: presignedMints, expected: owed });
+  const { minted, failed } = await settleMints({
+    conn, wallet, presigned: presignedMints, expected: owed, signAllTransactions: signAll,
+  });
   console.log(`minted      ${minted.length} of ${owed.length}${failed.length ? `, failed ${failed.join(", ")}` : ""}`);
 
   // The indexer lags the burn by a few seconds, as it lags the mint.
   let still = true;
-  for (let i = 0; i < 15 && still; i++) {
+  for (let i = 0; i < 40 && still; i++) {
     still = (await heldSealedPacks(conn, wallet, mintConfig)).some((p) => p.assetId.equals(fresh!.assetId));
     if (still) await sleep(2000);
   }

@@ -10,7 +10,7 @@ import {
 import { ixDiscriminator, buildInitUnlockStateIx } from "./instructions";
 import { atStep, checkWalletKept, prepareWalletTx, prepareWalletTxV0 } from "./walletTx";
 import {
-  deriveMintConfigPDA, deriveMintAuthorityPDA, pendingMintIndices, buildMintPendingTxs,
+  deriveMintConfigPDA, deriveMintAuthorityPDA, pendingMintIndices,
   acceptedTreeSlot,
   type MintConfigAccount, type SignedMints,
 } from "./mint";
@@ -450,21 +450,19 @@ export function buildOpenPackFromAssetIx(params: {
 }
 
 /**
- * Burns a sealed pack, asks for its draw, and signs the mint that follows,
- * all in one approval.
+ * Burns a sealed pack and asks for its draw, in one approval.
  *
  * The same shape as buying one to open now, because from the opener's side it
  * is the same thing: something is spent, the oracle decides, and the items
- * have to arrive without asking again. The mint transactions name no index,
- * so they can be signed here and held until the draw lands.
+ * are minted once the draw lands (a second approval, through settleMints).
  *
  * The UnlockState is created first if the opener has never had one, which is
  * the normal case for somebody who was GIFTED a pack: they may never have
  * bought anything in the city at all.
  *
  * The opening is a v0 transaction against the pack lookup table: written out
- * in full it does not fit (lookupTable.ts). The mints stay legacy; a wallet
- * signs a batch of both kinds in one approval.
+ * in full it does not fit (lookupTable.ts). It is signed alone, not in a batch
+ * with the mints: see buyPack for why that batch was refused.
  */
 export async function openSealedPack(args: {
   wallet: PublicKey;
@@ -476,7 +474,8 @@ export async function openSealedPack(args: {
   conn?: Connection;
 }): Promise<{
   signature: string;
-  presignedMints: SignedMints;
+  /** Always null now; kept so callers hand it to settleMints unchanged. */
+  presignedMints: SignedMints | null;
   leftover: number[];
   /** What the opener owned before the burn, for awaitDraw. Read here,
    *  BEFORE sending: an oracle that answers quickly would otherwise land
@@ -487,42 +486,25 @@ export async function openSealedPack(args: {
   const { tx: open, before } = await buildOpenSealedPackTx({ ...args, conn });
 
   // Anything an earlier mint left behind comes first on chain, so it has to
-  // be counted here or this pack's last items have nothing to ride in.
+  // be counted here or this pack's last items are left out of the mint.
   const leftover = await pendingMintIndices(conn, args.wallet);
 
-  // The blockhash is taken again right before the wallet opens, for every
-  // transaction in the batch, as buyPack does: the reads and the simulation
-  // above take time the blockhash does not have to spare. Nothing is signed
-  // yet, so this is free. Finalized, for the wallet's RPC: see buyPack.
-  const fresh = await conn.getLatestBlockhash("finalized");
+  // The blockhash is taken again right before the wallet opens, as buyPack
+  // does: the reads and the simulation above take time it does not have to
+  // spare. Nothing is signed yet, so this is free.
+  const fresh = await conn.getLatestBlockhash();
   open.message.recentBlockhash = fresh.blockhash;
-  // Only the opening can be simulated now: the mints read a draw that does
-  // not exist yet. They carry their own compute limits (buildMintPendingTxs).
-  const mintTxs = buildMintPendingTxs({
-    wallet: args.wallet,
-    config: args.mintConfig,
-    blockhash: fresh.blockhash,
-    items: leftover.length + args.pack.size,
-  });
   const asked = { blockhash: fresh.blockhash, message: open.message.serialize() };
-  const signed = await atStep("wallet", args.signAllTransactions([open, ...mintTxs]));
-  const kept = await atStep("wallet", checkWalletKept(conn, asked, signed[0]));
+  const [signedTx] = await atStep("wallet", args.signAllTransactions([open]));
+  const kept = await atStep("wallet", checkWalletKept(conn, asked, signedTx));
 
   // Rebroadcast and confirmed by polling, the same as a pack bought to open
   // now: one send through a lagging RPC was refused as "Blockhash not found"
   // (sendAndConfirmTransfer, devnet 2026-11-05).
   const signature = await atStep("network", sendAndConfirmTransfer({
-    connection: conn, signed: signed[0], lastValidBlockHeight: fresh.lastValidBlockHeight, context: kept,
+    connection: conn, signed: signedTx, lastValidBlockHeight: fresh.lastValidBlockHeight, context: kept,
   }));
-  return {
-    signature,
-    presignedMints: {
-      txs: signed.slice(1) as Transaction[],
-      lastValidBlockHeight: fresh.lastValidBlockHeight,
-    },
-    leftover,
-    before,
-  };
+  return { signature, presignedMints: null, leftover, before };
 }
 
 /** A wallet's signAllTransactions, for a batch that mixes v0 and legacy. */
