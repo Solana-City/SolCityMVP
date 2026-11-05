@@ -2,7 +2,7 @@
  * Sol City - render every collectible as the picture a marketplace will show.
  *
  *   npx tsx scripts/build-collectible-art.ts \
- *     --base https://<arns name>.arweave.net/ \
+ *     --base https://solanacity.ar.io/ \
  *     --image-base https://arweave.net/<gif manifest txid>/ \
  *     --json-out <empty folder to upload>
  *
@@ -49,6 +49,11 @@
  * pointed at a new one when a season adds items or a name is corrected. A raw
  * manifest cannot be `base_uri` itself, because it is frozen at upload and
  * `base_uri` is one string for every season (see PACK_RULES).
+ *
+ * The gateway is ar.io, not arweave.net: the name was bought through Turbo
+ * and is registered on Solana, and arweave.net does not resolve those. It
+ * still returned 404 twelve hours after ar.io served every file
+ * (2026-11-05). The pictures stay on arweave.net, by transaction path.
  *
  * `--image-base` is where the pictures live: their own manifest, permanent,
  * never re-pointed. The JSON may change; the picture it names may not.
