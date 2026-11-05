@@ -1458,9 +1458,30 @@ pub mod sol_city_collectibles {
     ///
     /// This one takes no index. It reads the work out of the account at the
     /// moment it runs, so its bytes and its account list are the same before
-    /// and after the draw. The client can therefore have the wallet sign it in
-    /// the same breath as the purchase, hold it, and send it when the oracle
-    /// lands. One approval buys a pack and delivers what was in it.
+    /// and after the draw.
+    ///
+    /// ── Who may send it ─────────────────────────────────────────────────
+    ///
+    /// Anyone. The `payer` signs and pays (fees, the account's growth, the
+    /// wear log); the `owner` does not sign at all. That is what lets one
+    /// approval buy a pack AND deliver it: the site's sponsor wallet sends
+    /// this right after the draw lands, and the player is never asked again.
+    /// The old route, having the wallet pre-sign this beside the purchase,
+    /// needed the wallet to accept a batch whose second transaction fails
+    /// until the oracle answers, and Phantom refused it (devnet, 2026-11-05).
+    ///
+    /// Opening it to any signer changes nothing about WHAT is minted or to
+    /// WHOM, because the caller chooses neither:
+    ///
+    ///   * the items are read from the owner's UnlockState, never passed in;
+    ///   * every asset's leaf owner and delegate is `owner`, which must be the
+    ///     UnlockState's own authority, never the payer;
+    ///   * the wear log is the owner's, addressed by the owner's key.
+    ///
+    /// What a stranger CAN do is mint someone's owned items for them, at the
+    /// stranger's expense, sooner than they might have. That is the outcome
+    /// the owner paid for when they bought the pack, so it is not a harm. The
+    /// owner can still send it themselves, as both payer and owner.
     ///
     /// ── Which items it takes ────────────────────────────────────────────
     ///
@@ -1481,7 +1502,7 @@ pub mod sol_city_collectibles {
     /// account, Solana runs them one after the other, and the second sees what
     /// the first did and takes the next ones. A call with nothing left to do
     /// fails loudly rather than reporting success for no work.
-    pub fn mint_pending(ctx: Context<MintUnlock>, limit: u8) -> Result<()> {
+    pub fn mint_pending(ctx: Context<MintPending>, limit: u8) -> Result<()> {
         let cfg = &ctx.accounts.mint_config;
         require_keys_eq!(
             ctx.accounts.merkle_tree.key(), cfg.merkle_tree, CollectiblesError::WrongMintTarget
@@ -1544,12 +1565,12 @@ pub mod sol_city_collectibles {
         }
 
         // Room for one wear-log entry per asset, before any is minted (audit
-        // R-21). The log's address depends on the wallet alone, so this
-        // pre-signed transaction already names it.
-        let payer_key = ctx.accounts.payer.key();
+        // R-21). The OWNER's log, addressed by the owner's key; the payer
+        // only funds it.
+        let owner_key = ctx.accounts.owner.key();
         let mut log = open_wear_log(
             &ctx.accounts.wear_log.to_account_info(),
-            &payer_key,
+            &owner_key,
             &ctx.accounts.payer.to_account_info(),
             &ctx.accounts.system_program.to_account_info(),
             todo.len(),
@@ -1565,8 +1586,10 @@ pub mod sol_city_collectibles {
             MintToCollectionV1Cpi {
                 __program: &ctx.accounts.bubblegum_program,
                 tree_config: &ctx.accounts.tree_config,
-                leaf_owner: &ctx.accounts.payer,
-                leaf_delegate: &ctx.accounts.payer,
+                // The owner, never the payer: whoever sends this, the asset
+                // is the owner's (see "Who may send it" above).
+                leaf_owner: &ctx.accounts.owner,
+                leaf_delegate: &ctx.accounts.owner,
                 merkle_tree: &ctx.accounts.merkle_tree,
                 payer: &ctx.accounts.payer,
                 tree_creator_or_delegate: &ctx.accounts.mint_authority,
@@ -2807,6 +2830,64 @@ pub struct MintUnlock<'info> {
     pub system_program: Program<'info, System>,
     /// CHECK: the payer's WearLog (audit R-21), created on first use and
     /// checked against its seeds in `open_wear_log`.
+    #[account(mut)]
+    pub wear_log: UncheckedAccount<'info>,
+}
+
+/// `mint_pending`: MintUnlock with the payer and the owner apart.
+///
+/// The payer signs and pays and may be anyone (the site's sponsor wallet, or
+/// the owner themselves). The owner signs nothing; what keeps this safe is
+/// that the owner is pinned to the UnlockState's own authority, and every
+/// asset goes to the owner (see `mint_pending`, "Who may send it").
+#[derive(Accounts)]
+pub struct MintPending<'info> {
+    #[account(mut)]
+    pub payer: Signer<'info>,
+    /// CHECK: the wallet whose items are minted, and the leaf owner of every
+    /// asset. Not a signer. Bound to the UnlockState below, which is derived
+    /// from it AND must name it as its authority.
+    pub owner: UncheckedAccount<'info>,
+    #[account(
+        mut,
+        seeds = [UNLOCKS_SEED, owner.key().as_ref()],
+        bump,
+        constraint = unlock_state.authority == owner.key() @ CollectiblesError::WrongUnlockOwner,
+    )]
+    pub unlock_state: Account<'info, UnlockState>,
+    #[account(seeds = [MINT_CONFIG_SEED], bump, constraint = !mint_config.paused @ CollectiblesError::Paused)]
+    pub mint_config: Account<'info, MintConfig>,
+    /// CHECK: the PDA that is the tree delegate and collection authority. It
+    /// signs the CPI; Bubblegum checks it against the tree and collection.
+    #[account(seeds = [MINT_AUTHORITY_SEED], bump)]
+    pub mint_authority: UncheckedAccount<'info>,
+    /// CHECK: Bubblegum's tree config, derived from and checked against the tree.
+    #[account(mut)]
+    pub tree_config: UncheckedAccount<'info>,
+    /// CHECK: address-checked against mint_config.merkle_tree.
+    #[account(mut)]
+    pub merkle_tree: UncheckedAccount<'info>,
+    /// CHECK: address-checked against mint_config.collection_mint.
+    pub collection_mint: UncheckedAccount<'info>,
+    /// CHECK: Metaplex collection metadata, checked by Bubblegum.
+    #[account(mut)]
+    pub collection_metadata: UncheckedAccount<'info>,
+    /// CHECK: Metaplex master edition, checked by Bubblegum.
+    pub collection_edition: UncheckedAccount<'info>,
+    /// CHECK: Bubblegum's own signing PDA, checked by Bubblegum.
+    pub bubblegum_signer: UncheckedAccount<'info>,
+    /// CHECK: SPL Noop. Checked by Bubblegum.
+    pub log_wrapper: UncheckedAccount<'info>,
+    /// CHECK: SPL Account Compression. Checked by Bubblegum.
+    pub compression_program: UncheckedAccount<'info>,
+    /// CHECK: Token Metadata. Checked by Bubblegum.
+    pub token_metadata_program: UncheckedAccount<'info>,
+    /// CHECK: Bubblegum itself, pinned for the same reason as in MintUnlock.
+    #[account(address = BUBBLEGUM_ID)]
+    pub bubblegum_program: UncheckedAccount<'info>,
+    pub system_program: Program<'info, System>,
+    /// CHECK: the OWNER's WearLog (audit R-21), created on first use at the
+    /// payer's expense and checked against the owner's seeds in `open_wear_log`.
     #[account(mut)]
     pub wear_log: UncheckedAccount<'info>,
 }

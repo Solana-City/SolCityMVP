@@ -6,7 +6,12 @@
  * calls BoosterOverlay makes ("KEEP SEALED", then "OPEN" under YOUR PACKS),
  * with a keypair standing in for the wallet's two approvals (open, then mint).
  *
- *   npx tsx scripts/sealed-pack-e2e.ts <buyer-keypair.json> [packId]
+ *   npx tsx scripts/sealed-pack-e2e.ts <buyer-keypair.json> [packId] [--sponsored]
+ *
+ * --sponsored mints the way the site does once SOLCITY_MINT_SPONSOR_KEY is
+ * set: lib/mint/sponsor.ts sends mint_pending with the keypair given as the
+ * sponsor, and the buyer approves only the opening. Needs the collectibles
+ * program with the sponsored mint_pending (payer and owner apart).
  *
  * The keypair needs devnet SOL and the pack price in devnet USDC. When it is
  * the treasury wallet, which cannot buy from itself, it funds a throwaway
@@ -24,6 +29,7 @@ import {
 } from "@solana/spl-token";
 import { devnetConnection, sendAndPoll } from "./_rpc";
 import { readMintConfig, settleMints } from "../src/game/solana/mint";
+import { sponsorMint } from "../src/lib/mint/sponsor";
 import { readPackConfig, awaitDraw, buyerIsTreasury } from "../src/game/solana/packs";
 import { buySealedPacks, heldSealedPacks, openSealedPack } from "../src/game/solana/sealedPacks";
 import { itemAtGlobalIndex } from "../src/game/config/catalogIndex";
@@ -42,7 +48,9 @@ async function main() {
   const path = process.argv[2];
   if (!path) throw new Error("Pass the buyer keypair path.");
   let kp = Keypair.fromSecretKey(Uint8Array.from(JSON.parse(readFileSync(path, "utf8"))));
-  const packId = Number(process.argv[3] ?? 1);
+  const sponsored = process.argv.includes("--sponsored");
+  const packId = Number(process.argv.slice(3).find((a) => !a.startsWith("--")) ?? 1);
+  const sponsor = kp;
   let wallet = kp.publicKey;
   const conn = devnetConnection();
 
@@ -103,12 +111,23 @@ async function main() {
   if (timedOut) throw new Error("opened, but the draw did not land in 45 s");
   console.log(`drawn       ${granted.length} new: ${granted.map((i) => itemAtGlobalIndex(i)?.variant.id ?? i).join(", ") || "(all duplicates)"}`);
 
-  // 3. MINT, a second approval now that the draw has landed
+  // 3. MINT: by the sponsor with no approval (--sponsored), or by a second
+  // approval now that the draw has landed.
   const owed = [...leftover, ...granted.filter((i) => !leftover.includes(i))].sort((a, b) => a - b);
-  const { minted, failed } = await settleMints({
-    conn, wallet, presigned: presignedMints, expected: owed, signAllTransactions: signAll,
-  });
-  console.log(`minted      ${minted.length} of ${owed.length}${failed.length ? `, failed ${failed.join(", ")}` : ""}`);
+  const t2 = Date.now();
+  let minted: number[];
+  let failed: number[];
+  if (sponsored) {
+    const out = await sponsorMint(wallet, { conn, sponsor });
+    if (out.message) console.log(`sponsor     ${out.status}: ${out.message}`);
+    minted = out.minted;
+    failed = owed.filter((i) => !minted.includes(i));
+  } else {
+    ({ minted, failed } = await settleMints({
+      conn, wallet, presigned: presignedMints, expected: owed, signAllTransactions: signAll,
+    }));
+  }
+  console.log(`minted      ${minted.length} of ${owed.length}${sponsored ? " by the sponsor" : ""} in ${((Date.now() - t2) / 1000).toFixed(1)} s${failed.length ? `, failed ${failed.join(", ")}` : ""}`);
 
   // The indexer lags the burn by a few seconds, as it lags the mint.
   let still = true;

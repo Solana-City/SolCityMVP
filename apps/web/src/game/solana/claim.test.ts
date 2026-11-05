@@ -42,6 +42,22 @@ describe("the mints", () => {
       expect(last.isWritable).toBe(true);
     }
   });
+
+  it("let a sponsor pay for the owner's mint, and give the owner everything", () => {
+    const sponsor = Keypair.generate().publicKey;
+    const { keys } = buildMintPendingIx({ payer: sponsor, owner: claimer, limit: 5, config });
+    // The sponsor signs and pays; the owner signs nothing.
+    expect(keys[0].pubkey.equals(sponsor)).toBe(true);
+    expect(keys[0].isSigner).toBe(true);
+    expect(keys[1].pubkey.equals(claimer)).toBe(true);
+    expect(keys[1].isSigner).toBe(false);
+    // The UnlockState and the WearLog are the owner's, never the sponsor's.
+    expect(keys[2].pubkey.equals(deriveUnlockPDA(claimer)[0])).toBe(true);
+    expect(keys[keys.length - 1].pubkey.equals(deriveWearLogPDA(claimer))).toBe(true);
+    expect(keys.some((k) => k.pubkey.equals(deriveWearLogPDA(sponsor)))).toBe(false);
+    // Nobody else is asked to sign.
+    expect(keys.filter((k) => k.isSigner)).toHaveLength(1);
+  });
 });
 
 describe("a claim", () => {

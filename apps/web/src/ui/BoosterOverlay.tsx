@@ -8,7 +8,8 @@ import {
 } from "@/game/config/packs";
 import { unlockItem } from "@/game/config/wardrobeUnlocks";
 import {
-  settleMints, readMintConfig,
+  settleMints, readMintConfig, requestSponsoredMint, mintedIndices, pendingMintIndices,
+  syncHeldToWardrobe,
   type MintConfigAccount, type SignedMints,
 } from "@/game/solana/mint";
 import {
@@ -279,39 +280,47 @@ export default function BoosterOverlay({
       setDrops(rolled);
       setPhase("revealed");
 
-      // MINTING IS NOT A SECOND DECISION, but it is a second approval: the
-      // wallet will not sign the payment and the mint together (see buyPack),
-      // so the mint is asked for right after the reveal, as one transaction
-      // for this pack's items. Only THIS draw's items: older ones left
-      // unminted would make it several transactions, so they stay for the
-      // wardrobe's mint button and are named, not silently added (devnet,
-      // 2026-11-05: a reveal of 3 asked to mint 16, in a batch that never
-      // landed).
-      const older = owed.filter((i) => !granted.includes(i)).length;
-      const olderNote = older > 0
-        ? ` ${older} older item${older === 1 ? " is" : "s are"} still to mint in the wardrobe.`
-        : "";
-      if (granted.length === 0) {
-        if (olderNote) setMintNote(olderNote.trim());
-        return;
-      }
+      // MINTING IS NOT A SECOND DECISION, and with the sponsor it is not a
+      // second approval either. The mint cannot ride in the purchase (the
+      // program refuses it until the draw lands, and Phantom would not sign
+      // that batch), so once the draw is in, the site's sponsor wallet sends
+      // it (/api/mint): every owed item, this pack's and any older ones, with
+      // nothing asked of the player. It runs behind the reveal they are
+      // already watching.
+      //
+      // Only when the sponsor is not there (no key, no SOL, an old program)
+      // or misses something does the wallet get asked: one transaction for
+      // THIS pack's items, never a batch (devnet, 2026-11-05: a reveal of 3
+      // asked to mint 16 in a batch that never landed). Older items it does
+      // not cover stay for the wardrobe's mint button, and are named.
+      if (owed.length === 0) return;
       setMinting(true);
       try {
-        const { failed } = await settleMints({
-          conn,
-          wallet: me,
-          presigned,
-          expected: granted,
-          signAllTransactions,
-        });
+        await requestSponsoredMint(me);
+        const mintedNow = new Set(await mintedIndices(conn, me));
+        const stillThisPack = granted.filter((i) => !mintedNow.has(i));
+        let failedThisPack: number[] = [];
+        if (stillThisPack.length > 0) {
+          ({ failed: failedThisPack } = await settleMints({
+            conn,
+            wallet: me,
+            presigned,
+            expected: stillThisPack,
+            signAllTransactions,
+          }));
+        } else {
+          await syncHeldToWardrobe(conn, me);
+        }
+        const older = (await pendingMintIndices(conn, me)).filter((i) => !granted.includes(i)).length;
         // Anything that did not land stays in UnlockState, so the wardrobe's
         // own mint button finishes it. Said plainly rather than hidden,
         // because until it lands the item cannot be worn.
-        if (failed.length > 0 || olderNote) {
-          setMintNote(
-            `${failed.length > 0 ? `${failed.length} from this pack still to mint.` : ""}${olderNote}`
-              .trim() + " Finish from the wardrobe whenever you like.",
-          );
+        if (failedThisPack.length > 0 || older > 0) {
+          const parts = [
+            failedThisPack.length > 0 ? `${failedThisPack.length} from this pack still to mint.` : "",
+            older > 0 ? `${older} older item${older === 1 ? " is" : "s are"} still to mint.` : "",
+          ].filter(Boolean);
+          setMintNote(`${parts.join(" ")} Finish from the wardrobe whenever you like.`);
         }
       } catch (err) {
         console.error("[packs] mint after the reveal failed", err);

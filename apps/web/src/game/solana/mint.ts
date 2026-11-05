@@ -298,27 +298,36 @@ function mintAccountMetas(payer: PublicKey, config: MintConfigAccount) {
 /**
  * `mint_pending(limit)`: mint what is owed, whatever that turns out to be.
  *
- * The same accounts as `mint_unlock`, deliberately: on chain the two share
- * one Accounts struct, because they do the same thing and differ only in
- * where the indices come from.
+ * No index in the data, so the work is read from the owner's UnlockState when
+ * it runs. And no signature from the owner: `payer` signs and pays, and may
+ * be anyone, which is how the site's sponsor mints a pack right after its draw
+ * with no second approval (/api/mint). Leave `owner` out and the payer mints
+ * their own items, as before.
  *
- * What matters here is what is NOT in the data. There is no index, so these
- * bytes can be built, and signed, before the draw that decides them exists.
- * That is the whole reason this instruction is here.
+ * Accounts, in the program's order (MintPending): the payer, the owner, then
+ * MintUnlock's list with the owner's UnlockState and the owner's WearLog.
  */
 export function buildMintPendingIx(params: {
   payer: PublicKey;
+  /** Whose items, and who receives the assets. Defaults to the payer. */
+  owner?: PublicKey;
   limit: number;
   config: MintConfigAccount;
 }): TransactionInstruction {
+  const owner = params.owner ?? params.payer;
   const data = Buffer.alloc(9);
   ixDiscriminator("mint_pending").copy(data, 0);
   data.writeUInt8(params.limit, 8);
-  return new TransactionInstruction({
-    programId: SOL_CITY_COLLECTIBLES_PROGRAM_ID,
-    keys: mintAccountMetas(params.payer, params.config),
-    data,
-  });
+  // mintAccountMetas(owner) names the owner's UnlockState and WearLog; its
+  // first entry, the owner as signer, becomes the payer, then the owner as a
+  // plain account.
+  const [, ...rest] = mintAccountMetas(owner, params.config);
+  const keys = [
+    { pubkey: params.payer, isSigner: true, isWritable: true },
+    { pubkey: owner, isSigner: false, isWritable: false },
+    ...rest,
+  ];
+  return new TransactionInstruction({ programId: SOL_CITY_COLLECTIBLES_PROGRAM_ID, keys, data });
 }
 
 /**
@@ -632,4 +641,41 @@ export async function mintCosmetic(args: {
     if (st?.err) throw new Error(`The mint failed on chain: ${JSON.stringify(st.err)}`);
   }
   throw new Error("Sent, but the asset has not appeared yet. It may still land.");
+}
+
+/**
+ * Asks the site to mint what this wallet is owed, paid by the site's sponsor
+ * wallet (/api/mint, lib/mint/sponsor.ts), so the player approves nothing.
+ *
+ * Never throws: on any failure it reports what did get minted, and the caller
+ * falls back to asking the wallet. Asks again while the server says there is
+ * more (one request mints at most twenty) or that the draw is still landing.
+ */
+export async function requestSponsoredMint(
+  wallet: PublicKey,
+  rounds = 4,
+): Promise<{ minted: number[]; left: number }> {
+  const minted: number[] = [];
+  let left = 0;
+  for (let round = 0; round < rounds; round++) {
+    let body: { status?: string; minted?: number[]; left?: number };
+    try {
+      const res = await fetch("/api/mint", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ wallet: wallet.toBase58() }),
+      });
+      body = await res.json();
+    } catch {
+      break;
+    }
+    minted.push(...(body.minted ?? []));
+    left = body.left ?? 0;
+    if (body.status === "pending") {
+      await new Promise((r) => setTimeout(r, 1500));
+      continue;
+    }
+    if (body.status !== "minted" || left === 0) break;
+  }
+  return { minted, left };
 }
