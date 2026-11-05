@@ -583,6 +583,7 @@ export async function heldSealedPacks(
   const body = await res.json() as {
     result?: { items?: {
       id: string;
+      burnt?: boolean;
       compression?: { leaf_id?: number };
       content?: { json_uri?: string };
     }[] };
@@ -591,6 +592,10 @@ export async function heldSealedPacks(
   const prefix = `${mintConfig.baseUri}pack-`;
   const out: { assetId: PublicKey; packId: number; nonce: number }[] = [];
   for (const item of body.result?.items ?? []) {
+    // The owner listing keeps an opened pack for a minute or more after its
+    // burn, marked burnt (devnet, 2026-11-05). Listed, it looked unopened, and
+    // opening it again could only fail.
+    if (item.burnt) continue;
     const uri = item.content?.json_uri ?? "";
     if (!uri.startsWith(prefix)) continue;
     const packId = Number(uri.slice(prefix.length).replace(/\.json$/, ""));

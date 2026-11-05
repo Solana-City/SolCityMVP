@@ -47,8 +47,9 @@ async function main() {
   const conn = devnetConnection();
 
   // The wallet's approval, for a batch of either kind.
+  const approvals: number[] = [];
   const signAll = async <T extends Transaction | VersionedTransaction>(txs: T[]): Promise<T[]> =>
-    txs.map((t) => {
+    (approvals.push(txs.length), txs).map((t) => {
       if (t instanceof VersionedTransaction) t.sign([kp]); else t.partialSign(kp);
       return t;
     });
@@ -111,11 +112,12 @@ async function main() {
 
   // The indexer lags the burn by a few seconds, as it lags the mint.
   let still = true;
-  for (let i = 0; i < 40 && still; i++) {
+  for (let i = 0; i < 15 && still; i++) {
     still = (await heldSealedPacks(conn, wallet, mintConfig)).some((p) => p.assetId.equals(fresh!.assetId));
     if (still) await sleep(2000);
   }
   console.log(`pack burnt  ${still ? "NO, the indexer still lists it" : "yes"}`);
+  console.log(`approvals   ${approvals.length} (transactions in each: ${approvals.join(", ")})`);
   console.log(`total       ${((Date.now() - t0) / 1000).toFixed(1)} s`);
   if (failed.length || still) process.exit(1);
   console.log("PASS");

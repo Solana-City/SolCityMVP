@@ -5,7 +5,8 @@ import {
   SOL_CITY_COLLECTIBLES_PROGRAM_ID, deriveUnlockPDA, decodeUnlockState,
 } from "./program";
 import { ixDiscriminator } from "./instructions";
-import { prepareWalletTx } from "./walletTx";
+import { atStep, prepareWalletTx } from "./walletTx";
+import { sendAndConfirmTransfer } from "./sendTokens";
 import { BOOSTER_BLOCK_START } from "@/game/config/catalogIndex";
 import { baseConnection } from "./baseRpc";
 import { setHeldItems } from "@/game/config/wardrobeUnlocks";
@@ -534,19 +535,25 @@ export async function stillSendable(
 }
 
 /**
- * Mints every drawn item, asking the wallet ONCE.
+ * Mints the given items, one transaction per wallet approval.
  *
  * Minting is not optional: possession is what decides whether a pack item can
  * be worn, so an item left unminted is an item the player cannot use. This is
  * the step that follows a reveal, not a button they may ignore.
  *
- * Chunked because a Bubblegum mint is expensive in compute and a pack of five
- * will not fit one transaction. `signAllTransactions` is what keeps that from
- * costing a prompt per chunk: most wallets show one approval for the batch.
+ * Up to MINTS_PER_TX items ride in one transaction (five Bubblegum mints are
+ * ~410k compute units and ~830 bytes), so one pack is one approval. More than
+ * that is one approval per transaction, asked one after another, because a
+ * batch is what Phantom would not take: it refused a multi-transaction
+ * signAllTransactions with 4100, or signed one that never landed, every time
+ * on devnet (2026-11-05), while a single transaction always went through.
+ * Each one is simulated first (prepareWalletTx) and sent and confirmed like a
+ * payment, and a failure is reported rather than swallowed: the batch's send
+ * errors used to be dropped, so "mint" looked done and nothing had landed.
  *
- * Returns the indices that landed. Anything missing stays in UnlockState and
- * the wardrobe's own mint button finishes it later, which is the recovery
- * path and never the main one.
+ * Returns the indices that landed. A failure before anything landed is
+ * thrown, so the caller can say why; after a partial mint, the rest is
+ * returned as failed and stays in UnlockState for the wardrobe's mint button.
  */
 export async function mintMany(args: {
   wallet: PublicKey;
@@ -563,43 +570,30 @@ export async function mintMany(args: {
   const todo = args.indices.filter((i) => !already.has(i));
   if (todo.length === 0) return { minted: [], failed: [] };
 
-  const per = Math.max(1, args.perTx ?? MINTS_PER_TX);
-  const chunks: number[][] = [];
-  for (let i = 0; i < todo.length; i += per) chunks.push(todo.slice(i, i + per));
-
-  const { blockhash } = await conn.getLatestBlockhash();
-  const txs = chunks.map((chunk) => {
-    const tx = new Transaction({ recentBlockhash: blockhash, feePayer: args.wallet });
-    // Asked for per chunk rather than globally: the limit is per transaction.
-    tx.add(computeLimitIx(Math.min(MAX_COMPUTE_UNITS, UNITS_PER_MINT * chunk.length)));
-    for (const index of chunk) {
-      tx.add(buildMintUnlockIx({ payer: args.wallet, index, config }));
-    }
-    return tx;
-  });
-
-  const signed = await args.signAllTransactions(txs);
-  await Promise.all(signed.map((tx) =>
-    conn.sendRawTransaction(tx.serialize(), { skipPreflight: false }).catch(() => null),
-  ));
-
-  // Confirmed by reading `minted` back rather than by watching signatures:
-  // what the player is about to be told is "these are yours now", and the
-  // account saying so is the thing that makes it true.
-  for (let i = 0; i < 30; i++) {
-    await new Promise((r) => setTimeout(r, 1000));
-    const now = new Set(await mintedIndices(conn, args.wallet));
-    const landed = todo.filter((x) => now.has(x));
-    if (landed.length === todo.length) {
-      await syncHeldToWardrobe(conn, args.wallet);
-      return { minted: landed, failed: [] };
-    }
-    if (i === 29) {
-      await syncHeldToWardrobe(conn, args.wallet);
-      return { minted: landed, failed: todo.filter((x) => !now.has(x)) };
+  const per = Math.max(1, Math.min(MINTS_PER_TX, args.perTx ?? MINTS_PER_TX));
+  const minted: number[] = [];
+  for (let at = 0; at < todo.length; at += per) {
+    const chunk = todo.slice(at, at + per);
+    try {
+      const { blockhash } = await conn.getLatestBlockhash();
+      const tx = new Transaction({ recentBlockhash: blockhash, feePayer: args.wallet });
+      for (const index of chunk) tx.add(buildMintUnlockIx({ payer: args.wallet, index, config }));
+      const ready = await prepareWalletTx(conn, tx);
+      // Again right before the wallet opens: the simulation took some of it.
+      const fresh = await conn.getLatestBlockhash();
+      ready.recentBlockhash = fresh.blockhash;
+      const [signed] = await atStep("wallet", args.signAllTransactions([ready]));
+      await atStep("network", sendAndConfirmTransfer({
+        connection: conn, signed, lastValidBlockHeight: fresh.lastValidBlockHeight,
+      }));
+      minted.push(...chunk);
+    } catch (err) {
+      if (minted.length === 0) throw err;
+      break;
     }
   }
-  return { minted: [], failed: todo };
+  await syncHeldToWardrobe(conn, args.wallet);
+  return { minted, failed: todo.filter((x) => !minted.includes(x)) };
 }
 
 /**

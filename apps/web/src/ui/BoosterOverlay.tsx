@@ -279,36 +279,47 @@ export default function BoosterOverlay({
       setDrops(rolled);
       setPhase("revealed");
 
-      // MINTING IS NOT A SECOND DECISION, and by here it is not a second
-      // APPROVAL either: these transactions were signed in the same breath as
-      // the payment. Sending them is all that is left, and it happens behind
-      // the reveal the player is already watching.
-      if (owed.length > 0) {
-        setMinting(true);
-        try {
-          const { failed } = await settleMints({
-            conn,
-            wallet: me,
-            presigned,
-            expected: owed,
-            // Only reached when the pre-signed route is gone: minting not set
-            // up, or a draw slower than a blockhash lives. It asks, which is
-            // the thing all of this exists to avoid.
-            signAllTransactions,
-          });
-          // Anything that did not land stays in UnlockState, so the
-          // wardrobe's own mint button finishes it. Said plainly rather than
-          // hidden, because until it lands the item cannot be worn.
-          if (failed.length > 0) {
-            setMintNote(
-              `${failed.length} still to mint. Finish from the wardrobe whenever you like.`,
-            );
-          }
-        } catch (err) {
-          setMintNote(txErrorText(err, "The mint did not go through."));
-        } finally {
-          setMinting(false);
+      // MINTING IS NOT A SECOND DECISION, but it is a second approval: the
+      // wallet will not sign the payment and the mint together (see buyPack),
+      // so the mint is asked for right after the reveal, as one transaction
+      // for this pack's items. Only THIS draw's items: older ones left
+      // unminted would make it several transactions, so they stay for the
+      // wardrobe's mint button and are named, not silently added (devnet,
+      // 2026-11-05: a reveal of 3 asked to mint 16, in a batch that never
+      // landed).
+      const older = owed.filter((i) => !granted.includes(i)).length;
+      const olderNote = older > 0
+        ? ` ${older} older item${older === 1 ? " is" : "s are"} still to mint in the wardrobe.`
+        : "";
+      if (granted.length === 0) {
+        if (olderNote) setMintNote(olderNote.trim());
+        return;
+      }
+      setMinting(true);
+      try {
+        const { failed } = await settleMints({
+          conn,
+          wallet: me,
+          presigned,
+          expected: granted,
+          signAllTransactions,
+        });
+        // Anything that did not land stays in UnlockState, so the wardrobe's
+        // own mint button finishes it. Said plainly rather than hidden,
+        // because until it lands the item cannot be worn.
+        if (failed.length > 0 || olderNote) {
+          setMintNote(
+            `${failed.length > 0 ? `${failed.length} from this pack still to mint.` : ""}${olderNote}`
+              .trim() + " Finish from the wardrobe whenever you like.",
+          );
         }
+      } catch (err) {
+        console.error("[packs] mint after the reveal failed", err);
+        setMintNote(
+          `${txErrorText(err, "The mint did not go through.")} Mint from the wardrobe whenever you like.`,
+        );
+      } finally {
+        setMinting(false);
       }
   }, [wallet, signAllTransactions]);
 
