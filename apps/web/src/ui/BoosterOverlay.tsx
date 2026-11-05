@@ -64,6 +64,10 @@ const REVEAL_TILE = 72;
 
 /** This wallet receives the shop's payments, and the program will not let it pay itself. */
 const TREASURY_WALLET_MSG = "This wallet is the shop's treasury and can't buy from itself. Use another wallet.";
+/** An address as people recognise it in a wallet: the first and last four. */
+function shortKey(key: string): string {
+  return `${key.slice(0, 4)}…${key.slice(-4)}`;
+}
 const NO_SIGNER_MSG = "Your wallet can't sign here. Reconnect it and try again.";
 const LOADING_MSG = "The shop is still loading. Try again in a moment.";
 /** No mint config on chain: a pack could be paid for and never become wearable. */
@@ -83,7 +87,20 @@ export default function BoosterOverlay({
   const [balance, setBalance] = useState<bigint | null>(null);
   // One signing call for everything here. A purchase and the mint that
   // follows it are approved together or the flow is broken.
-  const { signAllTransactions } = useWallet();
+  const { signAllTransactions, publicKey } = useWallet();
+  /**
+   * The account the city plays as (`wallet`, from the profile) against the
+   * one active in the wallet. Every transaction here is built for the first
+   * and signed by the second, and when they differ Phantom refuses the batch
+   * with 4100, "not authorized", which disconnecting and reconnecting does not
+   * fix if it reconnects on the other account (devnet, 2026-11-05). So it is
+   * checked before the wallet is asked, and named.
+   */
+  const active = publicKey?.toBase58() ?? null;
+  const mismatch = wallet && active && active !== wallet
+    ? `Your wallet is on ${shortKey(active)}, but you're in the city as ${shortKey(wallet)}. `
+      + `Switch to ${shortKey(wallet)} in your wallet and try again.`
+    : null;
   /**
    * How many packs this purchase buys, resolved as ONE draw.
    *
@@ -299,6 +316,7 @@ export default function BoosterOverlay({
   const seal = useCallback(async (chosen: PackDef) => {
     if (!wallet) return;
     if (!signAllTransactions) { setError(NO_SIGNER_MSG); return; }
+    if (mismatch) { setError(mismatch); return; }
     if (!config) { setError(LOADING_MSG); return; }
     if (!mintConfig) { setError(MINT_NOT_READY_MSG); return; }
     const onChain = config.packs.find((p) => p.id === chosen.onChainId);
@@ -331,12 +349,13 @@ export default function BoosterOverlay({
     } finally {
       setSealing(null);
     }
-  }, [wallet, signAllTransactions, config, mintConfig, count, refreshSealed]);
+  }, [wallet, signAllTransactions, mismatch, config, mintConfig, count, refreshSealed]);
 
   /** Burns one sealed pack and waits for its reveal. */
   const openSealed = useCallback(async (entry: { assetId: PublicKey; packId: number; nonce: number }) => {
     if (!wallet) return;
     if (!signAllTransactions) { setError(NO_SIGNER_MSG); return; }
+    if (mismatch) { setError(mismatch); return; }
     if (!config) { setError(LOADING_MSG); return; }
     if (!mintConfig) { setError(MINT_NOT_READY_MSG); return; }
     const onChain = config.packs.find((p) => p.id === entry.packId);
@@ -374,7 +393,7 @@ export default function BoosterOverlay({
       setError(txErrorText(err, "That pack would not open."));
       setPhase("choose");
     }
-  }, [wallet, signAllTransactions, config, mintConfig, refreshSealed, revealAndMint]);
+  }, [wallet, signAllTransactions, mismatch, config, mintConfig, refreshSealed, revealAndMint]);
   const laterFeel = useButtonFeel();
   const anotherFeel = useButtonFeel();
   const doneFeel = useButtonFeel();
@@ -408,6 +427,11 @@ export default function BoosterOverlay({
       // 2026-11-05). Say what is missing instead.
       if (!signAllTransactions) {
         setError(NO_SIGNER_MSG);
+        setPhase("choose");
+        return;
+      }
+      if (mismatch) {
+        setError(mismatch);
         setPhase("choose");
         return;
       }
@@ -458,7 +482,7 @@ export default function BoosterOverlay({
       setDrops(rolled);
       setPhase("revealed");
     }, skipReveal ? 0 : 650);
-  }, [wallet, config, mintConfig, signAllTransactions]);
+  }, [wallet, config, mintConfig, signAllTransactions, mismatch]);
 
   /**
    * The paid draw.
@@ -510,7 +534,7 @@ export default function BoosterOverlay({
       setError(txErrorText(err, "The purchase failed."));
       setPhase("choose");
     }
-  }, [wallet, signAllTransactions, config, count, revealAndMint]);
+  }, [wallet, signAllTransactions, mismatch, config, count, revealAndMint]);
   openOnChainRef.current = openOnChain;
 
 
@@ -523,6 +547,7 @@ export default function BoosterOverlay({
    */
   const retryStuck = useCallback(async () => {
     if (!wallet || !signAllTransactions || retrying) return;
+    if (mismatch) { setError(mismatch); return; }
     setRetrying(true);
     setError(null);
     try {
@@ -545,7 +570,7 @@ export default function BoosterOverlay({
     } finally {
       setRetrying(false);
     }
-  }, [wallet, signAllTransactions, retrying, revealAndMint]);
+  }, [wallet, signAllTransactions, mismatch, retrying, revealAndMint]);
 
   const backToPacks = () => { setPhase("choose"); setDrops([]); setPack(null); setError(null); };
   // Not mid-opening, same as the backdrop: the pack is already being granted.
