@@ -35,6 +35,7 @@ import {
 } from "@solana/spl-token";
 import {
   createCreateMetadataAccountV3Instruction, createCreateMasterEditionV3Instruction,
+  createUpdateMetadataAccountV2Instruction,
   PROGRAM_ID as TOKEN_METADATA_PROGRAM_ID,
 } from "@metaplex-foundation/mpl-token-metadata";
 import {
@@ -219,9 +220,11 @@ async function main() {
       mint: collectionMint.publicKey,
       mintAuthority: admin.publicKey,
       payer: admin.publicKey,
-      // The PDA, from the start. Nobody holds a key that can change this
-      // collection afterwards, and it is what the program signs as.
-      updateAuthority: mintAuthority,
+      // The admin first, because creating the master edition below needs the
+      // update authority to SIGN, and a PDA cannot sign an ordinary
+      // transaction (devnet, 2026-11-05: "Missing signature" for the PDA).
+      // The last instruction hands it to the PDA, in this same transaction.
+      updateAuthority: admin.publicKey,
     }, {
       createMetadataAccountArgsV3: {
         data: {
@@ -240,11 +243,25 @@ async function main() {
     .add(createCreateMasterEditionV3Instruction({
       edition: editionPda(collectionMint.publicKey),
       mint: collectionMint.publicKey,
-      updateAuthority: mintAuthority,
+      updateAuthority: admin.publicKey,
       mintAuthority: admin.publicKey,
       payer: admin.publicKey,
       metadata: metadataPda(collectionMint.publicKey),
-    }, { createMasterEditionArgs: { maxSupply: 0 } })),
+    }, { createMasterEditionArgs: { maxSupply: 0 } }))
+    // The PDA from here on. Nobody holds a key that can change this
+    // collection afterwards, and it is what the program signs as when it
+    // verifies an item into it. All three instructions land or none does.
+    .add(createUpdateMetadataAccountV2Instruction({
+      metadata: metadataPda(collectionMint.publicKey),
+      updateAuthority: admin.publicKey,
+    }, {
+      updateMetadataAccountArgsV2: {
+        data: null,
+        updateAuthority: mintAuthority,
+        primarySaleHappened: null,
+        isMutable: null,
+      },
+    })),
     [admin]);
   console.log("  metadata + master edition ok\n");
 
