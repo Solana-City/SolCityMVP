@@ -28,7 +28,7 @@ import { isVariantUnlocked, isOwedMint, unlockItem } from "@/game/config/wardrob
 import { useWallet } from "@solana/wallet-adapter-react";
 import { PublicKey } from "@solana/web3.js";
 import { mintCosmetic } from "@/game/solana/mint";
-import { txErrorText } from "@/game/solana/packs";
+import { txErrorText, syncOwnedToWardrobe, baseConnection } from "@/game/solana/packs";
 import { globalIndexOf } from "@/game/config/catalogIndex";
 import { RARITY_LABEL, rarityTheme, tileKindOf, type TileKind } from "@/game/config/packs";
 import { RarityFrame, innerSize } from "@/ui/RarityFrame";
@@ -462,7 +462,11 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
     setMintingKey(key);
     setMintError(null);
     try {
-      await mintCosmetic({ wallet: new PublicKey(wallet), index: globalIndexOf(category, v.id), signTransaction });
+      const key58 = new PublicKey(wallet);
+      await mintCosmetic({ wallet: key58, index: globalIndexOf(category, v.id), signTransaction });
+      // Re-read the unlock account, which now lists it as minted, so the tile
+      // drops MINT NOW at once.
+      await syncOwnedToWardrobe(baseConnection(), key58);
       bumpUnlocks((n) => n + 1);
       setLoadout((prev) => ({ ...prev, [category]: v.id }));
     } catch (err) {
@@ -793,7 +797,10 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
                   const isSelected = currentVariantId === v.id;
                   const isFlashing = flash === `${activeCategory}:${v.id}`;
                   const unlocked = isVariantUnlocked(wallet, activeCategory, v);
-                  const owed = !unlocked && isOwedMint(wallet, activeCategory, v);
+                  // Owed first: an item drawn but not yet an asset is offered
+                  // as MINT NOW even when the asset read has not landed, since
+                  // an unminted item is not wearable.
+                  const owed = isOwedMint(wallet, activeCategory, v);
                   const locked = !unlocked && !owed;
                   const owedKey = `${activeCategory}:${v.id}`;
                   const hintFlashing = flash === `locked:${activeCategory}:${v.id}`;

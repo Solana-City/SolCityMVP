@@ -103,10 +103,14 @@ export function isVariantUnlocked(
  */
 export function isOwedMint(wallet: string | null, category: LayerCategory, variant: LayerVariant): boolean {
   if (!wallet || !BOOSTER_ONCHAIN || !isBoosterItem(category, variant.id)) return false;
+  // Judged by the unlock account alone, which records both what the wallet
+  // owns and what it has minted. It used to need the asset indexer as well,
+  // and when that read had not landed (or failed) no tile showed MINT NOW at
+  // all (devnet, 2026-11-05).
   const key = unlockKeyOf(category, variant.id);
   const chain = onchainUnlocks.get(wallet);
-  const held = heldItems.get(wallet);
-  return !!chain && !!held && chain.has(key) && !held.has(key);
+  const minted = onchainMinted.get(wallet);
+  return !!chain && !!minted && chain.has(key) && !minted.has(key);
 }
 
 /** In the booster block of the catalog, which is the range the program checks. */
@@ -125,7 +129,7 @@ const onchainUnlocks = new Map<string, Set<string>>();
 /** Decode + cache a wallet's on-chain unlock bitset. Pass the UnlockState
  *  account data, or null if the account doesn't exist yet. */
 export function setOnChainUnlocks(wallet: string, data: Uint8Array | null): void {
-  if (!data) { onchainUnlocks.set(wallet, new Set()); return; }
+  if (!data) { onchainUnlocks.set(wallet, new Set()); onchainMinted.set(wallet, new Set()); return; }
   const st = decodeUnlockState(data);
   if (!st) return;
   const keys = new Set<string>();
@@ -138,7 +142,16 @@ export function setOnChainUnlocks(wallet: string, data: Uint8Array | null): void
     if (entry) keys.add(unlockKeyOf(entry.category, entry.variant.id));
   }
   onchainUnlocks.set(wallet, keys);
+  const minted = new Set<string>();
+  for (const index of st.minted) {
+    const entry = itemAtGlobalIndex(index);
+    if (entry) minted.add(unlockKeyOf(entry.category, entry.variant.id));
+  }
+  onchainMinted.set(wallet, minted);
 }
+
+/** What the unlock account itself says was minted, per wallet. */
+const onchainMinted = new Map<string, Set<string>>();
 
 // ── What a wallet HOLDS right now, from the indexer ─────────────────────────
 //
