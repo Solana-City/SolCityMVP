@@ -249,10 +249,18 @@ export async function buyPack(args: {
   // Only the payment can be simulated now: the mints read a draw that does
   // not exist yet. They carry their own compute limits (buildMintPendingTxs).
   const ready = await prepareWalletTx(conn, tx);
+  // The blockhash is taken again right before the wallet opens, for every
+  // transaction in the batch: a wallet that simulates each one before showing
+  // the approval can take most of a blockhash's life, and the first one, taken
+  // before the reads and the simulation above, expired on devnet
+  // ("Blockhash not found", 2026-11-05). Nothing is signed yet, so this is free.
+  const fresh = await conn.getLatestBlockhash();
+  for (const t of [ready, ...mintTxs]) t.recentBlockhash = fresh.blockhash;
   const signed = await signAllTransactions([ready, ...mintTxs]);
 
   const signature = await conn.sendRawTransaction(signed[0].serialize(), { skipPreflight: false });
-  await conn.confirmTransaction({ signature, blockhash, lastValidBlockHeight }, "confirmed");
+  await conn.confirmTransaction(
+    { signature, blockhash: fresh.blockhash, lastValidBlockHeight: fresh.lastValidBlockHeight }, "confirmed");
 
   const { granted, timedOut } = await awaitDraw(conn, wallet, before, timeout);
   return {
@@ -260,7 +268,7 @@ export async function buyPack(args: {
     granted,
     timedOut,
     presignedMints: mintConfig
-      ? { txs: signed.slice(1), lastValidBlockHeight }
+      ? { txs: signed.slice(1), lastValidBlockHeight: fresh.lastValidBlockHeight }
       : null,
     owed: [...leftover, ...granted.filter((i) => !leftover.includes(i))].sort((a, b) => a - b),
   };
@@ -389,6 +397,11 @@ export async function fundsShortfall(
  */
 export function txErrorText(err: unknown, fallback: string): string {
   const e = err as { message?: string; logs?: string[]; transactionLogs?: string[]; code?: number } | null;
+  // A signed transaction whose blockhash ran out before it was sent: the
+  // approval took too long. It never landed, so nothing was charged.
+  if (/Blockhash not found|block height exceeded|BlockhashNotFound/i.test(`${e?.message ?? ""} ${(e?.logs ?? []).join(" ")}`)) {
+    return "The approval took too long and the transaction expired. Nothing was charged. Try again.";
+  }
   // Phantom's 4100: it does not count this site as connected for the account
   // in use, typically after switching accounts in the wallet.
   if (e?.code === 4100 || /not been authorized by the user/i.test(e?.message ?? "")) {
