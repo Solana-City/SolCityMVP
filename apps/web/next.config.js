@@ -138,11 +138,20 @@ module.exports = withPWA({
   // reads come from Arweave, the pictures from their own manifest and the
   // JSON through the ArNS name that is the program's `base_uri`. Precaching them would have
   // every player download eighty pictures of items most of them do not own.
+  //
+  // The map source is excluded because the game never asks for it either.
+  // city.json and the loose tileset PNGs are what Tiled edits and what
+  // scripts/pack-tilesets.mjs reads on every build; the game loads the packed
+  // copies it writes (city.packed.json, tilesets/packed/). They were 12.6 MB of
+  // the precache. `*` does not cross a `/`, so tilesets/packed/ stays precached:
+  // if that glob ever catches packed/, offline play loses the map.
   publicExcludes: [
     "!noprecache/**/*",
     "!assets/audio/**/*",
     "!assets/minigames/**/*",
     "!collectibles/**/*",
+    "!assets/maps/city.json",
+    "!assets/tilesets/*.png",
   ],
   disable: process.env.NODE_ENV === "development",
   reloadOnOnline: true,
