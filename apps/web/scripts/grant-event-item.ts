@@ -50,7 +50,7 @@ import {
 } from "@solana/web3.js";
 import { devnetConnection, sendAndPoll } from "./_rpc";
 import {
-  SOL_CITY_COLLECTIBLES_PROGRAM_ID, deriveUnlockPDA, decodeUnlockState,
+  SOL_CITY_COLLECTIBLES_PROGRAM_ID, deriveUnlockPDA, decodeUnlockState, deriveMintQueuePDA,
 } from "../src/game/solana/program";
 import { ixDiscriminator } from "../src/game/solana/instructions";
 import { globalIndexOf, EVENT_BLOCK_START, EVENT_BLOCK_END } from "../src/game/config/catalogIndex";
@@ -86,7 +86,7 @@ function load(path: string): Keypair {
   return Keypair.fromSecretKey(Uint8Array.from(JSON.parse(readFileSync(path, "utf8"))));
 }
 
-function buildGrantIx(admin: PublicKey, unlockPda: PublicKey, index: number): TransactionInstruction {
+function buildGrantIx(admin: PublicKey, wallet: PublicKey, unlockPda: PublicKey, index: number): TransactionInstruction {
   const [config] = PublicKey.findProgramAddressSync(
     [Buffer.from(PACK_CONFIG_SEED)], SOL_CITY_COLLECTIBLES_PROGRAM_ID,
   );
@@ -100,6 +100,8 @@ function buildGrantIx(admin: PublicKey, unlockPda: PublicKey, index: number): Tr
       { pubkey: config,                  isSigner: false, isWritable: false },
       { pubkey: unlockPda,               isSigner: false, isWritable: true  },
       { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+      // Last: the winner's MintQueue, where the item waits to be minted.
+      { pubkey: deriveMintQueuePDA(wallet), isSigner: false, isWritable: true },
     ],
     data,
   });
@@ -178,7 +180,7 @@ async function main(): Promise<void> {
 
     try {
       const sig = await sendAndPoll(
-        conn, new Transaction().add(buildGrantIx(admin.publicKey, unlockPda, index)), [admin],
+        conn, new Transaction().add(buildGrantIx(admin.publicKey, wallet, unlockPda, index)), [admin],
       );
       console.log(`  ${n} ${walletStr.slice(0, 8)}…  granted  ${sig.slice(0, 12)}`);
       granted++;

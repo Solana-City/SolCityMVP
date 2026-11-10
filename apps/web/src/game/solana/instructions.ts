@@ -26,7 +26,7 @@ import {
 } from "@magicblock-labs/ephemeral-rollups-sdk";
 import {
   SOL_CITY_PROGRAM_ID, DELEGATION_PROGRAM_ID, derivePlayerPDA, deriveHuntPDA,
-  deriveUnlockPDA, VRF_QUEUE_DEVNET, VRF_PROGRAM_ID, deriveVrfIdentityPDA,
+  deriveUnlockPDA, deriveMintQueuePDA, VRF_QUEUE_DEVNET, VRF_PROGRAM_ID, deriveVrfIdentityPDA,
   SOL_CITY_COLLECTIBLES_PROGRAM_ID,
   derivePackConfigPDA, deriveSeasonDropsPDA, USDC_MINT_DEVNET,
   ACHIEVEMENT_BITS,
@@ -802,6 +802,8 @@ export function buildOpenBoosterIx(params: {
       { pubkey: VRF_PROGRAM_ID,            isSigner: false, isWritable: false },
       { pubkey: SYSVAR_SLOT_HASHES_PUBKEY, isSigner: false, isWritable: false },
       { pubkey: SystemProgram.programId,   isSigner: false, isWritable: false },
+      // Last: where every copy this draw hands out waits to be minted.
+      { pubkey: deriveMintQueuePDA(payer), isSigner: false, isWritable: true  },
     ],
     data,
   });
@@ -840,6 +842,8 @@ export function buildRetryDrawIx(params: {
       { pubkey: VRF_PROGRAM_ID,            isSigner: false, isWritable: false },
       { pubkey: SYSVAR_SLOT_HASHES_PUBKEY, isSigner: false, isWritable: false },
       { pubkey: SystemProgram.programId,   isSigner: false, isWritable: false },
+      // Last: grown here for a draw paid before the queue existed.
+      { pubkey: deriveMintQueuePDA(payer), isSigner: false, isWritable: true  },
     ],
     data: Buffer.concat([DISC.retryDraw, seed]),
   });

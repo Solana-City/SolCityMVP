@@ -3,7 +3,7 @@ import { Keypair, SystemProgram, SYSVAR_SLOT_HASHES_PUBKEY } from "@solana/web3.
 import { buildRetryDrawIx, ixDiscriminator } from "./instructions";
 import {
   SOL_CITY_COLLECTIBLES_PROGRAM_ID, deriveUnlockPDA, deriveSeasonDropsPDA,
-  VRF_QUEUE_DEVNET, VRF_PROGRAM_ID, deriveVrfIdentityPDA,
+  VRF_QUEUE_DEVNET, VRF_PROGRAM_ID, deriveVrfIdentityPDA, deriveMintQueuePDA,
 } from "./program";
 
 /**
@@ -37,6 +37,8 @@ describe("the retry_draw instruction", () => {
       VRF_PROGRAM_ID,
       SYSVAR_SLOT_HASHES_PUBKEY,
       SystemProgram.programId,
+      // Grown here for a draw paid before the queue existed.
+      deriveMintQueuePDA(payer),
     ].map((k) => k.toBase58()));
   });
 

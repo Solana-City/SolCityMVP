@@ -6,6 +6,7 @@ import { ASSOCIATED_TOKEN_PROGRAM_ID, getAssociatedTokenAddressSync } from "@sol
 import {
   SOL_CITY_COLLECTIBLES_PROGRAM_ID, derivePackConfigPDA, deriveSeasonDropsPDA,
   deriveUnlockPDA, deriveVrfIdentityPDA, decodeUnlockState, VRF_QUEUE_DEVNET, VRF_PROGRAM_ID,
+  deriveMintQueuePDA,
 } from "./program";
 import { ixDiscriminator, buildInitUnlockStateIx } from "./instructions";
 import { atStep, checkWalletKept, prepareWalletTx, prepareWalletTxV0 } from "./walletTx";
@@ -440,6 +441,10 @@ export function buildOpenPackFromAssetIx(params: {
       // `accepted_tree`: the program id when the pack is in the current tree,
       // the old tree's marker when it was minted before a rotation.
       { pubkey: acceptedTreeSlot(tree, mintConfig), isSigner: false, isWritable: false },
+      // The opener's MintQueue, the last declared account: every copy this
+      // draw hands out waits there to be minted. Per wallet, so it is not in
+      // the lookup table (32 bytes on the transaction).
+      { pubkey: deriveMintQueuePDA(opener),      isSigner: false, isWritable: true  },
       // The proof: one node per tree level the canopy does not already hold.
       ...proof.proof.map((node) => ({
         pubkey: node, isSigner: false, isWritable: false,

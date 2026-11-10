@@ -4,7 +4,8 @@ import {
 import { getAssociatedTokenAddressSync } from "@solana/spl-token";
 import {
   SOL_CITY_COLLECTIBLES_PROGRAM_ID, derivePackConfigPDA, deriveUnlockPDA,
-  decodeUnlockState, RARITY_COUNT,
+  decodeUnlockState, RARITY_COUNT, deriveMintQueuePDA, decodeMintQueue,
+  type UnlockState,
 } from "./program";
 import { buildOpenBoosterIx, buildInitUnlockStateIx, buildRetryDrawIx } from "./instructions";
 import { baseConnection } from "./baseRpc";
@@ -151,9 +152,13 @@ export type SignTx = (tx: Transaction) => Promise<Transaction>;
 
 export interface BuyResult {
   signature: string;
-  /** Catalog indices the draw granted. Empty if the callback has not landed
-   *  yet, which is a timeout rather than a loss: the items are still coming. */
+  /** Every copy the draw handed out, in draw order, REPEATS INCLUDED. Empty
+   *  if the callback has not landed yet, which is a timeout rather than a
+   *  loss: the items are still coming. */
   granted: number[];
+  /** What the wallet could already wear before this pack, so the reveal can
+   *  mark a repeat as one. */
+  ownedBefore: number[];
   timedOut: boolean;
   /**
    * Mint transactions the wallet signed at the till, waiting to be sent.
@@ -164,8 +169,8 @@ export interface BuyResult {
    * these land behind it.
    */
   presignedMints: SignedMints | null;
-  /** What those transactions owe, which is the draw plus anything a previous
-   *  mint left behind. */
+  /** What is owed after the draw: anything a previous mint left behind, then
+   *  every copy of this draw, repeats included. */
   owed: number[];
 }
 
@@ -268,9 +273,10 @@ export async function buyPack(args: {
   return {
     signature,
     granted,
+    ownedBefore: [...before],
     timedOut,
     presignedMints: null,
-    owed: [...leftover, ...granted.filter((i) => !leftover.includes(i))].sort((a, b) => a - b),
+    owed: [...leftover, ...granted],
   };
 }
 
@@ -292,20 +298,49 @@ export async function awaitDraw(
   timeoutMs = 45_000,
 ): Promise<{ granted: number[]; timedOut: boolean }> {
   const unlockPda = deriveUnlockPDA(wallet)[0];
+  const queuePda = deriveMintQueuePDA(wallet);
   const until = Date.now() + timeoutMs;
   while (Date.now() < until) {
     await new Promise((r) => setTimeout(r, 1500));
-    const info = await conn.getAccountInfo(unlockPda);
+    const [info, queueInfo] = await conn.getMultipleAccountsInfo([unlockPda, queuePda]);
     const state = info ? decodeUnlockState(info.data) : null;
     if (!state) continue;
-    // `pending` goes false in the same write that grants, so a draw that
-    // genuinely gave nothing new (every item a duplicate) still ends here
-    // rather than running to the timeout.
+    // `pending` goes false in the same write that queues the draw, so a draw
+    // of nothing but repeats ends here like any other.
     if (!state.pending) {
-      return { granted: state.owned.filter((i) => !before.has(i)), timedOut: false };
+      return { granted: drawnCopies(state, queueInfo?.data ?? null, queueInfo?.owner ?? null, before), timedOut: false };
     }
   }
   return { granted: [], timedOut: true };
+}
+
+/**
+ * Every copy a resolved draw handed out, in draw order, repeats included.
+ *
+ * Read from the MintQueue, not from `owned`: `owned` is a set, so a second
+ * copy of anything, or a copy of something already owned, never shows up in
+ * it. The callback appends the whole draw to the END of the queue, and the
+ * draw's size stays on the UnlockState after it resolves; minting takes from
+ * the FRONT, so the tail is this draw even if older copies were minted in
+ * between.
+ *
+ * Only what is new can be seen when there is no queue (the program before
+ * 2026-11-10), or when copies of this draw were already minted.
+ */
+export function drawnCopies(
+  state: UnlockState,
+  queueData: Uint8Array | null,
+  queueOwner: PublicKey | null,
+  before: Set<number>,
+): number[] {
+  const size = state.draw.size;
+  const queue = queueData && queueOwner?.equals(SOL_CITY_COLLECTIBLES_PROGRAM_ID)
+    ? decodeMintQueue(queueData)
+    : null;
+  if (queue && size > 0 && queue.owed.length >= size) {
+    return queue.owed.slice(queue.owed.length - size);
+  }
+  return state.owned.filter((i) => !before.has(i));
 }
 
 /**
@@ -335,11 +370,11 @@ export async function retryStuckDraw(args: {
   wallet: PublicKey;
   signAllTransactions: SignAllTx;
   revealTimeoutMs?: number;
-}): Promise<{ granted: number[]; timedOut: boolean; packId: number | null }> {
+}): Promise<{ granted: number[]; ownedBefore: number[]; timedOut: boolean; packId: number | null }> {
   const { conn, wallet, signAllTransactions } = args;
   const info = await conn.getAccountInfo(deriveUnlockPDA(wallet)[0]);
   const state = info ? decodeUnlockState(info.data) : null;
-  if (!state?.pending) return { granted: [], timedOut: false, packId: null };
+  if (!state?.pending) return { granted: [], ownedBefore: [], timedOut: false, packId: null };
 
   const before = new Set(state.owned);
   const clientSeed = new Uint8Array(32);
@@ -352,7 +387,7 @@ export async function retryStuckDraw(args: {
   const signature = await conn.sendRawTransaction(signed.serialize(), { skipPreflight: false });
   await awaitTransfer(conn, signature, lastValidBlockHeight);
   const result = await awaitDraw(conn, wallet, before, args.revealTimeoutMs ?? 45_000);
-  return { ...result, packId: state.draw.packId };
+  return { ...result, ownedBefore: [...before], packId: state.draw.packId };
 }
 
 /** Program id, re-exported so a caller does not need two imports. Packs live

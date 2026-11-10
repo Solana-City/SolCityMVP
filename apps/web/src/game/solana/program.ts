@@ -256,6 +256,36 @@ export function deriveUnlockPDA(
 }
 
 /**
+ * A wallet's MintQueue: every copy it has drawn or been granted and not yet
+ * received as an asset, oldest first, REPEATS INCLUDED. The only thing a mint
+ * reads (programs/sol-city-collectibles, `MintQueue`). Every instruction that
+ * takes it takes it last.
+ */
+export const MINT_QUEUE_SEED = "mint_queue";
+
+export function deriveMintQueuePDA(wallet: PublicKey): PublicKey {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from(MINT_QUEUE_SEED), wallet.toBuffer()],
+    SOL_CITY_COLLECTIBLES_PROGRAM_ID,
+  )[0];
+}
+
+/**
+ * The copies a MintQueue holds, oldest first, or null when the bytes are not
+ * one. 8 discriminator + 32 wallet + a length-prefixed u16 list.
+ */
+export function decodeMintQueue(data: Uint8Array): { wallet: PublicKey; owed: number[] } | null {
+  const buf = Buffer.from(data);
+  if (buf.length < 8 + 32 + 4) return null;
+  const wallet = new PublicKey(buf.subarray(8, 40));
+  const len = buf.readUInt32LE(40);
+  if (len > 65_535 || 44 + len * 2 > buf.length) return null;
+  const owed: number[] = [];
+  for (let i = 0; i < len; i++) owed.push(buf.readUInt16LE(44 + i * 2));
+  return { wallet, owed };
+}
+
+/**
  * Reserved catalog indices for quest, NPC and event rewards: the block
  * [FREE_ITEM_COUNT, ENFORCED_FROM), which `update_look_session` never checks.
  *

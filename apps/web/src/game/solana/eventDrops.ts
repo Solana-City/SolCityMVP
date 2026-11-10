@@ -23,6 +23,7 @@ import {
 import { sha256 } from "@noble/hashes/sha256";
 import {
   SOL_CITY_COLLECTIBLES_PROGRAM_ID, derivePackConfigPDA, deriveUnlockPDA,
+  deriveMintQueuePDA,
 } from "./program";
 import { ixDiscriminator, buildInitUnlockStateIx } from "./instructions";
 import { prepareWalletTx } from "./walletTx";
@@ -157,6 +158,8 @@ export function buildClaimEventItemIx(
       { pubkey: deriveEventDropPDA(id),        isSigner: false, isWritable: false },
       { pubkey: derivePackConfigPDA()[0],      isSigner: false, isWritable: false },
       { pubkey: SystemProgram.programId,       isSigner: false, isWritable: false },
+      // Last: the event item is queued to become an asset, like a pack item.
+      { pubkey: deriveMintQueuePDA(claimer),   isSigner: false, isWritable: true  },
     ],
     data: Buffer.from(concat(ixDiscriminator("claim_event_item"), u16le(id), len, ...proof)),
   });

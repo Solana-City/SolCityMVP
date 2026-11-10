@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { Keypair, PublicKey, SystemProgram } from "@solana/web3.js";
 import { buildOpenPackFromAssetIx } from "./sealedPacks";
 import { acceptedTreeSlot, deriveAcceptedTreePDA, type MintConfigAccount } from "./mint";
-import { SOL_CITY_COLLECTIBLES_PROGRAM_ID } from "./program";
+import { SOL_CITY_COLLECTIBLES_PROGRAM_ID, deriveMintQueuePDA } from "./program";
 
 /**
  * A sealed pack from before a tree rotation still opens, and as itself.
@@ -49,10 +49,13 @@ describe("opening a sealed pack", () => {
   it("burns in the tree the pack lives in, with that tree's marker", () => {
     const keys = build(old).keys;
     expect(keys[6].pubkey.equals(old)).toBe(true);
-    // System program, then accepted_tree, then the proof.
+    // System program, then accepted_tree, then the opener's MintQueue, then
+    // the proof.
     expect(keys[14].pubkey.equals(SystemProgram.programId)).toBe(true);
     expect(keys[15].pubkey.equals(deriveAcceptedTreePDA(old))).toBe(true);
-    expect(keys.length).toBe(17);
+    expect(keys[16].pubkey.equals(deriveMintQueuePDA(keys[0].pubkey))).toBe(true);
+    expect(keys[16].isWritable).toBe(true);
+    expect(keys.length).toBe(18);
   });
 
   it("passes no marker for a pack in the current tree", () => {

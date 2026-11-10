@@ -4,7 +4,7 @@ import { buildClaimOwnedIx } from "./claim";
 import {
   buildMintPendingIx, buildMintUnlockIx, deriveWearLogPDA, decodeWearLog, type MintConfigAccount,
 } from "./mint";
-import { SOL_CITY_COLLECTIBLES_PROGRAM_ID, deriveUnlockPDA } from "./program";
+import { SOL_CITY_COLLECTIBLES_PROGRAM_ID, deriveUnlockPDA, deriveMintQueuePDA } from "./program";
 
 /**
  * One asset, one wearer (audit R-21), pinned on the client side: the mints
@@ -32,14 +32,16 @@ const proof = {
 };
 
 describe("the mints", () => {
-  it("name the payer's WearLog last, both of them", () => {
+  it("name the payer's WearLog, then its MintQueue last, both of them", () => {
     for (const ix of [
       buildMintUnlockIx({ payer: claimer, index: 1600, config }),
       buildMintPendingIx({ payer: claimer, limit: 5, config }),
     ]) {
-      const last = ix.keys[ix.keys.length - 1];
-      expect(last.pubkey.equals(deriveWearLogPDA(claimer))).toBe(true);
-      expect(last.isWritable).toBe(true);
+      const [log, queue] = ix.keys.slice(-2);
+      expect(log.pubkey.equals(deriveWearLogPDA(claimer))).toBe(true);
+      expect(log.isWritable).toBe(true);
+      expect(queue.pubkey.equals(deriveMintQueuePDA(claimer))).toBe(true);
+      expect(queue.isWritable).toBe(true);
     }
   });
 
@@ -51,10 +53,13 @@ describe("the mints", () => {
     expect(keys[0].isSigner).toBe(true);
     expect(keys[1].pubkey.equals(claimer)).toBe(true);
     expect(keys[1].isSigner).toBe(false);
-    // The UnlockState and the WearLog are the owner's, never the sponsor's.
+    // The UnlockState, the WearLog and the MintQueue are the owner's, never
+    // the sponsor's: what is minted is the owner's queue, to the owner.
     expect(keys[2].pubkey.equals(deriveUnlockPDA(claimer)[0])).toBe(true);
-    expect(keys[keys.length - 1].pubkey.equals(deriveWearLogPDA(claimer))).toBe(true);
+    expect(keys[keys.length - 2].pubkey.equals(deriveWearLogPDA(claimer))).toBe(true);
+    expect(keys[keys.length - 1].pubkey.equals(deriveMintQueuePDA(claimer))).toBe(true);
     expect(keys.some((k) => k.pubkey.equals(deriveWearLogPDA(sponsor)))).toBe(false);
+    expect(keys.some((k) => k.pubkey.equals(deriveMintQueuePDA(sponsor)))).toBe(false);
     // Nobody else is asked to sign.
     expect(keys.filter((k) => k.isSigner)).toHaveLength(1);
   });

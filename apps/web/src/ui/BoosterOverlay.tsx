@@ -4,12 +4,12 @@ import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { CATEGORY_LABELS } from "@/game/config/paperDoll";
 import {
   PACKS, RARITY_COLOR, RARITY_LABEL, RARITY_ORDER, rarityTheme, CURRENT_SEASON,
-  rollPack, type PackDef, type PackDrop,
+  type PackDef, type PackDrop,
 } from "@/game/config/packs";
 import { unlockItem } from "@/game/config/wardrobeUnlocks";
 import {
-  settleMints, readMintConfig, requestSponsoredMint, mintedIndices, pendingMintIndices,
-  syncHeldToWardrobe,
+  settleMints, readMintConfig, requestSponsoredMint, pendingMintIndices,
+  syncHeldToWardrobe, commonCopies, withoutCopies,
   type MintConfigAccount, type SignedMints,
 } from "@/game/solana/mint";
 import {
@@ -42,13 +42,12 @@ import {
  * Outfit packs — PREVIEW. Three packs, each with its own odds per rarity,
  * drawing from the season the city is in.
  *
- * Two draws live here, and which one runs is BOOSTER_ONCHAIN.
+ * One draw, on chain. The free client-side preview (`Math.random`, granted
+ * into this browser only) was removed on 2026-11-10: it drew by rules the
+ * real pack no longer has (no repeats, unowned first), and with the paid draw
+ * switched off the shop now says packs are unavailable instead.
  *
- * OFF: client-side `Math.random`, granted into localStorage, free. The
- * preview. Only when the switch is off: with it on, a connected wallet that
- * cannot buy is told why rather than handed a free draw nobody else can see.
- *
- * ON: the real thing. `open_booster` charges the pack's price in the config's
+ * `open_booster` charges the pack's price in the config's
  * currency, requests randomness from MagicBlock VRF, and an oracle callback
  * grants the items into the wallet's UnlockState seconds later. Paying and
  * being granted are two different transactions, which is why the reveal
@@ -240,8 +239,11 @@ export default function BoosterOverlay({
     me: PublicKey,
     /** Signed at the till, so sending them asks nobody anything. */
     presigned: SignedMints | null,
-    /** Everything those transactions owe: this draw plus any leftovers. */
+    /** Everything owed after the draw: any leftovers, then this draw. */
     owed: number[],
+    /** What the wallet could already wear before this pack: a copy of one
+     *  of these, or a second copy within the pack, is marked as a repeat. */
+    ownedBefore: Set<number>,
   ) => {
       if (!wallet) return;
       // Before anything is shown as wearable. The chain is what authorises a
@@ -254,7 +256,13 @@ export default function BoosterOverlay({
       // transaction, and the reveal should not wait on it.
       void getNetwork()?.refreshUnlockSnapshot();
 
+      // Every copy is shown, repeats included: every one of them becomes an
+      // asset. A repeat is MARKED as one, never collapsed into "x2", which
+      // would read as the same item counted twice in one pack (owner,
+      // 2026-11-10).
       const rolled: PackDrop[] = [];
+      const seen = new Set(ownedBefore);
+      let fresh = 0;
       for (const index of granted) {
         const entry = itemAtGlobalIndex(index);
         if (!entry) continue;
@@ -266,15 +274,17 @@ export default function BoosterOverlay({
           name: variant.name,
           file: variant.file,
           rarity: rarityOf(entry.category, variant.id),
-          owned: false,
+          owned: seen.has(index),
         });
+        if (!seen.has(index)) fresh++;
+        seen.add(index);
         unlockItem(wallet, entry.category, variant.id, variant.name, true);
       }
-      if (rolled.length > 0) {
+      if (fresh > 0) {
         progressionBus.emit({
           type: "outfit-unlocked",
           outfitId: "booster",
-          outfitName: `${rolled.length} new item${rolled.length === 1 ? "" : "s"} from a pack`,
+          outfitName: `${fresh} new item${fresh === 1 ? "" : "s"} from a pack`,
         });
       }
       setDrops(rolled);
@@ -297,8 +307,9 @@ export default function BoosterOverlay({
       setMinting(true);
       try {
         await requestSponsoredMint(me);
-        const mintedNow = new Set(await mintedIndices(conn, me));
-        const stillThisPack = granted.filter((i) => !mintedNow.has(i));
+        // Counted by COPY: a pack can owe the same item twice, and an item
+        // minted before is no sign that this copy was.
+        const stillThisPack = commonCopies(granted, await pendingMintIndices(conn, me));
         let failedThisPack: number[] = [];
         if (stillThisPack.length > 0) {
           ({ failed: failedThisPack } = await settleMints({
@@ -311,8 +322,8 @@ export default function BoosterOverlay({
         } else {
           await syncHeldToWardrobe(conn, me);
         }
-        const older = (await pendingMintIndices(conn, me)).filter((i) => !granted.includes(i)).length;
-        // Anything that did not land stays in UnlockState, so the wardrobe's
+        const older = withoutCopies(await pendingMintIndices(conn, me), failedThisPack).length;
+        // Anything that did not land stays in the MintQueue, so the wardrobe's
         // own mint button finishes it. Said plainly rather than hidden,
         // because until it lands the item cannot be worn.
         if (failedThisPack.length > 0 || older > 0) {
@@ -403,9 +414,8 @@ export default function BoosterOverlay({
         setPhase("choose");
         return;
       }
-      const owed = [...leftover, ...granted.filter((i) => !leftover.includes(i))]
-        .sort((a, b) => a - b);
-      await revealAndMint(granted, conn, me, presignedMints, owed);
+      const owed = [...leftover, ...granted];
+      await revealAndMint(granted, conn, me, presignedMints, owed, before);
       void refreshSealed(mintConfig);
     } catch (err) {
       // The whole error, logs and code included, for whoever opens the console.
@@ -482,26 +492,8 @@ export default function BoosterOverlay({
       })();
       return;
     }
-    const rolled = rollPack(wallet, chosen);
-    // Brief suspense, then reveal + grant. Suspense is the thing the skip
-    // toggle removes, so there is nothing to wait through when it is on.
-    setTimeout(() => {
-      let newCount = 0;
-      for (const d of rolled) {
-        if (unlockItem(wallet, d.category, d.id, d.name, true)) newCount++;
-      }
-      // One summary event → single toast + wardrobe re-render (the grants ran
-      // silent so they don't spam a toast each).
-      if (newCount > 0) {
-        progressionBus.emit({
-          type: "outfit-unlocked",
-          outfitId: "booster",
-          outfitName: `${newCount} new item${newCount === 1 ? "" : "s"} from a pack`,
-        });
-      }
-      setDrops(rolled);
-      setPhase("revealed");
-    }, skipReveal ? 0 : 650);
+    setError("Packs are not available in this build.");
+    setPhase("choose");
   }, [wallet, config, mintConfig, signAllTransactions, mismatch]);
 
   /**
@@ -546,6 +538,7 @@ export default function BoosterOverlay({
       }
       await revealAndMint(
         result.granted, conn, new PublicKey(wallet), result.presignedMints, result.owed,
+        new Set(result.ownedBefore),
       );
     } catch (err) {
       // The wallet's own message is the useful one: "insufficient funds",
@@ -573,7 +566,7 @@ export default function BoosterOverlay({
     try {
       const conn = baseConnection();
       const me = new PublicKey(wallet);
-      const { granted, timedOut, packId } = await retryStuckDraw({
+      const { granted, ownedBefore, timedOut, packId } = await retryStuckDraw({
         conn, wallet: me, signAllTransactions,
       });
       if (timedOut) {
@@ -583,7 +576,7 @@ export default function BoosterOverlay({
       setStuck(false);
       if (granted.length > 0) {
         setPack(PACKS.find((p) => p.onChainId === packId) ?? PACKS[0]);
-        await revealAndMint(granted, conn, me, null, granted);
+        await revealAndMint(granted, conn, me, null, granted, new Set(ownedBefore));
       }
     } catch (err) {
       setError(txErrorText(err, "Could not ask again."));
@@ -851,7 +844,7 @@ export default function BoosterOverlay({
                   <span style={{
                     fontSize: 8, letterSpacing: 0.5,
                     color: d.owned ? "#888" : "#B7E928",
-                  }}>{d.owned ? "OWNED" : "NEW"}</span>
+                  }}>{d.owned ? "REPEAT" : "NEW"}</span>
                 </div>
               ))}
             </div>

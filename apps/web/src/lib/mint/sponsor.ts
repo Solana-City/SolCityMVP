@@ -24,7 +24,7 @@
 import { Connection, Keypair, LAMPORTS_PER_SOL, PublicKey, Transaction } from "@solana/web3.js";
 import { BASE_RPC_ENDPOINTS } from "@/game/solana/baseRpc";
 import {
-  buildMintPendingIx, MINTS_PER_TX, pendingMintIndices, readMintConfig,
+  buildMintPendingIx, MINTS_PER_TX, pendingMintIndices, readMintConfig, withoutCopies,
 } from "@/game/solana/mint";
 import { decodeUnlockState, deriveUnlockPDA } from "@/game/solana/program";
 import { prepareWalletTx } from "@/game/solana/walletTx";
@@ -159,12 +159,13 @@ export async function sponsorMint(
   }
 
   // Read back rather than inferred: the account is what makes them assets.
-  const after = new Set(await pendingMintIndices(conn, owner));
-  const minted = before.filter((i) => !after.has(i));
+  // Counted by copy, since a pack can owe the same item twice.
+  const after = await pendingMintIndices(conn, owner);
+  const minted = withoutCopies(before, after);
   return {
     status: minted.length > 0 ? "minted" : "failed",
     minted,
-    left: after.size,
+    left: after.length,
     signatures,
     message: failure,
   };

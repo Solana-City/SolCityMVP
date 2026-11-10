@@ -3,6 +3,7 @@ import {
 } from "@solana/web3.js";
 import {
   SOL_CITY_COLLECTIBLES_PROGRAM_ID, deriveUnlockPDA, decodeUnlockState,
+  deriveMintQueuePDA, decodeMintQueue,
 } from "./program";
 import { ixDiscriminator } from "./instructions";
 import { atStep, prepareWalletTx } from "./walletTx";
@@ -192,7 +193,11 @@ export async function heldIndices(
   return out;
 }
 
-/** Catalog indices this wallet has ever minted. Minting is once per index. */
+/**
+ * Catalog indices an asset of which has ever been in this wallet's hands. A
+ * record only: it no longer decides what can be minted (the MintQueue does),
+ * and an index here can still have copies waiting.
+ */
 export async function mintedIndices(conn: Connection, wallet: PublicKey): Promise<number[]> {
   const info = await conn.getAccountInfo(deriveUnlockPDA(wallet)[0]);
   if (!info) return [];
@@ -200,25 +205,59 @@ export async function mintedIndices(conn: Connection, wallet: PublicKey): Promis
 }
 
 /**
- * Catalog indices this wallet owns, can mint, and has not minted yet.
+ * Every COPY this wallet is owed and has not received as an asset yet, oldest
+ * first, REPEATS INCLUDED: two of the same item drawn are two entries.
  *
- * The same three conditions `mint_pending` applies on chain, and they have to
- * stay the same three: this is what decides HOW MANY transactions to prepare,
- * and preparing too few leaves items unminted behind a popup the whole design
- * exists to avoid.
+ * Exactly what `mint_pending` mints on chain, because it reads the same thing:
+ * the wallet's MintQueue. This decides HOW MANY transactions to prepare, and
+ * preparing too few leaves copies unminted.
  *
- * Below BOOSTER_BLOCK_START are the free items and the quest and event block.
- * Those never become assets, so they are not work.
+ * A wallet whose queue does not exist yet is owed what the old rule owed
+ * (owned, mintable, never minted): the program seeds the queue with exactly
+ * that the first time it creates it, so the two sides agree before and after.
  */
 export async function pendingMintIndices(
   conn: Connection,
   wallet: PublicKey,
 ): Promise<number[]> {
-  const info = await conn.getAccountInfo(deriveUnlockPDA(wallet)[0]);
-  const state = info ? decodeUnlockState(info.data) : null;
+  const [queueInfo, unlockInfo] = await conn.getMultipleAccountsInfo([
+    deriveMintQueuePDA(wallet), deriveUnlockPDA(wallet)[0],
+  ]);
+  if (queueInfo && queueInfo.owner.equals(SOL_CITY_COLLECTIBLES_PROGRAM_ID)) {
+    return decodeMintQueue(queueInfo.data)?.owed ?? [];
+  }
+  const state = unlockInfo ? decodeUnlockState(unlockInfo.data) : null;
   if (!state) return [];
   const minted = new Set(state.minted);
   return state.owned.filter((i) => i >= BOOSTER_BLOCK_START && !minted.has(i));
+}
+
+/**
+ * `a` with one occurrence removed for every entry of `b`: a difference that
+ * COUNTS. Owed copies repeat (two of the same item drawn are two entries), so
+ * a Set would read "A, A owed, then A owed" as nothing minted.
+ */
+export function withoutCopies(a: number[], b: number[]): number[] {
+  const take = new Map<number, number>();
+  for (const i of b) take.set(i, (take.get(i) ?? 0) + 1);
+  const out: number[] = [];
+  for (const i of a) {
+    const n = take.get(i) ?? 0;
+    if (n > 0) take.set(i, n - 1); else out.push(i);
+  }
+  return out;
+}
+
+/** The copies in both lists, as many times as both hold them. */
+export function commonCopies(a: number[], b: number[]): number[] {
+  const have = new Map<number, number>();
+  for (const i of b) have.set(i, (have.get(i) ?? 0) + 1);
+  const out: number[] = [];
+  for (const i of a) {
+    const n = have.get(i) ?? 0;
+    if (n > 0) { have.set(i, n - 1); out.push(i); }
+  }
+  return out;
 }
 
 /**
@@ -292,20 +331,22 @@ function mintAccountMetas(payer: PublicKey, config: MintConfigAccount) {
     // Where each minted wear-right came from (audit R-21). Depends on the
     // wallet alone, which is what keeps a pre-signed mint_pending valid.
     { pubkey: deriveWearLogPDA(payer),   isSigner: false, isWritable: true  },
+    // Last: the copies owed, which is what both instructions mint from.
+    { pubkey: deriveMintQueuePDA(payer), isSigner: false, isWritable: true  },
   ];
 }
 
 /**
  * `mint_pending(limit)`: mint what is owed, whatever that turns out to be.
  *
- * No index in the data, so the work is read from the owner's UnlockState when
+ * No index in the data, so the work is read from the owner's MintQueue when
  * it runs. And no signature from the owner: `payer` signs and pays, and may
  * be anyone, which is how the site's sponsor mints a pack right after its draw
  * with no second approval (/api/mint). Leave `owner` out and the payer mints
  * their own items, as before.
  *
  * Accounts, in the program's order (MintPending): the payer, the owner, then
- * MintUnlock's list with the owner's UnlockState and the owner's WearLog.
+ * MintUnlock's list with the owner's UnlockState, WearLog and MintQueue.
  */
 export function buildMintPendingIx(params: {
   payer: PublicKey;
@@ -453,17 +494,20 @@ export async function sendMintPending(args: {
   expected: number[];
 }): Promise<{ minted: number[]; failed: number[] }> {
   const { conn, wallet, signed, expected } = args;
+  // Read from the queue, not from `minted`: an index minted before is already
+  // in `minted`, so a repeat would look delivered before anything landed.
+  const before = await pendingMintIndices(conn, wallet);
   await Promise.all(signed.map((tx) =>
     conn.sendRawTransaction(tx.serialize(), { skipPreflight: false }).catch(() => null),
   ));
 
   for (let i = 0; i < 30; i++) {
     await new Promise((r) => setTimeout(r, 1000));
-    const now = new Set(await mintedIndices(conn, wallet));
-    const landed = expected.filter((x) => now.has(x));
+    const gone = withoutCopies(before, await pendingMintIndices(conn, wallet));
+    const landed = commonCopies(expected, gone);
     if (landed.length === expected.length || i === 29) {
       await syncHeldToWardrobe(conn, wallet);
-      return { minted: landed, failed: expected.filter((x) => !now.has(x)) };
+      return { minted: landed, failed: withoutCopies(expected, landed) };
     }
   }
   return { minted: [], failed: expected };
@@ -516,7 +560,7 @@ export async function settleMints(args: {
     minted = out.minted;
   }
 
-  const left = expected.filter((i) => !minted.includes(i));
+  const left = withoutCopies(expected, minted);
   if (!args.signAllTransactions) return { minted, failed: left };
   const out = await mintMany({
     wallet, indices: left, signAllTransactions: args.signAllTransactions, conn,
@@ -562,7 +606,7 @@ export async function stillSendable(
  *
  * Returns the indices that landed. A failure before anything landed is
  * thrown, so the caller can say why; after a partial mint, the rest is
- * returned as failed and stays in UnlockState for the wardrobe's mint button.
+ * returned as failed and stays in the MintQueue for the wardrobe's mint button.
  */
 export async function mintMany(args: {
   wallet: PublicKey;
@@ -575,8 +619,10 @@ export async function mintMany(args: {
   const config = await readMintConfig(conn);
   if (!config) return { minted: [], failed: args.indices };
 
-  const already = new Set(await mintedIndices(conn, args.wallet));
-  const todo = args.indices.filter((i) => !already.has(i));
+  // Only copies the queue still owes, as many times as it owes them: each
+  // mint_unlock consumes one, so a repeat is two instructions, and a copy
+  // already delivered would only fail the transaction.
+  const todo = commonCopies(args.indices, await pendingMintIndices(conn, args.wallet));
   if (todo.length === 0) return { minted: [], failed: [] };
 
   const per = Math.max(1, Math.min(MINTS_PER_TX, args.perTx ?? MINTS_PER_TX));
@@ -602,15 +648,16 @@ export async function mintMany(args: {
     }
   }
   await syncHeldToWardrobe(conn, args.wallet);
-  return { minted, failed: todo.filter((x) => !minted.includes(x)) };
+  return { minted, failed: withoutCopies(todo, minted) };
 }
 
 /**
  * Mints one cosmetic and waits for it to land.
  *
- * Confirmed by reading `minted` back rather than by watching the signature:
- * what the player is about to be told is "it is yours now", and the account
- * saying so is the thing that makes that true.
+ * Confirmed by the signature reaching `confirmed` without an error. Reading
+ * `minted` back used to stand in for that, and it cannot any more: an index
+ * minted before is already there, so a repeat would read as delivered before
+ * this transaction landed.
  */
 export async function mintCosmetic(args: {
   wallet: PublicKey;
@@ -630,15 +677,15 @@ export async function mintCosmetic(args: {
 
   for (let i = 0; i < 30; i++) {
     await new Promise((r) => setTimeout(r, 1000));
-    if ((await mintedIndices(conn, args.wallet)).includes(args.index)) {
+    const st = (await conn.getSignatureStatuses([signature])).value[0];
+    if (st?.err) throw new Error(`The mint failed on chain: ${JSON.stringify(st.err)}`);
+    if (st?.confirmationStatus === "confirmed" || st?.confirmationStatus === "finalized") {
       // The item just became a held asset, and from here possession is what
       // decides whether it can be worn. Asking again now is what keeps it
       // wearable across that handover.
       await syncHeldToWardrobe(conn, args.wallet);
       return { signature };
     }
-    const st = (await conn.getSignatureStatuses([signature])).value[0];
-    if (st?.err) throw new Error(`The mint failed on chain: ${JSON.stringify(st.err)}`);
   }
   throw new Error("Sent, but the asset has not appeared yet. It may still land.");
 }

@@ -28,7 +28,7 @@ import {
   createAssociatedTokenAccountInstruction, createTransferInstruction, getAssociatedTokenAddressSync,
 } from "@solana/spl-token";
 import { devnetConnection, sendAndPoll } from "./_rpc";
-import { readMintConfig, settleMints } from "../src/game/solana/mint";
+import { readMintConfig, settleMints, withoutCopies } from "../src/game/solana/mint";
 import { sponsorMint } from "../src/lib/mint/sponsor";
 import { readPackConfig, awaitDraw, buyerIsTreasury } from "../src/game/solana/packs";
 import { buySealedPacks, heldSealedPacks, openSealedPack } from "../src/game/solana/sealedPacks";
@@ -109,11 +109,20 @@ async function main() {
 
   const { granted, timedOut } = await awaitDraw(conn, wallet, before);
   if (timedOut) throw new Error("opened, but the draw did not land in 45 s");
-  console.log(`drawn       ${granted.length} new: ${granted.map((i) => itemAtGlobalIndex(i)?.variant.id ?? i).join(", ") || "(all duplicates)"}`);
+  // Every copy, repeats marked: the owner's rule is that all of them are
+  // minted, so a pack of N must show N here.
+  const seen = new Set(before);
+  const names = granted.map((i) => {
+    const name = String(itemAtGlobalIndex(i)?.variant.id ?? i);
+    const repeat = seen.has(i);
+    seen.add(i);
+    return repeat ? `${name} (repeat)` : name;
+  });
+  console.log(`drawn       ${granted.length} of ${pack.size}: ${names.join(", ")}`);
 
   // 3. MINT: by the sponsor with no approval (--sponsored), or by a second
   // approval now that the draw has landed.
-  const owed = [...leftover, ...granted.filter((i) => !leftover.includes(i))].sort((a, b) => a - b);
+  const owed = [...leftover, ...granted];
   const t2 = Date.now();
   let minted: number[];
   let failed: number[];
@@ -121,7 +130,7 @@ async function main() {
     const out = await sponsorMint(wallet, { conn, sponsor });
     if (out.message) console.log(`sponsor     ${out.status}: ${out.message}`);
     minted = out.minted;
-    failed = owed.filter((i) => !minted.includes(i));
+    failed = withoutCopies(owed, minted);
   } else {
     ({ minted, failed } = await settleMints({
       conn, wallet, presigned: presignedMints, expected: owed, signAllTransactions: signAll,
@@ -138,7 +147,10 @@ async function main() {
   console.log(`pack burnt  ${still ? "NO, the indexer still lists it" : "yes"}`);
   console.log(`approvals   ${approvals.length} (transactions in each: ${approvals.join(", ")})`);
   console.log(`total       ${((Date.now() - t0) / 1000).toFixed(1)} s`);
-  if (failed.length || still) process.exit(1);
+  // A pack is size copies, repeats included, and every one must be an asset.
+  const short = granted.length !== pack.size;
+  if (short) console.log(`SHORT       the draw showed ${granted.length} of ${pack.size} copies`);
+  if (failed.length || still || short) process.exit(1);
   console.log("PASS");
 }
 
