@@ -1,16 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
-  PACKS, RARITY_ORDER, CURRENT_SEASON, rollPack, rarityOf, seasonRarityCounts, seasonOf, isPackItem,
+  PACKS, RARITY_ORDER, CURRENT_SEASON, rarityOf, seasonRarityCounts, seasonOf, isPackItem,
 } from "./packs";
 import { getBoosterPool, isFreeInShippedGame } from "./paperDoll";
 import { boosterIndexTable } from "./boosterPool";
 import { SEASONS, CURRENT_SEASON as OPEN_SEASON, seasonLabel } from "@/game/collections/seasons";
 
 /**
- * The draw is the thing the program will have to mirror instruction for
- * instruction, so its rules are worth pinning down before the odds are even
- * decided: a pack always hands over what it promised, never the same item
- * twice, and never an item from another season.
+ * The packs, their odds and the season stock they draw from. The draw itself
+ * is on chain (callback_open_booster) and its rules are pinned by the Rust
+ * tests: every roll independent, repeats normal, every copy minted.
  */
 describe("the season calendar", () => {
   it("has exactly one season open", () => {
@@ -42,57 +41,6 @@ describe("outfit packs", () => {
     expect(new Set(PACKS.map((p) => p.art.file)).size).toBe(PACKS.length);
   });
 
-  it("draws the promised number of pieces, none of them twice", () => {
-    for (const pack of PACKS) {
-      const drops = rollPack("test-wallet", pack);
-      expect(drops.length, pack.id).toBe(pack.size);
-      const keys = drops.map((d) => `${d.category}:${d.id}`);
-      expect(new Set(keys).size, pack.id).toBe(keys.length);
-    }
-  });
-
-  it("falls down the ladder rather than coming up short", () => {
-    // A pack that rolls nothing but legendaries, in a season that holds two
-    // of them: it still hands over five pieces.
-    const allLegendary = {
-      ...PACKS[0],
-      odds: { common: 0, uncommon: 0, rare: 0, legendary: 100 },
-    };
-    const drops = rollPack("test-wallet", allLegendary);
-    expect(drops).toHaveLength(allLegendary.size);
-  });
-
-  it("falls DOWN first, never up, while anything below is left", () => {
-    // The direction, not just the count. A pack rolling nothing but RARE, in
-    // a season that holds fewer rares than the pack has slots, has to spend
-    // the overflow on uncommon and common. Reaching for a legendary instead
-    // would be paying out scarcity to cover a shortage, which is the bug this
-    // pins: before 2026-10-20 the ladder put legendary first for every rarity
-    // except legendary itself.
-    const counts = seasonRarityCounts();
-    const allRare = {
-      ...PACKS[0],
-      size: Math.max(PACKS[0].size, counts.rare + 2),
-      odds: { common: 0, uncommon: 0, rare: 100, legendary: 0 },
-    };
-    // Only meaningful while there is stock below rare to fall into.
-    expect(counts.uncommon + counts.common).toBeGreaterThan(0);
-
-    const drops = rollPack("test-wallet", allRare);
-    expect(drops.length).toBeGreaterThan(counts.rare); // the bucket did run dry
-    expect(drops.filter((d) => d.rarity === "legendary")).toHaveLength(0);
-  });
-
-  it("never draws an item from another season", () => {
-    for (const pack of PACKS) {
-      for (const drop of rollPack("test-wallet", pack)) {
-        const variant = getBoosterPool()
-          .find((p) => p.category === drop.category && p.variant.id === drop.id)!.variant;
-        expect(seasonOf(variant)).toBe(CURRENT_SEASON);
-      }
-    }
-  });
-
   it("keeps enough in every rarity for a pack to be worth opening", () => {
     // Not a rule, a warning: odds are meaningless if a bucket is empty, and
     // the fallback would quietly hand out commons instead.
@@ -102,12 +50,11 @@ describe("outfit packs", () => {
     }
   });
 
-  it("draws nothing at all from a season that has no items yet", () => {
+  it("counts nothing in a season that has no items yet", () => {
     // Season 2 exists the moment somebody writes it down, and holds nothing
-    // until the art lands. A pack pointed at it must come back EMPTY rather
-    // than quietly falling back to season 1 stock — that fallback would be
-    // the bug that makes a "new collection" sell old items.
-    expect(rollPack("test-wallet", PACKS[0], 2)).toHaveLength(0);
+    // until the art lands. Its table must read EMPTY rather than quietly
+    // borrowing season 1 stock: that would make a "new collection" sell old
+    // items.
     expect(seasonRarityCounts(2)).toEqual({ common: 0, uncommon: 0, rare: 0, legendary: 0 });
   });
 

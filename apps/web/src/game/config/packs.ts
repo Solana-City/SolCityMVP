@@ -1,5 +1,5 @@
 import { LayerCategory, getBoosterPool, isFreeInShippedGame, type LayerVariant } from "./paperDoll";
-import { getUnlockedSet, unlockKeyOf } from "./wardrobeUnlocks";
+import { unlockKeyOf } from "./wardrobeUnlocks";
 import {
   CURRENT_SEASON, RARITY_ORDER, type Rarity, type TileKind,
 } from "@/game/collections/seasons";
@@ -89,8 +89,8 @@ const RARITY_TABLE: Partial<Record<Rarity, Partial<Record<LayerCategory, string[
  *
  * The free filter matters and is easy to miss. getBoosterPool() is built from
  * POOL_V1_FREE, which is frozen because the pool is index-stable on chain —
- * it still CONTAINS items that have become free since, and rollPack skips
- * them at draw time. Asking the pool alone marked every hairstyle as a rarity
+ * it still CONTAINS items that have become free since, and a season's drop
+ * table leaves them out. Asking the pool alone marked every hairstyle as a rarity
  * the player could never actually open, which is the whole of what hair is:
  * free to everyone, like the bases and the faces.
  */
@@ -251,6 +251,11 @@ export function packByOnChainId(id: number): PackDef | undefined {
 }
 
 // ── The draw ────────────────────────────────────────────────────────────────
+//
+// Drawn on chain only (callback_open_booster): every item an independent roll
+// against the pack's odds, nothing the wallet holds consulted, repeats normal.
+// The client-side rollPack that used to live here was removed on 2026-11-10;
+// it followed older rules (no repeats in a pack, unowned items first).
 
 export interface PackDrop {
   category: LayerCategory;
@@ -258,117 +263,10 @@ export interface PackDrop {
   name: string;
   file: string;
   rarity: Rarity;
-  /** Already owned before this pack (a duplicate). */
+  /** A repeat: the wallet could already wear it before this pack, or an
+   *  earlier item of this pack is the same one. Still a new copy, minted like
+   *  every other. */
   owned: boolean;
-}
-
-function shuffle<T>(input: T[]): T[] {
-  const a = [...input];
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [a[i], a[j]] = [a[j], a[i]];
-  }
-  return a;
-}
-
-/** One rarity, rolled against a pack's weights. */
-function rollRarity(odds: Record<Rarity, number>): Rarity {
-  const total = RARITY_ORDER.reduce((sum, r) => sum + Math.max(0, odds[r]), 0);
-  if (total <= 0) return "common";
-  let ticket = Math.random() * total;
-  for (const rarity of RARITY_ORDER) {
-    ticket -= Math.max(0, odds[rarity]);
-    if (ticket < 0) return rarity;
-  }
-  return "common";
-}
-
-/**
- * Opens a pack: `size` items, each one a rarity rolled against the pack's
- * weights and then an item of that rarity.
- *
- * Two rules carried over from the single pack, because they are what makes
- * opening one feel worth the money: no item appears twice in the same pack,
- * and an item the wallet does not own yet is preferred over one it does.
- *
- * A rarity with nothing left to give falls DOWN the ladder rather than
- * failing — a legendary roll in a season with two legendaries, both already
- * drawn in this pack, still hands over something.
- */
-export function rollPack(
-  wallet: string | null,
-  pack: PackDef,
-  /**
-   * Which season this pack draws from. Defaults to the open one, and is an
-   * argument rather than a constant because a pack will one day be an item a
-   * player owns: bought in season 1, opened in season 3, and still a season 1
-   * pack. The program will read it off the pack, not off the clock.
-   */
-  season: number = CURRENT_SEASON,
-): PackDrop[] {
-  const owned = getUnlockedSet(wallet);
-  const isOwned = (c: LayerCategory, id: string) => owned.has(unlockKeyOf(c, id));
-
-  // The season is the gate: a pack never draws an item from another one.
-  const pool = getBoosterPool().filter(
-    (p) => !isFreeInShippedGame(p.category, p.variant.id) && seasonOf(p.variant) === season,
-  );
-
-  const buckets = new Map<Rarity, typeof pool>();
-  for (const rarity of RARITY_ORDER) {
-    buckets.set(rarity, shuffle(pool.filter((p) => rarityOf(p.category, p.variant.id) === rarity)));
-  }
-
-  const taken = new Set<string>();
-  const drops: PackDrop[] = [];
-
-  for (let i = 0; i < pack.size; i++) {
-    const wanted = rollRarity(pack.odds);
-    // The rolled rarity first, then DOWN the ladder, and only if there is
-    // nothing at all below it, up as a last resort.
-    //
-    // The direction is the whole point and it was wrong until 2026-10-20: the
-    // old line was `[wanted, ...RARITY_ORDER.filter(r => r !== wanted).reverse()]`,
-    // which for every rarity except legendary put LEGENDARY first. A pack that
-    // ran out of commons paid out a legendary, which is the opposite of
-    // scarcity and would have been baked into the program the moment it drew
-    // to match the client.
-    //
-    // Going up at all is a last resort rather than a refusal because a pack
-    // that hands over four pieces instead of five reads as broken; a common
-    // roll in a season with no commons left has nowhere else to go.
-    const at = RARITY_ORDER.indexOf(wanted);
-    const ladder = [
-      wanted,
-      ...RARITY_ORDER.slice(0, at).reverse(), // down first
-      ...RARITY_ORDER.slice(at + 1),          // up only if nothing below
-    ];
-
-    let picked: (typeof pool)[number] | undefined;
-    for (const rarity of ladder) {
-      const bucket = buckets.get(rarity) ?? [];
-      const free = bucket.filter((p) => !taken.has(unlockKeyOf(p.category, p.variant.id)));
-      if (free.length === 0) continue;
-      // Something new beats a duplicate, at the same rarity.
-      const unowned = free.filter((p) => !isOwned(p.category, p.variant.id));
-      picked = (unowned.length > 0 ? unowned : free)[0];
-      break;
-    }
-    if (!picked) break; // the whole season is already in this pack
-
-    const { category, variant } = picked;
-    taken.add(unlockKeyOf(category, variant.id));
-    drops.push({
-      category,
-      id: variant.id,
-      name: variant.name,
-      file: variant.file,
-      rarity: rarityOf(category, variant.id),
-      owned: isOwned(category, variant.id),
-    });
-  }
-
-  return drops;
 }
 
 /** How many items of each rarity this season actually holds — the sanity
