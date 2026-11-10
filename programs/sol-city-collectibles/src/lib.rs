@@ -110,8 +110,23 @@ pub const EVENT_DROP_SEED: &[u8] = b"event_drop";
 /// bound on the hashing one claim can ask for.
 pub const MAX_EVENT_PROOF: usize = 24;
 
-/// Most assets one wallet can mint. Two bytes each, same as `owned`.
-pub const PLAYER_MINT_CAP: usize = 256;
+/// Seed of a wallet's MintQueue, followed by the wallet: every copy it has
+/// drawn or been granted and not yet received as an asset. See `MintQueue`.
+pub const MINT_QUEUE_SEED: &[u8] = b"mint_queue";
+
+/// Most copies one wallet may have WAITING to be minted at once, all items
+/// together.
+///
+/// Not a limit on what a wallet owns or holds: there is none, and two of the
+/// same item are as normal as two different ones. The queue drains right
+/// after every reveal, so it normally holds a pack or less; it only fills if
+/// minting keeps failing, and then the next pack is refused before anything
+/// is paid, until what is waiting has been minted (owner, 2026-11-10).
+///
+/// It replaced PLAYER_MINT_CAP, which capped how many DIFFERENT items a wallet
+/// could ever mint, for life, at 256. Nothing about owning a collection
+/// should run out.
+pub const MAX_OWED_COPIES: usize = 256;
 
 /// How many cosmetics one `mint_pending` call will mint.
 ///
@@ -343,6 +358,7 @@ fn request_draw<'info>(
     payer: &Signer<'info>,
     unlock_state: &AccountInfo<'info>,
     drops: &AccountInfo<'info>,
+    mint_queue: &AccountInfo<'info>,
     oracle_queue: &AccountInfo<'info>,
     program_identity: &UncheckedAccount<'info>,
     vrf_program: &UncheckedAccount<'info>,
@@ -365,6 +381,9 @@ fn request_draw<'info>(
             // gets the table that was in force when the pack was spent, and
             // frozen by then because its season has opened.
             VrfCallbackMeta { pubkey: drops.key(), is_signer: false, is_writable: false },
+            // The wallet's MintQueue, where every pick is queued to become an
+            // asset. The purchase already made room for the whole draw.
+            VrfCallbackMeta { pubkey: mint_queue.key(), is_signer: false, is_writable: true },
         ],
         callback_args: vec![],
     }
@@ -531,6 +550,14 @@ pub enum CollectiblesError {
     NotOnEventList,
     #[msg("That proof is longer than any event list")]
     EventProofTooLong,
+    #[msg("That is not this wallet's mint queue")]
+    WrongMintQueue,
+    #[msg("Too many items are waiting to be minted; mint them before opening another pack")]
+    MintQueueFull,
+    #[msg("No copy of that cosmetic is waiting to be minted")]
+    NoCopyOwed,
+    #[msg("That asset is already claimed by this wallet")]
+    AssetAlreadyClaimed,
     // Appended, never inserted. Anchor numbers these by POSITION, so a
     // variant added in the middle silently renumbers every one after it
     // and any client matching on a code starts reporting the wrong thing.
@@ -653,6 +680,24 @@ pub mod sol_city_collectibles {
             }
         }
 
+        // ── And room for every copy in the mint queue ─────────────────────
+        //
+        // The callback queues each pick to become an asset and, like `owned`,
+        // it cannot grow the queue, so the buyer funds it here. A queue
+        // already holding MAX_OWED_COPIES refuses the sale now, before the
+        // payment, rather than taking the money for a draw it cannot deliver.
+        {
+            let queue = open_mint_queue(
+                &ctx.accounts.mint_queue.to_account_info(),
+                &ctx.accounts.unlock_state,
+                &ctx.accounts.payer.to_account_info(),
+                &ctx.accounts.system_program.to_account_info(),
+                items,
+            )?;
+            require!(queue.has_room_for(items), CollectiblesError::MintQueueFull);
+            save_mint_queue(&ctx.accounts.mint_queue.to_account_info(), &queue)?;
+        }
+
         // Shared with mint_pack: the same transfer, written once.
         take_payment(
             &ctx.accounts.buyer_token_account,
@@ -669,6 +714,7 @@ pub mod sol_city_collectibles {
             &ctx.accounts.payer,
             &ctx.accounts.unlock_state.to_account_info(),
             &ctx.accounts.drops.to_account_info(),
+            &ctx.accounts.mint_queue.to_account_info(),
             &ctx.accounts.oracle_queue,
             &ctx.accounts.program_identity,
             &ctx.accounts.vrf_program,
@@ -809,15 +855,20 @@ pub mod sol_city_collectibles {
                 break;
             }
 
-            // Nothing left anywhere: the whole season is already in this pack.
-            // open_booster checks the supply, so this is the duplicate-free
-            // edge, not a funded pack paying out nothing.
+            // Only an empty season table gives nothing here, and open_booster
+            // and open_pack_from_asset refuse a pack against one.
             let Some(index) = picked else { break };
             picks.push(index);
-            // Sorted insert, and an index the wallet already owned is a no-op:
-            // owning something twice is not a thing the list can express.
-            unlocks.insert_owned(index);
         }
+
+        // Every pick becomes wearable, and every pick, REPEATS INCLUDED, is
+        // queued to become an asset. A set cannot hold the second copy, so
+        // the queue is told separately (see MintQueue). The purchase made the
+        // room, so neither write can fail here.
+        let authority = unlocks.authority;
+        let mut queue = load_mint_queue(&ctx.accounts.mint_queue.to_account_info(), &authority)?;
+        record_picks(unlocks, &mut queue, &picks);
+        save_mint_queue(&ctx.accounts.mint_queue.to_account_info(), &queue)?;
 
         unlocks.pending = false;
         emit!(BoosterOpened { authority: unlocks.authority, indices: picks });
@@ -861,11 +912,27 @@ pub mod sol_city_collectibles {
             CollectiblesError::WrongDropTable
         );
 
+        // Room for the draw in the mint queue, as the purchase makes it. A
+        // draw paid for before the queue existed has none yet, and this is
+        // what lets it resolve: its callback now names the queue too. No
+        // ceiling check: refusing here would leave a paid draw stuck.
+        {
+            let queue = open_mint_queue(
+                &ctx.accounts.mint_queue.to_account_info(),
+                &ctx.accounts.unlock_state,
+                &ctx.accounts.payer.to_account_info(),
+                &ctx.accounts.system_program.to_account_info(),
+                ctx.accounts.unlock_state.draw.size as usize,
+            )?;
+            save_mint_queue(&ctx.accounts.mint_queue.to_account_info(), &queue)?;
+        }
+
         request_draw(
             client_seed,
             &ctx.accounts.payer,
             &ctx.accounts.unlock_state.to_account_info(),
             &ctx.accounts.drops.to_account_info(),
+            &ctx.accounts.mint_queue.to_account_info(),
             &ctx.accounts.oracle_queue,
             &ctx.accounts.program_identity,
             &ctx.accounts.vrf_program,
@@ -1326,16 +1393,14 @@ pub mod sol_city_collectibles {
     ///
     /// The tree's delegate and the collection's authority are both a PDA of
     /// this program, so Bubblegum will not mint without our signature, and we
-    /// only sign for an index the caller's own UnlockState already holds. A
-    /// tree anyone could mint from would be a tree anyone could mint anything
-    /// from.
+    /// only sign for a copy the caller's own MintQueue holds. A tree anyone
+    /// could mint from would be a tree anyone could mint anything from.
     ///
-    /// `minted` is what makes it once. It is a separate list from `owned`
-    /// because the two answer different questions: owning is permission and
-    /// survives a sale, while this records that an asset for this index has
-    /// been handed to this wallet. Without it a player could mint, sell, and
-    /// mint again from the same unlock, forever, and the scarcity the whole
-    /// season table exists to create would be worth nothing.
+    /// The queue is what makes each copy once. A copy enters it when it is
+    /// drawn or granted and leaves it when it is minted, so a player cannot
+    /// mint, sell, and mint again from the same draw; and a repeat drawn is a
+    /// second copy, so it is a second asset. It is the MINT NOW button for a
+    /// copy the sponsored mint has not delivered yet.
     ///
     /// ── What this deliberately does NOT do ───────────────────────────────
     ///
@@ -1361,23 +1426,33 @@ pub mod sol_city_collectibles {
             // clears, and the paid draw is lost with the wallet locked behind
             // it (audit R-06). Same rule mint_pending already has.
             require!(!unlocks.pending, CollectiblesError::BoosterPending);
-            require!(unlocks.owns(index), CollectiblesError::ItemNotOwned);
-            // A quest or event cosmetic is not a thing that can be sold, so it
-            // is not a thing that can be minted. Without this a wallet could
-            // turn the proof it did a quest into an asset and list it.
+            // A quest cosmetic is not a thing that can be sold, so it is not a
+            // thing that can be minted. Without this a wallet could turn the
+            // proof it did a quest into an asset and list it.
             require!(is_mintable(index), CollectiblesError::ItemNotMintable);
-            require!(!unlocks.is_minted(index), CollectiblesError::AlreadyMinted);
-            require!(unlocks.minted.len() < PLAYER_MINT_CAP, CollectiblesError::MintCapReached);
         }
 
-        // Room for the new entry, funded by the player, before anything is
-        // minted. Growing after the CPI would leave an asset in their wallet
-        // that `minted` does not record, which is the one state that lets the
-        // same index be minted twice.
+        // ONE queued copy of this index is what this mints, and the only
+        // thing that lets it mint at all. The queue holds what was drawn or
+        // granted and not yet delivered, repeats included, so a second copy
+        // drawn is a second asset, and an item minted and sold is not a
+        // reason to mint it again (see MintQueue).
+        let mut queue = open_mint_queue(
+            &ctx.accounts.mint_queue.to_account_info(),
+            &ctx.accounts.unlock_state,
+            &ctx.accounts.payer.to_account_info(),
+            &ctx.accounts.system_program.to_account_info(),
+            0,
+        )?;
+        require!(queue.take_one(index), CollectiblesError::NoCopyOwed);
+
+        // Room for the records, funded by the player, before anything is
+        // minted, so the asset never exists without them. An upper bound:
+        // either list may already hold the index.
         {
             let info = ctx.accounts.unlock_state.to_account_info();
             let needed = UnlockState::size_for(
-                ctx.accounts.unlock_state.owned.len(),
+                ctx.accounts.unlock_state.owned.len() + 1,
                 ctx.accounts.unlock_state.minted.len() + 1,
             );
             if info.data_len() < needed {
@@ -1440,7 +1515,11 @@ pub mod sol_city_collectibles {
         // Recorded only once the asset exists.
         log.entries.push(WearEntry { index, asset });
         save_wear_log(&ctx.accounts.wear_log.to_account_info(), &log)?;
+        save_mint_queue(&ctx.accounts.mint_queue.to_account_info(), &queue)?;
         let unlocks = &mut ctx.accounts.unlock_state;
+        // Wearable again if a sale had taken the right away: this asset now
+        // backs it, and the wear log says so.
+        unlocks.insert_owned(index);
         unlocks.insert_minted(index);
         emit!(UnlockMinted { authority: unlocks.authority, index });
         Ok(())
@@ -1485,23 +1564,22 @@ pub mod sol_city_collectibles {
     ///
     /// ── Which items it takes ────────────────────────────────────────────
     ///
-    /// Owned, mintable, and not already here. All three matter:
+    /// The oldest copies in the owner's MintQueue, up to `limit`, and nothing
+    /// else. The queue is filled only by a paid draw (every pick, repeats
+    /// included) and by the event grants, and never by a claim, so:
     ///
-    ///   * `owns` is the permission, and it is the only source of indices:
-    ///     the caller names nothing, so they cannot name something else.
-    ///   * `is_mintable` keeps the quest block out. Quest items are not
-    ///     tradable and never become assets; pack and event items are.
-    ///   * `is_minted` is what makes it once per wallet. A cosmetic bought on
-    ///     a marketplace is recorded there the moment it is claimed, so this
-    ///     will not mint a second asset for something the wallet already has.
+    ///   * the caller names nothing, so they cannot name something else;
+    ///   * two of the same item drawn are two copies, and two assets;
+    ///   * a cosmetic bought on a marketplace adds no copy, so it never turns
+    ///     into a second, fresh asset.
     ///
     /// ── Why running it twice is harmless ────────────────────────────────
     ///
-    /// It recomputes that list every time it executes, so two calls sent
-    /// together do not fight over the same five items: they write the same
-    /// account, Solana runs them one after the other, and the second sees what
-    /// the first did and takes the next ones. A call with nothing left to do
-    /// fails loudly rather than reporting success for no work.
+    /// It reads the queue every time it executes, so two calls sent together
+    /// do not fight over the same five copies: they write the same account,
+    /// Solana runs them one after the other, and the second takes the next
+    /// ones. A call with nothing left to do fails loudly rather than reporting
+    /// success for no work.
     pub fn mint_pending(ctx: Context<MintPending>, limit: u8) -> Result<()> {
         let cfg = &ctx.accounts.mint_config;
         require_keys_eq!(
@@ -1521,30 +1599,26 @@ pub mod sol_city_collectibles {
             0 => MINT_PENDING_CAP,
             n => n.min(MINT_PENDING_CAP),
         };
-        let todo: Vec<u16> = {
-            let unlocks = &ctx.accounts.unlock_state;
-            unlocks
-                .owned
-                .iter()
-                .copied()
-                .filter(|i| is_mintable(*i) && !unlocks.is_minted(*i))
-                .take(want)
-                .collect()
-        };
+        // The oldest copies in the owner's queue, repeats included: two of
+        // the same item drawn are two of these, and two assets. The queue is
+        // the only source, so the caller still names nothing.
+        let mut queue = open_mint_queue(
+            &ctx.accounts.mint_queue.to_account_info(),
+            &ctx.accounts.unlock_state,
+            &ctx.accounts.payer.to_account_info(),
+            &ctx.accounts.system_program.to_account_info(),
+            0,
+        )?;
+        let todo: Vec<u16> = queue.take_front(want);
         require!(!todo.is_empty(), CollectiblesError::NothingToMint);
-        require!(
-            ctx.accounts.unlock_state.minted.len() + todo.len() <= PLAYER_MINT_CAP,
-            CollectiblesError::MintCapReached
-        );
 
-        // Room for all of them at once, funded by the player, before anything
-        // is minted. Growing after a CPI would leave an asset in the wallet
-        // that `minted` does not record, which is the one state that lets the
-        // same index be minted twice.
+        // Room for the records of all of them at once, funded by the payer,
+        // before anything is minted, so no asset exists without them. An
+        // upper bound: repeats and earlier mints are already in the lists.
         {
             let info = ctx.accounts.unlock_state.to_account_info();
             let needed = UnlockState::size_for(
-                ctx.accounts.unlock_state.owned.len(),
+                ctx.accounts.unlock_state.owned.len() + todo.len(),
                 ctx.accounts.unlock_state.minted.len() + todo.len(),
             );
             if info.data_len() < needed {
@@ -1609,14 +1683,17 @@ pub mod sol_city_collectibles {
             }
             .invoke_signed(&[seeds])?;
 
-            // Recorded one at a time, right after the asset exists, so a
-            // failure halfway through leaves the account describing exactly
-            // what was minted and the rest still waiting.
+            // Recorded right after the asset exists. Wearable again if a sale
+            // had taken the right away: this asset now backs it.
+            ctx.accounts.unlock_state.insert_owned(index);
             ctx.accounts.unlock_state.insert_minted(index);
             log.entries.push(WearEntry { index, asset: get_asset_id(&tree, nonce) });
             emit!(UnlockMinted { authority, index });
         }
         save_wear_log(&ctx.accounts.wear_log.to_account_info(), &log)?;
+        // What was minted leaves the queue. One transaction, so a failure
+        // anywhere above reverts this with it and the copies stay owed.
+        save_mint_queue(&ctx.accounts.mint_queue.to_account_info(), &queue)?;
         Ok(())
     }
 
@@ -1669,10 +1746,11 @@ pub mod sol_city_collectibles {
         require_accepted_tree(
             &ctx.accounts.merkle_tree.key(), cfg, ctx.accounts.accepted_tree.is_some(),
         )?;
-        require!(
-            !ctx.accounts.unlock_state.owns(index),
-            CollectiblesError::AlreadyOwned
-        );
+        // Owning the index already is NOT a refusal: a second asset of an item
+        // is normal, and claiming it is what records it in the wear log, so a
+        // later sale of the first one leaves this wallet still wearing it.
+        // What is refused is the same ASSET twice, below, once the log is open.
+        //
         // A quest or event cosmetic never exists as an asset, so there is
         // nothing honest to claim. mint_unlock already refuses to make one;
         // this is the same rule on the way back in (audit R-60).
@@ -1680,13 +1758,10 @@ pub mod sol_city_collectibles {
         // Not while a draw is in flight: a claim grows `owned` into the room
         // the callback was paid for. See mint_unlock (audit R-06).
         require!(!ctx.accounts.unlock_state.pending, CollectiblesError::BoosterPending);
-        // The same ceiling minting has (audit R-62): `minted` is bounded so the
-        // account is, and a claim records into it too.
-        require!(
-            ctx.accounts.unlock_state.is_minted(index)
-                || ctx.accounts.unlock_state.minted.len() < PLAYER_MINT_CAP,
-            CollectiblesError::MintCapReached
-        );
+        // No ceiling on `minted` any more (it was audit R-62's PLAYER_MINT_CAP):
+        // it holds each index at most once, so it is bounded by the catalog,
+        // and a collection should not run out.
+        //
         // Our collection, verified (audit R-18). The leaf hashes this metadata,
         // so a leaf carrying another collection, or ours unverified, cannot be
         // presented as one of our cosmetics even if its URI happens to match.
@@ -1761,11 +1836,10 @@ pub mod sol_city_collectibles {
         }
         let unlocks = &mut ctx.accounts.unlock_state;
         unlocks.insert_owned(index);
-        // And an asset for this index is already in this wallet's hands, which
-        // is the whole of what `minted` means. Recording only `owned` here
-        // would let the buyer of a second-hand cosmetic mint a FRESH asset for
-        // it as well, sell both, and repeat: the supply the season table
-        // exists to fix would become whatever the market could absorb.
+        // A record that an asset of this index has been in this wallet's
+        // hands. It no longer gates minting: what keeps the buyer of a
+        // second-hand cosmetic from minting a FRESH asset of it is that a
+        // claim never adds a copy to the MintQueue.
         unlocks.insert_minted(index);
 
         // ── One asset, one wearer (audit R-21) ───────────────────────────
@@ -1780,6 +1854,11 @@ pub mod sol_city_collectibles {
             &ctx.accounts.system_program.to_account_info(),
             1,
         )?;
+        // The same asset twice would be two entries backing one right.
+        require!(
+            !own_log.entries.iter().any(|e| e.asset == asset),
+            CollectiblesError::AssetAlreadyClaimed
+        );
         own_log.entries.push(WearEntry { index, asset });
         save_wear_log(&ctx.accounts.wear_log.to_account_info(), &own_log)?;
 
@@ -1805,9 +1884,10 @@ pub mod sol_city_collectibles {
                 .position(|e| e.asset == asset && e.index == index)
                 .ok_or(CollectiblesError::WrongPreviousHolder)?;
             prev_log.entries.swap_remove(at);
-            // The right goes only if no OTHER asset still backs it. `minted`
-            // stays: it records that this wallet was handed an asset for the
-            // index, and keeping it is what stops them minting a fresh one.
+            // The right goes only if no OTHER asset still backs it. A copy the
+            // seller still has waiting in their MintQueue brings it back the
+            // moment that copy is minted. Selling gives them no new copy, so
+            // they cannot mint a fresh one either.
             if !prev_log.entries.iter().any(|e| e.index == index) {
                 if let Ok(i) = prev_unlocks.owned.binary_search(&index) {
                     prev_unlocks.owned.remove(i);
@@ -1997,11 +2077,27 @@ pub mod sol_city_collectibles {
             }
         }
 
+        // Room for every copy in the opener's mint queue, as open_booster
+        // makes it, and the same refusal when too much is already waiting:
+        // nothing is lost by it, the burn reverts with the rest.
+        {
+            let queue = open_mint_queue(
+                &ctx.accounts.mint_queue.to_account_info(),
+                &ctx.accounts.unlock_state,
+                &ctx.accounts.opener.to_account_info(),
+                &ctx.accounts.system_program.to_account_info(),
+                def.size as usize,
+            )?;
+            require!(queue.has_room_for(def.size as usize), CollectiblesError::MintQueueFull);
+            save_mint_queue(&ctx.accounts.mint_queue.to_account_info(), &queue)?;
+        }
+
         request_draw(
             client_seed,
             &ctx.accounts.opener,
             &ctx.accounts.unlock_state.to_account_info(),
             &ctx.accounts.drops.to_account_info(),
+            &ctx.accounts.mint_queue.to_account_info(),
             &ctx.accounts.oracle_queue,
             &ctx.accounts.program_identity,
             &ctx.accounts.vrf_program,
@@ -2164,8 +2260,19 @@ pub mod sol_city_collectibles {
             }
         }
 
+        // Queued to become an asset, like a pack item: event items are
+        // tradable. Funded by the admin, like the grant itself.
+        let mut queue = open_mint_queue(
+            &ctx.accounts.mint_queue.to_account_info(),
+            &ctx.accounts.unlock_state,
+            &ctx.accounts.admin.to_account_info(),
+            &ctx.accounts.system_program.to_account_info(),
+            1,
+        )?;
         let unlocks = &mut ctx.accounts.unlock_state;
         require!(unlocks.insert_owned(index), CollectiblesError::AlreadyOwned);
+        queue.owed.push(index);
+        save_mint_queue(&ctx.accounts.mint_queue.to_account_info(), &queue)?;
         Ok(())
     }
 
@@ -2245,8 +2352,19 @@ pub mod sol_city_collectibles {
             }
         }
 
+        // Queued to become an asset, as the admin grant does, at the
+        // claimer's expense like the rest of the claim.
+        let mut queue = open_mint_queue(
+            &ctx.accounts.mint_queue.to_account_info(),
+            &ctx.accounts.unlock_state,
+            &ctx.accounts.claimer.to_account_info(),
+            &ctx.accounts.system_program.to_account_info(),
+            1,
+        )?;
         let unlocks = &mut ctx.accounts.unlock_state;
         require!(unlocks.insert_owned(index), CollectiblesError::AlreadyOwned);
+        queue.owed.push(index);
+        save_mint_queue(&ctx.accounts.mint_queue.to_account_info(), &queue)?;
         Ok(())
     }
 }
@@ -2298,6 +2416,11 @@ pub struct OpenBooster<'info> {
     #[account(address = anchor_lang::solana_program::sysvar::slot_hashes::ID)]
     pub slot_hashes: UncheckedAccount<'info>,
     pub system_program: Program<'info, System>,
+    /// CHECK: the payer's MintQueue, created on first use and checked
+    /// against its seeds in `open_mint_queue`. Last, so the accounts before
+    /// it keep their positions.
+    #[account(mut)]
+    pub mint_queue: UncheckedAccount<'info>,
 }
 
 /// The VRF half of OpenBooster and nothing else: a retry pays for no pack and
@@ -2330,6 +2453,10 @@ pub struct RetryDraw<'info> {
     #[account(address = anchor_lang::solana_program::sysvar::slot_hashes::ID)]
     pub slot_hashes: UncheckedAccount<'info>,
     pub system_program: Program<'info, System>,
+    /// CHECK: the payer's MintQueue, checked against its seeds in
+    /// `open_mint_queue`. Grown here for a draw paid before it existed.
+    #[account(mut)]
+    pub mint_queue: UncheckedAccount<'info>,
 }
 
 #[derive(Accounts)]
@@ -2348,6 +2475,11 @@ pub struct CallbackOpenBooster<'info> {
     /// The table the pack was paid against, named at request time and frozen
     /// since its season opened. Address-checked in the body.
     pub drops: Account<'info, SeasonDrops>,
+    /// CHECK: the wallet's MintQueue, named at request time, already sized
+    /// for this draw by the purchase. Checked against the authority's seeds
+    /// and this program's ownership in `load_mint_queue`.
+    #[account(mut)]
+    pub mint_queue: UncheckedAccount<'info>,
 }
 
 /// Creates a wallet's UnlockState, once. Separate from the instructions that
@@ -2599,6 +2731,191 @@ fn save_wear_log(log: &AccountInfo, value: &WearLog) -> Result<()> {
     anchor_lang::AccountSerialize::try_serialize(value, &mut &mut data[..])
 }
 
+/// Every COPY a wallet has drawn or been granted and not yet received as an
+/// asset, oldest first. Repeats are the point: two of the same item drawn are
+/// two entries, and become two assets.
+///
+/// ── Why it exists ────────────────────────────────────────────────────
+///
+/// `UnlockState.owned` and `.minted` are sets. They answer "may this wallet
+/// wear X" and "has an asset of X ever been in this wallet", and a set cannot
+/// say "two of X are owed". Minting used to be "owned minus minted", which
+/// meant at most one asset per item per wallet, ever: a repeat in a pack was
+/// paid for and never delivered, and an item minted, sold and drawn again was
+/// never delivered either (devnet, 2026-11-10). The owner's rules: every roll
+/// is independent, repeats are normal, and EVERYTHING revealed is minted.
+///
+/// So what is owed is its own list, and it is the only thing a mint reads.
+/// `owned` stays the wear permission and `minted` a record, and neither gates
+/// a mint any more.
+///
+/// ── Why its own account ──────────────────────────────────────────────
+///
+/// UnlockState is also read by the city program, and its layout is shared
+/// through sol-city-catalog. A field added there would move every wallet's
+/// account under a reader that is deployed separately. A new account moves
+/// nothing.
+///
+/// ── What fills it, and what never does ───────────────────────────────
+///
+/// The pack draw (every pick) and the two event grants. NEVER a claim: an
+/// asset bought second-hand is that asset, not a right to mint another, or a
+/// buyer could mint a fresh one, sell both, and repeat.
+#[account]
+pub struct MintQueue {
+    pub wallet: Pubkey,
+    pub owed: Vec<u16>,
+}
+
+impl MintQueue {
+    pub fn size_for(entries: usize) -> usize {
+        8 + 32 + 4 + entries * 2
+    }
+
+    /// What the old rule still owed when a wallet's queue is first created:
+    /// owned, mintable and never minted. Before the queue existed that was
+    /// exactly what `mint_pending` would have minted next, so carrying it over
+    /// means nothing paid for before the upgrade is lost.
+    ///
+    /// Not cut at MAX_OWED_COPIES: cutting would drop copies already paid for.
+    /// A wallet seeded above the ceiling just cannot open another pack until
+    /// what is waiting has been minted.
+    pub fn legacy_owed(unlocks: &UnlockState) -> Vec<u16> {
+        unlocks
+            .owned
+            .iter()
+            .copied()
+            .filter(|i| is_mintable(*i) && !unlocks.is_minted(*i))
+            .collect()
+    }
+
+    /// Whether `extra` more copies fit under MAX_OWED_COPIES.
+    pub fn has_room_for(&self, extra: usize) -> bool {
+        self.owed.len() + extra <= MAX_OWED_COPIES
+    }
+
+    /// Removes ONE copy of `index`, the oldest. False when none is owed.
+    pub fn take_one(&mut self, index: u16) -> bool {
+        match self.owed.iter().position(|i| *i == index) {
+            Some(at) => { self.owed.remove(at); true }
+            None => false,
+        }
+    }
+
+    /// Removes and returns up to `n` copies from the front.
+    pub fn take_front(&mut self, n: usize) -> Vec<u16> {
+        let k = n.min(self.owed.len());
+        self.owed.drain(..k).collect()
+    }
+}
+
+/// What a resolved draw does to a wallet: every pick becomes wearable, and
+/// every pick, repeats included, is queued to become an asset.
+///
+/// `insert_owned` ignores an index already there, which is right for the wear
+/// permission and is exactly why the queue has to be told separately.
+pub fn record_picks(unlocks: &mut UnlockState, queue: &mut MintQueue, picks: &[u16]) {
+    for index in picks {
+        unlocks.insert_owned(*index);
+        // A drop table only lists pack items, which are all mintable. Checked
+        // anyway: an unmintable entry at the front would block the queue.
+        if is_mintable(*index) {
+            queue.owed.push(*index);
+        }
+    }
+}
+
+/// Opens the MintQueue of `unlocks.authority` with room for `extra` more
+/// copies, creating it the first time (seeded with what the old rule owed),
+/// and returns what it holds. The caller saves it.
+///
+/// `payer` funds creation and growth. Same pre-funded branch as the WearLog:
+/// a lamport sent to the address must not stop a wallet from ever minting.
+fn open_mint_queue<'info>(
+    queue: &AccountInfo<'info>,
+    unlocks: &UnlockState,
+    payer: &AccountInfo<'info>,
+    system_program: &AccountInfo<'info>,
+    extra: usize,
+) -> Result<MintQueue> {
+    let wallet = unlocks.authority;
+    let (expected, bump) =
+        Pubkey::find_program_address(&[MINT_QUEUE_SEED, wallet.as_ref()], &crate::ID);
+    require_keys_eq!(*queue.key, expected, CollectiblesError::WrongMintQueue);
+    let bump_arr = [bump];
+    let signer: &[&[u8]] = &[MINT_QUEUE_SEED, wallet.as_ref(), &bump_arr];
+    let rent = SolanaRent::get()?;
+
+    if queue.owner != &crate::ID {
+        let seeded = MintQueue::legacy_owed(unlocks);
+        let space = MintQueue::size_for(seeded.len() + extra);
+        if queue.lamports() == 0 {
+            invoke_signed(
+                &system_instruction::create_account(payer.key, queue.key, rent.minimum_balance(space), space as u64, &crate::ID),
+                &[payer.clone(), queue.clone(), system_program.clone()],
+                &[signer],
+            )?;
+        } else {
+            let shortfall = rent.minimum_balance(space).saturating_sub(queue.lamports());
+            if shortfall > 0 {
+                invoke(
+                    &system_instruction::transfer(payer.key, queue.key, shortfall),
+                    &[payer.clone(), queue.clone(), system_program.clone()],
+                )?;
+            }
+            invoke_signed(
+                &system_instruction::allocate(queue.key, space as u64),
+                &[queue.clone(), system_program.clone()],
+                &[signer],
+            )?;
+            invoke_signed(
+                &system_instruction::assign(queue.key, &crate::ID),
+                &[queue.clone(), system_program.clone()],
+                &[signer],
+            )?;
+        }
+        return Ok(MintQueue { wallet, owed: seeded });
+    }
+
+    let current = {
+        let data = queue.try_borrow_data()?;
+        <MintQueue as anchor_lang::AccountDeserialize>::try_deserialize(&mut &data[..])?
+    };
+    require_keys_eq!(current.wallet, wallet, CollectiblesError::WrongMintQueue);
+    let needed = MintQueue::size_for(current.owed.len() + extra);
+    if queue.data_len() < needed {
+        let topup = rent.minimum_balance(needed).saturating_sub(queue.lamports());
+        if topup > 0 {
+            invoke(
+                &system_instruction::transfer(payer.key, queue.key, topup),
+                &[payer.clone(), queue.clone(), system_program.clone()],
+            )?;
+        }
+        queue.realloc(needed, false)?;
+    }
+    Ok(current)
+}
+
+/// Reads an EXISTING MintQueue, for the VRF callback: nobody there can pay
+/// to create or grow an account, so the purchase that asked for the draw
+/// made the room, and this only reads it.
+fn load_mint_queue(queue: &AccountInfo, wallet: &Pubkey) -> Result<MintQueue> {
+    let (expected, _) =
+        Pubkey::find_program_address(&[MINT_QUEUE_SEED, wallet.as_ref()], &crate::ID);
+    require_keys_eq!(*queue.key, expected, CollectiblesError::WrongMintQueue);
+    require_keys_eq!(*queue.owner, crate::ID, CollectiblesError::WrongMintQueue);
+    let data = queue.try_borrow_data()?;
+    let current = <MintQueue as anchor_lang::AccountDeserialize>::try_deserialize(&mut &data[..])?;
+    require_keys_eq!(current.wallet, *wallet, CollectiblesError::WrongMintQueue);
+    Ok(current)
+}
+
+/// Writes a MintQueue back over its account.
+fn save_mint_queue(queue: &AccountInfo, value: &MintQueue) -> Result<()> {
+    let mut data = queue.try_borrow_mut_data()?;
+    anchor_lang::AccountSerialize::try_serialize(value, &mut &mut data[..])
+}
+
 /// The nonce Bubblegum will give the next leaf it mints into this tree, which
 /// together with the tree is the asset's id.
 ///
@@ -2832,6 +3149,10 @@ pub struct MintUnlock<'info> {
     /// checked against its seeds in `open_wear_log`.
     #[account(mut)]
     pub wear_log: UncheckedAccount<'info>,
+    /// CHECK: the payer's MintQueue, the copy this consumes. Created on first
+    /// use and checked against its seeds in `open_mint_queue`.
+    #[account(mut)]
+    pub mint_queue: UncheckedAccount<'info>,
 }
 
 /// `mint_pending`: MintUnlock with the payer and the owner apart.
@@ -2890,6 +3211,11 @@ pub struct MintPending<'info> {
     /// payer's expense and checked against the owner's seeds in `open_wear_log`.
     #[account(mut)]
     pub wear_log: UncheckedAccount<'info>,
+    /// CHECK: the OWNER's MintQueue, what this mints. Checked against the
+    /// UnlockState authority's seeds in `open_mint_queue`, so a payer cannot
+    /// point it at anybody else's.
+    #[account(mut)]
+    pub mint_queue: UncheckedAccount<'info>,
 }
 
 /// Claiming the grant for an asset this wallet holds.
@@ -3050,6 +3376,10 @@ pub struct OpenPackFromAsset<'info> {
     /// current tree. Seeded on the tree, so it vouches for that tree only.
     #[account(seeds = [ACCEPTED_TREE_SEED, merkle_tree.key().as_ref()], bump)]
     pub accepted_tree: Option<Account<'info, AcceptedTree>>,
+    /// CHECK: the OPENER's MintQueue, created on first use and checked
+    /// against its seeds in `open_mint_queue`.
+    #[account(mut)]
+    pub mint_queue: UncheckedAccount<'info>,
 }
 
 /// Buying a pack sealed. No UnlockState and no VRF: nothing is drawn here.
@@ -3123,6 +3453,10 @@ pub struct AdminGrantEventItem<'info> {
     )]
     pub unlock_state: Account<'info, UnlockState>,
     pub system_program: Program<'info, System>,
+    /// CHECK: the receiving wallet's MintQueue, checked against the
+    /// UnlockState authority's seeds in `open_mint_queue`.
+    #[account(mut)]
+    pub mint_queue: UncheckedAccount<'info>,
 }
 
 #[derive(Accounts)]
@@ -3180,6 +3514,10 @@ pub struct ClaimEventItem<'info> {
     #[account(seeds = [PACK_CONFIG_SEED], bump, constraint = !config.paused @ CollectiblesError::Paused)]
     pub config: Account<'info, PackConfig>,
     pub system_program: Program<'info, System>,
+    /// CHECK: the claimer's MintQueue, checked against its seeds in
+    /// `open_mint_queue`.
+    #[account(mut)]
+    pub mint_queue: UncheckedAccount<'info>,
 }
 
 #[derive(Accounts)]
@@ -3360,6 +3698,114 @@ mod pause_layout {
         assert_eq!(bytes.len(), PackConfig::INIT_SPACE);
         assert_eq!(&bytes[bytes.len() - 32..], pauser.as_ref());
         assert_eq!(bytes[bytes.len() - 33], 1);
+    }
+}
+
+#[cfg(test)]
+mod mint_queue {
+    //! The owner's rules for packs (2026-10-31, restated 2026-11-10): every
+    //! roll is independent, repeats are normal, and everything revealed is
+    //! minted, repeats included. These pin the bookkeeping that delivers it.
+    use super::*;
+
+    const A: u16 = ENFORCED_FROM + 10;
+    const B: u16 = ENFORCED_FROM + 11;
+
+    fn unlocks(owned: &[u16], minted: &[u16]) -> UnlockState {
+        UnlockState {
+            authority: Pubkey::new_unique(),
+            owned: owned.to_vec(),
+            minted: minted.to_vec(),
+            ..Default::default()
+        }
+    }
+
+    fn queue(owed: &[u16]) -> MintQueue {
+        MintQueue { wallet: Pubkey::new_unique(), owed: owed.to_vec() }
+    }
+
+    #[test]
+    fn a_pack_with_repeats_queues_every_copy_and_mints_all_of_them() {
+        let mut u = unlocks(&[], &[]);
+        let mut q = queue(&[]);
+        record_picks(&mut u, &mut q, &[A, A, B, A, B]);
+        // Wearable once each, owed five times.
+        assert_eq!(u.owned, vec![A, B]);
+        assert_eq!(q.owed, vec![A, A, B, A, B]);
+        // One mint_pending call takes the whole pack.
+        assert_eq!(q.take_front(MINT_PENDING_CAP), vec![A, A, B, A, B]);
+        assert!(q.owed.is_empty());
+    }
+
+    #[test]
+    fn an_item_minted_and_sold_is_a_new_copy_when_drawn_again() {
+        // Owned and minted before: the old rule minted nothing for it.
+        let mut u = unlocks(&[A], &[A]);
+        let mut q = queue(&[]);
+        record_picks(&mut u, &mut q, &[A]);
+        assert_eq!(q.owed, vec![A]);
+    }
+
+    #[test]
+    fn mint_now_takes_one_copy_and_refuses_without_one() {
+        let mut q = queue(&[A, B, A]);
+        assert!(q.take_one(A));
+        assert_eq!(q.owed, vec![B, A]);
+        assert!(q.take_one(A));
+        assert!(!q.take_one(A));
+        assert_eq!(q.owed, vec![B]);
+    }
+
+    #[test]
+    fn mint_pending_takes_the_oldest_first_and_at_most_its_limit() {
+        let mut q = queue(&[A, B, A, B, A, B, A, B, A, B]);
+        assert_eq!(q.take_front(MINT_PENDING_CAP).len(), MINT_PENDING_CAP);
+        assert_eq!(q.owed, vec![A, B]);
+        assert_eq!(q.take_front(MINT_PENDING_CAP), vec![A, B]);
+        assert!(q.take_front(MINT_PENDING_CAP).is_empty());
+    }
+
+    #[test]
+    fn the_legacy_seed_is_exactly_what_the_old_rule_still_owed() {
+        let quest = FREE_ITEM_COUNT + 1; // quest block, never an asset
+        let u = unlocks(&[quest, A, B], &[B]);
+        assert_eq!(MintQueue::legacy_owed(&u), vec![A]);
+    }
+
+    #[test]
+    fn the_legacy_seed_is_never_cut() {
+        let owned: Vec<u16> = (A..A + 1000).collect();
+        let u = unlocks(&owned, &[]);
+        assert_eq!(MintQueue::legacy_owed(&u).len(), 1000);
+    }
+
+    #[test]
+    fn the_ceiling_counts_copies_waiting_not_items_owned() {
+        let q = queue(&vec![A; MAX_OWED_COPIES - 5]);
+        assert!(q.has_room_for(5));
+        assert!(!q.has_room_for(6));
+        // Owning any number of items, or of copies of one, is no limit.
+        let mut u = unlocks(&[], &[]);
+        let mut big = queue(&[]);
+        for _ in 0..4 {
+            record_picks(&mut u, &mut big, &[A; MAX_BUNDLE_ITEMS]);
+            big.take_front(MAX_BUNDLE_ITEMS);
+        }
+        assert!(big.owed.is_empty());
+        assert!(big.has_room_for(MAX_BUNDLE_ITEMS));
+    }
+
+    #[test]
+    fn the_largest_bundle_fits_an_empty_queue() {
+        assert!(queue(&[]).has_room_for(MAX_BUNDLE_ITEMS));
+    }
+
+    #[test]
+    fn the_account_size_matches_what_is_written() {
+        for n in [0usize, 1, 5, 50] {
+            let bytes = queue(&vec![A; n]).try_to_vec().unwrap();
+            assert_eq!(8 + bytes.len(), MintQueue::size_for(n));
+        }
     }
 }
 

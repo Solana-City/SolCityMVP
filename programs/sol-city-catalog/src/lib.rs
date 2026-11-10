@@ -122,12 +122,13 @@ pub struct UnlockState {
     /// Indices already turned into a tradable asset by this wallet, sorted.
     ///
     /// Separate from `owned` because they answer different questions: `owned`
-    /// is permission and survives a sale, this is "an asset for this index has
-    /// already been minted to this wallet once". Any future mint path must
-    /// refuse an index already here, or a player could mint, sell, and mint
-    /// again from the same unlock.
+    /// is permission and survives a sale, this is "an asset of this index has
+    /// been in this wallet's hands at least once".
     ///
-    /// Usually empty: minting is a choice, and most wallets never make it.
+    /// A RECORD, not a gate. It used to decide what could be minted (owned
+    /// minus minted), which allowed one asset per item per wallet, ever, and
+    /// lost every repeat a pack drew. What is owed now lives in the
+    /// collectibles program's MintQueue, one entry per copy (2026-11-10).
     pub minted: Vec<u16>,
     /// A pack has been paid for and is awaiting the VRF callback.
     pub pending: bool,
