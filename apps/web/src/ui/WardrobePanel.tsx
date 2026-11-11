@@ -3,7 +3,7 @@
 import { PixelImg, ICON, LockIcon, CloseButton, Bitmap } from "@/ui/PixelIcons";
 import { useButtonFeel, feelStyle } from "@/ui/useButtonFeel";
 import { HUD_CYAN } from "@/ui/hudFrame";
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import {
   LAYER_ORDER,
   CATEGORY_LABELS,
@@ -26,7 +26,8 @@ import {
 import { profileManager } from "@/game/config/profileManager";
 import { isVariantUnlocked, isOwedMint, unlockItem } from "@/game/config/wardrobeUnlocks";
 import { useWallet } from "@solana/wallet-adapter-react";
-import { PublicKey } from "@solana/web3.js";
+import { resilientSigner } from "@/game/solana/walletTx";
+import { PublicKey, type Transaction } from "@solana/web3.js";
 import { mintCosmetic } from "@/game/solana/mint";
 import { txErrorText, syncOwnedToWardrobe, baseConnection } from "@/game/solana/packs";
 import { globalIndexOf } from "@/game/config/catalogIndex";
@@ -452,7 +453,12 @@ export default function WardrobePanel({ gameRef, onClose }: WardrobePanelProps) 
   // "MINT NOW", and tapping it mints that one item and wears it. The fallback
   // for when the mint that rides the pack's approval misses; it replaces the
   // separate MINT list (owner, 2026-11-05).
-  const { signTransaction } = useWallet();
+  const { signTransaction: adapterSignOne, publicKey: activeKey } = useWallet();
+  // Past a 4100 through Phantom's own provider, as the pack shop does.
+  const signTransaction = useMemo(() => {
+    const signer = resilientSigner({ signOne: adapterSignOne, expected: activeKey?.toBase58() ?? null });
+    return signer ? async (tx: Transaction) => (await signer([tx]))[0] : undefined;
+  }, [adapterSignOne, activeKey]);
   const [mintingKey, setMintingKey] = useState<string | null>(null);
   const [mintError, setMintError] = useState<{ key: string; text: string } | null>(null);
   const mintNow = useCallback(async (category: LayerCategory, v: LayerVariant) => {

@@ -254,3 +254,88 @@ export async function checkWalletKept(
   }
   return "wallet changed the transaction, same blockhash";
 }
+
+// ── Signing that survives Phantom's 4100 ────────────────────────────────────
+
+type AnyTx = Transaction | VersionedTransaction;
+type SignOne = <T extends AnyTx>(tx: T) => Promise<T>;
+type SignMany = <T extends AnyTx>(txs: T[]) => Promise<T[]>;
+
+/** The wallet said the method or the account is not authorized (4100). */
+export function isWalletUnauthorized(err: unknown): boolean {
+  const e = err as { code?: number; error?: { code?: number }; message?: string } | null;
+  return e?.code === 4100 || e?.error?.code === 4100
+    || /not been authorized by the user/i.test(e?.message ?? "");
+}
+
+/** Phantom's own injected provider, when the page has one. */
+interface InjectedSolana {
+  isConnected?: boolean;
+  publicKey?: { toBase58(): string } | null;
+  connect?: () => Promise<unknown>;
+  signTransaction?: SignOne;
+}
+function injectedPhantom(): InjectedSolana | null {
+  const g = globalThis as { phantom?: { solana?: InjectedSolana } };
+  return g.phantom?.solana ?? null;
+}
+
+/**
+ * The shop's signer: every approval is ONE transaction, signed through the
+ * plainest method there is, with a way past Phantom's 4100.
+ *
+ * Devnet, 2026-11-11: `signAllTransactions` through the wallet adapter came
+ * back at once with 4100, "the requested method and/or account has not been
+ * authorized", and no popup, on both purchase paths, while Phantom's own
+ * provider reported itself connected as that very account. Ten minutes
+ * earlier the same flows had signed. Disconnecting and reconnecting the site
+ * did not clear it.
+ *
+ * So a single transaction goes through `signTransaction` (Phantom calls
+ * signAllTransactions "not recommended" for new integrations), and when the
+ * adapter still answers 4100 the transaction is handed to Phantom's injected
+ * provider directly, after making sure it is connected as `expected`. Nothing
+ * here changes WHAT is signed, only which door it goes through.
+ */
+export function resilientSigner(args: {
+  signAll?: SignMany;
+  signOne?: SignOne;
+  /** The account every transaction here is built for. */
+  expected: string | null;
+}): SignMany | undefined {
+  const { signAll, signOne, expected } = args;
+  if (!signAll && !signOne) return undefined;
+
+  const viaAdapter = async <T extends AnyTx>(txs: T[]): Promise<T[]> => {
+    if (signOne && (txs.length === 1 || !signAll)) {
+      const out: T[] = [];
+      for (const tx of txs) out.push(await signOne(tx));
+      return out;
+    }
+    return signAll!(txs);
+  };
+
+  const viaInjected = async <T extends AnyTx>(txs: T[]): Promise<T[] | null> => {
+    const p = injectedPhantom();
+    if (!p?.signTransaction || !expected) return null;
+    if (!p.isConnected || p.publicKey?.toBase58() !== expected) {
+      try { await p.connect?.(); } catch { return null; }
+    }
+    if (p.publicKey?.toBase58() !== expected) return null;
+    const out: T[] = [];
+    for (const tx of txs) out.push(await p.signTransaction(tx));
+    return out;
+  };
+
+  return async <T extends AnyTx>(txs: T[]): Promise<T[]> => {
+    try {
+      return await viaAdapter(txs);
+    } catch (err) {
+      if (!isWalletUnauthorized(err)) throw err;
+      console.warn("[wallet] the adapter answered 4100; signing through Phantom directly", err);
+      const out = await viaInjected(txs);
+      if (!out) throw err;
+      return out;
+    }
+  };
+}

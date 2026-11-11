@@ -25,6 +25,7 @@ import ChamferGlow from "@/ui/ChamferGlow";
 import { useButtonFeel, feelStyle, type ButtonFeel } from "@/ui/useButtonFeel";
 import { useEscape } from "@/ui/useEscape";
 import { useWallet } from "@solana/wallet-adapter-react";
+import { resilientSigner } from "@/game/solana/walletTx";
 import { PublicKey } from "@solana/web3.js";
 import { BOOSTER_ONCHAIN } from "@/game/solana/program";
 import { getNetwork } from "@/game/multiplayer/OnChainMultiplayer";
@@ -87,7 +88,15 @@ export default function BoosterOverlay({
   const [balance, setBalance] = useState<bigint | null>(null);
   // One signing call for everything here. A purchase and the mint that
   // follows it are approved together or the flow is broken.
-  const { signAllTransactions, publicKey } = useWallet();
+  const { signAllTransactions: adapterSignAll, signTransaction: adapterSignOne, publicKey } = useWallet();
+  // One transaction per approval, through signTransaction, and past a 4100
+  // through Phantom's own provider (walletTx.ts, resilientSigner).
+  const signAllTransactions = useMemo(
+    () => resilientSigner({
+      signAll: adapterSignAll, signOne: adapterSignOne, expected: publicKey?.toBase58() ?? null,
+    }),
+    [adapterSignAll, adapterSignOne, publicKey],
+  );
   /**
    * The account the city plays as (`wallet`, from the profile) against the
    * one active in the wallet. Every transaction here is built for the first
