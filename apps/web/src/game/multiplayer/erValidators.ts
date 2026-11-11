@@ -83,6 +83,7 @@ export interface ProbeResult {
 }
 
 let probed: ProbeResult[] | null = null;
+let probing: Promise<ProbeResult[]> | null = null;
 
 /**
  * Times one cheap call against every validator, in parallel.
@@ -93,11 +94,29 @@ let probed: ProbeResult[] | null = null;
  * rather than sampled during play - a fresh connection per sample measured
  * the handshake and reported three times the real latency.
  */
-export async function probeValidators(timeoutMs = 4000): Promise<ProbeResult[]> {
-  if (probed) return probed;
+export async function probeValidators(
+  timeoutMs = 4000, opts: { fresh?: boolean } = {},
+): Promise<ProbeResult[]> {
+  // `fresh` is for the region picker: a player who has just flown somewhere
+  // wants today's numbers, not the ones from when the page opened.
+  if (probed && !opts.fresh) return probed;
+  // One measurement at a time. The constructor starts one in the background
+  // and a delegation awaits it; without this the second call started a second
+  // probe instead of waiting for the first.
+  if (probing) return probing;
   if (typeof fetch === "undefined") return ER_VALIDATORS.map((v) => ({ id: v.id, ms: null }));
 
-  probed = await Promise.all(ER_VALIDATORS.map(async (v): Promise<ProbeResult> => {
+  probing = runProbe(timeoutMs);
+  try {
+    probed = await probing;
+  } finally {
+    probing = null;
+  }
+  return probed;
+}
+
+function runProbe(timeoutMs: number): Promise<ProbeResult[]> {
+  return Promise.all(ER_VALIDATORS.map(async (v): Promise<ProbeResult> => {
     const started = Date.now();
     try {
       const ctl = new AbortController();
@@ -125,7 +144,6 @@ export async function probeValidators(timeoutMs = 4000): Promise<ProbeResult[]> 
       return { id: v.id, ms: null };
     }
   }));
-  return probed;
 }
 
 /** The last probe, without running one. Empty until `probeValidators` has. */
@@ -137,8 +155,9 @@ export function lastProbe(): ProbeResult[] {
  * The closest validator that answered, or the write validator when nothing
  * has been measured yet.
  *
- * Nothing delegates by this yet. It exists so the measurement can be taken and
- * looked at before anybody's PDA is moved anywhere.
+ * Delegations go here unless the player picked a region (see
+ * OnChainMultiplayer.switchValidator). Await `probeValidators` first: called
+ * before the probe is back, this is the US fallback, not the nearest.
  */
 export function nearestValidator(): ErValidator {
   const ranked = lastProbe()
@@ -146,4 +165,39 @@ export function nearestValidator(): ErValidator {
     .sort((a, b) => a.ms - b.ms);
   if (ranked.length === 0) return WRITE_VALIDATOR;
   return ER_VALIDATORS.find((v) => v.id === ranked[0].id) ?? WRITE_VALIDATOR;
+}
+
+/**
+ * How much faster another region has to be before the city suggests moving.
+ *
+ * Moving ends the delegation, which MagicBlock bills (~0.003 SOL), and costs a
+ * wallet approval. So the gap has to be one the player can feel: 100ms is
+ * about a third of the distance between continents, well above the jitter
+ * between two probes of the same host.
+ */
+export const REGION_HINT_MIN_GAIN_MS = 100;
+
+export interface RegionAdvice {
+  current: ErValidator;
+  currentMs: number | null;
+  suggested: ErValidator;
+  suggestedMs: number;
+}
+
+/**
+ * A faster region than the one the account is delegated to, or null when the
+ * current one is fine (or nothing was measured). An unreachable current
+ * region counts as slow: any region that answered beats it.
+ */
+export function regionAdvice(currentId: ErValidator["id"]): RegionAdvice | null {
+  const results = lastProbe();
+  const current = ER_VALIDATORS.find((v) => v.id === currentId);
+  if (!current || results.length === 0) return null;
+  const near = nearestValidator();
+  if (near.id === currentId) return null;
+  const nearMs = results.find((r) => r.id === near.id)?.ms ?? null;
+  if (nearMs === null) return null;
+  const currentMs = results.find((r) => r.id === currentId)?.ms ?? null;
+  if (currentMs !== null && currentMs - nearMs < REGION_HINT_MIN_GAIN_MS) return null;
+  return { current, currentMs, suggested: near, suggestedMs: nearMs };
 }

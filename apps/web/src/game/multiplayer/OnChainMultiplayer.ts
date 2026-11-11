@@ -58,7 +58,10 @@ import { BASE_RPC_PRIMARY, resilientBaseFetch } from "../solana/baseRpc";
 import { setHuntFromChain, clearHuntFromChain } from "../minigames/whereIsNPC/WhereIsNPCGame";
 import { transactionLog } from "../telemetry/transactionLog";
 import type { Loadout } from "../config/paperDoll";
-import { ER_VALIDATORS, probeValidators, nearestValidator } from "./erValidators";
+import {
+  ER_VALIDATORS, probeValidators, nearestValidator, regionAdvice,
+  type ErValidator, type RegionAdvice,
+} from "./erValidators";
 import { SOLANA_CLUSTER } from "@/game/config/clusterStorage";
 import { leaveAction, readCommits, recordCommit, resetCommits } from "./delegationBudget";
 import { DIR_LEFT, PresenceTracker, activityKey, HIDE_AFTER_MS } from "./presence";
@@ -213,6 +216,22 @@ type BCMsg =
 export const OTHER_TAB_EVENT = "solcity:other-tab";
 /** Window event for the "authorize this device" prompt (DeviceAuthPrompt). */
 export const DEVICE_AUTH_EVENT = "solcity:device-auth";
+/**
+ * Window event for the region picker and the "faster region" hint. Fired
+ * whenever the rollup we write to, or the advice about it, may have changed;
+ * the detail is a RegionState.
+ */
+export const REGION_EVENT = "solcity:region";
+
+/** Where this player's account lives, and whether somewhere else is faster. */
+export interface RegionState {
+  /** The rollup the account is delegated to, or null when on base / offline. */
+  current: ErValidator["id"] | null;
+  /** A clearly faster region, or null. */
+  advice: RegionAdvice | null;
+  /** A move is in progress. */
+  switching: boolean;
+}
 
 // Throttle position broadcasts. Every other screen can only be as current as
 // the last sample, so this interval is a floor under the delay players see.
@@ -832,6 +851,7 @@ export class OnChainMultiplayer {
     }
 
     this._connected = false;
+    this.emitRegion();
     this.presence.clearSeen();
     this.sessionKeys.revoke(this.routerConnection);
     // Tell the scene to tear down every remote avatar before wiping the
@@ -2013,6 +2033,95 @@ export class OnChainMultiplayer {
     } catch { return null; }
   }
 
+  // ── Region: which rollup this account is delegated to ──────────────────
+
+  /**
+   * The region the player picked, for the next delegation only. Null means
+   * "the nearest", which is what every other delegation uses: a player who
+   * moves for a week and comes back should not stay pinned to where they
+   * were, so the choice is not remembered past the move it was made for.
+   */
+  private delegateTarget: ErValidator | null = null;
+  private switchingRegion = false;
+
+  /**
+   * Where the next delegation goes: the picked region, else the nearest one
+   * measured. Awaits the probe, because the constructor starts it in the
+   * background and a fast login used to delegate before it was back, which
+   * sent the account to the US fallback wherever the player was.
+   */
+  private async chooseValidator(): Promise<ErValidator> {
+    const picked = this.delegateTarget;
+    this.delegateTarget = null;
+    if (picked) return picked;
+    await probeValidators().catch(() => undefined);
+    return nearestValidator();
+  }
+
+  /** The rollup our writes go to, which follows the delegation record. */
+  currentRegion(): ErValidator["id"] | null {
+    if (!this._connected || !this.useEphemeral) return null;
+    const read = this.erReadConnections.find((r) => r.conn === this.ephemeralConnection);
+    return (read?.id as ErValidator["id"] | undefined) ?? null;
+  }
+
+  regionState(): RegionState {
+    const current = this.currentRegion();
+    return {
+      current,
+      advice: current && !this.switchingRegion ? regionAdvice(current) : null,
+      switching: this.switchingRegion,
+    };
+  }
+
+  private emitRegion(): void {
+    try {
+      window.dispatchEvent(new CustomEvent<RegionState>(REGION_EVENT, { detail: this.regionState() }));
+    } catch { /* no window */ }
+  }
+
+  /** Measures the three regions again and tells the UI. */
+  async refreshRegionProbe(): Promise<void> {
+    await probeValidators(4000, { fresh: true }).catch(() => undefined);
+    this.emitRegion();
+  }
+
+  /**
+   * Moves this account to another region's rollup.
+   *
+   * The region lives in the delegation record, so moving means ending the
+   * delegation (session-signed, no popup) and delegating again to the picked
+   * rollup (one wallet approval). Ending it is what MagicBlock bills, about
+   * 0.003 SOL, which is why this only runs when the player asks.
+   *
+   * Throws with a short reason when the account did not end up there.
+   */
+  async switchValidator(id: ErValidator["id"]): Promise<void> {
+    if (!this.wallet || !this._connected) throw new Error("Connect your wallet first.");
+    if (this.suspended) throw new Error("Close the other tab first.");
+    if (this.switchingRegion) throw new Error("Already moving.");
+    const target = ER_VALIDATORS.find((v) => v.id === id);
+    if (!target) throw new Error("Unknown region.");
+    if (this.currentRegion() === id) return;
+
+    this.switchingRegion = true;
+    this.emitRegion();
+    try {
+      this.delegateTarget = target;
+      await this.resetSession();
+      // resetSession swallows a failed delegation and carries on (on base, or
+      // still on the old rollup when the undelegate had not settled), so the
+      // record is the only proof the move happened.
+      if (this.currentRegion() !== id) {
+        throw new Error(`Still not on ${target.label}. Try again in a minute.`);
+      }
+    } finally {
+      this.delegateTarget = null;
+      this.switchingRegion = false;
+      this.emitRegion();
+    }
+  }
+
   // ── This device's key, authorized by a tap ─────────────────────────────
 
   private needsDeviceAuth = false;
@@ -2359,7 +2468,7 @@ export class OnChainMultiplayer {
           // new player has nothing to sync into the wardrobe snapshot (both
           // the snapshot and the unlock account start empty), which is the
           // only thing that ever had to happen between the two.
-          const near = nearestValidator();
+          const near = await this.chooseValidator();
           let withDelegate = true;
           const build = (blockhash: string) => {
             const tx = new Transaction({ recentBlockhash: blockhash, feePayer: wallet })
@@ -2532,6 +2641,9 @@ export class OnChainMultiplayer {
 
     // Others read the rollup only: on base we are invisible to the city.
     this.setOnline(this.useEphemeral);
+    // The region picker and the "faster region" hint. After the probe, so a
+    // player who travelled is told on the login that finds them far away.
+    void probeValidators().then(() => this.emitRegion()).catch(() => undefined);
     // On our rollup's presence board, so the boards' readers find us without
     // a sweep. Then every 30s (presenceHeartbeat, below).
     this.lastLocalActivityAt = Date.now();
@@ -3066,7 +3178,8 @@ export class OnChainMultiplayer {
       // back. The shared world does not need them together: every routine
       // write touches only the sender's own PDA, and the readers ask all the
       // rollups.
-      const near = nearestValidator();
+      // The region the player picked, when they did (switchValidator).
+      const near = await this.chooseValidator();
       const ix = buildDelegateIx(wallet, new PublicKey(near.identity));
       console.log(`[Multiplayer] delegating to ${near.label} (${near.rpc})`);
       const { blockhash } = await this.baseRpcWithRetry(() => this.baseConnection.getLatestBlockhash());
@@ -3234,6 +3347,7 @@ export class OnChainMultiplayer {
       if (conn.conn !== this.ephemeralConnection) {
         this.ephemeralConnection = conn.conn;
         console.log(`[Multiplayer] writes go to ${target.label}, which holds the delegation`);
+        this.emitRegion();
       }
     } catch (err: any) {
       console.warn("[Multiplayer] could not read the delegation record:", err?.message);
