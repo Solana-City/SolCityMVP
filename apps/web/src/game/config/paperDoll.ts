@@ -691,14 +691,18 @@ export function getEnabledVariants(category: LayerCategory): LayerVariant[] {
 export const TEST_UNLOCK_ALL_HATS = false;
 
 /**
- * TESTING: the animated effect hats, free to everyone while their art is being
- * tried out in the real game. Unlike the switch above this is safe with the
- * chain as it stands: both are quest-block items, which the program skips when
- * it checks a look, so wearing one cannot get an outfit rejected. Empty this
- * list when they are meant to be earned, or sold. SHIPPED_FREE_ITEMS below does
- * not read it, so the pool and the catalog are untouched.
+ * TESTING: effect hats made free to everyone while their art is tried out.
+ *
+ * EMPTY, and it has to stay empty for any item in the PACK block. Halo and
+ * Royal_crown were here on the belief that they were quest-block items, which
+ * the program skips when it checks a look. They are not: they are legendary
+ * pack items (15881 and 15882). So the wearer saw them, encodeLoadout dropped
+ * them (a pack item the chain does not list as owned), and nobody else ever
+ * saw them on that player (devnet, 2026-11-11). Sent anyway, the program would
+ * have refused the whole outfit with ItemNotUnlocked. A free test item has to
+ * be a quest-block index (below ENFORCED_FROM) to be seen by others.
  */
-const TEST_FREE_EFFECT_HATS = ["Halo", "Royal_crown"];
+const TEST_FREE_EFFECT_HATS: string[] = [];
 
 const FREE_ITEMS: Partial<Record<LayerCategory, "*" | string[]>> = {
   skin: "*",
