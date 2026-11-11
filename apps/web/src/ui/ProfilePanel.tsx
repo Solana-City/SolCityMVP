@@ -25,6 +25,11 @@ import { PublicKey } from "@solana/web3.js";
 import { useNickname } from "@/ui/useNicknames";
 import { getNetwork, type OnChainMultiplayer } from "@/game/multiplayer/OnChainMultiplayer";
 import {
+  ER_VALIDATORS, lastProbe, nearestValidator,
+  type ErValidator, type ProbeResult,
+} from "@/game/multiplayer/erValidators";
+import { useRegion } from "@/ui/useRegion";
+import {
   listFriends, listInboundRequests, listOutboundRequests,
 } from "@/game/social/friends";
 import { runFriendAction, type FriendAction } from "@/game/social/friendActions";
@@ -924,9 +929,133 @@ function SettingsTab() {
       </div>
 
       <div className="md:col-span-2">
+        <RegionSection />
+      </div>
+
+      <div className="md:col-span-2">
         <CloseAccountSection />
       </div>
     </div>
+  );
+}
+
+// ── Region ──────────────────────────────────────────────────────────────────
+
+/**
+ * Which region's rollup the account lives on, with each region's ping.
+ *
+ * Picking another one ends the delegation and starts a new one there
+ * (OnChainMultiplayer.switchValidator), which costs a fee and an approval, so
+ * a pick asks once before it moves anything.
+ */
+function RegionSection() {
+  const { connected } = useWallet();
+  const { current, switching } = useRegion();
+  const [probe, setProbe] = useState<ProbeResult[]>([]);
+  const [picked, setPicked] = useState<ErValidator | null>(null);
+  const [error, setError] = useState("");
+
+  // Today's numbers, not the ones from when the page opened: the player who
+  // opens this is often one who has just travelled.
+  useEffect(() => {
+    let live = true;
+    setProbe(lastProbe());
+    void getNetwork()?.refreshRegionProbe().then(() => { if (live) setProbe(lastProbe()); });
+    return () => { live = false; };
+  }, []);
+
+  const move = async () => {
+    if (!picked) return;
+    setError("");
+    try {
+      await getNetwork()?.switchValidator(picked.id);
+      setPicked(null);
+    } catch (err) {
+      setError((err as Error).message?.split("\n")[0] ?? "That did not go through.");
+    }
+  };
+
+  if (!connected) return null;
+  const nearest = nearestValidator().id;
+  const msOf = (id: ErValidator["id"]) => probe.find((p) => p.id === id)?.ms ?? null;
+  const btn = (color: string): React.CSSProperties => ({
+    padding: "9px 14px", fontFamily: PIXEL, fontSize: 8, letterSpacing: 1,
+    color, background: "transparent", border: `1px solid ${color}`, cursor: "pointer",
+  });
+
+  return (
+    <div>
+      <div style={{ fontSize: 9, color: "#cbd5e1", marginBottom: 10 }}>REGION</div>
+      <Card>
+        <div className="grid grid-cols-3" style={{ gap: 10 }}>
+          {ER_VALIDATORS.map((v) => (
+            <RegionChip
+              key={v.id}
+              label={v.label}
+              ms={msOf(v.id)}
+              active={current === v.id}
+              nearest={nearest === v.id && probe.length > 0}
+              disabled={switching || current === null}
+              onClick={() => { setError(""); setPicked(current === v.id ? null : v); }}
+            />
+          ))}
+        </div>
+
+        {switching && (
+          <div style={{ fontSize: 7, color: "#aaaacc", lineHeight: 1.8, marginTop: 12 }}>
+            Moving... approve in your wallet.
+          </div>
+        )}
+
+        {!switching && picked && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 12 }}>
+            <span style={{ fontSize: 7, color: "#aaaacc", lineHeight: 1.8 }}>
+              Move to {picked.label}? About 0.003 SOL and one approval.
+            </span>
+            <div className="flex" style={{ gap: 10 }}>
+              <button onClick={() => setPicked(null)} style={btn("#aaaacc")}>CANCEL</button>
+              <button onClick={move} style={btn(CYAN)}>MOVE</button>
+            </div>
+          </div>
+        )}
+
+        {!switching && !picked && (
+          <div style={{ color: "#5f6788", lineHeight: 1.6, fontSize: 7, marginTop: 12 }}>
+            {current === null ? "Enter the city to pick a region." : "Pick the region closest to you."}
+          </div>
+        )}
+
+        {error && <div style={{ fontSize: 7, color: RED, lineHeight: 1.6, marginTop: 10 }}>{error}</div>}
+      </Card>
+    </div>
+  );
+}
+
+function RegionChip({ label, ms, active, nearest, disabled, onClick }: {
+  label: string; ms: number | null; active: boolean; nearest: boolean;
+  disabled: boolean; onClick: () => void;
+}) {
+  const feel = useButtonFeel();
+  const color = active ? CYAN : nearest ? GREEN : MUTED;
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      {...feel.handlers}
+      style={chamferBox(6, {
+        background: active ? "rgba(20,240,198,0.08)" : "rgba(255,255,255,0.02)",
+        border: `2px solid ${active ? CYAN : "#2b3358"}`,
+        color, fontFamily: PIXEL, padding: "10px 6px",
+        cursor: disabled ? "default" : "pointer", opacity: disabled && !active ? 0.5 : 1,
+        display: "flex", flexDirection: "column", alignItems: "center", gap: 8, minWidth: 0,
+        ...feelStyle(feel),
+      })}
+    >
+      <span style={{ fontSize: 8, textTransform: "uppercase", whiteSpace: "nowrap" }}>{label}</span>
+      <span style={{ fontSize: 7, color: active ? CYAN : "#888899", fontFamily: "monospace" }}>
+        {ms === null ? "..." : `${ms}ms`}
+      </span>
+    </button>
   );
 }
 
