@@ -33,6 +33,7 @@ const ToastStack          = dynamic(() => import("@/ui/ToastStack"),          { 
 const OfflineBadge        = dynamic(() => import("@/ui/OfflineBadge"),        { ssr: false });
 const OtherTabOverlay     = dynamic(() => import("@/ui/OtherTabOverlay"),     { ssr: false });
 const DeviceAuthPrompt    = dynamic(() => import("@/ui/DeviceAuthPrompt"),    { ssr: false });
+const RegionHint          = dynamic(() => import("@/ui/RegionHint"),          { ssr: false });
 const WalletSignBridge    = dynamic(() => import("@/ui/WalletSignBridge"),    { ssr: false });
 const WalletHandoff       = dynamic(() => import("@/ui/WalletHandoff"),       { ssr: false });
 const MobileControls      = dynamic(() => import("@/ui/MobileControls"),      { ssr: false });
@@ -792,6 +793,7 @@ export default function Home() {
           <OfflineBadge />
           <OtherTabOverlay />
           <DeviceAuthPrompt />
+          <RegionHint />
           <ToastStack />
           <AudioBridge game={game} />
           <Presence show={playerCardTarget !== null}>
