@@ -10,7 +10,7 @@ import { atStep, prepareWalletTx } from "./walletTx";
 import { sendAndConfirmTransfer } from "./sendTokens";
 import { BOOSTER_BLOCK_START } from "@/game/config/catalogIndex";
 import { baseConnection } from "./baseRpc";
-import { setHeldItems } from "@/game/config/wardrobeUnlocks";
+import { setHeldItems, setOnChainUnlocks, setOwedCopies, markHeld } from "@/game/config/wardrobeUnlocks";
 
 /**
  * Turning an owned cosmetic into a compressed NFT the player holds.
@@ -223,6 +223,13 @@ export async function pendingMintIndices(
   const [queueInfo, unlockInfo] = await conn.getMultipleAccountsInfo([
     deriveMintQueuePDA(wallet), deriveUnlockPDA(wallet)[0],
   ]);
+  return owedFrom(queueInfo, unlockInfo);
+}
+
+type RawAccount = { owner: PublicKey; data: Uint8Array } | null;
+
+/** The copies owed, from a MintQueue and UnlockState already read. */
+function owedFrom(queueInfo: RawAccount, unlockInfo: RawAccount): number[] {
   if (queueInfo && queueInfo.owner.equals(SOL_CITY_COLLECTIBLES_PROGRAM_ID)) {
     return decodeMintQueue(queueInfo.data)?.owed ?? [];
   }
@@ -230,6 +237,20 @@ export async function pendingMintIndices(
   if (!state) return [];
   const minted = new Set(state.minted);
   return state.owned.filter((i) => i >= BOOSTER_BLOCK_START && !minted.has(i));
+}
+
+/**
+ * Re-reads what this wallet owns and what it is still owed, in one request,
+ * and hands both to the wardrobe: `owned` decides what a pack item may be
+ * worn as, and the queue decides which tiles read MINT NOW.
+ */
+export async function syncUnlocksToWardrobe(conn: Connection, wallet: PublicKey): Promise<void> {
+  const [unlockInfo, queueInfo] = await conn.getMultipleAccountsInfo([
+    deriveUnlockPDA(wallet)[0], deriveMintQueuePDA(wallet),
+  ]);
+  const key = wallet.toBase58();
+  setOnChainUnlocks(key, unlockInfo ? new Uint8Array(unlockInfo.data) : null);
+  setOwedCopies(key, owedFrom(queueInfo, unlockInfo));
 }
 
 /**
@@ -396,6 +417,44 @@ export async function syncHeldToWardrobe(
   }
 }
 
+/**
+ * What every mint path runs once its copies have landed, so the wardrobe
+ * shows them as held and wearable at once.
+ *
+ * Two reads had gone stale (devnet, 2026-11-11): the unlock account and queue
+ * were read BEFORE the mint, so delivered items still said MINT NOW; and the
+ * indexer, asked a moment after the mint, did not list the new assets yet,
+ * so they could not be worn. This re-reads the account and queue, gives the
+ * indexer a few seconds to list what was minted, and counts the copies this
+ * wallet was just minted as held either way, since the mint landing is the
+ * proof.
+ */
+export async function syncAfterMint(
+  conn: Connection,
+  wallet: PublicKey,
+  minted: number[],
+): Promise<void> {
+  const key = wallet.toBase58();
+  try { await syncUnlocksToWardrobe(conn, wallet); } catch { /* the next read catches up */ }
+  if (minted.length === 0) { await syncHeldToWardrobe(conn, wallet); return; }
+  const want = new Set(minted);
+  try {
+    const config = await readMintConfig(conn);
+    if (!config) { setHeldItems(key, null); return; }
+    let held: number[] = [];
+    for (let i = 0; i < 6; i++) {
+      held = await heldIndices(conn, wallet, config);
+      const has = new Set(held);
+      if ([...want].every((x) => has.has(x))) break;
+      await new Promise((r) => setTimeout(r, 2000));
+    }
+    setHeldItems(key, held);
+    markHeld(key, minted);
+  } catch {
+    setHeldItems(key, null);
+  }
+}
+
 export type SignTx = (tx: Transaction) => Promise<Transaction>;
 export type SignAllTx = (txs: Transaction[]) => Promise<Transaction[]>;
 
@@ -506,7 +565,7 @@ export async function sendMintPending(args: {
     const gone = withoutCopies(before, await pendingMintIndices(conn, wallet));
     const landed = commonCopies(expected, gone);
     if (landed.length === expected.length || i === 29) {
-      await syncHeldToWardrobe(conn, wallet);
+      await syncAfterMint(conn, wallet, landed);
       return { minted: landed, failed: withoutCopies(expected, landed) };
     }
   }
@@ -647,7 +706,7 @@ export async function mintMany(args: {
       break;
     }
   }
-  await syncHeldToWardrobe(conn, args.wallet);
+  await syncAfterMint(conn, args.wallet, minted);
   return { minted, failed: withoutCopies(todo, minted) };
 }
 
@@ -683,7 +742,7 @@ export async function mintCosmetic(args: {
       // The item just became a held asset, and from here possession is what
       // decides whether it can be worn. Asking again now is what keeps it
       // wearable across that handover.
-      await syncHeldToWardrobe(conn, args.wallet);
+      await syncAfterMint(conn, args.wallet, [args.index]);
       return { signature };
     }
   }

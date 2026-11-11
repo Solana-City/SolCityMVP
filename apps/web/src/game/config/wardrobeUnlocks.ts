@@ -95,22 +95,44 @@ export function isVariantUnlocked(
 }
 
 /**
- * A pack item this wallet OWNS on chain that is not an asset yet: drawn, but
- * its mint did not land. Normally the mint rides the same approval as the
- * pack and this never shows; it is the fallback, and the wardrobe offers the
- * item as "MINT NOW" on its own tile rather than a separate list (owner,
- * 2026-11-05). False while either answer is unknown.
+ * A pack item with a COPY waiting to be minted for this wallet: drawn, but its
+ * mint did not land. Normally the sponsor mints right after the reveal and
+ * this never shows; it is the fallback, and the wardrobe offers the item as
+ * "MINT NOW" on its own tile rather than a separate list (owner, 2026-11-05).
+ *
+ * Judged by the wallet's MintQueue, the one list of copies still owed. It
+ * used to be "owned and never minted", which a repeat breaks both ways: an
+ * item minted once can have a second copy owed, and an item fully delivered
+ * kept reading MINT NOW until the account was read again (devnet,
+ * 2026-11-11). The old rule stays only for a wallet whose queue has not been
+ * read. False while the answer is unknown.
  */
 export function isOwedMint(wallet: string | null, category: LayerCategory, variant: LayerVariant): boolean {
   if (!wallet || !BOOSTER_ONCHAIN || !isBoosterItem(category, variant.id)) return false;
-  // Judged by the unlock account alone, which records both what the wallet
-  // owns and what it has minted. It used to need the asset indexer as well,
-  // and when that read had not landed (or failed) no tile showed MINT NOW at
-  // all (devnet, 2026-11-05).
   const key = unlockKeyOf(category, variant.id);
+  const owed = owedCopies.get(wallet);
+  if (owed) return owed.has(key);
   const chain = onchainUnlocks.get(wallet);
   const minted = onchainMinted.get(wallet);
   return !!chain && !!minted && chain.has(key) && !minted.has(key);
+}
+
+/** Items with at least one copy owed, per wallet, from its MintQueue. */
+const owedCopies = new Map<string, Set<string>>();
+
+/**
+ * Hands over the catalog indices this wallet's MintQueue still owes (repeats
+ * are fine, a tile only needs to know "at least one"). `null` means unknown,
+ * and falls back to the unlock account's owned-minus-minted.
+ */
+export function setOwedCopies(wallet: string, indices: number[] | null): void {
+  if (!indices) { owedCopies.delete(wallet); return; }
+  const keys = new Set<string>();
+  for (const index of indices) {
+    const entry = itemAtGlobalIndex(index);
+    if (entry) keys.add(unlockKeyOf(entry.category, entry.variant.id));
+  }
+  owedCopies.set(wallet, keys);
 }
 
 /** In the booster block of the catalog, which is the range the program checks. */
@@ -177,6 +199,25 @@ export function setHeldItems(wallet: string, indices: number[] | null): void {
     if (entry) keys.add(unlockKeyOf(entry.category, entry.variant.id));
   }
   heldItems.set(wallet, keys);
+}
+
+/**
+ * Adds items this wallet was JUST minted to what it holds, for the seconds the
+ * indexer takes to list them. Our own mint landing is proof of possession;
+ * without this a freshly minted item read as "not held" and could not be worn
+ * until the indexer caught up (devnet, 2026-11-11).
+ *
+ * Only when the held list is known: while it is unknown the wardrobe falls
+ * back to the grant list, which already has them, and creating a list here
+ * would hide everything else the wallet holds.
+ */
+export function markHeld(wallet: string, indices: number[]): void {
+  const held = heldItems.get(wallet);
+  if (!held) return;
+  for (const index of indices) {
+    const entry = itemAtGlobalIndex(index);
+    if (entry) held.add(unlockKeyOf(entry.category, entry.variant.id));
+  }
 }
 
 export function getOnChainUnlocks(wallet: string | null): Set<string> {

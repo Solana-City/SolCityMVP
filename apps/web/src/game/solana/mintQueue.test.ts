@@ -5,6 +5,11 @@ import { drawnCopies } from "./packs";
 import {
   SOL_CITY_COLLECTIBLES_PROGRAM_ID, decodeMintQueue, deriveMintQueuePDA, type UnlockState,
 } from "./program";
+import {
+  setOwedCopies, isOwedMint, setHeldItems, markHeld, isVariantUnlocked,
+} from "@/game/config/wardrobeUnlocks";
+import { globalIndexOf } from "@/game/config/catalogIndex";
+import { getVariant } from "@/game/config/paperDoll";
 
 /**
  * The client side of "everything revealed is minted, repeats included"
@@ -77,5 +82,37 @@ describe("what a draw handed out", () => {
     const s = state([A, B], 2);
     const data = queueBytes(wallet, [A, B]);
     expect(drawnCopies(s, data, Keypair.generate().publicKey, new Set([A]))).toEqual([B]);
+  });
+});
+
+describe("the wardrobe after a mint", () => {
+  // A real pack item, so the catalog lookups resolve.
+  const RED = globalIndexOf("accessory", "Glasses_red");
+  const red = getVariant("accessory", "Glasses_red")!;
+
+  it("reads MINT NOW from the queue, so a delivered item stops asking", () => {
+    const w = Keypair.generate().publicKey.toBase58();
+    setOwedCopies(w, [RED]);
+    expect(isOwedMint(w, "accessory", red)).toBe(true);
+    // The sponsor minted it: the queue is empty, whatever `minted` said before.
+    setOwedCopies(w, []);
+    expect(isOwedMint(w, "accessory", red)).toBe(false);
+  });
+
+  it("counts a copy it just minted as held before the indexer lists it", () => {
+    const w = Keypair.generate().publicKey.toBase58();
+    setHeldItems(w, []); // the indexer has not caught up
+    expect(isVariantUnlocked(w, "accessory", red)).toBe(false);
+    markHeld(w, [RED]);
+    expect(isVariantUnlocked(w, "accessory", red)).toBe(true);
+  });
+
+  it("does not invent a held list when the indexer's answer is unknown", () => {
+    const w = Keypair.generate().publicKey.toBase58();
+    setHeldItems(w, null);
+    markHeld(w, [RED]);
+    // Still unknown: the wardrobe falls back to the grant list, untouched.
+    setOwedCopies(w, null);
+    expect(isOwedMint(w, "accessory", red)).toBe(false);
   });
 });

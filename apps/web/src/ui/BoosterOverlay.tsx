@@ -9,7 +9,7 @@ import {
 import { unlockItem } from "@/game/config/wardrobeUnlocks";
 import {
   settleMints, readMintConfig, requestSponsoredMint, pendingMintIndices,
-  syncHeldToWardrobe, commonCopies, withoutCopies,
+  syncAfterMint, commonCopies, withoutCopies,
   type MintConfigAccount, type SignedMints,
 } from "@/game/solana/mint";
 import {
@@ -120,6 +120,7 @@ export default function BoosterOverlay({
     try { return localStorage.getItem("solcity:skip-reveal") === "1"; } catch { return false; }
   });
   const [minting, setMinting] = useState(false);
+  const [mintedAll, setMintedAll] = useState(false);
   const [mintConfig, setMintConfig] = useState<MintConfigAccount | null>(null);
   /**
    * Sealed packs this wallet holds, or null for "we could not find out".
@@ -303,10 +304,12 @@ export default function BoosterOverlay({
       // THIS pack's items, never a batch (devnet, 2026-11-05: a reveal of 3
       // asked to mint 16 in a batch that never landed). Older items it does
       // not cover stay for the wardrobe's mint button, and are named.
+      setMintNote(null);
+      setMintedAll(false);
       if (owed.length === 0) return;
       setMinting(true);
       try {
-        await requestSponsoredMint(me);
+        const sponsored = await requestSponsoredMint(me);
         // Counted by COPY: a pack can owe the same item twice, and an item
         // minted before is no sign that this copy was.
         const stillThisPack = commonCopies(granted, await pendingMintIndices(conn, me));
@@ -319,9 +322,10 @@ export default function BoosterOverlay({
             expected: stillThisPack,
             signAllTransactions,
           }));
-        } else {
-          await syncHeldToWardrobe(conn, me);
         }
+        // Whatever the sponsor delivered is held and wearable now, even before
+        // the indexer lists it, and no tile still reads MINT NOW for it.
+        await syncAfterMint(conn, me, sponsored.minted);
         const older = withoutCopies(await pendingMintIndices(conn, me), failedThisPack).length;
         // Anything that did not land stays in the MintQueue, so the wardrobe's
         // own mint button finishes it. Said plainly rather than hidden,
@@ -332,6 +336,10 @@ export default function BoosterOverlay({
             older > 0 ? `${older} older item${older === 1 ? " is" : "s are"} still to mint.` : "",
           ].filter(Boolean);
           setMintNote(`${parts.join(" ")} Finish from the wardrobe whenever you like.`);
+        } else {
+          // Said, not just hidden: the line used to vanish with nothing in
+          // its place, which read as "it stopped" (devnet, 2026-11-11).
+          setMintedAll(true);
         }
       } catch (err) {
         console.error("[packs] mint after the reveal failed", err);
@@ -780,6 +788,11 @@ export default function BoosterOverlay({
             {minting && (
               <div style={{ fontSize: 8, color: "#14F195", marginBottom: 10 }}>
                 MINTING…
+              </div>
+            )}
+            {!minting && mintedAll && (
+              <div style={{ fontSize: 8, color: "#14F195", marginBottom: 10 }}>
+                MINTED
               </div>
             )}
             {mintNote && (

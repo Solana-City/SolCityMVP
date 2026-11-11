@@ -12,10 +12,9 @@ import { baseConnection } from "./baseRpc";
 import { atStep, checkWalletKept, prepareWalletTx, type WalletStep } from "./walletTx";
 import { awaitTransfer, sendAndConfirmTransfer } from "./sendTokens";
 import {
-  readMintConfig, pendingMintIndices,
+  readMintConfig, pendingMintIndices, syncUnlocksToWardrobe,
   type SignedMints, type SignAllTx,
 } from "./mint";
-import { setOnChainUnlocks } from "@/game/config/wardrobeUnlocks";
 import { SOLANA_CLUSTER } from "@/game/config/clusterStorage";
 
 /**
@@ -138,8 +137,8 @@ export async function currencyBalance(
  * cannot authorise anything.
  */
 export async function syncOwnedToWardrobe(conn: Connection, wallet: PublicKey): Promise<void> {
-  const info = await conn.getAccountInfo(deriveUnlockPDA(wallet)[0]);
-  setOnChainUnlocks(wallet.toBase58(), info ? new Uint8Array(info.data) : null);
+  // The queue with it, so a tile's MINT NOW is as fresh as its lock.
+  await syncUnlocksToWardrobe(conn, wallet);
 }
 
 export async function ownedIndices(conn: Connection, wallet: PublicKey): Promise<number[]> {

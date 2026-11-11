@@ -64,8 +64,8 @@ import { leaveAction, readCommits, recordCommit, resetCommits } from "./delegati
 import { DIR_LEFT, PresenceTracker, activityKey, HIDE_AFTER_MS } from "./presence";
 import { buildMarkPresentSessionIx, decodePresenceBoard, derivePresenceBoardPDA, buildClosePlayerIx } from "../solana/presenceBoard";
 import { buildKickBallIx, decodeBall, deriveBallPDA } from "../solana/ball";
-import { setOnChainUnlocks } from "@/game/config/wardrobeUnlocks";
-import { syncHeldToWardrobe } from "@/game/solana/mint";
+import { setOnChainUnlocks, setOwedCopies } from "@/game/config/wardrobeUnlocks";
+import { syncHeldToWardrobe, pendingMintIndices } from "@/game/solana/mint";
 import { gameSlotOf, GAME_SLOT_CAP } from "@/game/minigames/slots";
 import { walletRequest } from "@/game/solana/walletBus";
 import { prepareWalletTx, sendWalletSigned, WalletTxRejected } from "@/game/solana/walletTx";
@@ -3272,6 +3272,15 @@ export class OnChainMultiplayer {
     // Not awaited: it goes to an indexer, and nothing here should wait on one
     // to let somebody into the city.
     void syncHeldToWardrobe(this.baseConnection, wallet);
+    this.refreshOwedCopies(wallet);
+  }
+
+  /** Which tiles read MINT NOW: the copies the wallet's MintQueue still owes.
+   *  Not awaited, and a failure leaves the older owned-minus-minted rule. */
+  private refreshOwedCopies(wallet: PublicKey): void {
+    void pendingMintIndices(this.baseConnection, wallet)
+      .then((owed) => setOwedCopies(wallet.toBase58(), owed))
+      .catch(() => setOwedCopies(wallet.toBase58(), null));
   }
 
   /**
@@ -3346,6 +3355,7 @@ export class OnChainMultiplayer {
       // been minted and can be sold. Not awaited: it goes to an indexer, and
       // nothing here should wait on one to let somebody into the city.
       void syncHeldToWardrobe(this.baseConnection, wallet);
+      this.refreshOwedCopies(wallet);
 
       if (!info) return;
       const sessionKey = this.sessionKeys.getSessionPublicKey();
