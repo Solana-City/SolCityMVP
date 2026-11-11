@@ -318,7 +318,7 @@ export default function BoosterOverlay({
       if (owed.length === 0) return;
       setMinting(true);
       try {
-        const sponsored = await requestSponsoredMint(me);
+        const sponsored = await requestSponsoredMint(me, { conn });
         // Counted by COPY: a pack can owe the same item twice, and an item
         // minted before is no sign that this copy was.
         const stillThisPack = commonCopies(granted, await pendingMintIndices(conn, me));

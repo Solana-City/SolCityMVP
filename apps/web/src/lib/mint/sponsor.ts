@@ -32,8 +32,16 @@ import { sendAndConfirmTransfer } from "@/game/solana/sendTokens";
 
 /** Below this the sponsor stops sending and says so, rather than failing mid-pack. */
 const MIN_SPONSOR_LAMPORTS = 0.01 * LAMPORTS_PER_SOL;
-/** Transactions per request: 20 items, inside a serverless function's time. */
+/** Transactions per request: 20 items at most. */
 const MAX_TXS_PER_REQUEST = 4;
+/**
+ * No new transaction starts after this long, so the response always gets
+ * back. A bundle of 10 packs stopped at 35 of 50 in the browser (devnet,
+ * 2026-11-11): the second request minted three transactions and its answer
+ * never arrived, so the client gave up on the sponsor. The client asks again
+ * for whatever is left, so a shorter request costs nothing.
+ */
+const TIME_BUDGET_MS = 6_000;
 
 export type SponsoredMintStatus =
   /** Something was minted. */
@@ -136,7 +144,10 @@ export async function sponsorMint(
   const signatures: string[] = [];
   let failure: string | undefined;
   const txs = Math.min(MAX_TXS_PER_REQUEST, Math.ceil(before.length / MINTS_PER_TX));
+  const started = Date.now();
+  let retried = false;
   for (let n = 0; n < txs; n++) {
+    if (n > 0 && Date.now() - started > TIME_BUDGET_MS) break;
     try {
       const { blockhash } = await conn.getLatestBlockhash();
       const tx = new Transaction({ recentBlockhash: blockhash, feePayer: sponsor.publicKey }).add(
@@ -154,6 +165,9 @@ export async function sponsorMint(
     } catch (err) {
       failure = String((err as Error)?.message ?? err).split("\n")[0].slice(0, 200);
       console.error(`[mint] sponsored mint for ${owner.toBase58()} failed:`, failure);
+      // Once per request: a dropped send or an RPC hiccup is the common case,
+      // and mint_pending re-reads the queue, so a retry never mints twice.
+      if (!retried) { retried = true; n--; continue; }
       break;
     }
   }

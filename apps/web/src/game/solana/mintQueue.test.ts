@@ -1,6 +1,6 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, afterEach, vi } from "vitest";
 import { Keypair, PublicKey } from "@solana/web3.js";
-import { withoutCopies, commonCopies } from "./mint";
+import { withoutCopies, commonCopies, requestSponsoredMint } from "./mint";
 import { drawnCopies } from "./packs";
 import {
   SOL_CITY_COLLECTIBLES_PROGRAM_ID, decodeMintQueue, deriveMintQueuePDA, type UnlockState,
@@ -114,5 +114,43 @@ describe("the wardrobe after a mint", () => {
     // Still unknown: the wardrobe falls back to the grant list, untouched.
     setOwedCopies(w, null);
     expect(isOwedMint(w, "accessory", red)).toBe(false);
+  });
+});
+
+describe("asking the sponsor", () => {
+  // A queue that loses five copies per request, whose answers never arrive.
+  function fakeChain(wallet: PublicKey, start: number) {
+    let owed = Array.from({ length: start }, () => A);
+    return {
+      shrink: () => { owed = owed.slice(5); },
+      conn: {
+        getMultipleAccountsInfo: async () => [
+          { owner: SOL_CITY_COLLECTIBLES_PROGRAM_ID, data: queueBytes(wallet, owed) },
+          null,
+        ],
+      },
+    };
+  }
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("keeps asking while the queue shrinks, even when every answer is lost", async () => {
+    const wallet = Keypair.generate().publicKey;
+    const chain = fakeChain(wallet, 15);
+    vi.stubGlobal("fetch", vi.fn(async () => { chain.shrink(); throw new Error("the answer was lost"); }));
+    const out = await requestSponsoredMint(wallet, { conn: chain.conn as never });
+    expect(out.left).toBe(0);
+    expect(out.minted).toHaveLength(15);
+  });
+
+  it("stops when the sponsor is not there", async () => {
+    const wallet = Keypair.generate().publicKey;
+    const chain = fakeChain(wallet, 10);
+    const fetchMock = vi.fn(async () => ({ json: async () => ({ status: "unavailable" }) }));
+    vi.stubGlobal("fetch", fetchMock);
+    const out = await requestSponsoredMint(wallet, { conn: chain.conn as never });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(out.left).toBe(10);
+    expect(out.minted).toHaveLength(0);
   });
 });

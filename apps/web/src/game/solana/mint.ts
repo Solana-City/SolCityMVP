@@ -753,18 +753,31 @@ export async function mintCosmetic(args: {
  * Asks the site to mint what this wallet is owed, paid by the site's sponsor
  * wallet (/api/mint, lib/mint/sponsor.ts), so the player approves nothing.
  *
- * Never throws: on any failure it reports what did get minted, and the caller
- * falls back to asking the wallet. Asks again while the server says there is
- * more (one request mints at most twenty) or that the draw is still landing.
+ * Keeps asking for as long as the sponsor makes progress, and judges progress
+ * by the wallet's MintQueue on chain, not by the answers. A bundle of 10
+ * packs stopped at 35 of 50 (devnet, 2026-11-11): one request minted three
+ * transactions and its answer never arrived, and this used to give up on the
+ * first lost answer, so the wallet was asked to approve the rest five at a
+ * time. Now a lost or failed answer is only a stall; three stalls in a row,
+ * the sponsor being unavailable, or the deadline end it.
+ *
+ * Never throws. `minted` is what left the queue while this ran.
  */
 export async function requestSponsoredMint(
   wallet: PublicKey,
-  rounds = 4,
+  opts: { conn?: Connection; deadlineMs?: number } = {},
 ): Promise<{ minted: number[]; left: number }> {
-  const minted: number[] = [];
-  let left = 0;
-  for (let round = 0; round < rounds; round++) {
-    let body: { status?: string; minted?: number[]; left?: number };
+  const conn = opts.conn ?? baseConnection();
+  const until = Date.now() + (opts.deadlineMs ?? 120_000);
+  const owed = async () => { try { return await pendingMintIndices(conn, wallet); } catch { return null; } };
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+  const before = await owed();
+  let last = before;
+  const reported: number[] = [];
+  let stalls = 0;
+  while (Date.now() < until && stalls < 3) {
+    let body: { status?: string; minted?: number[]; left?: number } | null = null;
     try {
       const res = await fetch("/api/mint", {
         method: "POST",
@@ -773,15 +786,21 @@ export async function requestSponsoredMint(
       });
       body = await res.json();
     } catch {
-      break;
+      body = null; // lost: the chain says what happened
     }
-    minted.push(...(body.minted ?? []));
-    left = body.left ?? 0;
-    if (body.status === "pending") {
-      await new Promise((r) => setTimeout(r, 1500));
-      continue;
-    }
-    if (body.status !== "minted" || left === 0) break;
+    if (body?.status === "pending") { await sleep(1500); continue; }
+    if (body?.status === "unavailable" || body?.status === "nothing") break;
+    reported.push(...(body?.minted ?? []));
+
+    const now = await owed();
+    const progressed = now && last ? now.length < last.length : (body?.minted?.length ?? 0) > 0;
+    if (now) last = now;
+    if (now && now.length === 0) break;
+    if (progressed) stalls = 0;
+    else { stalls++; await sleep(1500 * stalls); }
   }
+
+  const left = last?.length ?? 0;
+  const minted = before && last ? withoutCopies(before, last) : reported;
   return { minted, left };
 }
