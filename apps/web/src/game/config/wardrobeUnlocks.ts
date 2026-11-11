@@ -220,6 +220,19 @@ export function markHeld(wallet: string, indices: number[]): void {
   }
 }
 
+/**
+ * Whether this wallet's unlock account has been READ this session.
+ *
+ * `getOnChainUnlocks` answers an empty set both for "owns nothing" and for
+ * "not read yet", and an outfit encoded against the second strips every pack
+ * item from it. On devnet, 2026-11-11, the login write did exactly that and
+ * replaced a full outfit on chain with the free defaults, which is what every
+ * other player then saw. Callers that write a look ask this first.
+ */
+export function hasOnChainUnlocks(wallet: string | null): boolean {
+  return !!wallet && onchainUnlocks.has(wallet);
+}
+
 export function getOnChainUnlocks(wallet: string | null): Set<string> {
   return (wallet ? onchainUnlocks.get(wallet) : undefined) ?? new Set();
 }

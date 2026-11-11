@@ -67,7 +67,7 @@ import { leaveAction, readCommits, recordCommit, resetCommits } from "./delegati
 import { DIR_LEFT, PresenceTracker, activityKey, HIDE_AFTER_MS } from "./presence";
 import { buildMarkPresentSessionIx, decodePresenceBoard, derivePresenceBoardPDA, buildClosePlayerIx } from "../solana/presenceBoard";
 import { buildKickBallIx, decodeBall, deriveBallPDA } from "../solana/ball";
-import { setOnChainUnlocks, setOwedCopies } from "@/game/config/wardrobeUnlocks";
+import { setOnChainUnlocks, setOwedCopies, hasOnChainUnlocks } from "@/game/config/wardrobeUnlocks";
 import { syncHeldToWardrobe, pendingMintIndices } from "@/game/solana/mint";
 import { gameSlotOf, GAME_SLOT_CAP } from "@/game/minigames/slots";
 import { walletRequest } from "@/game/solana/walletBus";
@@ -1805,13 +1805,46 @@ export class OnChainMultiplayer {
       this.bc?.postMessage({ t: "look", w: walletStr, l: loadout } satisfies BCMsg); // same-tab
       // cross-device: write the loadout onto our delegated PDA on the ER; others
       // pick it up from the same position poll (no base-layer memo).
-      if (isProgramDeployed() && this.wallet) {
-        const sk = this.sessionKeys.getSessionPublicKey();
-        this.sendSessionIx(buildUpdateLookSessionIx(this.wallet, sk, encodeLoadout(loadout, walletStr)), {
-          kind: "outfit", label: "Outfit change",
-        });
-      }
+      this.sendLook(loadout, "Outfit change");
     }, 250);
+  }
+
+  /** A look that waits for the unlock account to be read before it goes out. */
+  private pendingLook: { loadout: Loadout; label?: string } | null = null;
+
+  /**
+   * Writes our look onto the delegated PDA, but never against an unlock list
+   * that has not been read yet.
+   *
+   * encodeLoadout leaves out every pack item the wallet's on-chain list does
+   * not hold, because one unowned item makes the program refuse the whole
+   * outfit. Before that list is read it holds nothing, so a write sent then
+   * strips the outfit to the free defaults, and that IS what everyone else
+   * sees (devnet, 2026-11-11: the login write turned a full outfit into
+   * "p=64|t=96" on chain). Such a write is held and sent the moment the list
+   * arrives (flushPendingLook).
+   */
+  private sendLook(loadout: Loadout, label?: string): void {
+    if (!isProgramDeployed() || !this.wallet) return;
+    const w = this.wallet.toBase58();
+    if (!hasOnChainUnlocks(w)) {
+      this.pendingLook = { loadout, label };
+      return;
+    }
+    this.pendingLook = null;
+    const sk = this.sessionKeys.getSessionPublicKey();
+    this.sendSessionIx(
+      buildUpdateLookSessionIx(this.wallet, sk, encodeLoadout(loadout, w)),
+      label ? { kind: "outfit", label } : undefined,
+    );
+  }
+
+  /** Sends a look held by sendLook, now that the unlock list is known. */
+  private flushPendingLook(): void {
+    const held = this.pendingLook;
+    if (held && this.wallet && hasOnChainUnlocks(this.wallet.toBase58())) {
+      this.sendLook(held.loadout, held.label);
+    }
   }
 
   /**
@@ -2715,12 +2748,7 @@ export class OnChainMultiplayer {
     // 8. Seed our loadout onto the ER PlayerState so players already in the city
     //    render our real outfit from their next poll (the field persists, so no
     //    re-announce is needed when someone new joins).
-    if (this.localLoadout && this.wallet) {
-      const sk = this.sessionKeys.getSessionPublicKey();
-      this.sendSessionIx(buildUpdateLookSessionIx(
-        this.wallet, sk, encodeLoadout(this.localLoadout, this.wallet.toBase58()),
-      ));
-    }
+    if (this.localLoadout && this.wallet) this.sendLook(this.localLoadout);
   }
 
   /**
@@ -3378,11 +3406,21 @@ export class OnChainMultiplayer {
    * Hands the unlock account to the client's wardrobe, plus what the wallet
    * holds, without writing anything. Used when there is nothing to sync.
    */
-  private async refreshUnlockView(wallet: PublicKey): Promise<void> {
-    const info = await this.baseRpcWithRetry(
-      () => this.baseConnection.getAccountInfo(deriveUnlockPDA(wallet)[0]),
-    ).catch(() => null);
+  private async refreshUnlockView(wallet: PublicKey, attempt = 0): Promise<void> {
+    let info: Awaited<ReturnType<Connection["getAccountInfo"]>>;
+    try {
+      info = await this.baseRpcWithRetry(
+        () => this.baseConnection.getAccountInfo(deriveUnlockPDA(wallet)[0]),
+      );
+    } catch {
+      // A failed read is UNKNOWN, not "owns nothing". Treating it as nothing
+      // (catch to null) stripped every pack item from the next outfit write.
+      // Left unknown, the look waits, and the read is tried again.
+      if (attempt < 4) setTimeout(() => void this.refreshUnlockView(wallet, attempt + 1), 4000);
+      return;
+    }
     setOnChainUnlocks(wallet.toBase58(), info ? new Uint8Array(info.data) : null);
+    this.flushPendingLook();
     // Not awaited: it goes to an indexer, and nothing here should wait on one
     // to let somebody into the city.
     void syncHeldToWardrobe(this.baseConnection, wallet);
@@ -3419,7 +3457,20 @@ export class OnChainMultiplayer {
    * opened.
    */
   async refreshUnlockSnapshot(): Promise<void> {
-    if (this.wallet && isProgramDeployed()) await this.syncUnlocksOnBase(this.wallet);
+    if (!this.wallet || !isProgramDeployed()) return;
+    const wallet = this.wallet;
+    await this.syncUnlocksOnBase(wallet);
+    // And twice more, a few seconds on. The rollup reads the unlock account
+    // from its own copy of base, which can still be the one from before the
+    // draw: the sync sent as the reveal opened copied a list without the new
+    // items, and 22 owned items were missing from the snapshot the program
+    // checks outfits against (devnet, 2026-11-11). On the rollup a sync is
+    // free and can only make the snapshot true.
+    for (const ms of [4000, 12000]) {
+      setTimeout(() => {
+        if (this.wallet?.equals(wallet)) void this.syncUnlocksOnBase(wallet);
+      }, ms);
+    }
   }
 
   /**
@@ -3464,6 +3515,7 @@ export class OnChainMultiplayer {
         () => this.baseConnection.getAccountInfo(deriveUnlockPDA(wallet)[0]),
       );
       setOnChainUnlocks(wallet.toBase58(), info ? new Uint8Array(info.data) : null);
+      this.flushPendingLook();
 
       // And what they HOLD, which is a different question once an item has
       // been minted and can be sold. Not awaited: it goes to an indexer, and

@@ -7,6 +7,7 @@ import {
 } from "./program";
 import {
   setOwedCopies, isOwedMint, setHeldItems, markHeld, isVariantUnlocked,
+  hasOnChainUnlocks, setOnChainUnlocks,
 } from "@/game/config/wardrobeUnlocks";
 import { globalIndexOf } from "@/game/config/catalogIndex";
 import { getVariant } from "@/game/config/paperDoll";
@@ -105,6 +106,15 @@ describe("the wardrobe after a mint", () => {
     expect(isVariantUnlocked(w, "accessory", red)).toBe(false);
     markHeld(w, [RED]);
     expect(isVariantUnlocked(w, "accessory", red)).toBe(true);
+  });
+
+  it("tells an unlock list not read yet from one that is empty", () => {
+    // An outfit written against the first lost every pack item (2026-11-11).
+    const w = Keypair.generate().publicKey.toBase58();
+    expect(hasOnChainUnlocks(w)).toBe(false);
+    setOnChainUnlocks(w, null); // read, and the account does not exist
+    expect(hasOnChainUnlocks(w)).toBe(true);
+    expect(hasOnChainUnlocks(null)).toBe(false);
   });
 
   it("does not invent a held list when the indexer's answer is unknown", () => {
