@@ -174,12 +174,19 @@ export function buildMintPackIx(params: {
 }
 
 /**
- * Buys `count` sealed packs, asking the wallet ONCE.
+ * Buys `count` sealed packs in ONE transaction, asking the wallet once.
  *
  * Unlike opening, this has no ceiling in the program: nothing is drawn, so
- * there is no callback to fit in one transaction and no single draw slot to
- * compete for. What limits it is compute, the same as minting items, so the
- * order is chunked and the wallet signs the batch together.
+ * there is no callback to fit and no single draw slot to compete for. What
+ * limits it is the transaction itself, and ten packs fit: measured on devnet
+ * (2026-11-11), ten mint_pack instructions are ~817k compute units and 681
+ * bytes as v0 against the pack lookup table (1172 as legacy, still under
+ * 1232). Each mint_pack is its own instruction, so each gets its own heap.
+ *
+ * It used to split the order three packs to a transaction and have the wallet
+ * sign the batch. Phantom does not land batches for this site (4100, or a
+ * signature that never reaches the chain), so a five-pack order bought only
+ * part of what was asked (devnet, 2026-11-11).
  */
 export async function buySealedPacks(args: {
   wallet: PublicKey;
@@ -187,42 +194,46 @@ export async function buySealedPacks(args: {
   config: PackConfigAccount;
   mintConfig: MintConfigAccount;
   count: number;
-  signAllTransactions: (txs: Transaction[]) => Promise<Transaction[]>;
+  signAllTransactions: SignAnyTx;
   conn?: Connection;
-  perTx?: number;
-}): Promise<{ sent: number }> {
+}): Promise<{ sent: number; signature: string }> {
   const conn = args.conn ?? baseConnection();
-  const per = Math.max(1, args.perTx ?? 3);
-  const total = Math.max(1, Math.round(args.count));
+  const total = Math.min(MAX_SEALED_PER_ORDER, Math.max(1, Math.round(args.count)));
 
+  const instructions: TransactionInstruction[] = [];
+  for (let i = 0; i < total; i++) {
+    instructions.push(buildMintPackIx({
+      payer: args.wallet, pack: args.pack, config: args.config, mintConfig: args.mintConfig,
+    }));
+  }
+
+  // v0 against the lookup table when there is one; a legacy transaction
+  // otherwise, which still holds ten packs.
+  const table = await readPackLookupTable(conn);
   const { blockhash } = await conn.getLatestBlockhash();
-  const txs: Transaction[] = [];
-  for (let done = 0; done < total; done += per) {
-    const inThis = Math.min(per, total - done);
-    const tx = new Transaction({ recentBlockhash: blockhash, feePayer: args.wallet });
-    for (let i = 0; i < inThis; i++) {
-      tx.add(buildMintPackIx({
-        payer: args.wallet, pack: args.pack,
-        config: args.config, mintConfig: args.mintConfig,
-      }));
-    }
-    txs.push(tx);
+  let ready: Transaction | VersionedTransaction;
+  if (table) {
+    ready = await prepareWalletTxV0(conn, {
+      payer: args.wallet, blockhash, instructions, lookupTables: [table],
+    });
+  } else {
+    ready = await prepareWalletTx(conn, new Transaction({ recentBlockhash: blockhash, feePayer: args.wallet }).add(...instructions));
   }
 
-  const ready = await Promise.all(txs.map((t) => prepareWalletTx(conn, t)));
-  const signed = await args.signAllTransactions(ready);
-  let sent = 0;
-  for (const tx of signed) {
-    try {
-      await conn.sendRawTransaction(tx.serialize(), { skipPreflight: false });
-      sent++;
-    } catch {
-      // Reported by count rather than thrown: some of the order landing is a
-      // better outcome than all of it being rolled back in the client's head.
-    }
-  }
-  return { sent };
+  // The blockhash again right before the wallet opens: the reads and the
+  // simulation above took some of it.
+  const fresh = await conn.getLatestBlockhash();
+  if (ready instanceof VersionedTransaction) ready.message.recentBlockhash = fresh.blockhash;
+  else ready.recentBlockhash = fresh.blockhash;
+  const [signed] = await atStep("wallet", args.signAllTransactions([ready]));
+  const signature = await atStep("network", sendAndConfirmTransfer({
+    connection: conn, signed, lastValidBlockHeight: fresh.lastValidBlockHeight,
+  }));
+  return { sent: total, signature };
 }
+
+/** The most sealed packs one order buys: the overlay offers up to ten. */
+export const MAX_SEALED_PER_ORDER = 10;
 
 // ── Opening one ────────────────────────────────────────────────────────────
 
