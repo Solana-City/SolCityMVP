@@ -21,7 +21,7 @@
  * Server only: the key comes from SOLCITY_MINT_SPONSOR_KEY (the JSON array
  * solana-keygen writes), which must never be a NEXT_PUBLIC_ variable.
  */
-import { Connection, Keypair, LAMPORTS_PER_SOL, PublicKey, Transaction } from "@solana/web3.js";
+import { ComputeBudgetProgram, Connection, Keypair, LAMPORTS_PER_SOL, PublicKey, Transaction } from "@solana/web3.js";
 import { BASE_RPC_ENDPOINTS } from "@/game/solana/baseRpc";
 import {
   buildMintPendingIx, MINTS_PER_TX, pendingMintIndices, readMintConfig, withoutCopies,
@@ -32,8 +32,10 @@ import { sendAndConfirmTransfer } from "@/game/solana/sendTokens";
 
 /** Below this the sponsor stops sending and says so, rather than failing mid-pack. */
 const MIN_SPONSOR_LAMPORTS = 0.01 * LAMPORTS_PER_SOL;
-/** Transactions per request: 20 items at most. */
-const MAX_TXS_PER_REQUEST = 4;
+/** Transactions per request, all sent at once: 50 items, a whole bundle. */
+const MAX_TXS_PER_REQUEST = 10;
+/** Compute units asked for per mint_pending(1): one measures ~105k. */
+const UNITS_PER_SPONSORED_MINT = 140_000;
 /**
  * No new transaction starts after this long, so the response always gets
  * back. A bundle of 10 packs stopped at 35 of 50 in the browser (devnet,
@@ -143,27 +145,42 @@ export async function sponsorMint(
 
   const signatures: string[] = [];
   let failure: string | undefined;
-  const txs = Math.min(MAX_TXS_PER_REQUEST, Math.ceil(before.length / MINTS_PER_TX));
   const started = Date.now();
-  let retried = false;
-  for (let n = 0; n < txs; n++) {
-    if (n > 0 && Date.now() - started > TIME_BUDGET_MS) break;
-    try {
-      // ONE ITEM PER INSTRUCTION, several instructions per transaction. A
-      // single mint_pending(limit = 5) ran the program out of heap after 3
-      // mints for a wallet with some history ("memory allocation failed, out
-      // of memory", devnet 2026-11-11): the heap is 32 KB, a bump allocator,
-      // and every mint in the loop allocates again. Each instruction gets a
-      // fresh heap, so five mint_pending(1) do what one mint_pending(5) could
-      // not (simulated for that wallet: 5 mints, ~520k CU, 900 bytes).
-      //
-      // Exactly as many as the queue owes right now: an instruction with
-      // nothing left fails with NothingToMint and takes the others with it.
-      const owedNow = (await pendingMintIndices(conn, owner)).length;
-      if (owedNow === 0) break;
-      const { blockhash } = await conn.getLatestBlockhash();
+  // Up to two rounds: the second only for what the first did not land (a
+  // dropped send, an RPC hiccup), and only while there is time to answer.
+  for (let round = 0; round < 2; round++) {
+    if (round > 0 && Date.now() - started > TIME_BUDGET_MS) break;
+    // ONE ITEM PER INSTRUCTION, several instructions per transaction. A
+    // single mint_pending(limit = 5) ran the program out of heap after 3
+    // mints for a wallet with some history ("memory allocation failed, out
+    // of memory", devnet 2026-11-11): the heap is 32 KB, a bump allocator,
+    // and every mint in the loop allocates again. Each instruction gets a
+    // fresh heap, so five mint_pending(1) do what one mint_pending(5) could
+    // not (simulated for that wallet: 5 mints, ~520k CU, 900 bytes).
+    //
+    // And ALL THE TRANSACTIONS AT ONCE. They were sent one after another,
+    // ~2.5 s each, so a bundle of ten packs took 26 s to mint. Every
+    // mint_pending(1) re-reads the queue when it runs, so transactions sent
+    // together simply take the next copies in turn. What has to be exact is
+    // the TOTAL: one instruction more than the queue owes fails NothingToMint
+    // and sinks its whole transaction, so the plan is cut from what the queue
+    // owes right now.
+    const owedNow = (await pendingMintIndices(conn, owner)).length;
+    if (owedNow === 0) break;
+    const plan: number[] = [];
+    for (let left = Math.min(owedNow, MAX_TXS_PER_REQUEST * MINTS_PER_TX); left > 0; left -= MINTS_PER_TX) {
+      plan.push(Math.min(MINTS_PER_TX, left));
+    }
+    const { blockhash } = await conn.getLatestBlockhash();
+    const outcomes = await Promise.allSettled(plan.map(async (items, i) => {
       const tx = new Transaction({ recentBlockhash: blockhash, feePayer: sponsor.publicKey });
-      for (let k = 0; k < Math.min(MINTS_PER_TX, owedNow); k++) {
+      // A compute limit of its own, one unit apart. Without it, two chunks of
+      // the same size are the same message under the same blockhash and the
+      // same payer, so the same signature: the network keeps one and drops the
+      // rest (devnet, 2026-11-11: ten "confirmed", fifteen items minted). One
+      // mint here is ~105k units, so this is room to spare as well.
+      tx.add(ComputeBudgetProgram.setComputeUnitLimit({ units: UNITS_PER_SPONSORED_MINT * items + i }));
+      for (let k = 0; k < items; k++) {
         tx.add(buildMintPendingIx({ payer: sponsor.publicKey, owner, limit: 1, config }));
       }
       // Simulated first: a mint that would fail is not sent, so it costs
@@ -172,17 +189,18 @@ export async function sponsorMint(
       const fresh = await conn.getLatestBlockhash();
       ready.recentBlockhash = fresh.blockhash;
       ready.sign(sponsor);
-      signatures.push(await sendAndConfirmTransfer({
+      return sendAndConfirmTransfer({
         connection: conn, signed: ready, lastValidBlockHeight: fresh.lastValidBlockHeight,
-      }));
-    } catch (err) {
-      failure = String((err as Error)?.message ?? err).split("\n")[0].slice(0, 200);
-      console.error(`[mint] sponsored mint for ${owner.toBase58()} failed:`, failure);
-      // Once per request: a dropped send or an RPC hiccup is the common case,
-      // and mint_pending re-reads the queue, so a retry never mints twice.
-      if (!retried) { retried = true; n--; continue; }
-      break;
+      });
+    }));
+    let failed = 0;
+    for (const o of outcomes) {
+      if (o.status === "fulfilled") { signatures.push(o.value); continue; }
+      failed++;
+      failure = String((o.reason as Error)?.message ?? o.reason).split("\n")[0].slice(0, 200);
     }
+    if (failed === 0) break;
+    console.error(`[mint] sponsored mint for ${owner.toBase58()}: ${failed} of ${plan.length} failed:`, failure);
   }
 
   // Read back rather than inferred: the account is what makes them assets.
