@@ -149,10 +149,23 @@ export async function sponsorMint(
   for (let n = 0; n < txs; n++) {
     if (n > 0 && Date.now() - started > TIME_BUDGET_MS) break;
     try {
+      // ONE ITEM PER INSTRUCTION, several instructions per transaction. A
+      // single mint_pending(limit = 5) ran the program out of heap after 3
+      // mints for a wallet with some history ("memory allocation failed, out
+      // of memory", devnet 2026-11-11): the heap is 32 KB, a bump allocator,
+      // and every mint in the loop allocates again. Each instruction gets a
+      // fresh heap, so five mint_pending(1) do what one mint_pending(5) could
+      // not (simulated for that wallet: 5 mints, ~520k CU, 900 bytes).
+      //
+      // Exactly as many as the queue owes right now: an instruction with
+      // nothing left fails with NothingToMint and takes the others with it.
+      const owedNow = (await pendingMintIndices(conn, owner)).length;
+      if (owedNow === 0) break;
       const { blockhash } = await conn.getLatestBlockhash();
-      const tx = new Transaction({ recentBlockhash: blockhash, feePayer: sponsor.publicKey }).add(
-        buildMintPendingIx({ payer: sponsor.publicKey, owner, limit: MINTS_PER_TX, config }),
-      );
+      const tx = new Transaction({ recentBlockhash: blockhash, feePayer: sponsor.publicKey });
+      for (let k = 0; k < Math.min(MINTS_PER_TX, owedNow); k++) {
+        tx.add(buildMintPendingIx({ payer: sponsor.publicKey, owner, limit: 1, config }));
+      }
       // Simulated first: a mint that would fail is not sent, so it costs
       // nothing. Also sets the compute and loaded-data limits it needs.
       const ready = await prepareWalletTx(conn, tx);
