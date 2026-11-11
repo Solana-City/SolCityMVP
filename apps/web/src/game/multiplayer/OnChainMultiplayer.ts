@@ -438,6 +438,15 @@ export class OnChainMultiplayer {
    * discovery sweep, which is the only thing that looks everywhere.
    */
   private playerRollup = new Map<string, number>();
+  /**
+   * PDAs whose rollup has been read from their delegation record, and when
+   * every known player's was last re-read. The sweep and the boards only
+   * GUESS (the freshest copy wins), and a player who moved region left a
+   * frozen copy behind that the guess kept choosing (see refreshPlayerHomes).
+   */
+  private homeVerified = new Set<string>();
+  private homesCheckedAt = 0;
+  private homesBusy = false;
   private baseConnection:      Connection;
 
   // Session
@@ -820,6 +829,8 @@ export class OnChainMultiplayer {
     }
     this.accountSubs.clear();
     this.lastSlot.clear();
+    this.homeVerified.clear();
+    this.homesCheckedAt = 0;
     this.lastDiscoveryBytes.clear();
     this.setOnline(false);
 
@@ -2877,7 +2888,9 @@ export class OnChainMultiplayer {
           const seen = byAddress.get(key);
           if (!seen || lastActiveOf(entry.account.data) > lastActiveOf(seen.account.data)) {
             byAddress.set(key, entry);
-            this.playerRollup.set(key, validatorIndex);
+            // A guess, so it never overrides a placement read from the
+            // delegation record (refreshPlayerHomes).
+            if (!this.homeVerified.has(key)) this.playerRollup.set(key, validatorIndex);
           }
         }
       });
@@ -2944,6 +2957,10 @@ export class OnChainMultiplayer {
       // Read from the ER, not base: the ER copy carries live positions; the
       // base copy of a delegated PDA is frozen at spawn.
       const pdas = wallets.map(w => derivePlayerPDA(new PublicKey(w))[0]);
+      // Where each of them actually lives, from the delegation records. Not
+      // awaited: it corrects the placement for the next tick, and a base read
+      // should not hold up a position poll.
+      void this.refreshPlayerHomes(wallets.map((wallet, i) => ({ wallet, pda: pdas[i] })));
 
       // Grouped by the rollup each PDA actually lives on. A delegated account
       // is invisible on every other rollup, so asking one for all of them
@@ -3381,6 +3398,67 @@ export class OnChainMultiplayer {
       console.warn("[Multiplayer] could not read the delegation record:", err?.message);
     }
   }
+
+  /**
+   * Points `playerRollup` at the rollup each player's PDA is ACTUALLY
+   * delegated to, read from the delegation record on base, the one source
+   * that knows (as pointWritesAtOwningValidator does for our own writes).
+   *
+   * Why: a player can now move their account to another region's rollup, and
+   * the move leaves a frozen copy on the old one. The sweep and the boards
+   * place a player by the freshest copy they find, and a known player kept
+   * the old placement until a sweep happened to correct it, so everyone else
+   * read the frozen copy and saw that player stop changing outfit (devnet,
+   * 2026-11-11: both test wallets moved to the EU rollup, and their US and
+   * Asia copies still carried the outfits from before the move).
+   *
+   * New players are resolved at once; everyone else every HOMES_REFRESH_MS,
+   * in one batched base read per hundred players. A PDA that is not
+   * delegated keeps whatever the sweep said. On a change of rollup the
+   * player's slot history is forgotten, because slots are per rollup: the new
+   * rollup's numbers can be lower than the old one's, and every update would
+   * then be dropped as "out of order".
+   */
+  private async refreshPlayerHomes(players: { wallet: string; pda: PublicKey }[]): Promise<void> {
+    if (this.homesBusy || players.length === 0) return;
+    const now = Date.now();
+    const due = now - this.homesCheckedAt > OnChainMultiplayer.HOMES_REFRESH_MS;
+    const ask = due ? players : players.filter((p) => !this.homeVerified.has(p.pda.toBase58()));
+    if (ask.length === 0) return;
+    this.homesBusy = true;
+    try {
+      for (let i = 0; i < ask.length; i += 100) {
+        const slice = ask.slice(i, i + 100);
+        const infos = await this.baseConnection.getMultipleAccountsInfo(
+          slice.map((p) => delegationRecordPdaFromDelegatedAccount(p.pda)),
+          { commitment: "confirmed" },
+        );
+        infos.forEach((info, j) => {
+          const { wallet, pda } = slice[j];
+          const key = pda.toBase58();
+          this.homeVerified.add(key);
+          if (!info || !info.owner.equals(DELEGATION_PROGRAM_ID) || info.data.length < 40) return;
+          const validator = new PublicKey(info.data.subarray(8, 40)).toBase58();
+          const at = ER_VALIDATORS.findIndex((v) => v.identity === validator);
+          if (at < 0 || !this.erReadConnections[at]) return;
+          if (this.playerRollup.get(key) !== at) {
+            if (this.playerRollup.has(key)) {
+              console.log(`[Multiplayer] ${wallet.slice(0, 8)} lives on ${ER_VALIDATORS[at].label}; reading it there`);
+            }
+            this.playerRollup.set(key, at);
+            this.lastSlot.delete(wallet);
+          }
+        });
+      }
+      if (due) this.homesCheckedAt = now;
+    } catch (err: any) {
+      // The sweep's placement stands until the next try.
+      console.warn("[Multiplayer] could not read players' delegation records:", err?.message);
+    } finally {
+      this.homesBusy = false;
+    }
+  }
+  private static readonly HOMES_REFRESH_MS = 10_000;
 
   /** Whether an account exists on base, without throwing. */
   private async accountExists(key: PublicKey): Promise<boolean> {
