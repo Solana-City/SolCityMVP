@@ -1478,7 +1478,7 @@ pub mod sol_city_collectibles {
         // to exist (audit R-21). Opened and grown before the mint, so the
         // asset is never there without its entry.
         let payer_key = ctx.accounts.payer.key();
-        let mut log = open_wear_log(
+        open_wear_log(
             &ctx.accounts.wear_log.to_account_info(),
             &payer_key,
             &ctx.accounts.payer.to_account_info(),
@@ -1513,8 +1513,7 @@ pub mod sol_city_collectibles {
         .invoke_signed(&[seeds])?;
 
         // Recorded only once the asset exists.
-        log.entries.push(WearEntry { index, asset });
-        save_wear_log(&ctx.accounts.wear_log.to_account_info(), &log)?;
+        wear_log_push(&ctx.accounts.wear_log.to_account_info(), index, &asset)?;
         save_mint_queue(&ctx.accounts.mint_queue.to_account_info(), &queue)?;
         let unlocks = &mut ctx.accounts.unlock_state;
         // Wearable again if a sale had taken the right away: this asset now
@@ -1642,7 +1641,7 @@ pub mod sol_city_collectibles {
         // R-21). The OWNER's log, addressed by the owner's key; the payer
         // only funds it.
         let owner_key = ctx.accounts.owner.key();
-        let mut log = open_wear_log(
+        open_wear_log(
             &ctx.accounts.wear_log.to_account_info(),
             &owner_key,
             &ctx.accounts.payer.to_account_info(),
@@ -1687,10 +1686,9 @@ pub mod sol_city_collectibles {
             // had taken the right away: this asset now backs it.
             ctx.accounts.unlock_state.insert_owned(index);
             ctx.accounts.unlock_state.insert_minted(index);
-            log.entries.push(WearEntry { index, asset: get_asset_id(&tree, nonce) });
+            wear_log_push(&ctx.accounts.wear_log.to_account_info(), index, &get_asset_id(&tree, nonce))?;
             emit!(UnlockMinted { authority, index });
         }
-        save_wear_log(&ctx.accounts.wear_log.to_account_info(), &log)?;
         // What was minted leaves the queue. One transaction, so a failure
         // anywhere above reverts this with it and the copies stay owed.
         save_mint_queue(&ctx.accounts.mint_queue.to_account_info(), &queue)?;
@@ -1847,20 +1845,18 @@ pub mod sol_city_collectibles {
         // The claimer's right now comes from THIS asset, so their log says so.
         let asset = get_asset_id(&tree, nonce);
         let claimer = ctx.accounts.claimer.key();
-        let mut own_log = open_wear_log(
-            &ctx.accounts.wear_log.to_account_info(),
+        let own_log = ctx.accounts.wear_log.to_account_info();
+        open_wear_log(
+            &own_log,
             &claimer,
             &ctx.accounts.claimer.to_account_info(),
             &ctx.accounts.system_program.to_account_info(),
             1,
         )?;
         // The same asset twice would be two entries backing one right.
-        require!(
-            !own_log.entries.iter().any(|e| e.asset == asset),
-            CollectiblesError::AssetAlreadyClaimed
-        );
-        own_log.entries.push(WearEntry { index, asset });
-        save_wear_log(&ctx.accounts.wear_log.to_account_info(), &own_log)?;
+        let already = wear_log_find(&own_log.try_borrow_data()?, |_, a| a == asset.as_ref())?;
+        require!(already.is_none(), CollectiblesError::AssetAlreadyClaimed);
+        wear_log_push(&own_log, index, &asset)?;
 
         // And whoever's right came from it before loses it. Both accounts are
         // checked against each other and against this asset, so a caller can
@@ -1869,7 +1865,8 @@ pub mod sol_city_collectibles {
         if let (Some(prev_log), Some(prev_unlocks)) =
             (ctx.accounts.previous_log.as_mut(), ctx.accounts.previous_unlocks.as_mut())
         {
-            let prev = prev_log.wallet;
+            require_keys_eq!(*prev_log.owner, crate::ID, CollectiblesError::WrongPreviousHolder);
+            let prev = wear_log_wallet(&prev_log.try_borrow_data()?)?;
             require_keys_neq!(prev, claimer, CollectiblesError::WrongPreviousHolder);
             let (log_pda, _) =
                 Pubkey::find_program_address(&[WEAR_LOG_SEED, prev.as_ref()], &crate::ID);
@@ -1878,17 +1875,17 @@ pub mod sol_city_collectibles {
                 Pubkey::find_program_address(&[UNLOCKS_SEED, prev.as_ref()], &crate::ID);
             require_keys_eq!(prev_unlocks.key(), unlocks_pda, CollectiblesError::WrongPreviousHolder);
 
-            let at = prev_log
-                .entries
-                .iter()
-                .position(|e| e.asset == asset && e.index == index)
+            let mut data = prev_log.try_borrow_mut_data()?;
+            let at = wear_log_find(&data, |i, a| i == index && a == asset.as_ref())?
                 .ok_or(CollectiblesError::WrongPreviousHolder)?;
-            prev_log.entries.swap_remove(at);
+            wear_log_swap_remove(&mut data, at)?;
             // The right goes only if no OTHER asset still backs it. A copy the
             // seller still has waiting in their MintQueue brings it back the
             // moment that copy is minted. Selling gives them no new copy, so
             // they cannot mint a fresh one either.
-            if !prev_log.entries.iter().any(|e| e.index == index) {
+            let still_backed = wear_log_find(&data, |i, _| i == index)?.is_some();
+            drop(data);
+            if !still_backed {
                 if let Ok(i) = prev_unlocks.owned.binary_search(&index) {
                     prev_unlocks.owned.remove(i);
                 }
@@ -2657,7 +2654,19 @@ impl WearLog {
 }
 
 /// Opens `wallet`'s WearLog with room for `extra` more entries, creating it
-/// the first time, and returns what it holds.
+/// the first time.
+///
+/// ── Read in place, never deserialized ──────────────────────────────────
+///
+/// The log has one entry per asset the wallet ever received, 34 bytes each,
+/// and an instruction has a 32 KB heap that is never freed. Deserializing the
+/// Vec copied all of it there on every mint and every claim: 192 entries were
+/// ~19 KB, and somewhere past 250 to 300 a wallet could neither mint nor claim
+/// a resold item. Now entries are appended, searched and removed directly in
+/// the account's bytes (`wear_log_push`, `wear_log_find`,
+/// `wear_log_swap_remove`), so the heap cost is zero whatever the length.
+/// The layout is unchanged (Borsh: discriminator, wallet, u32 length,
+/// entries), so existing logs and the client's decoder read the same.
 ///
 /// `payer` funds the account and its growth. Creation takes the pre-funded
 /// branch when the address already holds lamports, as everywhere else in the
@@ -2669,16 +2678,17 @@ fn open_wear_log<'info>(
     payer: &AccountInfo<'info>,
     system_program: &AccountInfo<'info>,
     extra: usize,
-) -> Result<WearLog> {
+) -> Result<()> {
     let (expected, bump) = Pubkey::find_program_address(&[WEAR_LOG_SEED, wallet.as_ref()], &crate::ID);
     require_keys_eq!(*log.key, expected, CollectiblesError::WrongPreviousHolder);
     let bump_arr = [bump];
     let signer: &[&[u8]] = &[WEAR_LOG_SEED, wallet.as_ref(), &bump_arr];
     let rent = SolanaRent::get()?;
 
-    let current = if log.owner == &crate::ID {
+    let len = if log.owner == &crate::ID {
         let data = log.try_borrow_data()?;
-        <WearLog as anchor_lang::AccountDeserialize>::try_deserialize(&mut &data[..])?
+        require_keys_eq!(wear_log_wallet(&data)?, *wallet, CollectiblesError::WrongPreviousHolder);
+        wear_log_len(&data)?
     } else {
         let space = WearLog::size_for(extra);
         if log.lamports() == 0 {
@@ -2706,12 +2716,16 @@ fn open_wear_log<'info>(
                 &[signer],
             )?;
         }
-        return Ok(WearLog { wallet: *wallet, entries: Vec::new() });
+        let mut data = log.try_borrow_mut_data()?;
+        data[..8].copy_from_slice(&WEAR_LOG_DISCRIMINATOR);
+        data[8..WEAR_LOG_LEN_AT].copy_from_slice(wallet.as_ref());
+        data[WEAR_LOG_LEN_AT..WEAR_LOG_ENTRIES_AT].copy_from_slice(&0u32.to_le_bytes());
+        return Ok(());
     };
 
     // Grown before anything is minted, funded by the payer, so a full log can
     // never be the reason an asset exists without its entry.
-    let needed = WearLog::size_for(current.entries.len() + extra);
+    let needed = WearLog::size_for(len + extra);
     if log.data_len() < needed {
         let topup = rent.minimum_balance(needed).saturating_sub(log.lamports());
         if topup > 0 {
@@ -2722,13 +2736,79 @@ fn open_wear_log<'info>(
         }
         log.realloc(needed, false)?;
     }
-    Ok(current)
+    Ok(())
 }
 
-/// Writes a WearLog back over its account.
-fn save_wear_log(log: &AccountInfo, value: &WearLog) -> Result<()> {
-    let mut data = log.try_borrow_mut_data()?;
-    anchor_lang::AccountSerialize::try_serialize(value, &mut &mut data[..])
+const WEAR_LOG_DISCRIMINATOR: [u8; 8] = <WearLog as anchor_lang::Discriminator>::DISCRIMINATOR;
+const WEAR_LOG_LEN_AT: usize = 8 + 32;
+const WEAR_LOG_ENTRIES_AT: usize = WEAR_LOG_LEN_AT + 4;
+const WEAR_ENTRY_SIZE: usize = 2 + 32;
+
+/// The entry count of a WearLog's bytes, after checking they are one and
+/// that the entries the count claims fit in the account.
+fn wear_log_len(data: &[u8]) -> Result<usize> {
+    require!(
+        data.len() >= WEAR_LOG_ENTRIES_AT && data[..8] == WEAR_LOG_DISCRIMINATOR,
+        anchor_lang::error::ErrorCode::AccountDiscriminatorMismatch
+    );
+    let mut len = [0u8; 4];
+    len.copy_from_slice(&data[WEAR_LOG_LEN_AT..WEAR_LOG_ENTRIES_AT]);
+    let len = u32::from_le_bytes(len) as usize;
+    require!(
+        WEAR_LOG_ENTRIES_AT + len * WEAR_ENTRY_SIZE <= data.len(),
+        anchor_lang::error::ErrorCode::AccountDidNotDeserialize
+    );
+    Ok(len)
+}
+
+/// The wallet a WearLog's bytes belong to.
+fn wear_log_wallet(data: &[u8]) -> Result<Pubkey> {
+    wear_log_len(data)?;
+    let mut key = [0u8; 32];
+    key.copy_from_slice(&data[8..WEAR_LOG_LEN_AT]);
+    Ok(Pubkey::new_from_array(key))
+}
+
+/// The position of the first entry `hit(index, asset_bytes)` accepts.
+fn wear_log_find(data: &[u8], hit: impl Fn(u16, &[u8]) -> bool) -> Result<Option<usize>> {
+    let len = wear_log_len(data)?;
+    for i in 0..len {
+        let at = WEAR_LOG_ENTRIES_AT + i * WEAR_ENTRY_SIZE;
+        let index = u16::from_le_bytes([data[at], data[at + 1]]);
+        if hit(index, &data[at + 2..at + WEAR_ENTRY_SIZE]) {
+            return Ok(Some(i));
+        }
+    }
+    Ok(None)
+}
+
+/// Appends one entry. The room was made by `open_wear_log`.
+fn wear_log_push(log: &AccountInfo, index: u16, asset: &Pubkey) -> Result<()> {
+    wear_log_push_bytes(&mut log.try_borrow_mut_data()?, index, asset)
+}
+
+fn wear_log_push_bytes(data: &mut [u8], index: u16, asset: &Pubkey) -> Result<()> {
+    let len = wear_log_len(data)?;
+    let at = WEAR_LOG_ENTRIES_AT + len * WEAR_ENTRY_SIZE;
+    require!(at + WEAR_ENTRY_SIZE <= data.len(), anchor_lang::error::ErrorCode::AccountDidNotSerialize);
+    data[at..at + 2].copy_from_slice(&index.to_le_bytes());
+    data[at + 2..at + WEAR_ENTRY_SIZE].copy_from_slice(asset.as_ref());
+    data[WEAR_LOG_LEN_AT..WEAR_LOG_ENTRIES_AT].copy_from_slice(&((len + 1) as u32).to_le_bytes());
+    Ok(())
+}
+
+/// Removes entry `at` by moving the last one into its place, as
+/// `Vec::swap_remove` did. The account keeps its size; the count governs.
+fn wear_log_swap_remove(data: &mut [u8], at: usize) -> Result<()> {
+    let len = wear_log_len(data)?;
+    require!(at < len, anchor_lang::error::ErrorCode::AccountDidNotDeserialize);
+    let last = WEAR_LOG_ENTRIES_AT + (len - 1) * WEAR_ENTRY_SIZE;
+    let dst = WEAR_LOG_ENTRIES_AT + at * WEAR_ENTRY_SIZE;
+    if dst != last {
+        data.copy_within(last..last + WEAR_ENTRY_SIZE, dst);
+    }
+    data[WEAR_LOG_LEN_AT..WEAR_LOG_ENTRIES_AT].copy_from_slice(&((len - 1) as u32).to_le_bytes());
+    Ok(())
 }
 
 /// Every COPY a wallet has drawn or been granted and not yet received as an
@@ -3256,7 +3336,10 @@ pub struct ClaimOwnedFromAsset<'info> {
     /// was one. Its address and its entry are checked in the body. Absent (the
     /// program id) for an asset nobody has a right from yet.
     #[account(mut)]
-    pub previous_log: Option<Account<'info, WearLog>>,
+    /// CHECK: owner, discriminator and seeds are checked in the body. It is
+    /// read in place (`wear_log_find`), never deserialized, so a long log
+    /// cannot exhaust the heap (see `open_wear_log`).
+    pub previous_log: Option<UncheckedAccount<'info>>,
     /// That previous holder's UnlockState, which loses the index. Its address
     /// is checked in the body against the wallet the log names.
     #[account(mut)]
@@ -3819,5 +3902,97 @@ mod id_agreement {
     #[test]
     fn the_catalog_names_this_program() {
         assert_eq!(crate::ID, sol_city_catalog::COLLECTIBLES_PROGRAM_ID);
+    }
+}
+
+#[cfg(test)]
+mod wear_log_bytes {
+    use super::*;
+
+    /// A fresh log as `open_wear_log` lays it out, with room for `cap`.
+    fn fresh(wallet: &Pubkey, cap: usize) -> Vec<u8> {
+        let mut data = vec![0u8; WearLog::size_for(cap)];
+        data[..8].copy_from_slice(&WEAR_LOG_DISCRIMINATOR);
+        data[8..WEAR_LOG_LEN_AT].copy_from_slice(wallet.as_ref());
+        data
+    }
+
+    /// What Anchor's own decoder reads from the same bytes.
+    fn decode(data: &[u8]) -> WearLog {
+        <WearLog as anchor_lang::AccountDeserialize>::try_deserialize(&mut &data[..]).unwrap()
+    }
+
+    fn key(n: u8) -> Pubkey {
+        Pubkey::new_from_array([n; 32])
+    }
+
+    #[test]
+    fn push_reads_back_as_borsh() {
+        let wallet = key(9);
+        let mut data = fresh(&wallet, 3);
+        for (i, n) in [(5u16, 1u8), (7, 2), (5, 3)] {
+            wear_log_push_bytes(&mut data, i, &key(n)).unwrap();
+        }
+        let log = decode(&data);
+        assert_eq!(log.wallet, wallet);
+        let got: Vec<(u16, Pubkey)> = log.entries.iter().map(|e| (e.index, e.asset)).collect();
+        assert_eq!(got, vec![(5, key(1)), (7, key(2)), (5, key(3))]);
+        assert_eq!(wear_log_wallet(&data).unwrap(), wallet);
+    }
+
+    #[test]
+    fn push_past_the_room_fails() {
+        let mut data = fresh(&key(9), 1);
+        wear_log_push_bytes(&mut data, 1, &key(1)).unwrap();
+        assert!(wear_log_push_bytes(&mut data, 2, &key(2)).is_err());
+    }
+
+    #[test]
+    fn find_and_swap_remove_match_vec() {
+        let mut data = fresh(&key(9), 4);
+        for (i, n) in [(1u16, 1u8), (2, 2), (1, 3), (4, 4)] {
+            wear_log_push_bytes(&mut data, i, &key(n)).unwrap();
+        }
+        let k3 = key(3);
+        let at = wear_log_find(&data, |i, a| i == 1 && a == k3.as_ref()).unwrap();
+        assert_eq!(at, Some(2));
+        assert_eq!(wear_log_find(&data, |i, _| i == 9).unwrap(), None);
+
+        let mut model = decode(&data).entries;
+        wear_log_swap_remove(&mut data, 0).unwrap();
+        model.swap_remove(0);
+        let got: Vec<(u16, Pubkey)> = decode(&data).entries.iter().map(|e| (e.index, e.asset)).collect();
+        let want: Vec<(u16, Pubkey)> = model.iter().map(|e| (e.index, e.asset)).collect();
+        assert_eq!(got, want);
+        // Removing the last entry is just the count going down.
+        wear_log_swap_remove(&mut data, 2).unwrap();
+        assert_eq!(wear_log_len(&data).unwrap(), 2);
+        assert!(wear_log_swap_remove(&mut data, 2).is_err());
+    }
+
+    #[test]
+    fn rejects_foreign_or_short_bytes() {
+        let mut data = fresh(&key(9), 1);
+        data[0] ^= 1;
+        assert!(wear_log_len(&data).is_err());
+        let mut data = fresh(&key(9), 1);
+        // A count the account has no room for.
+        data[WEAR_LOG_LEN_AT..WEAR_LOG_ENTRIES_AT].copy_from_slice(&5u32.to_le_bytes());
+        assert!(wear_log_len(&data).is_err());
+        assert!(wear_log_len(&[0u8; 10]).is_err());
+    }
+
+    /// The point of the change: 400 entries, well past where the Vec ran out
+    /// of heap, and nothing here allocates per entry.
+    #[test]
+    fn a_long_log_still_takes_an_entry() {
+        let mut data = fresh(&key(9), 401);
+        for n in 0..400u16 {
+            wear_log_push_bytes(&mut data, n, &key((n % 250) as u8)).unwrap();
+        }
+        wear_log_push_bytes(&mut data, 7, &key(251)).unwrap();
+        assert_eq!(wear_log_len(&data).unwrap(), 401);
+        let k = key(251);
+        assert_eq!(wear_log_find(&data, |i, a| i == 7 && a == k.as_ref()).unwrap(), Some(400));
     }
 }
