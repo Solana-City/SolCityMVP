@@ -1,7 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Keypair, PublicKey } from "@solana/web3.js";
 import { verifySessionOwner, resetSessionOwnerCache } from "./sessionAuth";
-import { DELEGATION_PROGRAM_ID, SOL_CITY_PROGRAM_ID } from "@/game/solana/program";
+import { DELEGATION_PROGRAM_ID, SOL_CITY_PROGRAM_ID, derivePlayerPDA } from "@/game/solana/program";
+import { delegationRecordPdaFromDelegatedAccount } from "@magicblock-labs/ephemeral-rollups-sdk";
+import { ER_VALIDATORS } from "@/game/multiplayer/erValidators";
 
 /**
  * The server trusts a session key only if it is the one on the CURRENT copy
@@ -23,10 +25,25 @@ function playerBytes(sessionKey: string): string {
   return buf.toString("base64");
 }
 
+/** The delegation record on base names the US rollup (validator in bytes 8..40). */
+const RECORD = delegationRecordPdaFromDelegatedAccount(derivePlayerPDA(wallet)[0]).toBase58();
+const US = ER_VALIDATORS.find((v) => v.id === "us")!;
+function recordBytes(): string {
+  const buf = Buffer.alloc(8 + 32 + 32);
+  new PublicKey(US.identity).toBuffer().copy(buf, 8);
+  return buf.toString("base64");
+}
+
 /** Answers getAccountInfo: the rollup one way, every base endpoint another. */
 function chain(base: { owner: string; key: string }, rollup: { key: string } | null) {
-  vi.stubGlobal("fetch", vi.fn(async (url: string) => {
-    const isRollup = String(url).includes("magicblock");
+  vi.stubGlobal("fetch", vi.fn(async (url: string, init?: { body?: string }) => {
+    const address = init?.body ? JSON.parse(init.body).params?.[0] : undefined;
+    if (address === RECORD) {
+      return { json: async () => ({ result: { value: { owner: DELEGATION_PROGRAM_ID.toBase58(), data: [recordBytes(), "base64"] } } }) };
+    }
+    // Only the rollup the record names may vouch: any other host answers nothing.
+    const isRollup = String(url) === US.rpc || String(url).startsWith(US.rpc);
+    if (!isRollup && String(url).includes("magicblock")) return { json: async () => ({ result: { value: null } }) };
     const value = isRollup
       ? (rollup ? { owner: SOL_CITY_PROGRAM_ID.toBase58(), data: [playerBytes(rollup.key), "base64"] } : null)
       : { owner: base.owner, data: [playerBytes(base.key), "base64"] };

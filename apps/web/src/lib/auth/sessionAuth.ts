@@ -21,8 +21,24 @@ import { PublicKey } from "@solana/web3.js";
 import { get, setex } from "@/lib/kv";
 import { derivePlayerPDA, DELEGATION_PROGRAM_ID } from "@/game/solana/program";
 import { BASE_RPC_ENDPOINTS } from "@/game/solana/baseRpc";
+import { ER_VALIDATORS } from "@/game/multiplayer/erValidators";
+import { delegationRecordPdaFromDelegatedAccount } from "@magicblock-labs/ephemeral-rollups-sdk";
 
-const ER_RPC = "https://devnet.magicblock.app";
+/**
+ * The rollup that holds a delegated account, from its delegation record
+ * (validator in bytes 8..40). Audit r2 X-2: this used to be one hardcoded
+ * devnet host, the Asian rollup. That read a stale copy for every player
+ * delegated to the US or Europe, and on mainnet it would have failed every
+ * delegated player outright. ER_VALIDATORS follows NEXT_PUBLIC_SOLANA_CLUSTER,
+ * so the same code is right on both clusters.
+ */
+async function owningRollup(baseEndpoint: string, pda: string): Promise<string | null> {
+  const record = delegationRecordPdaFromDelegatedAccount(new PublicKey(pda)).toBase58();
+  const rec = await readAccount(baseEndpoint, record);
+  if (!rec || rec.data.length < 40) return null;
+  const validator = new PublicKey(rec.data.subarray(8, 40)).toBase58();
+  return ER_VALIDATORS.find((v) => v.identity === validator)?.rpc ?? null;
+}
 /** How long a verified match is trusted before the chain is asked again. */
 const SK_CACHE_SECS = 5 * 60;
 /**
@@ -109,14 +125,17 @@ export async function verifySessionOwner(wallet: string, sessionKey: string): Pr
   // the delegation program there, and then only the rollup's copy is live;
   // otherwise the base copy is. The first base endpoint that answers decides.
   let base: { data: Buffer; owner: string } | null = null;
+  let baseEndpoint = "";
   for (const endpoint of BASE_RPC_ENDPOINTS) {
     base = await readAccount(endpoint, pda);
-    if (base) break;
+    if (base) { baseEndpoint = endpoint; break; }
   }
   if (!base) return false;
-  const current = base.owner === DELEGATION_PROGRAM_ID.toBase58()
-    ? await readAccount(ER_RPC, pda)
-    : base;
+  let current: { data: Buffer; owner: string } | null = base;
+  if (base.owner === DELEGATION_PROGRAM_ID.toBase58()) {
+    const rollup = await owningRollup(baseEndpoint, pda);
+    current = rollup ? await readAccount(rollup, pda) : null;
+  }
   if (!current || sessionAuthorityOf(current.data, wallet) !== sessionKey) return false;
 
   await setex(`auth:sk:${sessionKey}`, wallet, SK_CACHE_SECS);
