@@ -94,6 +94,9 @@ pub const PRESENCE_TTL_SECS: i64 = 120;
 /// one is written alone, like the hunt: a kick touches only the ball, so a
 /// player on any rollup can send it to the ball's rollup.
 pub const BALL_SEED: &[u8] = b"beach_ball";
+/// Seed of the CityOperator: the one key allowed to bring the shared rollup
+/// accounts (hunt, ball, presence boards) home. See `CityOperator`.
+pub const OPERATOR_SEED: &[u8] = b"operator";
 /// Two rollup slots (about 100 ms at the rollups' 50 ms blocks) between
 /// kicks. Below the client's own 350 ms dribble cooldown, so no honest kick
 /// is ever refused; it only stops a script from flooding the account.
@@ -563,6 +566,8 @@ pub enum SolCityError {
     BallKickInvalid,
     #[msg("The ball was kicked a moment ago")]
     BallKickTooSoon,
+    #[msg("Only the city operator may undelegate shared accounts")]
+    NotOperator,
     // Appended, never inserted. Anchor numbers these by POSITION, so a
     // variant added in the middle silently renumbers every one after it
     // and any client matching on a code starts reporting the wrong thing.
@@ -978,6 +983,21 @@ pub mod sol_city {
     /// the client's per-citizen timer was written to guarantee.
     // ── The beach football ─────────────────────────────────────────────────
 
+    /// Creates the CityOperator and names its key. Upgrade authority only,
+    /// base layer, so on mainnet it is a Squads proposal.
+    pub fn init_operator(ctx: Context<InitOperator>, operator: Pubkey) -> Result<()> {
+        ctx.accounts.config.operator = operator;
+        Ok(())
+    }
+
+    /// Replaces the operator key (a rotation, or a leak). Upgrade authority
+    /// only. A rollup holding a copy of the old value picks the new one up
+    /// when it next clones the account from base.
+    pub fn set_operator(ctx: Context<SetOperator>, operator: Pubkey) -> Result<()> {
+        ctx.accounts.config.operator = operator;
+        Ok(())
+    }
+
     /// Creates the ball. Upgrade authority only, base layer (a Squads
     /// proposal on mainnet), like the hunt and the presence boards.
     pub fn init_ball(ctx: Context<InitBall>) -> Result<()> {
@@ -1001,9 +1021,7 @@ pub mod sol_city {
         )
     }
 
-    /// Brings the ball home. Open to any signer, as undelegate_hunt is and
-    /// for the same reason: Squads cannot sign on a rollup, and all this can
-    /// do is return the ball to base with its state committed.
+    /// Brings the ball home. City operator only, like undelegate_hunt.
     pub fn undelegate_ball(ctx: Context<UndelegateBall>) -> Result<()> {
         schedule_magic_commit(
             MAGIC_IX_COMMIT_AND_UNDELEGATE,
@@ -1173,13 +1191,15 @@ pub mod sol_city {
     /// The way back `delegate_hunt` was missing (noted with R-09). Sent ON THE
     /// ROLLUP that holds the hunt.
     ///
-    /// Open to any signer, on purpose. Gating it on the upgrade authority
-    /// would make it unusable on mainnet: that authority is a Squads vault,
-    /// and Squads executes on the base layer, never on a rollup. And it is
-    /// safe open: all it can do is return the hunt to base with its state
-    /// committed, where it already worked before it was delegated, and where
-    /// the clients follow it (they read the delegation record). The worst a
-    /// stranger can do is cost the admin a re-delegation.
+    /// City operator only (audit round 2). It used to be open to any signer,
+    /// because gating it on the upgrade authority makes it unusable: that is
+    /// a Squads vault, and Squads executes on base, never on a rollup. Open,
+    /// though, a stranger could undelegate it over and over, and every time
+    /// it sits on base a claim needs a FUNDED session key, which most are
+    /// not. So the signer is the CityOperator key instead: a hot key the
+    /// upgrade authority names on base, read here as the rollup's copy of
+    /// that account. A leaked operator key can do exactly what anyone could
+    /// before, and the multisig replaces it with one proposal.
     pub fn undelegate_hunt(ctx: Context<UndelegateHunt>) -> Result<()> {
         schedule_magic_commit(
             MAGIC_IX_COMMIT_AND_UNDELEGATE,
@@ -1220,9 +1240,8 @@ pub mod sol_city {
         )
     }
 
-    /// Brings a board home. Open to any signer, for the same reasons as
-    /// `undelegate_hunt`: it only returns the board to base, and the clients
-    /// fall back to reading the players directly while it is not delegated.
+    /// Brings a board home. City operator only, like `undelegate_hunt`. The
+    /// clients fall back to reading the players directly while it is home.
     pub fn undelegate_presence_board(ctx: Context<UndelegatePresenceBoard>, _validator: Pubkey) -> Result<()> {
         schedule_magic_commit(
             MAGIC_IX_COMMIT_AND_UNDELEGATE,
@@ -1664,6 +1683,38 @@ pub struct InitializeHunt<'info> {
 }
 
 #[derive(Accounts)]
+pub struct InitOperator<'info> {
+    #[account(init, payer = payer, space = 8 + CityOperator::INIT_SPACE, seeds = [OPERATOR_SEED], bump)]
+    pub config: Account<'info, CityOperator>,
+    /// The program's upgrade authority, which signs and pays.
+    #[account(mut)]
+    pub payer: Signer<'info>,
+    /// CHECK: this program, used only to reach its ProgramData.
+    #[account(constraint = program.programdata_address()? == Some(program_data.key())
+        @ SolCityError::InvalidAuthority)]
+    pub program: Program<'info, crate::program::SolCity>,
+    #[account(constraint = program_data.upgrade_authority_address == Some(payer.key())
+        @ SolCityError::InvalidAuthority)]
+    pub program_data: Account<'info, ProgramData>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct SetOperator<'info> {
+    #[account(mut, seeds = [OPERATOR_SEED], bump)]
+    pub config: Account<'info, CityOperator>,
+    /// The program's upgrade authority.
+    pub payer: Signer<'info>,
+    /// CHECK: this program, used only to reach its ProgramData.
+    #[account(constraint = program.programdata_address()? == Some(program_data.key())
+        @ SolCityError::InvalidAuthority)]
+    pub program: Program<'info, crate::program::SolCity>,
+    #[account(constraint = program_data.upgrade_authority_address == Some(payer.key())
+        @ SolCityError::InvalidAuthority)]
+    pub program_data: Account<'info, ProgramData>,
+}
+
+#[derive(Accounts)]
 pub struct InitBall<'info> {
     #[account(init, payer = payer, space = 8 + BallState::INIT_SPACE, seeds = [BALL_SEED], bump)]
     pub ball: Account<'info, BallState>,
@@ -1728,6 +1779,11 @@ pub struct UndelegateBall<'info> {
     /// CHECK: MagicBlock's magic program, pinned by address.
     #[account(address = MAGIC_PROGRAM_ID)]
     pub magic_program: UncheckedAccount<'info>,
+    /// The CityOperator, read only (on the rollup, its copy of base). The
+    /// payer has to be the key it names.
+    #[account(seeds = [OPERATOR_SEED], bump,
+        constraint = config.operator == payer.key() @ SolCityError::NotOperator)]
+    pub config: Account<'info, CityOperator>,
 }
 
 #[derive(Accounts)]
@@ -1806,6 +1862,11 @@ pub struct UndelegateHunt<'info> {
     /// CHECK: MagicBlock's magic program, pinned by address.
     #[account(address = MAGIC_PROGRAM_ID)]
     pub magic_program: UncheckedAccount<'info>,
+    /// The CityOperator, read only (on the rollup, its copy of base). The
+    /// payer has to be the key it names.
+    #[account(seeds = [OPERATOR_SEED], bump,
+        constraint = config.operator == payer.key() @ SolCityError::NotOperator)]
+    pub config: Account<'info, CityOperator>,
 }
 
 #[derive(Accounts)]
@@ -1882,6 +1943,11 @@ pub struct UndelegatePresenceBoard<'info> {
     /// CHECK: MagicBlock's magic program, pinned by address.
     #[account(address = MAGIC_PROGRAM_ID)]
     pub magic_program: UncheckedAccount<'info>,
+    /// The CityOperator, read only (on the rollup, its copy of base). The
+    /// payer has to be the key it names.
+    #[account(seeds = [OPERATOR_SEED], bump,
+        constraint = config.operator == payer.key() @ SolCityError::NotOperator)]
+    pub config: Account<'info, CityOperator>,
 }
 
 #[derive(Accounts)]
@@ -1990,6 +2056,16 @@ pub struct PresenceSlot {
     pub wallet: Pubkey, // 0
     /// When they last said they were here, unix seconds.
     pub seen: i64,      // 32, ends at 40
+}
+
+/// The key that may bring the hunt, the ball and the presence boards home
+/// from their rollups (audit round 2: those undelegates were open to anyone).
+/// A hot key on purpose: Squads cannot sign on a rollup. The upgrade
+/// authority names it and replaces it, on base. Never delegated.
+#[account]
+#[derive(InitSpace)]
+pub struct CityOperator {
+    pub operator: Pubkey,
 }
 
 /// The last kick of the beach football. Read by the client by offset

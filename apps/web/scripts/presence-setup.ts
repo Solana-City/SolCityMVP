@@ -7,6 +7,7 @@
  *   npx tsx scripts/presence-setup.ts <upgrade-authority.json> --send
  *   npx tsx scripts/presence-setup.ts <upgrade-authority.json> --hunt us --send
  *   npx tsx scripts/presence-setup.ts <upgrade-authority.json> --ball us --send
+ *   npx tsx scripts/presence-setup.ts <upgrade-authority.json> --operator <pubkey> --send
  *
  * Per board: create it if missing, then delegate it to its own rollup if it is
  * not delegated yet. Both take the upgrade authority and run on BASE, so on
@@ -37,6 +38,7 @@ import {
 import { devnetConnection, sendAndPoll } from "./_rpc";
 import {
   derivePresenceBoardPDA, buildInitPresenceBoardIx, buildDelegatePresenceBoardIx, PRESENCE_BOARD_LEN,
+  deriveOperatorPDA, buildInitOperatorIx, buildSetOperatorIx,
 } from "../src/game/solana/presenceBoard";
 import { ixDiscriminator } from "../src/game/solana/instructions";
 import { ER_VALIDATORS } from "../src/game/multiplayer/erValidators";
@@ -51,6 +53,7 @@ const args = process.argv.slice(2);
 const send = args.includes("--send");
 const huntAt = args.includes("--hunt") ? args[args.indexOf("--hunt") + 1] : null;
 const ballAt = args.includes("--ball") ? args[args.indexOf("--ball") + 1] : null;
+const operatorArg = args.includes("--operator") ? args[args.indexOf("--operator") + 1] : null;
 
 /** Where an account lives: missing, on base, or delegated to a validator. */
 async function whereIs(account: PublicKey): Promise<string> {
@@ -98,6 +101,8 @@ async function main() {
     }
     console.log(`hunt          ${hunt.toBase58()}  ${await whereIs(hunt)}`);
     console.log(`ball          ${deriveBallPDA().toBase58()}  ${await whereIs(deriveBallPDA())}`);
+    const op = await conn.getAccountInfo(deriveOperatorPDA());
+    console.log(`operator      ${deriveOperatorPDA().toBase58()}  ${op ? new PublicKey(op.data.subarray(8, 40)).toBase58() : "missing"}`);
   };
 
   if (args[0] === "status") { await status(); return; }
@@ -135,6 +140,15 @@ async function main() {
     if (where === "missing" || where === "on the base layer") {
       plan.push({ label: `delegate ball to ${v.label}`, ix: buildDelegateBallIx(payer.publicKey, new PublicKey(v.identity)) });
     } else console.log(`\nball is ${where}: nothing to do for --ball`);
+  }
+
+  if (operatorArg) {
+    const operator = new PublicKey(operatorArg);
+    const op = await conn.getAccountInfo(deriveOperatorPDA());
+    if (!op) plan.push({ label: `create operator = ${operator.toBase58()}`, ix: buildInitOperatorIx(payer.publicKey, operator) });
+    else if (!new PublicKey(op.data.subarray(8, 40)).equals(operator)) {
+      plan.push({ label: `set operator = ${operator.toBase58()}`, ix: buildSetOperatorIx(payer.publicKey, operator) });
+    } else console.log(`\noperator is already ${operator.toBase58()}: nothing to do for --operator`);
   }
 
   if (plan.length === 0) { console.log("\nnothing to do"); return; }

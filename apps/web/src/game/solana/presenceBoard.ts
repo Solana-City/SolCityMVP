@@ -29,6 +29,15 @@ export const PRESENCE_BOARD_LEN = HEADER + PRESENCE_SLOTS * SLOT;
 const LOADER = new PublicKey("BPFLoaderUpgradeab1e11111111111111111111111");
 const DEFAULT = new PublicKey(new Uint8Array(32)).toBase58();
 
+/**
+ * The CityOperator: the one key the program lets bring the hunt, the ball and
+ * the boards home from their rollups (audit round 2). Every undelegate takes
+ * it as its last account, read only.
+ */
+export function deriveOperatorPDA(): PublicKey {
+  return PublicKey.findProgramAddressSync([Buffer.from("operator")], SOL_CITY_PROGRAM_ID)[0];
+}
+
 export function derivePresenceBoardPDA(validator: PublicKey): PublicKey {
   return PublicKey.findProgramAddressSync(
     [Buffer.from(PRESENCE_SEED), validator.toBuffer()], SOL_CITY_PROGRAM_ID,
@@ -125,12 +134,13 @@ export function buildUndelegatePresenceBoardIx(payer: PublicKey, validator: Publ
       { pubkey: derivePresenceBoardPDA(validator), isSigner: false, isWritable: true },
       { pubkey: MAGIC_CONTEXT_ID,                  isSigner: false, isWritable: true },
       { pubkey: MAGIC_PROGRAM_ID,                  isSigner: false, isWritable: false },
+      { pubkey: deriveOperatorPDA(),               isSigner: false, isWritable: false },
     ],
     data: Buffer.concat([DISC.undelegate, validator.toBuffer()]),
   });
 }
 
-/** On the hunt's rollup. Any signer: it only brings the hunt home. */
+/** On the hunt's rollup. `payer` must be the CityOperator key. */
 export function buildUndelegateHuntIx(payer: PublicKey): TransactionInstruction {
   return new TransactionInstruction({
     programId: SOL_CITY_PROGRAM_ID,
@@ -139,6 +149,7 @@ export function buildUndelegateHuntIx(payer: PublicKey): TransactionInstruction 
       { pubkey: deriveHuntPDA()[0], isSigner: false, isWritable: true },
       { pubkey: MAGIC_CONTEXT_ID,   isSigner: false, isWritable: true },
       { pubkey: MAGIC_PROGRAM_ID,   isSigner: false, isWritable: false },
+      { pubkey: deriveOperatorPDA(), isSigner: false, isWritable: false },
     ],
     data: DISC.undelegateHunt,
   });
@@ -153,5 +164,36 @@ export function buildClosePlayerIx(wallet: PublicKey): TransactionInstruction {
       { pubkey: wallet,                     isSigner: true,  isWritable: true },
     ],
     data: DISC.closePlayer,
+  });
+}
+
+/** Base layer, upgrade authority only: creates the CityOperator naming `operator`. */
+export function buildInitOperatorIx(payer: PublicKey, operator: PublicKey): TransactionInstruction {
+  const programData = PublicKey.findProgramAddressSync([SOL_CITY_PROGRAM_ID.toBuffer()], LOADER)[0];
+  return new TransactionInstruction({
+    programId: SOL_CITY_PROGRAM_ID,
+    keys: [
+      { pubkey: deriveOperatorPDA(),     isSigner: false, isWritable: true },
+      { pubkey: payer,                   isSigner: true,  isWritable: true },
+      { pubkey: SOL_CITY_PROGRAM_ID,     isSigner: false, isWritable: false },
+      { pubkey: programData,             isSigner: false, isWritable: false },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+    ],
+    data: Buffer.concat([ixDiscriminator("init_operator"), operator.toBuffer()]),
+  });
+}
+
+/** Base layer, upgrade authority only: names a new operator key. */
+export function buildSetOperatorIx(payer: PublicKey, operator: PublicKey): TransactionInstruction {
+  const programData = PublicKey.findProgramAddressSync([SOL_CITY_PROGRAM_ID.toBuffer()], LOADER)[0];
+  return new TransactionInstruction({
+    programId: SOL_CITY_PROGRAM_ID,
+    keys: [
+      { pubkey: deriveOperatorPDA(), isSigner: false, isWritable: true },
+      { pubkey: payer,               isSigner: true,  isWritable: false },
+      { pubkey: SOL_CITY_PROGRAM_ID, isSigner: false, isWritable: false },
+      { pubkey: programData,         isSigner: false, isWritable: false },
+    ],
+    data: Buffer.concat([ixDiscriminator("set_operator"), operator.toBuffer()]),
   });
 }

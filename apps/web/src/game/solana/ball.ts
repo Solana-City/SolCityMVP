@@ -6,6 +6,7 @@ import {
 } from "@magicblock-labs/ephemeral-rollups-sdk";
 import { SOL_CITY_PROGRAM_ID, DELEGATION_PROGRAM_ID } from "./program";
 import { ixDiscriminator, MAGIC_CONTEXT_ID, MAGIC_PROGRAM_ID } from "./instructions";
+import { deriveOperatorPDA } from "./presenceBoard";
 
 /**
  * The beach football as one account on one rollup (program: BallState).
@@ -103,7 +104,7 @@ export function buildDelegateBallIx(payer: PublicKey, validator: PublicKey): Tra
   });
 }
 
-/** On the ball's rollup. Any signer: it only brings the ball home. */
+/** On the ball's rollup. `payer` must be the CityOperator key. */
 export function buildUndelegateBallIx(payer: PublicKey): TransactionInstruction {
   return new TransactionInstruction({
     programId: SOL_CITY_PROGRAM_ID,
@@ -112,6 +113,7 @@ export function buildUndelegateBallIx(payer: PublicKey): TransactionInstruction 
       { pubkey: deriveBallPDA(),  isSigner: false, isWritable: true },
       { pubkey: MAGIC_CONTEXT_ID, isSigner: false, isWritable: true },
       { pubkey: MAGIC_PROGRAM_ID, isSigner: false, isWritable: false },
+      { pubkey: deriveOperatorPDA(), isSigner: false, isWritable: false },
     ],
     data: DISC.undelegate,
   });
