@@ -466,72 +466,10 @@ export type SignAllTx = (txs: Transaction[]) => Promise<Transaction[]>;
  * transaction size: the fifteen accounts are shared, and `mint_pending` adds
  * no data per item at all.
  *
- * Budgeted at UNITS_PER_MINT below, which leaves five inside the 1.4M a
- * transaction may ask for. Lower this the moment a pack fails with an
- * exceeded compute budget, and the on-chain MINT_PENDING_CAP with it.
+ * Lower this the moment a pack fails with an exceeded compute budget, and
+ * the on-chain MINT_PENDING_CAP with it.
  */
 export const MINTS_PER_TX = 5;
-
-/**
- * Compute units asked for per item.
- *
- * Deliberately generous. A Bubblegum mint that CPIs into Token Metadata and
- * the compression program costs well under this, and asking for more than you
- * use is nearly free, while asking for less is a transaction that dies after
- * minting three of five. Five of these still fit the 1.4M ceiling.
- */
-const UNITS_PER_MINT = 260_000;
-
-/** What ComputeBudget will accept, and what five mints have to live inside. */
-const MAX_COMPUTE_UNITS = 1_400_000;
-
-/** ComputeBudget's SetComputeUnitLimit, which the default 200k will not cover. */
-function computeLimitIx(units: number): TransactionInstruction {
-  const data = Buffer.alloc(5);
-  data.writeUInt8(2, 0);
-  data.writeUInt32LE(units, 1);
-  return new TransactionInstruction({
-    programId: new PublicKey("ComputeBudget111111111111111111111111111111"),
-    keys: [],
-    data,
-  });
-}
-
-/**
- * Transactions that will mint `items` cosmetics, built BEFORE anyone knows
- * which cosmetics those are.
- *
- * This is the piece that removes the second wallet popup. Every byte here is
- * decided by the wallet and the config, never by the draw, so these can be
- * handed to `signAllTransactions` alongside the purchase itself and held
- * until the oracle answers.
- *
- * ── Why the compute limits count upwards ────────────────────────────────
- *
- * Two transactions with the same instructions, the same signer and the same
- * blockhash are not two transactions: they hash to one signature, and the
- * network keeps the first and drops the rest. Chunks after the first ask for
- * one more compute unit than the chunk before, which costs nothing and makes
- * each one a distinct transaction. A single pack is one chunk and never
- * reaches this.
- */
-export function buildMintPendingTxs(args: {
-  wallet: PublicKey;
-  config: MintConfigAccount;
-  items: number;
-  blockhash: string;
-}): Transaction[] {
-  const chunks: number[] = [];
-  for (let left = args.items; left > 0; left -= MINTS_PER_TX) {
-    chunks.push(Math.min(MINTS_PER_TX, left));
-  }
-  return chunks.map((size, i) => {
-    const tx = new Transaction({ recentBlockhash: args.blockhash, feePayer: args.wallet });
-    tx.add(computeLimitIx(Math.min(MAX_COMPUTE_UNITS, UNITS_PER_MINT * size + i)));
-    tx.add(buildMintPendingIx({ payer: args.wallet, limit: size, config: args.config }));
-    return tx;
-  });
-}
 
 /**
  * Sends transactions the wallet signed earlier, and reports what landed.
