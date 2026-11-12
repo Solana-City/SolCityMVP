@@ -213,6 +213,29 @@ const SESSION_AUTHORITY_TAG_OFFSET: usize = 8 + 32;
 
 /// Truncates a string to at most `max` BYTES on a char boundary, so a
 /// multi-byte char (emoji in chat) never overflows a fixed-size account field.
+/// The loadout without the slots whose item is enforced and not in
+/// `unlocked` (sorted), or None when nothing has to go. Free items, the
+/// quest block, the hair colour and anything that is not an index are left
+/// exactly as they were: this only removes, the way a sale does.
+fn strip_unbacked(loadout: &str, unlocked: &[u16]) -> Option<String> {
+    let unbacked = |part: &str| -> bool {
+        let mut kv = part.splitn(2, '=');
+        let key = kv.next().unwrap_or("");
+        if key == "c" || key == "hairColor" {
+            return false;
+        }
+        match kv.next().and_then(|v| v.parse::<u16>().ok()) {
+            Some(idx) => idx >= ENFORCED_FROM && unlocked.binary_search(&idx).is_err(),
+            None => false,
+        }
+    };
+    if !loadout.split('|').any(unbacked) {
+        return None;
+    }
+    let kept: Vec<&str> = loadout.split('|').filter(|p| !unbacked(p)).collect();
+    Some(kept.join("|"))
+}
+
 fn cap_bytes(s: String, max: usize) -> String {
     if s.len() <= max {
         return s;
@@ -822,6 +845,15 @@ pub mod sol_city {
         let player = &mut ctx.accounts.player;
         player.unlocked = snapshot;
         player.unlocked_len = take as u16;
+        // And the look peers render is held to the same snapshot (audit
+        // round 2, CITY-01). A sale takes the index out of the seller's
+        // UnlockState and the buyer's client syncs the seller, but the STORED
+        // loadout was only ever checked when the seller wrote it, so the sold
+        // item stayed on them until they changed outfit. Whatever this sync
+        // no longer backs comes off now; nothing else in the string moves.
+        if let Some(kept) = strip_unbacked(&player.loadout, &snapshot[..take]) {
+            player.loadout = kept;
+        }
         Ok(())
     }
 
@@ -2132,6 +2164,22 @@ pub struct Link {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// CITY-01: a sold item leaves the stored look on the next sync, and
+    /// nothing else in it moves.
+    #[test]
+    fn sync_strips_only_unbacked_enforced_items() {
+        let sold = ENFORCED_FROM + 5;
+        let kept = ENFORCED_FROM + 9;
+        let free = 3u16;
+        let quest = ENFORCED_FROM - 1;
+        let look = format!("S={free}|H={sold}|T={kept}|Q={quest}|c=7|X=Afro");
+        let out = strip_unbacked(&look, &[kept]).unwrap();
+        assert_eq!(out, format!("S={free}|T={kept}|Q={quest}|c=7|X=Afro"));
+        // Everything still backed: nothing is rewritten.
+        assert_eq!(strip_unbacked(&look, &[sold, kept]), None);
+        assert_eq!(strip_unbacked("", &[]), None);
+    }
 
     /// The clients read a board by offset (presenceBoard.ts), and one `init`
     /// can allocate at most 10,240 bytes. Both are pinned here.
