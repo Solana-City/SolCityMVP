@@ -3,6 +3,10 @@
  "item": "hat:Pumpkin_head",
  "index": 34752,
  "root": "36afe026069ba047c7b5445cbaba950aa35521e29af399660c74dd93c4e86561",
+ "source": "Halloween 2026 winners list given by the owner on 2026-11-12 (audit r2 X-1 / T-02), not the self-reported set; all 8 have a PlayerState on devnet",
+ "vettedBy": "Breno (owner)",
+ "builtAt": "2026-11-13T15:48:40.657Z",
+ "input": "pumpkin-carving.snapshot.json sha256:02111adba4d555ca7648eab5fe8271f8b808c003f71e9f41157518809e23d4ee",
  "leaves": [
   "15ec83544c8288c1b92823ae30c0051baaf22fce1fdf893eeb8a000e37292f6b",
   "475b900d4d5e76cd71b4a58b820397aefd94cf989c2aeefb72cfc6c8cab0b1ee",
