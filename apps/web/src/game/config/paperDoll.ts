@@ -389,6 +389,14 @@ export const LAYER_VARIANTS: Record<LayerCategory, LayerVariant[]> = {
       effect: { frames: 48, fps: 1000 / 150, walkSynced: true } },
     { id: "Tshirt_solana_city", name: "Solana City T-Shirt", textureKey: "pd-tshirt-Tshirt_solana_city", file: "tshirt/Tshirt_solana_city.png",
       unlockVia: "quest", unlockHint: "Earned in the city" },
+    // Event item for Breakpoint 2026 (2026-11-13), handed out from a vetted
+    // list through an event drop (scripts/event-drop.ts, EVENT_DROPS id 2).
+    // Its index is the second slot of the tshirt event lane, fixed now so the
+    // drop can be prepared; hidden until its sheet exists (enabled: false
+    // keeps the slot, it does not free it).
+    { id: "Tshirt_breakpoint_2026", name: "Breakpoint 2026 T-Shirt", textureKey: "pd-tshirt-Tshirt_breakpoint_2026",
+      file: "tshirt/Tshirt_breakpoint_2026.png", unlockVia: "event", unlockHint: "Breakpoint 2026",
+      enabled: false },
   ],
   accessory: [
     { id: "Golden_ring", name: "Golden Ring", textureKey: "pd-accessory-Golden_ring", file: "accessory/Golden_ring.png" },

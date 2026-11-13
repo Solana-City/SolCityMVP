@@ -178,6 +178,7 @@ describe("the global catalog index", () => {
   it("pins the event block, index by index", () => {
     expect(assigned("event")).toEqual([
       [EVENT_BLOCK_START + 3 * LANE_SIZE.event, "tshirt:Longsleeve_indies"],
+      [EVENT_BLOCK_START + 3 * LANE_SIZE.event + 1, "tshirt:Tshirt_breakpoint_2026"],
       [EVENT_BLOCK_START + 7 * LANE_SIZE.event, "hat:Pumpkin_head"],
     ]);
   });
