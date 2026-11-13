@@ -134,6 +134,18 @@ export function deriveEventDropPDA(id: number): PublicKey {
   )[0];
 }
 
+/**
+ * The receipt that says this wallet has received this event item, by claim
+ * or by admin grant. Its existence is the whole record: a wallet that has
+ * one is never offered, or granted, that item again.
+ */
+export function deriveEventClaimPDA(index: number, wallet: PublicKey): PublicKey {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("event_claim"), Buffer.from(u16le(index)), wallet.toBuffer()],
+    SOL_CITY_COLLECTIBLES_PROGRAM_ID,
+  )[0];
+}
+
 /** EventDrop: 8-byte discriminator, id u16, index u16, root [u8; 32]. */
 export function decodeEventDrop(data: Uint8Array): { id: number; index: number; root: Uint8Array } | null {
   if (data.length < 8 + 36) return null;
@@ -146,7 +158,7 @@ export function decodeEventDrop(data: Uint8Array): { id: number; index: number; 
 }
 
 export function buildClaimEventItemIx(
-  claimer: PublicKey, id: number, proof: Uint8Array[],
+  claimer: PublicKey, id: number, index: number, proof: Uint8Array[],
 ): TransactionInstruction {
   const len = new Uint8Array(4);
   new DataView(len.buffer).setUint32(0, proof.length, true);
@@ -160,6 +172,8 @@ export function buildClaimEventItemIx(
       { pubkey: SystemProgram.programId,       isSigner: false, isWritable: false },
       // Last: the event item is queued to become an asset, like a pack item.
       { pubkey: deriveMintQueuePDA(claimer),   isSigner: false, isWritable: true  },
+      // After it: the receipt this claim creates, so a second one fails.
+      { pubkey: deriveEventClaimPDA(index, claimer), isSigner: false, isWritable: true },
     ],
     data: Buffer.from(concat(ixDiscriminator("claim_event_item"), u16le(id), len, ...proof)),
   });
@@ -203,6 +217,9 @@ export async function claimableDrops(
     const info = await conn.getAccountInfo(deriveEventDropPDA(id));
     const onChain = info ? decodeEventDrop(info.data) : null;
     if (!onChain || onChain.index !== drop.index || toHex(onChain.root) !== drop.root) continue;
+    // Received once already. `owned` alone does not say so: a sale strips
+    // the item from the seller, and the program refuses this claim anyway.
+    if (await conn.getAccountInfo(deriveEventClaimPDA(drop.index, wallet))) continue;
     out.push({ id, index: drop.index, proof });
   }
   return out;
@@ -221,7 +238,7 @@ export async function claimEventDrop(args: {
   if (!(await conn.getAccountInfo(deriveUnlockPDA(wallet)[0]))) {
     tx.add(buildInitUnlockStateIx(wallet));
   }
-  tx.add(buildClaimEventItemIx(wallet, drop.id, drop.proof));
+  tx.add(buildClaimEventItemIx(wallet, drop.id, drop.index, drop.proof));
   const signed = await args.signTransaction(await prepareWalletTx(conn, tx));
   const signature = await conn.sendRawTransaction(signed.serialize(), { skipPreflight: false });
   await awaitTransfer(conn, signature, lastValidBlockHeight);

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { PublicKey } from "@solana/web3.js";
 import {
   eventLeaf, eventRoot, eventProof, verifyEventProof, decodeEventDrop,
-  buildClaimEventItemIx, deriveEventDropPDA, toHex, fromHex,
+  buildClaimEventItemIx, deriveEventDropPDA, deriveEventClaimPDA, toHex, fromHex,
 } from "./eventDrops";
 import { ixDiscriminator } from "./instructions";
 import { globalIndexOf, EVENT_BLOCK_START, EVENT_BLOCK_END } from "@/game/config/catalogIndex";
@@ -62,12 +62,23 @@ describe("event drop accounts and instruction", () => {
 
   it("encodes claim_event_item as id u16, then the proof as a Vec", () => {
     const proof = [fromHex("aa".repeat(32)), fromHex("bb".repeat(32))];
-    const ix = buildClaimEventItemIx(wallet(1), 1, proof);
+    const ix = buildClaimEventItemIx(wallet(1), 1, 34752, proof);
     expect(ix.data.subarray(0, 8)).toEqual(ixDiscriminator("claim_event_item"));
     expect([...ix.data.subarray(8, 14)]).toEqual([1, 0, 2, 0, 0, 0]);
     expect(ix.data.length).toBe(8 + 2 + 4 + 64);
     expect(ix.keys[0]).toMatchObject({ isSigner: true, isWritable: true });
     expect(ix.keys[2].pubkey.equals(deriveEventDropPDA(1))).toBe(true);
+  });
+
+  // The receipt is what stops a second claim after a sale (audit r2, R2-01).
+  // It goes last, writable, and is keyed by item and wallet, not by drop.
+  it("sends the claim receipt for this item and wallet, last", () => {
+    const ix = buildClaimEventItemIx(wallet(1), 1, 34752, []);
+    const last = ix.keys[ix.keys.length - 1];
+    expect(last.pubkey.equals(deriveEventClaimPDA(34752, wallet(1)))).toBe(true);
+    expect(last).toMatchObject({ isSigner: false, isWritable: true });
+    expect(deriveEventClaimPDA(34752, wallet(1)).equals(deriveEventClaimPDA(34752, wallet(2)))).toBe(false);
+    expect(deriveEventClaimPDA(34752, wallet(1)).equals(deriveEventClaimPDA(34753, wallet(1)))).toBe(false);
   });
 
   it("the Halloween reward sits in the event block the program accepts", () => {
