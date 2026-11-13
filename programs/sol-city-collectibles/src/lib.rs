@@ -117,6 +117,12 @@ pub const MAX_EVENT_PROOF: usize = 24;
 /// Seed of a wallet's MintQueue, followed by the wallet: every copy it has
 /// drawn or been granted and not yet received as an asset. See `MintQueue`.
 pub const MINT_QUEUE_SEED: &[u8] = b"mint_queue";
+/// Seed of a wallet's DrawTicket, followed by the wallet. See `DrawTicket`.
+pub const DRAW_TICKET_SEED: &[u8] = b"draw_ticket";
+/// How long a draw has to have waited before its wallet may cancel it
+/// (`cancel_draw`). About twenty minutes at 400 ms a slot: far past any
+/// oracle that is merely slow, and `retry_draw` is the answer to those.
+pub const DRAW_CANCEL_AFTER_SLOTS: u64 = 3_000;
 
 /// Most copies one wallet may have WAITING to be minted at once, all items
 /// together.
@@ -369,7 +375,19 @@ fn request_draw<'info>(
     slot_hashes: &UncheckedAccount<'info>,
     system_program: &Program<'info, System>,
     identity_bump: u8,
+    draw_ticket: &AccountInfo<'info>,
 ) -> Result<()> {
+    // A new id for this request, before it is made (audit r2, R2-03). It
+    // goes to the oracle in `callback_args` and comes back after the
+    // randomness, and the callback acts only on the answer carrying the
+    // wallet's CURRENT id. An answer to an older request (one retried, one
+    // cancelled, one replayed) is then a no-op instead of a grant.
+    let wallet = Pubkey::new_from_array(
+        unlock_state.try_borrow_data()?[8..40].try_into().unwrap(),
+    );
+    let draw_id = bump_draw_ticket(
+        draw_ticket, &wallet, &payer.to_account_info(), &system_program.to_account_info(),
+    )?;
     let mut data = vec![VRF_REQUEST_SCOPED, 0, 0, 0, 0, 0, 0, 0];
     VrfRequest {
         caller_seed: client_seed,
@@ -388,8 +406,14 @@ fn request_draw<'info>(
             // The wallet's MintQueue, where every pick is queued to become an
             // asset. The purchase already made room for the whole draw.
             VrfCallbackMeta { pubkey: mint_queue.key(), is_signer: false, is_writable: true },
+            // The wallet's DrawTicket, read only: the callback compares the
+            // id it is handed with the one stored there.
+            VrfCallbackMeta { pubkey: draw_ticket.key(), is_signer: false, is_writable: false },
         ],
-        callback_args: vec![],
+        // Borsh u64, appended by the VRF program after the 32 bytes of
+        // randomness (ephemeral-vrf provide_randomness.rs: discriminator,
+        // randomness, callback_args).
+        callback_args: draw_id.to_le_bytes().to_vec(),
     }
     .serialize(&mut data)
     .map_err(|_| ProgramError::InvalidInstructionData)?;
@@ -562,6 +586,10 @@ pub enum CollectiblesError {
     NoCopyOwed,
     #[msg("That asset is already claimed by this wallet")]
     AssetAlreadyClaimed,
+    #[msg("This draw is too recent to cancel; retry it instead")]
+    DrawTooRecent,
+    #[msg("Wrong draw ticket for this wallet")]
+    WrongDrawTicket,
     // Appended, never inserted. Anchor numbers these by POSITION, so a
     // variant added in the middle silently renumbers every one after it
     // and any client matching on a code starts reporting the wrong thing.
@@ -725,6 +753,7 @@ pub mod sol_city_collectibles {
             &ctx.accounts.slot_hashes,
             &ctx.accounts.system_program,
             ctx.bumps.program_identity,
+            &ctx.accounts.draw_ticket.to_account_info(),
         )?;
         Ok(())
     }
@@ -732,17 +761,28 @@ pub mod sol_city_collectibles {
     pub fn callback_open_booster(
         ctx: Context<CallbackOpenBooster>,
         randomness: [u8; 32],
+        draw_id: u64,
     ) -> Result<()> {
-        // Only a paid draw that is still waiting may be resolved. `draw` is
-        // never cleared, so without this a second answer for the same request,
-        // or a late answer to one already resolved, would grant the same pack
-        // again. Refused rather than ignored, so a mistake shows up as a
-        // failed transaction instead of as nothing (audit R-29, D-12).
+        // Only the answer to the wallet's CURRENT request, while its draw is
+        // still waiting, may resolve it (audit R-29, then r2 R2-03).
         //
-        // It also makes retry_draw safe: when the original answer and the
-        // retried one both arrive, the first resolves the pack and the second
-        // lands here.
-        require!(ctx.accounts.unlock_state.pending, CollectiblesError::NoDrawPending);
+        // `pending` alone was not enough: it says a draw is waiting, not
+        // which request this answer belongs to. An answer to a retried or
+        // cancelled request, arriving while a NEWER paid draw waits, would
+        // have resolved the new pack with randomness from the old request.
+        // Every request now carries an id (`request_draw`), and only the
+        // current one counts.
+        //
+        // A stale answer returns Ok and changes nothing, rather than failing:
+        // it is not a mistake to surface, just a reply nobody waits for any
+        // more, and an error would only invite the oracle to send it again.
+        let wallet = ctx.accounts.unlock_state.authority;
+        let (current, _) = read_draw_ticket(&ctx.accounts.draw_ticket.to_account_info(), &wallet)?;
+        if !ctx.accounts.unlock_state.pending || draw_id != current {
+            msg!("stale VRF answer ignored: draw {} (current {}), pending {}",
+                draw_id, current, ctx.accounts.unlock_state.pending);
+            return Ok(());
+        }
 
         // The table must be the one this pack was paid against. The oracle
         // passes the accounts we named at request time, so this is a check on
@@ -895,8 +935,9 @@ pub mod sol_city_collectibles {
     ///
     /// Why there is no waiting period: the randomness does not exist until the
     /// callback applies it, so asking twice gives a player two answers they
-    /// cannot see and cannot choose between. Whichever arrives first resolves
-    /// the pack and the other is refused (NoDrawPending). Nothing else can
+    /// cannot see and cannot choose between. Only the retry's answer can
+    /// resolve the pack: it takes a new draw id, and the original answer,
+    /// if it ever arrives, is a no-op (audit r2, R2-03). Nothing else can
     /// touch the account while it waits, since every writer refuses a pending
     /// wallet. A timer would need a slot stored on UnlockState, which is a
     /// layout change on every wallet, to protect against nothing. The client
@@ -943,7 +984,51 @@ pub mod sol_city_collectibles {
             &ctx.accounts.slot_hashes,
             &ctx.accounts.system_program,
             ctx.bumps.program_identity,
+            &ctx.accounts.draw_ticket.to_account_info(),
         )?;
+        Ok(())
+    }
+
+    /// Gives up on a draw that will never resolve, so the wallet can use the
+    /// shop again (audit r2, R2-04).
+    ///
+    /// `retry_draw` covers an oracle that does not answer. This covers a
+    /// draw whose answer can never land, whatever the cause: until now that
+    /// wallet stayed `pending` for good, and every purchase, mint and claim
+    /// refuses a pending wallet.
+    ///
+    /// The wallet's own call, and only after DRAW_CANCEL_AFTER_SLOTS since
+    /// its last request, so it is never a way to see an answer and reject it:
+    /// the randomness does not exist on chain until the callback applies it.
+    /// Cancelling moves the draw id on, so a late answer is a no-op.
+    ///
+    /// Nothing is refunded on chain: the payment went to the treasury and a
+    /// sealed pack was burned. `DrawCancelled` carries what was paid for, and
+    /// the refund or re-grant is made by hand from it.
+    pub fn cancel_draw(ctx: Context<CancelDraw>) -> Result<()> {
+        require!(ctx.accounts.unlock_state.pending, CollectiblesError::NoDrawPending);
+        let wallet = ctx.accounts.authority.key();
+        let ticket = ctx.accounts.draw_ticket.to_account_info();
+        let (current, requested) = read_draw_ticket(&ticket, &wallet)?;
+        let now = Clock::get()?.slot;
+        require!(
+            now >= requested.saturating_add(DRAW_CANCEL_AFTER_SLOTS),
+            CollectiblesError::DrawTooRecent
+        );
+        {
+            let mut data = ticket.try_borrow_mut_data()?;
+            data[DRAW_TICKET_ID_AT..DRAW_TICKET_ID_AT + 8]
+                .copy_from_slice(&current.wrapping_add(1).to_le_bytes());
+        }
+        let unlocks = &mut ctx.accounts.unlock_state;
+        unlocks.pending = false;
+        emit!(DrawCancelled {
+            authority: wallet,
+            pack_id: unlocks.draw.pack_id,
+            size: unlocks.draw.size,
+            season: unlocks.draw.season,
+            draw_id: current,
+        });
         Ok(())
     }
 
@@ -2105,6 +2190,7 @@ pub mod sol_city_collectibles {
             &ctx.accounts.slot_hashes,
             &ctx.accounts.system_program,
             ctx.bumps.program_identity,
+            &ctx.accounts.draw_ticket.to_account_info(),
         )?;
 
         emit!(PackOpened { opener, pack_id, season: def.season });
@@ -2426,10 +2512,14 @@ pub struct OpenBooster<'info> {
     pub slot_hashes: UncheckedAccount<'info>,
     pub system_program: Program<'info, System>,
     /// CHECK: the payer's MintQueue, created on first use and checked
-    /// against its seeds in `open_mint_queue`. Last, so the accounts before
-    /// it keep their positions.
+    /// against its seeds in `open_mint_queue`.
     #[account(mut)]
     pub mint_queue: UncheckedAccount<'info>,
+    /// CHECK: the payer's DrawTicket, created on first use and checked
+    /// against its seeds in `bump_draw_ticket`. Last, so the accounts before
+    /// it keep their positions.
+    #[account(mut)]
+    pub draw_ticket: UncheckedAccount<'info>,
 }
 
 /// The VRF half of OpenBooster and nothing else: a retry pays for no pack and
@@ -2466,6 +2556,11 @@ pub struct RetryDraw<'info> {
     /// `open_mint_queue`. Grown here for a draw paid before it existed.
     #[account(mut)]
     pub mint_queue: UncheckedAccount<'info>,
+    /// CHECK: the payer's DrawTicket, created on first use and checked
+    /// against its seeds in `bump_draw_ticket`. Last, so the accounts before
+    /// it keep their positions.
+    #[account(mut)]
+    pub draw_ticket: UncheckedAccount<'info>,
 }
 
 #[derive(Accounts)]
@@ -2489,6 +2584,26 @@ pub struct CallbackOpenBooster<'info> {
     /// and this program's ownership in `load_mint_queue`.
     #[account(mut)]
     pub mint_queue: UncheckedAccount<'info>,
+    /// CHECK: the wallet's DrawTicket, named at request time. Seeds, owner
+    /// and discriminator checked in `read_draw_ticket`.
+    pub draw_ticket: UncheckedAccount<'info>,
+}
+
+/// Gives up on a stuck draw. See `cancel_draw`.
+#[derive(Accounts)]
+pub struct CancelDraw<'info> {
+    pub authority: Signer<'info>,
+    #[account(
+        mut,
+        seeds = [UNLOCKS_SEED, authority.key().as_ref()],
+        bump,
+        constraint = unlock_state.authority == authority.key() @ CollectiblesError::WrongUnlockOwner,
+    )]
+    pub unlock_state: Account<'info, UnlockState>,
+    /// CHECK: the wallet's DrawTicket. Seeds, owner and discriminator checked
+    /// in `read_draw_ticket`.
+    #[account(mut)]
+    pub draw_ticket: UncheckedAccount<'info>,
 }
 
 /// Creates a wallet's UnlockState, once. Separate from the instructions that
@@ -2515,6 +2630,17 @@ pub struct InitUnlockState<'info> {
 }
 
 /// Emitted when a sealed pack is spent, so the client can start the reveal.
+/// A draw given up by its wallet (`cancel_draw`): what was paid for and
+/// never delivered, for the refund made by hand.
+#[event]
+pub struct DrawCancelled {
+    pub authority: Pubkey,
+    pub pack_id: u8,
+    pub size: u8,
+    pub season: u16,
+    pub draw_id: u64,
+}
+
 #[event]
 pub struct PackOpened {
     pub opener: Pubkey,
@@ -2749,6 +2875,89 @@ fn open_wear_log<'info>(
         log.realloc(needed, false)?;
     }
     Ok(())
+}
+
+/// Which VRF request of a wallet's is the live one, and when it was made
+/// (audit r2, R2-03 and R2-04).
+///
+/// Its own small account rather than two fields on UnlockState: that layout
+/// is read by both programs on every wallet, and growing it is a migration.
+/// This one is created on a wallet's first draw, paid by whoever pays for
+/// that draw, and never grows. Never delegated.
+#[account]
+#[derive(InitSpace)]
+pub struct DrawTicket {
+    pub wallet: Pubkey,
+    /// The id of the latest request; the callback acts only on this one.
+    pub current: u64,
+    /// Slot of the latest request, for `cancel_draw`'s wait.
+    pub requested_slot: u64,
+}
+
+const DRAW_TICKET_DISCRIMINATOR: [u8; 8] = <DrawTicket as anchor_lang::Discriminator>::DISCRIMINATOR;
+const DRAW_TICKET_ID_AT: usize = 8 + 32;
+const DRAW_TICKET_SLOT_AT: usize = DRAW_TICKET_ID_AT + 8;
+const DRAW_TICKET_LEN: usize = DRAW_TICKET_SLOT_AT + 8;
+
+/// The ticket's (current id, requested slot), after checking it is the
+/// wallet's: its address, its owner and its discriminator.
+fn read_draw_ticket(ticket: &AccountInfo, wallet: &Pubkey) -> Result<(u64, u64)> {
+    let (expected, _) = Pubkey::find_program_address(&[DRAW_TICKET_SEED, wallet.as_ref()], &crate::ID);
+    require_keys_eq!(*ticket.key, expected, CollectiblesError::WrongDrawTicket);
+    require_keys_eq!(*ticket.owner, crate::ID, CollectiblesError::WrongDrawTicket);
+    let data = ticket.try_borrow_data()?;
+    require!(
+        data.len() >= DRAW_TICKET_LEN && data[..8] == DRAW_TICKET_DISCRIMINATOR,
+        CollectiblesError::WrongDrawTicket
+    );
+    let id = u64::from_le_bytes(data[DRAW_TICKET_ID_AT..DRAW_TICKET_SLOT_AT].try_into().unwrap());
+    let slot = u64::from_le_bytes(data[DRAW_TICKET_SLOT_AT..DRAW_TICKET_LEN].try_into().unwrap());
+    Ok((id, slot))
+}
+
+/// Moves `wallet`'s ticket to a new request and returns its id, creating
+/// the ticket the first time. Same pre-funded branch as `open_wear_log`: one
+/// lamport sent to the address must not stop a wallet from ever drawing.
+fn bump_draw_ticket<'info>(
+    ticket: &AccountInfo<'info>,
+    wallet: &Pubkey,
+    payer: &AccountInfo<'info>,
+    system_program: &AccountInfo<'info>,
+) -> Result<u64> {
+    let (expected, bump) = Pubkey::find_program_address(&[DRAW_TICKET_SEED, wallet.as_ref()], &crate::ID);
+    require_keys_eq!(*ticket.key, expected, CollectiblesError::WrongDrawTicket);
+    if ticket.owner != &crate::ID {
+        let bump_arr = [bump];
+        let signer: &[&[u8]] = &[DRAW_TICKET_SEED, wallet.as_ref(), &bump_arr];
+        let space = 8 + DrawTicket::INIT_SPACE;
+        let rent = SolanaRent::get()?;
+        if ticket.lamports() == 0 {
+            invoke_signed(
+                &system_instruction::create_account(payer.key, ticket.key, rent.minimum_balance(space), space as u64, &crate::ID),
+                &[payer.clone(), ticket.clone(), system_program.clone()],
+                &[signer],
+            )?;
+        } else {
+            let shortfall = rent.minimum_balance(space).saturating_sub(ticket.lamports());
+            if shortfall > 0 {
+                invoke(
+                    &system_instruction::transfer(payer.key, ticket.key, shortfall),
+                    &[payer.clone(), ticket.clone(), system_program.clone()],
+                )?;
+            }
+            invoke_signed(&system_instruction::allocate(ticket.key, space as u64), &[ticket.clone(), system_program.clone()], &[signer])?;
+            invoke_signed(&system_instruction::assign(ticket.key, &crate::ID), &[ticket.clone(), system_program.clone()], &[signer])?;
+        }
+        let mut data = ticket.try_borrow_mut_data()?;
+        data[..8].copy_from_slice(&DRAW_TICKET_DISCRIMINATOR);
+        data[8..DRAW_TICKET_ID_AT].copy_from_slice(wallet.as_ref());
+    }
+    let (current, _) = read_draw_ticket(ticket, wallet)?;
+    let next = current.wrapping_add(1);
+    let mut data = ticket.try_borrow_mut_data()?;
+    data[DRAW_TICKET_ID_AT..DRAW_TICKET_SLOT_AT].copy_from_slice(&next.to_le_bytes());
+    data[DRAW_TICKET_SLOT_AT..DRAW_TICKET_LEN].copy_from_slice(&Clock::get()?.slot.to_le_bytes());
+    Ok(next)
 }
 
 const WEAR_LOG_DISCRIMINATOR: [u8; 8] = <WearLog as anchor_lang::Discriminator>::DISCRIMINATOR;
@@ -3475,6 +3684,11 @@ pub struct OpenPackFromAsset<'info> {
     /// against its seeds in `open_mint_queue`.
     #[account(mut)]
     pub mint_queue: UncheckedAccount<'info>,
+    /// CHECK: the opener's DrawTicket, created on first use and checked
+    /// against its seeds in `bump_draw_ticket`. Last, so the accounts before
+    /// it keep their positions.
+    #[account(mut)]
+    pub draw_ticket: UncheckedAccount<'info>,
 }
 
 /// Buying a pack sealed. No UnlockState and no VRF: nothing is drawn here.

@@ -36,7 +36,7 @@ import {
   baseConnection, readPackConfig, currencyBalance, buyPack, packUnavailableReason, buyerIsTreasury,
   fundsShortfall, txErrorText,
   type PackConfigAccount,
-  syncOwnedToWardrobe, awaitDraw, hasPendingDraw, retryStuckDraw,
+  syncOwnedToWardrobe, awaitDraw, hasPendingDraw, retryStuckDraw, canCancelDraw, cancelStuckDraw,
 } from "@/game/solana/packs";
 
 /**
@@ -164,6 +164,8 @@ export default function BoosterOverlay({
    */
   const [stuck, setStuck] = useState(false);
   const [retrying, setRetrying] = useState(false);
+  /** The stuck draw has waited long enough to give up on (cancel_draw). */
+  const [cancelable, setCancelable] = useState(false);
 
   const setSkip = useCallback((on: boolean) => {
     setSkipReveal(on);
@@ -188,7 +190,12 @@ export default function BoosterOverlay({
         if (cancelled) return;
         setConfig(cfg);
         if (cfg) setBalance(await currencyBalance(conn, new PublicKey(wallet), cfg.currencyMint));
-        if (!cancelled) setStuck(await hasPendingDraw(conn, new PublicKey(wallet)));
+        const pendingNow = await hasPendingDraw(conn, new PublicKey(wallet));
+        if (!cancelled) setStuck(pendingNow);
+        if (pendingNow) {
+          const ok = await canCancelDraw(conn, new PublicKey(wallet)).catch(() => false);
+          if (!cancelled) setCancelable(ok);
+        }
       } catch { /* the preview prices stay on screen */ }
     })();
     return () => { cancelled = true; };
@@ -602,6 +609,23 @@ export default function BoosterOverlay({
     }
   }, [wallet, signAllTransactions, mismatch, retrying, revealAndMint]);
 
+  /** Gives up on a draw that will not resolve, so the shop opens again. */
+  const cancelStuck = useCallback(async () => {
+    if (!wallet || !signAllTransactions || retrying) return;
+    setRetrying(true);
+    setError(null);
+    try {
+      await cancelStuckDraw({ conn: baseConnection(), wallet: new PublicKey(wallet), signAllTransactions });
+      setStuck(false);
+      setCancelable(false);
+      setError("Pack cancelled. Message the team for your refund.");
+    } catch (err) {
+      setError(txErrorText(err, "Could not cancel."));
+    } finally {
+      setRetrying(false);
+    }
+  }, [wallet, signAllTransactions, retrying]);
+
   const backToPacks = () => { setPhase("choose"); setDrops([]); setPack(null); setError(null); };
   // Not mid-opening, same as the backdrop: the pack is already being granted.
   useEscape(phase === "opening" ? null : onClose);
@@ -694,6 +718,20 @@ export default function BoosterOverlay({
                 >
                   {retrying ? "ASKING…" : "ASK AGAIN"}
                 </button>
+                {cancelable && (
+                  <button
+                    disabled={retrying}
+                    onClick={() => void cancelStuck()}
+                    style={{
+                      fontFamily: "inherit", fontSize: 8, padding: "4px 10px",
+                      border: "1px solid #ff9aa6", background: "transparent",
+                      color: retrying ? "#6f7696" : "#ff9aa6",
+                      cursor: retrying ? "default" : "pointer", whiteSpace: "nowrap",
+                    }}
+                  >
+                    CANCEL
+                  </button>
+                )}
               </div>
             )}
             {BOOSTER_ONCHAIN && balance !== null && balance === BigInt(0) && (

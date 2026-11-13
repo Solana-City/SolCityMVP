@@ -26,7 +26,7 @@ import {
 } from "@magicblock-labs/ephemeral-rollups-sdk";
 import {
   SOL_CITY_PROGRAM_ID, DELEGATION_PROGRAM_ID, derivePlayerPDA, deriveHuntPDA,
-  deriveUnlockPDA, deriveMintQueuePDA, VRF_QUEUE_DEVNET, VRF_PROGRAM_ID, deriveVrfIdentityPDA,
+  deriveUnlockPDA, deriveMintQueuePDA, deriveDrawTicketPDA, VRF_QUEUE_DEVNET, VRF_PROGRAM_ID, deriveVrfIdentityPDA,
   SOL_CITY_COLLECTIBLES_PROGRAM_ID,
   derivePackConfigPDA, deriveSeasonDropsPDA, USDC_MINT_DEVNET,
   ACHIEVEMENT_BITS,
@@ -77,6 +77,7 @@ const DISC = {
   initUnlockState:         ixDiscriminator("init_unlock_state"),
   openBooster:             ixDiscriminator("open_booster"),
   retryDraw:               ixDiscriminator("retry_draw"),
+  cancelDraw:              ixDiscriminator("cancel_draw"),
   publishProfileSession:   ixDiscriminator("publish_profile_session"),
 } as const;
 
@@ -802,8 +803,10 @@ export function buildOpenBoosterIx(params: {
       { pubkey: VRF_PROGRAM_ID,            isSigner: false, isWritable: false },
       { pubkey: SYSVAR_SLOT_HASHES_PUBKEY, isSigner: false, isWritable: false },
       { pubkey: SystemProgram.programId,   isSigner: false, isWritable: false },
-      // Last: where every copy this draw hands out waits to be minted.
+      // Where every copy this draw hands out waits to be minted.
       { pubkey: deriveMintQueuePDA(payer), isSigner: false, isWritable: true  },
+      // Last: the draw id this request takes (audit r2, R2-03).
+      { pubkey: deriveDrawTicketPDA(payer), isSigner: false, isWritable: true },
     ],
     data,
   });
@@ -842,10 +845,29 @@ export function buildRetryDrawIx(params: {
       { pubkey: VRF_PROGRAM_ID,            isSigner: false, isWritable: false },
       { pubkey: SYSVAR_SLOT_HASHES_PUBKEY, isSigner: false, isWritable: false },
       { pubkey: SystemProgram.programId,   isSigner: false, isWritable: false },
-      // Last: grown here for a draw paid before the queue existed.
+      // Grown here for a draw paid before the queue existed.
       { pubkey: deriveMintQueuePDA(payer), isSigner: false, isWritable: true  },
+      // Last: the retry takes a new draw id, so the first answer is void.
+      { pubkey: deriveDrawTicketPDA(payer), isSigner: false, isWritable: true },
     ],
     data: Buffer.concat([DISC.retryDraw, seed]),
+  });
+}
+
+/**
+ * `cancel_draw()`: gives up on a paid draw that never resolved, once it has
+ * waited DRAW_CANCEL_AFTER_SLOTS (audit r2, R2-04). Clears `pending`; the
+ * refund is made by hand from the DrawCancelled event.
+ */
+export function buildCancelDrawIx(wallet: PublicKey): TransactionInstruction {
+  return new TransactionInstruction({
+    programId: SOL_CITY_COLLECTIBLES_PROGRAM_ID,
+    keys: [
+      { pubkey: wallet,                       isSigner: true,  isWritable: false },
+      { pubkey: deriveUnlockPDA(wallet)[0],   isSigner: false, isWritable: true  },
+      { pubkey: deriveDrawTicketPDA(wallet),  isSigner: false, isWritable: true  },
+    ],
+    data: DISC.cancelDraw,
   });
 }
 

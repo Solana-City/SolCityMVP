@@ -271,6 +271,30 @@ export function deriveMintQueuePDA(wallet: PublicKey): PublicKey {
 }
 
 /**
+ * A wallet's DrawTicket: the id of its latest VRF request and the slot it was
+ * made in (audit r2, R2-03 and R2-04). Every instruction that asks for a
+ * draw takes it right after the MintQueue, and `cancel_draw` reads it.
+ * Layout: 8 discriminator, wallet (32), current id u64, requested slot u64.
+ */
+export const DRAW_TICKET_SEED = "draw_ticket";
+
+/** Slots a draw must have waited before `cancel_draw` (DRAW_CANCEL_AFTER_SLOTS). */
+export const DRAW_CANCEL_AFTER_SLOTS = 3_000;
+
+export function deriveDrawTicketPDA(wallet: PublicKey): PublicKey {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from(DRAW_TICKET_SEED), wallet.toBuffer()],
+    SOL_CITY_COLLECTIBLES_PROGRAM_ID,
+  )[0];
+}
+
+/** The slot of the wallet's latest draw request, or null with no ticket. */
+export function decodeDrawTicketSlot(data: Uint8Array): number | null {
+  if (data.length < 56) return null;
+  return Number(Buffer.from(data).readBigUInt64LE(48));
+}
+
+/**
  * The copies a MintQueue holds, oldest first, or null when the bytes are not
  * one. 8 discriminator + 32 wallet + a length-prefixed u16 list.
  */

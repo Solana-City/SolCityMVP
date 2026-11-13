@@ -7,7 +7,8 @@ import {
   decodeUnlockState, RARITY_COUNT, deriveMintQueuePDA, decodeMintQueue,
   type UnlockState,
 } from "./program";
-import { buildOpenBoosterIx, buildInitUnlockStateIx, buildRetryDrawIx } from "./instructions";
+import { buildOpenBoosterIx, buildInitUnlockStateIx, buildRetryDrawIx, buildCancelDrawIx } from "./instructions";
+import { deriveDrawTicketPDA, decodeDrawTicketSlot, DRAW_CANCEL_AFTER_SLOTS } from "./program";
 import { baseConnection } from "./baseRpc";
 import { atStep, checkWalletKept, prepareWalletTx, type WalletStep } from "./walletTx";
 import { awaitTransfer, sendAndConfirmTransfer } from "./sendTokens";
@@ -360,9 +361,9 @@ export async function hasPendingDraw(conn: Connection, wallet: PublicKey): Promi
  * waits for it.
  *
  * Costs the VRF request and a fee, never the pack: the program keeps the
- * pack, its odds and its season exactly as they were frozen at payment. If
- * the original answer turns up after all, whichever lands first resolves the
- * pack and the other is refused, so asking again can never draw twice.
+ * pack, its odds and its season exactly as they were frozen at payment. The
+ * retry takes a new draw id, so if the original answer turns up after all it
+ * is ignored: asking again can never draw twice.
  */
 export async function retryStuckDraw(args: {
   conn: Connection;
@@ -387,6 +388,34 @@ export async function retryStuckDraw(args: {
   await awaitTransfer(conn, signature, lastValidBlockHeight);
   const result = await awaitDraw(conn, wallet, before, args.revealTimeoutMs ?? 45_000);
   return { ...result, ownedBefore: [...before], packId: state.draw.packId };
+}
+
+/**
+ * Whether the wallet's stuck draw has waited long enough to be cancelled
+ * (`cancel_draw`, audit r2 R2-04). False with no ticket: a draw paid before
+ * tickets existed is resolved with a retry, which creates one.
+ */
+export async function canCancelDraw(conn: Connection, wallet: PublicKey): Promise<boolean> {
+  const [info, slot] = await Promise.all([
+    conn.getAccountInfo(deriveDrawTicketPDA(wallet)),
+    conn.getSlot(),
+  ]);
+  const requested = info ? decodeDrawTicketSlot(info.data) : null;
+  return requested !== null && slot >= requested + DRAW_CANCEL_AFTER_SLOTS;
+}
+
+/** Gives up on the stuck draw. Clears it on chain; the refund is by hand. */
+export async function cancelStuckDraw(args: {
+  conn: Connection;
+  wallet: PublicKey;
+  signAllTransactions: SignAllTx;
+}): Promise<void> {
+  const { conn, wallet, signAllTransactions } = args;
+  const { blockhash, lastValidBlockHeight } = await conn.getLatestBlockhash();
+  const tx = new Transaction({ recentBlockhash: blockhash, feePayer: wallet }).add(buildCancelDrawIx(wallet));
+  const [signed] = await signAllTransactions([await prepareWalletTx(conn, tx)]);
+  const signature = await conn.sendRawTransaction(signed.serialize(), { skipPreflight: false });
+  await awaitTransfer(conn, signature, lastValidBlockHeight);
 }
 
 /** Program id, re-exported so a caller does not need two imports. Packs live
