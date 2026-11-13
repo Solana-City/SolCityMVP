@@ -53,6 +53,7 @@ import {
   SOL_CITY_COLLECTIBLES_PROGRAM_ID, deriveUnlockPDA, decodeUnlockState, deriveMintQueuePDA,
 } from "../src/game/solana/program";
 import { ixDiscriminator } from "../src/game/solana/instructions";
+import { deriveEventClaimPDA } from "../src/game/solana/eventDrops";
 import { globalIndexOf, EVENT_BLOCK_START, EVENT_BLOCK_END } from "../src/game/config/catalogIndex";
 import type { LayerCategory } from "../src/game/config/paperDoll";
 
@@ -102,6 +103,9 @@ function buildGrantIx(admin: PublicKey, wallet: PublicKey, unlockPda: PublicKey,
       { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
       // Last: the winner's MintQueue, where the item waits to be minted.
       { pubkey: deriveMintQueuePDA(wallet), isSigner: false, isWritable: true },
+      // After it: the receipt the grant creates, shared with the claim, so a
+      // wallet never receives the same event item twice.
+      { pubkey: deriveEventClaimPDA(index, wallet), isSigner: false, isWritable: true },
     ],
     data,
   });
@@ -164,6 +168,13 @@ async function main(): Promise<void> {
     if (!info) {
       console.log(`  ${n} ${walletStr.slice(0, 8)}…  no UnlockState yet, skipped`);
       noAccount++;
+      continue;
+    }
+    // Received already, by this script or by the player's own claim. The
+    // program would refuse it at the receipt; said here first.
+    if (await conn.getAccountInfo(deriveEventClaimPDA(index, wallet))) {
+      console.log(`  ${n} ${walletStr.slice(0, 8)}…  already had it`);
+      already++;
       continue;
     }
     if (decodeUnlockState(info.data)?.pending) {

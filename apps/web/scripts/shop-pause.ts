@@ -69,13 +69,13 @@ async function main() {
     throw new Error(`${signer.toBase58()} may not ${command}`);
   }
 
-  const hasMint = (await conn.getAccountInfo(mintConfig)) !== null;
+  // Required by the program: a pause covers minting as well as the shop.
+  if (!(await conn.getAccountInfo(mintConfig))) throw new Error("No mint config on this cluster: run mint-setup first");
   const ix = new TransactionInstruction({
     programId: PROGRAM,
     keys: [
       { pubkey: packConfig, isSigner: false, isWritable: true },
-      // Anchor spells an absent optional account as the program id.
-      { pubkey: hasMint ? mintConfig : PROGRAM, isSigner: false, isWritable: hasMint },
+      { pubkey: mintConfig, isSigner: false, isWritable: true },
       { pubkey: signer, isSigner: true, isWritable: false },
     ],
     data: Buffer.concat([disc("set_paused"), Buffer.from([pausing ? 1 : 0])]),

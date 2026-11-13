@@ -3,12 +3,20 @@
  *
  * Two steps, and only the second touches the chain:
  *
- *   npx tsx scripts/event-drop.ts build --file <snapshot.json> --id 1 [--item hat:Pumpkin_head]
+ *   npx tsx scripts/event-drop.ts build --file <snapshot.json> --id 1 --item hat:Pumpkin_head \
+ *     --source "<how the list was made and filtered>" --vetted-by <who> [--check-players]
+ *   npx tsx scripts/event-drop.ts build --list <wallets.txt> --name breakpoint-2026 --id 2 \
+ *     --item tshirt:Tshirt_breakpoint_2026 --source "<how>" --vetted-by <who>
  *   npx tsx scripts/event-drop.ts publish <admin.json> --drop public/events/pumpkin-carving.json [--send]
  *   npx tsx scripts/event-drop.ts publish --squads <vault> --drop public/events/pumpkin-carving.json
  *
- * `build` reads a snapshot from `freeze-winners.ts` and writes
- * public/events/<snapshot id>.json: the item, the root, and the leaf hashes.
+ * `build` reads a snapshot from `freeze-winners.ts`, or a hand-made list,
+ * and writes public/events/<name>.json: the item, the root, the leaf hashes,
+ * and where the list came from and who vetted it. A winners list is what an
+ * event item is minted against, so nobody builds one without saying who
+ * answered for it (audit r2, R2-02): `--source` and `--vetted-by` are
+ * required, and a freeze-winners snapshot (the self-reported set) prints a
+ * warning. `--check-players` lists addresses that never joined the city.
  * Hashes, not addresses, so the file can live in this public repo; see
  * src/game/solana/eventDrops.ts. Commit it and deploy the site.
  *
@@ -30,7 +38,8 @@ import {
   Keypair, PublicKey, SystemProgram, Transaction, TransactionInstruction,
 } from "@solana/web3.js";
 import { devnetConnection, sendAndPoll } from "./_rpc";
-import { SOL_CITY_COLLECTIBLES_PROGRAM_ID, derivePackConfigPDA } from "../src/game/solana/program";
+import { sha256 } from "@noble/hashes/sha256";
+import { SOL_CITY_COLLECTIBLES_PROGRAM_ID, derivePackConfigPDA, derivePlayerPDA } from "../src/game/solana/program";
 import { ixDiscriminator } from "../src/game/solana/instructions";
 import {
   EVENT_DROPS, eventLeaf, eventRoot, sortLeaves, toHex, fromHex,
@@ -39,6 +48,7 @@ import {
 import { globalIndexOf, EVENT_BLOCK_START, EVENT_BLOCK_END } from "../src/game/config/catalogIndex";
 import type { LayerCategory } from "../src/game/config/paperDoll";
 
+/** A `freeze-winners.ts` snapshot: the self-reported `:won` set, cut at a moment. */
 interface Snapshot {
   kind: string;
   id: string;
@@ -51,12 +61,33 @@ function arg(name: string): string | undefined {
   return i >= 0 && process.argv[i + 1] ? process.argv[i + 1] : undefined;
 }
 
-function build(): void {
+/**
+ * A hand-made list: a JSON array of addresses, a JSON object with `wallets`,
+ * or plain text with one address per line (`#` starts a comment).
+ */
+function readList(path: string): string[] {
+  const text = readFileSync(path, "utf8");
+  try {
+    const parsed = JSON.parse(text) as unknown;
+    if (Array.isArray(parsed)) return parsed.map(String);
+    const wallets = (parsed as { wallets?: unknown })?.wallets;
+    if (Array.isArray(wallets)) return wallets.map(String);
+  } catch { /* not JSON: one address per line */ }
+  return text.split(/\r?\n/).map((l) => l.replace(/#.*/, "").trim()).filter(Boolean);
+}
+
+async function build(): Promise<void> {
   const file = arg("file");
+  const list = arg("list");
   const id = Number(arg("id"));
-  const item = arg("item") ?? "hat:Pumpkin_head";
-  if (!file || !Number.isInteger(id) || id < 0 || id > 0xffff) {
-    throw new Error("usage: event-drop.ts build --file <snapshot.json> --id <0..65535> [--item cat:Variant] [--out path]");
+  const item = arg("item");
+  const source = arg("source");
+  const vettedBy = arg("vetted-by");
+  if ((!file && !list) || !item || !Number.isInteger(id) || id < 0 || id > 0xffff || !source || !vettedBy) {
+    throw new Error(
+      "usage: event-drop.ts build (--file <snapshot.json> | --list <wallets> --name <event>) --id <0..65535>\n" +
+      "         --item cat:Variant --source \"<how this list was made>\" --vetted-by <who> [--check-players] [--out path]",
+    );
   }
   const [category, variant] = item.split(":");
   const index = globalIndexOf(category as LayerCategory, variant);
@@ -64,23 +95,72 @@ function build(): void {
     throw new Error(`${item} is index ${index}, outside the event block [${EVENT_BLOCK_START}, ${EVENT_BLOCK_END})`);
   }
 
-  const snapshot = JSON.parse(readFileSync(file, "utf8")) as Snapshot;
+  // Which input, and where its addresses come from.
+  const inputPath = (file ?? list)!;
+  const snapshot = file ? (JSON.parse(readFileSync(file, "utf8")) as Snapshot) : null;
+  const raw = snapshot ? snapshot.wallets : readList(inputPath);
+  const name = snapshot ? snapshot.id : arg("name");
+  if (!name) throw new Error("--list needs --name <event>, which names public/events/<event>.json");
+
+  // Anomalies first, before anything is written.
   const wallets: PublicKey[] = [];
-  for (const w of snapshot.wallets) {
-    try { wallets.push(new PublicKey(w)); } catch { console.warn(`skipped, not an address: ${w}`); }
+  const seen = new Set<string>();
+  let invalid = 0, repeated = 0;
+  for (const w of raw) {
+    let key: PublicKey;
+    try { key = new PublicKey(w); } catch { console.warn(`  not an address, dropped: ${w}`); invalid++; continue; }
+    if (seen.has(key.toBase58())) { repeated++; continue; }
+    seen.add(key.toBase58());
+    wallets.push(key);
   }
+  if (wallets.length === 0) throw new Error("no valid address in the list");
+
+  if (snapshot) {
+    // Audit r2, R2-02: this set is the client's own word, one session-signed
+    // `success: true` per entry. Built only on purpose, by someone who read it.
+    console.warn(
+      "\nWARNING: this snapshot is the self-reported winners set. Any session key could\n" +
+      "enter it without playing. Vet it (--check-players helps) before building a root\n" +
+      "anyone can claim from, and say how in --source.\n",
+    );
+  }
+
+  const checkPlayers = process.argv.includes("--check-players");
+  const neverPlayed: string[] = [];
+  if (checkPlayers) {
+    // A wallet with no PlayerState never joined the city on this cluster.
+    const conn = devnetConnection();
+    for (let i = 0; i < wallets.length; i += 100) {
+      const chunk = wallets.slice(i, i + 100);
+      const infos = await conn.getMultipleAccountsInfo(chunk.map((w) => derivePlayerPDA(w)[0]));
+      infos.forEach((info, j) => { if (!info) neverPlayed.push(chunk[j].toBase58()); });
+    }
+    console.log(`players   checked on ${conn.rpcEndpoint.replace(/api-key=.*/, "api-key=***")}`);
+    for (const w of neverPlayed) console.warn(`  no PlayerState: ${w}`);
+  }
+
   const leaves = sortLeaves(wallets.map((w) => eventLeaf(id, w)));
   const drop: EventDropFile = {
     id, item, index,
     root: toHex(eventRoot(leaves)),
+    // Where the list came from and who answered for it, kept with the root
+    // it produced so the file explains itself later.
+    source,
+    vettedBy,
+    builtAt: new Date().toISOString(),
+    input: `${basename(inputPath)} sha256:${toHex(sha256(readFileSync(inputPath)))}`,
     leaves: leaves.map(toHex),
   };
-  const out = arg("out") ?? `public/events/${snapshot.id}.json`;
+  const out = arg("out") ?? `public/events/${name}.json`;
   writeFileSync(out, JSON.stringify(drop, null, 1) + "\n");
 
-  console.log(`snapshot  ${snapshot.kind}:${snapshot.id}  taken ${snapshot.takenAt}`);
-  console.log(`winners   ${leaves.length}`);
+  if (snapshot) console.log(`snapshot  ${snapshot.kind}:${snapshot.id}  taken ${snapshot.takenAt}`);
+  else console.log(`list      ${inputPath}`);
+  const extra = checkPlayers ? `, ${neverPlayed.length} never played` : "";
+  console.log(`winners   ${leaves.length}  (${invalid} not addresses, ${repeated} repeats dropped${extra})`);
   console.log(`item      ${item}  ->  catalog index ${index}`);
+  console.log(`source    ${source}`);
+  console.log(`vetted by ${vettedBy}`);
   console.log(`root      ${drop.root}`);
   console.log(`wrote     ${out}`);
   const listed = EVENT_DROPS.find((d) => d.file === `/events/${basename(out)}`);
@@ -163,6 +243,6 @@ async function publish(): Promise<void> {
 }
 
 const command = process.argv[2];
-(command === "build" ? Promise.resolve(build()) : command === "publish" ? publish() : Promise.reject(
+(command === "build" ? build() : command === "publish" ? publish() : Promise.reject(
   new Error("usage: event-drop.ts build ... | publish ..."),
 )).catch((err) => { console.error(err.message ?? err); process.exit(1); });

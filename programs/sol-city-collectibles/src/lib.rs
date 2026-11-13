@@ -106,6 +106,10 @@ pub const WEAR_LOG_SEED: &[u8] = b"wear_log";
 /// Seed of an event's drop: ["event_drop", id as u16 LE]. See `EventDrop`.
 pub const EVENT_DROP_SEED: &[u8] = b"event_drop";
 
+/// Seed of an event-claim receipt: ["event_claim", item index as u16 LE,
+/// wallet]. See `EventClaimReceipt`.
+pub const EVENT_CLAIM_SEED: &[u8] = b"event_claim";
+
 /// Longest proof `claim_event_item` will walk: room for 2^24 winners, and a
 /// bound on the hashing one claim can ask for.
 pub const MAX_EVENT_PROOF: usize = 24;
@@ -1260,9 +1264,7 @@ pub mod sol_city_collectibles {
         let allowed = who == cfg.admin || (paused && who == cfg.pauser);
         require!(allowed, CollectiblesError::NotPauser);
         cfg.paused = paused;
-        if let Some(mint_config) = ctx.accounts.mint_config.as_mut() {
-            mint_config.paused = paused;
-        }
+        ctx.accounts.mint_config.paused = paused;
         Ok(())
     }
 
@@ -1749,9 +1751,11 @@ pub mod sol_city_collectibles {
         // later sale of the first one leaves this wallet still wearing it.
         // What is refused is the same ASSET twice, below, once the log is open.
         //
-        // A quest or event cosmetic never exists as an asset, so there is
-        // nothing honest to claim. mint_unlock already refuses to make one;
-        // this is the same rule on the way back in (audit R-60).
+        // A quest cosmetic never exists as an asset, so there is nothing
+        // honest to claim. mint_unlock already refuses to make one; this is
+        // the same rule on the way back in (audit R-60). Event cosmetics are
+        // mintable, so a bought one is claimed here like a pack item; the
+        // seller's event receipt keeps them from claiming the event again.
         require!(is_mintable(index), CollectiblesError::ItemNotMintable);
         // Not while a draw is in flight: a claim grows `owned` into the room
         // the callback was paid for. See mint_unlock (audit R-06).
@@ -2221,6 +2225,9 @@ pub mod sol_city_collectibles {
     /// same snapshot fails on the second pass rather than quietly doing
     /// nothing, because "already granted" and "granted just now" are facts an
     /// operator handing out collectibles needs told apart.
+    ///
+    /// It shares the event receipt with `claim_event_item`: a wallet that
+    /// claimed an item cannot also be granted it, and the other way round.
     pub fn admin_grant_event_item(
         ctx: Context<AdminGrantEventItem>,
         index: u16,
@@ -2309,8 +2316,13 @@ pub mod sol_city_collectibles {
     /// A winner takes their event cosmetic.
     ///
     /// The proof is the path from this wallet's leaf to the drop's root; the
-    /// site builds it from the published list. A wallet claims once, because
-    /// a second claim finds the index already owned.
+    /// site builds it from the published list.
+    ///
+    /// A wallet receives an event item once, ever. The receipt PDA created
+    /// here is that record (audit r2, R2-01). `owned` cannot be: a sale
+    /// strips the item from the seller, and with only `owned` to go on the
+    /// seller could claim again with the same proof, once per sale. The
+    /// receipt is never closed, so the second `init` always fails.
     pub fn claim_event_item(
         ctx: Context<ClaimEventItem>,
         _id: u16,
@@ -3519,6 +3531,7 @@ pub struct MintPack<'info> {
 }
 
 #[derive(Accounts)]
+#[instruction(index: u16)]
 pub struct AdminGrantEventItem<'info> {
     #[account(mut)]
     pub admin: Signer<'info>,
@@ -3540,6 +3553,15 @@ pub struct AdminGrantEventItem<'info> {
     /// UnlockState authority's seeds in `open_mint_queue`.
     #[account(mut)]
     pub mint_queue: UncheckedAccount<'info>,
+    /// One per wallet and event item, shared with `claim_event_item`.
+    #[account(
+        init,
+        payer = admin,
+        space = 8,
+        seeds = [EVENT_CLAIM_SEED, &index.to_le_bytes(), unlock_state.authority.as_ref()],
+        bump,
+    )]
+    pub claim_receipt: Account<'info, EventClaimReceipt>,
 }
 
 #[derive(Accounts)]
@@ -3601,6 +3623,15 @@ pub struct ClaimEventItem<'info> {
     /// `open_mint_queue`.
     #[account(mut)]
     pub mint_queue: UncheckedAccount<'info>,
+    /// One per wallet and event item: a second claim fails here.
+    #[account(
+        init,
+        payer = claimer,
+        space = 8,
+        seeds = [EVENT_CLAIM_SEED, &event_drop.index.to_le_bytes(), claimer.key().as_ref()],
+        bump,
+    )]
+    pub claim_receipt: Account<'info, EventClaimReceipt>,
 }
 
 #[derive(Accounts)]
@@ -3660,8 +3691,10 @@ pub struct AdminPackConfig<'info> {
 pub struct SetPaused<'info> {
     #[account(mut, seeds = [PACK_CONFIG_SEED], bump)]
     pub config: Account<'info, PackConfig>,
+    // Required, not optional: a pause sent without it used to leave
+    // mint_unlock, mint_pending and claim_owned_from_asset open.
     #[account(mut, seeds = [MINT_CONFIG_SEED], bump)]
-    pub mint_config: Option<Account<'info, MintConfig>>,
+    pub mint_config: Account<'info, MintConfig>,
     /// Checked in the body: the admin, or the pauser when pausing.
     pub authority: Signer<'info>,
 }
@@ -3690,6 +3723,14 @@ pub struct EventDrop {
     pub index: u16,
     pub root: [u8; 32],
 }
+
+/// That a wallet has received one event item, by claim or by admin grant.
+///
+/// Empty: its existence is the record. Keyed by the item index rather than
+/// the drop id, so a later drop of the same item, or a corrected root, cannot
+/// hand the same wallet a second copy. Nothing closes it.
+#[account]
+pub struct EventClaimReceipt {}
 
 /// A winner's leaf. The event id is in it, so a proof for one event is no
 /// proof for another; the prefix keeps a leaf from ever passing for a node.
