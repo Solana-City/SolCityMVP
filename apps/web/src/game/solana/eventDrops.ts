@@ -35,6 +35,7 @@ import { awaitTransfer } from "./sendTokens";
  */
 export const EVENT_DROPS: readonly { id: number; file: string }[] = [
   { id: 1, file: "/events/pumpkin-carving.json" },
+  { id: 2, file: "/events/breakpoint-2026.json" },
 ];
 
 /** What /events/<name>.json holds. Written by scripts/event-drop.ts. */
@@ -46,6 +47,14 @@ export interface EventDropFile {
   index: number;
   /** Hex. */
   root: string;
+  /** How the list was made and filtered. Absent in files built before 2026-11. */
+  source?: string;
+  /** Who vetted the list before the root was built. */
+  vettedBy?: string;
+  /** ISO time of the build. */
+  builtAt?: string;
+  /** The input file's name and sha256, so the root can be traced to it. */
+  input?: string;
   /** Hex, sorted. */
   leaves: string[];
 }

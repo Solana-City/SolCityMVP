@@ -27,6 +27,7 @@
  * player already broadcasts in the city, and nothing a third party sends.
  */
 import { batch, lrange, mget, scard, smembers, storeMode, ztop, type BatchOp } from "@/lib/kv";
+import { countsAsWin } from "./rewardWindows";
 
 /** What can be reported. Anything else is rejected. */
 export const EVENT_KINDS = [
@@ -94,7 +95,10 @@ export async function recordEvent(ev: GameEvent): Promise<boolean> {
   // Deliberately not a board: `boardKey` in lib/boards.ts is the allowlist the
   // admin reset can name, and this key is not in it, so clearing a leaderboard
   // before a tournament cannot wipe who earned what.
-  if (ev.success === true) ops.push({ op: "sadd", key: `${base}:won`, member: ev.wallet });
+  //
+  // For a game with a reward riding on it, a win also has to land inside the
+  // event's window with the score the reward asks for (rewardWindows.ts).
+  if (countsAsWin(ev.kind, ev.id, ev.success, score)) ops.push({ op: "sadd", key: `${base}:won`, member: ev.wallet });
   // A running total makes the average free at read time. It matters for
   // latency (ms), sessions (seconds) and purchases (lamports); for the
   // count-only kinds it is a harmless extra counter.
