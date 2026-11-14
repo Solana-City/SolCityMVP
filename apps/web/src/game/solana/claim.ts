@@ -81,12 +81,16 @@ export async function heldCosmetics(
 /**
  * Whose wear-right this asset backs today, if anybody's.
  *
- * Every wallet that ever signed for the asset (the mint, each transfer) is a
- * candidate, and the one whose WearLog names this asset is the answer. There
- * is at most one: a claim moves the entry from the old log to the new. Null
- * when nobody's log names it (an asset minted before logs existed) or when
- * the history cannot be read, in which case the claim simply takes nothing
- * from anybody.
+ * Every wallet named in the asset's history is a candidate (every account of
+ * every transaction that touched it, not only the signers: a sponsored mint
+ * is signed by the sponsor, and the owner is only an account in it), and the
+ * one whose WearLog names this asset is the answer. There is exactly one: the
+ * mint writes the minter's log and a claim moves the entry from the old log
+ * to the new.
+ *
+ * Null when it cannot be found (history unreadable, or an asset minted before
+ * logs existed). The program now requires the previous holder (audit r2,
+ * R2-06), so a null here means the claim cannot be sent yet.
  */
 export async function findPreviousHolder(
   conn: Connection, assetId: PublicKey, claimer: PublicKey,
@@ -108,20 +112,21 @@ export async function findPreviousHolder(
         maxSupportedTransactionVersion: 0,
       });
       if (!tx) continue;
-      const msg = tx.transaction.message;
-      const keys = msg.staticAccountKeys;
-      for (let i = 0; i < msg.header.numRequiredSignatures; i++) {
-        if (!keys[i].equals(claimer)) candidates.set(keys[i].toBase58(), keys[i]);
+      for (const key of tx.transaction.message.staticAccountKeys) {
+        if (!key.equals(claimer)) candidates.set(key.toBase58(), key);
       }
     }
     const wallets = [...candidates.values()];
-    if (!wallets.length) return null;
-    const logs = await conn.getMultipleAccountsInfo(wallets.map(deriveWearLogPDA));
-    for (let i = 0; i < wallets.length; i++) {
-      const info = logs[i];
-      if (!info || !info.owner.equals(SOL_CITY_COLLECTIBLES_PROGRAM_ID)) continue;
-      const log = decodeWearLog(info.data);
-      if (log?.entries.some((e) => e.asset.equals(assetId))) return wallets[i];
+    // getMultipleAccounts takes 100 at a time.
+    for (let start = 0; start < wallets.length; start += 100) {
+      const chunk = wallets.slice(start, start + 100);
+      const logs = await conn.getMultipleAccountsInfo(chunk.map(deriveWearLogPDA));
+      for (let i = 0; i < chunk.length; i++) {
+        const info = logs[i];
+        if (!info || !info.owner.equals(SOL_CITY_COLLECTIBLES_PROGRAM_ID)) continue;
+        const log = decodeWearLog(info.data);
+        if (log?.entries.some((e) => e.asset.equals(assetId))) return chunk[i];
+      }
     }
     return null;
   } catch {
@@ -135,8 +140,8 @@ export function buildClaimOwnedIx(params: {
   item: HeldCosmetic;
   proof: AssetProof;
   config: MintConfigAccount;
-  /** The wallet whose right this asset backs today, or null. */
-  previousHolder: PublicKey | null;
+  /** The wallet whose right this asset backs today. Required (R2-06). */
+  previousHolder: PublicKey;
 }): TransactionInstruction {
   const { claimer, item, proof, config, previousHolder } = params;
   const nonce = Buffer.alloc(8);
@@ -156,10 +161,8 @@ export function buildClaimOwnedIx(params: {
     creator: config.royaltyRecipient,
   });
 
-  // Anchor spells an absent optional account as the program id in its place.
-  const none = SOL_CITY_COLLECTIBLES_PROGRAM_ID;
-  const prevLog = previousHolder ? deriveWearLogPDA(previousHolder) : none;
-  const prevUnlocks = previousHolder ? deriveUnlockPDA(previousHolder)[0] : none;
+  const prevLog = deriveWearLogPDA(previousHolder);
+  const prevUnlocks = deriveUnlockPDA(previousHolder)[0];
 
   return new TransactionInstruction({
     programId: SOL_CITY_COLLECTIBLES_PROGRAM_ID,
@@ -172,8 +175,8 @@ export function buildClaimOwnedIx(params: {
       { pubkey: SystemProgram.programId,          isSigner: false, isWritable: false },
       { pubkey: acceptedTreeSlot(proof.tree, config), isSigner: false, isWritable: false },
       { pubkey: deriveWearLogPDA(claimer),        isSigner: false, isWritable: true  },
-      { pubkey: prevLog,                          isSigner: false, isWritable: !!previousHolder },
-      { pubkey: prevUnlocks,                      isSigner: false, isWritable: !!previousHolder },
+      { pubkey: prevLog,                          isSigner: false, isWritable: true  },
+      { pubkey: prevUnlocks,                      isSigner: false, isWritable: true  },
       ...proof.proof.map((node) => ({ pubkey: node, isSigner: false, isWritable: false })),
     ],
     data: Buffer.concat([
@@ -193,12 +196,17 @@ export async function claimCosmetic(args: {
   item: HeldCosmetic;
   config: MintConfigAccount;
   signTransaction: (tx: Transaction) => Promise<Transaction>;
-}): Promise<{ signature: string; previousHolder: PublicKey | null }> {
+}): Promise<{ signature: string; previousHolder: PublicKey }> {
   const { conn, wallet, item, config } = args;
   const [proof, previousHolder] = await Promise.all([
     getAssetProof(conn, item.assetId),
     findPreviousHolder(conn, item.assetId, wallet),
   ]);
+  // The program will not take a claim without it (R2-06), so say so before
+  // asking the wallet to sign something that cannot land.
+  if (!previousHolder) {
+    throw new Error("Could not find who held this item before. Try again in a minute.");
+  }
   const { blockhash, lastValidBlockHeight } = await conn.getLatestBlockhash();
   const tx = new Transaction({ recentBlockhash: blockhash, feePayer: wallet });
   // A buyer who never opened a pack has no unlock account yet. It goes in

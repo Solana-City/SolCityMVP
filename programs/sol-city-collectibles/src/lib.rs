@@ -1951,9 +1951,19 @@ pub mod sol_city_collectibles {
         // checked against each other and against this asset, so a caller can
         // only ever take the index from the wallet whose log names THIS
         // asset, which is the wallet it was minted or last claimed to.
-        if let (Some(prev_log), Some(prev_unlocks)) =
-            (ctx.accounts.previous_log.as_mut(), ctx.accounts.previous_unlocks.as_mut())
+        //
+        // MANDATORY (audit r2, R2-06). It used to be optional, and a claim
+        // that left it out let the seller keep wearing: an asset passed
+        // through a chain of alts gave the right to every one of them. No
+        // per-asset record is needed to close that, because exactly one
+        // WearLog names any asset at any time: the mint writes the minter's,
+        // and every claim moves the entry from the old log to the new. So the
+        // claim must name that log, and it fails when it cannot, rather than
+        // granting a second wearer. The cost is that an asset minted before
+        // WearLogs existed (devnet only) can no longer be claimed.
         {
+            let prev_log = &ctx.accounts.previous_log;
+            let prev_unlocks = &mut ctx.accounts.previous_unlocks;
             require_keys_eq!(*prev_log.owner, crate::ID, CollectiblesError::WrongPreviousHolder);
             let prev = wear_log_wallet(&prev_log.try_borrow_data()?)?;
             require_keys_neq!(prev, claimer, CollectiblesError::WrongPreviousHolder);
@@ -3554,17 +3564,18 @@ pub struct ClaimOwnedFromAsset<'info> {
     #[account(mut)]
     pub wear_log: UncheckedAccount<'info>,
     /// The WearLog of whoever held this asset's wear-right before, when there
-    /// was one. Its address and its entry are checked in the body. Absent (the
-    /// program id) for an asset nobody has a right from yet.
+    /// was one. Its address and its entry are checked in the body. Required
+    /// (audit r2, R2-06): exactly one log names any asset, so there always
+    /// is one, and leaving it out used to let the seller keep wearing.
     #[account(mut)]
     /// CHECK: owner, discriminator and seeds are checked in the body. It is
     /// read in place (`wear_log_find`), never deserialized, so a long log
     /// cannot exhaust the heap (see `open_wear_log`).
-    pub previous_log: Option<UncheckedAccount<'info>>,
+    pub previous_log: UncheckedAccount<'info>,
     /// That previous holder's UnlockState, which loses the index. Its address
     /// is checked in the body against the wallet the log names.
     #[account(mut)]
-    pub previous_unlocks: Option<Account<'info, UnlockState>>,
+    pub previous_unlocks: Account<'info, UnlockState>,
 }
 
 /// Moving minting to a new tree, and leaving a marker for the old one.

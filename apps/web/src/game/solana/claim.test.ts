@@ -78,15 +78,8 @@ describe("a claim", () => {
     expect(keys.slice(10).map((k) => k.pubkey.toBase58())).toEqual(proof.proof.map((p) => p.toBase58()));
   });
 
-  it("passes the program id for both when nobody's right comes from this asset", () => {
-    const keys = buildClaimOwnedIx({ claimer, item, proof, config, previousHolder: null }).keys;
-    expect(keys[8].pubkey.equals(SOL_CITY_COLLECTIBLES_PROGRAM_ID)).toBe(true);
-    expect(keys[9].pubkey.equals(SOL_CITY_COLLECTIBLES_PROGRAM_ID)).toBe(true);
-    expect(keys[8].isWritable).toBe(false);
-  });
-
   it("carries the index, root, nonce and leaf index in that order", () => {
-    const data = buildClaimOwnedIx({ claimer, item, proof, config, previousHolder: null }).data;
+    const data = buildClaimOwnedIx({ claimer, item, proof, config, previousHolder: seller }).data;
     expect(data.readUInt16LE(8)).toBe(1600);
     expect(new PublicKey(data.subarray(10, 42)).equals(proof.root)).toBe(true);
     expect(data.readBigUInt64LE(42)).toBe(BigInt(7));
