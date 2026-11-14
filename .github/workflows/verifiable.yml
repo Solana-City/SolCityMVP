@@ -1,0 +1,87 @@
+name: verifiable
+
+# The MAINNET artifact. Separate from programs.yml on purpose.
+#
+# programs.yml builds on a plain runner with whatever Rust the runner has, which
+# is fine for devnet and for proving the code compiles, but nobody outside can
+# rebuild that file byte for byte. A verifiable build runs cargo build-sbf
+# inside the pinned solana-verifiable-build image (Agave 4.3.0, chosen by
+# [workspace.metadata.cli] in Cargo.toml and pinned by digest in solana-verify),
+# so anyone can rebuild the same commit and get the same hash, and
+# `solana-verify verify-from-repo` can prove the program on chain is this
+# source. Mainnet deploys from THIS artifact, never from programs.yml's.
+#
+# It needs Docker, which the owner's machine does not have (no WSL2); the
+# GitHub runner does. Run by hand (Actions > verifiable > Run workflow) on the
+# exact commit to deploy, by pushing a v* tag, or by pushing a release/* branch.
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+    branches: ["release/**"]
+
+jobs:
+  verifiable:
+    name: solana-verify build (v3)
+    runs-on: ubuntu-latest
+    env:
+      SOLANA_VERIFY_VERSION: "0.5.2"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+
+      # The release binary, checked against the .sha256 published next to it
+      # rather than trusted for arriving over https.
+      - name: Install solana-verify
+        run: |
+          base="https://github.com/Ellipsis-Labs/solana-verifiable-build/releases/download/v${SOLANA_VERIFY_VERSION}"
+          curl -sSfL -o solana-verify "$base/solana-verify-${SOLANA_VERIFY_VERSION}-linux"
+          curl -sSfL -o solana-verify.sha256 "$base/solana-verify-${SOLANA_VERIFY_VERSION}-linux.sha256"
+          want=$(awk '{print $1}' solana-verify.sha256)
+          have=$(sha256sum solana-verify | awk '{print $1}')
+          echo "want $want"; echo "have $have"
+          [ "$want" = "$have" ] || { echo "FAIL: solana-verify checksum mismatch"; exit 1; }
+          chmod +x solana-verify && sudo mv solana-verify /usr/local/bin/
+          solana-verify --version
+
+      # One program per invocation, for the reason programs.yml gives: a
+      # workspace-wide build unifies features and can emit a 4 KB stub that
+      # exits 0. --library-name builds that program's manifest only.
+      # sol-mechs is not on mainnet and is not built here.
+      - name: Build sol-city
+        run: solana-verify build --library-name sol_city --arch v3
+      - name: Build sol-city-collectibles
+        run: solana-verify build --library-name sol_city_collectibles --arch v3
+
+      # The same gate as programs.yml: sBPFv3, the right program id, and not a
+      # stub. A verifiable build of the wrong thing is still the wrong thing.
+      - name: Check the artifacts
+        run: |
+          for F in target/deploy/sol_city.so target/deploy/sol_city_collectibles.so; do
+            ls -la "$F"
+            SZ=$(stat -c%s "$F")
+            [ "$SZ" -ge 100000 ] || { echo "FAIL: $F is $SZ bytes, a stub and not a program"; exit 1; }
+            node scripts/verify-sbpf.mjs "$F"
+          done
+
+      # What to compare against after the mainnet deploy:
+      #   solana-verify get-program-hash <program id> --url <mainnet rpc>
+      - name: Hashes
+        run: |
+          {
+            echo "commit $GITHUB_SHA"
+            for F in target/deploy/sol_city.so target/deploy/sol_city_collectibles.so; do
+              echo "$(basename "$F") $(solana-verify get-executable-hash "$F")"
+            done
+          } | tee target/deploy/HASHES.txt
+          cat target/deploy/HASHES.txt >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: verifiable-v3
+          path: |
+            target/deploy/sol_city.so
+            target/deploy/sol_city_collectibles.so
+            target/deploy/HASHES.txt
+          if-no-files-found: error
