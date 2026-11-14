@@ -6,7 +6,7 @@
  * owner of the treasury token account. With `--expect` each one is checked
  * against the vault that should hold it, which is the last step of a launch.
  *
- *   npx tsx scripts/admin-handoff.ts status [--expect <vault>]
+ *   npx tsx scripts/admin-handoff.ts status [--expect <vault>] [--sponsor <pubkey>]
  *   npx tsx scripts/admin-handoff.ts handoff <admin-keypair.json> <vault> [--send]
  *
  * `handoff` moves the pack admin and the mint admin (the pauser follows the
@@ -17,6 +17,13 @@
  * The vault, not the multisig: Squads shows two addresses, and only the vault
  * can sign. Authority given to the multisig account is lost, so `handoff`
  * refuses an address the Squads program owns.
+ *
+ * `status` also shows the two HOT keys, which are deliberately NOT the vault:
+ * the city operator (it signs undelegates on a rollup, where Squads cannot
+ * sign) and, with --sponsor, the mint sponsor and its balance (its secret
+ * lives only in the site's env, so the script is told its address). Any role
+ * held by the devnet deploy key is flagged: that key is exposed and must hold
+ * nothing on mainnet.
  *
  * Env:
  *   SOLCITY_RPC   RPC (default: devnet, see scripts/_rpc.ts)
@@ -46,6 +53,10 @@ function pda(seed: string, program: PublicKey): PublicKey {
 const packConfig = pda("pack_config", COLLECTIBLES);
 const mintConfig = pda("mint_config", COLLECTIBLES);
 const hunt = pda("hunt_v2", CITY);
+const operatorPda = pda("operator", CITY);
+
+/** The devnet deploy and test key. Exposed: never a role on mainnet. */
+const EXPOSED = new PublicKey("9592QS34mPUwqA7sPAkug1kcuFddjn59QPQMzzCgKhEp");
 
 /** The upgrade authority, from the program's ProgramData; null if immutable. */
 async function upgradeAuthority(program: PublicKey): Promise<PublicKey | null> {
@@ -68,17 +79,21 @@ type Roles = {
   treasuryAta: PublicKey | null;
   treasuryOwner: PublicKey | null;
   mintAdmin: PublicKey | null;
+  operator: PublicKey | null;
   hunt: string;
 };
 
 async function readRoles(): Promise<Roles> {
-  const [cityUpgrade, collectiblesUpgrade, pack, mint, huntInfo] = await Promise.all([
+  const [cityUpgrade, collectiblesUpgrade, pack, mint, huntInfo, opInfo] = await Promise.all([
     upgradeAuthority(CITY),
     upgradeAuthority(COLLECTIBLES),
     conn.getAccountInfo(packConfig),
     conn.getAccountInfo(mintConfig),
     conn.getAccountInfo(hunt),
+    conn.getAccountInfo(operatorPda),
   ]);
+  // CityOperator: discriminator, then the operator key.
+  const operator = opInfo ? new PublicKey(opInfo.data.subarray(8, 40)) : null;
 
   let packAdmin = null, pauser = null, paused = null, treasuryAta = null, treasuryOwner = null;
   if (pack) {
@@ -104,17 +119,28 @@ async function readRoles(): Promise<Roles> {
 
   return {
     cityUpgrade, collectiblesUpgrade, packAdmin, pauser, paused,
-    treasuryAta, treasuryOwner, mintAdmin, hunt: huntState,
+    treasuryAta, treasuryOwner, mintAdmin, operator, hunt: huntState,
   };
 }
 
 function show(label: string, key: PublicKey | null, expect: PublicKey | null, missing: string) {
   const value = key?.toBase58() ?? missing;
-  const mark = !expect ? "" : key?.equals(expect) ? "  OK" : "  <-- not the vault";
+  const mark = key?.equals(EXPOSED) ? "  <-- EXPOSED devnet key"
+    : !expect ? "" : key?.equals(expect) ? "  OK" : "  <-- not the vault";
   console.log(`${label.padEnd(22)} ${value}${mark}`);
 }
 
-async function status(expect: PublicKey | null) {
+/** A hot key: it must exist, must not be the vault, must not be the exposed key. */
+function showHot(label: string, key: PublicKey | null, expect: PublicKey | null, missing: string, extra = "") {
+  const value = key?.toBase58() ?? missing;
+  const mark = !key ? "  <-- missing"
+    : key.equals(EXPOSED) ? "  <-- EXPOSED devnet key"
+    : expect && key.equals(expect) ? "  <-- the vault cannot sign on a rollup"
+    : "  OK (hot key)";
+  console.log(`${label.padEnd(22)} ${value}${mark}${extra}`);
+}
+
+async function status(expect: PublicKey | null, sponsor: PublicKey | null) {
   const r = await readRoles();
   console.log(`rpc                    ${conn.rpcEndpoint.replace(/api-key=.*/, "api-key=***")}`);
   if (expect) console.log(`expected vault         ${expect.toBase58()}`);
@@ -128,6 +154,15 @@ async function status(expect: PublicKey | null) {
   console.log(`${"treasury account".padEnd(22)} ${r.treasuryAta?.toBase58() ?? "-"}`);
   console.log(`${"shop paused".padEnd(22)} ${r.paused ?? "-"}`);
   console.log(`${"hunt".padEnd(22)} ${r.hunt}`);
+  console.log("");
+  showHot("city operator", r.operator, expect, "(missing: presence-setup.ts --operator)");
+  if (sponsor) {
+    const lamports = await conn.getBalance(sponsor);
+    const low = lamports < 0.5 * 1e9 ? "  <-- under 0.5 SOL" : "";
+    showHot("mint sponsor", sponsor, expect, "-", `  ${(lamports / 1e9).toFixed(3)} SOL${low}`);
+  } else {
+    console.log(`${"mint sponsor".padEnd(22)} (pass --sponsor <pubkey> to check it)`);
+  }
 }
 
 /**
@@ -167,7 +202,7 @@ function setAdminIx(name: "set_pack_admin" | "set_mint_admin", config: PublicKey
 async function handoff(admin: Keypair, vault: PublicKey) {
   await checkVault(vault);
   const r = await readRoles();
-  await status(null);
+  await status(null, null);
   console.log("");
 
   const ixs: TransactionInstruction[] = [];
@@ -210,7 +245,11 @@ async function main() {
   const [command] = args;
   if (!command || command === "status") {
     const i = args.indexOf("--expect");
-    return status(i >= 0 ? new PublicKey(args[i + 1]) : null);
+    const j = args.indexOf("--sponsor");
+    return status(
+      i >= 0 ? new PublicKey(args[i + 1]) : null,
+      j >= 0 ? new PublicKey(args[j + 1]) : null,
+    );
   }
   if (command === "handoff") {
     const [, keypairPath, vault] = args;
