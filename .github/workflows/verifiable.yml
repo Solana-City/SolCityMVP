@@ -67,21 +67,25 @@ jobs:
 
       # What to compare against after the mainnet deploy:
       #   solana-verify get-program-hash <program id> --url <mainnet rpc>
+      # Copied out of target/deploy first: the container wrote it as root, so
+      # the runner user cannot add files there.
       - name: Hashes
         run: |
+          mkdir -p out
+          cp target/deploy/sol_city.so target/deploy/sol_city_collectibles.so out/
           {
             echo "commit $GITHUB_SHA"
-            for F in target/deploy/sol_city.so target/deploy/sol_city_collectibles.so; do
+            for F in out/sol_city.so out/sol_city_collectibles.so; do
               echo "$(basename "$F") $(solana-verify get-executable-hash "$F")"
             done
-          } | tee target/deploy/HASHES.txt
-          cat target/deploy/HASHES.txt >> "$GITHUB_STEP_SUMMARY"
+          } | tee out/HASHES.txt
+          cat out/HASHES.txt >> "$GITHUB_STEP_SUMMARY"
 
       - uses: actions/upload-artifact@v4
         with:
           name: verifiable-v3
           path: |
-            target/deploy/sol_city.so
-            target/deploy/sol_city_collectibles.so
-            target/deploy/HASHES.txt
+            out/sol_city.so
+            out/sol_city_collectibles.so
+            out/HASHES.txt
           if-no-files-found: error
