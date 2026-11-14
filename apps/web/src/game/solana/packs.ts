@@ -362,8 +362,9 @@ export async function hasPendingDraw(conn: Connection, wallet: PublicKey): Promi
  *
  * Costs the VRF request and a fee, never the pack: the program keeps the
  * pack, its odds and its season exactly as they were frozen at payment. The
- * retry takes a new draw id, so if the original answer turns up after all it
- * is ignored: asking again can never draw twice.
+ * retry keeps the purchase's draw id, so if the original answer turns up
+ * after all, whichever lands first resolves the pack and the other finds
+ * nothing pending: asking again can never draw twice, nor reroll.
  */
 export async function retryStuckDraw(args: {
   conn: Connection;

@@ -847,7 +847,7 @@ export function buildRetryDrawIx(params: {
       { pubkey: SystemProgram.programId,   isSigner: false, isWritable: false },
       // Grown here for a draw paid before the queue existed.
       { pubkey: deriveMintQueuePDA(payer), isSigner: false, isWritable: true  },
-      // Last: the retry takes a new draw id, so the first answer is void.
+      // Last: the retry keeps the purchase's draw id and restarts the cancel wait.
       { pubkey: deriveDrawTicketPDA(payer), isSigner: false, isWritable: true },
     ],
     data: Buffer.concat([DISC.retryDraw, seed]),

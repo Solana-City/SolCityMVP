@@ -39,7 +39,7 @@ describe("the retry_draw instruction", () => {
       SystemProgram.programId,
       // Grown here for a draw paid before the queue existed.
       deriveMintQueuePDA(payer),
-      // A new draw id, so the first answer is void (audit r2, R2-03).
+      // The purchase's draw id, kept by the retry (audit r2, R2-03).
       deriveDrawTicketPDA(payer),
     ].map((k) => k.toBase58()));
   });

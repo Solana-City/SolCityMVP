@@ -376,17 +376,26 @@ fn request_draw<'info>(
     system_program: &Program<'info, System>,
     identity_bump: u8,
     draw_ticket: &AccountInfo<'info>,
+    new_purchase: bool,
 ) -> Result<()> {
-    // A new id for this request, before it is made (audit r2, R2-03). It
-    // goes to the oracle in `callback_args` and comes back after the
-    // randomness, and the callback acts only on the answer carrying the
-    // wallet's CURRENT id. An answer to an older request (one retried, one
-    // cancelled, one replayed) is then a no-op instead of a grant.
+    // The PURCHASE's id (audit r2, R2-03: "um draw_id por compra"). It goes
+    // to the oracle in `callback_args` and comes back after the randomness,
+    // and the callback acts only on an answer carrying the wallet's CURRENT
+    // id. A new purchase or open takes a new id, so an answer to an earlier
+    // purchase (or a cancelled one) is a no-op instead of a grant.
+    //
+    // A retry keeps the id. If it took a new one, as it first did, it would
+    // void the answer already on its way: anyone who could see that answer
+    // before it landed could retry over a bad draw and reroll the pack until
+    // it came out well (round 3 review). Keeping the id, the original answer
+    // and the retried one both belong to this purchase, the first to land
+    // resolves it, and the other finds nothing pending.
     let wallet = Pubkey::new_from_array(
         unlock_state.try_borrow_data()?[8..40].try_into().unwrap(),
     );
     let draw_id = bump_draw_ticket(
         draw_ticket, &wallet, &payer.to_account_info(), &system_program.to_account_info(),
+        new_purchase,
     )?;
     let mut data = vec![VRF_REQUEST_SCOPED, 0, 0, 0, 0, 0, 0, 0];
     VrfRequest {
@@ -754,6 +763,7 @@ pub mod sol_city_collectibles {
             &ctx.accounts.system_program,
             ctx.bumps.program_identity,
             &ctx.accounts.draw_ticket.to_account_info(),
+            true,
         )?;
         Ok(())
     }
@@ -935,9 +945,11 @@ pub mod sol_city_collectibles {
     ///
     /// Why there is no waiting period: the randomness does not exist until the
     /// callback applies it, so asking twice gives a player two answers they
-    /// cannot see and cannot choose between. Only the retry's answer can
-    /// resolve the pack: it takes a new draw id, and the original answer,
-    /// if it ever arrives, is a no-op (audit r2, R2-03). Nothing else can
+    /// cannot see and cannot choose between. Both answers carry this
+    /// purchase's draw id: whichever lands first resolves the pack and the
+    /// other finds nothing pending. The retry must NOT take a new id, or it
+    /// would void an answer already on its way (see `request_draw`). It only
+    /// restarts `cancel_draw`'s wait. Nothing else can
     /// touch the account while it waits, since every writer refuses a pending
     /// wallet. A timer would need a slot stored on UnlockState, which is a
     /// layout change on every wallet, to protect against nothing. The client
@@ -985,6 +997,7 @@ pub mod sol_city_collectibles {
             &ctx.accounts.system_program,
             ctx.bumps.program_identity,
             &ctx.accounts.draw_ticket.to_account_info(),
+            false,
         )?;
         Ok(())
     }
@@ -2201,6 +2214,7 @@ pub mod sol_city_collectibles {
             &ctx.accounts.system_program,
             ctx.bumps.program_identity,
             &ctx.accounts.draw_ticket.to_account_info(),
+            true,
         )?;
 
         emit!(PackOpened { opener, pack_id, season: def.season });
@@ -2639,7 +2653,6 @@ pub struct InitUnlockState<'info> {
     pub system_program: Program<'info, System>,
 }
 
-/// Emitted when a sealed pack is spent, so the client can start the reveal.
 /// A draw given up by its wallet (`cancel_draw`): what was paid for and
 /// never delivered, for the refund made by hand.
 #[event]
@@ -2651,6 +2664,7 @@ pub struct DrawCancelled {
     pub draw_id: u64,
 }
 
+/// Emitted when a sealed pack is spent, so the client can start the reveal.
 #[event]
 pub struct PackOpened {
     pub opener: Pubkey,
@@ -2925,15 +2939,20 @@ fn read_draw_ticket(ticket: &AccountInfo, wallet: &Pubkey) -> Result<(u64, u64)>
     Ok((id, slot))
 }
 
-/// Moves `wallet`'s ticket to a new request and returns its id, creating
-/// the ticket the first time. Same pre-funded branch as `open_wear_log`: one
-/// lamport sent to the address must not stop a wallet from ever drawing.
+/// Stamps `wallet`'s ticket for a request and returns the draw id the
+/// request carries, creating the ticket the first time. A new purchase moves
+/// the id on; a retry keeps it (see `request_draw`). Either way the request
+/// slot is refreshed, which is what `cancel_draw` waits on. Same pre-funded
+/// branch as `open_wear_log`: one lamport sent to the address must not stop
+/// a wallet from ever drawing.
 fn bump_draw_ticket<'info>(
     ticket: &AccountInfo<'info>,
     wallet: &Pubkey,
     payer: &AccountInfo<'info>,
     system_program: &AccountInfo<'info>,
+    new_purchase: bool,
 ) -> Result<u64> {
+    let created = ticket.owner != &crate::ID;
     let (expected, bump) = Pubkey::find_program_address(&[DRAW_TICKET_SEED, wallet.as_ref()], &crate::ID);
     require_keys_eq!(*ticket.key, expected, CollectiblesError::WrongDrawTicket);
     if ticket.owner != &crate::ID {
@@ -2963,7 +2982,9 @@ fn bump_draw_ticket<'info>(
         data[8..DRAW_TICKET_ID_AT].copy_from_slice(wallet.as_ref());
     }
     let (current, _) = read_draw_ticket(ticket, wallet)?;
-    let next = current.wrapping_add(1);
+    // A ticket created by a retry (a draw paid before tickets existed) still
+    // gets a fresh id, so it never shares id 0 with "no request yet".
+    let next = if new_purchase || created { current.wrapping_add(1) } else { current };
     let mut data = ticket.try_borrow_mut_data()?;
     data[DRAW_TICKET_ID_AT..DRAW_TICKET_SLOT_AT].copy_from_slice(&next.to_le_bytes());
     data[DRAW_TICKET_SLOT_AT..DRAW_TICKET_LEN].copy_from_slice(&Clock::get()?.slot.to_le_bytes());
